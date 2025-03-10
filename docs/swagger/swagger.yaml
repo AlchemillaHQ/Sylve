@@ -1,0 +1,597 @@
+definitions:
+  diskHandlers.DiskDevicesResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/diskServiceInterfaces.Disk'
+        type: array
+      status:
+        type: string
+    type: object
+  diskServiceInterfaces.Disk:
+    properties:
+      device:
+        type: string
+      gpt:
+        type: boolean
+      model:
+        type: string
+      partitions:
+        items:
+          $ref: '#/definitions/diskServiceInterfaces.Partition'
+        type: array
+      serial:
+        type: string
+      size:
+        type: integer
+      smartData: {}
+      type:
+        type: string
+      usage:
+        type: string
+      wearOut:
+        type: string
+    type: object
+  diskServiceInterfaces.Partition:
+    properties:
+      name:
+        type: string
+      size:
+        type: integer
+      usage:
+        type: string
+    type: object
+  handlers.HealthResponse:
+    properties:
+      hostname:
+        type: string
+      message:
+        type: string
+    type: object
+  handlers.RequestLogin:
+    properties:
+      authType:
+        type: string
+      password:
+        type: string
+      remember:
+        type: boolean
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  handlers.ResponseLogin:
+    properties:
+      hostname:
+        type: string
+      status:
+        type: string
+      token:
+        type: string
+    type: object
+  infoHandlers.AuditLogsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/infoModels.AuditLog'
+        type: array
+      status:
+        type: string
+    type: object
+  infoHandlers.BasicInfoResponse:
+    properties:
+      data:
+        $ref: '#/definitions/infoServiceInterfaces.BasicInfo'
+      status:
+        type: string
+    type: object
+  infoHandlers.CPUInfoHistoricalResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/infoModels.CPU'
+        type: array
+      status:
+        type: string
+    type: object
+  infoHandlers.CPUInfoResponse:
+    properties:
+      data:
+        $ref: '#/definitions/infoServiceInterfaces.CPUInfo'
+      status:
+        type: string
+    type: object
+  infoHandlers.GetNotesResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/infoModels.Note'
+        type: array
+      status:
+        type: string
+    type: object
+  infoModels.AuditLog:
+    properties:
+      action:
+        type: string
+      authType:
+        type: string
+      createdAt:
+        type: string
+      ended:
+        type: string
+      id:
+        type: integer
+      node:
+        type: string
+      started:
+        type: string
+      status:
+        type: string
+      updatedAt:
+        type: string
+      user:
+        type: string
+      userId:
+        type: integer
+    type: object
+  infoModels.CPU:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      usage:
+        type: number
+    type: object
+  infoModels.Note:
+    properties:
+      content:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: integer
+      title:
+        type: string
+      updateAt:
+        type: string
+    type: object
+  infoServiceInterfaces.BasicInfo:
+    properties:
+      bootMode:
+        type: string
+      hostname:
+        type: string
+      loadAverage:
+        type: string
+      os:
+        type: string
+      sylveVersion:
+        type: string
+      uptime:
+        type: integer
+    type: object
+  infoServiceInterfaces.CPUInfo:
+    properties:
+      cache:
+        properties:
+          l1d:
+            type: integer
+          l1i:
+            type: integer
+          l2:
+            type: integer
+          l3:
+            type: integer
+        type: object
+      cacheLine:
+        type: integer
+      family:
+        type: integer
+      features:
+        items:
+          type: string
+        type: array
+      frequency:
+        type: integer
+      logicalCores:
+        type: integer
+      model:
+        type: integer
+      name:
+        type: string
+      physicalCores:
+        type: integer
+      threadsPerCore:
+        type: integer
+      usage:
+        type: number
+    type: object
+  internal.ErrorResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  internal.SuccessResponse:
+    properties:
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+info:
+  contact:
+    email: hello@alchemilla.io
+    name: Alchemilla
+    url: https://github.com/AlchemillaHQ/Sylve
+  license:
+    name: BSD-2-Clause
+    url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
+  x-logo:
+    altText: redoc-logo
+    backgroundColor: '#FFFFFF'
+    url: https://downloads-bucket.difuse.io/c55d3cfe_redoc.png
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user and return a JWT token
+      parameters:
+      - description: Login request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RequestLogin'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResponseLogin'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+        "401":
+          description: Invalid credentials
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      summary: User login
+      tags:
+      - Authentication
+  /auth/logout:
+    get:
+      description: Revoke a JWT token
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: User logout
+      tags:
+      - Authentication
+    post:
+      description: Revoke a JWT token
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: User logout
+      tags:
+      - Authentication
+  /disk/initialize-gpt:
+    post:
+      consumes:
+      - application/json
+      description: Initialize a disk with a GPT partition table
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Initialize GPT
+      tags:
+      - Disk
+  /disk/list:
+    get:
+      consumes:
+      - application/json
+      description: Get all disk devices on the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/diskHandlers.DiskDevicesResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List disk devices
+      tags:
+      - Disk
+  /disk/wipe:
+    post:
+      consumes:
+      - application/json
+      description: Wipe a disk given its device name
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Wipe disk
+      tags:
+      - Disk
+  /health/basic:
+    get:
+      consumes:
+      - application/json
+      description: Get basic health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get basic health status
+      tags:
+      - Health
+  /health/http:
+    get:
+      consumes:
+      - application/json
+      description: Get HTTP health status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get HTTP health status
+      tags:
+      - Health
+  /info/audit-logs:
+    get:
+      consumes:
+      - application/json
+      description: Get the latest audit logs
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/infoHandlers.AuditLogsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Audit Logs
+      tags:
+      - Info
+  /info/basic:
+    get:
+      consumes:
+      - application/json
+      description: Get basic information about the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/infoHandlers.BasicInfoResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Basic Info
+      tags:
+      - Info
+  /info/cpu:
+    get:
+      consumes:
+      - application/json
+      description: Get current CPU information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/infoHandlers.CPUInfoResponse'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Current CPU Info
+      tags:
+      - Info
+  /info/cpu/historical:
+    get:
+      consumes:
+      - application/json
+      description: Get historical CPU information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/infoHandlers.CPUInfoHistoricalResponse'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Historical CPU Info
+      tags:
+      - Info
+  /info/notes:
+    get:
+      consumes:
+      - application/json
+      description: Get all notes
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/infoHandlers.GetNotesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Notes
+      tags:
+      - Info
+    post:
+      consumes:
+      - application/json
+      description: Add a new note
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create Note
+      tags:
+      - Info
+  /info/notes/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a note by ID
+      parameters:
+      - description: Note ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete Note
+      tags:
+      - Info
+    put:
+      consumes:
+      - application/json
+      description: Update a note by ID
+      parameters:
+      - description: Note ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update Note
+      tags:
+      - Info
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

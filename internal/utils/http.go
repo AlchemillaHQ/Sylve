@@ -11,17 +11,21 @@ package utils
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetTokenFromHeader(r http.Header) (string, error) {
 	token := r.Get("Authorization")
+
 	if token == "" {
 		return "", fmt.Errorf("no token provided")
 	}
 
-	token = RemoveSpaces(token[7:])
+	if strings.HasPrefix(token, "Bearer ") {
+		token = RemoveSpaces(token[7:])
+	}
 
 	return token, nil
 }

@@ -15,10 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
-	"syscall"
-	"time"
-
+	_ "sylve/docs/swagger"
 	"sylve/internal/cmd"
 	"sylve/internal/config"
 	"sylve/internal/db"
@@ -29,10 +26,25 @@ import (
 	"sylve/internal/services/disk"
 	"sylve/internal/services/info"
 	"sylve/internal/services/zfs"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
+
+// @contact.name   Alchemilla
+// @contact.url    https://github.com/AlchemillaHQ/Sylve
+// @contact.email  hello@alchemilla.io
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
+// @license.name  BSD-2-Clause
+// @license.url   https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
+// @x-logo {"url": "https://downloads-bucket.difuse.io/c55d3cfe_redoc.png", "backgroundColor": "#FFFFFF", "altText": "redoc-logo"}
 
 func main() {
 	cmd.AsciiArt()

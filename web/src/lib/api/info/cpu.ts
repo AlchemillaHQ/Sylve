@@ -12,7 +12,7 @@ export async function getCPUInfo(
 ): Promise<CPUInfo | CPUInfoHistorical> {
 	if (queryObj) {
 		if (queryObj.queryKey.includes('cpuInfoHistorical')) {
-			const data = await apiRequest('/info/cpu?historical=1', CPUInfoHistoricalSchema, 'GET');
+			const data = await apiRequest('/info/cpu/historical', CPUInfoHistoricalSchema, 'GET');
 			return CPUInfoHistoricalSchema.parse(data);
 		}
 	}

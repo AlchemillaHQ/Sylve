@@ -12,16 +12,24 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	static "github.com/soulteary/gin-static"
 
 	"sylve/internal/assets"
+
+	static "github.com/soulteary/gin-static"
+
 	diskHandlers "sylve/internal/handlers/disk"
+
 	infoHandlers "sylve/internal/handlers/info"
 	"sylve/internal/handlers/middleware"
+
 	zfsHandlers "sylve/internal/handlers/zfs"
+
 	authService "sylve/internal/services/auth"
+
 	diskService "sylve/internal/services/disk"
+
 	infoService "sylve/internal/services/info"
+
 	zfsService "sylve/internal/services/zfs"
 )
 
@@ -46,7 +54,10 @@ func RegisterRoutes(r *gin.Engine,
 	info.Use(middleware.EnsureAuthenticated(authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
-		info.GET("/cpu", infoHandlers.CPUInfo(infoService))
+
+		info.GET("/cpu", infoHandlers.CurrentCPUInfo(infoService))
+		info.GET("/cpu/historical", infoHandlers.HistoricalCPUInfo(infoService))
+
 		info.GET("/ram", infoHandlers.RAMInfo(infoService))
 		info.GET("/swap", infoHandlers.SwapInfo(infoService))
 

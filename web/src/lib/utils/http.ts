@@ -49,7 +49,12 @@ export async function apiRequest<T extends z.ZodType>(
 			}
 		}
 
-		adze.withEmoji.warn('Failed to parse API response data:', parsedResult.error);
+		adze.withEmoji.warn(
+			'Failed to parse API response data:',
+			parsedResult.error,
+			responseData,
+			endpoint
+		);
 		return schema.parse({});
 	} catch (error) {
 		adze.withEmoji.error(`Error in ${method} request to ${endpoint}:`, error);
