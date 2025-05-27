@@ -134,8 +134,15 @@ func main() {
 	go func() {
 		defer wg.Done()
 		logger.L.Info().Msgf("Server started on %s:%d", cfg.IP, cfg.Port)
-		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			logger.L.Fatal().Err(err).Msg("Failed to start server")
+		if cfg.Environment == "development" {
+			err = server.ListenAndServe()
+			if err != nil {
+				logger.L.Fatal().Err(err).Msg("Failed to start HTTP server")
+			}
+		} else {
+			if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.L.Fatal().Err(err).Msg("Failed to start server")
+			}
 		}
 	}()
 
