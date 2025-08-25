@@ -10,3 +10,19 @@ export async function getCluster(): Promise<DataCenter> {
 export async function createCluster(): Promise<APIResponse> {
 	return await apiRequest('/datacenter/cluster', APIResponseSchema, 'POST');
 }
+
+export async function joinCluster(
+	nodeId: string,
+	nodeAddress: string,
+	leaderAPI: string,
+	clusterKey: string
+): Promise<APIResponse> {
+	const requestBody = {
+		nodeID: nodeId,
+		nodeAddr: nodeAddress,
+		leaderAPI: leaderAPI,
+		clusterKey: clusterKey
+	};
+
+	return await apiRequest('/datacenter/cluster/join', APIResponseSchema, 'POST', requestBody);
+}

@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-07-19T15:13:23.412Z\n"
-"PO-Revision-Date: 2025-08-25T13:03:39.935Z\n"
+"PO-Revision-Date: 2025-08-25T13:33:21.777Z\n"
 "Last-Translator: \n"
 "Language: Malayalam\n"
 "Language-Team: \n"
@@ -228,6 +228,10 @@ msgstr "പുനഃക്രമീകരിക്കുക"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/network/switches/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Close"
 msgstr "അടയ്ക്കുക"
 
@@ -783,6 +787,7 @@ msgstr "നെറ്റ്‌വർക്ക് TX"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "View"
 msgstr ""
 
@@ -3952,4 +3957,46 @@ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Cluster created"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Information"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster ID: {0}"
+msgstr ""
+
+#~ msgid "Cluster Name: {0}"
+#~ msgstr ""
+
+#~ msgid "Cluster Status: {0}"
+#~ msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID: {0}"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key: {0}"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join Cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leader API"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node Address"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key"
 msgstr ""

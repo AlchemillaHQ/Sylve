@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-07-31T13:10:41.867Z\n"
-"PO-Revision-Date: 2025-08-25T13:03:39.960Z\n"
+"PO-Revision-Date: 2025-08-25T13:33:21.876Z\n"
 "Last-Translator: \n"
 "Language: Russian\n"
 "Language-Team: \n"
@@ -196,6 +196,10 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/network/switches/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Close"
 msgstr ""
 
@@ -858,6 +862,7 @@ msgstr ""
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "View"
 msgstr ""
 
@@ -3820,4 +3825,46 @@ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Cluster created"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Information"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster ID: {0}"
+msgstr ""
+
+#~ msgid "Cluster Name: {0}"
+#~ msgstr ""
+
+#~ msgid "Cluster Status: {0}"
+#~ msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID: {0}"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key: {0}"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join Cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leader API"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node Address"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key"
 msgstr ""

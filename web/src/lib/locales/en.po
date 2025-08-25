@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-08-25T13:10:30.480Z\n"
+"PO-Revision-Date: 2025-08-25T13:37:23.643Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -121,6 +121,10 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/network/switches/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -775,6 +779,7 @@ msgstr "Value"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "View"
 msgstr "View"
 
@@ -1190,3 +1195,46 @@ msgstr "Error creating cluster"
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Cluster created"
 msgstr "Cluster created"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Information"
+msgstr "Cluster Information"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster ID: {0}"
+msgstr "Cluster ID: {0}"
+
+#~ msgid "Cluster Name: {0}"
+#~ msgstr "Cluster Name: {0}"
+
+#~ msgid "Cluster Status: {0}"
+#~ msgstr "Cluster Status: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID: {0}"
+msgstr "Node ID: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key: {0}"
+msgstr "Cluster Key: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join Cluster"
+msgstr "Join Cluster"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leader API"
+msgstr "Leader API"
+
+#~ msgid "Node ID"
+#~ msgstr "Node ID"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node Address"
+msgstr "Node Address"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key"
+msgstr "Cluster Key"

@@ -10,6 +10,7 @@ package utils
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,7 +59,14 @@ func HTTPPostJSON(url string, payload any) error {
 		return err
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: tr,
+	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
