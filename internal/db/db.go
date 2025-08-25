@@ -11,6 +11,7 @@ package db
 import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	datacenterModels "github.com/alchemillahq/sylve/internal/db/models/datacenter"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -95,6 +96,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
 		&sambaModels.SambaAuditLog{},
+
+		&datacenterModels.DataCenter{},
+		&datacenterModels.DataCenterNote{},
+		&datacenterModels.DataCenterOptions{},
 	)
 
 	if err != nil {

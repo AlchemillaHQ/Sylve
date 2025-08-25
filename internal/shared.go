@@ -18,6 +18,11 @@ type TLSConfig struct {
 	KeyFile  string `json:"keyFile"`
 }
 
+type Raft struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
 type SylveConfig struct {
 	Environment   string          `json:"environment"`
 	ProxyToVite   bool            `json:"proxyToVite"`
@@ -28,6 +33,7 @@ type SylveConfig struct {
 	Admin         BaseConfigAdmin `json:"admin"`
 	DataPath      string          `json:"dataPath"`
 	TLS           TLSConfig       `json:"tlsConfig"`
+	Raft          Raft            `json:"raft"`
 }
 
 type APIResponse[T any] struct {

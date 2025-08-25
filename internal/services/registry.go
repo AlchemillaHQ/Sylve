@@ -10,6 +10,7 @@ package services
 
 import (
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	datacenterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/datacenter"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -20,6 +21,7 @@ import (
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/datacenter"
 	"github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -35,17 +37,18 @@ import (
 )
 
 type ServiceRegistry struct {
-	AuthService      serviceInterfaces.AuthServiceInterface
-	StartupService   serviceInterfaces.StartupServiceInterface
-	InfoService      infoServiceInterfaces.InfoServiceInterface
-	ZfsService       zfsServiceInterfaces.ZfsServiceInterface
-	DiskService      diskServiceInterfaces.DiskServiceInterface
-	NetworkService   networkServiceInterfaces.NetworkServiceInterface
-	LibvirtService   libvirtServiceInterfaces.LibvirtServiceInterface
-	UtilitiesService utilitiesServiceInterfaces.UtilitiesServiceInterface
-	SystemService    systemServiceInterfaces.SystemServiceInterface
-	SambaService     sambaServiceInterfaces.SambaServiceInterface
-	JailService      jailServiceInterfaces.JailServiceInterface
+	AuthService       serviceInterfaces.AuthServiceInterface
+	StartupService    serviceInterfaces.StartupServiceInterface
+	InfoService       infoServiceInterfaces.InfoServiceInterface
+	ZfsService        zfsServiceInterfaces.ZfsServiceInterface
+	DiskService       diskServiceInterfaces.DiskServiceInterface
+	NetworkService    networkServiceInterfaces.NetworkServiceInterface
+	LibvirtService    libvirtServiceInterfaces.LibvirtServiceInterface
+	UtilitiesService  utilitiesServiceInterfaces.UtilitiesServiceInterface
+	SystemService     systemServiceInterfaces.SystemServiceInterface
+	SambaService      sambaServiceInterfaces.SambaServiceInterface
+	JailService       jailServiceInterfaces.JailServiceInterface
+	DatacenterService datacenterServiceInterfaces.DatacenterServiceInterface
 }
 
 func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
@@ -83,6 +86,8 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *jail.Service:
 		networkService := dependencies[0].(networkServiceInterfaces.NetworkServiceInterface)
 		return jail.NewJailService(db, networkService)
+	case *datacenter.Service:
+		return datacenter.NewDatacenterService(db)
 	default:
 		return nil
 	}
@@ -98,18 +103,20 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 	sambaService := NewService[samba.Service](db, zfsService)
 	networkService := NewService[network.Service](db, libvirtService)
 	jailService := NewService[jail.Service](db, networkService)
+	datacenterService := NewService[datacenter.Service](db)
 
 	return &ServiceRegistry{
-		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),
-		StartupService:   NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService).(*startup.Service),
-		InfoService:      infoService.(infoServiceInterfaces.InfoServiceInterface),
-		ZfsService:       zfsService.(*zfs.Service),
-		DiskService:      NewService[disk.Service](db, zfsService).(*disk.Service),
-		NetworkService:   NewService[network.Service](db, libvirtService).(*network.Service),
-		LibvirtService:   libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
-		UtilitiesService: utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
-		SystemService:    systemService.(systemServiceInterfaces.SystemServiceInterface),
-		SambaService:     sambaService.(sambaServiceInterfaces.SambaServiceInterface),
-		JailService:      jailService.(jailServiceInterfaces.JailServiceInterface),
+		AuthService:       authService.(serviceInterfaces.AuthServiceInterface),
+		StartupService:    NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService).(*startup.Service),
+		InfoService:       infoService.(infoServiceInterfaces.InfoServiceInterface),
+		ZfsService:        zfsService.(*zfs.Service),
+		DiskService:       NewService[disk.Service](db, zfsService).(*disk.Service),
+		NetworkService:    NewService[network.Service](db, libvirtService).(*network.Service),
+		LibvirtService:    libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
+		UtilitiesService:  utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
+		SystemService:     systemService.(systemServiceInterfaces.SystemServiceInterface),
+		SambaService:      sambaService.(sambaServiceInterfaces.SambaServiceInterface),
+		JailService:       jailService.(jailServiceInterfaces.JailServiceInterface),
+		DatacenterService: datacenterService.(datacenterServiceInterfaces.DatacenterServiceInterface),
 	}
 }

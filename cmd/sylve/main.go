@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,10 +23,12 @@ import (
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
+	datacenterModels "github.com/alchemillahq/sylve/internal/db/models/datacenter"
 	"github.com/alchemillahq/sylve/internal/handlers"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/datacenter"
 	"github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -46,6 +49,7 @@ func main() {
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 
 	d := db.SetupDatabase(cfg, false)
+	fsm := datacenterModels.NewFSMDispatcher(d)
 
 	serviceRegistry := services.NewServiceRegistry(d)
 	aS := serviceRegistry.AuthService
@@ -59,6 +63,7 @@ func main() {
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
 	jS := serviceRegistry.JailService
+	dcS := serviceRegistry.DatacenterService
 
 	err := sS.Initialize(aS.(*auth.Service))
 
@@ -66,6 +71,15 @@ func main() {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	} else {
 		logger.L.Info().Msg("Basic initializations complete")
+	}
+
+	err = dcS.InitRaft(fsm)
+	if err != nil {
+		if !strings.Contains(err.Error(), "record not found") {
+			logger.L.Error().Err(err).Msg("Failed to initialize RAFT")
+		} else {
+			logger.L.Info().Msg("Not initializing RAFT")
+		}
 	}
 
 	go aS.ClearExpiredJWTTokens()
@@ -95,6 +109,8 @@ func main() {
 		lvS.(*libvirt.Service),
 		smbS.(*samba.Service),
 		jS.(*jail.Service),
+		dcS.(*datacenter.Service),
+		fsm,
 		d,
 	)
 

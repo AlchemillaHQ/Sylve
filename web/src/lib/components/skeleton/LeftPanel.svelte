@@ -76,6 +76,7 @@
 		{
 			label: 'Data Center',
 			icon: 'fa-solid:server',
+			href: '/datacenter',
 			children: [
 				{
 					label: node,

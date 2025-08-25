@@ -38,10 +38,21 @@ func BasicHealthCheckHandler(c *gin.Context) {
 		return
 	}
 
+	id, err := utils.GetSystemUUID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "internal_server_error",
+			Error:   "unable_to_get_uuid",
+			Data:    nil,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, internal.APIResponse[any]{
 		Status:  "success",
 		Message: "Basic health is OK",
-		Data:    gin.H{"hostname": h},
+		Data:    gin.H{"hostname": h, "nodeId": id},
 	})
 }
 

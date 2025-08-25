@@ -17,7 +17,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/alchemillahq/sylve/internal/assets"
+	datacenterModels "github.com/alchemillahq/sylve/internal/db/models/datacenter"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
+	datacenterHandlers "github.com/alchemillahq/sylve/internal/handlers/datacenter"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
@@ -29,6 +31,7 @@ import (
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/datacenter"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -74,6 +77,8 @@ func RegisterRoutes(r *gin.Engine,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	jailService *jail.Service,
+	dataCenterService *datacenter.Service,
+	fsm *datacenterModels.FSMDispatcher,
 	db *gorm.DB,
 ) {
 	api := r.Group("/api")
@@ -321,6 +326,14 @@ func RegisterRoutes(r *gin.Engine,
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
 		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
 		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
+	}
+
+	dataCenter := api.Group("/datacenter")
+	{
+		dataCenter.GET("/cluster", datacenterHandlers.GetCluster(dataCenterService))
+		dataCenter.POST("/cluster", datacenterHandlers.CreateCluster(dataCenterService, fsm))
+		dataCenter.POST("/cluster/join", datacenterHandlers.JoinCluster(dataCenterService, fsm))
+		dataCenter.POST("/cluster/join/accept", datacenterHandlers.AcceptJoin(dataCenterService))
 	}
 
 	vnc := api.Group("/vnc")
