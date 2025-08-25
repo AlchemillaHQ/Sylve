@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-08-25T13:37:23.643Z\n"
+"PO-Revision-Date: 2025-08-25T13:38:06.190Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -12,9 +12,9 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
 "MIME-Version: 1.0\n"
 
-#: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/custom/TreeTable/Search.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Search..."
 msgstr "Search..."
 
@@ -24,8 +24,8 @@ msgstr "No data"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Terminal.svelte
-#: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Enter"
 msgstr "Enter"
 
@@ -111,8 +111,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -121,6 +119,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/network/switches/+page.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -166,10 +166,10 @@ msgstr "Status"
 msgid "Login"
 msgstr "Login"
 
-#: src/routes/[node]/+layout.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Notes"
 msgstr "Notes"
 
@@ -201,9 +201,9 @@ msgstr "File Explorer - Delete"
 msgid "File Explorer"
 msgstr "File Explorer"
 
-#: src/routes/[node]/+layout.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/custom/VM/Create/Hardware.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "PCI Passthrough"
 msgstr "PCI Passthrough"
 
@@ -260,22 +260,22 @@ msgstr "Jail - Stop"
 msgid "Login - Create"
 msgstr "Login - Create"
 
-#: src/routes/[node]/+layout.svelte
 #: src/lib/components/skeleton/LeftPanel.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
 msgstr "Data Center"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/network/switches/+page.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Reset"
 msgstr "Reset"
 
@@ -444,11 +444,11 @@ msgstr "SLAAC"
 msgid "Mac"
 msgstr "Mac"
 
-#: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "Network"
 
@@ -586,8 +586,8 @@ msgstr "Difuse-sidebar"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Summary"
 msgstr "Summary"
 
@@ -1197,39 +1197,30 @@ msgid "Cluster created"
 msgstr "Cluster created"
 
 #: src/routes/datacenter/cluster/+page.svelte
-msgid "Cluster Information"
-msgstr "Cluster Information"
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Cluster ID: {0}"
-msgstr "Cluster ID: {0}"
-
-#~ msgid "Cluster Name: {0}"
-#~ msgstr "Cluster Name: {0}"
-
-#~ msgid "Cluster Status: {0}"
-#~ msgstr "Cluster Status: {0}"
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Node ID: {0}"
-msgstr "Node ID: {0}"
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Cluster Key: {0}"
-msgstr "Cluster Key: {0}"
-
-#: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Join Cluster"
 msgstr "Join Cluster"
 
 #: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Information"
+msgstr "Cluster Information"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID: {0}"
+msgstr "Node ID: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster ID: {0}"
+msgstr "Cluster ID: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster Key: {0}"
+msgstr "Cluster Key: {0}"
+
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Leader API"
 msgstr "Leader API"
-
-#~ msgid "Node ID"
-#~ msgstr "Node ID"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Node Address"

@@ -125,7 +125,7 @@
 			size="sm"
 			variant="outline"
 			class="h-6.5"
-			disabled={canCreate}
+			disabled={!canCreate}
 		>
 			<div class="flex items-center">
 				<Icon icon="oui:ml-create-population-job" class="mr-1 h-4 w-4" />

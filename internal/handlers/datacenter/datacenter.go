@@ -41,7 +41,7 @@ func JoinCluster(dcService *datacenter.Service, fsm raft.FSM) gin.HandlerFunc {
 			"clusterKey": req.ClusterKey,
 		}
 
-		if err := utils.HTTPPostJSON(req.LeaderAPI+"/datacenter/cluster/join/accept", joinPayload); err != nil {
+		if err := utils.HTTPPostJSON(req.LeaderAPI+"/api/datacenter/cluster/join/accept", joinPayload); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status: "error", Message: "failed_to_contact_leader", Error: err.Error(),
 			})
