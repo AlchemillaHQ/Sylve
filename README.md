@@ -9,7 +9,7 @@
 
 https://github.com/user-attachments/assets/bf727ef4-4316-4084-a61f-cb8ec978e43d
 
-Sylve aims to be a lightweight, open-source virtualization platform for FreeBSD, leveraging Bhyve for VMs and Jails for containerization, with deep ZFS integration. It seeks to provide a streamlined, Proxmox-like experience tailored for FreeBSD environments. It's backend is written in Go and the frontend is written in Svelte (with Kit).
+Sylve aims to be a lightweight, open-source virtualization platform for FreeBSD, leveraging [Bhyve](https://wiki.freebsd.org/bhyve) for VMs and [Jails](https://wiki.freebsd.org/Jails) for containerization, with deep [ZFS](https://docs.freebsd.org/en/books/handbook/zfs/) integration. It seeks to provide a streamlined, Proxmox-like experience tailored for FreeBSD environments. Its backend is written in Go and the frontend is written in Svelte (with Kit).
 
 # Development Requirements
 
@@ -25,9 +25,9 @@ Sylve is designed to run on FreeBSD 14.3 or later, and it is recommended to use 
 
 ## Dependencies
 
-Running Sylve is pretty easy, but sylve depends on some packages that you can install using `pkg` or the corresponding port to that package. Here's a list of what you'd need:
+Running Sylve is pretty easy, but `sylve` depends on some packages that you can install using `pkg` or the corresponding port to that package. Here's a list of what you'd need:
 
-| Dep            | Min. version | Vendored | Optional | Purpose                                          |
+| Dependency     | Min. version | Vendored | Optional | Purpose                                          |
 | -------------- | ------------ | -------- | -------- | ------------------------------------------------ |
 | smartmontools  | 7.4_2        | No       | No       | Disk health monitoring                           |
 | tmux           | 3.2          | No       | No       | Terminal multiplexer, used for the (web) console |
@@ -57,7 +57,9 @@ Enabling `rctl` is required. Do this by adding the following line to `/boot/load
 kern.racct.enable=1
 ```
 
-Please reboot your system after adding those entries to ensure that the services are started correctly and the kernel modules are loaded.
+> [!IMPORTANT]
+> Please reboot your system after adding those entries to ensure that the
+> services are started correctly and the kernel modules are loaded.
 
 # Installation
 
