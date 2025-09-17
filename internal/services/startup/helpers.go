@@ -86,9 +86,16 @@ func (s *Service) CheckPackageDependencies() error {
 		"bhyve-firmware",
 		"smartmontools",
 		"tmux",
-		"samba419",
 	}
 
+    // Check for samba419 or samba420 (both are available as FreeBSD packages)
+    samba419Installed := pkg.IsPackageInstalled("samba419")
+    samba420Installed := pkg.IsPackageInstalled("samba420")
+    if !samba419Installed && !samba420Installed {
+        // Ask for new version first
+        requiredPackages = append(requiredPackages, "samba420")
+    }
+	
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(requiredPackages))
 
