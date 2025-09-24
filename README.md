@@ -99,7 +99,7 @@ make
 
 ```sh
 cd bin/
-cp -rf ../config.json.example config.json # Edit the config.json file to your liking
+cp -rf ../config.example.json config.json # Edit the config.json file to your liking
 ./sylve
 ```
 
