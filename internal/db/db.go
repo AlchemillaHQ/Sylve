@@ -101,6 +101,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.ClusterS3Config{},
+		&clusterModels.ClusterDirectoryConfig{},
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
 	)

@@ -27,3 +27,14 @@ export async function createS3Storage(
 export async function deleteS3Storage(id: number): Promise<APIResponse> {
 	return await apiRequest(`/cluster/storage/s3/${id}`, APIResponseSchema, 'DELETE');
 }
+
+export async function createDirStorage(name: string, path: string): Promise<APIResponse> {
+	return await apiRequest('/cluster/storage/directory', APIResponseSchema, 'POST', {
+		name,
+		path
+	});
+}
+
+export async function deleteDirStorage(id: number): Promise<APIResponse> {
+	return await apiRequest(`/cluster/storage/directory/${id}`, APIResponseSchema, 'DELETE');
+}

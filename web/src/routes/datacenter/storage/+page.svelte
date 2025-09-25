@@ -59,10 +59,6 @@
 			{
 				field: 'name',
 				title: 'Name'
-			},
-			{
-				field: 'bucket',
-				title: 'Bucket'
 			}
 		];
 
@@ -70,8 +66,15 @@
 			rows.push({
 				id: s3Storage.id,
 				type: 'S3',
-				name: s3Storage.name,
-				bucket: s3Storage.bucket
+				name: s3Storage.name
+			});
+		}
+
+		for (const dirStorage of storages.directories) {
+			rows.push({
+				id: dirStorage.id,
+				type: 'Directory',
+				name: dirStorage.name
 			});
 		}
 

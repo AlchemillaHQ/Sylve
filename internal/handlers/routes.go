@@ -368,8 +368,12 @@ func RegisterRoutes(r *gin.Engine,
 	clusterStorages := cluster.Group("/storage")
 	{
 		clusterStorages.GET("", clusterHandlers.Storages(clusterService))
+
 		clusterStorages.POST("/s3", clusterHandlers.CreateS3Storage(clusterService))
 		clusterStorages.DELETE("/s3/:id", clusterHandlers.DeleteS3Storage(clusterService))
+
+		clusterStorages.POST("/directory", clusterHandlers.CreateDirStorage(clusterService))
+		clusterStorages.DELETE("/directory/:id", clusterHandlers.DeleteDirStorage(clusterService))
 	}
 
 	vnc := api.Group("/vnc")

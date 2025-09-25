@@ -18,24 +18,22 @@ import (
 	"github.com/alchemillahq/sylve/pkg/s3"
 )
 
-/*
-type ClusterS3Config struct {
-	ID        uint   `gorm:"primaryKey" json:"id"`
-	Name      string `gorm:"uniqueIndex" json:"name"`
-	Endpoint  string `json:"endpoint"`
-	Region    string `json:"region"`
-	Bucket    string `json:"bucket"`
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
-}
-*/
-
 func (s *Service) ListStorages() (clusterServiceInterfaces.Storages, error) {
 	var s3 []clusterModels.ClusterS3Config
+	var directories []clusterModels.ClusterDirectoryConfig
 
 	err := s.DB.Order("id ASC").Find(&s3).Error
 
-	return clusterServiceInterfaces.Storages{S3: s3}, err
+	if err != nil {
+		return clusterServiceInterfaces.Storages{}, err
+	}
+
+	err = s.DB.Order("id ASC").Find(&directories).Error
+	if err != nil {
+		return clusterServiceInterfaces.Storages{}, err
+	}
+
+	return clusterServiceInterfaces.Storages{S3: s3, Directories: directories}, nil
 }
 
 func (s *Service) ProposeS3Config(name,

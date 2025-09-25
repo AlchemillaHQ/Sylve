@@ -205,6 +205,29 @@ func (s *Service) backfillPreClusterState() error {
 		}
 	}
 
+	{
+		var dircfgs []clusterModels.ClusterDirectoryConfig
+		if err := s.DB.Order("id ASC").Find(&dircfgs).Error; err != nil {
+			return fmt.Errorf("scan_existing_dircfgs: %w", err)
+		}
+
+		for _, c := range dircfgs {
+			payloadStruct := struct {
+				ID   uint   `json:"id"`
+				Path string `json:"path"`
+			}{
+				ID:   c.ID,
+				Path: c.Path,
+			}
+
+			data, _ := json.Marshal(payloadStruct)
+			cmd := clusterModels.Command{Type: "directoryConfigs", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_dircfg id=%d: %w", c.ID, err)
+			}
+		}
+	}
+
 	if err := s.Raft.Barrier(10 * time.Second).Error(); err != nil {
 		return fmt.Errorf("barrier_after_backfill: %w", err)
 	}

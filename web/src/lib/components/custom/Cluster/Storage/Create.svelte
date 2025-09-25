@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createS3Storage } from '$lib/api/cluster/storage';
+	import { createDirStorage, createS3Storage } from '$lib/api/cluster/storage';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -24,6 +24,10 @@
 			bucket: '',
 			accessKey: '',
 			secretKey: ''
+		},
+		dir: {
+			name: '',
+			path: ''
 		}
 	};
 
@@ -33,7 +37,7 @@
 	let type = $state({
 		combobox: {
 			open: false,
-			value: '' as '' | 's3'
+			value: '' as '' | 's3' | 'dir'
 		}
 	});
 
@@ -81,6 +85,37 @@
 			});
 
 			open = false;
+		} else if (type.combobox.value === 'dir') {
+			const data = properties.dir;
+			if (!data.name || !data.path) {
+				toast.error('Missing required fields', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			loading = true;
+
+			const response = await createDirStorage(data.name, data.path);
+			loading = false;
+			reload = true;
+			if (response.error) {
+				handleAPIError(response);
+				toast.error('Failed to create Directory storage', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			toast.success('Directory storage created', {
+				position: 'bottom-center'
+			});
+			open = false;
+		} else {
+			toast.error('Please select a storage type', {
+				position: 'bottom-center'
+			});
+			return;
 		}
 	}
 </script>
@@ -137,7 +172,10 @@
 			bind:open={type.combobox.open}
 			label="Type"
 			bind:value={type.combobox.value}
-			data={[{ value: 's3', label: 'S3' }]}
+			data={[
+				{ value: 's3', label: 'S3' },
+				{ value: 'dir', label: 'Directory' }
+			]}
 			classes="flex-1 space-y-1"
 			placeholder="Select Type"
 			triggerWidth="w-full"
@@ -152,6 +190,23 @@
 				{@render s3Input('bucket', 'Bucket')}
 				{@render s3Input('accessKey', 'Access Key')}
 				{@render s3Input('secretKey', 'Secret Key')}
+			</div>
+		{/if}
+
+		{#if type.combobox.value === 'dir'}
+			<div class="grid grid-cols-2 gap-4">
+				<CustomValueInput
+					bind:value={properties.dir.name}
+					label="Name"
+					placeholder="Backups"
+					classes="flex-1 space-y-1.5"
+				/>
+				<CustomValueInput
+					bind:value={properties.dir.path}
+					label="Path"
+					placeholder="/var/lib/sylve/backups"
+					classes="flex-1 space-y-1.5"
+				/>
 			</div>
 		{/if}
 
