@@ -111,6 +111,10 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 ./sylve
 ```
 
+> In order to download an ISO go to:
+> Datacenter > Your Host > Utilities > Downloader > + NEW
+
+
 # Contributing
 
 Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details on our contributing guidelines.
