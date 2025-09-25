@@ -63,16 +63,16 @@ Running Sylve is pretty easy, but `sylve` depends on some packages that you can 
 We also need to enable some services in order to run Sylve, you can drop these into `/etc/rc.conf` if you don't have it already:
 
 ```sh
-ntpd_enable="YES" # Optional
-ntpd_sync_on_start="YES" # Optional
-zfs_enable="YES"
-linux_enable="YES" # Optional
-libvirtd_enable="YES"
-dnsmasq_enable="YES"
-rpcbind_enable="YES"
-nfs_server_enable="YES"
-mountd_enable="YES"
-samba_server_enable="YES"
+sysrc ntpd_enable="YES" # Optional
+sysrc ntpd_sync_on_start="YES" # Optional
+sysrc zfs_enable="YES"
+sysrc linux_enable="YES" # Optional
+sysrc libvirtd_enable="YES"
+sysrc dnsmasq_enable="YES"
+sysrc rpcbind_enable="YES"
+sysrc nfs_server_enable="YES"
+sysrc mountd_enable="YES"
+sysrc samba_server_enable="YES"
 ```
 
 Enabling `rctl` is required. Do this by adding the following line to `/boot/loader.conf`:
@@ -88,6 +88,14 @@ kern.racct.enable=1
 # Installation
 
 ## From source
+
+Install required packages.
+
+```sh
+pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm 
+```
+
+Clone the repo and build Sylve.
 
 ```sh
 git clone https://github.com/AlchemillaHQ/Sylve.git
