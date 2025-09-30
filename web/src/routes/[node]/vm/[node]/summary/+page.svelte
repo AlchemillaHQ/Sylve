@@ -367,8 +367,18 @@
 			</div>
 
 			<div class="space-y-4 p-3">
-				<AreaChart title="CPU Usage" elements={[cpuHistoricalData]} chart={cpuUsageRef} />
-				<AreaChart title="Memory Usage" elements={[memoryUsageData]} chart={memoryUsageRef} />
+				<AreaChart
+					title="CPU Usage"
+					elements={[cpuHistoricalData]}
+					chart={cpuUsageRef}
+					percentage={true}
+				/>
+				<AreaChart
+					title="Memory Usage"
+					elements={[memoryUsageData]}
+					chart={memoryUsageRef}
+					percentage={true}
+				/>
 			</div>
 		</ScrollArea>
 	</div>

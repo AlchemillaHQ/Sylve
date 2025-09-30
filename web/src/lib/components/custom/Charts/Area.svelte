@@ -104,6 +104,7 @@
 		containerClass?: string;
 		showResetButton?: boolean;
 		chart: Chart | null;
+		percentage?: boolean;
 	}
 
 	let {
@@ -114,7 +115,8 @@
 		formatSize = false,
 		containerClass = 'p-5',
 		showResetButton = true,
-		chart = $bindable()
+		chart = $bindable(),
+		percentage = false
 	}: Props = $props();
 	let canvas: HTMLCanvasElement;
 	let zoomEnabled = $state(false);
@@ -194,7 +196,6 @@
 						}
 					}
 				},
-
 				scales: {
 					x: {
 						title: { color: '#ccc', display: true, text: 'Date' },
@@ -218,6 +219,8 @@
 						}
 					},
 					y: {
+						min: percentage ? 0 : undefined,
+						max: percentage ? 100 : undefined,
 						beginAtZero: true,
 						title: {
 							color: '#ccc',

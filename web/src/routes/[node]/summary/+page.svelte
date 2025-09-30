@@ -396,12 +396,14 @@
 					elements={[chartElements[1], chartElements[0]]}
 					icon="solar:cpu-bold"
 					chart={cpuUsageRef}
+					percentage={true}
 				/>
 				<AreaChart
 					title="Memory Usage"
 					elements={[chartElements[3], chartElements[2]]}
 					icon="la:memory"
 					chart={memoryUsageRef}
+					percentage={true}
 				/>
 				<AreaChart
 					title="Network Usage"
