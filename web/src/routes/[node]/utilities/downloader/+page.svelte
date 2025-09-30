@@ -16,7 +16,12 @@
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { addTrackersToMagnet, isDownloadURL, isValidFileName } from '$lib/utils/string';
+	import {
+		addTrackersToMagnet,
+		isDownloadURL,
+		isValidAbsPath,
+		isValidFileName
+	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
 	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
@@ -108,8 +113,12 @@
 			return;
 		}
 
-		if (!isMagnet(modalState.url) && !isDownloadURL(modalState.url)) {
-			toast.error('Please enter a valid magnet or HTTP URL', { position: 'bottom-center' });
+		if (
+			!isMagnet(modalState.url) &&
+			!isDownloadURL(modalState.url) &&
+			!isValidAbsPath(modalState.url)
+		) {
+			toast.error('Please enter a valid Magnet, HTTP URL or Path', { position: 'bottom-center' });
 			return;
 		}
 
@@ -263,7 +272,7 @@
 			</div>
 
 			<CustomValueInput
-				label={'Magnet' + ' / ' + 'HTTP' + ' ' + 'URL'}
+				label={'Magnet / HTTP URL / Path'}
 				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60&dn=debian-12.10.0-amd64-netinst.iso&xl=663748608&tr=http%3A%2F%2Fbttracker.debian.org%3A6969%2Fannounce"
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"

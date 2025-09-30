@@ -156,6 +156,10 @@ export function isDownloadURL(url: string): boolean {
 	}
 }
 
+export function isValidAbsPath(loc: string): boolean {
+	return loc.length > 0 && loc.startsWith('/');
+}
+
 export function isValidVMName(name: string): boolean {
 	const regex = /^[a-zA-Z0-9-_]+$/;
 	return regex.test(name);

@@ -163,6 +163,35 @@ func (s *Service) DownloadFile(url string, optFilename string) error {
 		}
 
 		filePath := path.Join(destDir, filename)
+		if _, err := os.Stat(filePath); err == nil {
+			var found utilitiesModels.Downloads
+			if s.DB.Where("path = ? AND name = ?", filePath, filename).First(&found).RowsAffected > 0 {
+				return nil
+			}
+
+			size := int64(0)
+			info, err := os.Stat(filePath)
+			if err == nil {
+				size = info.Size()
+			}
+
+			download := utilitiesModels.Downloads{
+				URL:      url,
+				UUID:     uuid,
+				Path:     filePath,
+				Type:     "http",
+				Name:     filename,
+				Size:     size,
+				Progress: 100,
+				Files:    []utilitiesModels.DownloadedFile{},
+			}
+
+			if err := s.DB.Create(&download).Error; err != nil {
+				return fmt.Errorf("failed_to_create_download_record: %w", err)
+			}
+
+			return nil
+		}
 
 		download := utilitiesModels.Downloads{
 			URL:      url,
@@ -185,6 +214,59 @@ func (s *Service) DownloadFile(url string, optFilename string) error {
 		s.httpRspMu.Lock()
 		s.httpResponses[uuid] = resp
 		s.httpRspMu.Unlock()
+
+		return nil
+	} else if utils.IsAbsPath(url) {
+		if _, err := os.Stat(url); os.IsNotExist(err) {
+			return fmt.Errorf("file_not_found")
+		}
+
+		var filename string
+
+		if optFilename != "" {
+			err := utils.IsValidFilename(optFilename)
+			if err != nil {
+				return fmt.Errorf("invalid_filename: %w", err)
+			}
+
+			filename = optFilename
+		} else {
+			filename = path.Base(url)
+			if filename == "" {
+				return fmt.Errorf("invalid_filename")
+			}
+		}
+
+		destDir := config.GetDownloadsPath("http")
+		destPath := path.Join(destDir, filename)
+
+		err := utils.CopyFile(url, destPath)
+		if err != nil {
+			return fmt.Errorf("file_copy_failed: %w", err)
+		}
+
+		info, err := os.Stat(destPath)
+		if err != nil {
+			return fmt.Errorf("file_stat_failed: %w", err)
+		}
+
+		size := info.Size()
+		logger.L.Info().Msgf("Copied file %s to %s (%d bytes)", url, destPath, size)
+
+		download := utilitiesModels.Downloads{
+			URL:      url,
+			UUID:     utils.GenerateDeterministicUUID(url),
+			Path:     destPath,
+			Type:     "http",
+			Name:     filename,
+			Size:     size,
+			Progress: 100,
+			Files:    []utilitiesModels.DownloadedFile{},
+		}
+
+		if err := s.DB.Create(&download).Error; err != nil {
+			return fmt.Errorf("failed_to_create_download_record: %w", err)
+		}
 
 		return nil
 	}

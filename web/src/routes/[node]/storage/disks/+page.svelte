@@ -26,7 +26,7 @@
 
 	const results = useQueries([
 		{
-			queryKey: ['diskList'],
+			queryKey: 'disks',
 			queryFn: async () => {
 				return await listDisks();
 			},
@@ -38,7 +38,7 @@
 			}
 		},
 		{
-			queryKey: ['poolList'],
+			queryKey: 'pools',
 			queryFn: async () => {
 				return await getPools();
 			},

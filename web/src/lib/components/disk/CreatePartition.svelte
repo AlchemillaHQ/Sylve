@@ -247,7 +247,7 @@
 		</div>
 		{#if newPartitions.length > 0}
 			<div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-				<Dialog.Footer class="flex justify-between gap-2 border-t px-6 py-4">
+				<Dialog.Footer class="flex justify-between gap-2 border-t py-4">
 					<div class="flex gap-2">
 						<Button size="sm" class="h-8" onclick={savePartitions}>Save Partitions</Button>
 					</div>
