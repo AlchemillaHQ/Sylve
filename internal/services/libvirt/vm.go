@@ -400,6 +400,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 	vncWait := false
 	startAtBoot := false
 	tpmEmulation := false
+	serial := false
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -417,6 +418,12 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 		tpmEmulation = *data.TPMEmulation
 	} else {
 		tpmEmulation = false
+	}
+
+	if data.Serial != nil {
+		serial = *data.Serial
+	} else {
+		serial = false
 	}
 
 	var macId uint
@@ -574,6 +581,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 		CPUsThreads:   data.CPUThreads,
 		CPUPinning:    data.CPUPinning,
 		RAM:           data.RAM,
+		Serial:        serial,
 		VNCPort:       data.VNCPort,
 		VNCPassword:   data.VNCPassword,
 		VNCResolution: data.VNCResolution,

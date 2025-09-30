@@ -56,6 +56,21 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		},
 	}
 
+	if vm.Serial {
+		fmt.Println("Adding serial console")
+		devices.Serials = []libvirtServiceInterfaces.Serial{
+			{
+				Type: "nmdm",
+				Source: libvirtServiceInterfaces.SerialSource{
+					Master: fmt.Sprintf("/dev/nmdm%dA", vm.VmID),
+					Slave:  fmt.Sprintf("/dev/nmdm%dB", vm.VmID),
+				},
+			},
+		}
+	} else {
+		fmt.Println("Not adding serial console")
+	}
+
 	sIndex := 10
 	uefi := fmt.Sprintf("%s,%s/%d_vars.fd", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", vmPath, vm.VmID)
 

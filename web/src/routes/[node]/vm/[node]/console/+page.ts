@@ -8,16 +8,22 @@ export async function load({ params }) {
 	const vm = vms.find((vm) => vm.vmId === Number(params.node));
 	const domain = await getVMDomain(vm?.vmId || 0);
 
+	let id = 0;
 	let port = 0;
 	let password = '';
 	let hash = await sha256(get(token), 1);
+	let serial = false;
 
 	if (vm) {
+		id = vm.vmId;
 		port = vm.vncPort;
 		password = vm.vncPassword;
+		serial = vm.serial;
 	}
 
 	return {
+		id,
+		serial,
 		port,
 		password,
 		domain,

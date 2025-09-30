@@ -275,6 +275,9 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/wol/:vmid", vmHandlers.ModifyWakeOnLan(libvirtService))
 		vm.PUT("/options/boot-order/:vmid", vmHandlers.ModifyBootOrder(libvirtService))
 		vm.PUT("/options/clock/:vmid", vmHandlers.ModifyClock(libvirtService))
+		vm.PUT("/options/serial-console/:vmid", vmHandlers.ModifySerialConsole(libvirtService))
+
+		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}
 
 	jail := api.Group("/jail")

@@ -28,6 +28,7 @@ type CreateVMRequest struct {
 	CPUPinning           []int   `json:"cpuPinning" binding:"required"`
 	RAM                  int     `json:"ram" binding:"required"`
 	PCIDevices           []int   `json:"pciDevices"`
+	Serial               *bool   `json:"serial"`
 	VNCPort              int     `json:"vncPort" binding:"required"`
 	VNCPassword          string  `json:"vncPassword"`
 	VNCResolution        string  `json:"vncResolution"`
@@ -129,6 +130,16 @@ type Input struct {
 	Bus  string `xml:"bus,attr"`
 }
 
+type SerialSource struct {
+	Master string `xml:"master,attr"`
+	Slave  string `xml:"slave,attr"`
+}
+
+type Serial struct {
+	Type   string       `xml:"type,attr"`
+	Source SerialSource `xml:"source"`
+}
+
 type Address struct {
 	Type     string `xml:"type,attr,omitempty"`
 	Domain   string `xml:"domain,attr,omitempty"`
@@ -149,6 +160,7 @@ type Devices struct {
 	Interfaces  []Interface  `xml:"interface,omitempty"`
 	Controllers []Controller `xml:"controller,omitempty"`
 	Inputs      []Input      `xml:"input,omitempty"`
+	Serials     []Serial     `xml:"serial,omitempty"`
 }
 
 type BhyveArg struct {

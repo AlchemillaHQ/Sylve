@@ -102,3 +102,98 @@ func (s *Service) ModifyClock(vmId int, timeOffset string) error {
 
 	return nil
 }
+
+func (s *Service) ModifySerial(vmId int, enabled bool) error {
+	var pre vmModels.VM
+	if err := s.DB.Model(&vmModels.VM{}).Where("vm_id = ?", vmId).First(&pre).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
+	}
+
+	if pre.Serial == enabled {
+		return nil
+	}
+
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.Conn.DomainGetState(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("domain_state_not_shutoff: %d", vmId)
+	}
+
+	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xml); err != nil {
+		return fmt.Errorf("failed_to_parse_xml: %w", err)
+	}
+
+	root := doc.Root()
+	if root == nil {
+		return fmt.Errorf("invalid_domain_xml: root_missing")
+	}
+
+	master := "/dev/nmdm" + strconv.Itoa(vmId) + "A"
+
+	// remove any existing <serial>/<console> for this nmdm pair
+	devicesEl := doc.FindElement("//devices")
+	if devicesEl != nil {
+		children := append([]*etree.Element{}, devicesEl.ChildElements()...)
+		for _, el := range children {
+			if el.Tag != "serial" && el.Tag != "console" {
+				continue
+			}
+			if src := el.FindElement("source"); src != nil {
+				if a := src.SelectAttr("master"); a != nil && a.Value == master {
+					devicesEl.RemoveChild(el)
+				}
+			}
+		}
+	}
+
+	if enabled {
+		if devicesEl == nil {
+			devicesEl = etree.NewElement("devices")
+			root.AddChild(devicesEl)
+		}
+		serialEl := etree.NewElement("serial")
+		serialEl.CreateAttr("type", "nmdm")
+
+		sourceEl := etree.NewElement("source")
+		sourceEl.CreateAttr("master", master)
+		sourceEl.CreateAttr("slave", "/dev/nmdm"+strconv.Itoa(vmId)+"B")
+		serialEl.AddChild(sourceEl)
+
+		devicesEl.AddChild(serialEl)
+	}
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+
+	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	if err := s.DB.Model(&vmModels.VM{}).
+		Where("vm_id = ?", vmId).
+		Update("serial", enabled).Error; err != nil {
+		return fmt.Errorf("failed_to_update_serial_in_db: %w", err)
+	}
+
+	return nil
+}

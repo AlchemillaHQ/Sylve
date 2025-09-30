@@ -29,6 +29,10 @@ type ModifyClockRequest struct {
 	TimeOffset string `json:"timeOffset"`
 }
 
+type ModifySerialConsoleRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
 // @Summary Modify Wake-on-LAN of a Virtual Machine
 // @Description Modify the Wake-on-LAN configuration of a virtual machine
 // @Tags VM
@@ -243,6 +247,76 @@ func ModifyClock(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "clock_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Serial Console Access of a Virtual Machine
+// @Description Modify the Serial Console Access configuration of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifySerialConsoleRequest true "Modify Serial Console Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/serial-console/:vmid [put]
+func ModifySerialConsole(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmId := c.Param("vmid")
+		if vmId == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "vmid_not_provided",
+			})
+			return
+		}
+
+		vmIdInt, err := strconv.Atoi(vmId)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_vmid_format",
+			})
+			return
+		}
+
+		var req ModifySerialConsoleRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		enabled := false
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
+		if err := libvirtService.ModifySerial(vmIdInt, enabled); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "serial_console_modified",
 			Data:    nil,
 			Error:   "",
 		})

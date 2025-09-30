@@ -223,6 +223,7 @@
 			pinnedCPUs: [] as number[]
 		},
 		advanced: {
+			serial: false,
 			vncPort: 0,
 			vncPassword: generatePassword(),
 			vncWait: false,
@@ -354,6 +355,7 @@
 								/>
 							{:else if value === 'advanced'}
 								<Advanced
+									bind:serial={modal.advanced.serial}
 									bind:vncPort={modal.advanced.vncPort}
 									bind:vncPassword={modal.advanced.vncPassword}
 									bind:vncWait={modal.advanced.vncWait}

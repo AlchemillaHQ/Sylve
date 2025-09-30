@@ -39,6 +39,7 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
 		cpuThreads: parseInt(data.hardware.threads.toString(), 10),
 		ram: parseInt(data.hardware.memory.toString(), 10),
 		cpuPinning: data.hardware.pinnedCPUs,
+		serial: data.advanced.serial,
 		vncPort: data.advanced.vncPort,
 		vncPassword: data.advanced.vncPassword,
 		vncWait: data.advanced.vncWait,
@@ -107,5 +108,11 @@ export async function modifyClockOffset(
 ): Promise<APIResponse> {
 	return await apiRequest(`/vm/options/clock/${vmid}`, APIResponseSchema, 'PUT', {
 		timeOffset
+	});
+}
+
+export async function modifySerialConsole(vmid: number, enabled: boolean): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/serial-console/${vmid}`, APIResponseSchema, 'PUT', {
+		enabled
 	});
 }

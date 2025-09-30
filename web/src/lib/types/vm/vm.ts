@@ -27,6 +27,7 @@ export interface CreateData {
 		pinnedCPUs: number[];
 	};
 	advanced: {
+		serial: boolean;
 		vncPort: number;
 		vncPassword: string;
 		vncWait: boolean;
@@ -70,6 +71,7 @@ export const VMSchema = z.object({
 	cpuCores: z.number().int(),
 	cpuThreads: z.number().int(),
 	ram: z.number().int(),
+	serial: z.boolean(),
 	vncPort: z.number().int(),
 	vncPassword: z.string(),
 	vncResolution: z.string(),

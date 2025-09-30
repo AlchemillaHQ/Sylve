@@ -83,6 +83,7 @@ type VM struct {
 	CPUCores      int    `json:"cpuCores"`
 	CPUsThreads   int    `json:"cpuThreads"`
 	RAM           int    `json:"ram"`
+	Serial        bool   `json:"serial" gorm:"default:false"`
 	VNCPort       int    `json:"vncPort"`
 	VNCPassword   string `json:"vncPassword"`
 	VNCResolution string `json:"vncResolution"`

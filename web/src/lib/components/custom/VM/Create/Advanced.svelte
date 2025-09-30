@@ -14,6 +14,7 @@
 	import { onMount } from 'svelte';
 
 	interface Props {
+		serial: boolean;
 		vncPort: number;
 		vncPassword: string;
 		vncWait: boolean;
@@ -25,6 +26,7 @@
 	}
 
 	let {
+		serial = $bindable(),
 		vncPort = $bindable(),
 		vncPassword = $bindable(),
 		vncWait = $bindable(),
@@ -127,6 +129,9 @@
 	</div>
 
 	<div class="mt-1 grid grid-cols-1 gap-4 lg:grid-cols-2">
+		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
+		></CustomCheckbox>
+
 		<CustomCheckbox label="VNC Wait" bind:checked={vncWait} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
