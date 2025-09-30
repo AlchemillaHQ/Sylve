@@ -114,6 +114,9 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 > In order to download an ISO go to:
 > Datacenter > Your Host > Utilities > Downloader > + NEW
 
+> [!IMPORTANT]
+> Bhyve does not support boot orders, so you cannot add installation media after creating the VM.
+> So make sure to add an installation media when creating a new VM.
 
 # Contributing
 
