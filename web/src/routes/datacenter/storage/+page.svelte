@@ -59,6 +59,11 @@
 			{
 				field: 'name',
 				title: 'Name'
+			},
+			{
+				field: 'details',
+				title: 'Details',
+				formatter: 'html'
 			}
 		];
 
@@ -66,7 +71,8 @@
 			rows.push({
 				id: s3Storage.id,
 				type: 'S3',
-				name: s3Storage.name
+				name: s3Storage.name,
+				details: `Bucket: ${s3Storage.bucket}<br/>Region: ${s3Storage.region}`
 			});
 		}
 
@@ -74,7 +80,8 @@
 			rows.push({
 				id: dirStorage.id,
 				type: 'Directory',
-				name: dirStorage.name
+				name: dirStorage.name,
+				details: `Path: ${dirStorage.path}`
 			});
 		}
 

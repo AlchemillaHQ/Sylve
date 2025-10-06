@@ -57,7 +57,6 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	if vm.Serial {
-		fmt.Println("Adding serial console")
 		devices.Serials = []libvirtServiceInterfaces.Serial{
 			{
 				Type: "nmdm",
@@ -67,8 +66,6 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				},
 			},
 		}
-	} else {
-		fmt.Println("Not adding serial console")
 	}
 
 	sIndex := 10
