@@ -13,16 +13,19 @@ export async function load({ params }) {
 	let password = '';
 	let hash = await sha256(get(token), 1);
 	let serial = false;
+	let vnc = false;
 
 	if (vm) {
 		id = vm.vmId;
 		port = vm.vncPort;
 		password = vm.vncPassword;
 		serial = vm.serial;
+		vnc = vm.vncEnabled;
 	}
 
 	return {
 		id,
+		vnc,
 		serial,
 		port,
 		password,

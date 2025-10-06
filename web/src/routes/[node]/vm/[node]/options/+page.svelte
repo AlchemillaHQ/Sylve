@@ -2,7 +2,6 @@
 	import { getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
-	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -89,11 +88,6 @@
 				id: generateNanoId('timeOffset'),
 				property: 'Clock Offset',
 				value: vm ? (vm.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
-			},
-			{
-				id: generateNanoId('serial'),
-				property: 'Serial Console',
-				value: vm?.serial ? 'Enabled' : 'Disabled'
 			}
 		]
 	});
@@ -101,12 +95,11 @@
 	let properties = $state({
 		startOrder: { open: false },
 		wol: { open: false },
-		timeOffset: { open: false },
-		serial: { open: false }
+		timeOffset: { open: false }
 	});
 </script>
 
-{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset' | 'serial', title: string)}
+{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset', title: string)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -135,8 +128,6 @@
 				{@render button('wol', 'Wake on LAN')}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
-			{:else if activeRow.property === 'Serial Console'}
-				{@render button('serial', 'Serial Console')}
 			{/if}
 		</div>
 	{/if}
@@ -162,8 +153,4 @@
 
 {#if properties.timeOffset.open && vm}
 	<Clock bind:open={properties.timeOffset.open} {vm} bind:reload />
-{/if}
-
-{#if properties.serial.open && vm}
-	<Serial bind:open={properties.serial.open} {vm} bind:reload />
 {/if}

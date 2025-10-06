@@ -130,7 +130,7 @@ func updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cpuPinning []in
 	return out, nil
 }
 
-func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string, vncWait bool) (string, error) {
+func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string, vncWait bool, vncEnabled bool) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
 		return "", fmt.Errorf("failed to parse XML: %w", err)
@@ -195,7 +195,7 @@ func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string
 
 	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
 
-	if vnc != "" {
+	if vnc != "" && vncEnabled {
 		arg := bhyveCommandline.CreateElement("bhyve:arg")
 		arg.CreateAttr("value", vnc)
 	}
@@ -439,7 +439,7 @@ func (s *Service) ModifyRAM(vmId int, ram int) error {
 	return nil
 }
 
-func (s *Service) ModifyVNC(vmId int, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
+func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
 	vm, err := s.GetVmByVmId(vmId)
 
 	if err != nil {
@@ -459,7 +459,8 @@ func (s *Service) ModifyVNC(vmId int, vncPort int, vncResolution string, vncPass
 	if vm.VNCPort == vncPort &&
 		vm.VNCResolution == vncResolution &&
 		vm.VNCPassword == vncPassword &&
-		vm.VNCWait == vncWait {
+		vm.VNCWait == vncWait &&
+		vm.VNCEnabled == vncEnabled {
 		return fmt.Errorf("no_changes_detected: %d", vmId)
 	}
 
@@ -476,6 +477,7 @@ func (s *Service) ModifyVNC(vmId int, vncPort int, vncResolution string, vncPass
 	xml := string(domainXML)
 	updatedXML := xml
 
+	vm.VNCEnabled = vncEnabled
 	vm.VNCPort = vncPort
 	vm.VNCResolution = vncResolution
 	vm.VNCPassword = vncPassword
@@ -485,7 +487,7 @@ func (s *Service) ModifyVNC(vmId int, vncPort int, vncResolution string, vncPass
 		return fmt.Errorf("failed_to_update_vm_vnc_in_db: %w", err)
 	}
 
-	updatedXML, err = updateVNC(xml, vncPort, vncResolution, vncPassword, vncWait)
+	updatedXML, err = updateVNC(xml, vncPort, vncResolution, vncPassword, vncWait, vncEnabled)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}

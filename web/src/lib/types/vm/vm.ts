@@ -72,6 +72,7 @@ export const VMSchema = z.object({
 	cpuThreads: z.number().int(),
 	ram: z.number().int(),
 	serial: z.boolean(),
+	vncEnabled: z.boolean(),
 	vncPort: z.number().int(),
 	vncPassword: z.string(),
 	vncResolution: z.string(),

@@ -83,7 +83,7 @@
 
 <div class={classes}>
 	{#if label}
-		<Label class="w-full text-sm whitespace-nowrap" for={label.toLowerCase()}>
+		<Label class="w-full whitespace-nowrap text-sm" for={label.toLowerCase()}>
 			{label}
 		</Label>
 	{/if}
@@ -101,7 +101,7 @@
 						{#each selectedLabels as lbl, i}
 							<p
 								class={multiple
-									? 'bg-secondary/100 = max-w-full rounded px-2 py-0.5 text-left text-sm whitespace-break-spaces'
+									? 'bg-secondary/100 = max-w-full whitespace-break-spaces rounded px-2 py-0.5 text-left text-sm'
 									: ' rounded px-2 text-sm'}
 								title={lbl}
 							>

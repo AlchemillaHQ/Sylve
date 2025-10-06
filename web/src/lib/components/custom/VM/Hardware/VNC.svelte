@@ -9,7 +9,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-	import { generatePassword } from '$lib/utils/string';
+	import { generatePassword, parseBoolean } from '$lib/utils/string';
 	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -34,7 +34,9 @@
 		resolution: vm?.vncResolution || '1024x768',
 		password: vm?.vncPassword || 'sigma-chad-password-never',
 		wait: vm?.vncWait ?? false,
-		resolutionOpen: false
+		resolutionOpen: false,
+		vncEnabledOpen: false,
+		vncEnabled: (vm?.vncEnabled || false).toString()
 	};
 
 	let properties = $state(options);
@@ -73,6 +75,7 @@
 
 		const response = await modifyVNC(
 			vm.vmId,
+			parseBoolean(properties.vncEnabled),
 			Number(properties.port),
 			properties.resolution,
 			properties.password,
@@ -131,6 +134,16 @@
 				</div>
 			</Dialog.Title>
 		</Dialog.Header>
+
+		<CustomComboBox
+			bind:open={properties.vncEnabledOpen}
+			label="Status"
+			bind:value={properties.vncEnabled}
+			data={[
+				{ value: 'true', label: 'Enabled' },
+				{ value: 'false', label: 'Disabled' }
+			]}
+		></CustomComboBox>
 
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<CustomComboBox

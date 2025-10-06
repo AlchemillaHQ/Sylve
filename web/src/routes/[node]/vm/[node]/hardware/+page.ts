@@ -19,6 +19,7 @@ export async function load({ params }) {
 	const vm = vms.find((vm) => vm.vmId === vmId);
 
 	return {
+		vmId,
 		vm,
 		vms,
 		ram,

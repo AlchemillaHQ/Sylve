@@ -6,6 +6,7 @@
 	import PCIDevices from '$lib/components/custom/VM/Hardware/PCIDevices.svelte';
 	import RAM from '$lib/components/custom/VM/Hardware/RAM.svelte';
 	import VNC from '$lib/components/custom/VM/Hardware/VNC.svelte';
+	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Row } from '$lib/components/ui/table';
 	import type { RAMInfo } from '$lib/types/info/ram';
@@ -19,6 +20,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
+		vmId: number;
 		vms: VM[];
 		vm: VM;
 		ram: RAMInfo;
@@ -66,15 +68,15 @@
 			}
 		},
 		{
-			queryKey: [`vmDomain-${data.vm.vmId}`],
+			queryKey: [`vmDomain-${data.vmId}`],
 			queryFn: async () => {
-				return await getVMDomain(data.vm.vmId);
+				return await getVMDomain(data.vmId);
 			},
 			refetchInterval: 1000,
 			keepPreviousData: true,
 			initialData: data.domain,
 			onSuccess: (updated: VMDomain) => {
-				updateCache(`vmDomain-${data.vm.vmId}`, updated);
+				updateCache(`vmDomain-${data.vmId}`, updated);
 			}
 		}
 	]);
@@ -101,6 +103,7 @@
 			open: false
 		},
 		vnc: {
+			enabled: data.vm.vncEnabled,
 			resolution: data.vm.vncResolution,
 			port: data.vm.vncPort,
 			password: data.vm.vncPassword,
@@ -109,7 +112,8 @@
 		pciDevices: {
 			open: false,
 			value: data.vm.pciDevices
-		}
+		},
+		serial: { open: false }
 	};
 
 	let properties = $state(options);
@@ -121,6 +125,7 @@
 			properties.cpu.threads = vm.cpuThreads;
 			properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
 			properties.ram.value = vm.ram;
+			properties.vnc.enabled = vm.vncEnabled;
 			properties.vnc.port = vm.vncPort;
 			properties.vnc.password = vm.vncPassword;
 			properties.vnc.resolution = vm.vncResolution;
@@ -186,7 +191,12 @@
 			{
 				id: generateNanoId(`${properties.vnc.port}-vnc-port`),
 				property: 'VNC',
-				value: `${properties.vnc.resolution} / ${properties.vnc.port}`
+				value: `${properties.vnc.enabled ? 'Enabled' : 'Disabled'} / ${properties.vnc.resolution} / ${properties.vnc.port}`
+			},
+			{
+				id: generateNanoId('serial'),
+				property: 'Serial Console',
+				value: vm?.serial ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId(`${vm?.name}-pci-devices`),
@@ -195,9 +205,11 @@
 			}
 		]
 	});
+
+	let reload = $state(false);
 </script>
 
-{#snippet button(property: 'ram' | 'cpu' | 'vnc' | 'pciDevices', title: string)}
+{#snippet button(property: 'ram' | 'cpu' | 'vnc' | 'pciDevices' | 'serial', title: string)}
 	<Button
 		onclick={() => {
 			properties[property].open = true;
@@ -233,6 +245,10 @@
 			{#if activeRow && activeRow.property === 'PCI Devices'}
 				{@render button('pciDevices', 'PCI Devices')}
 			{/if}
+
+			{#if activeRow && activeRow.property === 'Serial Console'}
+				{@render button('serial', 'Serial Console')}
+			{/if}
 		</div>
 	{/if}
 
@@ -261,4 +277,8 @@
 
 {#if properties.pciDevices.open}
 	<PCIDevices bind:open={properties.pciDevices.open} {vm} {pciDevices} {pptDevices} />
+{/if}
+
+{#if properties.serial.open && vm}
+	<Serial bind:open={properties.serial.open} {vm} bind:reload />
 {/if}

@@ -42,6 +42,7 @@ type ModifyRAMRequest struct {
 }
 
 type ModifyVNCRequest struct {
+	VNCEnabled    *bool  `json:"vncEnabled" binding:"required"`
 	VNCPort       int    `json:"vncPort" binding:"required"`
 	VNCResolution string `json:"vncResolution" binding:"required"`
 	VNCPassword   string `json:"vncPassword" binding:"required"`
@@ -238,7 +239,14 @@ func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 			vncWait = *req.VNCWait
 		}
 
+		vncEnabled := false
+
+		if req.VNCEnabled != nil {
+			vncEnabled = *req.VNCEnabled
+		}
+
 		if err := libvirtService.ModifyVNC(vmIdInt,
+			vncEnabled,
 			req.VNCPort,
 			req.VNCResolution,
 			req.VNCPassword,

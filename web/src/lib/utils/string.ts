@@ -305,3 +305,8 @@ export async function shortHash(input: string, rounds = 1): Promise<string> {
 	num >>= 16n;
 	return encodeBase62Big(num, 8);
 }
+
+export function parseBoolean(value: string | boolean): boolean {
+	if (typeof value === 'boolean') return value;
+	return value.toLowerCase() === 'true';
+}

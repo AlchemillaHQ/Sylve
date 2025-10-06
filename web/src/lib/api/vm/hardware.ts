@@ -24,12 +24,14 @@ export async function modifyRAM(vmId: number, ram: number): Promise<APIResponse>
 
 export async function modifyVNC(
 	vmId: number,
+	vncEnabled: boolean,
 	vncPort: number,
 	vncResolution: string,
 	vncPassword: string,
 	vncWait: boolean
 ): Promise<APIResponse> {
 	return await apiRequest(`/vm/hardware/vnc/${vmId}`, APIResponseSchema, 'PUT', {
+		vncEnabled,
 		vncPort,
 		vncResolution,
 		vncPassword,

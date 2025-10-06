@@ -15,8 +15,11 @@
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 
+	type ConsoleType = 'vnc' | 'serial' | 'none';
+
 	interface Data {
 		id: number;
+		vnc: boolean;
 		port: number;
 		password: string;
 		domain: VMDomain;
@@ -32,35 +35,44 @@
 		token: $clusterStore || ''
 	});
 
-	let consoleType = $derived.by(() => {
-		if (data.serial) {
+	function resolveInitialConsole(): ConsoleType {
+		const both = data.vnc && data.serial;
+		const onlyVnc = data.vnc && !data.serial;
+		const onlySerial = !data.vnc && data.serial;
+
+		if (both) {
 			const preferred = localStorage.getItem(`vm-${data.id}-console-preferred`);
-			if (preferred === 'serial' || preferred === 'vnc') {
-				return preferred;
-			} else {
-				return 'vnc';
+			if ((preferred === 'vnc' && data.vnc) || (preferred === 'serial' && data.serial)) {
+				return preferred as ConsoleType;
 			}
-		} else {
-			return 'vnc';
+			return 'vnc'; // default to VNC when both exist
 		}
+		if (onlyVnc) return 'vnc';
+		if (onlySerial) return 'serial';
+		return 'none';
+	}
+
+	let consoleType: ConsoleType = $state(resolveInitialConsole());
+
+	let vncPath = $derived.by(() => {
+		return data.vnc
+			? `/api/vnc/${encodeURIComponent(String(data.port))}?auth=${toHex(JSON.stringify(wssAuth))}`
+			: '';
 	});
 
-	let vncPath = $derived(
-		`/api/vnc/${encodeURIComponent(String(data.port))}?auth=${toHex(JSON.stringify(wssAuth))}`
-	);
-
-	let vncLoading = $state(true);
+	let vncLoading = $state(false);
 	function startVncLoading() {
+		if (!data.vnc) return;
 		vncLoading = true;
 		setTimeout(() => (vncLoading = false), 1500);
 	}
 
 	$effect(() => {
-		if (consoleType === 'vnc') {
+		if (consoleType === 'vnc' && data.vnc) {
 			localStorage.setItem(`vm-${data.id}-console-preferred`, 'vnc');
 			startVncLoading();
 			serialConnected = false;
-		} else if (consoleType === 'serial') {
+		} else if (consoleType === 'serial' && data.serial) {
 			localStorage.setItem(`vm-${data.id}-console-preferred`, 'serial');
 		}
 	});
@@ -85,7 +97,7 @@
 
 	function sendKill(sessionId?: string) {
 		if (!isOpen(ws)) return;
-		serialConnected = false; // reflect intent immediately
+		serialConnected = false;
 		const body = JSON.stringify({ kill: sessionId ?? '' });
 		const payload = new TextEncoder().encode('\x02' + body);
 		try {
@@ -107,6 +119,8 @@
 	}
 
 	async function serialConnect() {
+		if (!data.serial) return;
+
 		serialLoading = true;
 
 		const headerProto = toHex(
@@ -202,27 +216,31 @@
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
-	<!-- Header -->
-	{#if data.serial}
+	<!-- Header: show only if at least one console is available -->
+	{#if (data.vnc || data.serial) && data.domain.status !== 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-			<Button
-				onclick={() => {
-					consoleType = consoleType === 'vnc' ? 'serial' : 'vnc';
-				}}
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-			>
-				<div class="flex items-center gap-2">
-					<Icon
-						icon={consoleType === 'vnc' ? 'mdi:console' : 'material-symbols:monitor-outline'}
-						class="h-4 w-4"
-					/>
-					<span>Switch to {consoleType === 'vnc' ? 'Serial' : 'VNC'} Console</span>
-				</div>
-			</Button>
+			<!-- Switcher: show only if BOTH consoles exist -->
+			{#if data.vnc && data.serial}
+				<Button
+					onclick={() => {
+						consoleType = consoleType === 'vnc' ? 'serial' : 'vnc';
+					}}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+				>
+					<div class="flex items-center gap-2">
+						<Icon
+							icon={consoleType === 'vnc' ? 'mdi:console' : 'material-symbols:monitor-outline'}
+							class="h-4 w-4"
+						/>
+						<span>Switch to {consoleType === 'vnc' ? 'Serial' : 'VNC'} Console</span>
+					</div>
+				</Button>
+			{/if}
 
-			{#if consoleType === 'serial'}
+			<!-- Serial control: only when Serial is selected and available -->
+			{#if consoleType === 'serial' && data.serial}
 				<Button
 					size="sm"
 					variant="outline"
@@ -246,7 +264,7 @@
 	{/if}
 
 	{#if data.domain && data.domain.status !== 'Shutoff'}
-		{#if consoleType === 'vnc'}
+		{#if consoleType === 'vnc' && data.vnc}
 			<div class="relative flex min-h-0 flex-1 flex-col">
 				<iframe
 					class="w-full flex-1 transition-opacity duration-500"
@@ -261,7 +279,7 @@
 					</div>
 				{/if}
 			</div>
-		{:else if consoleType === 'serial'}
+		{:else if consoleType === 'serial' && data.serial}
 			<div bind:this={serialEl} class="relative flex min-h-0 flex-1 flex-col">
 				<Xterm
 					bind:terminal
@@ -275,6 +293,11 @@
 						<Icon icon="mdi:loading" class="text-primary h-10 w-10 animate-spin" />
 					</div>
 				{/if}
+			</div>
+		{:else}
+			<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
+				<Icon icon="mdi:monitor-off" class="text-primary dark:text-secondary h-14 w-14" />
+				<div class="max-w-md">No console is configured for this VM.</div>
 			</div>
 		{/if}
 	{:else}
