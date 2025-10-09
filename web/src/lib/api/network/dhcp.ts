@@ -41,34 +41,46 @@ export async function getDHCPRanges(): Promise<DHCPRange[]> {
 }
 
 export async function createDHCPRange(
+	ipType: 'ipv4' | 'ipv6',
 	startIp: string,
 	endIp: string,
 	expiry: number,
+	raOnly: boolean,
+	slaac: boolean,
 	standardSwitchId?: number,
 	manualSwitchId?: number
 ): Promise<APIResponse> {
 	return await apiRequest('/network/dhcp/range', APIResponseSchema, 'POST', {
+		type: ipType,
 		startIp,
 		endIp,
 		expiry,
 		standardSwitch: standardSwitchId,
-		manualSwitch: manualSwitchId
+		manualSwitch: manualSwitchId,
+		raOnly,
+		slaac
 	});
 }
 
 export async function updateDHCPRange(
+	type: 'ipv4' | 'ipv6',
 	id: number,
 	startIp: string,
 	endIp: string,
 	expiry: number,
+	raOnly: boolean,
+	slaac: boolean,
 	standardSwitchId?: number,
 	manualSwitchId?: number
 ): Promise<APIResponse> {
 	return await apiRequest(`/network/dhcp/range/${id}`, APIResponseSchema, 'PUT', {
+		type,
 		id,
 		startIp,
 		endIp,
 		expiry,
+		raOnly,
+		slaac,
 		standardSwitch: standardSwitchId,
 		manualSwitch: manualSwitchId
 	});

@@ -148,6 +148,11 @@
 									icon: 'memory:range',
 									href: `/${node}/network/dhcp/ranges`
 								}
+								// {
+								// 	label: 'Leases',
+								// 	icon: 'mdi:clipboard-list',
+								// 	href: `/${node}/network/dhcp/leases`
+								// }
 							]
 						}
 					]

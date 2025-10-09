@@ -22,8 +22,9 @@ type DHCPConfig struct {
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
-type DHCPRanges struct {
+type DHCPRange struct {
 	ID      uint   `json:"id" gorm:"primaryKey"`
+	Type    string `json:"type" gorm:"not null;default:'ipv4'"`
 	StartIP string `json:"startIp" gorm:"not null"`
 	EndIP   string `json:"endIp" gorm:"not null"`
 
@@ -35,23 +36,24 @@ type DHCPRanges struct {
 
 	Expiry uint `json:"expiry" gorm:"default:43200"`
 
+	RAOnly bool `json:"raOnly" gorm:"default:false"`
+	SLAAC  bool `json:"slaac" gorm:"default:false"`
+
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
-// type DHCPStaticMapping struct {
+// type DHCPStaticMap struct {
 // 	ID       uint   `json:"id" gorm:"primaryKey"`
 // 	Hostname string `json:"hostname" gorm:"not null"`
-// 	MAC      string `json:"mac" gorm:"not null;uniqueIndex:idx_mac_switch"`
-// 	IP       string `json:"ip" gorm:"not null;index:idx_ip_switch,unique"`
+// 	MAC      string `json:"mac" gorm:"not null;index:uniq_mac_per_range,unique"`
+// 	IP       string `json:"ip"  gorm:"not null;index:uniq_ip_per_range,unique"`
 // 	Comments string `json:"comments"`
 // 	Expiry   int    `json:"expiry" gorm:"default:0"`
 
-// 	StandardSwitchID *uint           `json:"switchId" gorm:"index:idx_mac_switch;index:idx_ip_switch,unique"`
-// 	StandardSwitch   *StandardSwitch `gorm:"foreignKey:StandardSwitchID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
-
-// 	ManualSwitchID *uint         `json:"manualSwitchId" gorm:"index:idx_mac_switch;index:idx_ip_switch,unique"`
-// 	ManualSwitch   *ManualSwitch `gorm:"foreignKey:ManualSwitchID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+// 	// Range is required; delete mappings when range is deleted
+// 	DHCPRangeID uint       `json:"dhcpRangeId" gorm:"index:uniq_mac_per_range,unique;index:uniq_ip_per_range,unique"`
+// 	DHCPRange   *DHCPRange `json:"dhcpRange" gorm:"foreignKey:DHCPRangeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
 // 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 // 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

@@ -670,3 +670,116 @@ func IsValidDHCPRange(startIP, endIP string) bool {
 
 	return bytes.Compare(start, end) < 0
 }
+
+func IsValidIPRangeWithSubnet(startIP, endIP, subnet string) bool {
+	_, ipNet, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return false
+	}
+
+	start := net.ParseIP(startIP)
+	end := net.ParseIP(endIP)
+	if start == nil || end == nil {
+		return false
+	}
+
+	ipFamily := func(ip net.IP) int {
+		if ip == nil {
+			return 0
+		}
+		if ip.To4() != nil {
+			return 4
+		}
+		if ip.To16() != nil {
+			return 6
+		}
+		return 0
+	}
+
+	compareIPs := func(a, b net.IP) int {
+		if a4, b4 := a.To4(), b.To4(); a4 != nil && b4 != nil {
+			return bytes.Compare(a4, b4)
+		}
+		return bytes.Compare(a.To16(), b.To16())
+	}
+
+	lastIP := func(n *net.IPNet) net.IP {
+		base := n.IP.To16()
+		if base == nil {
+			return nil
+		}
+		mask := n.Mask
+		if len(mask) != net.IPv6len { // normalize to 16 bytes
+			m16 := make([]byte, net.IPv6len)
+			copy(m16[net.IPv6len-len(mask):], mask)
+			mask = m16
+		}
+		out := make(net.IP, net.IPv6len)
+		for i := 0; i < net.IPv6len; i++ {
+			out[i] = base[i] | ^mask[i]
+		}
+		return out
+	}
+
+	incIP := func(ip net.IP) net.IP {
+		if ip == nil {
+			return nil
+		}
+		ip = append(net.IP(nil), ip...)
+		for i := len(ip) - 1; i >= 0; i-- {
+			ip[i]++
+			if ip[i] != 0 {
+				break
+			}
+		}
+		return ip
+	}
+
+	decIP := func(ip net.IP) net.IP {
+		if ip == nil {
+			return nil
+		}
+		ip = append(net.IP(nil), ip...)
+		for i := len(ip) - 1; i >= 0; i-- {
+			if ip[i] == 0 {
+				ip[i] = 0xFF
+				continue
+			}
+			ip[i]--
+			break
+		}
+		return ip
+	}
+
+	fam := ipFamily(ipNet.IP)
+	if fam == 0 || ipFamily(start) != fam || ipFamily(end) != fam {
+		return false
+	}
+
+	if !ipNet.Contains(start) || !ipNet.Contains(end) {
+		return false
+	}
+
+	if compareIPs(start, end) > 0 {
+		return false
+	}
+
+	if fam == 4 {
+		firstUsable := incIP(ipNet.IP.To4())
+		lastUsable := decIP(lastIP(ipNet).To4())
+
+		if firstUsable == nil || lastUsable == nil || bytes.Compare(firstUsable, lastUsable) > 0 {
+			return false
+		}
+
+		s4, e4 := start.To4(), end.To4()
+		if bytes.Compare(s4, firstUsable) < 0 || bytes.Compare(s4, lastUsable) > 0 {
+			return false
+		}
+		if bytes.Compare(e4, firstUsable) < 0 || bytes.Compare(e4, lastUsable) > 0 {
+			return false
+		}
+	}
+
+	return true
+}

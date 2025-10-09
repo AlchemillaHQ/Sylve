@@ -20,7 +20,10 @@ export function generateComboboxOptions(values: string[], additional?: string[])
 		.filter((option, index, self) => self.findIndex((o) => o.value === option.value) === index);
 }
 
-export function generateSwitchOptions(switches: SwitchList): { label: string; value: string }[] {
+export function generateSwitchOptions(
+	switches: SwitchList,
+	ignoreIds?: number[]
+): { label: string; value: string }[] {
 	const standardSwitches = (switches.standard ?? []).map((sw) => ({
 		label: sw.name,
 		value: `${sw.id}-stan-${sw.name}`
@@ -31,5 +34,19 @@ export function generateSwitchOptions(switches: SwitchList): { label: string; va
 		value: `${sw.id}-man-${sw.name}`
 	}));
 
-	return [...standardSwitches, ...managedSwitches];
+	const filteredStandardSwitches = ignoreIds
+		? standardSwitches.filter((sw) => {
+				const id = parseInt(sw.value.split('-')[0]);
+				return !ignoreIds.includes(id);
+			})
+		: standardSwitches;
+
+	const filteredManagedSwitches = ignoreIds
+		? managedSwitches.filter((sw) => {
+				const id = parseInt(sw.value.split('-')[0]);
+				return !ignoreIds.includes(id);
+			})
+		: managedSwitches;
+
+	return [...filteredStandardSwitches, ...filteredManagedSwitches];
 }

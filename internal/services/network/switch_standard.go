@@ -667,7 +667,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	gateway6 := sw.Gateway(6)
 
 	if network6 != "" && gateway6 != "" && !sw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", sw.IPv6()); err != nil {
+		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", network6); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
 
@@ -677,6 +677,12 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
 				}
 			}
+		}
+	}
+
+	if !sw.DisableIPv6 {
+		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", "auto_linklocal"); err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_enable_linklocal: %v", err)
 		}
 	}
 

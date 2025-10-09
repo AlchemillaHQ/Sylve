@@ -9,18 +9,24 @@ type ModifyDHCPConfigRequest struct {
 }
 
 type CreateDHCPRangeRequest struct {
-	StartIP        string `json:"startIp" binding:"required,ip"`
-	EndIP          string `json:"endIp" binding:"required,ip"`
+	Type           string `json:"type" binding:"required,oneof=ipv4 ipv6"`
+	StartIP        string `json:"startIp"`
+	EndIP          string `json:"endIp"`
 	StandardSwitch *uint  `json:"standardSwitch"`
 	ManualSwitch   *uint  `json:"manualSwitch"`
 	Expiry         *uint  `json:"expiry"`
+	RAOnly         *bool  `json:"raOnly"`
+	SLAAC          *bool  `json:"slaac"`
 }
 
 type ModifyDHCPRangeRequest struct {
 	ID             uint   `json:"id"`
-	StartIP        string `json:"startIp" binding:"required,ip"`
-	EndIP          string `json:"endIp" binding:"required,ip"`
+	Type           string `json:"type" binding:"required,oneof=ipv4 ipv6"`
+	StartIP        string `json:"startIp"`
+	EndIP          string `json:"endIp"`
 	StandardSwitch *uint  `json:"standardSwitch"`
 	ManualSwitch   *uint  `json:"manualSwitch"`
 	Expiry         *uint  `json:"expiry"`
+	RAOnly         *bool  `json:"raOnly"`
+	SLAAC          *bool  `json:"slaac"`
 }

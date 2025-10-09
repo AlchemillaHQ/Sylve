@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) GetRanges() ([]networkModels.DHCPRanges, error) {
-	var ranges []networkModels.DHCPRanges
+func (s *Service) GetRanges() ([]networkModels.DHCPRange, error) {
+	var ranges []networkModels.DHCPRange
 	if err := s.DB.
 		Preload("StandardSwitch").
 		Preload("ManualSwitch").
@@ -35,6 +35,16 @@ func (s *Service) CreateRange(req *networkServiceInterfaces.CreateDHCPRangeReque
 		expiry = *req.Expiry
 	}
 
+	raOnly := false
+	if req.RAOnly != nil {
+		raOnly = *req.RAOnly
+	}
+
+	slaac := false
+	if req.SLAAC != nil {
+		slaac = *req.SLAAC
+	}
+
 	if req.StandardSwitch != nil {
 		var sw networkModels.StandardSwitch
 
@@ -51,17 +61,17 @@ func (s *Service) CreateRange(req *networkServiceInterfaces.CreateDHCPRangeReque
 		}
 	}
 
-	if !utils.IsValidDHCPRange(req.StartIP, req.EndIP) {
+	if req.Type == "ipv4" && !utils.IsValidDHCPRange(req.StartIP, req.EndIP) {
 		return fmt.Errorf("invalid_dhcp_range")
 	}
 
 	{
 		var count int64
-		q := s.DB.Model(&networkModels.DHCPRanges{})
+		q := s.DB.Model(&networkModels.DHCPRange{})
 		if req.StandardSwitch != nil {
-			q = q.Where("standard_switch_id = ?", *req.StandardSwitch)
+			q = q.Where("standard_switch_id = ? and type = ?", *req.StandardSwitch, req.Type)
 		} else {
-			q = q.Where("manual_switch_id = ?", *req.ManualSwitch)
+			q = q.Where("manual_switch_id = ? and type = ?", *req.ManualSwitch, req.Type)
 		}
 		if err := q.Count(&count).Error; err != nil {
 			return err
@@ -71,23 +81,31 @@ func (s *Service) CreateRange(req *networkServiceInterfaces.CreateDHCPRangeReque
 		}
 	}
 
-	newRange := &networkModels.DHCPRanges{
+	newRange := &networkModels.DHCPRange{
+		Type:             req.Type,
 		StartIP:          req.StartIP,
 		EndIP:            req.EndIP,
 		StandardSwitchID: req.StandardSwitch,
 		ManualSwitchID:   req.ManualSwitch,
 		Expiry:           expiry,
+		RAOnly:           raOnly,
+		SLAAC:            slaac,
 	}
 
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(newRange).Error; err != nil {
 			return err
 		}
-		if err := s.WriteConfig(); err != nil {
-			return fmt.Errorf("failed_to_apply_new_dhcp_range: %w", err)
-		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if err := s.WriteConfig(); err != nil {
+		return fmt.Errorf("failed_to_apply_new_dhcp_range: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeRequest) error {
@@ -104,6 +122,16 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 		expiry = *req.Expiry
 	}
 
+	raOnly := false
+	if req.RAOnly != nil {
+		raOnly = *req.RAOnly
+	}
+
+	slaac := false
+	if req.SLAAC != nil {
+		slaac = *req.SLAAC
+	}
+
 	if req.StandardSwitch != nil {
 		var sw networkModels.StandardSwitch
 		if err := s.DB.First(&sw, "id = ?", *req.StandardSwitch).Error; err != nil {
@@ -116,11 +144,11 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 		}
 	}
 
-	if !utils.IsValidDHCPRange(req.StartIP, req.EndIP) {
+	if req.Type == "ipv4" && !utils.IsValidDHCPRange(req.StartIP, req.EndIP) {
 		return fmt.Errorf("invalid_dhcp_range")
 	}
 
-	current := &networkModels.DHCPRanges{}
+	current := &networkModels.DHCPRange{}
 	if err := s.DB.First(current, "id = ?", req.ID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("invalid_dhcp_range_id: %w", err)
@@ -130,11 +158,11 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 
 	{
 		var count int64
-		q := s.DB.Model(&networkModels.DHCPRanges{}).Where("id != ?", req.ID)
+		q := s.DB.Model(&networkModels.DHCPRange{}).Where("id != ?", req.ID)
 		if req.StandardSwitch != nil {
-			q = q.Where("standard_switch_id = ?", *req.StandardSwitch)
+			q = q.Where("standard_switch_id = ? and type = ?", *req.StandardSwitch, req.Type)
 		} else {
-			q = q.Where("manual_switch_id = ?", *req.ManualSwitch)
+			q = q.Where("manual_switch_id = ? and type = ?", *req.ManualSwitch, req.Type)
 		}
 		if err := q.Count(&count).Error; err != nil {
 			return err
@@ -149,6 +177,8 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 	current.StandardSwitchID = req.StandardSwitch
 	current.ManualSwitchID = req.ManualSwitch
 	current.Expiry = expiry
+	current.RAOnly = raOnly
+	current.SLAAC = slaac
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(current).Error; err != nil {
@@ -167,7 +197,7 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 }
 
 func (s *Service) DeleteRange(id uint) error {
-	current := &networkModels.DHCPRanges{}
+	current := &networkModels.DHCPRange{}
 	if err := s.DB.First(current, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("invalid_dhcp_range_id: %w", err)
@@ -175,13 +205,18 @@ func (s *Service) DeleteRange(id uint) error {
 		return err
 	}
 
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Delete(current).Error; err != nil {
 			return err
 		}
-		if err := s.WriteConfig(); err != nil {
-			return fmt.Errorf("failed_to_apply_dhcp_range_deletion: %w", err)
-		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if err := s.WriteConfig(); err != nil {
+		return fmt.Errorf("failed_to_apply_dhcp_range_deletion: %w", err)
+	}
+
+	return nil
 }

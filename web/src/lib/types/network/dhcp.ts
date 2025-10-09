@@ -14,6 +14,7 @@ export const DHCPConfigSchema = z.object({
 
 export const DHCPRangeSchema = z.object({
 	id: z.number(),
+	type: z.enum(['ipv4', 'ipv6']),
 	startIp: z.string(),
 	endIp: z.string(),
 	standardSwitchId: z.number().optional().nullable(),
@@ -21,6 +22,8 @@ export const DHCPRangeSchema = z.object({
 	manualSwitchId: z.number().optional().nullable(),
 	manualSwitch: ManualSwitchSchema.nullable(),
 	expiry: z.number(),
+	raOnly: z.boolean().default(false),
+	slaac: z.boolean().default(false),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

@@ -75,8 +75,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.ObjectResolution{},
 
 		&networkModels.DHCPConfig{},
-		&networkModels.DHCPRanges{},
-		// &networkModels.DHCPStaticMapping{},
+		&networkModels.DHCPRange{},
+		// &networkModels.DHCPStaticMap{},
 		// &networkModels.DHCPOption{},
 
 		&infoModels.CPU{},

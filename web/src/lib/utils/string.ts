@@ -317,7 +317,33 @@ export function isValidDHCPDomain(domain: string): boolean {
 }
 
 function ipToNumber(ip: string): number {
-	return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0);
+	return ip.split('.').reduce((acc, o) => acc * 256 + Number(o), 0) >>> 0;
+}
+
+function isContiguousMask(maskNum: number): boolean {
+	if (maskNum === 0) return false;
+	return (maskNum | (maskNum - 1)) >>> 0 === 0xffffffff;
+}
+
+export function ipMaskToCIDR(ip: string, mask: string, requireNetworkAddr = false): string | null {
+	if (!isValidIPv4(ip) || !isValidIPv4(mask)) return null;
+
+	const ipNum = ipToNumber(ip) >>> 0;
+	const maskNum = ipToNumber(mask) >>> 0;
+
+	if (!isContiguousMask(maskNum)) return null;
+	if (requireNetworkAddr && (ipNum & (~maskNum >>> 0)) >>> 0 !== 0) return null;
+
+	let cidr = 0;
+	let m = maskNum;
+	while (m & 0x80000000) {
+		cidr++;
+		m = (m << 1) >>> 0;
+	}
+
+	if (m !== 0) return null;
+
+	return `${ip}/${cidr}`;
 }
 
 export function isValidDHCPRange(startIp: string, endIp: string): boolean {
@@ -335,6 +361,92 @@ export function isValidDHCPRange(startIp: string, endIp: string): boolean {
 	if ((start & 0xff) === 0 || (end & 0xff) === 255) {
 		return false;
 	}
+
+	return true;
+}
+
+export function isValidIPv4Range(startIP: string, endIP: string, subnet: string): boolean {
+	if (!isValidIPv4(startIP) || !isValidIPv4(endIP) || !isValidIPv4(subnet)) {
+		return false;
+	}
+
+	const start = ipToNumber(startIP);
+	const end = ipToNumber(endIP);
+	const subnetNum = ipToNumber(subnet);
+
+	if (start >= end) {
+		return false;
+	}
+
+	if ((start & 0xff) === 0 || (end & 0xff) === 255) {
+		return false;
+	}
+
+	if ((start & subnetNum) !== start || (end & subnetNum) !== end) {
+		return false;
+	}
+
+	return true;
+}
+
+function ipv6ToBigInt(ip: string): bigint | null {
+	// Expand compressed IPv6 like "fd00::1" to 8 groups, then pack to BigInt
+	const lower = ip.toLowerCase();
+
+	// Split around "::"
+	const parts = lower.split('::');
+	if (parts.length > 2) return null;
+
+	const left = parts[0] ? parts[0].split(':') : [];
+	const right = parts.length === 2 && parts[1] ? parts[1].split(':') : [];
+
+	// Validate hextets
+	const isValidHextet = (h: string) => /^[0-9a-f]{1,4}$/.test(h);
+	if (!left.every(isValidHextet) || !right.every(isValidHextet)) return null;
+
+	// Pad missing groups if "::" present
+	const missing = 8 - (left.length + right.length);
+	if (missing < 0) return null;
+
+	const full = parts.length === 2 ? [...left, ...Array(missing).fill('0'), ...right] : left;
+
+	if (full.length !== 8) return null;
+
+	// Build BigInt
+	let val = 0n;
+	for (const h of full) {
+		val = (val << 16n) + BigInt(parseInt(h, 16));
+	}
+	return val;
+}
+
+function maskFromPrefix(prefix: number): bigint | null {
+	if (prefix < 0 || prefix > 128) return null;
+	const p = BigInt(prefix);
+	// mask = ((1<<p) - 1) << (128 - p)
+	return ((1n << p) - 1n) << (128n - p);
+}
+
+export function isValidIPv6Range(startIP: string, endIP: string, subnetCidr: string): boolean {
+	const m = subnetCidr.split('/');
+	if (m.length !== 2) return false;
+
+	const netStr = m[0];
+	const prefix = Number(m[1]);
+	if (!Number.isInteger(prefix) || prefix < 0 || prefix > 128) return false;
+
+	const start = ipv6ToBigInt(startIP);
+	const end = ipv6ToBigInt(endIP);
+	const net = ipv6ToBigInt(netStr);
+	const mask = maskFromPrefix(prefix);
+
+	if (start === null || end === null || net === null || mask === null) return false;
+	if (start > end) return false;
+	if ((net & ~mask) !== 0n) return false;
+
+	const startNet = start & mask;
+	const endNet = end & mask;
+	if (startNet !== net || endNet !== net) return false;
 
 	return true;
 }

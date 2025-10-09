@@ -114,14 +114,42 @@
 				visible: false
 			},
 			{
+				field: 'type',
+				title: 'Type',
+				formatter(cell, formatterParams, onRendered) {
+					if (cell.getValue() === 'ipv4') {
+						return 'IPv4';
+					} else if (cell.getValue() === 'ipv6') {
+						return 'IPv6';
+					}
+				}
+			},
+			{
 				field: 'sw',
 				title: 'Switch'
 			},
 			{
 				field: 'startIP',
-				title: 'Start IP'
+				title: 'Start IP',
+				formatter(cell, formatterParams, onRendered) {
+					if (cell.getValue() === '') {
+						return '-';
+					} else {
+						return cell.getValue();
+					}
+				}
 			},
-			{ field: 'endIP', title: 'End IP' },
+			{
+				field: 'endIP',
+				title: 'End IP',
+				formatter(cell, formatterParams, onRendered) {
+					if (cell.getValue() === '') {
+						return '-';
+					} else {
+						return cell.getValue();
+					}
+				}
+			},
 			{
 				field: 'expiry',
 				title: 'Expiry',
@@ -153,6 +181,7 @@
 
 			rows.push({
 				id: range.id,
+				type: range.type,
 				sw: swName,
 				startIP: range.startIp,
 				endIP: range.endIp,

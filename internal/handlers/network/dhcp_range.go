@@ -15,7 +15,7 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[[]networkModels.DHCPRanges] "Success"
+// @Success 200 {object} internal.APIResponse[[]networkModels.DHCPRange] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/dhcp/range [get]
@@ -32,7 +32,7 @@ func GetDHCPRanges(svc *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]networkModels.DHCPRanges]{
+		c.JSON(200, internal.APIResponse[[]networkModels.DHCPRange]{
 			Status:  "success",
 			Message: "dhcp_ranges_retrieved",
 			Error:   "",

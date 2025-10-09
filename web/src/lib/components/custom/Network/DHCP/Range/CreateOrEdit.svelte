@@ -7,11 +7,19 @@
 	import type { DHCPConfig, DHCPRange } from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateSwitchOptions } from '$lib/utils/input';
-	import { dnsmasqToSeconds, isValidDHCPRange, secondsToDnsmasq } from '$lib/utils/string';
+	import {
+		dnsmasqToSeconds,
+		ipMaskToCIDR,
+		isValidDHCPRange,
+		isValidIPv4,
+		secondsToDnsmasq
+	} from '$lib/utils/string';
 	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
+	import { isValidIPv4Range, isValidIPv6Range } from '$lib/utils/inet';
 
 	interface Props {
 		open: boolean;
@@ -33,6 +41,20 @@
 		selectedRange = null as DHCPRange | null
 	}: Props = $props();
 
+	let configuredSwitches = $derived.by(() => {
+		const sws: number[] = [];
+		if (dhcpConfig) {
+			if (dhcpConfig.standardSwitches) {
+				sws.push(...dhcpConfig.standardSwitches.map((sw) => sw.id));
+			}
+			if (dhcpConfig.manualSwitches) {
+				sws.push(...dhcpConfig.manualSwitches.map((sw) => sw.id));
+			}
+		}
+
+		return sws;
+	});
+
 	let currentSwId = $derived.by(() => {
 		if (selectedRange) {
 			console.log(selectedRange.standardSwitch, selectedRange.manualSwitch);
@@ -52,61 +74,109 @@
 		return '';
 	});
 
+	let ipType = $derived.by(() => {
+		if (selectedRange) {
+			if (isValidIPv4(selectedRange.startIp)) {
+				return 'ipv4' as 'ipv4' | 'ipv6';
+			} else {
+				return 'ipv6' as 'ipv4' | 'ipv6';
+			}
+		}
+
+		return 'ipv4' as 'ipv4' | 'ipv6';
+	});
+
 	let usedSwitches = $derived.by(() => {
 		if (!dhcpRanges || dhcpRanges.length === 0) {
 			return [] as string[];
 		}
 
-		const used = [] as string[];
+		const used: string[] = [];
 		for (const range of dhcpRanges) {
+			let swVal = '';
 			if (range.standardSwitch) {
 				const sw = networkSwitches.standard?.find((s) => s.id === range.standardSwitch?.id);
-				if (sw) {
-					used.push(`${sw.id}-stan-${sw.name}`);
-				}
+				if (sw) swVal = `${sw.id}-stan-${sw.name}`;
 			} else if (range.manualSwitch) {
 				const sw = networkSwitches.manual?.find((s) => s.id === range.manualSwitch?.id);
-				if (sw) {
-					used.push(`${sw.id}-man-${sw.name}`);
-				}
+				if (sw) swVal = `${sw.id}-man-${sw.name}`;
+			}
+			if (swVal) {
+				// store with ip version to allow same switch for the other type
+				used.push(`${swVal}|${range.type}` as const);
 			}
 		}
 
+		// While editing, allow re-selecting the currently attached switch for THIS range's type
 		if (selectedRange) {
-			// Remove the current switch from the used list to allow re-selection
-			const indexStan = used.indexOf(
-				`${selectedRange.standardSwitch?.id}-stan-${selectedRange.standardSwitch?.name}`
-			);
-			if (indexStan > -1) {
-				used.splice(indexStan, 1);
-			}
-			const indexMan = used.indexOf(
-				`${selectedRange.manualSwitch?.id}-man-${selectedRange.manualSwitch?.name}`
-			);
-			if (indexMan > -1) {
-				used.splice(indexMan, 1);
-			}
+			const curType = isValidIPv4(selectedRange.startIp) ? 'ipv4' : 'ipv6';
+			const curKeyStan = `${selectedRange.standardSwitch?.id}-stan-${selectedRange.standardSwitch?.name}|${curType}`;
+			const curKeyMan = `${selectedRange.manualSwitch?.id}-man-${selectedRange.manualSwitch?.name}|${curType}`;
+
+			const iStan = used.indexOf(curKeyStan);
+			if (iStan > -1) used.splice(iStan, 1);
+
+			const iMan = used.indexOf(curKeyMan);
+			if (iMan > -1) used.splice(iMan, 1);
 		}
 
 		return used;
 	});
 
 	let options = $derived({
+		ipType: {
+			combobox: {
+				value: ipType,
+				options: [
+					{ label: 'IPv4', value: 'ipv4' },
+					{ label: 'IPv6', value: 'ipv6' }
+				],
+				open: false
+			}
+		},
 		startIp: selectedRange ? selectedRange.startIp : '',
 		endIp: selectedRange ? selectedRange.endIp : '',
 		switchId: {
 			combobox: {
 				open: false,
 				value: selectedRange == null ? '' : currentSwId,
-				options: generateSwitchOptions(networkSwitches).filter(
-					(opt) => !usedSwitches.includes(opt.value) || opt.value === currentSwId
-				)
+				options: generateSwitchOptions(networkSwitches, configuredSwitches).filter((opt) => {
+					const key = `${opt.value}|${ipType}`; // <- use current ipType
+					return !usedSwitches.includes(key) || opt.value === currentSwId;
+				})
 			}
 		},
-		expiry: selectedRange ? secondsToDnsmasq(selectedRange.expiry, true) : '12h'
+		expiry: selectedRange ? secondsToDnsmasq(selectedRange.expiry, true) : '12h',
+		raOnly: selectedRange ? selectedRange.raOnly : false,
+		slaac: selectedRange ? selectedRange.slaac : false
 	});
 
 	let properties = $state(options);
+
+	$effect(() => {
+		if (properties.ipType.combobox.value === 'ipv4') {
+			properties.raOnly = false;
+			properties.slaac = false;
+
+			properties.switchId.combobox.options = generateSwitchOptions(
+				networkSwitches,
+				configuredSwitches
+			).filter((opt) => {
+				const key = `${opt.value}|ipv4`;
+				return !usedSwitches.includes(key) || opt.value === currentSwId;
+			});
+		}
+
+		if (properties.ipType.combobox.value === 'ipv6') {
+			properties.switchId.combobox.options = generateSwitchOptions(
+				networkSwitches,
+				configuredSwitches
+			).filter((opt) => {
+				const key = `${opt.value}|ipv6`;
+				return !usedSwitches.includes(key) || opt.value === currentSwId;
+			});
+		}
+	});
 
 	$effect(() => {
 		if (open && properties.expiry !== '') {
@@ -122,8 +192,10 @@
 	});
 
 	async function create() {
-		if (!isValidDHCPRange(properties.startIp, properties.endIp)) {
-			toast.error('Invalid IP range', {
+		let ipVersion = properties.ipType.combobox.value;
+
+		if (!ipVersion) {
+			toast.error('IP Type is required', {
 				position: 'bottom-center'
 			});
 			return;
@@ -134,6 +206,85 @@
 				position: 'bottom-center'
 			});
 			return;
+		}
+
+		if (ipVersion === 'ipv4') {
+			const iface = networkInterfaces.find(
+				(iface) =>
+					iface.description === properties.switchId.combobox.value.split('-')[2] ||
+					iface.name === properties.switchId.combobox.value.split('-')[2]
+			);
+
+			if (!iface) {
+				toast.error('Failed to find interface for selected switch', {
+					position: 'bottom-center'
+				});
+				return;
+			} else {
+				if (iface.ipv4 && iface.ipv4.length > 0) {
+					let one = false;
+
+					for (const ipv4 of iface.ipv4) {
+						if (isValidIPv4Range(properties.startIp, properties.endIp, ipv4.ip, ipv4.netmask)) {
+							one = true;
+							break;
+						}
+					}
+
+					if (!one) {
+						toast.error('IP Range not in switch subnet', {
+							position: 'bottom-center'
+						});
+						return;
+					}
+				} else {
+					toast.error('Selected interface has no IPv4 address', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			}
+		} else {
+			const iface = networkInterfaces.find(
+				(iface) =>
+					iface.description === properties.switchId.combobox.value.split('-')[2] ||
+					iface.name === properties.switchId.combobox.value.split('-')[2]
+			);
+
+			if (!iface) {
+				toast.error('Failed to find interface for selected switch', {
+					position: 'bottom-center'
+				});
+				return;
+			} else {
+				if (iface.ipv6 && iface.ipv6.length > 0) {
+					const usable = iface.ipv6.filter((ip) => !ip.ip.startsWith('fe80'));
+					if (usable.length === 0) {
+						toast.error('Selected interface has no usable IPv6 address', {
+							position: 'bottom-center'
+						});
+						return;
+					} else {
+						for (const ipv6 of usable) {
+							if (properties.startIp !== '' || properties.endIp !== '') {
+								if (
+									!isValidIPv6Range(
+										properties.startIp,
+										properties.endIp,
+										ipv6.ip,
+										ipv6.prefixLength
+									)
+								) {
+									toast.error(`IP Range not in switch subnet (${ipv6.ip}/${ipv6.prefixLength})`, {
+										position: 'bottom-center'
+									});
+									return;
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 
 		if (!properties.expiry || properties.expiry.trim() === '') {
@@ -156,9 +307,12 @@
 		}
 
 		const res = await createDHCPRange(
+			ipVersion,
 			properties.startIp,
 			properties.endIp,
 			dnsmasqToSeconds(properties.expiry),
+			properties.raOnly,
+			properties.slaac,
 			standardSwId,
 			manualSwId
 		);
@@ -187,11 +341,83 @@
 			return;
 		}
 
-		if (!isValidDHCPRange(properties.startIp, properties.endIp)) {
-			toast.error('Invalid IP range', {
-				position: 'bottom-center'
-			});
-			return;
+		if (properties.ipType.combobox.value === 'ipv4') {
+			const iface = networkInterfaces.find(
+				(iface) =>
+					iface.description === properties.switchId.combobox.value.split('-')[2] ||
+					iface.name === properties.switchId.combobox.value.split('-')[2]
+			);
+
+			if (!iface) {
+				toast.error('Failed to find interface for selected switch', {
+					position: 'bottom-center'
+				});
+				return;
+			} else {
+				if (iface.ipv4 && iface.ipv4.length > 0) {
+					let one = false;
+
+					for (const ipv4 of iface.ipv4) {
+						if (isValidIPv4Range(properties.startIp, properties.endIp, ipv4.ip, ipv4.netmask)) {
+							one = true;
+							break;
+						}
+					}
+
+					if (!one) {
+						toast.error('IP Range not in switch subnet', {
+							position: 'bottom-center'
+						});
+						return;
+					}
+				} else {
+					toast.error('Selected interface has no IPv4 address', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			}
+		} else {
+			const iface = networkInterfaces.find(
+				(iface) =>
+					iface.description === properties.switchId.combobox.value.split('-')[2] ||
+					iface.name === properties.switchId.combobox.value.split('-')[2]
+			);
+
+			if (!iface) {
+				toast.error('Failed to find interface for selected switch', {
+					position: 'bottom-center'
+				});
+				return;
+			} else {
+				if (iface.ipv6 && iface.ipv6.length > 0) {
+					const usable = iface.ipv6.filter((ip) => !ip.ip.startsWith('fe80'));
+					if (usable.length === 0) {
+						toast.error('Selected interface has no usable IPv6 address', {
+							position: 'bottom-center'
+						});
+						return;
+					} else {
+						for (const ipv6 of usable) {
+							if (properties.startIp !== '' || properties.endIp !== '') {
+								if (
+									!isValidIPv6Range(
+										properties.startIp,
+										properties.endIp,
+										ipv6.ip,
+										ipv6.prefixLength
+									)
+								) {
+									toast.error(`IP Range not in switch subnet (${ipv6.ip}/${ipv6.prefixLength})`, {
+										position: 'bottom-center'
+									});
+									return;
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 
 		if (!properties.switchId.combobox.value) {
@@ -221,10 +447,13 @@
 		}
 
 		const res = await updateDHCPRange(
+			properties.ipType.combobox.value,
 			selectedRange!.id,
 			properties.startIp,
 			properties.endIp,
 			dnsmasqToSeconds(properties.expiry),
+			properties.raOnly,
+			properties.slaac,
 			standardSwId,
 			manualSwId
 		);
@@ -276,18 +505,35 @@
 			</div>
 		</div>
 
+		{#if !selectedRange}
+			<CustomComboBox
+				bind:open={properties.ipType.combobox.open}
+				label="IP Type"
+				bind:value={properties.ipType.combobox.value}
+				data={properties.ipType.combobox.options}
+				classes="flex-1 space-y-1"
+				placeholder="Select IP Type"
+				triggerWidth="w-full"
+				width="w-full"
+			></CustomComboBox>
+		{/if}
+
 		<div class="flex flex-row gap-2">
 			<CustomValueInput
 				label="Start IP"
 				bind:value={properties.startIp}
-				placeholder="192.168.1.50"
+				placeholder={properties.ipType.combobox.value === 'ipv4'
+					? '192.168.1.50'
+					: 'fd00:cafe:babe::50'}
 				classes="flex-1 space-y-1.5"
 			/>
 
 			<CustomValueInput
 				label="End IP"
 				bind:value={properties.endIp}
-				placeholder="192.168.1.150"
+				placeholder={properties.ipType.combobox.value === 'ipv4'
+					? '192.168.1.150'
+					: 'fd00:cafe:babe::150'}
 				classes="flex-1 space-y-1.5"
 			/>
 		</div>
@@ -311,6 +557,22 @@
 				classes="flex-1 space-y-1.5"
 			/>
 		</div>
+
+		{#if properties.ipType.combobox.value === 'ipv6'}
+			<div class="mt-2 flex flex-row gap-2">
+				<CustomCheckbox
+					label="RA Only"
+					bind:checked={properties.raOnly}
+					classes="flex items-center gap-2"
+				></CustomCheckbox>
+
+				<CustomCheckbox
+					label="SLAAC"
+					bind:checked={properties.slaac}
+					classes="flex items-center gap-2"
+				></CustomCheckbox>
+			</div>
+		{/if}
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">

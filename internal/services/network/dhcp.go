@@ -228,7 +228,7 @@ func (s *Service) WriteConfig() error {
 		config += "expand-hosts\n\n"
 	}
 
-	var ranges []networkModels.DHCPRanges
+	var ranges []networkModels.DHCPRange
 	if err := s.DB.Preload("StandardSwitch").Preload("ManualSwitch").Find(&ranges).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_dhcp_ranges: %w", err)
 	}
@@ -250,7 +250,31 @@ func (s *Service) WriteConfig() error {
 			expiry = fmt.Sprintf("%d", r.Expiry)
 		}
 
-		config += fmt.Sprintf("dhcp-range=%s,%s,%s,%s\n", rangeInterface, r.StartIP, r.EndIP, expiry)
+		if r.Type == "ipv4" {
+			config += fmt.Sprintf("dhcp-range=%s,%s,%s,%s\n", rangeInterface, r.StartIP, r.EndIP, expiry)
+		}
+
+		if r.Type == "ipv6" {
+			if r.StartIP != "" && r.EndIP != "" {
+				config += fmt.Sprintf("dhcp-range=%s,%s,%s", rangeInterface, r.StartIP, r.EndIP)
+				if r.RAOnly {
+					config += ",ra-only"
+				}
+				if r.SLAAC {
+					config += ",slaac"
+				}
+				config += fmt.Sprintf(",%s\n", expiry)
+			} else {
+				config += fmt.Sprintf("dhcp-range=::,constructor:%s", rangeInterface)
+				if r.RAOnly {
+					config += ",ra-only"
+				}
+				if r.SLAAC {
+					config += ",slaac"
+				}
+				config += fmt.Sprintf(",%s\n", expiry)
+			}
+		}
 	}
 
 	config += "\n"
