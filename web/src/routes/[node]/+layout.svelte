@@ -133,6 +133,22 @@
 									href: `/${node}/network/switches/standard`
 								}
 							]
+						},
+						{
+							label: 'DHCP & DNS',
+							icon: 'solar:server-path-bold',
+							children: [
+								{
+									label: 'Config',
+									icon: 'mdi:cog-outline',
+									href: `/${node}/network/dhcp/config`
+								},
+								{
+									label: 'Ranges',
+									icon: 'memory:range',
+									href: `/${node}/network/dhcp/ranges`
+								}
+							]
 						}
 					]
 				},

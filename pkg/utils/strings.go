@@ -9,6 +9,7 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -658,4 +659,14 @@ func MustJSON(v any) []byte {
 func IsValidDiskName(name string) bool {
 	regex := regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
 	return regex.MatchString(name)
+}
+
+func IsValidDHCPRange(startIP, endIP string) bool {
+	start := net.ParseIP(startIP).To4()
+	end := net.ParseIP(endIP).To4()
+	if start == nil || end == nil {
+		return false
+	}
+
+	return bytes.Compare(start, end) < 0
 }

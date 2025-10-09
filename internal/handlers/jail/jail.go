@@ -180,7 +180,29 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = jailService.DeleteJail(uint(ctidInt), deleteMacs)
+		deleteRootFsStr := c.Query("deleterootfs")
+		if deleteRootFsStr == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "missing_deleterootfs_param",
+				Error:   "missing 'deleterootfs' query parameter",
+				Data:    nil,
+			})
+			return
+		}
+
+		deleteRootFs, err := strconv.ParseBool(deleteRootFsStr)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_deleterootfs_param",
+				Error:   "invalid 'deleterootfs' value: " + err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		err = jailService.DeleteJail(uint(ctidInt), deleteMacs, deleteRootFs)
 
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{

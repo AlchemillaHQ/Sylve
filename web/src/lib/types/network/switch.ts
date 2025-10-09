@@ -22,7 +22,7 @@ export const StandardSwitchSchema = z.object({
 	network6Obj: NetworkObjectSchema.nullable(),
 	gatewayAddressObj: NetworkObjectSchema.nullable(),
 	gateway6AddressObj: NetworkObjectSchema.nullable(),
-	ports: z.array(NetworkPortSchema).optional(),
+	ports: z.array(NetworkPortSchema).optional().nullable(),
 	dhcp: z.boolean().optional(),
 	slaac: z.boolean(),
 	disableIPv6: z.boolean(),

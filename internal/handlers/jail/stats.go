@@ -86,9 +86,7 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		start := c.Query("start") == "true"
-
-		logs, err := jailService.GetJailLogs(uint(idInt), start)
+		logs, err := jailService.GetJailLogs(uint(idInt))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

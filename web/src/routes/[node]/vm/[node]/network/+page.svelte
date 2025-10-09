@@ -16,7 +16,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
-	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -160,9 +159,17 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query = $state('');
 	let usable = $derived.by(() => {
-		return [...(switches.standard || []), ...(switches.manual || [])].filter((s) => {
-			return !vm?.networks.some((n) => n.switchId === s.id);
-		});
+		const used = new Set((vm?.networks ?? []).map((n) => `${n.switchType}-${n.switchId}`));
+		return [
+			...(switches.standard ?? []).map((s) => ({
+				...s,
+				uid: `standard-${s.id}`
+			})),
+			...(switches.manual ?? []).map((s) => ({
+				...s,
+				uid: `manual-${s.id}`
+			}))
+		].filter((s) => !used.has(s.uid));
 	});
 
 	let options = {

@@ -156,12 +156,12 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 	var existingNetwork vmModels.Network
 
 	if swType == "standard" {
-		if err := s.DB.First(&existingNetwork, "vm_id = ? AND switch_id = ?", vm.ID, stdSwitch.ID).Error; err == nil {
-			return fmt.Errorf("network_already_attached_to_vm: %s", existingNetwork.MAC)
+		if err := s.DB.First(&existingNetwork, "vm_id = ? AND switch_id = ? AND switch_type = ?", vm.ID, stdSwitch.ID, "standard").Error; err == nil {
+			return fmt.Errorf("std_network_already_attached_to_vm: %s", existingNetwork.MAC)
 		}
 	} else if swType == "manual" {
-		if err := s.DB.First(&existingNetwork, "vm_id = ? AND manual_switch_id = ?", vm.ID, manualSwitch.ID).Error; err == nil {
-			return fmt.Errorf("network_already_attached_to_vm: %s", existingNetwork.MAC)
+		if err := s.DB.First(&existingNetwork, "vm_id = ? AND switch_id = ? AND switch_type = ?", vm.ID, manualSwitch.ID, "manual").Error; err == nil {
+			return fmt.Errorf("man_network_already_attached_to_vm: %s", existingNetwork.MAC)
 		}
 	}
 

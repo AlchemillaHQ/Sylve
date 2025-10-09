@@ -186,7 +186,7 @@
 			data.hardware.ram = 0;
 		}
 
-		if (!isValidCreateData(data)) {
+		if (!(await isValidCreateData(data, filesystems))) {
 			return;
 		} else {
 			creating = true;
@@ -278,6 +278,7 @@
 								<Storage
 									{filesystems}
 									{downloads}
+									{jails}
 									bind:dataset={modal.storage.dataset}
 									bind:base={modal.storage.base}
 								/>

@@ -18,6 +18,20 @@
 		description,
 		logs
 	}: Props = $props();
+
+	let logsContainer: HTMLDivElement | null = null;
+
+	function scrollToBottom() {
+		if (logsContainer) {
+			logsContainer.scrollTop = logsContainer.scrollHeight;
+		}
+	}
+
+	$effect(() => {
+		if (logs && open) {
+			scrollToBottom();
+		}
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -31,12 +45,16 @@
 
 			{#if logs}
 				<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
-					<Card.Content
-						class="mt-3 max-h-64 w-full min-w-0 max-w-full overflow-x-auto overflow-y-auto p-0"
-					>
-						<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
+					<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+						<!-- Make THIS the scroll container so we can bind to a real DOM node -->
+						<div
+							class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+							bind:this={logsContainer}
+						>
+							<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
 {logs}
-            </pre>
+							</pre>
+						</div>
 					</Card.Content>
 				</Card.Root>
 			{:else}

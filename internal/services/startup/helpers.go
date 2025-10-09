@@ -148,7 +148,7 @@ func (s *Service) CheckServiceDependencies() error {
 			return fmt.Errorf("required service %s is not enabled in %s", key, rcConfPath)
 		}
 
-		if key == "zfs_enable" || key == "samba_server_enable" {
+		if key == "zfs_enable" || key == "samba_server_enable" || key == "dnsmasq_enable" {
 			continue
 		}
 

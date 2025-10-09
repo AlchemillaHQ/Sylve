@@ -11,6 +11,7 @@ package jail
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -65,4 +66,36 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 func (s *Service) ExtractBase(mountPoint, baseTxz string) (string, error) {
 	args := []string{"-C", mountPoint, "-xf", baseTxz}
 	return utils.RunCommand("tar", args...)
+}
+
+func (s *Service) DoesPathHaveBase(root string) (bool, error) {
+	if root == "" {
+		return false, fmt.Errorf("path_required")
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, fmt.Errorf("path_does_not_exist: %s", root)
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("not_a_directory: %s", root)
+	}
+
+	required := []string{
+		"bin/freebsd-version",
+		"bin/sh",
+		"libexec/ld-elf.so.1",
+		"lib/libc.so.7",
+		"etc/os-release",
+	}
+
+	for _, rel := range required {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }

@@ -145,6 +145,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface)
 		logger.L.Error().Msgf("error syncing standard switches: %v", err)
 	}
 
+	err = ensureServiceRunning("dnsmasq")
+	if err != nil {
+		logger.L.Error().Msgf("error ensuring dnsmasq is running: %v", err)
+	}
+
 	if err := s.Network.SyncEpairs(); err != nil {
 		return fmt.Errorf("error syncing epairs %v", err)
 	}

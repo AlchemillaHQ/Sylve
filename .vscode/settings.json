@@ -6,7 +6,6 @@
   "window.title": "${rootName}",
   "explorer.compactFolders": false,
   "workbench.startupEditor": "none",
-  "editor.codeActionsOnSave": { "source.sortImports": "explicit" },
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[svelte]": {

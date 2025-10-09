@@ -49,8 +49,16 @@ export async function getJails(): Promise<Jail[]> {
 	return await apiRequest('/jail', z.array(JailSchema), 'GET');
 }
 
-export async function deleteJail(ctId: number, deleteMacs: boolean): Promise<APIResponse> {
-	return await apiRequest(`/jail/${ctId}?deletemacs=${deleteMacs}`, APIResponseSchema, 'DELETE');
+export async function deleteJail(
+	ctId: number,
+	deleteMacs: boolean,
+	deleteRootFs: boolean
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/jail/${ctId}?deletemacs=${deleteMacs}&deleterootfs=${deleteRootFs}`,
+		APIResponseSchema,
+		'DELETE'
+	);
 }
 
 export async function getJailStates(): Promise<JailState[]> {

@@ -74,6 +74,11 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
 
+		&networkModels.DHCPConfig{},
+		&networkModels.DHCPRanges{},
+		// &networkModels.DHCPStaticMapping{},
+		// &networkModels.DHCPOption{},
+
 		&infoModels.CPU{},
 		&infoModels.RAM{},
 		&infoModels.Swap{},
@@ -120,6 +125,11 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	err = initClusterRecord(db)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error initializing cluster record: %v", err)
+	}
+
+	err = initDHCPConfig(db)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error initializing DHCP config: %v", err)
 	}
 
 	if !isTest {
@@ -214,6 +224,33 @@ func initClusterRecord(db *gorm.DB) error {
 
 	if err := db.Create(cluster).Error; err != nil {
 		logger.L.Error().Msgf("Failed to create initial data center record: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func initDHCPConfig(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&networkModels.DHCPConfig{}).Count(&count).Error; err != nil {
+		logger.L.Error().Msgf("Failed to query DHCP config count: %v", err)
+		return err
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	dhcpConfig := &networkModels.DHCPConfig{
+		StandardSwitches: []networkModels.StandardSwitch{},
+		ManualSwitches:   []networkModels.ManualSwitch{},
+		DNSServers:       []string{"1.1.1.1", "1.0.0.1", "8.8.8.8"},
+		Domain:           "lan",
+		ExpandHosts:      true,
+	}
+
+	if err := db.Create(dhcpConfig).Error; err != nil {
+		logger.L.Error().Msgf("Failed to create initial DHCP config record: %v", err)
 		return err
 	}
 

@@ -347,8 +347,6 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 			setV6Default := false
 
 			// Track if *any* NIC configured IPv6 (SLAAC or static)
-			sawAnyV6 := false
-
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {
 					continue
@@ -409,7 +407,6 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 				if n.SLAAC {
 					b.WriteString(fmt.Sprintf("\texec.start += \"ifconfig %s_%db inet6 accept_rtadv up\";\n", ctidHash, networkId))
 					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId))
-					sawAnyV6 = true
 				} else if n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0 {
 					ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
 					if err != nil {
@@ -426,13 +423,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 						setV6Default = true
 					}
 					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db_ipv6=\\\"inet6 %s\\\"\";\n", ctidHash, networkId, ipv6))
-					sawAnyV6 = true
 				}
-			}
-
-			// If no NIC configured IPv6 at all, disable IPv6 at the jail level.
-			if !sawAnyV6 {
-				b.WriteString("\tip6=disable;\n")
 			}
 
 			newCfg, err = s.AppendToConfig(ctId, cfg, b.String())

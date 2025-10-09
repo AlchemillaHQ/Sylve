@@ -1,8 +1,13 @@
 import type { CreateData } from '$lib/types/jail/jail';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
+import { doesPathHaveBase } from '$lib/api/system/file-explorer';
+import type { Dataset } from '$lib/types/zfs/dataset';
 
-export function isValidCreateData(modal: CreateData): boolean {
+export async function isValidCreateData(
+	modal: CreateData,
+	filesystems: Dataset[]
+): Promise<boolean> {
 	const toastConfig: Record<string, unknown> = {
 		duration: 3000,
 		position: 'bottom-center'
@@ -29,8 +34,17 @@ export function isValidCreateData(modal: CreateData): boolean {
 	}
 
 	if (modal.storage.base.length < 1) {
-		toast.error('No system base selected', toastConfig);
-		return false;
+		const fs = filesystems.find((f) => f.guid === modal.storage.dataset);
+		if (!fs) {
+			toast.error('Selected dataset not found', toastConfig);
+			return false;
+		}
+
+		const hasBase = await doesPathHaveBase(fs.mountpoint);
+		if (!hasBase) {
+			toast.error('No system base selected', toastConfig);
+			return false;
+		}
 	}
 
 	if (modal.network.switch == -1) {

@@ -144,27 +144,34 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 		return fmt.Errorf("failed_to_check_if_empty_mountpoint: %w", err)
 	}
 
-	if !emptyDir {
+	hasBase, err := s.DoesPathHaveBase(mountPoint)
+	if err != nil {
+		return fmt.Errorf("failed_to_check_if_mountpoint_has_base: %w", err)
+	}
+
+	if !emptyDir && !hasBase {
 		return fmt.Errorf("dataset_mountpoint_not_empty")
 	}
 
-	if data.Base == "" {
+	if data.Base == "" && !hasBase {
 		return fmt.Errorf("base_download_uuid_required")
 	}
 
-	dCount, err := sdb.Count(s.DB, &utilitiesModels.Downloads{}, "uuid = ?", data.Base)
-	if err != nil {
-		return fmt.Errorf("failed_to_count_downloads: %w", err)
-	}
+	if !hasBase {
+		dCount, err := sdb.Count(s.DB, &utilitiesModels.Downloads{}, "uuid = ?", data.Base)
+		if err != nil {
+			return fmt.Errorf("failed_to_count_downloads: %w", err)
+		}
 
-	if dCount == 0 {
-		return fmt.Errorf("iso_not_found")
-	}
+		if dCount == 0 {
+			return fmt.Errorf("base_download_not_found")
+		}
 
-	_, err = s.FindBaseByUUID(data.Base)
+		_, err = s.FindBaseByUUID(data.Base)
 
-	if err != nil {
-		return fmt.Errorf("failed_to_find_base_by_uuid: %w", err)
+		if err != nil {
+			return fmt.Errorf("failed_to_find_base_by_uuid: %w", err)
+		}
 	}
 
 	swAvailable := true
@@ -283,39 +290,49 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 		return "", fmt.Errorf("mount_point_not_found")
 	}
 
-	var config string
+	var cfg string
 	ctid := *data.CTID
 	ctidHash := utils.HashIntToNLetters(ctid, 5)
-	config += fmt.Sprintf("%s {\n", ctidHash)
-	config += fmt.Sprintf("\t$ctid = \"%s\";\n", ctidHash)
-	config += fmt.Sprintf("\tpath = \"%s\";\n", mountPoint)
-	config += fmt.Sprintf("\thost.hostname = \"%s\";\n", utils.MakeValidHostname(data.Name))
-	config += fmt.Sprintf("\tpersist;\n")
-	config += fmt.Sprintf("\texec.clean;\n\n")
+	cfg += fmt.Sprintf("%s {\n", ctidHash)
 
-	config += fmt.Sprintf("\tmount.devfs;\n")
-	config += fmt.Sprintf("\tdevfs_ruleset=\"8181\";\n\n")
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_jails_path: %w", err)
+	}
 
-	config += fmt.Sprintf("\tallow.sysvipc;\n")
-	config += fmt.Sprintf("\tallow.reserved_ports;\n")
-	config += fmt.Sprintf("\tallow.raw_sockets;\n")
-	config += fmt.Sprintf("\tallow.socket_af;\n\n")
+	logsPath := filepath.Join(jailsPath, fmt.Sprintf("%d", ctid), fmt.Sprintf("%d.log", ctid))
+
+	cfg += fmt.Sprintf("\texec.consolelog += \"%s\";\n\n", logsPath)
+	cfg += fmt.Sprintf("\t$ctid = \"%s\";\n", ctidHash)
+
+	cfg += fmt.Sprintf("\tpath = \"%s\";\n", mountPoint)
+	cfg += fmt.Sprintf("\thost.hostname = \"%s\";\n", utils.MakeValidHostname(data.Name))
+	cfg += fmt.Sprintf("\tpersist;\n")
+	cfg += fmt.Sprintf("\texec.clean;\n\n")
+
+	cfg += fmt.Sprintf("\tmount.devfs;\n")
+	cfg += fmt.Sprintf("\tdevfs_ruleset=\"8181\";\n\n")
+
+	cfg += fmt.Sprintf("\tallow.sysvipc;\n")
+	cfg += fmt.Sprintf("\tallow.reserved_ports;\n")
+	cfg += fmt.Sprintf("\tallow.raw_sockets;\n")
+	cfg += fmt.Sprintf("\tallow.socket_af;\n\n")
 
 	var jail jailModels.Jail
-	err := s.DB.Preload("Networks").First(&jail, "ct_id = ?", ctid).Error
+	err = s.DB.Preload("Networks").First(&jail, "ct_id = ?", ctid).Error
 	if err != nil {
 		return "", fmt.Errorf("failed to find jail with ct_id %d: %w", ctid, err)
 	}
 
-	config += fmt.Sprintf("\texec.start += \"/bin/sh /etc/rc\";\n")
+	cfg += fmt.Sprintf("\texec.start += \"/bin/sh /etc/rc\";\n")
 
 	if len(jail.Networks) == 1 {
 		network := jail.Networks[0]
 
 		if network.SwitchID > 0 {
 			networkId := fmt.Sprintf("%d", network.SwitchID)
-			config += fmt.Sprintf("\tvnet;\n")
-			config += fmt.Sprintf("\tvnet.interface = \"%s_%sb\";\n", ctidHash, networkId)
+			cfg += fmt.Sprintf("\tvnet;\n")
+			cfg += fmt.Sprintf("\tvnet.interface = \"%s_%sb\";\n", ctidHash, networkId)
 
 			err := s.NetworkService.SyncEpairs()
 			if err != nil {
@@ -333,8 +350,8 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 					return "", fmt.Errorf("failed to get previous mac: %w", err)
 				}
 
-				config += fmt.Sprintf("\texec.prestart += \"ifconfig %s_%sa ether %s up\";\n", ctidHash, networkId, prevMAC)
-				config += fmt.Sprintf("\texec.prestart += \"ifconfig %s_%sb ether %s up\";\n", ctidHash, networkId, mac)
+				cfg += fmt.Sprintf("\texec.prestart += \"ifconfig %s_%sa ether %s up\";\n", ctidHash, networkId, prevMAC)
+				cfg += fmt.Sprintf("\texec.prestart += \"ifconfig %s_%sb ether %s up\";\n", ctidHash, networkId, mac)
 
 				bridgeName, err := s.NetworkService.GetBridgeNameByIDType(network.SwitchID, network.SwitchType)
 
@@ -342,18 +359,18 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 					return "", fmt.Errorf("failed to get bridge name: %w", err)
 				}
 
-				config += fmt.Sprintf("\texec.prestart += \"if ! ifconfig %s | grep -qw %s_%sa; then ifconfig %s addm %s_%sa; fi\";\n", bridgeName, ctidHash, networkId, bridgeName, ctidHash, networkId)
+				cfg += fmt.Sprintf("\texec.prestart += \"if ! ifconfig %s | grep -qw %s_%sa; then ifconfig %s addm %s_%sa; fi\";\n", bridgeName, ctidHash, networkId, bridgeName, ctidHash, networkId)
 
 				if network.DHCP && network.SLAAC {
-					config += fmt.Sprintf("\texec.start += \"dhclient %s_%sb\";\n", ctidHash, networkId)
-					config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"DHCP\\\"\";\n", ctidHash, networkId)
-					config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"dhclient %s_%sb\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"DHCP\\\"\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId)
 				} else if network.DHCP {
-					config += fmt.Sprintf("\texec.start += \"dhclient %s_%sb\";\n", ctidHash, networkId)
-					config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"DHCP\\\"\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"dhclient %s_%sb\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"DHCP\\\"\";\n", ctidHash, networkId)
 				} else if network.SLAAC {
-					config += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet6 accept_rtadv up\";\n", ctidHash, networkId)
-					config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet6 accept_rtadv up\";\n", ctidHash, networkId)
+					cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId)
 				} else {
 					if network.IPv4ID != nil && *network.IPv4ID > 0 && network.IPv4GwID != nil && *network.IPv4GwID > 0 {
 						ipv4, err := s.NetworkService.GetObjectEntryByID(*network.IPv4ID)
@@ -371,9 +388,9 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 							return "", fmt.Errorf("failed to split ipv4 address and mask: %w", err)
 						}
 
-						config += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet %s netmask %s\";\n", ctidHash, networkId, ip, mask)
-						config += fmt.Sprintf("\texec.start += \"route add default %s\";\n", ipv4Gw)
-						config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"inet %s netmask %s\\\"\";\n", ctidHash, networkId, ip, mask)
+						cfg += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet %s netmask %s\";\n", ctidHash, networkId, ip, mask)
+						cfg += fmt.Sprintf("\texec.start += \"route add default %s\";\n", ipv4Gw)
+						cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb=\\\"inet %s netmask %s\\\"\";\n", ctidHash, networkId, ip, mask)
 					}
 
 					if network.IPv6ID != nil && *network.IPv6ID > 0 && network.IPv6GwID != nil && *network.IPv6GwID > 0 {
@@ -387,20 +404,20 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 							return "", fmt.Errorf("failed to get ipv6 gateway: %w", err)
 						}
 
-						config += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet6 %s\";\n", ctidHash, networkId, ipv6)
-						config += fmt.Sprintf("\texec.start += \"sysrc ipv6_defaultrouter=\\\"%s\\\"\";\n", ipv6Gw)
-						config += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 %s\\\"\";\n", ctidHash, networkId, ipv6)
+						cfg += fmt.Sprintf("\texec.start += \"ifconfig %s_%sb inet6 %s\";\n", ctidHash, networkId, ipv6)
+						cfg += fmt.Sprintf("\texec.start += \"sysrc ipv6_defaultrouter=\\\"%s\\\"\";\n", ipv6Gw)
+						cfg += fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%sb_ipv6=\\\"inet6 %s\\\"\";\n", ctidHash, networkId, ipv6)
 					}
 				}
 			}
 		}
 	} else {
 		if data.InheritIPv4 != nil && *data.InheritIPv4 {
-			config += fmt.Sprintf("\tip4=\"inherit\";\n")
+			cfg += fmt.Sprintf("\tip4=\"inherit\";\n")
 		}
 
 		if data.InheritIPv6 != nil && *data.InheritIPv6 {
-			config += fmt.Sprintf("\tip6=\"inherit\";\n")
+			cfg += fmt.Sprintf("\tip6=\"inherit\";\n")
 		}
 	}
 
@@ -454,24 +471,24 @@ func (s *Service) CreateJailConfig(data jailServiceInterfaces.CreateJailRequest,
 		}
 		if len(selectedCores) > 0 {
 			coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selectedCores), " ", ",", -1), "[]")
-			config += fmt.Sprintf("\texec.created += \"cpuset -l %s -j %s\";\n", coreListStr, ctidHash)
+			cfg += fmt.Sprintf("\texec.created += \"cpuset -l %s -j %s\";\n", coreListStr, ctidHash)
 		}
 	}
 
 	if memory > 0 {
 		memoryMB := memory / (1024 * 1024)
-		config += fmt.Sprintf("\texec.poststart += \"rctl -a jail:%s:memoryuse:deny=%dM\";\n", ctidHash, memoryMB)
+		cfg += fmt.Sprintf("\texec.poststart += \"rctl -a jail:%s:memoryuse:deny=%dM\";\n", ctidHash, memoryMB)
 	}
 
-	config += fmt.Sprintf("\texec.stop += \"/bin/sh /etc/rc.shutdown\";\n\n")
+	cfg += fmt.Sprintf("\texec.stop += \"/bin/sh /etc/rc.shutdown\";\n\n")
 
 	if cpuCores > 0 || memory > 0 {
-		config += fmt.Sprintf("\texec.poststop += \"rctl -r jail:%s\";\n", ctidHash)
+		cfg += fmt.Sprintf("\texec.poststop += \"rctl -r jail:%s\";\n", ctidHash)
 	}
 
-	config += fmt.Sprintf("}\n")
+	cfg += fmt.Sprintf("}\n")
 
-	return config, nil
+	return cfg, nil
 }
 
 func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) error {
@@ -646,28 +663,35 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) error
 		return fmt.Errorf("failed_to_get_dataset_mountpoint: %w", err)
 	}
 
-	baseTxz, err := s.FindBaseByUUID(data.Base)
+	hasBase, err := s.DoesPathHaveBase(mountPoint)
 	if err != nil {
-		return fmt.Errorf("failed_to_find_base: %w", err)
+		return fmt.Errorf("failed_to_check_path_for_base: %w", err)
 	}
 
-	isDir, _ := utils.IsDir(baseTxz)
-	if isDir {
-		if err := utils.CopyDirContents(baseTxz, mountPoint); err != nil {
-			return fmt.Errorf("failed_to_copy_base: %w", err)
+	if !hasBase {
+		baseTxz, err := s.FindBaseByUUID(data.Base)
+		if err != nil {
+			return fmt.Errorf("failed_to_find_base: %w", err)
 		}
-	} else {
-		if _, err = s.ExtractBase(mountPoint, baseTxz); err != nil {
-			return fmt.Errorf("failed_to_extract_base: %w", err)
+
+		isDir, _ := utils.IsDir(baseTxz)
+		if isDir {
+			if err := utils.CopyDirContents(baseTxz, mountPoint); err != nil {
+				return fmt.Errorf("failed_to_copy_base: %w", err)
+			}
+		} else {
+			if _, err = s.ExtractBase(mountPoint, baseTxz); err != nil {
+				return fmt.Errorf("failed_to_extract_base: %w", err)
+			}
 		}
-	}
 
-	if err := utils.CopyFile("/etc/resolv.conf", filepath.Join(mountPoint, "etc", "resolv.conf")); err != nil {
-		return fmt.Errorf("failed_to_copy_resolv_conf: %w", err)
-	}
+		if err := utils.CopyFile("/etc/resolv.conf", filepath.Join(mountPoint, "etc", "resolv.conf")); err != nil {
+			return fmt.Errorf("failed_to_copy_resolv_conf: %w", err)
+		}
 
-	if err := utils.CopyFile("/etc/localtime", filepath.Join(mountPoint, "etc", "localtime")); err != nil {
-		return fmt.Errorf("failed_to_copy_localtime: %w", err)
+		if err := utils.CopyFile("/etc/localtime", filepath.Join(mountPoint, "etc", "localtime")); err != nil {
+			return fmt.Errorf("failed_to_copy_localtime: %w", err)
+		}
 	}
 
 	jCfg, err := s.CreateJailConfig(data, mountPoint)
@@ -694,10 +718,17 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) error
 		return fmt.Errorf("failed_to_write_jail_config_file: %w", err)
 	}
 
+	logsPath := filepath.Join(jailDir, fmt.Sprintf("%d.log", *data.CTID))
+	logFile, err := os.Create(logsPath)
+	if err != nil {
+		return fmt.Errorf("failed_to_create_log_file: %w", err)
+	}
+	logFile.Close()
+
 	return nil
 }
 
-func (s *Service) DeleteJail(ctId uint, deleteMacs bool) error {
+func (s *Service) DeleteJail(ctId uint, deleteMacs bool, deleteRootFS bool) error {
 	if ctId == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
@@ -709,28 +740,6 @@ func (s *Service) DeleteJail(ctId uint, deleteMacs bool) error {
 		}
 		logger.L.Error().Err(err).Msg("delete_jail: failed to find jail")
 		return fmt.Errorf("failed_to_find_jail: %w", err)
-	}
-
-	var dataset *zfs.Dataset
-	datasets, err := zfs.Datasets("")
-	if err != nil {
-		return fmt.Errorf("failed_to_get_datasets: %w", err)
-	}
-
-	for _, d := range datasets {
-		if d.GUID == jail.Dataset {
-			dataset = d
-			break
-		}
-	}
-
-	if dataset == nil {
-		return fmt.Errorf("dataset_not_found")
-	}
-
-	dProps, err := dataset.GetAllProperties()
-	if err != nil {
-		return fmt.Errorf("failed_to_get_dataset_properties: %w", err)
 	}
 
 	if len(jail.Networks) > 0 {
@@ -756,45 +765,69 @@ func (s *Service) DeleteJail(ctId uint, deleteMacs bool) error {
 		return fmt.Errorf("failed_to_remove_jail_directory: %w", err)
 	}
 
-	fsDestroyed := false
-
-	if err := dataset.Destroy(zfs.DestroyRecursive); err != nil {
-		logger.L.Error().Err(err).Msg("delete_jail: failed to destroy dataset")
-	} else {
-		fsDestroyed = true
-	}
-
-	if fsDestroyed {
-		allowedProps := map[string]struct{}{
-			"atime":       {},
-			"checksum":    {},
-			"compression": {},
-			"dedup":       {},
-			"encryption":  {},
-			"aclinherit":  {},
-			"aclmode":     {},
-			"keylocation": {},
-			"quota":       {},
+	if deleteRootFS {
+		var dataset *zfs.Dataset
+		datasets, err := zfs.Datasets("")
+		if err != nil {
+			return fmt.Errorf("failed_to_get_datasets: %w", err)
 		}
 
-		props := make(map[string]string)
-		for k, v := range dProps {
-			if _, ok := allowedProps[strings.ToLower(k)]; ok {
-				if k == "quota" && v == "0" || v == "" || v == "-" {
-					continue
-				}
-
-				props[strings.ToLower(k)] = v
+		for _, d := range datasets {
+			if d.GUID == jail.Dataset {
+				dataset = d
+				break
 			}
 		}
 
-		newDataset, err := zfs.CreateFilesystem(dataset.Name, props)
-		if err != nil {
-			return fmt.Errorf("failed_to_create_new_dataset: %w", err)
+		if dataset == nil {
+			return fmt.Errorf("dataset_not_found")
 		}
 
-		if newDataset == nil {
-			return fmt.Errorf("new_dataset_is_nil")
+		dProps, err := dataset.GetAllProperties()
+		if err != nil {
+			return fmt.Errorf("failed_to_get_dataset_properties: %w", err)
+		}
+
+		fsDestroyed := false
+
+		if err := dataset.Destroy(zfs.DestroyRecursive); err != nil {
+			logger.L.Error().Err(err).Msg("delete_jail: failed to destroy dataset")
+		} else {
+			fsDestroyed = true
+		}
+
+		if fsDestroyed {
+			allowedProps := map[string]struct{}{
+				"atime":       {},
+				"checksum":    {},
+				"compression": {},
+				"dedup":       {},
+				"encryption":  {},
+				"aclinherit":  {},
+				"aclmode":     {},
+				"keylocation": {},
+				"quota":       {},
+			}
+
+			props := make(map[string]string)
+			for k, v := range dProps {
+				if _, ok := allowedProps[strings.ToLower(k)]; ok {
+					if k == "quota" && v == "0" || v == "" || v == "-" {
+						continue
+					}
+
+					props[strings.ToLower(k)] = v
+				}
+			}
+
+			newDataset, err := zfs.CreateFilesystem(dataset.Name, props)
+			if err != nil {
+				return fmt.Errorf("failed_to_create_new_dataset: %w", err)
+			}
+
+			if newDataset == nil {
+				return fmt.Errorf("new_dataset_is_nil")
+			}
 		}
 	}
 

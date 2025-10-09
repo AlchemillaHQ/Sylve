@@ -81,3 +81,50 @@ export async function copyOrMoveFilesOrFolders(
 		body
 	);
 }
+
+/*
+func (s *Service) DoesPathHaveBase(root string) (bool, error) {
+	if root == "" {
+		return false, fmt.Errorf("path_required")
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, fmt.Errorf("path_does_not_exist: %s", root)
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("not_a_directory: %s", root)
+	}
+
+	required := []string{
+		"bin/freebsd-version",
+		"bin/sh",
+		"libexec/ld-elf.so.1",
+		"lib/libc.so.7",
+		"etc/os-release",
+	}
+
+	for _, rel := range required {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+*/
+
+export async function doesPathHaveBase(path: string): Promise<boolean> {
+	const entries = await getFiles(path);
+	const required = [`${path}/bin`, `${path}/libexec`, `${path}/lib`, `${path}/etc`];
+
+	for (const entry of entries) {
+		if (entry.type === 'folder' && required.includes(entry.id)) {
+			return true;
+		}
+	}
+
+	return false;
+}

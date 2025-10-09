@@ -310,3 +310,76 @@ export function parseBoolean(value: string | boolean): boolean {
 	if (typeof value === 'boolean') return value;
 	return value.toLowerCase() === 'true';
 }
+
+export function isValidDHCPDomain(domain: string): boolean {
+	const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+	return domainRegex.test(domain);
+}
+
+function ipToNumber(ip: string): number {
+	return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0);
+}
+
+export function isValidDHCPRange(startIp: string, endIp: string): boolean {
+	if (!isValidIPv4(startIp) || !isValidIPv4(endIp)) {
+		return false;
+	}
+
+	const start = ipToNumber(startIp);
+	const end = ipToNumber(endIp);
+
+	if (start >= end) {
+		return false;
+	}
+
+	if ((start & 0xff) === 0 || (end & 0xff) === 255) {
+		return false;
+	}
+
+	return true;
+}
+
+export function secondsToDnsmasq(seconds: number, turnInfiniteToZero: boolean = false): string {
+	if (seconds === Infinity || seconds <= 0) {
+		if (turnInfiniteToZero) {
+			return '0';
+		}
+
+		return 'Infinite';
+	}
+
+	if (seconds % 86400 === 0) return `${seconds / 86400}d`;
+	if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+	if (seconds % 60 === 0) return `${seconds / 60}m`;
+
+	return `${seconds}`;
+}
+
+export function dnsmasqToSeconds(value: string): number {
+	if (value === '0') {
+		return 0;
+	}
+
+	const val = value.trim().toLowerCase();
+
+	if (val === 'infinite') return Infinity;
+
+	const match = val.match(/^(\d+)([smhd]?)$/);
+	if (!match) throw new Error(`Invalid dnsmasq time format: ${value}`);
+
+	const num = parseInt(match[1], 10);
+	const unit = match[2] || 's';
+
+	switch (unit) {
+		case 's':
+			return num;
+		case 'm':
+			return num * 60;
+		case 'h':
+			return num * 3600;
+		case 'd':
+			return num * 86400;
+		default:
+			throw new Error(`Unknown unit: ${unit}`);
+	}
+}

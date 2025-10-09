@@ -213,6 +213,14 @@ func RegisterRoutes(r *gin.Engine,
 		network.POST("/switch/standard", networkHandlers.CreateStandardSwitch(networkService))
 		network.DELETE("/switch/standard/:id", networkHandlers.DeleteStandardSwitch(networkService))
 		network.PUT("/switch/standard", networkHandlers.UpdateStandardSwitch(networkService))
+
+		network.GET("/dhcp/config", networkHandlers.GetDHCPConfig(networkService))
+		network.PUT("/dhcp/config", networkHandlers.ModifyDHCPConfig(networkService))
+
+		network.GET("/dhcp/range", networkHandlers.GetDHCPRanges(networkService))
+		network.POST("/dhcp/range", networkHandlers.CreateDHCPRange(networkService))
+		network.PUT("/dhcp/range/:id", networkHandlers.ModifyDHCPRange(networkService))
+		network.DELETE("/dhcp/range/:id", networkHandlers.DeleteDHCPRange(networkService))
 	}
 
 	system := api.Group("/system")

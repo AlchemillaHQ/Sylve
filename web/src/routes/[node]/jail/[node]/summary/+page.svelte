@@ -49,6 +49,7 @@
 	let modalState = $state({
 		isDeleteOpen: false,
 		deleteMacs: false,
+		deleteRootFS: false,
 		title: '',
 		loading: {
 			open: false,
@@ -203,7 +204,7 @@
 		modalState.loading.description = `Please wait while Jail <b>${jail.name} (${jail.ctId})</b> is being deleted`;
 		modalState.loading.open = false;
 
-		const result = await deleteJail(jail.ctId, modalState.deleteMacs);
+		const result = await deleteJail(jail.ctId, modalState.deleteMacs, modalState.deleteRootFS);
 		reload.leftPanel = true;
 		modalState.loading.open = false;
 
@@ -380,8 +381,8 @@
 			</div>
 
 			<div class="space-y-4 p-3">
-				<AreaChart title="CPU Usage" elements={[cpuHistoricalData]} />
-				<AreaChart title="Memory Usage" elements={[memoryHistoricalData]} />
+				<AreaChart title="CPU Usage" elements={[cpuHistoricalData]} percentage={true} />
+				<AreaChart title="Memory Usage" elements={[memoryHistoricalData]} percentage={true} />
 			</div>
 		</ScrollArea>
 	</div>
@@ -407,11 +408,18 @@
 			<AlertDialogRaw.Description>
 				{`This will permanently delete Jail`}
 				<span class="font-semibold">{jail?.name} ({jail?.ctId}).</span>
-				<CustomCheckbox
-					label="Delete MAC Object(s)"
-					bind:checked={modalState.deleteMacs}
-					classes="flex items-center gap-2 mt-4"
-				></CustomCheckbox>
+				<div class="flex flex-row gap-2">
+					<CustomCheckbox
+						label="Delete MAC Object(s)"
+						bind:checked={modalState.deleteMacs}
+						classes="flex items-center gap-2 mt-4"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="Delete Root Filesystem"
+						bind:checked={modalState.deleteRootFS}
+						classes="flex items-center gap-2 mt-4"
+					></CustomCheckbox>
+				</div>
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
 		<AlertDialogRaw.Footer>

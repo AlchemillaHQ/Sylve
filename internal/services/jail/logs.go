@@ -11,19 +11,28 @@ package jail
 import (
 	"fmt"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-func (s *Service) GetJailLogs(id uint, start bool) (string, error) {
+func (s *Service) GetJailLogs(id uint) (string, error) {
 	var jail jailModels.Jail
 
 	if err := s.DB.First(&jail, "id = ?", id).Error; err != nil {
 		return "", fmt.Errorf("failed to find jail with id %d: %w", id, err)
 	}
 
-	if start {
-		return jail.StartLogs, nil
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return "", fmt.Errorf("failed to get jails path: %w", err)
 	}
 
-	return jail.StopLogs, nil
+	logFilePath := fmt.Sprintf("%s/%d/%d.log", jailsPath, jail.CTID, jail.CTID)
+	logs, err := utils.ReadFile(logFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read jail logs: %w", err)
+	}
+
+	return string(logs), nil
 }

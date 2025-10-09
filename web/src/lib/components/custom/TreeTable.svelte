@@ -21,6 +21,7 @@
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
+		customPlaceholder?: string;
 	}
 
 	let {
@@ -28,7 +29,8 @@
 		name,
 		parentActiveRow = $bindable([]),
 		query = $bindable(),
-		multipleSelect = true
+		multipleSelect = true,
+		customPlaceholder = 'No data available'
 	}: Props = $props();
 
 	let tableInitialized = $state(false);
@@ -113,7 +115,7 @@
 					page: true,
 					filter: true
 				},
-				placeholder: 'No data available',
+				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
 				paginationSize: 25,
 				paginationCounter: 'pages'
