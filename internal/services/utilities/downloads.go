@@ -12,466 +12,417 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	valid "github.com/asaskevich/govalidator"
-	"github.com/cavaliergopher/grab/v3"
-	"github.com/cenkalti/rain/v2/torrent"
 )
 
-func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
-	var downloads []utilitiesModels.Downloads
+// ListISOs lists all available ISO files from the filesystem
+func (s *Service) ListISOs() ([]ISOFile, error) {
+	if s.ISOScanner == nil {
+		return nil, fmt.Errorf("ISO scanner not initialized")
+	}
+	return s.ISOScanner.ListISOs()
+}
 
-	if err := s.DB.Preload("Files").Find(&downloads).Error; err != nil {
-		logger.L.Error().Msgf("Failed to list downloads: %v", err)
+// ListDownloads maintains backward compatibility but now returns ISOs from filesystem
+func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
+	// For backward compatibility, convert ISO files to Downloads format
+	isoFiles, err := s.ListISOs()
+	if err != nil {
 		return nil, err
+	}
+
+	var downloads []utilitiesModels.Downloads
+	for _, iso := range isoFiles {
+		download := utilitiesModels.Downloads{
+			ID:        0,                                         // No database ID
+			UUID:      utils.GenerateDeterministicUUID(iso.Path), // Use path as UUID source
+			Path:      iso.Path,
+			Name:      iso.Name,
+			Type:      iso.Type,
+			URL:       iso.Source,
+			Progress:  100, // All files are complete
+			Size:      iso.Size,
+			Files:     []utilitiesModels.DownloadedFile{},
+			CreatedAt: iso.ModTime,
+			UpdatedAt: iso.ModTime,
+		}
+		downloads = append(downloads, download)
 	}
 
 	return downloads, nil
 }
 
-func (s *Service) GetDownload(uuid string) (*utilitiesModels.Downloads, error) {
-	var download utilitiesModels.Downloads
-	if err := s.DB.Preload("Files").Where("uuid = ?", uuid).First(&download).Error; err != nil {
-		logger.L.Error().Msgf("Failed to get download: %v", err)
+// GetDownload gets a specific download by filename (instead of UUID)
+func (s *Service) GetDownload(filename string) (*utilitiesModels.Downloads, error) {
+	// Try to find ISO by filename
+	isoFiles, err := s.ListISOs()
+	if err != nil {
 		return nil, err
 	}
 
-	return &download, nil
-}
-
-func (s *Service) GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error) {
-	var download utilitiesModels.Downloads
-
-	if err := s.DB.Preload("Files").Where("uuid = ?", uuid).First(&download).Error; err != nil {
-		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
-		return nil, nil, err
-	}
-
-	var file utilitiesModels.DownloadedFile
-
-	if download.Type == "torrent" {
-		for _, f := range download.Files {
-			if f.Name == name {
-				file = f
-				break
-			}
-		}
-	}
-
-	return &download, &file, nil
-}
-
-func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
-	dl, err := s.GetDownload(uuid)
-	if err != nil {
-		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
-		return "", err
-	}
-
-	if dl.Type == "torrent" {
-		var file utilitiesModels.DownloadedFile
-		if err := s.DB.Where("id = ?", id).First(&file).Error; err != nil {
-			logger.L.Error().Msgf("Failed to get file by ID: %v", err)
-			return "", err
-		}
-
-		var download utilitiesModels.Downloads
-		if err := s.DB.Where("id = ?", file.DownloadID).First(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to get download by ID: %v", err)
-			return "", err
-		}
-
-		fullPath := path.Join(download.Path, file.Name)
-
-		return fullPath, nil
-	} else if dl.Type == "http" {
-		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
-	}
-
-	return "", fmt.Errorf("unsupported_download_type")
-}
-
-func (s *Service) DownloadFile(url string, optFilename string) error {
-	var existing utilitiesModels.Downloads
-
-	if s.DB.Where("url = ?", url).First(&existing).RowsAffected > 0 {
-		logger.L.Info().Msgf("Download already exists: %s", url)
-		return nil
-	}
-
-	if utils.IsMagnetURI(url) {
-		torrentOpts := torrent.AddTorrentOptions{
-			ID:                utils.GenerateDeterministicUUID(url),
-			StopAfterDownload: false,
-		}
-
-		t, err := s.BTTClient.AddURI(url, &torrentOpts)
-
-		if err != nil {
-			logger.L.Error().Msgf("Failed to add torrent: %v", err)
-			return err
-		}
-
-		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     t.ID(),
-			Path:     t.Dir(),
-			Type:     "torrent",
-			Name:     t.Name(),
-			Size:     0,
-			Progress: 0,
-			Files:    []utilitiesModels.DownloadedFile{},
-		}
-
-		if err := s.DB.Create(&download).Error; err != nil {
-			logger.L.Error().Msgf("Failed to create download record: %v", err)
-			return err
-		}
-
-		return nil
-	} else if valid.IsURL(url) {
-		uuid := utils.GenerateDeterministicUUID(url)
-		destDir := config.GetDownloadsPath("http")
-
-		var filename string
-
-		if optFilename != "" {
-			err := utils.IsValidFilename(optFilename)
-			if err != nil {
-				return fmt.Errorf("invalid_filename: %w", err)
-			}
-
-			filename = optFilename
-		} else {
-			filename = path.Base(url)
-
-			if idx := strings.Index(filename, "?"); idx != -1 {
-				filename = filename[:idx]
-			}
-
-			filename = strings.ReplaceAll(filename, " ", "_")
-			if filename == "" {
-				return fmt.Errorf("invalid_filename")
-			}
-		}
-
-		filePath := path.Join(destDir, filename)
-		if _, err := os.Stat(filePath); err == nil {
-			var found utilitiesModels.Downloads
-			if s.DB.Where("path = ? AND name = ?", filePath, filename).First(&found).RowsAffected > 0 {
-				return nil
-			}
-
-			size := int64(0)
-			info, err := os.Stat(filePath)
-			if err == nil {
-				size = info.Size()
-			}
-
+	for _, iso := range isoFiles {
+		if iso.Name == filename {
 			download := utilitiesModels.Downloads{
-				URL:      url,
-				UUID:     uuid,
-				Path:     filePath,
-				Type:     "http",
-				Name:     filename,
-				Size:     size,
-				Progress: 100,
-				Files:    []utilitiesModels.DownloadedFile{},
+				ID:        0,
+				UUID:      utils.GenerateDeterministicUUID(iso.Path),
+				Path:      iso.Path,
+				Name:      iso.Name,
+				Type:      iso.Type,
+				URL:       iso.Source,
+				Progress:  100,
+				Size:      iso.Size,
+				Files:     []utilitiesModels.DownloadedFile{},
+				CreatedAt: iso.ModTime,
+				UpdatedAt: iso.ModTime,
 			}
-
-			if err := s.DB.Create(&download).Error; err != nil {
-				return fmt.Errorf("failed_to_create_download_record: %w", err)
-			}
-
-			return nil
+			return &download, nil
 		}
+	}
 
-		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     uuid,
-			Path:     filePath,
-			Type:     "http",
-			Name:     filename,
-			Size:     0,
-			Progress: 0,
-			Files:    []utilitiesModels.DownloadedFile{},
-		}
+	return nil, fmt.Errorf("download_not_found: %s", filename)
+}
 
-		if err := s.DB.Create(&download).Error; err != nil {
-			fmt.Printf("Failed to create download record: %+v\n", err)
-			return err
-		}
+// GetMagnetDownloadAndFile gets magnet download and file (deprecated functionality)
+func (s *Service) GetMagnetDownloadAndFile(filename, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error) {
+	// This functionality is deprecated in the new stateless approach
+	return nil, nil, fmt.Errorf("magnet_downloads_deprecated")
+}
 
-		req, _ := grab.NewRequest(path.Join(destDir, filename), url)
-		resp := s.GrabClient.Do(req)
-		s.httpRspMu.Lock()
-		s.httpResponses[uuid] = resp
-		s.httpRspMu.Unlock()
-
-		return nil
-	} else if utils.IsAbsPath(url) {
-		if _, err := os.Stat(url); os.IsNotExist(err) {
-			return fmt.Errorf("file_not_found")
-		}
-
-		var filename string
-
-		if optFilename != "" {
-			err := utils.IsValidFilename(optFilename)
-			if err != nil {
-				return fmt.Errorf("invalid_filename: %w", err)
-			}
-
-			filename = optFilename
-		} else {
-			filename = path.Base(url)
-			if filename == "" {
-				return fmt.Errorf("invalid_filename")
-			}
-		}
-
-		destDir := config.GetDownloadsPath("http")
-		destPath := path.Join(destDir, filename)
-
-		err := utils.CopyFile(url, destPath)
+// GetFilePathById gets file path by filename (instead of ID)
+func (s *Service) GetFilePathById(filename string, id int) (string, error) {
+	// In the new approach, we use filename directly
+	iso, err := s.ISOScanner.FindISOByName(filename)
+	if err != nil {
+		// Try to find by path if it's a full path
+		iso, err = s.ISOScanner.FindISOByPath(filename)
 		if err != nil {
-			return fmt.Errorf("file_copy_failed: %w", err)
+			return "", fmt.Errorf("iso_not_found: %s", filename)
 		}
+	}
+	return iso.Path, nil
+}
 
-		info, err := os.Stat(destPath)
-		if err != nil {
-			return fmt.Errorf("file_stat_failed: %w", err)
-		}
+// DownloadFile downloads a file using libaria2
+func (s *Service) DownloadFile(url string, optFilename string, downloadType string) error {
+	if s.Aria2Client == nil {
+		return fmt.Errorf("aria2 client not initialized")
+	}
 
-		size := info.Size()
-		logger.L.Info().Msgf("Copied file %s to %s (%d bytes)", url, destPath, size)
+	// Check if it's a magnet URI
+	if utils.IsMagnetURI(url) {
+		return s.downloadTorrent(url, optFilename, downloadType)
+	}
 
-		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     utils.GenerateDeterministicUUID(url),
-			Path:     destPath,
-			Type:     "http",
-			Name:     filename,
-			Size:     size,
-			Progress: 100,
-			Files:    []utilitiesModels.DownloadedFile{},
-		}
+	// Check if it's a valid URL
+	if valid.IsURL(url) {
+		return s.downloadHTTP(url, optFilename, downloadType)
+	}
 
-		if err := s.DB.Create(&download).Error; err != nil {
-			return fmt.Errorf("failed_to_create_download_record: %w", err)
-		}
-
-		return nil
+	// Check if it's a local file path
+	if utils.IsAbsPath(url) {
+		return s.copyLocalFile(url, optFilename, downloadType)
 	}
 
 	return fmt.Errorf("invalid_url")
 }
 
+// downloadHTTP downloads a file via HTTP using libaria2
+func (s *Service) downloadHTTP(url, optFilename, downloadType string) error {
+	var filename string
+	if optFilename != "" {
+		if err := utils.IsValidFilename(optFilename); err != nil {
+			return fmt.Errorf("invalid_filename: %w", err)
+		}
+		filename = optFilename
+	} else {
+		filename = path.Base(url)
+		if idx := strings.Index(filename, "?"); idx != -1 {
+			filename = filename[:idx]
+		}
+		filename = strings.ReplaceAll(filename, " ", "_")
+		if filename == "" {
+			return fmt.Errorf("invalid_filename")
+		}
+	}
+
+	// Determine download directory based on type
+	var downloadDir string
+	switch downloadType {
+	case "isos":
+		downloadDir = config.GetDownloadsPath("isos")
+	case "jail_templates":
+		downloadDir = config.GetDownloadsPath("jail_templates")
+	case "vm_templates":
+		downloadDir = config.GetDownloadsPath("vm_templates")
+	default:
+		// Default to ISOs for backward compatibility
+		downloadDir = config.GetDownloadsPath("isos")
+		downloadType = "isos"
+	}
+
+	// Check if file already exists
+	filePath := path.Join(downloadDir, filename)
+	if _, err := os.Stat(filePath); err == nil {
+		logger.L.Info().Msgf("File already exists: %s", filePath)
+		return nil
+	}
+
+	// Start download with libaria2
+	gid, err := s.Aria2Client.DownloadFile(url, filename, downloadType)
+	if err != nil {
+		return fmt.Errorf("failed_to_start_download: %w", err)
+	}
+
+	logger.L.Info().Msgf("Started HTTP download %s with GID: %s", url, gid)
+	return nil
+}
+
+// downloadTorrent downloads a torrent/magnet using libaria2
+func (s *Service) downloadTorrent(url, optFilename, downloadType string) error {
+	// For torrents, filename might be determined by the torrent content
+	filename := optFilename
+	if filename == "" {
+		filename = "downloaded_file"
+	}
+
+	// Start torrent download with libaria2
+	gid, err := s.Aria2Client.DownloadFile(url, filename, downloadType)
+	if err != nil {
+		return fmt.Errorf("failed_to_start_torrent_download: %w", err)
+	}
+
+	logger.L.Info().Msgf("Started torrent download %s with GID: %s", url, gid)
+	return nil
+}
+
+// copyLocalFile copies a local file to the downloads directory
+func (s *Service) copyLocalFile(url, optFilename, downloadType string) error {
+	if _, err := os.Stat(url); os.IsNotExist(err) {
+		return fmt.Errorf("file_not_found")
+	}
+
+	var filename string
+	if optFilename != "" {
+		if err := utils.IsValidFilename(optFilename); err != nil {
+			return fmt.Errorf("invalid_filename: %w", err)
+		}
+		filename = optFilename
+	} else {
+		filename = path.Base(url)
+		if filename == "" {
+			return fmt.Errorf("invalid_filename")
+		}
+	}
+
+	// Determine download directory based on type
+	var downloadDir string
+	switch downloadType {
+	case "isos":
+		downloadDir = config.GetDownloadsPath("isos")
+	case "jail_templates":
+		downloadDir = config.GetDownloadsPath("jail_templates")
+	case "vm_templates":
+		downloadDir = config.GetDownloadsPath("vm_templates")
+	default:
+		// Default to ISOs for backward compatibility
+		downloadDir = config.GetDownloadsPath("isos")
+	}
+
+	destPath := path.Join(downloadDir, filename)
+
+	// Check if file already exists
+	if _, err := os.Stat(destPath); err == nil {
+		logger.L.Info().Msgf("File already exists: %s", destPath)
+		return nil
+	}
+
+	err := utils.CopyFile(url, destPath)
+	if err != nil {
+		return fmt.Errorf("file_copy_failed: %w", err)
+	}
+
+	info, err := os.Stat(destPath)
+	if err != nil {
+		return fmt.Errorf("file_stat_failed: %w", err)
+	}
+
+	size := info.Size()
+	logger.L.Info().Msgf("Copied file %s to %s (%d bytes)", url, destPath, size)
+	return nil
+}
+
+// SyncDownloadProgress syncs download progress from libaria2
 func (s *Service) SyncDownloadProgress() error {
-	var downloads []utilitiesModels.Downloads
-	if err := s.DB.Where("progress < 100").Find(&downloads).Error; err != nil {
-		return err
+	if s.Aria2Client == nil {
+		return fmt.Errorf("aria2 client not initialized")
+	}
+
+	// Get all downloads from libaria2
+	downloads, err := s.Aria2Client.GetAllDownloads()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_downloads: %w", err)
 	}
 
 	for _, download := range downloads {
-		if download.Type == "torrent" {
-			torrent := s.BTTClient.GetTorrent(download.UUID)
-			if torrent == nil {
-				logger.L.Error().Msgf("Torrent %s not found", download.UUID)
-				continue
-			}
-
-			piecesHave := torrent.Stats().Pieces.Have
-			piecesTotal := torrent.Stats().Pieces.Total
-
-			if piecesHave == 0 {
-				download.Progress = 0
-			} else {
-				download.Progress = int((piecesHave * 100) / piecesTotal)
-			}
-
-			download.Size = torrent.Stats().Bytes.Total
-			download.Name = torrent.Stats().Name
-
-			files, err := torrent.Files()
-
-			if err != nil {
-				continue
-			}
-
-			fileList := make([]string, len(files))
-			for i, file := range files {
-				fileList[i] = file.Path()
-				downloadedFile := utilitiesModels.DownloadedFile{
-					DownloadID: download.ID,
-					Download:   download,
-					Name:       file.Path(),
-					Size:       file.Length(),
-				}
-
-				var existingFile utilitiesModels.DownloadedFile
-				if s.DB.Where("download_id = ? AND name = ?", download.ID, file.Path()).First(&existingFile).RowsAffected > 0 {
-					continue
-				}
-
-				if err := s.DB.Create(&downloadedFile).Error; err != nil {
-					logger.L.Error().Msgf("Failed to create downloaded file record: %v", err)
-					continue
-				}
-
-				download.Files = append(download.Files, downloadedFile)
-			}
-
-			if err := s.DB.Save(&download).Error; err != nil {
-				logger.L.Error().Msgf("Failed to update download record: %v", err)
-				return err
-			}
-		} else if download.Type == "http" {
-			s.httpRspMu.Lock()
-			resp, ok := s.httpResponses[download.UUID]
-			s.httpRspMu.Unlock()
-			if !ok {
-				logger.L.Debug().Msgf("No active HTTP download for %s", download.UUID)
-				continue
-			}
-
-			download.Progress = int(100 * resp.Progress())
-			if info, err := os.Stat(resp.Filename); err == nil {
-				download.Size = info.Size()
-			}
-
-			if resp.IsComplete() {
-				if err := resp.Err(); err != nil {
-					logger.L.Error().Msgf("HTTP download %s failed: %v", download.UUID, err)
-				}
-				s.httpRspMu.Lock()
-				delete(s.httpResponses, download.UUID)
-				s.httpRspMu.Unlock()
-
-				download.Progress = 99
-
-				if strings.HasSuffix(download.Name, ".txz") {
-					extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-					if _, err := os.Stat(extractsPath); err == nil {
-						if err := os.RemoveAll(extractsPath); err != nil {
-							logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
-						}
-					}
-
-					if err := os.MkdirAll(extractsPath, 0755); err != nil {
-						logger.L.Error().Msgf("Failed to create extracts folder: %v", err)
-					}
-
-					output, err := utils.RunCommand("tar", "-xf", resp.Filename, "-C", extractsPath)
-					if err != nil {
-						logger.L.Error().Msgf("Failed to extract tar file: %v", err)
-					} else {
-						logger.L.Info().Msgf("Extracted tar file to %s: %s", extractsPath, output)
-					}
-				}
-
-				download.Progress = 100
-			}
-
-			if err := s.DB.Save(&download).Error; err != nil {
-				logger.L.Error().Msgf("Failed to update HTTP download record: %v", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) DeleteDownload(id int) error {
-	var download utilitiesModels.Downloads
-	if err := s.DB.Where("id = ?", id).First(&download).Error; err != nil {
-		logger.L.Debug().Msgf("Failed to find download: %v", err)
-		return err
-	}
-
-	if download.Type == "torrent" {
-		torrent := s.BTTClient.GetTorrent(download.UUID)
-		if torrent != nil {
-			if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
-				logger.L.Debug().Msgf("Failed to remove torrent: %v", err)
-				return err
-			}
-		}
-	}
-
-	if download.Type == "http" {
-		if strings.HasSuffix(download.Name, ".txz") {
-			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			_, err := utils.RunCommand("chflags", "-R", "noschg", extractsPath)
-
-			if err != nil {
-				logger.L.Error().Msgf("Failed to change flags for extracts folder: %v", err)
-			}
-
-			if _, err := os.Stat(extractsPath); err == nil {
-				if err := os.RemoveAll(extractsPath); err != nil {
-					logger.L.Error().Msgf("Failed to remove extracts folder: %v", err)
-				}
-			}
-		}
-
-		err := utils.DeleteFile(path.Join(config.GetDownloadsPath(download.Type), download.Name))
+		progress, err := s.Aria2Client.GetProgress(download.GID)
 		if err != nil {
-			logger.L.Debug().Msgf("Failed to delete HTTP download file: %v", err)
-			return err
+			logger.L.Warn().Msgf("Failed to get progress for %s: %v", download.GID, err)
+			continue
 		}
-	}
 
-	for _, file := range download.Files {
-		if err := s.DB.Delete(&file).Error; err != nil {
-			logger.L.Debug().Msgf("Failed to delete downloaded file: %v", err)
-			return err
+		logger.L.Debug().Msgf("Download %s (%s): %d%%", download.GID, download.Status, progress)
+
+		// Log completed downloads
+		if download.Status == "complete" {
+			logger.L.Info().Msgf("Download completed: %s", download.GID)
+			for _, file := range download.Files {
+				logger.L.Info().Msgf("Downloaded file: %s", file.Path)
+			}
 		}
-	}
-
-	if err := s.DB.Delete(&download).Error; err != nil {
-		logger.L.Debug().Msgf("Failed to delete download: %v", err)
-		return err
 	}
 
 	return nil
 }
 
-func (s *Service) BulkDeleteDownload(ids []int) error {
-	var downloads []utilitiesModels.Downloads
-	if err := s.DB.Where("id IN ?", ids).Find(&downloads).Error; err != nil {
-		return err
+// DeleteDownload deletes a download by filename
+func (s *Service) DeleteDownload(filename string) error {
+	// Try to find and delete the ISO file
+	iso, err := s.ISOScanner.FindISOByName(filename)
+	if err != nil {
+		return fmt.Errorf("download_not_found: %s", filename)
 	}
 
-	for _, download := range downloads {
-		if download.Type == "torrent" {
-			torrent := s.BTTClient.GetTorrent(download.UUID)
-			if torrent != nil {
-				if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
-					logger.L.Debug().Msgf("Failed to remove torrent: %v", err)
-					return err
-				}
-			}
-		}
+	return s.deleteISOFile(iso.Path)
+}
 
-		for _, file := range download.Files {
-			if err := s.DB.Delete(&file).Error; err != nil {
-				logger.L.Debug().Msgf("Failed to delete downloaded file: %v", err)
-				return err
-			}
+// BulkDeleteDownload deletes multiple downloads by filenames
+func (s *Service) BulkDeleteDownload(filenames []string) error {
+	for _, filename := range filenames {
+		if err := s.DeleteDownload(filename); err != nil {
+			logger.L.Warn().Msgf("Failed to delete download %s: %v", filename, err)
 		}
+	}
 
-		if err := s.DB.Delete(&download).Error; err != nil {
-			logger.L.Debug().Msgf("Failed to delete download: %v", err)
-			return err
+	return nil
+}
+
+// deleteISOFile deletes an ISO file from the filesystem
+func (s *Service) deleteISOFile(filePath string) error {
+	if err := os.Remove(filePath); err != nil {
+		return fmt.Errorf("failed_to_delete_file: %w", err)
+	}
+
+	logger.L.Info().Msgf("Deleted ISO file: %s", filePath)
+	return nil
+}
+
+// FindISOByName finds an ISO by name (new method)
+func (s *Service) FindISOByName(name string) (*utilitiesServiceInterfaces.ISOFile, error) {
+	if s.ISOScanner == nil {
+		return nil, fmt.Errorf("ISO scanner not initialized")
+	}
+	localISO, err := s.ISOScanner.FindISOByName(name)
+	if err != nil {
+		return nil, err
+	}
+	// Convert from local ISOFile to interface ISOFile
+	return &utilitiesServiceInterfaces.ISOFile{
+		Name:    localISO.Name,
+		Path:    localISO.Path,
+		Size:    localISO.Size,
+		ModTime: localISO.ModTime,
+		Type:    localISO.Type,
+		Source:  localISO.Source,
+	}, nil
+}
+
+// FindISOByPath finds an ISO by path (new method)
+func (s *Service) FindISOByPath(path string) (*utilitiesServiceInterfaces.ISOFile, error) {
+	if s.ISOScanner == nil {
+		return nil, fmt.Errorf("ISO scanner not initialized")
+	}
+	localISO, err := s.ISOScanner.FindISOByPath(path)
+	if err != nil {
+		return nil, err
+	}
+	// Convert from local ISOFile to interface ISOFile
+	return &utilitiesServiceInterfaces.ISOFile{
+		Name:    localISO.Name,
+		Path:    localISO.Path,
+		Size:    localISO.Size,
+		ModTime: localISO.ModTime,
+		Type:    localISO.Type,
+		Source:  localISO.Source,
+	}, nil
+}
+
+// GetDownloadProgress gets download progress for a specific GID
+func (s *Service) GetDownloadProgress(gid string) (int, error) {
+	if s.Aria2Client == nil {
+		return 0, fmt.Errorf("aria2 client not initialized")
+	}
+	return s.Aria2Client.GetProgress(gid)
+}
+
+// PauseDownload pauses a download
+func (s *Service) PauseDownload(gid string) error {
+	if s.Aria2Client == nil {
+		return fmt.Errorf("aria2 client not initialized")
+	}
+	return s.Aria2Client.PauseDownload(gid)
+}
+
+// ResumeDownload resumes a download
+func (s *Service) ResumeDownload(gid string) error {
+	if s.Aria2Client == nil {
+		return fmt.Errorf("aria2 client not initialized")
+	}
+	return s.Aria2Client.ResumeDownload(gid)
+}
+
+// CancelDownload cancels a download
+func (s *Service) CancelDownload(gid string) error {
+	if s.Aria2Client == nil {
+		return fmt.Errorf("aria2 client not initialized")
+	}
+	return s.Aria2Client.RemoveDownload(gid)
+}
+
+// GetFilePathByFilename gets file path by filename (new method)
+func (s *Service) GetFilePathByFilename(filename string) (string, error) {
+	iso, err := s.ISOScanner.FindISOByName(filename)
+	if err != nil {
+		return "", fmt.Errorf("iso_not_found: %s", filename)
+	}
+	return iso.Path, nil
+}
+
+// Close cleans up resources
+func (s *Service) Close() error {
+	var errs []string
+
+	if s.ISOScanner != nil {
+		if err := s.ISOScanner.Close(); err != nil {
+			errs = append(errs, fmt.Sprintf("ISO scanner: %v", err))
 		}
+	}
+
+	if s.Aria2Client != nil {
+		if err := s.Aria2Client.Close(); err != nil {
+			errs = append(errs, fmt.Sprintf("aria2 client: %v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("cleanup errors: %s", strings.Join(errs, "; "))
 	}
 
 	return nil

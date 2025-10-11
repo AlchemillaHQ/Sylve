@@ -15,7 +15,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
-	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -83,7 +82,7 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 	return list, nil
 }
 
-func validateCreate(data libvirtServiceInterfaces.CreateVMRequest, db *gorm.DB) error {
+func validateCreate(data libvirtServiceInterfaces.CreateVMRequest, db *gorm.DB, s *Service) error {
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -373,13 +372,9 @@ func validateCreate(data libvirtServiceInterfaces.CreateVMRequest, db *gorm.DB) 
 	}
 
 	if data.ISO != "" && strings.ToLower(data.ISO) != "none" {
-		count, err := sdb.Count(db, &utilitiesModels.Downloads{}, "uuid = ?", data.ISO)
-
+		// Use filesystem-based validation instead of database lookup
+		_, err := s.FindISOByUUID(data.ISO, false)
 		if err != nil {
-			return fmt.Errorf("failed_to_check_iso_usage: %w", err)
-		}
-
-		if count == 0 {
 			return fmt.Errorf("iso_not_found: %s", data.ISO)
 		}
 	}
@@ -392,7 +387,7 @@ func validateCreate(data libvirtServiceInterfaces.CreateVMRequest, db *gorm.DB) 
 }
 
 func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error {
-	if err := validateCreate(data, s.DB); err != nil {
+	if err := validateCreate(data, s.DB, s); err != nil {
 		logger.L.Debug().Err(err).Msg("create_vm: validation failed")
 		return err
 	}

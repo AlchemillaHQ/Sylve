@@ -9,44 +9,36 @@
 package utilities
 
 import (
-	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 
-	"github.com/cavaliergopher/grab/v3"
-	"github.com/cenkalti/rain/v2/torrent"
 	"gorm.io/gorm"
-
-	"sync"
 )
 
 var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB         *gorm.DB
-	BTTClient  *torrent.Session
-	GrabClient *grab.Client
-
-	httpRspMu     sync.Mutex
-	httpResponses map[string]*grab.Response
+	DB          *gorm.DB
+	Aria2Client *Aria2Client
+	ISOScanner  *ISOScanner
 }
 
 func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServiceInterface {
-	torrent.DisableLogging()
-	cfg := torrent.DefaultConfig
-	cfg.Database = config.GetDownloadsPath("torrent.db")
-	cfg.DataDir = config.GetDownloadsPath("torrents")
-
-	session, err := torrent.NewSession(cfg)
-
+	// Initialize ISO scanner
+	isoScanner, err := NewISOScanner()
 	if err != nil {
-		logger.L.Fatal().Msgf("Failed to create torrent downloader %v", err)
+		logger.L.Warn().Msgf("Failed to create ISO scanner: %v", err)
+	}
+
+	// Initialize aria2 client
+	aria2Client, err := NewAria2Client()
+	if err != nil {
+		logger.L.Warn().Msgf("Failed to create aria2 client: %v", err)
 	}
 
 	return &Service{
-		DB:            db,
-		BTTClient:     session,
-		GrabClient:    grab.NewClient(),
-		httpResponses: make(map[string]*grab.Response),
+		DB:          db,
+		Aria2Client: aria2Client,
+		ISOScanner:  isoScanner,
 	}
 }

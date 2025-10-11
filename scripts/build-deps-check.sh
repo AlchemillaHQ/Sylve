@@ -22,6 +22,7 @@ check_command npm "npm -v" "pkg install npm-node20"
 check_command go "go version" "pkg install go"
 check_command tmux "tmux -V" "pkg install tmux"
 check_command virsh "virsh --version" "pkg install libvirt"
+check_command aria2c "aria2c --version | head -n1" "pkg install aria2"
 
 echo "=== Dependency check completed ==="
 echo

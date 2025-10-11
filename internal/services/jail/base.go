@@ -24,11 +24,38 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 		return "", fmt.Errorf("base_download_uuid_required")
 	}
 
+	// First try the new approach: look for the file directly in jail_templates directory
+	jailTemplatesDir := config.GetDownloadsPath("jail_templates")
+
+	// Try to find the file by UUID (which might be a filename in the new system)
+	entries, err := os.ReadDir(jailTemplatesDir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+
+			// Check if the filename matches the UUID or if the UUID is derived from the path
+			if entry.Name() == uuid || strings.Contains(entry.Name(), uuid) {
+				bPath := filepath.Join(jailTemplatesDir, entry.Name())
+				if _, err := os.Stat(bPath); err == nil {
+					return bPath, nil
+				}
+			}
+		}
+	}
+
+	// Fallback to the old database approach for backward compatibility
 	var download utilitiesModels.Downloads
 	if err := s.DB.
 		Preload("Files").
 		Where("uuid = ?", uuid).
 		First(&download).Error; err != nil {
+		// If database lookup fails, try to find by treating uuid as filename
+		bPath := filepath.Join(jailTemplatesDir, uuid)
+		if _, err := os.Stat(bPath); err == nil {
+			return bPath, nil
+		}
 		return "", fmt.Errorf("failed_to_find_download: %w", err)
 	}
 
@@ -36,20 +63,33 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 
 	switch download.Type {
 	case "http":
-		downloadsDir := config.GetDownloadsPath("http")
-		extractsDir := config.GetDownloadsPath("extracted")
-		bPath = fmt.Sprintf("%s/%s", downloadsDir, download.Name)
+		// Try new path first
+		bPath = filepath.Join(jailTemplatesDir, download.Name)
+		if _, err := os.Stat(bPath); os.IsNotExist(err) {
+			// Fallback to old path
+			downloadsDir := config.GetDownloadsPath("http")
+			extractsDir := config.GetDownloadsPath("extracted")
+			bPath = filepath.Join(downloadsDir, download.Name)
 
-		if strings.HasSuffix(bPath, ".txz") {
-			bPath = fmt.Sprintf("%s/%s", extractsDir, download.UUID)
-		}
-	case "torrent":
-		torrentsDir := config.GetDownloadsPath("torrents")
-		for _, file := range download.Files {
-			if strings.HasSuffix(file.Name, ".txz") {
-				bPath = fmt.Sprintf("%s/%s/%s", torrentsDir, uuid, file.Name)
+			if strings.HasSuffix(bPath, ".txz") {
+				bPath = filepath.Join(extractsDir, download.UUID)
 			}
 		}
+	case "torrent":
+		// Try new path first
+		bPath = filepath.Join(jailTemplatesDir, download.Name)
+		if _, err := os.Stat(bPath); os.IsNotExist(err) {
+			// Fallback to old path
+			torrentsDir := config.GetDownloadsPath("torrents")
+			for _, file := range download.Files {
+				if strings.HasSuffix(file.Name, ".txz") {
+					bPath = filepath.Join(torrentsDir, uuid, file.Name)
+				}
+			}
+		}
+	case "jail_templates":
+		// New download type
+		bPath = filepath.Join(jailTemplatesDir, download.Name)
 	}
 
 	if bPath == "" {

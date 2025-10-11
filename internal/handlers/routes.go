@@ -322,8 +322,8 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		utilities.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
-		utilities.GET("/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
-		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
+		utilities.GET("/downloads/:filename", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+		utilities.DELETE("/downloads/:filename", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
 	}
