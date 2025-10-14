@@ -54,3 +54,16 @@ type CreatePeriodicSnapshotJobRequest struct {
 	KeepMonthly *int `json:"keepMonthly"`
 	KeepYearly  *int `json:"keepYearly"`
 }
+
+type ModifyPeriodicSnapshotRetentionRequest struct {
+	ID int `json:"id" binding:"required"`
+
+	KeepLast   *int `json:"keepLast"`
+	MaxAgeDays *int `json:"maxAgeDays"`
+
+	KeepHourly  *int `json:"keepHourly"`
+	KeepDaily   *int `json:"keepDaily"`
+	KeepWeekly  *int `json:"keepWeekly"`
+	KeepMonthly *int `json:"keepMonthly"`
+	KeepYearly  *int `json:"keepYearly"`
+}

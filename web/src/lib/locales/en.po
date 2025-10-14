@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-10-14T15:44:25.246Z\n"
+"PO-Revision-Date: 2025-10-14T19:53:52.459Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -499,13 +499,13 @@ msgstr "Hostname"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "ID"
 msgstr "ID"
 
@@ -1314,6 +1314,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Save"
 msgstr "Save"
 
@@ -2882,11 +2883,15 @@ msgstr "Select a dataset"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval"
 msgstr "Interval"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Select an interval"
 msgstr "Select an interval"
 
@@ -2911,8 +2916,8 @@ msgid "Jan 01, 0001"
 msgstr "Jan 01, 0001"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Never"
 msgstr "Never"
 
@@ -4541,39 +4546,48 @@ msgstr "Lease created"
 #~ msgstr "<0><0/> <1><0><0/> <1>New</1></0></1></0> hi shahma"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention"
 msgstr "Retention"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Select a retention policy"
 msgstr "Select a retention policy"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Last"
 msgstr "Keep Last"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Max Age (Days)"
 msgstr "Max Age (Days)"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Hourly"
 msgstr "Keep Hourly"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Daily"
 msgstr "Keep Daily"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Weekly"
 msgstr "Keep Weekly"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Monthly"
 msgstr "Keep Monthly"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Yearly"
 msgstr "Keep Yearly"
 
@@ -4622,3 +4636,51 @@ msgstr "No pool selected"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "No dataset selected"
 msgstr "No dataset selected"
+
+#~ msgid "Retention Policies"
+#~ msgstr "Retention Policies"
+
+#~ msgid "Retention Policies - {0}"
+#~ msgstr "Retention Policies - {0}"
+
+#~ msgid "Retention Policies - {0}@{1}"
+#~ msgstr "Retention Policies - {0}@{1}"
+
+#~ msgid "Simple"
+#~ msgstr "Simple"
+
+#~ msgid "Cron Expression"
+#~ msgstr "Cron Expression"
+
+#~ msgid "Every Minute"
+#~ msgstr "Every Minute"
+
+#~ msgid "Every Hour"
+#~ msgstr "Every Hour"
+
+#~ msgid "Every Day"
+#~ msgstr "Every Day"
+
+#~ msgid "Every Week"
+#~ msgstr "Every Week"
+
+#~ msgid "Every Month"
+#~ msgstr "Every Month"
+
+#~ msgid "Every Year"
+#~ msgstr "Every Year"
+
+#~ msgid "Retention Policies <0/> {0}@{1}"
+#~ msgstr "Retention Policies <0/> {0}@{1}"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention Policies -"
+msgstr "Retention Policies -"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Error modifying retention policy"
+msgstr "Error modifying retention policy"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention policy modified"
+msgstr "Retention policy modified"

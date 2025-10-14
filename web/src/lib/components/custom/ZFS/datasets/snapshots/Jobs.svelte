@@ -10,13 +10,14 @@
 	import { getDatasetByGUID } from '$lib/utils/zfs/dataset/dataset';
 	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
+	import Retention from './Retention.svelte';
 
 	interface Data {
 		open: boolean;
 		pools: Zpool[];
 		datasets: Dataset[];
 		periodicSnapshots: PeriodicSnapshot[];
-		reload?: boolean;
+		reload: boolean;
 	}
 
 	let {
@@ -26,6 +27,7 @@
 		periodicSnapshots,
 		reload = $bindable()
 	}: Data = $props();
+
 	let shadowDeleted: number[] = $state([]);
 
 	function close() {
@@ -83,6 +85,12 @@
 			console.error('Error saving snapshot jobs:', e);
 		}
 	}
+
+	let retention = $state({
+		open: false,
+		snapshot: null as PeriodicSnapshot | null,
+		dataset: ''
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -150,6 +158,20 @@
 										<Button
 											variant="ghost"
 											class="h-8"
+											onclick={() => {
+												const snap = periodicSnapshots.find((s) => s.id === snapshot.id) || null;
+												retention = {
+													open: true,
+													snapshot: snap,
+													dataset: getDatasetName(snap?.guid || '')
+												};
+											}}
+										>
+											<Icon icon="lucide:timer-reset" class="h-4 w-4" />
+										</Button>
+										<Button
+											variant="ghost"
+											class="h-8"
 											onclick={() => shadowDeleted.push(snapshot.id)}
 										>
 											<Icon icon="gg:trash" class="h-4 w-4" />
@@ -183,3 +205,12 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+{#if retention.open}
+	<Retention
+		bind:open={retention.open}
+		snapshot={retention.snapshot}
+		dataset={retention.dataset}
+		bind:reload
+	/>
+{/if}

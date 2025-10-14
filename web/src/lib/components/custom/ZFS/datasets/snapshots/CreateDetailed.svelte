@@ -11,7 +11,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import Icon from '@iconify/svelte';
-	import { interval } from 'date-fns';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {

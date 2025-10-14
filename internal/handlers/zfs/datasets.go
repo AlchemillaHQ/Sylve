@@ -397,6 +397,65 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 	}
 }
 
+/*
+type ModifyPeriodicSnapshotRetentionRequest struct {
+	ID int `json:"id" binding:"required"`
+
+	KeepLast   *int `json:"keepLast"`
+	MaxAgeDays *int `json:"maxAgeDays"`
+
+	KeepHourly  *int `json:"keepHourly"`
+	KeepDaily   *int `json:"keepDaily"`
+	KeepWeekly  *int `json:"keepWeekly"`
+	KeepMonthly *int `json:"keepMonthly"`
+	KeepYearly  *int `json:"keepYearly"`
+}
+*/
+// @Summary Modify retention of a periodic ZFS snapshot job
+// @Description Modify retention of a periodic ZFS snapshot job
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyPeriodicSnapshotRetentionRequest true "Modify Periodic Snapshot Retention Request"
+// @Success 200 {object} internal.APIResponse[any] "OK"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/datasets/snapshot/periodic [patch]
+func ModifyPeriodicSnapshotRetention(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		err := zfsService.ModifyPeriodicSnapshotRetention(request)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "modified_periodic_snapshot_retention",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Delete a periodic ZFS snapshot
 // @Description Delete a periodic ZFS snapshot
 // @Tags ZFS

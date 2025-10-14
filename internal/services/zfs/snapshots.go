@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
+	"gorm.io/gorm/clause"
 
 	"github.com/robfig/cron/v3"
 )
@@ -124,23 +125,48 @@ type retentionValues struct {
 	KeepMonthly, KeepYearly           int
 }
 
-func validateAndNormalizeRetention(req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) (retentionType, retentionValues, error) {
-	simplePresent := req.KeepLast != nil || req.MaxAgeDays != nil
-	gfsPresent := req.KeepHourly != nil || req.KeepDaily != nil ||
-		req.KeepWeekly != nil || req.KeepMonthly != nil || req.KeepYearly != nil
+func validateAndNormalizeRetention(req any, t string) (retentionType, retentionValues, error) {
+	var keepLast, maxAgeDays, keepHourly, keepDaily, keepWeekly, keepMonthly, keepYearly *int
+
+	switch t {
+	case "create":
+		r := req.(zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest)
+		keepLast = r.KeepLast
+		maxAgeDays = r.MaxAgeDays
+		keepHourly = r.KeepHourly
+		keepDaily = r.KeepDaily
+		keepWeekly = r.KeepWeekly
+		keepMonthly = r.KeepMonthly
+		keepYearly = r.KeepYearly
+	case "modify":
+		r := req.(zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest)
+		keepLast = r.KeepLast
+		maxAgeDays = r.MaxAgeDays
+		keepHourly = r.KeepHourly
+		keepDaily = r.KeepDaily
+		keepWeekly = r.KeepWeekly
+		keepMonthly = r.KeepMonthly
+		keepYearly = r.KeepYearly
+	default:
+		return "", retentionValues{}, fmt.Errorf("invalid_request_type")
+	}
+
+	simplePresent := keepLast != nil || maxAgeDays != nil
+	gfsPresent := keepHourly != nil || keepDaily != nil ||
+		keepWeekly != nil || keepMonthly != nil || keepYearly != nil
 
 	if simplePresent && gfsPresent {
 		return "", retentionValues{}, fmt.Errorf("retention_conflict: simple and GFS cannot be set together")
 	}
 
 	val := retentionValues{
-		KeepLast:    utils.IntOrZero(req.KeepLast),
-		MaxAgeDays:  utils.IntOrZero(req.MaxAgeDays),
-		KeepHourly:  utils.IntOrZero(req.KeepHourly),
-		KeepDaily:   utils.IntOrZero(req.KeepDaily),
-		KeepWeekly:  utils.IntOrZero(req.KeepWeekly),
-		KeepMonthly: utils.IntOrZero(req.KeepMonthly),
-		KeepYearly:  utils.IntOrZero(req.KeepYearly),
+		KeepLast:    utils.IntOrZero(keepLast),
+		MaxAgeDays:  utils.IntOrZero(maxAgeDays),
+		KeepHourly:  utils.IntOrZero(keepHourly),
+		KeepDaily:   utils.IntOrZero(keepDaily),
+		KeepWeekly:  utils.IntOrZero(keepWeekly),
+		KeepMonthly: utils.IntOrZero(keepMonthly),
+		KeepYearly:  utils.IntOrZero(keepYearly),
 	}
 
 	for _, v := range []int{
@@ -181,7 +207,11 @@ func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSna
 		recursive = *req.Recursive
 	}
 
-	_, rvals, err := validateAndNormalizeRetention(req)
+	if (interval == 0 && cronExpr == "") || (interval != 0 && cronExpr != "") {
+		return fmt.Errorf("invalid_schedule: specify either interval or cronExpr")
+	}
+
+	_, rvals, err := validateAndNormalizeRetention(req, "create")
 	if err != nil {
 		return err
 	}
@@ -196,33 +226,112 @@ func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSna
 		return err
 	}
 
-	for k, v := range properties {
-		if k == "guid" && v == req.GUID {
-			snapshot := zfsModels.PeriodicSnapshot{
-				GUID:      req.GUID,
-				Prefix:    req.Prefix,
-				Recursive: recursive,
-				Interval:  interval,
-				CronExpr:  cronExpr,
-
-				KeepLast:   rvals.KeepLast,
-				MaxAgeDays: rvals.MaxAgeDays,
-
-				KeepHourly:  rvals.KeepHourly,
-				KeepDaily:   rvals.KeepDaily,
-				KeepWeekly:  rvals.KeepWeekly,
-				KeepMonthly: rvals.KeepMonthly,
-				KeepYearly:  rvals.KeepYearly,
-			}
-
-			if err := s.DB.Create(&snapshot).Error; err != nil {
-				return err
-			}
-			return nil
-		}
+	if guid, ok := properties["guid"]; !ok || guid != req.GUID {
+		return fmt.Errorf("dataset with guid %s not found", req.GUID)
 	}
 
-	return fmt.Errorf("dataset with guid %s not found", req.GUID)
+	snapshot := zfsModels.PeriodicSnapshot{
+		GUID:      req.GUID,
+		Prefix:    req.Prefix,
+		Recursive: recursive,
+		Interval:  interval,
+		CronExpr:  cronExpr,
+
+		KeepLast:   rvals.KeepLast,
+		MaxAgeDays: rvals.MaxAgeDays,
+
+		KeepHourly:  rvals.KeepHourly,
+		KeepDaily:   rvals.KeepDaily,
+		KeepWeekly:  rvals.KeepWeekly,
+		KeepMonthly: rvals.KeepMonthly,
+		KeepYearly:  rvals.KeepYearly,
+	}
+
+	if err := s.DB.Create(&snapshot).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest) error {
+	var job zfsModels.PeriodicSnapshot
+	if err := s.DB.
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", req.ID).
+		First(&job).Error; err != nil {
+		return err
+	}
+
+	rtype, rvals, err := validateAndNormalizeRetention(req, "modify")
+	if err != nil {
+		return err
+	}
+
+	simplePresent := req.KeepLast != nil || req.MaxAgeDays != nil
+	gfsPresent := req.KeepHourly != nil || req.KeepDaily != nil ||
+		req.KeepWeekly != nil || req.KeepMonthly != nil || req.KeepYearly != nil
+
+	updates := map[string]interface{}{}
+
+	if req.KeepLast != nil {
+		updates["KeepLast"] = rvals.KeepLast
+	}
+	if req.MaxAgeDays != nil {
+		updates["MaxAgeDays"] = rvals.MaxAgeDays
+	}
+	if req.KeepHourly != nil {
+		updates["KeepHourly"] = rvals.KeepHourly
+	}
+	if req.KeepDaily != nil {
+		updates["KeepDaily"] = rvals.KeepDaily
+	}
+	if req.KeepWeekly != nil {
+		updates["KeepWeekly"] = rvals.KeepWeekly
+	}
+	if req.KeepMonthly != nil {
+		updates["KeepMonthly"] = rvals.KeepMonthly
+	}
+	if req.KeepYearly != nil {
+		updates["KeepYearly"] = rvals.KeepYearly
+	}
+
+	// If the user is explicitly switching regimes, clear the other side.
+	switch rtype {
+	case retentionSimple:
+		if gfsPresent { // client sent some GFS fields in this request (invalid), already blocked by validator
+			// no-op; validator should have errored earlier
+		} else if simplePresent {
+			// They touched simple; zero-out GFS only if they're switching away from it
+			if job.KeepHourly != 0 || job.KeepDaily != 0 || job.KeepWeekly != 0 || job.KeepMonthly != 0 || job.KeepYearly != 0 {
+				updates["KeepHourly"] = 0
+				updates["KeepDaily"] = 0
+				updates["KeepWeekly"] = 0
+				updates["KeepMonthly"] = 0
+				updates["KeepYearly"] = 0
+			}
+		}
+	case retentionGFS:
+		if simplePresent { // invalid mix; validator should have errored already
+			// no-op
+		} else if gfsPresent {
+			if job.KeepLast != 0 || job.MaxAgeDays != 0 {
+				updates["KeepLast"] = 0
+				updates["MaxAgeDays"] = 0
+			}
+		}
+	case retentionNone:
+		return fmt.Errorf("no_retention_values_provided")
+	}
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	if err := s.DB.Model(&job).Updates(updates).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) DeletePeriodicSnapshot(guid string) error {
@@ -475,7 +584,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 					}
 
-					logger.L.Debug().Msgf("Snapshot %s created successfully", name)
+					logger.L.Debug().Msgf("Snapshotted %s", name)
 
 					go s.pruneSnapshots(ctx, job, dataset.Name, allSets)
 				}

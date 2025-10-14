@@ -70,6 +70,28 @@ export async function createPeriodicSnapshot(
 	});
 }
 
+export async function modifyPeriodicSnapshot(
+	id: number,
+	keepLast: number | null,
+	maxAgeDays: number | null,
+	keepHourly: number | null,
+	keepDaily: number | null = null,
+	keepWeekly: number | null = null,
+	keepMonthly: number | null = null,
+	keepYearly: number | null = null
+): Promise<APIResponse> {
+	return await apiRequest(`/zfs/datasets/snapshot/periodic`, APIResponseSchema, 'PATCH', {
+		id: id,
+		keepLast: Number(keepLast) || null,
+		maxAgeDays: Number(maxAgeDays) || null,
+		keepHourly: Number(keepHourly) || null,
+		keepDaily: Number(keepDaily) || null,
+		keepWeekly: Number(keepWeekly) || null,
+		keepMonthly: Number(keepMonthly) || null,
+		keepYearly: Number(keepYearly) || null
+	});
+}
+
 export async function deletePeriodicSnapshot(guid: string): Promise<APIResponse> {
 	return await apiRequest(`/zfs/datasets/snapshot/periodic/${guid}`, APIResponseSchema, 'DELETE');
 }
