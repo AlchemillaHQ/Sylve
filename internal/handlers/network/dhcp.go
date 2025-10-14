@@ -55,7 +55,7 @@ func GetDHCPConfig(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body network.ModifyDHCPConfigRequest true "Modify DHCP Config Request"
+// @Param request body networkServiceInterfaces.ModifyDHCPConfigRequest true "Modify DHCP Config Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

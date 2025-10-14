@@ -55,7 +55,7 @@ func GetDHCPRanges(svc *network.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param data body network.CreateDHCPRangeRequest true "Request Body"
+// @Param data body networkServiceInterfaces.CreateDHCPRangeRequest true "Request Body"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -99,7 +99,7 @@ func CreateDHCPRange(svc *network.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "DHCP Range ID"
-// @Param data body network.ModifyDHCPRangeRequest true "Request Body"
+// @Param data body networkServiceInterfaces.ModifyDHCPRangeRequest true "Request Body"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

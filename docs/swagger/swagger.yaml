@@ -447,6 +447,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_Leases:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.Leases'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_samba_AuditLogsResponse
   : properties:
       data:
@@ -617,6 +628,15 @@ definitions:
         type: string
       raftPort:
         type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterDirectoryConfig:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterNode:
     properties:
@@ -852,6 +872,68 @@ definitions:
       switchType:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.DHCPRange:
+    properties:
+      createdAt:
+        type: string
+      endIp:
+        type: string
+      expiry:
+        type: integer
+      id:
+        type: integer
+      manualSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch'
+      manualSwitchId:
+        type: integer
+      raOnly:
+        type: boolean
+      slaac:
+        type: boolean
+      standardSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch'
+      standardSwitchId:
+        type: integer
+      startIp:
+        type: string
+      type:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.DHCPStaticLease:
+    properties:
+      comments:
+        type: string
+      createdAt:
+        type: string
+      dhcpRange:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.DHCPRange'
+      dhcpRangeId:
+        type: integer
+      duidObject:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      duidObjectId:
+        type: integer
+      expiry:
+        type: integer
+      hostname:
+        type: string
+      id:
+        type: integer
+      ipObject:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      ipObjectId:
+        description: Per-range uniqueness on each object reference (Postgres & MySQL
+          allow multiple NULLs)
+        type: integer
+      macObject:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      macObjectId:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch:
     properties:
       bridge:
@@ -1043,6 +1125,8 @@ definitions:
         type: integer
       name:
         type: string
+      path:
+        type: string
       readOnly:
         type: boolean
       readOnlyGroups:
@@ -1164,6 +1248,8 @@ definitions:
         type: array
       ram:
         type: integer
+      serial:
+        type: boolean
       startAtBoot:
         type: boolean
       startOrder:
@@ -1178,12 +1264,16 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.Storage'
         type: array
+      timeOffset:
+        type: string
       tpmEmulation:
         type: boolean
       updatedAt:
         type: string
       vmId:
         type: integer
+      vncEnabled:
+        type: boolean
       vncPassword:
         type: string
       vncPort:
@@ -1222,8 +1312,29 @@ definitions:
         type: integer
       interval:
         type: integer
+      keepDaily:
+        description: e.g., keep 7 daily
+        type: integer
+      keepHourly:
+        description: GFS Retention
+        type: integer
+      keepLast:
+        description: Simple Retention
+        type: integer
+      keepMonthly:
+        description: e.g., keep 12 monthly
+        type: integer
+      keepWeekly:
+        description: e.g., keep 4 weekly
+        type: integer
+      keepYearly:
+        description: e.g., keep 3 yearly
+        type: integer
       lastRunAt:
         type: string
+      maxAgeDays:
+        description: e.g., 30 (delete older than 30 days)
+        type: integer
       prefix:
         type: string
       recursive:
@@ -1274,6 +1385,10 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.Storages:
     properties:
+      directories:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterDirectoryConfig'
+        type: array
       s3:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterS3Config'
@@ -1488,6 +1603,8 @@ definitions:
         type: array
       ram:
         type: integer
+      serial:
+        type: boolean
       startAtBoot:
         type: boolean
       startOrder:
@@ -1503,6 +1620,11 @@ definitions:
       switchEmulationType:
         type: string
       switchName:
+        type: string
+      timeOffset:
+        enum:
+        - utc
+        - localtime
         type: string
       tpmEmulation:
         type: boolean
@@ -1524,9 +1646,8 @@ definitions:
     - name
     - ram
     - startAtBoot
-    - storageDataset
-    - storageSize
     - storageType
+    - timeOffset
     - tpmEmulation
     - vmId
     - vncPort
@@ -1553,6 +1674,140 @@ definitions:
       vmId:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateDHCPRangeRequest:
+    properties:
+      endIp:
+        type: string
+      expiry:
+        type: integer
+      manualSwitch:
+        type: integer
+      raOnly:
+        type: boolean
+      slaac:
+        type: boolean
+      standardSwitch:
+        type: integer
+      startIp:
+        type: string
+      type:
+        enum:
+        - ipv4
+        - ipv6
+        type: string
+    required:
+    - type
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateStaticMapRequest:
+    properties:
+      comments:
+        type: string
+      dhcpRangeId:
+        type: integer
+      duidId:
+        type: integer
+      hostname:
+        type: string
+      ipId:
+        type: integer
+      macId:
+        type: integer
+    required:
+    - dhcpRangeId
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.FileLeases:
+    properties:
+      clientId:
+        type: string
+      duid:
+        type: string
+      expiry:
+        type: integer
+      hostname:
+        type: string
+      iaid:
+        type: string
+      ip:
+        type: string
+      mac:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.Leases:
+    properties:
+      db:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.DHCPStaticLease'
+        type: array
+      file:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.FileLeases'
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyDHCPConfigRequest:
+    properties:
+      dnsServers:
+        items:
+          type: string
+        type: array
+      domain:
+        type: string
+      expandHosts:
+        type: boolean
+      manualSwitches:
+        items:
+          type: integer
+        type: array
+      standardSwitches:
+        items:
+          type: integer
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyDHCPRangeRequest:
+    properties:
+      endIp:
+        type: string
+      expiry:
+        type: integer
+      id:
+        type: integer
+      manualSwitch:
+        type: integer
+      raOnly:
+        type: boolean
+      slaac:
+        type: boolean
+      standardSwitch:
+        type: integer
+      startIp:
+        type: string
+      type:
+        enum:
+        - ipv4
+        - ipv6
+        type: string
+    required:
+    - type
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyStaticMapRequest:
+    properties:
+      comments:
+        type: string
+      dhcpRangeId:
+        type: integer
+      duidId:
+        type: integer
+      hostname:
+        type: string
+      id:
+        type: integer
+      ipId:
+        type: integer
+      macId:
+        type: integer
+    required:
+    - dhcpRangeId
+    - id
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_samba.AuditLogsResponse:
     properties:
       data:
@@ -1574,6 +1829,37 @@ definitions:
         type: integer
       type:
         type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreatePeriodicSnapshotJobRequest:
+    properties:
+      cronExpr:
+        type: string
+      guid:
+        type: string
+      interval:
+        type: integer
+      keepDaily:
+        type: integer
+      keepHourly:
+        type: integer
+      keepLast:
+        type: integer
+      keepMonthly:
+        type: integer
+      keepWeekly:
+        type: integer
+      keepYearly:
+        type: integer
+      maxAgeDays:
+        type: integer
+      prefix:
+        type: string
+      recursive:
+        type: boolean
+    required:
+    - guid
+    - interval
+    - prefix
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Dataset:
     properties:
@@ -2153,6 +2439,17 @@ definitions:
     - nodeIp
     - nodePort
     type: object
+  internal_handlers_cluster.CreateDirStorageRequest:
+    properties:
+      name:
+        minLength: 3
+        type: string
+      path:
+        type: string
+    required:
+    - name
+    - path
+    type: object
   internal_handlers_cluster.CreateNoteRequest:
     properties:
       content:
@@ -2576,6 +2873,11 @@ definitions:
     - cpuSockets
     - cpuThreads
     type: object
+  internal_handlers_vm.ModifyClockRequest:
+    properties:
+      timeOffset:
+        type: string
+    type: object
   internal_handlers_vm.ModifyPassthroughRequest:
     properties:
       pciDevices:
@@ -2592,8 +2894,15 @@ definitions:
     required:
     - ram
     type: object
+  internal_handlers_vm.ModifySerialConsoleRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
   internal_handlers_vm.ModifyVNCRequest:
     properties:
+      vncEnabled:
+        type: boolean
       vncPassword:
         type: string
       vncPort:
@@ -2603,6 +2912,7 @@ definitions:
       vncWait:
         type: boolean
     required:
+    - vncEnabled
     - vncPassword
     - vncPort
     - vncResolution
@@ -2650,23 +2960,6 @@ definitions:
     required:
     - name
     - parent
-    type: object
-  internal_handlers_zfs.CreatePeriodicSnapshotJobRequest:
-    properties:
-      cronExpr:
-        type: string
-      guid:
-        type: string
-      interval:
-        type: integer
-      prefix:
-        type: string
-      recursive:
-        type: boolean
-    required:
-    - guid
-    - interval
-    - prefix
     type: object
   internal_handlers_zfs.CreateSnapshotRequest:
     properties:
@@ -2810,6 +3103,7 @@ definitions:
     - 1000000000
     - 60000000000
     - 3600000000000
+    format: int64
     type: integer
     x-enum-varnames:
     - minDuration
@@ -3327,6 +3621,73 @@ paths:
       security:
       - BearerAuth: []
       summary: Get Cluster Storages
+      tags:
+      - Cluster
+  /cluster/storage/directory:
+    post:
+      consumes:
+      - application/json
+      description: Create a new Directory storage configuration in the cluster
+      parameters:
+      - description: Create Directory Storage Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_cluster.CreateDirStorageRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create a Directory Storage
+      tags:
+      - Cluster
+  /cluster/storage/directory/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a Directory storage configuration from the cluster by ID
+      parameters:
+      - description: Storage ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete a Directory Storage
       tags:
       - Cluster
   /cluster/storage/s3:
@@ -4520,6 +4881,303 @@ paths:
       summary: Detach Network from a Virtual Machine
       tags:
       - VM
+  /network/dhcp/config:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the current DHCP configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get DHCP Config
+      tags:
+      - Network
+    put:
+      consumes:
+      - application/json
+      description: Modify the DHCP configuration
+      parameters:
+      - description: Modify DHCP Config Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyDHCPConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify DHCP Config
+      tags:
+      - Network
+  /network/dhcp/lease:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve both active (file-based) and static (DB-based) DHCP leases
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_Leases'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get DHCP Leases
+      tags:
+      - Network
+    post:
+      consumes:
+      - application/json
+      description: Create a new static DHCP lease
+      parameters:
+      - description: Request Body
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateStaticMapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create DHCP Lease
+      tags:
+      - Network
+    put:
+      consumes:
+      - application/json
+      description: Update an existing static DHCP lease by ID
+      parameters:
+      - description: Request Body
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyStaticMapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update DHCP Lease
+      tags:
+      - Network
+  /network/dhcp/lease/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a static DHCP lease by ID
+      parameters:
+      - description: Lease ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete DHCP Lease
+      tags:
+      - Network
+  /network/dhcp/range:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the current DHCP ranges
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get DHCP Ranges
+      tags:
+      - Network
+    post:
+      consumes:
+      - application/json
+      description: Create a new DHCP range
+      parameters:
+      - description: Request Body
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateDHCPRangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create DHCP Range
+      tags:
+      - Network
+  /network/dhcp/range/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an existing DHCP range
+      parameters:
+      - description: DHCP Range ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete DHCP Range
+      tags:
+      - Network
+    put:
+      consumes:
+      - application/json
+      description: Modify an existing DHCP range
+      parameters:
+      - description: DHCP Range ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Request Body
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.ModifyDHCPRangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify DHCP Range
+      tags:
+      - Network
   /network/interface:
     get:
       consumes:
@@ -4884,6 +5542,70 @@ paths:
       security:
       - BearerAuth: []
       summary: Modify Boot Order of a Virtual Machine
+      tags:
+      - VM
+  /options/clock/:vmid:
+    put:
+      consumes:
+      - application/json
+      description: Modify the Clock configuration of a virtual machine
+      parameters:
+      - description: Modify Clock Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifyClockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Clock of a Virtual Machine
+      tags:
+      - VM
+  /options/serial-console/:vmid:
+    put:
+      consumes:
+      - application/json
+      description: Modify the Serial Console Access configuration of a virtual machine
+      parameters:
+      - description: Modify Serial Console Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifySerialConsoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Serial Console Access of a Virtual Machine
       tags:
       - VM
   /options/wol/:vmid:
@@ -6217,7 +6939,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/internal_handlers_zfs.CreatePeriodicSnapshotJobRequest'
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreatePeriodicSnapshotJobRequest'
       produces:
       - application/json
       responses:
