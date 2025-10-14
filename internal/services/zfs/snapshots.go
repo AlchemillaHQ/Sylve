@@ -584,7 +584,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 					}
 
-					logger.L.Debug().Msgf("Snapshotted %s", name)
+					logger.L.Debug().Msgf("Snapshot %s created", dataset.Name+"@"+name)
 
 					go s.pruneSnapshots(ctx, job, dataset.Name, allSets)
 				}
