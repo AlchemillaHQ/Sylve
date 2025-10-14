@@ -63,6 +63,27 @@
 				}
 			}
 		},
+		retention: {
+			open: false,
+			value: 'none',
+			data: [
+				{ value: 'none', label: 'None' },
+				{ value: 'simple', label: 'Simple' },
+				{ value: 'gfs', label: 'GFS' }
+			],
+			simple: {
+				keepLast: '0',
+				maxAgeDays: '0'
+			},
+			gfs: {
+				keepLast: '0',
+				keepHourly: '0',
+				keepDaily: '0',
+				keepWeekly: '0',
+				keepMonthly: '0',
+				keepYearly: '0'
+			}
+		},
 		recursive: false
 	};
 
@@ -84,32 +105,72 @@
 	});
 
 	async function create() {
+		if (properties.name.trim() === '') {
+			toast.error('Name/prefix required for snapshot(s)', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		if (properties.pool.value === '') {
+			toast.error('No pool selected', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		if (properties.datasets.value === '') {
+			toast.error('No dataset selected', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		const dataset = datasets.find((dataset) => dataset.name === properties.datasets.value);
 		const pool = pools.find((pool) => pool.name === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
+			const retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
+			let minutes: number = 0;
+			let cron: string = '';
 
 			if (intervalType === 'none') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
 			} else if (intervalType === 'minutes') {
-				const intervalValue = parseInt(properties.interval.values.interval.value) || 0;
-				response = await createPeriodicSnapshot(
-					dataset,
-					properties.name,
-					properties.recursive,
-					intervalValue,
-					''
-				);
+				minutes = parseInt(properties.interval.values.interval.value) || 0;
 			} else if (intervalType === 'cronExpr') {
-				response = await createPeriodicSnapshot(
-					dataset,
-					properties.name,
-					properties.recursive,
-					0,
-					properties.interval.values.cron
-				);
+				cron = properties.interval.values.cron;
+			}
+
+			if (retentionType !== 'none') {
+				if (retentionType === 'simple') {
+					response = await createPeriodicSnapshot(
+						dataset,
+						properties.name,
+						properties.recursive,
+						minutes,
+						cron,
+						parseInt(properties.retention.simple.keepLast) || null,
+						parseInt(properties.retention.simple.maxAgeDays) || null
+					);
+				} else if (retentionType === 'gfs') {
+					response = await createPeriodicSnapshot(
+						dataset,
+						properties.name,
+						properties.recursive,
+						minutes,
+						cron,
+						null,
+						null,
+						parseInt(properties.retention.gfs.keepHourly) || null,
+						parseInt(properties.retention.gfs.keepDaily) || null,
+						parseInt(properties.retention.gfs.keepWeekly) || null,
+						parseInt(properties.retention.gfs.keepMonthly) || null,
+						parseInt(properties.retention.gfs.keepYearly) || null
+					);
+				}
 			}
 
 			reload = true;
@@ -185,6 +246,7 @@
 				data={properties.pool.data}
 				classes="flex-1 space-y-1"
 				placeholder="Select a pool"
+				width="w-full"
 			></CustomComboBox>
 
 			<CustomComboBox
@@ -194,48 +256,119 @@
 				data={properties.datasets.data}
 				classes="flex-1 space-y-1"
 				placeholder="Select a dataset"
+				width="w-full"
 			></CustomComboBox>
 		</div>
 
 		<div class="w-full space-y-4">
-			<CustomComboBox
-				bind:open={properties.interval.open}
-				label="Interval"
-				bind:value={properties.interval.value}
-				data={properties.interval.data}
-				classes="w-full space-y-1"
-				placeholder="Select an interval"
-				width="w-full"
-			/>
+			<div class="flex flex-col items-center gap-4">
+				<div class="flex w-full flex-col gap-2">
+					<CustomComboBox
+						bind:open={properties.interval.open}
+						label="Interval"
+						bind:value={properties.interval.value}
+						data={properties.interval.data}
+						classes="w-full space-y-1"
+						placeholder="Select an interval"
+						width="w-full"
+					/>
 
-			{#if properties.interval.value === 'cronExpr'}
-				<CustomValueInput
-					label={`
-  <span class="text-sm font-medium text-gray-200">
-    Cron Expression${
-			cronToHuman(properties.interval.values.cron)
-				? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(properties.interval.values.cron)})</span>`
-				: ''
-		}
-  </span>
-`}
-					labelHTML={true}
-					placeholder="0 0 * * *"
-					bind:value={properties.interval.values.cron}
-					classes="w-full space-y-1"
-				/>
-			{/if}
+					{#if properties.interval.value === 'cronExpr'}
+						<CustomValueInput
+							label={`
+                    <span class="text-sm font-medium text-gray-200">
+                        Cron Expression${
+													cronToHuman(properties.interval.values.cron)
+														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(properties.interval.values.cron)})</span>`
+														: ''
+												}
+                    </span>
+                    `}
+							labelHTML={true}
+							placeholder="0 0 * * *"
+							bind:value={properties.interval.values.cron}
+							classes="w-full space-y-1"
+						/>
+					{:else if properties.interval.value === 'minutes'}
+						<CustomComboBox
+							bind:open={properties.interval.values.interval.open}
+							label="Interval"
+							bind:value={properties.interval.values.interval.value}
+							data={properties.interval.values.interval.data}
+							classes="w-full space-y-1"
+							placeholder="Select an interval"
+							width="w-full"
+						/>
+					{/if}
+				</div>
 
-			{#if properties.interval.value === 'minutes'}
-				<CustomComboBox
-					bind:open={properties.interval.values.interval.open}
-					label="Interval"
-					bind:value={properties.interval.values.interval.value}
-					data={properties.interval.values.interval.data}
-					classes="w-full space-y-1"
-					placeholder="Select an interval"
-					width="w-full"
-				/>
+				{#if properties.interval.value !== 'none'}
+					<CustomComboBox
+						bind:open={properties.retention.open}
+						label="Retention"
+						bind:value={properties.retention.value}
+						data={properties.retention.data}
+						classes="w-full space-y-1"
+						placeholder="Select a retention policy"
+						width="w-full"
+					/>
+				{/if}
+			</div>
+
+			{#if properties.retention.value === 'simple'}
+				<div class="flex flex-row items-center gap-4">
+					<CustomValueInput
+						label="Keep Last"
+						placeholder="0"
+						bind:value={properties.retention.simple.keepLast}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Max Age (Days)"
+						placeholder="0"
+						bind:value={properties.retention.simple.maxAgeDays}
+						classes="w-full space-y-1"
+					/>
+				</div>
+			{:else if properties.retention.value === 'gfs'}
+				<div class="grid grid-cols-3 gap-4">
+					<CustomValueInput
+						label="Keep Last"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepLast}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Keep Hourly"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepHourly}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Keep Daily"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepDaily}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Keep Weekly"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepWeekly}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Keep Monthly"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepMonthly}
+						classes="w-full space-y-1"
+					/>
+					<CustomValueInput
+						label="Keep Yearly"
+						placeholder="0"
+						bind:value={properties.retention.gfs.keepYearly}
+						classes="w-full space-y-1"
+					/>
+				</div>
 			{/if}
 		</div>
 

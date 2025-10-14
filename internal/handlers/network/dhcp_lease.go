@@ -1,60 +1,60 @@
 package networkHandlers
 
 import (
+	"strconv"
+
 	"github.com/alchemillahq/sylve/internal"
-	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
-// @Summary Get DHCP Ranges
-// @Description Retrieve the current DHCP ranges
+// @Summary Get DHCP Leases
+// @Description Retrieve both active (file-based) and static (DB-based) DHCP leases
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 200 {object} internal.APIResponse[networkServiceInterfaces.Leases] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/range [get]
-func GetDHCPRanges(svc *network.Service) gin.HandlerFunc {
+// @Router /network/dhcp/lease [get]
+func GetDHCPLeases(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ranges, err := svc.GetRanges()
+		leases, err := svc.GetLeases()
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_get_dhcp_ranges",
+				Message: "failed_to_get_dhcp_leases",
 				Error:   err.Error(),
 				Data:    nil,
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]networkModels.DHCPRange]{
+		c.JSON(200, internal.APIResponse[networkServiceInterfaces.Leases]{
 			Status:  "success",
-			Message: "dhcp_ranges_retrieved",
+			Message: "dhcp_leases_retrieved",
 			Error:   "",
-			Data:    ranges,
+			Data:    leases,
 		})
 	}
 }
 
-// @Summary Create DHCP Range
-// @Description Create a new DHCP range
+// @Summary Create DHCP Lease
+// @Description Create a new static DHCP lease
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param data body network.CreateDHCPRangeRequest true "Request Body"
+// @Param data body networkServiceInterfaces.CreateStaticMapRequest true "Request Body"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/range [post]
-func CreateDHCPRange(svc *network.Service) gin.HandlerFunc {
+// @Router /network/dhcp/lease [post]
+func CreateDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req networkServiceInterfaces.CreateDHCPRangeRequest
+		var req networkServiceInterfaces.CreateStaticMapRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -65,10 +65,10 @@ func CreateDHCPRange(svc *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := svc.CreateRange(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+		if err := svc.CreateStaticMap(&req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_create_dhcp_range",
+				Message: "failed_to_create_dhcp_lease",
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -77,28 +77,27 @@ func CreateDHCPRange(svc *network.Service) gin.HandlerFunc {
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "dhcp_range_created",
+			Message: "dhcp_lease_created",
 			Error:   "",
 			Data:    nil,
 		})
 	}
 }
 
-// @Summary Modify DHCP Range
-// @Description Modify an existing DHCP range
+// @Summary Update DHCP Lease
+// @Description Update an existing static DHCP lease by ID
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "DHCP Range ID"
-// @Param data body network.ModifyDHCPRangeRequest true "Request Body"
+// @Param data body networkServiceInterfaces.ModifyStaticMapRequest true "Request Body"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/range/{id} [put]
-func ModifyDHCPRange(svc *network.Service) gin.HandlerFunc {
+// @Router /network/dhcp/lease [put]
+func UpdateDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req networkServiceInterfaces.ModifyDHCPRangeRequest
+		var req networkServiceInterfaces.ModifyStaticMapRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -109,34 +108,10 @@ func ModifyDHCPRange(svc *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		idParam := c.Param("id")
-		if idParam == "" {
-			c.JSON(400, internal.APIResponse[any]{
+		if err := svc.ModifyStaticMap(&req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "missing_dhcp_range_id",
-				Error:   "dhcp_range_id is required",
-				Data:    nil,
-			})
-			return
-		}
-
-		id := utils.StringToUint64(idParam)
-		if id == 0 {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_dhcp_range_id",
-				Error:   "dhcp_range_id must be a valid number",
-				Data:    nil,
-			})
-			return
-		}
-
-		req.ID = uint(id)
-
-		if err := svc.ModifyRange(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_modify_dhcp_range",
+				Message: "failed_to_update_dhcp_lease",
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -145,52 +120,52 @@ func ModifyDHCPRange(svc *network.Service) gin.HandlerFunc {
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "dhcp_range_modified",
+			Message: "dhcp_lease_updated",
 			Error:   "",
 			Data:    nil,
 		})
 	}
 }
 
-// @Summary Delete DHCP Range
-// @Description Delete an existing DHCP range
+// @Summary Delete DHCP Lease
+// @Description Delete a static DHCP lease by ID
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "DHCP Range ID"
+// @Param id path int true "Lease ID"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/dhcp/range/{id} [delete]
-func DeleteDHCPRange(svc *network.Service) gin.HandlerFunc {
+// @Router /network/dhcp/lease/{id} [delete]
+func DeleteDHCPLease(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idParam := c.Param("id")
 		if idParam == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "missing_dhcp_range_id",
-				Error:   "dhcp_range_id is required",
+				Message: "lease_id_required",
+				Error:   "lease_id_required",
 				Data:    nil,
 			})
 			return
 		}
 
-		id := utils.StringToUint64(idParam)
-		if id == 0 {
+		id, err := strconv.Atoi(idParam)
+		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_dhcp_range_id",
-				Error:   "dhcp_range_id must be a valid number",
+				Message: "invalid_lease_id",
+				Error:   "invalid_lease_id",
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := svc.DeleteRange(uint(id)); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+		if err := svc.DeleteStaticMap(uint(id)); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_delete_dhcp_range",
+				Message: "failed_to_delete_dhcp_lease",
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -199,7 +174,7 @@ func DeleteDHCPRange(svc *network.Service) gin.HandlerFunc {
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "dhcp_range_deleted",
+			Message: "dhcp_lease_deleted",
 			Error:   "",
 			Data:    nil,
 		})

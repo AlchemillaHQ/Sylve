@@ -2,8 +2,10 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	DHCPConfigSchema,
 	DHCPRangeSchema,
+	LeasesSchema,
 	type DHCPConfig,
-	type DHCPRange
+	type DHCPRange,
+	type Leases
 } from '$lib/types/network/dhcp';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
@@ -88,4 +90,50 @@ export async function updateDHCPRange(
 
 export async function deleteDHCPRange(id: number): Promise<APIResponse> {
 	return await apiRequest(`/network/dhcp/range/${id}`, APIResponseSchema, 'DELETE');
+}
+
+export async function getLeases(): Promise<Leases> {
+	return await apiRequest('/network/dhcp/lease', LeasesSchema, 'GET');
+}
+
+export async function createDHCPLease(
+	hostname: string,
+	comments: string,
+	ipObjectId: number | null,
+	macObjectId: number | null,
+	duidObjectId: number | null,
+	dhcpRangeId: number
+): Promise<APIResponse> {
+	return await apiRequest('/network/dhcp/lease', APIResponseSchema, 'POST', {
+		hostname,
+		comments,
+		ipId: ipObjectId,
+		macId: macObjectId,
+		duidId: duidObjectId,
+		dhcpRangeId
+	});
+}
+
+export async function modifyDHCPLease(
+	id: number,
+	hostname: string,
+	comments: string,
+	ipObjectId: number | null,
+	macObjectId: number | null,
+	duidObjectId: number | null,
+	dhcpRangeId: number
+): Promise<APIResponse> {
+	return await apiRequest(`/network/dhcp/lease`, APIResponseSchema, 'PUT', {
+		id: Number(id),
+		hostname,
+		comments,
+		ipId: ipObjectId,
+		macId: macObjectId,
+		duidId: duidObjectId,
+		dhcpRangeId
+	});
+}
+
+export async function deleteDHCPLease(id: number): Promise<APIResponse> {
+	return await apiRequest(`/network/dhcp/lease/${id}`, APIResponseSchema, 'DELETE');
 }

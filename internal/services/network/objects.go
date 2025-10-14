@@ -52,6 +52,7 @@ func validateType(oType string) error {
 		"List":    true,
 		"Mac":     true,
 		"FQDN":    true,
+		"DUID":    true,
 	}
 
 	if !validTypes[oType] {
@@ -129,6 +130,18 @@ func validateValues(oType string, values []string) error {
 		if oType == "Mac" {
 			if !utils.IsValidMAC(value) {
 				return fmt.Errorf("invalid MAC address: %s", value)
+			}
+		}
+
+		if oType == "FQDN" {
+			if !utils.IsValidFQDN(value) {
+				return fmt.Errorf("invalid FQDN: %s", value)
+			}
+		}
+
+		if oType == "DUID" {
+			if !utils.IsValidDUID(value) {
+				return fmt.Errorf("invalid DUID: %s", value)
 			}
 		}
 	}

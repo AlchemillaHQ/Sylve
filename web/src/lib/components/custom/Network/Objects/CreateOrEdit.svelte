@@ -11,6 +11,7 @@
 	import { generateComboboxOptions } from '$lib/utils/input';
 	import {
 		generateUnicastMAC,
+		isValidDUID,
 		isValidIPv4,
 		isValidIPv6,
 		isValidMACAddress
@@ -47,6 +48,8 @@
 					return 'Network(s)';
 				case 'Mac':
 					return 'MAC(s)';
+				case 'DUID':
+					return 'DUID(s)';
 				default:
 					return '';
 			}
@@ -68,7 +71,7 @@
 			combobox: {
 				open: false,
 				value: editingObject ? oType : '',
-				options: generateComboboxOptions(['Host(s)', 'Network(s)', 'MAC(s)'])
+				options: generateComboboxOptions(['Host(s)', 'Network(s)', 'MAC(s)', 'DUID(s)'] as string[])
 			}
 		},
 		hosts: {
@@ -90,6 +93,15 @@
 			}
 		},
 		macs: {
+			combobox: {
+				open: false,
+				value: editingObject ? optionsSelected : ([] as string[]),
+				options: editingObject
+					? [...generateComboboxOptions(optionsSelected)]
+					: ([] as { label: string; value: string }[])
+			}
+		},
+		duids: {
 			combobox: {
 				open: false,
 				value: editingObject ? optionsSelected : ([] as string[]),
@@ -129,6 +141,11 @@
 			properties.macs.combobox.value.length === 0
 		) {
 			error = 'At least one MAC must be selected';
+		} else if (
+			properties.type.combobox.value === 'DUID(s)' &&
+			properties.duids.combobox.value.length === 0
+		) {
+			error = 'At least one DUID must be selected';
 		}
 
 		let values = [] as string[];
@@ -200,6 +217,28 @@
 			return values;
 		}
 
+		if (properties.type.combobox.value === 'DUID(s)') {
+			const duids = Array.from(new Set(properties.duids.combobox.value));
+			properties.duids.combobox.value = duids;
+
+			for (const duid of duids) {
+				if (duid.trim() === '') {
+					error = `DUID cannot be empty`;
+					break;
+				}
+
+				if (isValidDUID(duid)) {
+					continue;
+				} else {
+					error = `Invalid DUID: ${duid}`;
+					break;
+				}
+			}
+
+			values = duids;
+			return values;
+		}
+
 		if (error) {
 			toast.error(error, {
 				position: 'bottom-center'
@@ -222,6 +261,9 @@
 				break;
 			case 'MAC(s)':
 				oType = 'Mac';
+				break;
+			case 'DUID(s)':
+				oType = 'DUID';
 				break;
 			default:
 				oType = properties.type.combobox.value;
@@ -377,7 +419,7 @@
 
 		{#if properties.type.combobox.value !== ''}
 			<div class="flex gap-4 overflow-auto">
-				{#if properties.type.combobox.value === 'Host(s)' || properties.type.combobox.value === 'Network(s)' || properties.type.combobox.value === 'MAC(s)'}
+				{#if properties.type.combobox.value === 'Host(s)' || properties.type.combobox.value === 'Network(s)' || properties.type.combobox.value === 'MAC(s)' || properties.type.combobox.value === 'DUID(s)'}
 					{#if properties.type.combobox.value === 'Host(s)'}
 						<ComboBoxBindable
 							bind:open={properties.hosts.combobox.open}
@@ -420,6 +462,17 @@
 								</Button>
 							</div>
 						</div>
+					{:else if properties.type.combobox.value === 'DUID(s)'}
+						<ComboBoxBindable
+							bind:open={properties.duids.combobox.open}
+							label={'DUIDs'}
+							bind:value={properties.duids.combobox.value}
+							data={properties.duids.combobox.options}
+							classes="flex-1 space-y-1"
+							placeholder="Select DUIDs"
+							width="w-full"
+							multiple={true}
+						></ComboBoxBindable>
 					{/if}
 				{/if}
 			</div>

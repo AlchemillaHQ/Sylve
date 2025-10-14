@@ -10,6 +10,8 @@ export interface Column {
 	field: string;
 	title: string;
 	visible?: boolean;
+	width?: number | string;
+	copyOnClick?: boolean;
 	formatter?:
 		| ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
 		| string;

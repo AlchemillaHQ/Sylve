@@ -3,7 +3,6 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import type { AreaChartElement } from '$lib/types/components/chart';
 	import { switchColor } from '$lib/utils/chart';
-	import Icon from '@iconify/svelte';
 	import {
 		CategoryScale,
 		Chart,
@@ -265,7 +264,7 @@
 		<Card.Title class="flex items-center justify-between gap-4">
 			<div class="flex items-center gap-2">
 				{#if icon}
-					<Icon {icon} class="h-5 w-5" />
+					<span class={icon}></span>
 				{/if}
 				{title}
 			</div>
@@ -278,7 +277,7 @@
 					size="sm"
 					class="h-8"
 				>
-					<Icon icon="material-symbols:zoom-in" class="h-4 w-4" />
+					<span class="icon-[material-symbols--zoom-in] h-4 w-4"></span>
 					{zoomEnabled ? 'Disable Zoom' : 'Enable Zoom'}
 				</Button>
 				{#if showResetButton && zoomEnabled}
@@ -290,7 +289,7 @@
 						size="sm"
 						class="h-8"
 					>
-						<Icon icon="carbon:reset" class="h-4 w-4" />
+						<span class="icon-[carbon--reset] h-4 w-4"></span>
 						Reset zoom
 					</Button>
 				{/if}

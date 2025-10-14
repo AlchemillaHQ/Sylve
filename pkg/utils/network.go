@@ -9,10 +9,13 @@
 package utils
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/go-playground/validator/v10"
 )
 
 func IsValidMetric(metric int) bool {
@@ -73,6 +76,22 @@ func IsValidIPv6CIDR(cidr string) bool {
 
 func IsValidMAC(mac string) bool {
 	_, err := net.ParseMAC(mac)
+	return err == nil
+}
+
+func IsValidFQDN(fqdn string) bool {
+	validator := validator.New()
+	err := validator.Var(fqdn, "fqdn")
+	return err == nil
+}
+
+func IsValidDUID(duid string) bool {
+	duid = strings.ReplaceAll(duid, ":", "")
+
+	if len(duid) < 4 || len(duid)%2 != 0 {
+		return false
+	}
+	_, err := hex.DecodeString(duid)
 	return err == nil
 }
 

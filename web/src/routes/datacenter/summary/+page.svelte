@@ -231,7 +231,11 @@
 							<Arc value={cpuInfo?.usage} title="CPU" subtitle="{cpuInfo.physicalCores} vCPUs" />
 						</div>
 						<div class="flex flex-1 justify-center">
-							<Arc value={ramInfo?.usedPercent} title="RAM" subtitle={humanFormat(ramInfo.total)} />
+							<Arc
+								value={ramInfo?.usedPercent}
+								title="RAM"
+								subtitle={humanFormat(ramInfo?.total || 0)}
+							/>
 						</div>
 						<div class="flex flex-1 justify-center">
 							<Arc

@@ -33,8 +33,8 @@ require (
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/swaggo/swag/v2 v2.0.0-rc4
 	golang.org/x/crypto v0.38.0
-	gorm.io/driver/sqlite v1.5.7
-	gorm.io/gorm v1.25.12
+	gorm.io/driver/sqlite v1.6.0
+	gorm.io/gorm v1.31.0
 )
 
 require (

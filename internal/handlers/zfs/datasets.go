@@ -9,6 +9,7 @@
 package zfsHandlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -23,14 +24,6 @@ type CreateSnapshotRequest struct {
 	GUID      string `json:"guid" binding:"required"`
 	Name      string `json:"name" binding:"required"`
 	Recursive bool   `json:"recursive"`
-}
-
-type CreatePeriodicSnapshotJobRequest struct {
-	GUID      string `json:"guid" binding:"required"`
-	Prefix    string `json:"prefix" binding:"required"`
-	Recursive bool   `json:"recursive"`
-	Interval  *int   `json:"interval" binding:"required"`
-	CronExpr  string `json:"cronExpr"`
 }
 
 type CreateFilesystemRequest struct {
@@ -276,20 +269,92 @@ func GetPeriodicSnapshots(zfsService *zfs.Service) gin.HandlerFunc {
 	}
 }
 
+type RetentionType string
+
+const (
+	RetentionNone   RetentionType = "none"
+	RetentionSimple RetentionType = "simple"
+	RetentionGFS    RetentionType = "gfs"
+)
+
+func validateAndDetectRetention(req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) (RetentionType, error) {
+	// presence (did the client include the fields?)
+	simplePresent := req.KeepLast != nil || req.MaxAgeDays != nil
+	gfsPresent := req.KeepHourly != nil || req.KeepDaily != nil ||
+		req.KeepWeekly != nil || req.KeepMonthly != nil || req.KeepYearly != nil
+
+	// mutually exclusive
+	if simplePresent && gfsPresent {
+		return "", fmt.Errorf("retention_conflict: simple and GFS cannot be set together")
+	}
+
+	// normalize to values (treat nil as 0)
+	keepLast := 0
+	maxAgeDays := 0
+	if req.KeepLast != nil {
+		keepLast = *req.KeepLast
+	}
+	if req.MaxAgeDays != nil {
+		maxAgeDays = *req.MaxAgeDays
+	}
+
+	keepHourly, keepDaily, keepWeekly, keepMonthly, keepYearly := 0, 0, 0, 0, 0
+	if req.KeepHourly != nil {
+		keepHourly = *req.KeepHourly
+	}
+	if req.KeepDaily != nil {
+		keepDaily = *req.KeepDaily
+	}
+	if req.KeepWeekly != nil {
+		keepWeekly = *req.KeepWeekly
+	}
+	if req.KeepMonthly != nil {
+		keepMonthly = *req.KeepMonthly
+	}
+	if req.KeepYearly != nil {
+		keepYearly = *req.KeepYearly
+	}
+
+	// non-negative check
+	for _, v := range []int{keepLast, maxAgeDays, keepHourly, keepDaily, keepWeekly, keepMonthly, keepYearly} {
+		if v < 0 {
+			return "", fmt.Errorf("invalid_retention: values must be >= 0")
+		}
+	}
+
+	// detect type + “all zeros” → none
+	if simplePresent {
+		if keepLast == 0 && maxAgeDays == 0 {
+			return RetentionNone, nil
+		}
+		return RetentionSimple, nil
+	}
+
+	if gfsPresent {
+		if keepHourly == 0 && keepDaily == 0 && keepWeekly == 0 && keepMonthly == 0 && keepYearly == 0 {
+			return RetentionNone, nil
+		}
+		return RetentionGFS, nil
+	}
+
+	// nothing provided at all → none
+	return RetentionNone, nil
+}
+
 // @Summary Create a periodic ZFS snapshot job
 // @Description Create a periodic ZFS snapshot job
 // @Tags ZFS
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body CreatePeriodicSnapshotJobRequest true "Create Periodic Snapshot Job Request"
+// @Param request body zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest true "Create Periodic Snapshot Job Request"
 // @Success 200 {object} internal.APIResponse[any] "OK"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/datasets/snapshot/periodic [post]
 func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request CreatePeriodicSnapshotJobRequest
+		var request zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -300,22 +365,18 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		var interval int
-		var cronExpr string
-
-		if request.Interval == nil {
-			interval = 0
-		} else {
-			interval = *request.Interval
+		_, err := validateAndDetectRetention(request)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_retention",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
 		}
 
-		if request.CronExpr == "" {
-			cronExpr = ""
-		} else {
-			cronExpr = request.CronExpr
-		}
-
-		err := zfsService.AddPeriodicSnapshot(request.GUID, request.Prefix, request.Recursive, interval, cronExpr)
+		err = zfsService.AddPeriodicSnapshot(request)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

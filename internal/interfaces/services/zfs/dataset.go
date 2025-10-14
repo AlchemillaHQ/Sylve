@@ -37,3 +37,20 @@ type Dataset struct {
 	PrimaryCache  string `json:"primarycache"`
 	VolMode       string `json:"volmode"`
 }
+
+type CreatePeriodicSnapshotJobRequest struct {
+	GUID      string `json:"guid" binding:"required"`
+	Prefix    string `json:"prefix" binding:"required"`
+	Recursive *bool  `json:"recursive"`
+	Interval  *int   `json:"interval" binding:"required"`
+	CronExpr  string `json:"cronExpr"`
+
+	KeepLast   *int `json:"keepLast"`
+	MaxAgeDays *int `json:"maxAgeDays"`
+
+	KeepHourly  *int `json:"keepHourly"`
+	KeepDaily   *int `json:"keepDaily"`
+	KeepWeekly  *int `json:"keepWeekly"`
+	KeepMonthly *int `json:"keepMonthly"`
+	KeepYearly  *int `json:"keepYearly"`
+}

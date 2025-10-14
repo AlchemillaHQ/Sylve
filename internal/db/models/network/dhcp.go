@@ -28,7 +28,7 @@ type DHCPRange struct {
 	StartIP string `json:"startIp" gorm:"not null"`
 	EndIP   string `json:"endIp" gorm:"not null"`
 
-	StandardSwitchID *uint           `json:"switchId" gorm:"index"`
+	StandardSwitchID *uint           `json:"standardSwitchId" gorm:"index"`
 	StandardSwitch   *StandardSwitch `json:"standardSwitch" gorm:"foreignKey:StandardSwitchID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 
 	ManualSwitchID *uint         `json:"manualSwitchId" gorm:"index"`
@@ -43,21 +43,27 @@ type DHCPRange struct {
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
-// type DHCPStaticMap struct {
-// 	ID       uint   `json:"id" gorm:"primaryKey"`
-// 	Hostname string `json:"hostname" gorm:"not null"`
-// 	MAC      string `json:"mac" gorm:"not null;index:uniq_mac_per_range,unique"`
-// 	IP       string `json:"ip"  gorm:"not null;index:uniq_ip_per_range,unique"`
-// 	Comments string `json:"comments"`
-// 	Expiry   int    `json:"expiry" gorm:"default:0"`
+type DHCPStaticLease struct {
+	ID       uint   `json:"id" gorm:"primaryKey"`
+	Hostname string `json:"hostname" gorm:"not null"`
+	Comments string `json:"comments"`
+	Expiry   uint   `json:"expiry" gorm:"default:0"`
 
-// 	// Range is required; delete mappings when range is deleted
-// 	DHCPRangeID uint       `json:"dhcpRangeId" gorm:"index:uniq_mac_per_range,unique;index:uniq_ip_per_range,unique"`
-// 	DHCPRange   *DHCPRange `json:"dhcpRange" gorm:"foreignKey:DHCPRangeID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	// Per-range uniqueness on each object reference (Postgres & MySQL allow multiple NULLs)
+	IPObjectID   *uint `json:"ipObjectId"   gorm:"index:uniq_l_ip_per_range,unique"`
+	MACObjectID  *uint `json:"macObjectId"  gorm:"index:uniq_l_mac_per_range,unique"`
+	DUIDObjectID *uint `json:"duidObjectId" gorm:"index:uniq_l_duid_per_range,unique"`
 
-// 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
-// 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
-// }
+	IPObject   *Object `json:"ipObject"   gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	MACObject  *Object `json:"macObject"  gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	DUIDObject *Object `json:"duidObject" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+
+	DHCPRangeID uint       `json:"dhcpRangeId" gorm:"index:uniq_l_mac_per_range,unique;index:uniq_l_ip_per_range,unique;index:uniq_l_duid_per_range,unique"`
+	DHCPRange   *DHCPRange `json:"dhcpRange"   gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
 
 // type DHCPOption struct {
 // 	ID       uint   `json:"id" gorm:"primaryKey"`

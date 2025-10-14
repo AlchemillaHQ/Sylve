@@ -3,6 +3,7 @@
 	import { hasRowsChanged, matchAny } from '$lib/utils/table';
 	import { findRow, getAllRows, pruneEmptyChildren } from '$lib/utils/tree-table';
 	import { onMount, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		TabulatorFull as Tabulator,
 		type ColumnDefinition,
@@ -154,6 +155,19 @@
 			if (container) {
 				container.scrollTop = scroll[0];
 				container.scrollLeft = scroll[1];
+			}
+		});
+
+		table?.on('cellClick', (_event: UIEvent, cell) => {
+			const value = cell.getValue();
+			const column = cell.getColumn();
+
+			if ((column.getDefinition() as any).copyOnClick && value) {
+				navigator.clipboard.writeText(value.toString());
+				toast.success(`Copied ${value.toString()} to clipboard`, {
+					duration: 2000,
+					position: 'bottom-center'
+				});
 			}
 		});
 	});

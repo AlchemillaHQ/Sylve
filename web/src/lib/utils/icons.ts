@@ -46,7 +46,9 @@ const icons = [
 	'lets-icons:check-fill',
 	'gridicons:cross-circle',
 	'fluent-mdl2:party-leader',
-    'mdi:forever'
+	'mdi:forever',
+	'mdi:lock',
+	'mdi:autorenew'
 ];
 
 export async function preloadIcons() {

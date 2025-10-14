@@ -783,3 +783,17 @@ func IsValidIPRangeWithSubnet(startIP, endIP, subnet string) bool {
 
 	return true
 }
+
+func PtrIfNonZero(v uint) *uint {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+func IntOrZero(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}

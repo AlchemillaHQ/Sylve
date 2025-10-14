@@ -95,6 +95,7 @@
 			ws.send(
 				new TextEncoder().encode('\x01' + JSON.stringify({ rows: dims?.rows, cols: dims?.cols }))
 			);
+
 			fitAddon = fit;
 		};
 

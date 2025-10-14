@@ -162,6 +162,7 @@
 				}
 			}
 		];
+
 		const rows: Row[] = [];
 
 		if (!dhcpRanges || dhcpRanges.length === 0) {

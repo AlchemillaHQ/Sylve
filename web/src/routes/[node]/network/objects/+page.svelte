@@ -75,6 +75,8 @@
 						return 'Network(s)';
 					case 'Mac':
 						return 'MAC(s)';
+					case 'DUID':
+						return 'DUID(s)';
 					default:
 						return value || '-';
 				}

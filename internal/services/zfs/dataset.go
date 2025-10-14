@@ -82,6 +82,47 @@ func (s *Service) GetDatasetByGUID(guid string) (*zfs.Dataset, error) {
 	return nil, fmt.Errorf("dataset with guid %s not found", guid)
 }
 
+func (s *Service) GetSnapshotByGUID(guid string) (*zfs.Dataset, error) {
+	datasets, err := zfs.Snapshots("")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dataset := range datasets {
+		if dataset.GUID == guid {
+			return dataset, nil
+		}
+	}
+
+	return nil, fmt.Errorf("snapshot with guid %s not found", guid)
+}
+
+func (s *Service) GetFsOrVolByGUID(guid string) (*zfs.Dataset, error) {
+	filesystems, err := zfs.Filesystems("")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, fs := range filesystems {
+		if fs.GUID == guid {
+			return fs, nil
+		}
+	}
+
+	volumes, err := zfs.Volumes("")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, vol := range volumes {
+		if vol.GUID == guid {
+			return vol, nil
+		}
+	}
+
+	return nil, fmt.Errorf("filesystem or volume with guid %s not found", guid)
+}
+
 func (s *Service) BulkDeleteDataset(guids []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()

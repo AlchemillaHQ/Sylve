@@ -221,6 +221,11 @@ func RegisterRoutes(r *gin.Engine,
 		network.POST("/dhcp/range", networkHandlers.CreateDHCPRange(networkService))
 		network.PUT("/dhcp/range/:id", networkHandlers.ModifyDHCPRange(networkService))
 		network.DELETE("/dhcp/range/:id", networkHandlers.DeleteDHCPRange(networkService))
+
+		network.GET("/dhcp/lease", networkHandlers.GetDHCPLeases(networkService))
+		network.POST("/dhcp/lease", networkHandlers.CreateDHCPLease(networkService))
+		network.PUT("/dhcp/lease", networkHandlers.UpdateDHCPLease(networkService))
+		network.DELETE("/dhcp/lease/:id", networkHandlers.DeleteDHCPLease(networkService))
 	}
 
 	system := api.Group("/system")

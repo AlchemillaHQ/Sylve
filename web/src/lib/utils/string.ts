@@ -169,6 +169,15 @@ export function isValidMACAddress(mac: string): boolean {
 	return isMACAddress(mac, { no_colons: false });
 }
 
+export function isValidDUID(duid: string): boolean {
+	if (typeof duid !== 'string') return false;
+
+	const cleaned = duid.replace(/[:\s]/g, '').toLowerCase();
+	if (cleaned.length < 4 || cleaned.length % 2 !== 0) return false;
+
+	return /^[0-9a-f]+$/.test(cleaned);
+}
+
 export async function sha256(str: string, rounds: number = 1): Promise<string> {
 	const encoder = new TextEncoder();
 	let data = encoder.encode(str);
@@ -494,4 +503,9 @@ export function dnsmasqToSeconds(value: string): number {
 		default:
 			throw new Error(`Unknown unit: ${unit}`);
 	}
+}
+
+export function validateDnsmasqHostname(hostname: string): boolean {
+	const regex = /^(?!.*(--|__))(?![-_])[a-zA-Z0-9-_]{1,63}(?<![-_])$/;
+	return regex.test(hostname);
 }

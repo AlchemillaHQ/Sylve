@@ -1,5 +1,7 @@
 package networkServiceInterfaces
 
+import networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+
 type ModifyDHCPConfigRequest struct {
 	StandardSwitches []uint   `json:"standardSwitches"`
 	ManualSwitches   []uint   `json:"manualSwitches"`
@@ -29,4 +31,38 @@ type ModifyDHCPRangeRequest struct {
 	Expiry         *uint  `json:"expiry"`
 	RAOnly         *bool  `json:"raOnly"`
 	SLAAC          *bool  `json:"slaac"`
+}
+
+type FileLeases struct {
+	Expiry   uint64 `json:"expiry"`
+	MAC      string `json:"mac"`
+	IAID     string `json:"iaid"`
+	IP       string `json:"ip"`
+	Hostname string `json:"hostname"`
+	ClientID string `json:"clientId"`
+	DUID     string `json:"duid"`
+}
+
+type Leases struct {
+	File []FileLeases                    `json:"file"`
+	DB   []networkModels.DHCPStaticLease `json:"db"`
+}
+
+type CreateStaticMapRequest struct {
+	Hostname     string `json:"hostname"`
+	Comments     string `json:"comments"`
+	IPObjectID   *uint  `json:"ipId"`
+	MACObjectID  *uint  `json:"macId"`
+	DUIDObjectID *uint  `json:"duidId"`
+	DHCPRangeID  uint   `json:"dhcpRangeId" binding:"required"`
+}
+
+type ModifyStaticMapRequest struct {
+	ID           uint   `json:"id" binding:"required"`
+	Hostname     string `json:"hostname"`
+	IPObjectID   *uint  `json:"ipId"`
+	MACObjectID  *uint  `json:"macId"`
+	DUIDObjectID *uint  `json:"duidId"`
+	DHCPRangeID  uint   `json:"dhcpRangeId" binding:"required"`
+	Comments     string `json:"comments"`
 }

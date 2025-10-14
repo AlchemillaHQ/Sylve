@@ -3,7 +3,8 @@ import { isValidIPv4, isValidIPv6 } from '../string';
 
 export function generateIPOptions(
 	networkObjects: NetworkObject[] | undefined,
-	type: string
+	type: string,
+	markValue: boolean = false
 ): { label: string; value: string }[] {
 	if (!networkObjects || networkObjects.length === 0) {
 		return [];
@@ -22,7 +23,7 @@ export function generateIPOptions(
 				if (validator(entry.value)) {
 					options.push({
 						label: `${object.name} (${entry.value})`,
-						value: object.id.toString()
+						value: markValue ? `ip-${object.id.toString()}` : object.id.toString()
 					});
 				}
 			}
@@ -34,7 +35,8 @@ export function generateIPOptions(
 
 export function generateNetworkOptions(
 	networkObjects: NetworkObject[] | undefined,
-	type: string
+	type: string,
+	markValue: boolean = false
 ): { label: string; value: string }[] {
 	if (!networkObjects || networkObjects.length === 0) {
 		return [];
@@ -52,12 +54,12 @@ export function generateNetworkOptions(
 				if (type.toLowerCase() === 'ipv4' && isValidIPv4(entry.value, true)) {
 					options.push({
 						label: `${object.name} (${entry.value})`,
-						value: object.id.toString()
+						value: markValue ? `ip-${object.id.toString()}` : object.id.toString()
 					});
 				} else if (type.toLowerCase() === 'ipv6' && isValidIPv6(entry.value, true)) {
 					options.push({
 						label: `${object.name} (${entry.value})`,
-						value: object.id.toString()
+						value: markValue ? `ip-${object.id.toString()}` : object.id.toString()
 					});
 				}
 			}
@@ -68,7 +70,8 @@ export function generateNetworkOptions(
 }
 
 export function generateMACOptions(
-	networkObjects: NetworkObject[] | undefined
+	networkObjects: NetworkObject[] | undefined,
+	markValue: boolean = false
 ): { label: string; value: string }[] {
 	if (!networkObjects || networkObjects.length === 0) {
 		return [];
@@ -85,7 +88,34 @@ export function generateMACOptions(
 			for (const entry of object.entries) {
 				options.push({
 					label: `${object.name} (${entry.value})`,
-					value: object.id.toString()
+					value: markValue ? `mac-${object.id.toString()}` : object.id.toString()
+				});
+			}
+		}
+	}
+
+	return options;
+}
+
+export function generateDUIDOptions(
+	networkObjects: NetworkObject[] | undefined,
+	markValue: boolean = false
+): { label: string; value: string }[] {
+	if (!networkObjects || networkObjects.length === 0) {
+		return [];
+	}
+	const options = [] as { label: string; value: string }[];
+	const objects = networkObjects?.filter((obj) => obj.type === 'DUID');
+	if (!objects || objects.length === 0) {
+		return [];
+	}
+
+	for (const object of objects) {
+		if (object.entries && object.entries.length > 0) {
+			for (const entry of object.entries) {
+				options.push({
+					label: `${object.name} (${entry.value})`,
+					value: markValue ? `duid-${object.id.toString()}` : object.id.toString()
 				});
 			}
 		}

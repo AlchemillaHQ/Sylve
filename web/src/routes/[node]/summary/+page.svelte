@@ -394,14 +394,14 @@
 				<AreaChart
 					title="CPU Usage"
 					elements={[chartElements[1], chartElements[0]]}
-					icon="solar:cpu-bold"
+					icon="icon-[solar--cpu-bold]"
 					chart={cpuUsageRef}
 					percentage={true}
 				/>
 				<AreaChart
 					title="Memory Usage"
 					elements={[chartElements[3], chartElements[2]]}
-					icon="la:memory"
+					icon="icon-[la--memory]"
 					chart={memoryUsageRef}
 					percentage={true}
 				/>
@@ -409,7 +409,7 @@
 					title="Network Usage"
 					elements={[chartElements[4], chartElements[5]]}
 					formatSize={true}
-					icon="gg:smartphone-ram"
+					icon="icon-[gg--smartphone-ram]"
 					chart={networkUsageRef}
 				/>
 			</div>

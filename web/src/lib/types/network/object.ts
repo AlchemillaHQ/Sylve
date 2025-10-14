@@ -1,6 +1,6 @@
 import { z } from 'zod/v4';
 
-export const NetworkObjectType = z.enum(['Host', 'Network', 'Port', 'Mac']);
+export const NetworkObjectType = z.enum(['Host', 'Network', 'Port', 'Mac', 'DUID', 'FQDN']);
 export const NetworkObjectSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),

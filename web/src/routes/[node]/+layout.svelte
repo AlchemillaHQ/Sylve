@@ -139,20 +139,20 @@
 							icon: 'solar:server-path-bold',
 							children: [
 								{
-									label: 'Config',
-									icon: 'mdi:cog-outline',
-									href: `/${node}/network/dhcp/config`
-								},
-								{
 									label: 'Ranges',
 									icon: 'memory:range',
 									href: `/${node}/network/dhcp/ranges`
+								},
+								{
+									label: 'Leases',
+									icon: 'mdi:clipboard-list',
+									href: `/${node}/network/dhcp/leases`
+								},
+								{
+									label: 'Config',
+									icon: 'mdi:cog-outline',
+									href: `/${node}/network/dhcp/config`
 								}
-								// {
-								// 	label: 'Leases',
-								// 	icon: 'mdi:clipboard-list',
-								// 	href: `/${node}/network/dhcp/leases`
-								// }
 							]
 						}
 					]

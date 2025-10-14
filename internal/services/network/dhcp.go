@@ -279,6 +279,76 @@ func (s *Service) WriteConfig() error {
 
 	config += "\n"
 
+	var leases []networkModels.DHCPStaticLease
+	if err := s.DB.
+		Preload("IPObject.Entries").
+		Preload("MACObject.Entries").
+		Preload("DUIDObject.Entries").Find(&leases).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_static_leases: %w", err)
+	}
+
+	for _, lease := range leases {
+		ipType := "ipv4"
+		var ip, mac, duid string
+
+		if lease.IPObject != nil && len(lease.IPObject.Entries) > 0 {
+			ip = lease.IPObject.Entries[0].Value
+			if utils.IsValidIPv6(ip) {
+				ipType = "ipv6"
+			}
+		}
+
+		if lease.MACObject != nil && len(lease.MACObject.Entries) > 0 {
+			mac = lease.MACObject.Entries[0].Value
+		}
+
+		if lease.DUIDObject != nil && len(lease.DUIDObject.Entries) > 0 {
+			duid = lease.DUIDObject.Entries[0].Value
+		}
+
+		if ip == "" && mac == "" && duid == "" {
+			continue
+		}
+
+		ipCfg := ""
+
+		if ipType == "ipv4" {
+			if ip == "" || mac == "" {
+				continue
+			}
+
+			ipCfg = fmt.Sprintf("dhcp-host=%s,%s", mac, ip)
+
+			if lease.Hostname != "" {
+				ipCfg += fmt.Sprintf(",%s", lease.Hostname)
+			}
+
+			ipCfg += ",infinite"
+
+			config += ipCfg + "\n"
+			continue
+		}
+
+		if ipType == "ipv6" {
+			if ip == "" || duid == "" {
+				continue
+			}
+
+			ipCfg = fmt.Sprintf("dhcp-host=id:%s,[%s]", duid, ip)
+
+			if lease.Hostname != "" {
+				ipCfg += fmt.Sprintf(",%s", lease.Hostname)
+			}
+
+			ipCfg += ",infinite"
+
+			config += ipCfg + "\n"
+			continue
+		}
+	}
+
+	config += "\n"
+
 	filePath := "/usr/local/etc/dnsmasq.conf"
 
 	if err := os.WriteFile(filePath, []byte(config), 0644); err != nil {

@@ -10,10 +10,18 @@ package zfsServiceInterfaces
 
 import (
 	"context"
+	"time"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/pkg/zfs"
 )
+
+type RetentionSnapInfo struct {
+	Name    string
+	Dataset *zfs.Dataset
+	Time    time.Time
+}
 
 type ZfsServiceInterface interface {
 	GetTotalIODelayHisorical() ([]infoModels.IODelay, error)
@@ -30,7 +38,7 @@ type ZfsServiceInterface interface {
 	DeleteSnapshot(guid string, recursive bool) error
 
 	GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error)
-	AddPeriodicSnapshot(guid string, prefix string, recursive bool, interval int, cronExpr string) error
+	AddPeriodicSnapshot(CreatePeriodicSnapshotJobRequest) error
 	DeletePeriodicSnapshot(guid string) error
 	StartSnapshotScheduler(ctx context.Context)
 
