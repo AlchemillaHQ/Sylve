@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
@@ -62,8 +63,11 @@ func (s *Service) SetGlobalConfig(unixCharset string,
 	for _, eIface := range interfacesList {
 		eIface = strings.TrimSpace(eIface)
 		_, err := iface.Get(eIface)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("invalid interface '%s': %w", eIface, err)
+		} else if err != nil && strings.Contains(err.Error(), "not found") {
+			logger.L.Warn().Str("interface", eIface).Msg("Interface not found, continuing without it")
+			interfacesList = utils.RemoveStringFromSlice(interfacesList, eIface)
 		}
 	}
 

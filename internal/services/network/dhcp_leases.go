@@ -38,6 +38,9 @@ func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error)
 
 	leases := make([]networkServiceInterfaces.FileLeases, 0, 16)
 
+	// Cache "duid <MAC>" mapping lines so we can backfill IPv6 MACs.
+	duidToMAC := make(map[string]string)
+
 	sc := bufio.NewScanner(f)
 	const maxLine = 64 * 1024
 	sc.Buffer(make([]byte, 0, 4*1024), maxLine)
@@ -49,18 +52,31 @@ func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error)
 		}
 
 		parts := strings.Fields(line)
+
+		// Handle the special "duid <mac>" line dnsmasq writes.
+		if len(parts) >= 2 && parts[0] == "duid" {
+			duid := strings.ToLower(parts[1])
+			duidToMAC[duid] = duid // sometimes this is already a MAC-like string
+			// Some dnsmasq builds write "duid <DUID>" and elsewhere provide MAC.
+			// If you keep a separate map DUID->MAC from another source, merge here.
+			continue
+		}
+
+		// Normal lease lines need at least 4 fields.
 		if len(parts) < 4 {
 			continue
 		}
 
 		expiry, err := strconv.ParseUint(parts[0], 10, 64)
 		if err != nil {
+			// fmt.Printf("lease: bad expiry %q in line: %s\n", parts[0], line)
 			continue
 		}
 
 		ipStr := parts[2]
 		ip := net.ParseIP(ipStr)
 		if ip == nil {
+			// fmt.Printf("lease: bad IP %q in line: %s\n", ipStr, line)
 			continue
 		}
 
@@ -68,30 +84,34 @@ func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error)
 		l.Expiry = expiry
 		l.IP = ipStr
 
-		hostname := parts[3]
-		if hostname != "*" {
-			l.Hostname = hostname
+		if parts[3] != "*" {
+			l.Hostname = parts[3]
 		}
 
 		if ip.To4() != nil {
+			// IPv4: expiry, MAC, IP, hostname, [clientid], [duid]
 			l.MAC = parts[1]
-
-			if len(parts) >= 5 && parts[4] != "*" {
+			if len(parts) > 4 && parts[4] != "*" {
 				l.ClientID = parts[4]
 			}
-
-			if len(parts) >= 6 && parts[5] != "*" {
-				l.DUID = parts[5]
+			if len(parts) > 5 && parts[5] != "*" {
+				l.DUID = strings.ToLower(parts[5])
 			}
 		} else {
+			// IPv6: expiry, IAID, IP, hostname, [DUID], [MAC]
 			l.IAID = parts[1]
-
-			if len(parts) >= 5 && parts[4] != "*" {
-				l.DUID = parts[4]
+			if len(parts) > 4 && parts[4] != "*" {
+				l.DUID = strings.ToLower(parts[4])
 			}
-
-			if len(parts) >= 6 && parts[5] != "*" {
+			// Some dnsmasq builds include MAC as a 6th field; many don't.
+			if len(parts) > 5 && parts[5] != "*" {
 				l.MAC = parts[5]
+			}
+			// Backfill MAC from the "duid ..." line if we have it and MAC missing.
+			if l.MAC == "" && l.DUID != "" {
+				if mac, ok := duidToMAC[l.DUID]; ok {
+					l.MAC = mac
+				}
 			}
 		}
 
@@ -101,7 +121,6 @@ func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error)
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
-
 	return leases, nil
 }
 
@@ -245,7 +264,7 @@ func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapR
 		return err
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		return fmt.Errorf("failed_to_apply_created_static_map: %w", err)
 	}
 
@@ -381,7 +400,7 @@ func (s *Service) ModifyStaticMap(req *networkServiceInterfaces.ModifyStaticMapR
 		return err
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		return fmt.Errorf("failed_to_apply_modified_static_map: %w", err)
 	}
 
@@ -400,7 +419,7 @@ func (s *Service) DeleteStaticMap(id uint) error {
 		return fmt.Errorf("failed_to_delete_static_map: %w", err)
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		_ = s.DB.Create(&current).Error
 		return fmt.Errorf("failed_to_apply_deleted_static_map: %w", err)
 	}

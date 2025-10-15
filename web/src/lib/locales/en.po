@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-10-14T19:53:52.459Z\n"
+"PO-Revision-Date: 2025-10-15T05:53:04.008Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -150,8 +150,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -216,6 +214,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -275,11 +275,11 @@ msgstr "Notes"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Switch"
 msgstr "Switch"
 
@@ -497,7 +497,6 @@ msgstr "Hostname"
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -506,6 +505,7 @@ msgstr "Hostname"
 #: src/routes/datacenter/storage/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "ID"
 msgstr "ID"
 
@@ -545,8 +545,6 @@ msgstr "Terminal"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -603,6 +601,8 @@ msgstr "Terminal"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Reset"
 msgstr "Reset"
 
@@ -839,10 +839,10 @@ msgstr "IPv4 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "IPv4"
 msgstr "IPv4"
 
@@ -879,10 +879,10 @@ msgstr "IPv6 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "IPv6"
 msgstr "IPv6"
 
@@ -921,9 +921,9 @@ msgstr "DHCP"
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "SLAAC"
 msgstr "SLAAC"
 
@@ -1226,7 +1226,6 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -1240,6 +1239,7 @@ msgstr "Bulk Delete"
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "New"
 msgstr "New"
 
@@ -1301,7 +1301,6 @@ msgstr "This is a note"
 #: src/routes/[node]/notes/+page.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
@@ -1315,6 +1314,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Save"
 msgstr "Save"
 
@@ -1456,7 +1456,6 @@ msgstr "Enter {0} name"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
@@ -1468,6 +1467,7 @@ msgstr "Enter {0} name"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Create"
 msgstr "Create"
 
@@ -1582,10 +1582,10 @@ msgstr "First Modified"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Type"
 msgstr "Type"
 
@@ -1961,8 +1961,8 @@ msgid "Create Samba Share"
 msgstr "Create Samba Share"
 
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
 msgstr "Dataset"
 
@@ -2584,8 +2584,8 @@ msgid "Snapshot - {0}"
 msgstr "Snapshot - {0}"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Prefix"
 msgstr "Prefix"
 
@@ -2880,9 +2880,9 @@ msgstr "Create Snapshot"
 msgid "Select a dataset"
 msgstr "Select a dataset"
 
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval"
@@ -2915,9 +2915,9 @@ msgstr "Last Run"
 msgid "Jan 01, 0001"
 msgstr "Jan 01, 0001"
 
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Never"
 msgstr "Never"
 
@@ -3291,8 +3291,8 @@ msgid "New Network"
 msgstr "New Network"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Select Switch"
 msgstr "Select Switch"
 
@@ -4272,13 +4272,13 @@ msgstr "Ranges"
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
 
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Start IP"
 msgstr "Start IP"
 
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "End IP"
 msgstr "End IP"
 
@@ -4324,9 +4324,8 @@ msgstr "DHCP Range"
 #~ msgid "This action cannot be undone. This will permanently delete this DHCP Range including all leases associated with it"
 #~ msgstr "This action cannot be undone. This will permanently delete this DHCP Range including all leases associated with it"
 
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
-msgid "This action cannot be undone. This will permanently delete this DHCP range including all leases associated with it"
-msgstr "This action cannot be undone. This will permanently delete this DHCP range including all leases associated with it"
+#~ msgid "This action cannot be undone. This will permanently delete this DHCP range including all leases associated with it"
+#~ msgstr "This action cannot be undone. This will permanently delete this DHCP range including all leases associated with it"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Failed to delete DHCP range"
@@ -4347,10 +4346,10 @@ msgstr "Updated DHCP range"
 #~ msgid "Infinite"
 #~ msgstr "Infinite"
 
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Expiry"
 msgstr "Expiry"
 
@@ -4684,3 +4683,7 @@ msgstr "Error modifying retention policy"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention policy modified"
 msgstr "Retention policy modified"
+
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "This action cannot be undone. This will permanently delete this DHCP range including all leases/options associated with it"
+msgstr "This action cannot be undone. This will permanently delete this DHCP range including all leases/options associated with it"

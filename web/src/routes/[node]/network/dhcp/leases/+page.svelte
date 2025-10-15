@@ -233,11 +233,11 @@
 		for (const entry of dhcpLeases.file) {
 			const found = dhcpLeases.db.find((e) => {
 				const ips = e.ipObject?.entries ? e.ipObject?.entries.map((i) => i.value) : [];
-				return e.hostname === entry.hostname || ips.includes(entry.ip);
+				return e.hostname === entry.hostname && ips.includes(entry.ip);
 			});
 
 			if (found) {
-				const row = rows.find((r) => r.hostname === entry.hostname || r.ip === entry.ip);
+				const row = rows.find((r) => r.hostname === entry.hostname && r.ip === entry.ip);
 				if (row) {
 					row.expiry = 'never';
 				}

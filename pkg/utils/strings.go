@@ -797,3 +797,13 @@ func IntOrZero(p *int) int {
 	}
 	return *p
 }
+
+func RemoveStringFromSlice(slice []string, str string) []string {
+	result := []string{}
+	for _, s := range slice {
+		if s != str {
+			result = append(result, s)
+		}
+	}
+	return result
+}

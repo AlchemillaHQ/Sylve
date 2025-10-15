@@ -16,6 +16,7 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (s *Service) GetRanges() ([]networkModels.DHCPRange, error) {
@@ -109,7 +110,7 @@ func (s *Service) CreateRange(req *networkServiceInterfaces.CreateDHCPRangeReque
 		return err
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		return fmt.Errorf("failed_to_apply_new_dhcp_range: %w", err)
 	}
 
@@ -197,7 +198,7 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 		return err
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		return fmt.Errorf("failed_to_apply_modified_dhcp_range: %w", err)
 	}
 
@@ -205,24 +206,31 @@ func (s *Service) ModifyRange(req *networkServiceInterfaces.ModifyDHCPRangeReque
 }
 
 func (s *Service) DeleteRange(id uint) error {
-	current := &networkModels.DHCPRange{}
-	if err := s.DB.First(current, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("invalid_dhcp_range_id: %w", err)
-		}
-		return err
-	}
-
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Delete(current).Error; err != nil {
+		var rng networkModels.DHCPRange
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&rng, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("invalid_dhcp_range_id: %w", err)
+			}
 			return err
 		}
+
+		if err := tx.Where("dhcp_range_id = ?", id).
+			Delete(&networkModels.DHCPStaticLease{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_associated_leases: %w", err)
+		}
+
+		if err := tx.Delete(&rng).Error; err != nil {
+			return err
+		}
+
 		return nil
 	}); err != nil {
 		return err
 	}
 
-	if err := s.WriteConfig(); err != nil {
+	if err := s.WriteDHCPConfig(); err != nil {
 		return fmt.Errorf("failed_to_apply_dhcp_range_deletion: %w", err)
 	}
 

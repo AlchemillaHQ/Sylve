@@ -33,7 +33,7 @@
 
 	let comboBox = $state({
 		open: false,
-		value: value.split(',').map((v) => v.trim()),
+		value: value?.split(',').map((v) => v.trim()),
 		data: options.map((o) => ({ value: o.value, label: o.label })),
 		onValueChange: (val: string | string[]) => {
 			if (Array.isArray(val)) {

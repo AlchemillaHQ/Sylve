@@ -16,6 +16,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
 	utils "github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -159,6 +160,7 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 	if object.Type == "Host" {
 		var switches []networkModels.StandardSwitch
 		var jailNetworks []jailModels.Network
+		var dhcpLeases []networkModels.DHCPStaticLease
 
 		if err := s.DB.
 			Preload("NetworkObj.Entries").
@@ -167,6 +169,14 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 			Preload("Gateway6AddressObj.Entries").
 			Find(&switches).Error; err != nil {
 			return true, err
+		}
+
+		if err := s.DB.Find(&jailNetworks).Error; err != nil {
+			return true, fmt.Errorf("failed to find jail networks: %w", id, err)
+		}
+
+		if err := s.DB.Preload("IPObject.Entries").Find(&dhcpLeases).Error; err != nil {
+			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
 		}
 
 		for _, sw := range switches {
@@ -208,10 +218,23 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 				}
 			}
 		}
+
+		for _, dl := range dhcpLeases {
+			if dl.IPObject != nil {
+				if dl.IPObject.ID == id {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
 	}
 
 	if object.Type == "Mac" {
 		var vmNetworks []vmModels.Network
+		var jailNetworks []jailModels.Network
+		var dhcpLeases []networkModels.DHCPStaticLease
+
 		if err := s.DB.Where("mac_id = ?", id).Find(&vmNetworks).Error; err != nil {
 			return true, fmt.Errorf("failed to find VM networks using object %d: %w", id, err)
 		}
@@ -220,7 +243,6 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 			return true, nil
 		}
 
-		var jailNetworks []jailModels.Network
 		if err := s.DB.Where("mac_id = ?", id).Find(&jailNetworks).Error; err != nil {
 			return true, fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
 		}
@@ -228,6 +250,20 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		if len(jailNetworks) > 0 {
 			return true, nil
 		}
+
+		if err := s.DB.Preload("MACObject.Entries").Find(&dhcpLeases).Error; err != nil {
+			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
+		}
+
+		for _, dl := range dhcpLeases {
+			if dl.MACObject != nil {
+				if dl.MACObject.ID == id {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
 	}
 
 	if object.Type == "Network" {
@@ -248,6 +284,21 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 
 		if len(switches) > 0 {
 			return true, nil
+		}
+	}
+
+	if object.Type == "DUID" {
+		var dhcpLeases []networkModels.DHCPStaticLease
+		if err := s.DB.Preload("DUIDObject.Entries").Find(&dhcpLeases).Error; err != nil {
+			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
+		}
+
+		for _, dl := range dhcpLeases {
+			if dl.DUIDObject != nil {
+				if dl.DUIDObject.ID == id {
+					return true, nil
+				}
+			}
 		}
 	}
 
@@ -402,13 +453,19 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 	} else {
 		if object.Type == "Mac" {
 			var vmNetworks []vmModels.Network
-			if err := s.DB.Where("mac_id = ?", id).Find(&vmNetworks).Error; err != nil {
+			var jailNetworks []jailModels.Network
+			var dhcpLeases []networkModels.DHCPStaticLease
+
+			if err := s.DB.Preload("AddressObj.Entries").Where("mac_id = ?", id).Find(&vmNetworks).Error; err != nil {
 				return fmt.Errorf("failed to find VM networks using object %d: %w", id, err)
 			}
 
-			var jailNetworks []jailModels.Network
-			if err := s.DB.Where("mac_id = ?", id).Find(&jailNetworks).Error; err != nil {
+			if err := s.DB.Preload("MacAddressObj.Entries").Where("mac_id = ?", id).Find(&jailNetworks).Error; err != nil {
 				return fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
+			}
+
+			if err := s.DB.Preload("MACObject.Entries").Where("mac_object_id = ?", id).Find(&dhcpLeases).Error; err != nil {
+				return fmt.Errorf("failed to find DHCP leases: %w", id, err)
 			}
 
 			var vm vmModels.VM
@@ -497,6 +554,58 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					return fmt.Errorf("failed to add network object edit jail trigger for object %d: %w", id, err)
 				}
 			}
+
+			/* Object was used in DHCP leases, but now we're changing it to something else, we can't do that */
+			if len(dhcpLeases) > 0 && oType != "Mac" {
+				return fmt.Errorf("cannot_change_object_type_dhcp")
+			}
+
+			/* MAC Used in DHCP leases */
+			if len(dhcpLeases) > 0 && oType == "Mac" {
+				if len(values) != 1 {
+					return fmt.Errorf("cannot edit object %d, it is used by %d DHCP leases, please ensure only one MAC is provided", id, len(dhcpLeases))
+				}
+
+				hasChange := false
+
+				if object.Name != name || object.Type != oType {
+					hasChange = true
+				}
+
+				object.Name = name
+				object.Type = oType
+
+				for _, value := range values {
+					for _, entry := range object.Entries {
+						if entry.Value == value && !hasChange {
+							return fmt.Errorf("no_detected_changes")
+						}
+					}
+				}
+
+				if err := s.DB.Save(&object).Error; err != nil {
+					return fmt.Errorf("failed to update object %d: %w", id, err)
+				}
+
+				if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+					return fmt.Errorf("failed to delete existing entries for object %d: %w", id, err)
+				}
+
+				for _, value := range values {
+					entry := networkModels.ObjectEntry{
+						ObjectID: id,
+						Value:    value,
+					}
+					if err := s.DB.Create(&entry).Error; err != nil {
+						return fmt.Errorf("failed to create entry for object %d: %w", id, err)
+					}
+				}
+
+				err := s.WriteDHCPConfig()
+				if err != nil {
+					logger.L.Error().Err(err).Msgf("failed to write DHCP config after editing object %d", id)
+				}
+			}
 		}
 
 		if object.Type == "Host" {
@@ -577,6 +686,63 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 				err := s.AddNetworkObjectEditJailTrigger(id, values)
 				if err != nil {
 					return fmt.Errorf("failed to add network object edit jail trigger for object %d: %w", id, err)
+				}
+			}
+
+			var dhcpLeases []networkModels.DHCPStaticLease
+			if err := s.DB.Preload("IPObject.Entries").Where("ip_object_id = ?", id).Find(&dhcpLeases).Error; err != nil {
+				return fmt.Errorf("failed to find DHCP leases: %w", id, err)
+			}
+
+			/* Object was used in DHCP leases, but now we're changing it to something else, we can't do that */
+			if len(dhcpLeases) > 0 && oType != "Host" {
+				return fmt.Errorf("cannot_change_object_type_dhcp")
+			}
+
+			/* IP Used in DHCP leases */
+			if len(dhcpLeases) > 0 && oType == "Host" {
+				if len(values) != 1 {
+					return fmt.Errorf("cannot edit object %d, it is used by %d DHCP leases, please ensure only one IP is provided", id, len(dhcpLeases))
+				}
+
+				hasChange := false
+
+				if object.Name != name || object.Type != oType {
+					hasChange = true
+				}
+
+				object.Name = name
+				object.Type = oType
+
+				for _, value := range values {
+					for _, entry := range object.Entries {
+						if entry.Value == value && !hasChange {
+							return fmt.Errorf("no_detected_changes")
+						}
+					}
+				}
+
+				if err := s.DB.Save(&object).Error; err != nil {
+					return fmt.Errorf("failed to update object %d: %w", id, err)
+				}
+
+				if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+					return fmt.Errorf("failed to delete existing entries for object %d: %w", id, err)
+				}
+
+				for _, value := range values {
+					entry := networkModels.ObjectEntry{
+						ObjectID: id,
+						Value:    value,
+					}
+					if err := s.DB.Create(&entry).Error; err != nil {
+						return fmt.Errorf("failed to create entry for object %d: %w", id, err)
+					}
+				}
+
+				err := s.WriteDHCPConfig()
+				if err != nil {
+					logger.L.Error().Err(err).Msgf("failed to write DHCP config after editing object %d", id)
 				}
 			}
 		}

@@ -275,7 +275,7 @@
 <AlertDialog
 	open={modals.delete.open}
 	names={{ parent: 'DHCP Range', element: activeRow?.id.toString() || '' }}
-	customTitle="This action cannot be undone. This will permanently delete this DHCP range including all leases associated with it"
+	customTitle="This action cannot be undone. This will permanently delete this DHCP range including all leases/options associated with it"
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteDHCPRange(modals.delete.id);

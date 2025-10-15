@@ -187,10 +187,10 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		return err
 	}
 
-	return s.WriteConfig()
+	return s.WriteDHCPConfig()
 }
 
-func (s *Service) WriteConfig() error {
+func (s *Service) WriteDHCPConfig() error {
 	var current networkModels.DHCPConfig
 	var config string
 
