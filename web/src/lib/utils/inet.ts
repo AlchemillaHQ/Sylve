@@ -54,9 +54,9 @@ export function isValidIPv6Range(start: string, end: string, network: string, pr
 		return false;
 	}
 
-	if (startAddr.bigInteger() > endAddr.bigInteger()) {
-		return false;
-	}
+	// if (startAddr.bigInteger() > endAddr.bigInteger()) {
+	// 	return false;
+	// }
 
 	return true;
 }

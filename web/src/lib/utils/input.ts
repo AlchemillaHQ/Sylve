@@ -22,7 +22,7 @@ export function generateComboboxOptions(values: string[], additional?: string[])
 
 export function generateSwitchOptions(
 	switches: SwitchList,
-	ignoreIds?: number[]
+	ignoreIds?: string[]
 ): { label: string; value: string }[] {
 	const standardSwitches = (switches.standard ?? []).map((sw) => ({
 		label: sw.name,
@@ -37,14 +37,17 @@ export function generateSwitchOptions(
 	const filteredStandardSwitches = ignoreIds
 		? standardSwitches.filter((sw) => {
 				const id = parseInt(sw.value.split('-')[0]);
-				return !ignoreIds.includes(id);
+				// ignoreIds are like <id>-stan-<name> so check against that
+				// return !ignoreIds.includes(id);
+				return !ignoreIds.includes(sw.value);
 			})
 		: standardSwitches;
 
 	const filteredManagedSwitches = ignoreIds
 		? managedSwitches.filter((sw) => {
 				const id = parseInt(sw.value.split('-')[0]);
-				return !ignoreIds.includes(id);
+				// return !ignoreIds.includes(id);
+				return !ignoreIds.includes(sw.value);
 			})
 		: managedSwitches;
 

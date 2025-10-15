@@ -42,13 +42,13 @@
 	}: Props = $props();
 
 	let configuredSwitches = $derived.by(() => {
-		const sws: number[] = [];
+		const sws: string[] = [];
 		if (dhcpConfig) {
 			if (dhcpConfig.standardSwitches) {
-				sws.push(...dhcpConfig.standardSwitches.map((sw) => sw.id));
+				sws.push(...dhcpConfig.standardSwitches.map((sw) => `${sw.id}-stan-${sw.name}`));
 			}
 			if (dhcpConfig.manualSwitches) {
-				sws.push(...dhcpConfig.manualSwitches.map((sw) => sw.id));
+				sws.push(...dhcpConfig.manualSwitches.map((sw) => `${sw.id}-man-${sw.name}`));
 			}
 		}
 
@@ -57,7 +57,6 @@
 
 	let currentSwId = $derived.by(() => {
 		if (selectedRange) {
-			console.log(selectedRange.standardSwitch, selectedRange.manualSwitch);
 			if (selectedRange.standardSwitch) {
 				const sw = networkSwitches.standard?.find((s) => s.id === selectedRange.standardSwitch?.id);
 				if (sw) {
@@ -140,7 +139,7 @@
 			combobox: {
 				open: false,
 				value: selectedRange == null ? '' : currentSwId,
-				options: generateSwitchOptions(networkSwitches, configuredSwitches).filter((opt) => {
+				options: generateSwitchOptions(networkSwitches).filter((opt) => {
 					const key = `${opt.value}|${ipType}`; // <- use current ipType
 					return !usedSwitches.includes(key) || opt.value === currentSwId;
 				})
@@ -158,23 +157,21 @@
 			properties.raOnly = false;
 			properties.slaac = false;
 
-			properties.switchId.combobox.options = generateSwitchOptions(
-				networkSwitches,
-				configuredSwitches
-			).filter((opt) => {
-				const key = `${opt.value}|ipv4`;
-				return !usedSwitches.includes(key) || opt.value === currentSwId;
-			});
+			properties.switchId.combobox.options = generateSwitchOptions(networkSwitches).filter(
+				(opt) => {
+					const key = `${opt.value}|ipv4`;
+					return !usedSwitches.includes(key) || opt.value === currentSwId;
+				}
+			);
 		}
 
 		if (properties.ipType.combobox.value === 'ipv6') {
-			properties.switchId.combobox.options = generateSwitchOptions(
-				networkSwitches,
-				configuredSwitches
-			).filter((opt) => {
-				const key = `${opt.value}|ipv6`;
-				return !usedSwitches.includes(key) || opt.value === currentSwId;
-			});
+			properties.switchId.combobox.options = generateSwitchOptions(networkSwitches).filter(
+				(opt) => {
+					const key = `${opt.value}|ipv6`;
+					return !usedSwitches.includes(key) || opt.value === currentSwId;
+				}
+			);
 		}
 	});
 
