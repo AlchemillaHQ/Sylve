@@ -34,7 +34,7 @@ export function isValidIPv4Range(start: string, end: string, network: string, ma
 		return false;
 	}
 
-	if (startAddr.bigInteger() > endAddr.bigInteger()) {
+	if (startAddr.bigInteger > endAddr.bigInteger) {
 		return false;
 	}
 
