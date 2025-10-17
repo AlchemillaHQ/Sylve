@@ -50,7 +50,9 @@ const icons = [
 	'mdi:lock',
 	'mdi:autorenew',
 	'mdi:alert-circle-outline',
-    'eos-icons:three-dots-loading'
+    'eos-icons:three-dots-loading',
+    'raphael:ethernet',
+    'temaki:water-tap'
 ];
 
 export async function preloadIcons() {

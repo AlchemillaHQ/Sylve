@@ -12,9 +12,19 @@
 	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
+    import { getNetworkObjects } from '$lib/api/network/object';
+	import type { NetworkObject } from '$lib/types/network/object';
+	import type { Jail } from '$lib/types/jail/jail';
+    import { getJails } from '$lib/api/jail/jail';
+    import { isMACNearOrEqual } from '$lib/utils/mac';
+	import type { VM } from '$lib/types/vm/vm';
+	import { getVMs } from '$lib/api/vm/vm';
 
 	interface Data {
 		interfaces: Iface[];
+        objects: NetworkObject[];
+        jails: Jail[];
+        vms: VM[];
 	}
 
 	let { data }: { data: Data } = $props();
@@ -31,8 +41,44 @@
 			onSuccess: (data: Iface[]) => {
 				updateCache('networkInterfaces', data);
 			}
-		}
+		},
+        {
+			queryKey: ['networkObjects'],
+			queryFn: async () => {
+				return await getNetworkObjects();
+			},
+			keepPreviousData: true,
+			initialData: data.objects,
+			onSuccess: (data: NetworkObject[]) => {
+				updateCache('networkObjects', data);
+			}
+		},
+        {
+			queryKey: 'jail-list',
+			queryFn: async () => {
+				return await getJails();
+			},
+            initialData: data.jails,
+			keepPreviousData: true,
+			refetchOnMount: 'always'
+		},
+        {
+			queryKey: 'vm-list',
+			queryFn: async () => {
+				return await getVMs();
+			},
+            refetchInterval: 1000,
+            initialData: data.vms,
+			keepPreviousData: true,
+			refetchOnMount: 'always',
+            onSuccess: (data: VM[]) => {
+                updateCache('vm-list', data);
+            }
+		},
 	]);
+    
+    let jails = $derived($results[2].data as Jail[]);
+    let vms = $derived($results[3].data as VM[]);
 
 	let columns: Column[] = $derived([
 		{
@@ -57,6 +103,33 @@
 					return renderWithIcon('ic:baseline-loop', value);
 				}
 
+                if (data.isEpair) {
+                    const jail = jails.find(jail =>
+                        jail?.networks?.some(net =>
+                            net?.macObj?.entries?.some(entry =>
+                            (data?.ether && isMACNearOrEqual(entry.value, data.ether)) ||
+                            (data?.hwaddr && isMACNearOrEqual(entry.value, data.hwaddr))
+                            )
+                        )
+                    );
+
+                    const jn = jail ? `(${jail.name}) ${value}` : value;
+                    return renderWithIcon('raphael:ethernet', jn);
+                }
+
+                if (data.isTap) {
+                    const vm = vms.find(vm =>
+                        vm?.networks?.some(net =>
+                            net?.macObj?.entries?.some(entry =>
+                            (data?.ether && isMACNearOrEqual(entry.value, data.ether, true)) ||
+                            (data?.hwaddr && isMACNearOrEqual(entry.value, data.hwaddr, true))
+                            )
+                        )
+                    );
+
+                    return renderWithIcon('temaki:water-tap', vm ? `(${vm.name}) ${value}` : value);
+                }
+
 				return renderWithIcon('mdi:ethernet', value);
 			}
 		},
@@ -80,8 +153,16 @@
 			field: 'ether',
 			title: 'MAC Address',
 			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				return value || '-';
+                const row = cell.getRow();
+                const hwAddr = row.getData().hwaddr;
+                const macAddr = cell.getValue();
+                const isEpair = row.getData().isEpair;
+
+                if (hwAddr && hwAddr !== macAddr && isEpair) {
+                    return row.getData().hwaddr;
+                }
+
+				return macAddr || '-';
 			}
 		},
 		{
@@ -109,7 +190,12 @@
 			field: 'isBridge',
 			title: 'isBridge',
 			visible: false
-		}
+		},
+        {
+            field: 'isEpair',
+            title: 'isEpair',
+            visible: false
+        }
 	]);
 
 	let tableData = $derived(generateTableData(columns, $results[0].data as Iface[]));

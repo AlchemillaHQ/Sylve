@@ -291,6 +291,39 @@ get_ifdescr(int sock, const char *ifname)
     }
 }
 
+static int
+get_hwaddr(int fd, const char *ifname, unsigned char *out, int *outlen)
+{
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ-1);
+
+    if (ioctl(fd, SIOCGHWADDR, &ifr) < 0)
+        return -1;
+
+    struct sockaddr *sa = &ifr.ifr_addr;
+
+    if (sa->sa_family == AF_LINK && sa->sa_len >= sizeof(struct sockaddr)) {
+        struct sockaddr_dl *sdl = (struct sockaddr_dl *)sa;
+        const unsigned char *ll = (const unsigned char *)sdl->sdl_data + sdl->sdl_nlen;
+        if (sdl->sdl_alen > 0 && sdl->sdl_alen <= 32) {
+            memcpy(out, ll, sdl->sdl_alen);
+            *outlen = sdl->sdl_alen;
+            return 0;
+        }
+    }
+
+    if (sa->sa_len >= sizeof(struct sockaddr)) {
+        memcpy(out, sa->sa_data, 6);
+        *outlen = 6;
+        return 0;
+    }
+
+    memcpy(out, sa->sa_data, 6);
+    *outlen = 6;
+    return 0;
+}
+
 static uint32_t get_mtu(const struct ifreq *ifr)    { return ifr->ifr_mtu; }
 static uint32_t get_metric(const struct ifreq *ifr) { return ifr->ifr_metric; }
 
@@ -318,6 +351,10 @@ func (iface *Interface) String() string {
 
 	if iface.Ether != "" {
 		sb.WriteString(fmt.Sprintf("\tether %s\n", iface.Ether))
+	}
+
+	if iface.HWAddr != "" {
+		sb.WriteString(fmt.Sprintf("\thwaddr %s\n", iface.HWAddr))
 	}
 
 	if iface.Description != "" {
@@ -581,6 +618,17 @@ func getInterfaceInfo(name string) (*Interface, error) {
 			if grp != "all" {
 				iface.Groups = append(iface.Groups, grp)
 			}
+		}
+	}
+
+	{
+		var buf [32]C.uchar
+		var alen C.int
+		if C.get_hwaddr(fd4, cname, &buf[0], &alen) == 0 && alen > 0 {
+			mac := C.GoBytes(unsafe.Pointer(&buf[0]), alen)
+			hw := net.HardwareAddr(mac).String()
+			// Only set if different from the current L2 address we’ll parse from AF_LINK
+			iface.HWAddr = hw
 		}
 	}
 

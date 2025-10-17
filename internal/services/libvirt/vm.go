@@ -30,7 +30,12 @@ import (
 
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
 	var vms []vmModels.VM
-	if err := s.DB.Preload("Networks").Preload("Storages").Find(&vms).Error; err != nil {
+	if err := s.DB.
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Storages").Find(&vms).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_vms: %w", err)
 	}
 

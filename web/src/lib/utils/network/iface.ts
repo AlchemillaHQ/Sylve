@@ -12,11 +12,24 @@ export function generateTableData(
 	const rows: Row[] = [];
 	for (const iface of interfaces) {
 		let isBridge = false;
+        let isEpair = false;
+        let isTap = false;
+
 		if (iface.groups) {
 			if (iface.groups.includes('bridge')) {
 				isBridge = true;
 				iface.model = 'Bridge';
 			}
+
+            if (iface.groups.includes('epair')) {
+                isEpair = true;
+                iface.model = 'Epair';
+            }
+
+            if (iface.groups.includes('tap')) {
+                isTap = true;
+                iface.model = 'TAP';
+            }
 		}
 
 		// TODO: Skip sylve created VLANs for now
@@ -27,13 +40,16 @@ export function generateTableData(
 		const row: Row = {
 			id: generateNumberFromString(iface.ether + iface.name),
 			ether: iface.ether,
+            hwaddr: iface.hwaddr,
 			name: iface.name,
 			model: iface.model,
 			description: iface.description,
 			metric: iface.metric,
 			mtu: iface.mtu,
 			media: iface.media,
-			isBridge: isBridge
+			isBridge: isBridge,
+            isEpair: isEpair,
+            isTap: isTap,
 		};
 
 		rows.push(row);

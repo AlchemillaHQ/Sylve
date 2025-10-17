@@ -51,7 +51,12 @@ func NewJailService(db *gorm.DB, networkService networkServiceInterfaces.Network
 
 func (s *Service) GetJails() ([]jailModels.Jail, error) {
 	var jails []jailModels.Jail
-	if err := s.DB.Preload("Networks").Find(&jails).Error; err != nil {
+	if err := s.DB.
+		Preload("Networks").
+		Preload("Networks.MacAddressObj").
+		Preload("Networks.MacAddressObj.Entries").
+		Preload("Networks.MacAddressObj.Resolutions").
+		Find(&jails).Error; err != nil {
 		logger.L.Error().Err(err).Msg("get_jails: failed to fetch jails")
 		return nil, fmt.Errorf("failed_to_fetch_jails: %w", err)
 	}

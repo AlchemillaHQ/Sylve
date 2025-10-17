@@ -79,6 +79,7 @@ type BridgeMember struct {
 type Interface struct {
 	Name          string         `json:"name"`
 	Ether         string         `json:"ether"`
+	HWAddr        string         `json:"hwaddr"`
 	Flags         Flags          `json:"flags"`
 	MTU           int            `json:"mtu"`
 	Metric        int            `json:"metric"`

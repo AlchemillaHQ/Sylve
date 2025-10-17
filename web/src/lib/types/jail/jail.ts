@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { NetworkObjectSchema } from '../network/object';
 
 export interface CreateData {
 	name: string;
@@ -42,6 +43,7 @@ export const NetworkSchema = z.object({
 	switchId: z.number().int(),
 	switchType: z.enum(['standard', 'manual']),
 	macId: z.number().int().nullable(),
+    macObj: NetworkObjectSchema.optional(),
 	ipv4Id: z.number().int().nullable(),
 	ipv4GwId: z.number().int().nullable(),
 	ipv6Id: z.number().int().nullable(),

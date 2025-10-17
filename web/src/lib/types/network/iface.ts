@@ -63,6 +63,7 @@ export const BridgeMemberSchema = z.object({
 export const IfaceSchema = z.object({
 	name: z.string(),
 	ether: z.string(),
+    hwaddr: z.string().default(''),
 	flags: FlagsSchema,
 	mtu: z.number().nullable().optional(),
 	metric: z.number().nullable().optional(),
