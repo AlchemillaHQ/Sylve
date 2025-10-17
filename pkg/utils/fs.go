@@ -203,13 +203,16 @@ func DoesPathHaveBase(root string) (bool, error) {
 	if root == "" {
 		return false, fmt.Errorf("path_required")
 	}
+
 	info, err := os.Stat(root)
+
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, fmt.Errorf("path_does_not_exist: %s", root)
 		}
 		return false, err
 	}
+
 	if !info.IsDir() {
 		return false, fmt.Errorf("not_a_directory: %s", root)
 	}

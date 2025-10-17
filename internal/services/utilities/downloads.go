@@ -295,11 +295,11 @@ func (s *Service) startPostProcessors(n int) {
 			n = 2
 		}
 		s.postq = make(chan uint, 64)
-		logger.L.Info().Msgf("postproc: starting %d workers (chan cap=%d)", n, cap(s.postq))
+		logger.L.Debug().Msgf("postproc: starting %d workers (chan cap=%d)", n, cap(s.postq))
 		for i := 0; i < n; i++ {
 			i := i
 			go func() {
-				logger.L.Info().Msgf("postproc: worker-%d online", i)
+				logger.L.Debug().Msgf("postproc: worker-%d online", i)
 				s.postWorker(i)
 			}()
 		}
@@ -320,7 +320,7 @@ func (s *Service) enqueuePost(id uint) {
 	s.inflight[id] = struct{}{}
 	s.inflightMu.Unlock()
 
-	logger.L.Info().Msgf("postproc: enqueue id=%d", id)
+	logger.L.Debug().Msgf("postproc: enqueue id=%d", id)
 	s.postq <- id
 }
 
@@ -339,7 +339,7 @@ func (s *Service) postProcessOne(id uint) error {
 		s.inflightMu.Unlock()
 	}()
 
-	logger.L.Info().Msgf("postproc start id=%d", id)
+	logger.L.Debug().Msgf("postproc start id=%d", id)
 
 	// Load fresh copy
 	var d utilitiesModels.Downloads
@@ -374,10 +374,16 @@ func (s *Service) postProcessOne(id uint) error {
 			logger.L.Error().Msgf("tar extract failed: %v (%s)", err, out)
 			return s.failDownload(&d, err)
 		}
-		// classify
-		if ok, _ := utils.DoesPathHaveBase(extractsPath); ok {
+
+		isBase, err := utils.DoesPathHaveBase(extractsPath)
+		if err != nil {
+			logger.L.Error().Msgf("Failed to classify extracted tar: %v", err)
+		}
+
+		if isBase {
 			d.UType = "fbsd-base"
 		}
+
 		d.ExtractedPath = extractsPath
 		return s.finishDownload(&d, extractsPath, d.UType)
 	}
@@ -390,15 +396,21 @@ func (s *Service) postProcessOne(id uint) error {
 		return s.failDownload(&d, err)
 	}
 
-	// If the decompress yielded exactly one file, point there
 	if files, _ := os.ReadDir(extractsPath); len(files) == 1 {
 		d.ExtractedPath = filepath.Join(extractsPath, files[0].Name())
 	} else {
 		d.ExtractedPath = extractsPath
 	}
-	if ok, _ := utils.DoesPathHaveBase(extractsPath); ok {
+
+	isBase, err := utils.DoesPathHaveBase(extractsPath)
+	if err != nil {
+		logger.L.Error().Msgf("Failed to classify extracted file: %v", err)
+	}
+
+	if isBase {
 		d.UType = "fbsd-base"
 	}
+
 	return s.finishDownload(&d, d.ExtractedPath, d.UType)
 }
 
@@ -423,7 +435,7 @@ func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath, ut
 			"status":         d.Status,
 			"progress":       d.Progress,
 			"extracted_path": d.ExtractedPath,
-			"utype":          d.UType,
+			"u_type":         d.UType,
 		}).Error
 }
 
