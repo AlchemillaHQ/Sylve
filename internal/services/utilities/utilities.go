@@ -9,6 +9,9 @@
 package utilities
 
 import (
+	"crypto/tls"
+	"net/http"
+
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -23,12 +26,19 @@ import (
 var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB         *gorm.DB
-	BTTClient  *torrent.Session
-	GrabClient *grab.Client
+	DB           *gorm.DB
+	BTTClient    *torrent.Session
+	GrabClient   *grab.Client
+	GrabInsecure *grab.Client
 
 	httpRspMu     sync.Mutex
 	httpResponses map[string]*grab.Response
+
+	postq      chan uint
+	workerOnce sync.Once
+
+	inflightMu sync.Mutex
+	inflight   map[uint]struct{}
 }
 
 func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServiceInterface {
@@ -38,15 +48,23 @@ func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServic
 	cfg.DataDir = config.GetDownloadsPath("torrents")
 
 	session, err := torrent.NewSession(cfg)
-
 	if err != nil {
 		logger.L.Fatal().Msgf("Failed to create torrent downloader %v", err)
+	}
+
+	secureClient := grab.NewClient()
+	insecureClient := &grab.Client{
+		HTTPClient: &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}},
 	}
 
 	return &Service{
 		DB:            db,
 		BTTClient:     session,
-		GrabClient:    grab.NewClient(),
+		GrabClient:    secureClient,
+		GrabInsecure:  insecureClient,
 		httpResponses: make(map[string]*grab.Response),
+		inflight:      make(map[uint]struct{}),
 	}
 }

@@ -17,6 +17,10 @@ export const DownloadSchema = z.object({
 	progress: z.number(),
 	size: z.number(),
 	files: z.array(DownloadedFileSchema),
+	uType: z.string().optional(),
+	extractedPath: z.string().optional(),
+	error: z.string().optional(),
+    status: z.string(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

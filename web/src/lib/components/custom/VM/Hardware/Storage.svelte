@@ -32,7 +32,7 @@
 	};
 
 	let properties = $state(options);
-	let isos = $derived(getISOs(downloads, false));
+	let isos = $derived(getISOs(downloads, true));
 	let usedVolumes = $derived.by(() => {
 		const storages = vm.storages;
 		return datasets
@@ -81,7 +81,7 @@
 		}
 
 		if (properties.type === 'iso') {
-			const response = await storageAttach(vm.vmId, 'iso', properties.dataset, 'ahci-cd', 0, '');
+			const response = await storageAttach(vm.vmId, 'iso', properties.dataset, properties.emulation, 0, '');
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to attach CD-ROM', {
@@ -248,15 +248,39 @@
 			onChange={(value) => (properties.type = value)}
 		/>
 
-		{#if properties.type === 'iso'}
-			<SimpleSelect
-				label="ISO"
-				placeholder="Select ISO"
-				options={isos}
-				bind:value={properties.dataset}
-				onChange={(value) => (properties.dataset = value)}
-			/>
-		{/if}
+        {#if properties.type === 'iso'}
+            <div class="flex flex-row gap-2">
+                <div class="flex-1 min-w-[0]">
+                    <div class="w-full max-w-[300px]">
+                        <SimpleSelect
+                            label="ISO / Image"
+                            placeholder="Select ISO or Image"
+                            options={isos}
+                            bind:value={properties.dataset}
+                            onChange={(value) => (properties.dataset = value)}
+                        />
+                    </div>
+                </div>
+
+                <div class="flex-1 min-w-[0]">
+                    <div class="w-full max-w-[200px]">
+                        <SimpleSelect
+                            label="Emulation"
+                            placeholder="Select Emulation"
+                            options={[
+                                { value: 'ahci-cd', label: 'AHCI CD' },
+                                { value: 'ahci-hd', label: 'AHCI HD' },
+                                { value: 'virtio-blk', label: 'VirtIO Block' },
+                                { value: 'nvme', label: 'NVMe' }
+                            ]}
+                            bind:value={properties.emulation}
+                            onChange={(value) => (properties.emulation = value)}
+                        />
+                    </div>
+                </div>
+            </div>
+        {/if}
+
 
 		{#if properties.type === 'zvol'}
 			<SimpleSelect

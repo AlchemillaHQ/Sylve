@@ -48,7 +48,9 @@ const icons = [
 	'fluent-mdl2:party-leader',
 	'mdi:forever',
 	'mdi:lock',
-	'mdi:autorenew'
+	'mdi:autorenew',
+	'mdi:alert-circle-outline',
+    'eos-icons:three-dots-loading'
 ];
 
 export async function preloadIcons() {

@@ -45,7 +45,7 @@
 	}
 
 	let isos = $derived.by(() => {
-		const options = getISOs(downloads);
+		const options = getISOs(downloads, true);
 		options.push({
 			label: 'None',
 			value: 'None'

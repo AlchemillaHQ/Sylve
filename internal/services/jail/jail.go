@@ -144,7 +144,7 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 		return fmt.Errorf("failed_to_check_if_empty_mountpoint: %w", err)
 	}
 
-	hasBase, err := s.DoesPathHaveBase(mountPoint)
+	hasBase, err := utils.DoesPathHaveBase(mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_if_mountpoint_has_base: %w", err)
 	}
@@ -663,26 +663,24 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) error
 		return fmt.Errorf("failed_to_get_dataset_mountpoint: %w", err)
 	}
 
-	hasBase, err := s.DoesPathHaveBase(mountPoint)
+	hasBase, err := utils.DoesPathHaveBase(mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_path_for_base: %w", err)
 	}
 
 	if !hasBase {
-		baseTxz, err := s.FindBaseByUUID(data.Base)
+		base, err := s.FindBaseByUUID(data.Base)
 		if err != nil {
 			return fmt.Errorf("failed_to_find_base: %w", err)
 		}
 
-		isDir, _ := utils.IsDir(baseTxz)
+		isDir, _ := utils.IsDir(base)
 		if isDir {
-			if err := utils.CopyDirContents(baseTxz, mountPoint); err != nil {
+			if err := utils.CopyDirContents(base, mountPoint); err != nil {
 				return fmt.Errorf("failed_to_copy_base: %w", err)
 			}
 		} else {
-			if _, err = s.ExtractBase(mountPoint, baseTxz); err != nil {
-				return fmt.Errorf("failed_to_extract_base: %w", err)
-			}
+			return fmt.Errorf("base_is_not_a_directory")
 		}
 
 		if err := utils.CopyFile("/etc/resolv.conf", filepath.Join(mountPoint, "etc", "resolv.conf")); err != nil {

@@ -6,6 +6,7 @@
 		getSignedURL,
 		startDownload
 	} from '$lib/api/utilities/downloader';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -54,7 +55,8 @@
 		isBulkDelete: false,
 		title: '',
 		url: '',
-		name: ''
+		name: '',
+		ignoreTLS: false
 	});
 
 	let downloads = $derived($results[0].data as Download[]);
@@ -131,7 +133,11 @@
 			return;
 		}
 
-		const result = await startDownload(modalState.url, modalState.name || undefined);
+		const result = await startDownload(
+			modalState.url,
+			modalState.name || undefined,
+			modalState.ignoreTLS
+		);
 		if (result) {
 			modalState.isOpen = false;
 			modalState.url = '';
@@ -279,12 +285,20 @@
 			/>
 
 			{#if modalState.url && isDownloadURL(modalState.url)}
-				<CustomValueInput
-					label={'Optional File Name'}
-					placeholder="freebsd-14.3-base-amd64.txz"
-					bind:value={modalState.name}
-					classes="flex-1 space-y-1 mt-2"
-				/>
+				<div class="flex flex-col gap-4">
+					<CustomValueInput
+						label={'Optional File Name'}
+						placeholder="freebsd-14.3-base-amd64.txz"
+						bind:value={modalState.name}
+						classes="flex-1 space-y-1 mt-2"
+					/>
+
+					<CustomCheckbox
+						label="Ignore TLS Errors"
+						bind:checked={modalState.ignoreTLS}
+						classes="flex items-center gap-2"
+					/>
+				</div>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">

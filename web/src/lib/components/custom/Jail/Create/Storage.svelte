@@ -62,7 +62,7 @@
 
 	let baseOptions = $derived.by(() => {
 		return downloads
-			.filter((download) => download.name.includes('txz'))
+			.filter((download) => download.uType === 'fbsd-base')
 			.map((download) => ({
 				label: download.name,
 				value: download.uuid

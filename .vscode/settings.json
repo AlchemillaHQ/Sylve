@@ -6,16 +6,4 @@
   "window.title": "${rootName}",
   "explorer.compactFolders": false,
   "workbench.startupEditor": "none",
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "[go]": {
-    "editor.defaultFormatter": "golang.go"
-  },
-  "eslint.validate": ["javascript", "svelte", "typescript"],
-  "svelte.enable-ts-plugin": true,
-  "svelte.language-server.port": 1234,
-  "go.formatTool": "goimports",
-  "[svelte]": {
-    "editor.defaultFormatter": "svelte.svelte-vscode"
-  }
 }

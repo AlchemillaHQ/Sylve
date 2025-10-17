@@ -106,7 +106,7 @@ func (s *Service) FlashVolume(guid string, uuid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := zfs.Datasets("")
+	datasets, err := zfs.Volumes("")
 	if err != nil {
 		return err
 	}

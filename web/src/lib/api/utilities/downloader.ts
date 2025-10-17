@@ -6,10 +6,15 @@ export async function getDownloads(): Promise<Download[]> {
 	return await apiRequest('/utilities/downloads', DownloadSchema.array(), 'GET');
 }
 
-export async function startDownload(url: string, filename?: string): Promise<APIResponse> {
+export async function startDownload(
+	url: string,
+	filename?: string,
+	ignoreTLS?: boolean
+): Promise<APIResponse> {
 	return await apiRequest('/utilities/downloads', APIResponseSchema, 'POST', {
 		url,
-		filename
+		filename,
+		ignoreTLS
 	});
 }
 

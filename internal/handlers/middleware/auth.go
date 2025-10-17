@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,9 +28,14 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 		path := c.Request.URL.Path
 
 		if strings.HasPrefix(path, "/api/utilities/downloads/") &&
-			len(path) > len("/api/utilities/downloads/") {
-			c.Next()
-			return
+			!strings.HasPrefix(path, "/api/utilities/downloads/bulk-delete") &&
+			!strings.HasPrefix(path, "/api/utilities/downloads/signed-url") {
+
+			subpath := strings.TrimPrefix(path, "/api/utilities/downloads/")
+			if subpath != "" && !regexp.MustCompile(`^\d+$`).MatchString(subpath) {
+				c.Next()
+				return
+			}
 		}
 
 		if path == "/api/auth/login" {

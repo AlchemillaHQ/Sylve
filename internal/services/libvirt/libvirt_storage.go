@@ -139,7 +139,7 @@ func (s *Service) StorageDetach(vmId int, storageId int) error {
 	filePath := ""
 	if storage.Type == "iso" {
 		// If ISO isn’t found, we can still proceed; no need to fail
-		if p, ferr := s.FindISOByUUID(storage.Dataset, false); ferr == nil {
+		if p, ferr := s.FindISOByUUID(storage.Dataset, true); ferr == nil {
 			filePath = p
 		}
 	}
@@ -155,8 +155,7 @@ func (s *Service) StorageDetach(vmId int, storageId int) error {
 		}
 
 		// ISO removal (best-effort if we know the path)
-		if storage.Type == "iso" && filePath != "" &&
-			strings.Contains(val, "ahci-cd") && strings.Contains(val, filePath) {
+		if storage.Type == "iso" && filePath != "" && strings.Contains(val, filePath) {
 			bhyveCommandline.RemoveChild(arg)
 			continue
 		}
@@ -260,7 +259,7 @@ func (s *Service) StorageAttach(vmId int, sType string, dataset string, emulatio
 	}
 
 	if sType == "iso" {
-		filePath, err := s.FindISOByUUID(dataset, false)
+		filePath, err := s.FindISOByUUID(dataset, true)
 		if err != nil {
 			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
 		}
@@ -287,7 +286,7 @@ func (s *Service) StorageAttach(vmId int, sType string, dataset string, emulatio
 			Type:      sType,
 			Dataset:   dataset,
 			Size:      0,
-			Emulation: "ahci-cd",
+			Emulation: emulation,
 			VMID:      uint(vm.ID),
 		}
 
@@ -300,7 +299,7 @@ func (s *Service) StorageAttach(vmId int, sType string, dataset string, emulatio
 			return fmt.Errorf("failed_to_find_lowest_index: %w", err)
 		}
 
-		argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s", index, filePath)
+		argValue := fmt.Sprintf("-s %d:0,%s,%s", index, emulation, filePath)
 		bhyveCommandline.CreateElement("bhyve:arg").CreateAttr("value", argValue)
 	} else if sType == "zvol" {
 		datasets, err := zfs.Volumes("")

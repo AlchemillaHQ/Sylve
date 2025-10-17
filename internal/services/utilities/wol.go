@@ -20,6 +20,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+
+	ciface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
 var lastSeen = make(map[string]time.Time)
@@ -51,6 +53,17 @@ func (s *Service) StartWOLServer() error {
 		if (iface.Flags&net.FlagUp) == 0 ||
 			(iface.Flags&net.FlagLoopback) != 0 ||
 			(iface.Flags&net.FlagBroadcast) == 0 {
+			continue
+		}
+
+		h, err := ciface.Get(iface.Name)
+		if err != nil {
+			logger.L.Warn().Err(err).Str("iface", iface.Name).Msg("failed to get iface")
+			continue
+		}
+
+		if utils.StringInSlice("tap", h.Groups) ||
+			utils.StringInSlice("epair", h.Groups) {
 			continue
 		}
 

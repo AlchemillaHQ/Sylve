@@ -509,3 +509,13 @@ export function validateDnsmasqHostname(hostname: string): boolean {
 	const regex = /^(?!.*(--|__))(?![-_])[a-zA-Z0-9-_]{1,63}(?<![-_])$/;
 	return regex.test(hostname);
 }
+
+export function escapeHTML(str: string): string {
+	if (!str) return '';
+	return str
+		.replace(/&/g, '&amp;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}

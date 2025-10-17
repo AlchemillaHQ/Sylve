@@ -4,6 +4,7 @@ import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon } from '../table';
+import { escapeHTML } from '../string';
 
 export function generateTableData(data: Download[]): { rows: Row[]; columns: Column[] } {
 	const columns: Column[] = [
@@ -42,6 +43,11 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			title: 'Size',
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
+				const error = cell.getRow().getData().error;
+
+				if (error) {
+					return '-';
+				}
 
 				if (value === 0 || value === '0') {
 					return renderWithIcon('eos-icons:three-dots-loading', '');
@@ -60,6 +66,25 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			title: 'Progress',
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
+				const error = cell.getRow().getData().error;
+                const status = cell.getRow().getData().status;
+
+                if (status === "processing") {
+                    return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
+                }
+
+				if (error) {
+					if (error.includes('failed to verify certificate')) {
+						return renderWithIcon(
+							'mdi:alert-circle-outline',
+							'Error',
+							'',
+							'Certificate verification failed'
+						);
+					} else {
+						return renderWithIcon('mdi:alert-circle-outline', 'Error', '', escapeHTML(error));
+					}
+				}
 
 				if (value === '-') {
 					return '-';
@@ -89,6 +114,8 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			size: download.size,
 			type: download.type,
 			progress: download.progress,
+			error: download.error,
+            status: download.status,
 			children: []
 		};
 
@@ -101,7 +128,8 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 				type: '-',
 				children: [],
 				progress: '-',
-				parentUUID: download.uuid
+				parentUUID: download.uuid,
+                status: '-'
 			};
 
 			row.children?.push(childRow);
@@ -133,12 +161,20 @@ export function getISOs(
 
 		if (download.type === 'http') {
 			addIfMatch(download.name);
+			if (download.extractedPath) {
+                if (download.extractedPath.includes("/")) {
+                    const parts = download.extractedPath.split("/");
+                    addIfMatch(parts[parts.length - 1]);
+                } else {
+                    addIfMatch(download.extractedPath);
+                }
+            }
 		} else if (download.type === 'torrent' && Array.isArray(download.files)) {
 			for (const file of download.files) {
-				addIfMatch(file.name);
+                addIfMatch(file.name);
 			}
 		}
 	}
 
-	return options;
+	return [...new Map(options.map((item) => [item['value'], item])).values()];
 }

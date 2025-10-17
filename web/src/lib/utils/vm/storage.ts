@@ -47,6 +47,24 @@ export function generateTableData(
 				return value;
 			}
 		},
+        {
+            field: 'emulation',
+            title: 'Emulation',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                switch (value) {
+                    case 'ahci-cd':
+                        return 'AHCI-CD';
+                    case 'virtio-blk':
+                        return 'VirtIO-BLK';
+                    case 'ahci-hd':
+                        return 'AHCI-HD';
+                    default:
+                        break;
+                }
+                return '-';
+            }  
+        },
 		{
 			field: 'size',
 			title: 'Size',
@@ -105,6 +123,7 @@ export function generateTableData(
 		rows.push({
 			id: storage.id,
 			type: storage.type,
+			emulation: storage.emulation,
 			name: name,
 			size: size
 		});
