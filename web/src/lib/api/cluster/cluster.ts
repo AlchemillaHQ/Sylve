@@ -48,3 +48,37 @@ export async function getNodes(): Promise<ClusterNode[]> {
 export async function getClusterResources(): Promise<NodeResource[]> {
 	return await apiRequest('/cluster/resources', z.array(NodeResourceSchema), 'GET');
 }
+
+interface TreeNode {
+	id: string;
+	children?: TreeNode[];
+}
+
+export function collectIds(nodes: TreeNode[]): string[] {
+	const ids: string[] = [];
+	for (const node of nodes) {
+		ids.push(node.id);
+		if (node.children && node.children.length > 0) {
+			ids.push(...collectIds(node.children));
+		}
+	}
+	return ids;
+}
+
+
+export function saveOpenIds(ids: Set<string>) {
+	localStorage.setItem('clusterIds', JSON.stringify(Array.from(ids)));
+}
+
+export function loadClusterIds(): Set<string> {
+	try {
+		const json = localStorage.getItem('clusterIds');
+		if (json) {
+			return new Set(JSON.parse(json));
+		}
+	} catch (error) {
+		console.error('Failed to load clusterIds from localStorage:', error);
+		localStorage.removeItem('clusterIds');
+	}
+	return new Set();
+}

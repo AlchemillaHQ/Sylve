@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { getClusterResources, getNodes } from '$lib/api/cluster/cluster';
+	import {
+		collectIds,
+		getClusterResources,
+		getNodes,
+		loadClusterIds,
+		saveOpenIds
+	} from '$lib/api/cluster/cluster';
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
@@ -12,6 +18,7 @@
 		if (openIds.has(id)) openIds.delete(id);
 		else openIds.add(id);
 		openIds = new Set(openIds);
+		saveOpenIds(openIds);
 	};
 
 	const queryClient = useQueryClient();
@@ -77,6 +84,19 @@
 			})
 		}
 	]);
+
+	$effect(() => {
+		if (tree && tree.length > 0) {
+			const storedIds = loadClusterIds();
+			if (storedIds.size === 0) {
+				openIds = new Set(collectIds(tree));
+				saveOpenIds(openIds);
+			} else {
+				const allNodeIds = new Set(collectIds(tree));
+				openIds = new Set(Array.from(storedIds).filter((id) => allNodeIds.has(id)));
+			}
+		}
+	});
 
 	$effect(() => {
 		if (reload.leftPanel) {
