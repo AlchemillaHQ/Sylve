@@ -30,5 +30,5 @@ type PeriodicSnapshot struct {
 	KeepYearly  int `json:"keepYearly" gorm:"default:0"`  // e.g., keep 3 yearly
 
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	LastRunAt time.Time `json:"lastRunAt,omitempty"`
+	LastRunAt time.Time `json:"lastRunAt"`
 }

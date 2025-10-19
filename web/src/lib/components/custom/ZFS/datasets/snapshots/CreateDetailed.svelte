@@ -170,9 +170,25 @@
 						parseInt(properties.retention.gfs.keepYearly) || null
 					);
 				}
-			}
+			} else {
+                response = await createPeriodicSnapshot(
+                    dataset,
+                    properties.name,
+                    properties.recursive,
+                    minutes,
+                    cron,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                );
+            }
 
 			reload = true;
+
+            console.log(response);
 
 			if (response?.error) {
 				handleAPIError(response);

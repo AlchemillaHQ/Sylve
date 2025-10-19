@@ -20,9 +20,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
-	"gorm.io/gorm/clause"
-
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm/clause"
 )
 
 func (s *Service) DeleteSnapshot(guid string, recursive bool) error {
@@ -251,6 +250,41 @@ func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSna
 		return err
 	}
 
+	if interval > 0 && cronExpr == "" {
+		seedLocal := utils.ComputeLocalBoundary(interval, time.Now())
+		name := req.Prefix + "-" + seedLocal.Format("2006-01-02-15-04")
+
+		ds, err := s.GetDatasetByGUID(req.GUID)
+		if err != nil {
+			return err
+		}
+		full := ds.Name + "@" + name
+
+		allSnaps, err := zfs.Snapshots("")
+		if err != nil {
+			return err
+		}
+
+		exists := false
+		for _, sn := range allSnaps {
+			if sn.Name == full {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			if err := s.CreateSnapshot(req.GUID, name, recursive); err != nil {
+				logger.L.Warn().Err(err).Msgf("Failed to create initial snapshot %s", full)
+			} else {
+				logger.L.Debug().Msgf("Initial boundary snapshot created: %s", full)
+			}
+		}
+
+		if err := s.DB.Model(&snapshot).Update("LastRunAt", seedLocal.UTC()).Error; err != nil {
+			logger.L.Warn().Err(err).Msgf("Failed to seed LastRunAt for snapshot job %s", snapshot.GUID)
+		}
+	}
+
 	return nil
 }
 
@@ -296,7 +330,6 @@ func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.Modif
 		updates["KeepYearly"] = rvals.KeepYearly
 	}
 
-	// If the user is explicitly switching regimes, clear the other side.
 	switch rtype {
 	case retentionSimple:
 		if gfsPresent { // client sent some GFS fields in this request (invalid), already blocked by validator
@@ -503,7 +536,7 @@ func (s *Service) pruneSnapshots(
 }
 
 func (s *Service) StartSnapshotScheduler(ctx context.Context) {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 
 	go func() {
 		for {
@@ -515,10 +548,13 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 					continue
 				}
 
-				now := time.Now()
+				nowLocal := time.Now()
 
 				for _, job := range snapshotJobs {
-					shouldRun := false
+					var (
+						shouldRun  bool
+						runAtLocal time.Time // for cron path (local time boundary)
+					)
 
 					if job.CronExpr != "" {
 						sched, err := cron.ParseStandard(job.CronExpr)
@@ -527,13 +563,37 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 							continue
 						}
 
-						nextRun := sched.Next(job.LastRunAt)
-						if job.LastRunAt.IsZero() || now.After(nextRun) {
-							shouldRun = true
+						start := nowLocal.Add(-48 * time.Hour)
+						t := sched.Next(start)
+						var last time.Time
+						for !t.After(nowLocal) {
+							last = t
+							t = sched.Next(t)
 						}
-					} else if job.Interval > 0 {
-						if job.LastRunAt.IsZero() || now.Sub(job.LastRunAt).Seconds() >= float64(job.Interval) {
+
+						if last.IsZero() {
+							continue
+						}
+
+						if job.LastRunAt.IsZero() || last.After(job.LastRunAt) {
 							shouldRun = true
+							runAtLocal = last
+						}
+
+					} else if job.Interval > 0 {
+						iv := time.Duration(job.Interval) * time.Second
+						nowLocal := time.Now().In(time.Local)
+
+						if job.LastRunAt.IsZero() {
+							runAtLocal = nowLocal.Truncate(iv) // local boundary
+							shouldRun = true
+						} else {
+							lastLocal := job.LastRunAt.In(time.Local)
+							dueLocal := lastLocal.Add(iv) // step in LOCAL time
+							if !nowLocal.Before(dueLocal) {
+								runAtLocal = dueLocal
+								shouldRun = true
+							}
 						}
 					} else {
 						logger.L.Debug().Msgf("Skipping job %s: no valid interval or cronExpr", job.GUID)
@@ -544,34 +604,54 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						continue
 					}
 
+					// Decide the boundary stamp and the value to persist in LastRunAt.
+					boundaryLocal := runAtLocal
+					persistTime := runAtLocal.UTC()
+
+					if job.CronExpr != "" {
+						boundaryLocal = runAtLocal
+						persistTime = runAtLocal // cron can stay local if you prefer
+					} else {
+						boundaryLocal = runAtLocal     // interval: we computed it in local
+						persistTime = runAtLocal.UTC() // but persist UTC
+					}
+
+					// Name with boundary time (predictable, aligned).
+					name := job.Prefix + "-" + boundaryLocal.Format("2006-01-02-15-04")
+
+					// Fetch existing snapshots once (you already do it here).
 					allSets, err := zfs.Snapshots("")
 					if err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to get snapshots for %s", job.GUID)
 						continue
 					}
 
-					name := job.Prefix + "-" + now.Format("2006-01-02-15-04")
 					dataset, err := s.GetDatasetByGUID(job.GUID)
 					if err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to get dataset for %s", job.GUID)
+						// Remove the job if the dataset vanished.
 						if err := s.DB.Delete(&job).Error; err != nil {
 							logger.L.Debug().Err(err).Msgf("Failed to delete job %s", job.GUID)
 						}
-
 						logger.L.Debug().Msgf("Deleted job %s due to missing dataset", job.GUID)
 						continue
 					}
 
-					snapshotExists := false
+					full := dataset.Name + "@" + name
+					exists := false
 					for _, v := range allSets {
-						if v.Name == dataset.Name+"@"+name {
-							snapshotExists = true
+						if v.Name == full {
+							exists = true
 							break
 						}
 					}
 
-					if snapshotExists {
+					if exists {
 						logger.L.Debug().Msgf("Snapshot %s already exists", name)
+						// Still move LastRunAt forward to the boundary we processed.
+						if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
+							logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
+						}
 						continue
 					}
 
@@ -580,14 +660,16 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						continue
 					}
 
-					if err := s.DB.Model(&job).Update("LastRunAt", now).Error; err != nil {
+					if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 					}
 
-					logger.L.Debug().Msgf("Snapshot %s created", dataset.Name+"@"+name)
+					logger.L.Debug().Msgf("Snapshot %s created", full)
 
+					// Prune using the list we already fetched; names are boundary-aligned now.
 					go s.pruneSnapshots(ctx, job, dataset.Name, allSets)
 				}
+
 			case <-ctx.Done():
 				ticker.Stop()
 				return
