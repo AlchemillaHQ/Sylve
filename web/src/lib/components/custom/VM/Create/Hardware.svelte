@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getCPUInfo } from '$lib/api/info/cpu';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import * as Card from '$lib/components/ui/card/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -13,6 +15,8 @@
 	import humanFormat from 'human-format';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import CpuCoreSelector from './CpuCoreSelector.svelte';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 
 	interface Props {
 		sockets: number;
@@ -100,6 +104,19 @@
 			});
 		}
 	});
+
+	type CoreAllocation = {
+		socketId: string;
+		coreIds: string[];
+	};
+
+	let coreModalOpen = $state(false);
+	let allocatedCores = $state<CoreAllocation | null>(null);
+
+	const handleCoreAllocation = (selection: { socketId: string; coreIds: string[] }) => {
+		allocatedCores = selection;
+		console.log('Allocated cores:', selection);
+	};
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -133,7 +150,67 @@
 		/>
 	</div>
 
-	<div>
+	<div class="grid gap-6">
+		<Card.Root>
+			<Card.Header>
+				<Card.Title class="flex items-center gap-2">
+					<Icon icon="iconoir:cpu" class="h-5 w-5" />
+					CPU Core Allocation
+				</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				{#if allocatedCores}
+					<div class="space-y-4">
+						<div class="flex items-center gap-4">
+							<div>
+								<p class="font-medium">
+									Socket: {allocatedCores.socketId
+										.replace('-', ' ')
+										.replace(/\b\w/g, (l) => l.toUpperCase())}
+								</p>
+								<p class="text-muted-foreground text-sm">
+									{allocatedCores.coreIds.length} core{allocatedCores.coreIds.length !== 1
+										? 's'
+										: ''} allocated
+								</p>
+							</div>
+							<Badge variant="secondary">Active</Badge>
+						</div>
+
+						<div>
+							<p class="mb-2 text-sm font-medium">Allocated Cores:</p>
+							<div class="flex flex-wrap gap-1">
+								{#each allocatedCores.coreIds as coreId (coreId)}
+									{@const coreNumber = coreId.split('-').pop()}
+									<Badge variant="outline" class="text-xs">
+										Core {coreNumber}
+									</Badge>
+								{/each}
+							</div>
+						</div>
+
+						<div class="border-t pt-4">
+							<Button onclick={() => (coreModalOpen = true)} variant="outline" class="gap-2">
+								<Icon icon="iconoir:settings" class="h-4 w-4" />
+								Reconfigure
+							</Button>
+						</div>
+					</div>
+				{:else}
+					<div class="py-8 text-center">
+						<Icon icon="iconoir:cpu" class="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+						<p class="text-muted-foreground mb-4">No CPU cores allocated yet</p>
+						<Button onclick={() => (coreModalOpen = true)} variant="outline" class="gap-2">
+							<Icon icon="iconoir:cpu" class="h-4 w-4" />
+							Allocate CPU Cores
+						</Button>
+					</div>
+				{/if}
+			</Card.Content>
+		</Card.Root>
+	</div>
+
+	<!-- <div>
 		{#if cpuInfo}
 			<Label class="mb-4 flex justify-center">CPU Pinning</Label>
 			<ScrollArea orientation="vertical" class="h-full w-full max-w-full">
@@ -155,7 +232,7 @@
 				</div>
 			</ScrollArea>
 		{/if}
-	</div>
+	</div> -->
 
 	{#if pptDevices && pptDevices.length > 0}
 		<p class="font-medium">PCI Passthrough</p>
@@ -189,4 +266,6 @@
 			</ScrollArea>
 		</div>
 	{/if}
+
+	<CpuCoreSelector bind:open={coreModalOpen} onConfirm={handleCoreAllocation} />
 </div>
