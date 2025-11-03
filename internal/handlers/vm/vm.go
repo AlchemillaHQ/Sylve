@@ -42,7 +42,12 @@ func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 				vms[i].PCIDevices = []int{}
 			}
 			if vms[i].CPUPinning == nil {
-				vms[i].CPUPinning = []int{}
+				vms[i].CPUPinning = []vmModels.VMCPUPinning{
+					{
+						HostSocket: 0,
+						HostCPU:    []int{},
+					},
+				}
 			}
 		}
 

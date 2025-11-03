@@ -26,7 +26,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
+	"github.com/digitalocean/go-libvirt"
 
 	"github.com/google/uuid"
 )
@@ -89,81 +89,32 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
-			datasets, err := zfs.Datasets("")
-			if err != nil {
-				return "", fmt.Errorf("failed_to_get_datasets: %w", err)
-			}
+			var disk string
 
-			var dataset *zfs.Dataset
-
-			if storage.Dataset != "" && storage.Type != "iso" {
-				for _, d := range datasets {
-					if d.GUID == storage.Dataset {
-						dataset = d
-						break
-					}
-				}
-			}
-
-			if dataset == nil && storage.Type != "iso" {
-				return "", fmt.Errorf("dataset_not_found: %s", storage.Dataset)
-			}
-
-			if storage.Type == "iso" {
-				isoPath, err := s.FindISOByUUID(storage.Dataset, true)
+			if storage.Type == vmModels.VMStorageTypeDiskImage {
+				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.VmID, storage.ID, storage.ID)
+			} else if storage.Type == vmModels.VMStorageTypeZVol {
+				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.VmID, storage.ID)
+			} else if storage.Type == vmModels.VMStorageTypeInstallationMedia {
+				var err error
+				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
 				if err != nil {
-					return "", fmt.Errorf("failed to find iso_img: %w", err)
+					return "", fmt.Errorf("failed_to_find_iso: %w", err)
 				}
-
-				if isoPath == "" {
-					return "", fmt.Errorf("iso_file_not_found: %s", storage.Dataset)
-				}
-
-				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-					{
-						Value: fmt.Sprintf("-s %d:%d,%s,%s",
-							sIndex,
-							0,
-							"ahci-cd",
-							isoPath),
-					},
-				})
-
-				sIndex++
-			} else if storage.Type == "zvol" {
-				devPath := fmt.Sprintf("/dev/zvol/%s", dataset.Name)
-				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-					{
-						Value: fmt.Sprintf("-s %d:%d,%s,%s",
-							sIndex,
-							0,
-							storage.Emulation,
-							devPath),
-					},
-				})
-
-				sIndex++
-			} else if storage.Type == "raw" {
-				imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", vm.VmID))
-
-				if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-					return "", fmt.Errorf("image_file_not_found: %s", imagePath)
-				}
-
-				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-					{
-						Value: fmt.Sprintf("-s %d:%d,%s,%s",
-							sIndex,
-							0,
-							storage.Emulation,
-							imagePath),
-					},
-				})
-
-				sIndex++
-			} else {
-				return "", fmt.Errorf("invalid_storage_type: %s", storage.Type)
 			}
+
+			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+				{
+					Value: fmt.Sprintf("-s %d:%d,%s,%s",
+						sIndex,
+						0,
+						storage.Emulation,
+						disk,
+					),
+				},
+			})
+
+			sIndex++
 		}
 	}
 
@@ -217,6 +168,15 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 	devices.Interfaces = interfaces
 
+	var features libvirtServiceInterfaces.Features
+	if vm.APIC {
+		features.APIC = struct{}{}
+	}
+
+	if vm.ACPI {
+		features.ACPI = struct{}{}
+	}
+
 	domain := libvirtServiceInterfaces.Domain{
 		Type:       "bhyve",
 		XMLNSBhyve: "http://libvirt.org/schemas/domain/bhyve/1.0",
@@ -230,10 +190,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			Topology: libvirtServiceInterfaces.Topology{
 				Sockets: strconv.Itoa(vm.CPUSockets),
 				Cores:   strconv.Itoa(vm.CPUCores),
-				Threads: strconv.Itoa(vm.CPUsThreads),
+				Threads: strconv.Itoa(vm.CPUThreads),
 			},
 		},
-		VCPU: (vm.CPUSockets * vm.CPUCores * vm.CPUsThreads),
+		VCPU: (vm.CPUSockets * vm.CPUCores * vm.CPUThreads),
 		OS: libvirtServiceInterfaces.OS{
 			Type: "hvm",
 			Loader: libvirtServiceInterfaces.Loader{
@@ -242,12 +202,9 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				Path:     uefi,
 			},
 		},
-		Features: libvirtServiceInterfaces.Features{
-			ACPI: struct{}{},
-			APIC: struct{}{},
-		},
+		Features: features,
 		Clock: libvirtServiceInterfaces.Clock{
-			Offset: vm.TimeOffset,
+			Offset: string(vm.TimeOffset),
 		},
 		OnPoweroff: "destroy",
 		OnReboot:   "restart",
@@ -275,15 +232,12 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		}
 	}
 
-	if vm.CPUPinning != nil && len(vm.CPUPinning) > 0 {
-		for i, cpu := range vm.CPUPinning {
-			if cpu < 0 {
-				return "", fmt.Errorf("invalid_cpu_pinning_value: %d", cpu)
-			}
-
+	if len(vm.CPUPinning) > 0 {
+		pinArgs := s.GeneratePinArgs(vm.CPUPinning)
+		for _, arg := range pinArgs {
 			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 				{
-					Value: fmt.Sprintf("-p %d:%d", i, cpu),
+					Value: arg,
 				},
 			})
 		}
@@ -336,47 +290,39 @@ func (s *Service) CreateLvVm(id int) error {
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
-	var vm vmModels.VM
-	if err := s.DB.Preload("Storages").Preload("Networks").First(&vm, id).Error; err != nil {
-		return fmt.Errorf("failed_to_find_vm: %w", err)
-	}
-
-	vmDir, err := config.GetVMsPath()
-
+	vm, err := s.GetVM(id)
 	if err != nil {
-		return fmt.Errorf("failed to get VMs path: %w", err)
+		return err
 	}
 
-	vmPath := fmt.Sprintf("%s/%d", vmDir, vm.VmID)
-
-	if _, err := os.Stat(vmPath); err == nil {
-		if err := os.RemoveAll(vmPath); err != nil {
-			return fmt.Errorf("failed to clear VM directory: %w", err)
-		}
-	}
-
-	if err := os.MkdirAll(vmPath, 0755); err != nil {
-		return fmt.Errorf("failed to create VM directory: %w", err)
-	}
-
-	uefiVarsBase := "/usr/local/share/uefi-firmware/BHYVE_UEFI_VARS.fd"
-	uefiVarsPath := filepath.Join(vmPath, fmt.Sprintf("%d_vars.fd", vm.VmID))
-
-	err = utils.CopyFile(uefiVarsBase, uefiVarsPath)
-
+	vmPath, err := s.CreateVMDirectory(vm.VmID)
 	if err != nil {
-		return fmt.Errorf("failed to copy UEFI vars file: %w", err)
+		return err
 	}
+
+	err = s.ResetUEFIVars(vm.VmID)
+	if err != nil {
+		return err
+	}
+
+	err = s.CreateStorageParent(vm.VmID)
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
-			if storage.Type == "raw" {
-				err = s.CreateDiskImage(vm.VmID, storage.Dataset, storage.Size, "")
+			if storage.Type == vmModels.VMStorageTypeDiskImage ||
+				storage.Type == vmModels.VMStorageTypeZVol {
+				err = s.CreateVMDisk(vm.VmID, storage)
+
 				if err != nil {
-					return fmt.Errorf("failed to create disk image: %w", err)
+					return err
 				}
 			}
 		}
+	}
+
+	vm, err = s.GetVM(id)
+	if err != nil {
+		return err
 	}
 
 	generated, err := s.CreateVmXML(vm, vmPath)
@@ -792,31 +738,16 @@ func (s *Service) IsDomainInactive(vmId int) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) GetVmByVmId(vmId int) (vmModels.VM, error) {
-	var vm vmModels.VM
-
-	if err := s.DB.Preload("Storages").Preload("Networks").First(&vm, "vm_id = ?", vmId).Error; err != nil {
-		return vmModels.VM{}, fmt.Errorf("failed_to_get_vm_by_id: %w", err)
-	}
-
-	return vm, nil
-}
-
-func (s *Service) IsDomainShutOff(vmId int) (bool, error) {
+func (s *Service) GetDomainState(vmId int) (libvirt.DomainState, error) {
 	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
 	if err != nil {
-		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+		return libvirt.DomainState(libvirt.DomainNostate), err
 	}
 
 	state, _, err := s.Conn.DomainGetState(domain, 0)
-
 	if err != nil {
-		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)
+		return libvirt.DomainState(libvirt.DomainNostate), err
 	}
 
-	if state == 5 {
-		return true, nil
-	}
-
-	return false, nil
+	return libvirt.DomainState(state), nil
 }

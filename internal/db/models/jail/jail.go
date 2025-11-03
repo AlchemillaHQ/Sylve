@@ -77,15 +77,30 @@ type JailStats struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 }
 
+type Storage struct {
+	ID   uint   `gorm:"primaryKey" json:"id"`
+	Name string `json:"name"`
+	GUID string `json:"guid"`
+
+	IsBase bool `json:"isBase" gorm:"default:false"`
+
+	CTID uint `json:"ctId" gorm:"index"`
+}
+
+func (Storage) TableName() string {
+	return "jail_storages"
+}
+
 type Jail struct {
 	ID          uint   `json:"id" gorm:"primaryKey"`
 	CTID        int    `json:"ctId" gorm:"unique;not null;uniqueIndex"`
 	Name        string `json:"name" gorm:"not null;unique"`
 	Description string `json:"description"`
-	Dataset     string `json:"dataset"`
-	Base        string `json:"base"`
-	StartAtBoot *bool  `json:"startAtBoot" gorm:"default:false"`
-	StartOrder  int    `json:"startOrder"`
+
+	Storages []Storage `json:"storages" gorm:"foreignKey:CTID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+
+	StartAtBoot *bool `json:"startAtBoot" gorm:"default:false"`
+	StartOrder  int   `json:"startOrder"`
 
 	InheritIPv4 bool `json:"inheritIPv4"`
 	InheritIPv6 bool `json:"inheritIPv6"`

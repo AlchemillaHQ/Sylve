@@ -4,15 +4,12 @@
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { getVMs, newVM } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
-	import { getPools } from '$lib/api/zfs/pool';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { Download } from '$lib/types/utilities/downloader';
-	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { generatePassword } from '$lib/utils/string';
 	import { getNextId, isValidCreateData } from '$lib/utils/vm/vm';
 	import Icon from '@iconify/svelte';
@@ -33,6 +30,8 @@
 	import { type CreateData, type VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { getBasicSettings } from '$lib/api/basic';
+	import type { BasicSettings } from '$lib/types/basic';
 
 	interface Props {
 		open: boolean;
@@ -42,42 +41,6 @@
 
 	const queryClient = useQueryClient();
 	const results = useQueries([
-		{
-			queryKey: 'pool-list',
-			queryFn: async () => {
-				return await getPools();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'zfs-filesystems',
-			queryFn: async () => {
-				return await getDatasets('filesystem');
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'zfs-volumes',
-			queryFn: async () => {
-				return await getDatasets('volume');
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
 		{
 			queryKey: 'network-switches',
 			queryFn: async () => {
@@ -149,6 +112,19 @@
 			keepPreviousData: true,
 			initialData: [],
 			refetchOnMount: 'always'
+		},
+		{
+			queryKey: 'basic-settings',
+			queryFn: async () => {
+				return await getBasicSettings();
+			},
+			keepPreviousData: true,
+			initialData: {
+				pools: [],
+				services: [],
+				initialized: false
+			},
+			refetchOnMount: 'always'
 		}
 	]);
 
@@ -156,9 +132,6 @@
 
 	$effect(() => {
 		if (refetch) {
-			queryClient.refetchQueries('pool-list');
-			queryClient.refetchQueries('zfs-filesystems');
-			queryClient.refetchQueries('zfs-volumes');
 			queryClient.refetchQueries('network-interfaces');
 			queryClient.refetchQueries('network-switches');
 			queryClient.refetchQueries('pci-devices');
@@ -168,26 +141,24 @@
 			queryClient.refetchQueries('network-objects');
 			queryClient.refetchQueries('jail-list');
 			queryClient.refetchQueries('cluster-nodes');
+			queryClient.refetchQueries('basic-settings');
 
 			refetch = false;
 		}
 	});
 
-	let vms: VM[] = $derived($results[8].data as VM[]);
-	let jails: Jail[] = $derived($results[10].data as Jail[]);
-	let filesystems: Dataset[] = $derived($results[1].data as Dataset[]);
-	let volumes: Dataset[] = $derived($results[2].data as Dataset[]);
-
-	let networkSwitches: SwitchList = $derived($results[4].data as SwitchList);
-	let pciDevices: PCIDevice[] = $derived($results[5].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived($results[6].data as PPTDevice[]);
-	let networkObjects = $derived($results[9].data as NetworkObject[]);
+	let networkSwitches: SwitchList = $derived($results[0].data as SwitchList);
+	let pciDevices: PCIDevice[] = $derived($results[1].data as PCIDevice[]);
+	let pptDevices: PPTDevice[] = $derived($results[2].data as PPTDevice[]);
+	let downloads = $derived($results[3].data as Download[]);
+	let vms: VM[] = $derived($results[4].data as VM[]);
+	let networkObjects = $derived($results[5].data as NetworkObject[]);
+	let jails: Jail[] = $derived($results[6].data as Jail[]);
+	let nodes = $derived($results[7].data as ClusterNode[]);
+	let basicSettings = $derived($results[8].data as BasicSettings);
 	let passablePci: PCIDevice[] = $derived.by(() => {
 		return pciDevices.filter((device) => device.name.startsWith('ppt'));
 	});
-
-	let downloads = $derived($results[7].data as Download[]);
-	let nodes = $derived($results[11].data as ClusterNode[]);
 
 	const tabs = [
 		{ value: 'basic', label: 'Basic' },
@@ -204,7 +175,7 @@
 		node: '',
 		storage: {
 			type: 'zvol',
-			guid: '',
+			pool: '',
 			size: 0,
 			emulation: 'ahci-hd',
 			iso: ''
@@ -323,11 +294,10 @@
 								/>
 							{:else if value === 'storage'}
 								<Storage
-									{volumes}
-									{filesystems}
 									{downloads}
+									pools={basicSettings.pools}
 									bind:type={modal.storage.type}
-									bind:guid={modal.storage.guid}
+									bind:pool={modal.storage.pool}
 									bind:size={modal.storage.size}
 									bind:emulation={modal.storage.emulation}
 									bind:iso={modal.storage.iso}

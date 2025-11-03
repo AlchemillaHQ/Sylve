@@ -507,8 +507,8 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) error
 	jail.Name = data.Name
 	jail.CTID = *data.CTID
 	jail.Description = data.Description
-	jail.Dataset = data.Dataset
-	jail.Base = data.Base
+	// jail.Dataset = data.Dataset
+	// jail.Base = data.Base
 	jail.StartAtBoot = data.StartAtBoot
 	jail.StartOrder = data.StartOrder
 	jail.ResourceLimits = data.ResourceLimits
@@ -768,71 +768,71 @@ func (s *Service) DeleteJail(ctId uint, deleteMacs bool, deleteRootFS bool) erro
 		return fmt.Errorf("failed_to_remove_jail_directory: %w", err)
 	}
 
-	if deleteRootFS {
-		var dataset *zfs.Dataset
-		datasets, err := zfs.Datasets("")
-		if err != nil {
-			return fmt.Errorf("failed_to_get_datasets: %w", err)
-		}
+	// if deleteRootFS {
+	// 	var dataset *zfs.Dataset
+	// 	datasets, err := zfs.Datasets("")
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed_to_get_datasets: %w", err)
+	// 	}
 
-		for _, d := range datasets {
-			if d.GUID == jail.Dataset {
-				dataset = d
-				break
-			}
-		}
+	// 	for _, d := range datasets {
+	// 		if d.GUID == jail.Dataset {
+	// 			dataset = d
+	// 			break
+	// 		}
+	// 	}
 
-		if dataset == nil {
-			return fmt.Errorf("dataset_not_found")
-		}
+	// 	if dataset == nil {
+	// 		return fmt.Errorf("dataset_not_found")
+	// 	}
 
-		dProps, err := dataset.GetAllProperties()
-		if err != nil {
-			return fmt.Errorf("failed_to_get_dataset_properties: %w", err)
-		}
+	// 	dProps, err := dataset.GetAllProperties()
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed_to_get_dataset_properties: %w", err)
+	// 	}
 
-		fsDestroyed := false
+	// 	fsDestroyed := false
 
-		if err := dataset.Destroy(zfs.DestroyRecursive); err != nil {
-			logger.L.Error().Err(err).Msg("delete_jail: failed to destroy dataset")
-		} else {
-			fsDestroyed = true
-		}
+	// 	if err := dataset.Destroy(zfs.DestroyRecursive); err != nil {
+	// 		logger.L.Error().Err(err).Msg("delete_jail: failed to destroy dataset")
+	// 	} else {
+	// 		fsDestroyed = true
+	// 	}
 
-		if fsDestroyed {
-			allowedProps := map[string]struct{}{
-				"atime":       {},
-				"checksum":    {},
-				"compression": {},
-				"dedup":       {},
-				"encryption":  {},
-				"aclinherit":  {},
-				"aclmode":     {},
-				"keylocation": {},
-				"quota":       {},
-			}
+	// 	if fsDestroyed {
+	// 		allowedProps := map[string]struct{}{
+	// 			"atime":       {},
+	// 			"checksum":    {},
+	// 			"compression": {},
+	// 			"dedup":       {},
+	// 			"encryption":  {},
+	// 			"aclinherit":  {},
+	// 			"aclmode":     {},
+	// 			"keylocation": {},
+	// 			"quota":       {},
+	// 		}
 
-			props := make(map[string]string)
-			for k, v := range dProps {
-				if _, ok := allowedProps[strings.ToLower(k)]; ok {
-					if k == "quota" && v == "0" || v == "" || v == "-" {
-						continue
-					}
+	// 		props := make(map[string]string)
+	// 		for k, v := range dProps {
+	// 			if _, ok := allowedProps[strings.ToLower(k)]; ok {
+	// 				if k == "quota" && v == "0" || v == "" || v == "-" {
+	// 					continue
+	// 				}
 
-					props[strings.ToLower(k)] = v
-				}
-			}
+	// 				props[strings.ToLower(k)] = v
+	// 			}
+	// 		}
 
-			newDataset, err := zfs.CreateFilesystem(dataset.Name, props)
-			if err != nil {
-				return fmt.Errorf("failed_to_create_new_dataset: %w", err)
-			}
+	// 		newDataset, err := zfs.CreateFilesystem(dataset.Name, props)
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed_to_create_new_dataset: %w", err)
+	// 		}
 
-			if newDataset == nil {
-				return fmt.Errorf("new_dataset_is_nil")
-			}
-		}
-	}
+	// 		if newDataset == nil {
+	// 			return fmt.Errorf("new_dataset_is_nil")
+	// 		}
+	// 	}
+	// }
 
 	if deleteMacs {
 		var usedMACS []uint

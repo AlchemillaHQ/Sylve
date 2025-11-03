@@ -8,6 +8,10 @@
 
 package systemServiceInterfaces
 
+import "github.com/alchemillahq/sylve/pkg/zfs"
+
 type SystemServiceInterface interface {
 	SyncPPTDevices() error
+	GetUsablePools() ([]*zfs.Zpool, error)
+	GetValidPool(identifier string) (*zfs.Zpool, error)
 }

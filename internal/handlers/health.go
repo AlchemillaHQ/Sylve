@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -26,23 +27,30 @@ import (
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /health/basic [get]
-func BasicHealthCheckHandler(c *gin.Context) {
-	h, err := utils.GetSystemHostname()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "internal_server_error",
-			Error:   "unable_to_get_hostname",
-			Data:    nil,
-		})
-		return
-	}
+func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		h, err := utils.GetSystemHostname()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   "unable_to_get_hostname",
+				Data:    nil,
+			})
+			return
+		}
 
-	c.JSON(http.StatusOK, internal.APIResponse[any]{
-		Status:  "success",
-		Message: "Basic health is OK",
-		Data:    gin.H{"hostname": h},
-	})
+		b, err := systemService.GetBasicSettings()
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "Basic health is OK",
+			Data: gin.H{
+				"hostname":    h,
+				"initialized": b.Initialized,
+			},
+		})
+	}
 }
 
 func HTTPHealthCheckHandler(c *gin.Context) {

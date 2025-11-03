@@ -52,6 +52,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	db.Exec("PRAGMA synchronous = NORMAL")
 
 	err = db.AutoMigrate(
+		&models.BasicSettings{},
+
 		&models.System{},
 		&models.User{},
 		&models.Group{},

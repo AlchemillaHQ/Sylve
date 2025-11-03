@@ -247,3 +247,21 @@ export async function getTokenHash(): Promise<string | null> {
 
 	return await sha256(token);
 }
+
+export async function isInitialized(): Promise<boolean> {
+	try {
+		const response = await axios.get('/api/health/basic', {
+			headers: {
+				Authorization: `Bearer ${getToken()}`
+			}
+		});
+
+		if (response.status === 200 && response.data && response.data.data) {
+			return response.data.data.initialized === true;
+		}
+	} catch (_e: unknown) {
+		return false;
+	}
+
+	return false;
+}

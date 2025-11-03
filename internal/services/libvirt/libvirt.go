@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 
 	"github.com/digitalocean/go-libvirt"
@@ -22,14 +23,17 @@ import (
 var _ libvirtServiceInterfaces.LibvirtServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB   *gorm.DB
+	DB *gorm.DB
+
+	System systemServiceInterfaces.SystemServiceInterface
+
 	Conn *libvirt.Libvirt
 
 	actionMutex sync.Mutex
 	crudMutex   sync.Mutex
 }
 
-func NewLibvirtService(db *gorm.DB) libvirtServiceInterfaces.LibvirtServiceInterface {
+func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface) libvirtServiceInterfaces.LibvirtServiceInterface {
 	uri, _ := url.Parse("bhyve:///system")
 	l, err := libvirt.ConnectToURI(uri)
 	if err != nil {
@@ -45,8 +49,9 @@ func NewLibvirtService(db *gorm.DB) libvirtServiceInterfaces.LibvirtServiceInter
 	logger.L.Info().Msgf("Libvirt version: %d", v)
 
 	return &Service{
-		DB:   db,
-		Conn: l,
+		DB:     db,
+		System: system,
+		Conn:   l,
 	}
 }
 

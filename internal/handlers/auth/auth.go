@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -26,10 +27,11 @@ type LoginRequest struct {
 }
 
 type SuccessfulLogin struct {
-	Token        string `json:"token"`
-	ClusterToken string `json:"clusterToken"`
-	Hostname     string `json:"hostname"`
-	NodeID       string `json:"nodeId"`
+	Token         string               `json:"token"`
+	ClusterToken  string               `json:"clusterToken"`
+	Hostname      string               `json:"hostname"`
+	NodeID        string               `json:"nodeId"`
+	BasicSettings models.BasicSettings `json:"basicSettings"`
 }
 
 // @Summary Login
@@ -96,15 +98,27 @@ func LoginHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
+		basicSettings, err := authService.GetBasicSettings()
+		if err != nil && err.Error() != "basic_settings_not_found" {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "login_successful",
 			Error:   "",
 			Data: SuccessfulLogin{
-				Token:        token,
-				ClusterToken: clusterToken,
-				Hostname:     hostname,
-				NodeID:       nodeId,
+				Token:         token,
+				ClusterToken:  clusterToken,
+				Hostname:      hostname,
+				NodeID:        nodeId,
+				BasicSettings: basicSettings,
 			},
 		})
 	}

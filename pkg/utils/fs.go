@@ -417,3 +417,26 @@ func HasCmd(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
 }
+
+func IsFileInDirectory(filePath, dirPath string) (bool, error) {
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_absolute_file_path: %w", err)
+	}
+
+	absDirPath, err := filepath.Abs(dirPath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_absolute_dir_path: %w", err)
+	}
+
+	relPath, err := filepath.Rel(absDirPath, absFilePath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_relative_path: %w", err)
+	}
+
+	if relPath == "." || relPath == ".." || relPath[:3] == ".."+string(os.PathSeparator) {
+		return false, nil
+	}
+
+	return true, nil
+}

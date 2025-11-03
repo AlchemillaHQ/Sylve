@@ -158,3 +158,28 @@ func GetSystemMemoryBytes() (int64, error) {
 
 	return memBytes, nil
 }
+
+func GetLogicalCores() int {
+	ncpu, err := getSysctlInt64("hw.ncpu")
+	if err != nil || ncpu <= 0 {
+		return 0
+	}
+
+	return int(ncpu)
+}
+
+func GetSocketCount(coresPerSocket, threadsPerCore int) int {
+	ncpu := GetLogicalCores()
+
+	den := coresPerSocket * threadsPerCore
+	if den <= 0 {
+		return int(ncpu)
+	}
+
+	sockets := int(ncpu) / den
+	if sockets <= 0 {
+		sockets = 1
+	}
+
+	return sockets
+}

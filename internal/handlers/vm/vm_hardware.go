@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 
 	"github.com/gin-gonic/gin"
@@ -28,13 +29,6 @@ type ModifyHardwareRequest struct {
 	VNCPassword   string `json:"vncPassword" binding:"required"`
 	VNCWait       *bool  `json:"vncWait" binding:"required"`
 	PCIDevices    []int  `json:"pciDevices" binding:"required"`
-}
-
-type ModifyCPURequest struct {
-	CPUSockets int   `json:"cpuSockets" binding:"required"`
-	CPUCores   int   `json:"cpuCores" binding:"required"`
-	CPUThreads int   `json:"cpuThreads" binding:"required"`
-	CPUPinning []int `json:"cpuPinning" binding:"required"`
 }
 
 type ModifyRAMRequest struct {
@@ -59,14 +53,14 @@ type ModifyPassthroughRequest struct {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body ModifyCPURequest true "Modify CPU Request"
+// @Param request body libvirtServiceInterfaces.ModifyCPURequest true "Modify CPU Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /hardware/cpu/:vmid [put]
 func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req ModifyCPURequest
+		var req libvirtServiceInterfaces.ModifyCPURequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -77,41 +71,41 @@ func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vmID, exists := c.Params.Get("vmid")
-		if !exists {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "vmid_not_provided",
-			})
-			return
-		}
+		// vmID, exists := c.Params.Get("vmid")
+		// if !exists {
+		// 	c.JSON(400, internal.APIResponse[any]{
+		// 		Status:  "error",
+		// 		Message: "invalid_request",
+		// 		Data:    nil,
+		// 		Error:   "vmid_not_provided",
+		// 	})
+		// 	return
+		// }
 
-		vmIdInt, err := strconv.Atoi(vmID)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "invalid_vmid_format",
-			})
-			return
-		}
+		// vmIdInt, err := strconv.Atoi(vmID)
+		// if err != nil {
+		// 	c.JSON(400, internal.APIResponse[any]{
+		// 		Status:  "error",
+		// 		Message: "invalid_request",
+		// 		Data:    nil,
+		// 		Error:   "invalid_vmid_format",
+		// 	})
+		// 	return
+		// }
 
-		if err := libvirtService.ModifyCPU(vmIdInt,
-			req.CPUSockets,
-			req.CPUCores,
-			req.CPUThreads,
-			req.CPUPinning); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Data:    nil,
-				Error:   err.Error(),
-			})
-			return
-		}
+		// if err := libvirtService.ModifyCPU(vmIdInt,
+		// 	req.CPUSockets,
+		// 	req.CPUCores,
+		// 	req.CPUThreads,
+		// 	req.CPUPinning); err != nil {
+		// 	c.JSON(500, internal.APIResponse[any]{
+		// 		Status:  "error",
+		// 		Message: "internal_server_error",
+		// 		Data:    nil,
+		// 		Error:   err.Error(),
+		// 	})
+		// 	return
+		// }
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",

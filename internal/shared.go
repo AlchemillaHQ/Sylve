@@ -41,3 +41,5 @@ type APIResponse[T any] struct {
 	Data    T      `json:"data"`
 	Error   string `json:"error"`
 }
+
+const MinimumVMStorageSize = 1024 * 1024 * 128

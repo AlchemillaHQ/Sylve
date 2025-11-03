@@ -10,6 +10,7 @@ package libvirtHandlers
 
 import (
 	"github.com/alchemillahq/sylve/internal"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 
 	"github.com/gin-gonic/gin"
@@ -18,14 +19,6 @@ import (
 type StorageDetachRequest struct {
 	VMID      int `json:"vmId" binding:"required"`
 	StorageId int `json:"storageId" binding:"required"`
-}
-type StorageAttachRequest struct {
-	VMID        int    `json:"vmId" binding:"required"`
-	StorageType string `json:"storageType" binding:"required"`
-	Dataset     string `json:"dataset" binding:"required"`
-	Emulation   string `json:"emulation" binding:"required"`
-	Size        *int64 `json:"size" binding:"required"`
-	Name        string `json:"name"`
 }
 
 // @Summary Detach Storage from a Virtual Machine
@@ -82,7 +75,7 @@ func StorageDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Router /storage/attach [post]
 func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req StorageAttachRequest
+		var req libvirtServiceInterfaces.StorageAttachRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -93,23 +86,7 @@ func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		var size int64
-
-		if req.Size == nil {
-			size = 0
-		} else {
-			size = *req.Size
-		}
-
-		var name string
-
-		if req.Name == "" {
-			name = ""
-		} else {
-			name = req.Name
-		}
-
-		if err := libvirtService.StorageAttach(req.VMID, req.StorageType, req.Dataset, req.Emulation, size, name); err != nil {
+		if err := libvirtService.StorageAttach(req); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

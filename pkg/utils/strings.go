@@ -111,6 +111,15 @@ func StringInSlice(a string, list []string) bool {
 	return false
 }
 
+func PartialStringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if strings.Contains(a, b) {
+			return true
+		}
+	}
+	return false
+}
+
 func StringToUint64(s string) uint64 {
 	r, error := strconv.ParseUint(s, 10, 64)
 
@@ -806,4 +815,32 @@ func RemoveStringFromSlice(slice []string, str string) []string {
 		}
 	}
 	return result
+}
+
+func IntToString(input int) string {
+	return strconv.Itoa(input)
+}
+
+func KeepUniqueIntSlice(slice []int) []int {
+	seen := make(map[int]struct{}, len(slice))
+	out := make([]int, 0, len(slice))
+
+	for _, v := range slice {
+		if _, exists := seen[v]; !exists {
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
+func MergeMaps(maps ...map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for _, m := range maps {
+		for k, v := range m {
+			merged[k] = v
+		}
+	}
+	return merged
 }

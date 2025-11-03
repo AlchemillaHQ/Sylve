@@ -12,11 +12,97 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/digitalocean/go-libvirt"
+	"github.com/klauspost/cpuid/v2"
 )
+
+func domainReasonToString(state libvirt.DomainState, reason int32) libvirtServiceInterfaces.DomainStateReason {
+	switch state {
+	case libvirt.DomainRunning:
+		switch reason {
+		case 0:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		case 1:
+			return libvirtServiceInterfaces.DomainReasonRunningBooted
+		case 2:
+			return libvirtServiceInterfaces.DomainReasonRunningMigrated
+		case 3:
+			return libvirtServiceInterfaces.DomainReasonRunningRestored
+		case 4:
+			return libvirtServiceInterfaces.DomainReasonRunningFromSnapshot
+		case 5:
+			return libvirtServiceInterfaces.DomainReasonRunningUnpaused
+		case 6:
+			return libvirtServiceInterfaces.DomainReasonRunningMigrationCanceled
+		case 7:
+			return libvirtServiceInterfaces.DomainReasonRunningSaveCanceled
+		case 8:
+			return libvirtServiceInterfaces.DomainReasonRunningWakeup
+		case 9:
+			return libvirtServiceInterfaces.DomainReasonRunningCrashed
+		default:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		}
+
+	case libvirt.DomainShutoff:
+		switch reason {
+		case 0:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		case 1:
+			return libvirtServiceInterfaces.DomainReasonShutoffShutdown
+		case 2:
+			return libvirtServiceInterfaces.DomainReasonShutoffDestroyed
+		case 3:
+			return libvirtServiceInterfaces.DomainReasonShutoffCrashed
+		case 4:
+			return libvirtServiceInterfaces.DomainReasonShutoffSaved
+		case 5:
+			return libvirtServiceInterfaces.DomainReasonShutoffFailed
+		case 6:
+			return libvirtServiceInterfaces.DomainReasonShutoffFromSnapshot
+		default:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		}
+
+	case libvirt.DomainPaused:
+		switch reason {
+		case 0:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		case 1:
+			return libvirtServiceInterfaces.DomainReasonPausedUser
+		case 2:
+			return libvirtServiceInterfaces.DomainReasonPausedMigration
+		case 3:
+			return libvirtServiceInterfaces.DomainReasonPausedSave
+		case 4:
+			return libvirtServiceInterfaces.DomainReasonPausedDump
+		case 5:
+			return libvirtServiceInterfaces.DomainReasonPausedIOError
+		case 6:
+			return libvirtServiceInterfaces.DomainReasonPausedWatchdog
+		case 7:
+			return libvirtServiceInterfaces.DomainReasonPausedFromSnapshot
+		case 8:
+			return libvirtServiceInterfaces.DomainReasonPausedShuttingDown
+		case 9:
+			return libvirtServiceInterfaces.DomainReasonPausedSnapshot
+		default:
+			return libvirtServiceInterfaces.DomainReasonUnknown
+		}
+
+	default:
+		return libvirtServiceInterfaces.DomainReasonUnknown
+	}
+}
 
 func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 	var download utilitiesModels.Downloads
@@ -95,4 +181,213 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported_download_type: %s", download.Type)
 	}
+}
+
+func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, error) {
+	var states []libvirtServiceInterfaces.DomainState
+
+	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
+	domains, _, err := s.Conn.ConnectListAllDomains(1, flags)
+	if err != nil {
+		return states, err
+	}
+
+	for _, d := range domains {
+		state, reason, err := s.Conn.DomainGetState(d, 0)
+		if err != nil {
+			fmt.Printf("failed to get domain state: %v\n", err)
+		}
+
+		pState := libvirt.DomainState(state)
+		states = append(states, libvirtServiceInterfaces.DomainState{
+			Domain: d.Name,
+			State:  pState,
+			Reason: domainReasonToString(pState, reason),
+		})
+	}
+
+	return states, nil
+}
+
+func (s *Service) IsDomainShutOff(vmId int) (bool, error) {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	if err != nil {
+		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.Conn.DomainGetState(domain, 0)
+
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state == int32(libvirt.DomainShutoff) {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *Service) CreateVMDirectory(vmId int) (string, error) {
+	vmDir, err := config.GetVMsPath()
+
+	if err != nil {
+		return "", fmt.Errorf("failed to get VMs path: %w", err)
+	}
+
+	vmPath := fmt.Sprintf("%s/%d", vmDir, vmId)
+
+	if _, err := os.Stat(vmPath); err == nil {
+		if err := os.RemoveAll(vmPath); err != nil {
+			return "", fmt.Errorf("failed to clear VM directory: %w", err)
+		}
+	}
+
+	if err := os.MkdirAll(vmPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create VM directory: %w", err)
+	}
+
+	return vmPath, nil
+}
+
+func (s *Service) ResetUEFIVars(vmId int) error {
+	vmDir, err := config.GetVMsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get VMs path: %w", err)
+	}
+
+	vmPath := fmt.Sprintf("%s/%d", vmDir, vmId)
+	uefiVarsBase := "/usr/local/share/uefi-firmware/BHYVE_UEFI_VARS.fd"
+	uefiVarsPath := filepath.Join(vmPath, fmt.Sprintf("%d_vars.fd", vmId))
+
+	err = utils.CopyFile(uefiVarsBase, uefiVarsPath)
+
+	if err != nil {
+		if strings.Contains("failed_to_open_source", err.Error()) {
+			logger.L.Err(err).Msg("Error finding BHYVE_UEFI_VARS file, do we have bhyve-firmware?")
+		} else {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) ValidateCPUPins(vmId uint, pins []libvirtServiceInterfaces.CPUPinning, hostLogicalPerSocket int) error {
+	if len(pins) == 0 {
+		return nil
+	}
+
+	hostLogicalCores := utils.GetLogicalCores()
+	hostSocketCount := utils.GetSocketCount(cpuid.CPU.PhysicalCores,
+		cpuid.CPU.ThreadsPerCore)
+
+	if hostSocketCount <= 0 {
+		return fmt.Errorf("invalid_host_socket_count")
+	}
+
+	if hostLogicalCores <= 0 {
+		return fmt.Errorf("invalid_host_logical_cores")
+	}
+
+	seenSockets := make(map[int]struct{}, len(pins))
+	for i, pin := range pins {
+		if pin.Socket < 0 || pin.Socket >= hostSocketCount {
+			return fmt.Errorf("socket_index_out_of_range: socket=%d max=%d", pin.Socket, hostSocketCount-1)
+		}
+		if _, dup := seenSockets[pin.Socket]; dup {
+			return fmt.Errorf("duplicate_socket_in_request: socket=%d index=%d", pin.Socket, i)
+		}
+		seenSockets[pin.Socket] = struct{}{}
+		if len(pin.Cores) == 0 {
+			return fmt.Errorf("empty_core_list_for_socket: socket=%d", pin.Socket)
+		}
+	}
+
+	seenCores := make(map[int]struct{}, 128)
+	perSocketCounts := make(map[int]int, hostSocketCount)
+	totalPinned := 0
+
+	for _, pin := range pins {
+		perSocketSeen := make(map[int]struct{}, len(pin.Cores))
+		for j, c := range pin.Cores {
+			if c < 0 || c >= hostLogicalCores {
+				return fmt.Errorf("core_index_out_of_range: core=%d (max=%d) socket=%d pos=%d",
+					c, hostLogicalCores-1, pin.Socket, j)
+			}
+			if _, dup := perSocketSeen[c]; dup {
+				return fmt.Errorf("duplicate_core_within_socket: core=%d socket=%d", c, pin.Socket)
+			}
+			perSocketSeen[c] = struct{}{}
+
+			if _, dup := seenCores[c]; dup {
+				return fmt.Errorf("duplicate_core_across_sockets: core=%d", c)
+			}
+			seenCores[c] = struct{}{}
+		}
+		perSocketCounts[pin.Socket] += len(pin.Cores)
+		totalPinned += len(pin.Cores)
+	}
+
+	if totalPinned > hostLogicalCores {
+		return fmt.Errorf("cpu_pinning_exceeds_logical_cores: pinned=%d logical=%d", totalPinned, hostLogicalCores)
+	}
+
+	if hostLogicalPerSocket > 0 {
+		for sock, cnt := range perSocketCounts {
+			if cnt > hostLogicalPerSocket {
+				return fmt.Errorf("socket_capacity_exceeded: socket=%d pinned=%d cap=%d",
+					sock, cnt, hostLogicalPerSocket)
+			}
+		}
+	}
+
+	var vms []vmModels.VM
+	if err := s.DB.Preload("CPUPinning").Find(&vms).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_vms: %w", err)
+	}
+
+	occupied := make(map[int]uint, 512) // core -> VMID
+	for _, vm := range vms {
+		if vmId != 0 && vm.ID == vmId {
+			continue
+		}
+		for _, p := range vm.CPUPinning {
+			for _, c := range p.HostCPU {
+				occupied[c] = vm.ID
+			}
+		}
+	}
+
+	for c := range seenCores {
+		if owner, taken := occupied[c]; taken {
+			return fmt.Errorf("core_conflict: core=%d already_pinned_by_vmid=%d", c, owner)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) GeneratePinArgs(pins []vmModels.VMCPUPinning) []string {
+	var args []string
+	vcpu := 0
+
+	for _, p := range pins {
+		for _, localCPU := range p.HostCPU {
+			globalCPU := p.HostSocket*(cpuid.CPU.LogicalCores) + localCPU
+			args = append(args, fmt.Sprintf("-p %d:%d", vcpu, globalCPU))
+			vcpu++
+		}
+	}
+
+	return args
+}
+
+func (s *Service) GetVMConfigDirectory(vmId int) (string, error) {
+	vmDir, err := config.GetVMsPath()
+	if err != nil {
+		return "", fmt.Errorf("failed to get VMs path: %w", err)
+	}
+
+	return fmt.Sprintf("%s/%d", vmDir, vmId), nil
 }

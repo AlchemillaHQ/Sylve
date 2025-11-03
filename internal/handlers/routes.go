@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/assets"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
+	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
@@ -86,9 +87,16 @@ func RegisterRoutes(r *gin.Engine,
 	health := api.Group("/health")
 	health.Use(middleware.EnsureAuthenticated(authService))
 	{
-		health.GET("/basic", BasicHealthCheckHandler)
-		health.POST("/basic", BasicHealthCheckHandler)
+		health.GET("/basic", BasicHealthCheckHandler(systemService))
+		health.POST("/basic", BasicHealthCheckHandler(systemService))
 		health.GET("/http", HTTPHealthCheckHandler)
+	}
+
+	basic := api.Group("/basic")
+	basic.Use(middleware.EnsureAuthenticated(authService))
+	{
+		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
+		basic.POST("/initialize", basicHandlers.Initialize(systemService))
 	}
 
 	info := api.Group("/info")

@@ -14,7 +14,7 @@ export const APIResponseSchema = z
 	.object({
 		status: z.string(),
 		message: z.string().optional(),
-		error: z.string().optional(),
+		error: z.union([z.string(), z.array(z.string())]).optional(),
 		data: z.unknown().optional()
 	})
 	.describe('APIResponseSchema');

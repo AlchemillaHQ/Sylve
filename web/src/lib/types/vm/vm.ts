@@ -8,7 +8,7 @@ export interface CreateData {
 	description: string;
 	storage: {
 		type: string;
-		guid: string;
+		pool: string;
 		size: number;
 		emulation: string;
 		iso: string;
