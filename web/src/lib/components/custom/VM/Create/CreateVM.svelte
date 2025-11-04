@@ -190,7 +190,8 @@
 			threads: 1,
 			memory: 0,
 			passthroughIds: [] as number[],
-			pinnedCPUs: [] as number[]
+			pinnedCPUs: [] as number[],
+			isPinningOpen: false
 		},
 		advanced: {
 			serial: false,
@@ -244,7 +245,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed top-1/2 left-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
@@ -315,6 +316,7 @@
 									devices={passablePci}
 									{vms}
 									{pptDevices}
+									bind:isPinningOpen={modal.hardware.isPinningOpen}
 									bind:sockets={modal.hardware.sockets}
 									bind:cores={modal.hardware.cores}
 									bind:threads={modal.hardware.threads}

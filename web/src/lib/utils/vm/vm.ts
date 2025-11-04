@@ -94,3 +94,13 @@ export function getNextId(vms: VM[], jails: Jail[]): number {
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;
 }
+
+
+export function generateCores(threadCount: number) {
+	return Array.from({ length: threadCount }, (_, i) => {
+		return {
+			id: i + 1,
+			status: Math.random() > 0.5 ? 'available' : 'busy'
+		};
+	});
+}

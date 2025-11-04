@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-09-05T14:14:55.751Z\n"
-"PO-Revision-Date: 2025-11-04T17:33:12.030Z\n"
+"PO-Revision-Date: 2025-11-04T20:56:04.808Z\n"
 "Last-Translator: \n"
 "Language: Malayalam\n"
 "Language-Team: \n"
@@ -338,7 +338,6 @@ msgstr ""
 #: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
@@ -366,10 +365,13 @@ msgstr ""
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/ui/dialog/dialog-content.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Close"
 msgstr ""
 
@@ -701,6 +703,7 @@ msgid "CPU Cores"
 msgstr ""
 
 #: src/lib/components/custom/VM/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Threads"
 msgstr ""
 
@@ -1374,6 +1377,7 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Cancel"
 msgstr ""
 
@@ -4791,45 +4795,77 @@ msgid "Select storage pool"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> CPU Core Selector"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Select a CPU socket to allocate cores from:"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} available"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} busy"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Core utilization"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> Back to Sockets"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Select cores from {0} ( {1} available):"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Selected: {0} cores"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Select All Available"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Clear Selection"
 msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Allocate {0} Core {1}"
+msgstr ""
+
+#~ msgid "Pin CPU"
+#~ msgstr ""
+
+#~ msgid "<0/> Manage"
+#~ msgstr ""
+
+#~ msgid "<0/> Manage({0} pinned)"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "<0/> Manage ({0} pinned)"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0}sd"
 msgstr ""

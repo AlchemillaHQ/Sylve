@@ -3,60 +3,31 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Icon from '@iconify/svelte';
+	import type { CPUInfo } from '$lib/types/info/cpu';
+	import { generateCores } from '$lib/utils/vm/vm';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 
 	interface CoreSelectorProps {
 		open: boolean;
+		cpuInfo: CPUInfo;
 		onConfirm?: (selection: { socketId: string; coreIds: string[] }) => void;
 	}
 
-	const MOCK_SOCKETS = [
-		{
-			id: 'socket-0',
-			name: 'Socket 0',
-			model: 'Intel Xeon Gold 6248R',
-			cores: Array.from({ length: 24 }, (_, i) => ({
-				id: `socket-0-core-${i}`,
-				number: i,
-				frequency: '3.0 GHz',
-				status: i % 8 === 7 ? 'busy' : 'available' // Some cores busy for realism
-			}))
-		},
-		{
-			id: 'socket-1',
-			name: 'Socket 1',
-			model: 'Intel Xeon Gold 6248R',
-			cores: Array.from({ length: 24 }, (_, i) => ({
-				id: `socket-1-core-${i}`,
-				number: i,
-				frequency: '3.0 GHz',
-				status: i % 12 === 11 ? 'busy' : 'available'
-			}))
-		},
-		{
-			id: 'socket-2',
-			name: 'Socket 2',
-			model: 'Intel Xeon Gold 6248R',
-			cores: Array.from({ length: 24 }, (_, i) => ({
-				id: `socket-2-core-${i}`,
-				number: i,
-				frequency: '3.0 GHz',
-				status: 'available'
-			}))
-		},
-		{
-			id: 'socket-3',
-			name: 'Socket 3',
-			model: 'Intel Xeon Gold 6248R',
-			cores: Array.from({ length: 24 }, (_, i) => ({
-				id: `socket-3-core-${i}`,
-				number: i,
-				frequency: '3.0 GHz',
-				status: i % 6 === 5 ? 'busy' : 'available'
-			}))
-		}
-	];
+	interface Core {
+		id: string;
+		number: number;
+		frequency?: string;
+		status: 'available' | 'busy';
+	}
 
-	let { open = $bindable(), onConfirm }: CoreSelectorProps = $props();
+	interface SocketData {
+		id: string | number;
+		name: string;
+		model: string | number;
+		cores: Core[];
+	}
+
+	let { open = $bindable(), cpuInfo = $bindable(), onConfirm }: CoreSelectorProps = $props();
 
 	let selectedSocket = $state<string | null>(null);
 	let selectedCores = $state<Set<string>>(new Set());
@@ -66,6 +37,20 @@
 		selectedSocket = socketId;
 		selectedCores = new Set();
 		step = 'cores';
+
+		if (cpuInfo) {
+			selectedSocketData = {
+				id: socketId,
+				name: `Socket ${socketId}`,
+				model: cpuInfo.model.toString(),
+				cores: Array.from({ length: cpuInfo.logicalCores }, (_, i) => ({
+					id: `${socketId}-core-${i + 1}`,
+					number: i,
+					frequency: '3.0 GHz',
+					status: 'available'
+				}))
+			};
+		}
 	};
 
 	const handleCoreToggle = (coreId: string) => {
@@ -108,15 +93,22 @@
 		}, 200);
 	};
 
-	let selectedSocketData = $state<(typeof MOCK_SOCKETS)[0] | undefined>(undefined);
-
-	$effect(() => {
-		selectedSocketData = MOCK_SOCKETS.find((s) => s.id === selectedSocket);
-	});
+	let selectedSocketData = $state<SocketData | undefined>(undefined);
 
 	let availableCores = $derived(
 		selectedSocketData?.cores.filter((core) => core.status === 'available') || []
 	);
+
+	const Sockets = Array.from({ length: cpuInfo.sockets }, (__, socketIndex) => {
+		return {
+			id: socketIndex + 1,
+			name: 'socket ' + (socketIndex + 1),
+			model: cpuInfo.model,
+			cores: generateCores(cpuInfo.logicalCores / cpuInfo.sockets)
+		};
+	});
+
+	$inspect('Sockets', Sockets);
 </script>
 
 <Dialog.Root bind:open>
@@ -140,16 +132,16 @@
 			<div class="space-y-4">
 				<p class="text-muted-foreground">Select a CPU socket to allocate cores from:</p>
 
-				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-					{#each MOCK_SOCKETS as socket (socket.id)}
+				<div class="flex max-h-96 w-full flex-wrap items-center justify-center gap-4 overflow-auto">
+					{#each Sockets as socket (socket.id)}
 						{@const availableCount = socket.cores.filter((c) => c.status === 'available').length}
 						{@const busyCount = socket.cores.filter((c) => c.status === 'busy').length}
 
 						<Card.Root
 							class="hover:bg-accent/50 cursor-pointer transition-colors"
-							onclick={() => handleSocketSelect(socket.id)}
+							onclick={() => handleSocketSelect(socket.id.toString())}
 						>
-							<Card.Content class="p-6">
+							<Card.Content class="px-6">
 								<div class="flex items-start justify-between">
 									<div class="flex items-center gap-3">
 										<div class="bg-primary/10 rounded-lg p-2">
@@ -200,7 +192,7 @@
 		{#if step === 'cores' && selectedSocketData}
 			<div class="space-y-4">
 				<div class="flex items-center gap-2">
-					<Button variant="ghost" size="sm" onclick={handleBack}>
+					<Button variant="outline" size="sm" class="p-0.5" onclick={handleBack}>
 						<Icon icon="material-symbols:arrow-back-ios-new-rounded" class="h-4 w-4" />
 						Back to Sockets
 					</Button>
@@ -215,9 +207,8 @@
 						Selected: {selectedCores.size} cores
 					</p>
 				</div>
-
-				<div class="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-12">
-					{#each selectedSocketData.cores as core (core.id)}
+				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
+					{#each selectedSocketData?.cores as core (core.id)}
 						{@const isSelected = selectedCores.has(core.id)}
 						{@const isAvailable = core.status === 'available'}
 
@@ -228,7 +219,7 @@
         relative flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all duration-200
         {isAvailable
 								? isSelected
-									? 'border-primary bg-primary/10 text-primary'
+									? 'border-yellow-600 bg-yellow-500/10 text-yellow-500'
 									: 'border-border hover:border-primary/50 hover:bg-accent'
 								: 'border-muted bg-muted/30 text-muted-foreground cursor-not-allowed'}
       "
@@ -240,7 +231,7 @@
 
 							{#if isSelected}
 								<div
-									class="bg-primary text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full"
+									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
 									<Icon icon="material-symbols:check" class="h-2.5 w-2.5" />
 								</div>

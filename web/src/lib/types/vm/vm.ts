@@ -25,6 +25,7 @@ export interface CreateData {
 		memory: number;
 		passthroughIds: number[];
 		pinnedCPUs: number[];
+		isPinningOpen: boolean;
 	};
 	advanced: {
 		serial: boolean;

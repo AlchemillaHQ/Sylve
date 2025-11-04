@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-04T17:35:50.821Z\n"
+"PO-Revision-Date: 2025-11-04T20:58:51.210Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -189,7 +189,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
@@ -217,10 +216,11 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/ui/dialog/dialog-content.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Close"
@@ -722,6 +722,7 @@ msgid "Memory Size"
 msgstr "Memory Size"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Pinning"
 msgstr "CPU Pinning"
 
@@ -4862,3 +4863,23 @@ msgstr "Clear Selection"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Allocate {0} Core {1}"
 msgstr "Allocate {0} Core {1}"
+
+#~ msgid "Pin CPU"
+#~ msgstr "Pin CPU"
+
+#~ msgid "<0/> Manage"
+#~ msgstr "<0/> Manage"
+
+#~ msgid "<0/> Manage({0} pinned)"
+#~ msgstr "<0/> Manage({0} pinned)"
+
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "<0/> Manage ({0} pinned)"
+msgstr "<0/> Manage ({0} pinned)"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket {0}"
+msgstr "Socket {0}"
+
+#~ msgid "{0}sd"
+#~ msgstr "{0}sd"

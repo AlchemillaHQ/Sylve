@@ -13,6 +13,7 @@
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
+	import Button from '$lib/components/ui/button/button.svelte';
 
 	interface Props {
 		sockets: number;
@@ -24,6 +25,7 @@
 		passthroughIds: number[];
 		vms: VM[];
 		pinnedCPUs: number[];
+		isPinningOpen: boolean;
 	}
 
 	let {
@@ -35,7 +37,8 @@
 		pptDevices = $bindable(),
 		passthroughIds = $bindable(),
 		pinnedCPUs = $bindable(),
-		vms
+		vms,
+		isPinningOpen = $bindable()
 	}: Props = $props();
 
 	let humanSize = $state('1024 M');
@@ -59,9 +62,8 @@
 	);
 
 	let selectedPptIds = $state<string[]>([]);
-	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
 
-	$inspect(cpuInfo);
+	let cpuInfo: CPUInfo | null = $state(getCache('cpu-info') || null);
 
 	function toggle(id: string, on: boolean) {
 		selectedPptIds = on ? [...selectedPptIds, id] : selectedPptIds.filter((x) => x !== id);
@@ -102,8 +104,6 @@
 			});
 		}
 	});
-
-	let openCPUSelector = $state(true);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -129,6 +129,22 @@
 			bind:value={threads}
 			classes="flex-1 space-y-1.5"
 		/>
+
+		<div>
+			<Label class="mb-2 flex items-center justify-between">
+				<span class="text-sm font-medium">CPU Pinning</span></Label
+			>
+			<Button
+				size="sm"
+				variant="outline"
+				class="flex w-full justify-start"
+				onclick={() => (isPinningOpen = true)}
+			>
+				<Icon icon="mdi:cpu-64-bit" class="mr-2 h-4 w-4" />
+				Manage ({pinnedCPUs.length} pinned)
+			</Button>
+		</div>
+
 		<CustomValueInput
 			label="Memory Size"
 			placeholder="10G"
@@ -139,7 +155,7 @@
 
 	<div>
 		{#if cpuInfo}
-			<CPUSelector bind:open={openCPUSelector} />
+			<CPUSelector bind:open={isPinningOpen} bind:cpuInfo />
 		{/if}
 	</div>
 
