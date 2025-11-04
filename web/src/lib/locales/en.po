@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-03T17:02:32.031Z\n"
+"PO-Revision-Date: 2025-11-04T17:35:50.821Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -156,8 +156,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -217,8 +215,14 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -314,8 +318,8 @@ msgid "File Explorer"
 msgstr "File Explorer"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/custom/VM/Create/Hardware.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "PCI Passthrough"
 msgstr "PCI Passthrough"
 
@@ -549,8 +553,6 @@ msgstr "Terminal"
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -603,6 +605,8 @@ msgstr "Terminal"
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Reset"
@@ -718,7 +722,6 @@ msgid "Memory Size"
 msgstr "Memory Size"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
-#: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Pinning"
 msgstr "CPU Pinning"
 
@@ -1224,7 +1227,6 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -1239,6 +1241,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "New"
 msgstr "New"
 
@@ -1371,6 +1374,8 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -4802,3 +4807,58 @@ msgstr "Storage Pool"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Select storage pool"
 msgstr "Select storage pool"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> CPU Core Selector"
+msgstr "<0/> CPU Core Selector"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select a CPU socket to allocate cores from:"
+msgstr "Select a CPU socket to allocate cores from:"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} available"
+msgstr "{0} available"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} busy"
+msgstr "{0} busy"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Core utilization"
+msgstr "Core utilization"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> Back to Sockets"
+msgstr "<0/> Back to Sockets"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select cores from {0} ( {1} available):"
+msgstr "Select cores from {0} ( {1} available):"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Selected: {0} cores"
+msgstr "Selected: {0} cores"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select All Available"
+msgstr "Select All Available"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Clear Selection"
+msgstr "Clear Selection"
+
+#: src/lib/components/custom/VM/Extra/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Allocate {0} Core {1}"
+msgstr "Allocate {0} Core {1}"

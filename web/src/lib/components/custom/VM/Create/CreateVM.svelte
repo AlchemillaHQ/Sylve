@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getDownloads } from '$lib/api/utilities/downloader';

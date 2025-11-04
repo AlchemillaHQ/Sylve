@@ -144,14 +144,16 @@ type VMCPUPinning struct {
 }
 
 type VM struct {
-	ID          uint           `gorm:"primaryKey" json:"id"`
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	VmID        int            `json:"vmId"`
-	CPUSockets  int            `json:"cpuSockets"`
-	CPUCores    int            `json:"cpuCores"`
-	CPUThreads  int            `json:"cpuThreads"`
-	CPUPinning  []VMCPUPinning `json:"cpuPinning" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	VmID        int    `json:"vmId"`
+
+	CPUSockets int `json:"cpuSockets"`
+	CPUCores   int `json:"cpuCores"`
+	CPUThreads int `json:"cpuThreads"`
+
+	CPUPinning []VMCPUPinning `json:"cpuPinning" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	RAM int `json:"ram"`
 

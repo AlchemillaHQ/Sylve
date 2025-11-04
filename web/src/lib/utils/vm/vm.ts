@@ -32,7 +32,7 @@ export function isValidCreateData(modal: CreateData): boolean {
 	}
 
 	if (modal.storage.type === 'raw' || modal.storage.type === 'zvol') {
-		if (!modal.storage.guid || modal.storage.guid.length < 1) {
+		if (!modal.storage.pool || modal.storage.pool.length < 1) {
 			const noun = modal.storage.type === 'raw' ? 'filesystem' : 'volume';
 			toast.error(`No ${noun} selected`, toastConfig);
 			return false;
@@ -41,12 +41,8 @@ export function isValidCreateData(modal: CreateData): boolean {
 
 	if (modal.storage.emulation === '') {
 		toast.error('No emulation type selected', toastConfig);
+		return false;
 	}
-
-	// if (modal.storage.type === 'none' && modal.storage.iso === '') {
-	// 	toast.error('Atleast one disk or ISO must be selected', toastConfig);
-	// 	return false;
-	// }
 
 	if (modal.network.switch !== '' && modal.network.switch.toLowerCase() !== 'none') {
 		if (modal.network.emulation === '') {

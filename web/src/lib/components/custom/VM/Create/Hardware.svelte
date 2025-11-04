@@ -11,8 +11,8 @@
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
 		sockets: number;
@@ -61,6 +61,8 @@
 	let selectedPptIds = $state<string[]>([]);
 	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
 
+	$inspect(cpuInfo);
+
 	function toggle(id: string, on: boolean) {
 		selectedPptIds = on ? [...selectedPptIds, id] : selectedPptIds.filter((x) => x !== id);
 		passthroughIds = selectedPptIds.map((x) => parseInt(x));
@@ -100,6 +102,8 @@
 			});
 		}
 	});
+
+	let openCPUSelector = $state(true);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -135,25 +139,7 @@
 
 	<div>
 		{#if cpuInfo}
-			<Label class="mb-4 flex justify-center">CPU Pinning</Label>
-			<ScrollArea orientation="vertical" class="h-full w-full max-w-full">
-				<div
-					class="grid grid-cols-6 justify-items-center gap-1 text-xs sm:grid-cols-8 md:grid-cols-10"
-				>
-					{#each Array(cpuInfo.logicalCores).fill(0) as _, index (index)}
-						{#if pinnedIndices.includes(index)}
-							<Icon icon="iconoir:cpu" class="h-5 w-5 cursor-pointer text-red-600" />
-						{:else}
-							<Icon
-								icon="iconoir:cpu"
-								class={`h-5 w-5 cursor-pointer
-                                ${pinnedCPUs.includes(index) ? 'text-yellow-600' : 'text-green-400'}`}
-								onclick={() => pinCPU(index)}
-							/>
-						{/if}
-					{/each}
-				</div>
-			</ScrollArea>
+			<CPUSelector bind:open={openCPUSelector} />
 		{/if}
 	</div>
 

@@ -14,6 +14,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
+	"github.com/alchemillahq/sylve/pkg/utils"
 
 	cpuid "github.com/klauspost/cpuid/v2"
 	"github.com/shirou/gopsutil/cpu"
@@ -36,11 +37,22 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 		}, nil
 	}
 
+	physicalCores := int16(cpuid.CPU.PhysicalCores)
+	threadsPerCore := int16(cpuid.CPU.ThreadsPerCore)
+
+	logicalCores := int16(utils.GetLogicalCores())
+	if logicalCores == 0 {
+		logicalCores = int16(cpuid.CPU.LogicalCores)
+	}
+
+	sockets := (logicalCores) / (physicalCores * threadsPerCore)
+
 	return infoServiceInterfaces.CPUInfo{
 		Name:           cpuid.CPU.BrandName,
+		Sockets:        sockets,
 		PhysicalCores:  int16(cpuid.CPU.PhysicalCores),
 		ThreadsPerCore: int16(cpuid.CPU.ThreadsPerCore),
-		LogicalCores:   int16(cpuid.CPU.LogicalCores),
+		LogicalCores:   logicalCores,
 		Family:         int16(cpuid.CPU.Family),
 		Model:          int16(cpuid.CPU.Model),
 		Features:       cpuid.CPU.FeatureSet(),

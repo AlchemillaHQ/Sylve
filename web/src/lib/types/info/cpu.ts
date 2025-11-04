@@ -10,6 +10,7 @@ export const CPUInfoHistoricalSchema = z.array(
 
 export const CPUInfoSchema = z.object({
 	name: z.string().default('Unknown'),
+	sockets: z.number().default(0),
 	physicalCores: z.number().default(0),
 	threadsPerCore: z.number().default(0),
 	logicalCores: z.number().default(0),
