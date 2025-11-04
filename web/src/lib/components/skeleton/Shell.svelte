@@ -159,6 +159,8 @@
 {:else}
 	<Dialog.Root open={true}>
 		<Dialog.Content
+			overlayClass="bg-background"
+			class="bg-card text-card-foreground"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
