@@ -65,6 +65,8 @@
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
 		'/api/utilities/download': 'Downloader',
+		'/api/vm/storage/detach': 'VM Storage - Detach',
+		'/api/vm/storage/attach': 'VM Storage - Attach',
 		'/api/vm': 'VM'
 	});
 

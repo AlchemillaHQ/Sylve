@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
+		sort.Slice(vm.Storages, func(i, j int) bool {
+			return vm.Storages[i].BootOrder < vm.Storages[j].BootOrder
+		})
+
 		for _, storage := range vm.Storages {
 			var disk string
 

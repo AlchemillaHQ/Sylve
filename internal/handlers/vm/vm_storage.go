@@ -16,11 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type StorageDetachRequest struct {
-	VMID      int `json:"vmId" binding:"required"`
-	StorageId int `json:"storageId" binding:"required"`
-}
-
 // @Summary Detach Storage from a Virtual Machine
 // @Description Detach a storage volume from a virtual machine
 // @Tags VM
@@ -33,7 +28,7 @@ type StorageDetachRequest struct {
 // @Router /storage/detach [post]
 func StorageDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req StorageDetachRequest
+		var req libvirtServiceInterfaces.StorageDetachRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -44,7 +39,7 @@ func StorageDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.StorageDetach(req.VMID, req.StorageId); err != nil {
+		if err := libvirtService.StorageDetach(req); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

@@ -174,7 +174,7 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the storage ${properties.detach.name} from the VM ${vm.name}`}
+	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.name}</b>`}
 	actions={{
 		onConfirm: async () => {
 			let response = await storageDetach(Number(vmId), properties.detach.id as number);

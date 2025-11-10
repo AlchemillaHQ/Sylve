@@ -88,17 +88,6 @@
 			}
 		}
 	});
-
-	// $effect(() => {
-	//     if (type === 'none') {
-	//         pool = '';
-	//         size = 0;
-	//         emulation = '';
-	//         humanSize = '';
-	//     } else {
-	//         pool
-	//     }
-	// });
 </script>
 
 {#snippet radioItem(type: string)}

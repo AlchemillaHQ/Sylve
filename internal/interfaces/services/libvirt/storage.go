@@ -97,3 +97,8 @@ type StorageAttachRequest struct {
 	VolBlockSize *int                 `json:"volBlockSize"`
 	BootOrder    *int                 `json:"bootOrder"`
 }
+
+type StorageDetachRequest struct {
+	VMID      int `json:"vmId" binding:"required"`
+	StorageId int `json:"storageId" binding:"required"`
+}

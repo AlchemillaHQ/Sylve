@@ -60,7 +60,7 @@ export const VMStorageSchema = z.object({
 	id: z.number().int(),
 	vmId: z.number().int().optional(),
 	type: z.enum(['raw', 'zvol', 'installation-media']),
-	downloadUUID: z.string().optional(),
+	uuid: z.string().optional(),
 	datasetId: z.number().int().nullable(),
 	dataset: VMStorageDatasetSchema.nullable(),
 	size: z.number().int(),

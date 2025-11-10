@@ -280,7 +280,121 @@ func (s *Service) SyncVMDisks(vmId int) error {
 	return nil
 }
 
-func (s *Service) StorageDetach(vmId int, storageId int) error {
+func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xml); err != nil {
+		return fmt.Errorf("failed_to_parse_xml: %w", err)
+	}
+
+	bhyveCommandline := doc.FindElement("//commandline")
+	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
+		root := doc.Root()
+		if root.SelectAttr("xmlns:bhyve") == nil {
+			root.CreateAttr("xmlns:bhyve", "http://libvirt.org/schemas/domain/bhyve/1.0")
+		}
+		bhyveCommandline = root.CreateElement("bhyve:commandline")
+	}
+
+	var filePath string
+
+	if storage.Type == vmModels.VMStorageTypeInstallationMedia &&
+		storage.DownloadUUID != "" {
+		filePath, err = s.FindISOByUUID(storage.DownloadUUID, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
+		}
+	}
+
+	if filePath == "" {
+		return fmt.Errorf("unable_to_determine_storage_path")
+	}
+
+	for _, arg := range bhyveCommandline.ChildElements() {
+		valAttr := arg.SelectAttr("value")
+		if valAttr == nil {
+			continue
+		}
+
+		val := valAttr.Value
+		if val == "" {
+			continue
+		}
+
+		if storage.Type == vmModels.VMStorageTypeInstallationMedia &&
+			strings.Contains(val, filePath) {
+			bhyveCommandline.RemoveChild(arg)
+			continue
+		}
+	}
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+
+	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
+	off, err := s.IsDomainShutOff(req.VMID)
+	if err != nil {
+		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+
+	if !off {
+		return fmt.Errorf("domain_state_not_shutoff: %d", req.VMID)
+	}
+
+	vm, err := s.GetVMByVmId(req.VMID)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
+	}
+
+	var storage vmModels.Storage
+	if err := s.DB.
+		Preload("Dataset").
+		First(&storage, "id = ? AND vm_id = ?", req.StorageId, vm.ID).
+		Error; err != nil {
+		return fmt.Errorf("failed_to_find_storage_record: %w", err)
+	}
+
+	if err := s.RemoveStorageXML(req.VMID, storage); err != nil {
+		logger.L.Error().Err(err).Msg("vm: storage_detach: failed_to_remove_storage_xml")
+	}
+
+	if storage.DatasetID != nil {
+		var dataset vmModels.VMStorageDataset
+		if err := s.DB.First(&dataset, "id = ?", *storage.DatasetID).Error; err != nil {
+			return fmt.Errorf("failed_to_find_storage_dataset_record: %w", err)
+		}
+
+		if err := s.DB.Delete(&dataset).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_storage_dataset_record: %w", err)
+		}
+	}
+
+	if err := s.DB.Delete(&storage).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_storage_record: %w", err)
+	}
+
 	return nil
 }
 
