@@ -129,9 +129,13 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 	defer s.Libvirt.RescanStoragePools()
 
 	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).Where("dataset IN ?", guids).Count(&count).Error; err != nil {
+	if err := s.DB.Model(&vmModels.Storage{}).
+		Joins("JOIN vm_storage_datasets ON vm_storage_datasets.id = vm_storages.dataset_id").
+		Where("vm_storage_datasets.guid IN ?", guids).
+		Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to check if datasets are in use: %w", err)
 	}
+
 	if count > 0 {
 		return fmt.Errorf("datasets_in_use_by_vm")
 	}
@@ -153,7 +157,7 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 	}
 
 	for _, guid := range guids {
-		if err := available[guid].Destroy(zfs.DestroyDefault); err != nil {
+		if err := available[guid].Destroy(zfs.DestroyRecursive); err != nil {
 			return fmt.Errorf("failed to delete dataset with guid %s: %w", guid, err)
 		}
 	}

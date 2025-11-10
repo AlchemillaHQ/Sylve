@@ -732,16 +732,16 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 				cSets, err = zfs.Filesystems(fmt.Sprintf(
 					"%s/sylve/virtual-machines/%d/raw-%d",
 					storage.Dataset.Pool,
-					vm.ID,
+					vm.VmID,
 					storage.ID,
 				))
 			}
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
 			if deleteVolumes {
 				cSets, err = zfs.Volumes(fmt.Sprintf(
-					"%s/sylve/virtual-machines/%d/vol-%d",
+					"%s/sylve/virtual-machines/%d/zvol-%d",
 					storage.Dataset.Pool,
-					vm.ID,
+					vm.VmID,
 					storage.ID,
 				))
 			}
@@ -760,6 +760,15 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 
 		if err := s.DB.Delete(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_storage: %w", err)
+		}
+
+		if datasets != nil && len(*datasets) > 0 {
+			for _, ds := range *datasets {
+				err := ds.Destroy(zfs.DestroyRecursive)
+				if err != nil {
+					logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy dataset %s", ds.Name)
+				}
+			}
 		}
 	}
 

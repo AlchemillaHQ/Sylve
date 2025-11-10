@@ -71,8 +71,11 @@ func (s *Service) DeleteVolume(guid string) error {
 	defer s.Libvirt.RescanStoragePools()
 
 	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).Where("dataset = ?", guid).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to check if dataset is in use: %w", err)
+	if err := s.DB.Model(&vmModels.Storage{}).
+		Joins("JOIN vm_storage_datasets ON vm_storage_datasets.id = vm_storages.dataset_id").
+		Where("vm_storage_datasets.guid = ?", guid).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check if datasets are in use: %w", err)
 	}
 
 	if count > 0 {
