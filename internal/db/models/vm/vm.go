@@ -24,9 +24,9 @@ func (Storage) TableName() string {
 type VMStorageType string
 
 const (
-	VMStorageTypeDiskImage         VMStorageType = "raw"
-	VMStorageTypeZVol              VMStorageType = "zvol"
-	VMStorageTypeInstallationMedia VMStorageType = "installation-media"
+	VMStorageTypeRaw       VMStorageType = "raw"
+	VMStorageTypeZVol      VMStorageType = "zvol"
+	VMStorageTypeDiskImage VMStorageType = "image"
 )
 
 type VMStorageEmulationType string

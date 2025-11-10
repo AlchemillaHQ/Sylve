@@ -96,11 +96,11 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		for _, storage := range vm.Storages {
 			var disk string
 
-			if storage.Type == vmModels.VMStorageTypeDiskImage {
+			if storage.Type == vmModels.VMStorageTypeRaw {
 				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.VmID, storage.ID, storage.ID)
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
 				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.VmID, storage.ID)
-			} else if storage.Type == vmModels.VMStorageTypeInstallationMedia {
+			} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 				var err error
 				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
 				if err != nil {
@@ -314,7 +314,7 @@ func (s *Service) CreateLvVm(id int) error {
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
-			if storage.Type == vmModels.VMStorageTypeDiskImage ||
+			if storage.Type == vmModels.VMStorageTypeRaw ||
 				storage.Type == vmModels.VMStorageTypeZVol {
 				err = s.CreateVMDisk(vm.VmID, storage)
 

@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-10T12:54:07.094Z\n"
+"PO-Revision-Date: 2025-11-10T18:04:36.285Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -132,12 +132,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
-#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
-#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
-#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
-#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
-#: src/lib/components/custom/FileExplorer/RenameModal.svelte
-#: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
@@ -148,8 +142,6 @@ msgstr "Minimize"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
@@ -185,8 +177,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -223,6 +213,16 @@ msgstr "Minimize"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -323,14 +323,13 @@ msgstr "File Explorer"
 msgid "PCI Passthrough"
 msgstr "PCI Passthrough"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Filesystem"
 msgstr "ZFS Filesystem"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "ZFS Volume"
 msgstr "ZFS Volume"
 
@@ -490,7 +489,6 @@ msgstr "RAM"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Disk"
 msgstr "Disk"
 
@@ -503,7 +501,6 @@ msgstr "Hostname"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
@@ -512,6 +509,7 @@ msgstr "Hostname"
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/storage/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "ID"
 msgstr "ID"
 
@@ -531,10 +529,6 @@ msgstr "Terminal"
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
-#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
-#: src/lib/components/custom/FileExplorer/RenameModal.svelte
-#: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -543,8 +537,6 @@ msgstr "Terminal"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
@@ -573,8 +565,6 @@ msgstr "Terminal"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -609,6 +599,14 @@ msgstr "Terminal"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Reset"
 msgstr "Reset"
 
@@ -1145,10 +1143,10 @@ msgstr "Network RX"
 msgid "Network TX"
 msgstr "Network TX"
 
+#: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
-#: src/lib/components/custom/Charts/Area.svelte
 msgid "<0/> Reset zoom"
 msgstr "<0/> Reset zoom"
 
@@ -1171,11 +1169,11 @@ msgstr "Date"
 msgid "Value"
 msgstr "Value"
 
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "View"
 msgstr "View"
 
@@ -1183,7 +1181,6 @@ msgstr "View"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1192,14 +1189,13 @@ msgstr "View"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Delete"
 msgstr "Delete"
 
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1210,11 +1206,13 @@ msgstr "Delete"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
 msgstr "Edit"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
 msgstr "Bulk Delete"
 
@@ -1223,8 +1221,6 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -1239,31 +1235,30 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New"
 msgstr "New"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Note"
 msgstr "Note"
 
 #: src/routes/[node]/network/switches/+page.svelte
-#: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -1273,23 +1268,26 @@ msgstr "Note"
 #: src/routes/datacenter/storage/+page.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Name"
 msgstr "Name"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Post Upgrade Summary"
 msgstr "Post Upgrade Summary"
 
-#: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
 msgstr "Content"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
 msgstr "This is a note"
 
@@ -1300,7 +1298,6 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
@@ -1315,16 +1312,17 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
 msgstr "Save"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete note"
 msgstr "Failed to delete note"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete notes"
 msgstr "Failed to delete notes"
 
@@ -1336,23 +1334,23 @@ msgstr "Note updated"
 msgid "Failed to update note"
 msgstr "Failed to update note"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Note created"
 msgstr "Note created"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to create note"
 msgstr "Failed to create note"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
 msgstr "Created"
 
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
 msgstr "Updated"
 
@@ -1386,9 +1384,9 @@ msgstr "Cancel"
 msgid "Continue"
 msgstr "Continue"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 #: src/lib/components/custom/TreeTable.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr "No data available"
 
@@ -1454,7 +1452,6 @@ msgid "Enter {0} name"
 msgstr "Enter {0} name"
 
 #: src/routes/[node]/network/switches/+page.svelte
-#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -1470,6 +1467,7 @@ msgstr "Enter {0} name"
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Create"
 msgstr "Create"
 
@@ -1504,12 +1502,11 @@ msgstr "<0/> Rename"
 msgid "<0/> Delete"
 msgstr "<0/> Delete"
 
-#: src/lib/components/custom/FileExplorer/ListView.svelte
-#: src/lib/components/custom/FileExplorer/Toolbar.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Size"
 msgstr "Size"
 
@@ -1581,13 +1578,13 @@ msgstr "Last Modified"
 msgid "First Modified"
 msgstr "First Modified"
 
-#: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/datacenter/storage/+page.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Type"
 msgstr "Type"
 
@@ -1821,11 +1818,10 @@ msgstr "Error {0}: {1}"
 msgid "S.M.A.R.T Values ({0})"
 msgstr "S.M.A.R.T Values ({0})"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "NVMe"
 msgstr "NVMe"
 
@@ -2241,9 +2237,9 @@ msgstr "Select a interval"
 msgid "Dataset Compression"
 msgstr "Dataset Compression"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Select a pool"
 msgstr "Select a pool"
 
@@ -2599,7 +2595,6 @@ msgid "Recursive"
 msgstr "Recursive"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "Invalid name"
@@ -3157,14 +3152,13 @@ msgstr "Storage detached"
 msgid "New Storage"
 msgstr "New Storage"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Type"
 msgstr "Select Type"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "CD-ROM"
-msgstr "CD-ROM"
+#~ msgid "CD-ROM"
+#~ msgstr "CD-ROM"
 
 #~ msgid "ISO"
 #~ msgstr "ISO"
@@ -3176,29 +3170,23 @@ msgstr "CD-ROM"
 msgid "Select ZFS Volume"
 msgstr "Select ZFS Volume"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ZFS Filesystem"
-msgstr "Select ZFS Filesystem"
+#~ msgid "Select ZFS Filesystem"
+#~ msgstr "Select ZFS Filesystem"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Emulation"
 msgstr "Emulation"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
 msgstr "Select Emulation"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "AHCI HD"
-msgstr "AHCI HD"
+#~ msgid "AHCI HD"
+#~ msgstr "AHCI HD"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "VirtIO Block"
 msgstr "VirtIO Block"
@@ -3207,49 +3195,38 @@ msgstr "VirtIO Block"
 msgid "Attach"
 msgstr "Attach"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Please select a type and dataset"
-msgstr "Please select a type and dataset"
+#~ msgid "Please select a type and dataset"
+#~ msgstr "Please select a type and dataset"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to attach CD-ROM"
-msgstr "Failed to attach CD-ROM"
+#~ msgid "Failed to attach CD-ROM"
+#~ msgstr "Failed to attach CD-ROM"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "CD-ROM attached"
-msgstr "CD-ROM attached"
+#~ msgid "CD-ROM attached"
+#~ msgstr "CD-ROM attached"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Please select an emulation type"
-msgstr "Please select an emulation type"
+#~ msgid "Please select an emulation type"
+#~ msgstr "Please select an emulation type"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Please select a {0}"
-msgstr "Please select a {0}"
+#~ msgid "Please select a {0}"
+#~ msgstr "Please select a {0}"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to attach ZFS Volume"
-msgstr "Failed to attach ZFS Volume"
+#~ msgid "Failed to attach ZFS Volume"
+#~ msgstr "Failed to attach ZFS Volume"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "ZFS Volume attached"
-msgstr "ZFS Volume attached"
+#~ msgid "ZFS Volume attached"
+#~ msgstr "ZFS Volume attached"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Name and size required"
-msgstr "Name and size required"
+#~ msgid "Name and size required"
+#~ msgstr "Name and size required"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Invalid size"
-msgstr "Invalid size"
+#~ msgid "Invalid size"
+#~ msgstr "Invalid size"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to attach storage"
-msgstr "Failed to attach storage"
+#~ msgid "Failed to attach storage"
+#~ msgstr "Failed to attach storage"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Storage attached"
-msgstr "Storage attached"
+#~ msgid "Storage attached"
+#~ msgstr "Storage attached"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "No available/unused switches to attach to"
@@ -3936,9 +3913,8 @@ msgstr "Recordsize"
 msgid "Select Recordsize"
 msgstr "Select Recordsize"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Existing image will be used"
-msgstr "Existing image will be used"
+#~ msgid "Existing image will be used"
+#~ msgstr "Existing image will be used"
 
 #~ msgid "GB"
 #~ msgstr "GB"
@@ -4696,20 +4672,17 @@ msgstr "This action cannot be undone. This will permanently delete this DHCP ran
 msgid "Ignore TLS Errors"
 msgstr "Ignore TLS Errors"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "ISO / Image"
-msgstr "ISO / Image"
+#~ msgid "ISO / Image"
+#~ msgstr "ISO / Image"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ISO or Image"
-msgstr "Select ISO or Image"
+#~ msgid "Select ISO or Image"
+#~ msgstr "Select ISO or Image"
 
 #~ msgid "CD/DVD-ROM"
 #~ msgstr "CD/DVD-ROM"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "AHCI CD"
-msgstr "AHCI CD"
+#~ msgid "AHCI CD"
+#~ msgstr "AHCI CD"
 
 #~ msgid "Hello World!"
 #~ msgstr "Hello World!"
@@ -4935,3 +4908,54 @@ msgstr "VM Storage - Detach"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Attach"
 msgstr "VM Storage - Attach"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Import"
+msgstr "Import"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Disk Type"
+msgstr "Disk Type"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select Disk Type"
+msgstr "Select Disk Type"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Raw Disk"
+msgstr "Raw Disk"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Raw Disk Path"
+msgstr "Raw Disk Path"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid disk path"
+msgstr "Invalid disk path"
+
+#~ msgid "FOUND FILE!"
+#~ msgstr "FOUND FILE!"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Unable to find disk"
+msgstr "Unable to find disk"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "AHCI Hard Disk"
+msgstr "AHCI Hard Disk"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "AHCI CD-ROM"
+msgstr "AHCI CD-ROM"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Please select a ZFS Volume"
+msgstr "Please select a ZFS Volume"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to import disk"
+msgstr "Failed to import disk"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Disk imported"
+msgstr "Disk imported"

@@ -26,6 +26,23 @@ export async function storageAttach(
 	});
 }
 
+export async function storageImport(
+	vmId: number,
+	storageType: 'zvol' | 'raw',
+	rawPath: string,
+	dataset: string,
+	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk'
+) {
+	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
+		vmId,
+		attachType: 'import',
+		rawPath: storageType === 'zvol' ? '' : rawPath,
+		dataset: storageType === 'zvol' ? dataset : '',
+		emulation,
+		storageType
+	});
+}
+
 export async function reorderBootOrder(
 	vmId: number,
 	storages: { id: number; order: number }[]

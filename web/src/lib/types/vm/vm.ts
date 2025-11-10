@@ -45,7 +45,7 @@ export interface CreateData {
 	};
 }
 
-export type VMStorageType = 'raw' | 'zvol' | 'installation-media';
+export type VMStorageType = 'raw' | 'zvol' | 'image';
 export type VMStorageEmulationType = 'virtio-blk' | 'ahci-hd' | 'ahci-cd' | 'nvme';
 
 export const VMStorageDatasetSchema = z.object({
@@ -59,7 +59,7 @@ export const VMStorageDatasetSchema = z.object({
 export const VMStorageSchema = z.object({
 	id: z.number().int(),
 	vmId: z.number().int().optional(),
-	type: z.enum(['raw', 'zvol', 'installation-media']),
+	type: z.enum(['raw', 'zvol', 'image']),
 	uuid: z.string().optional(),
 	datasetId: z.number().int().nullable(),
 	dataset: VMStorageDatasetSchema.nullable(),

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getFiles } from '$lib/api/system/file-explorer';
-	import { storageAttach } from '$lib/api/vm/storage';
+	import { storageAttach, storageImport } from '$lib/api/vm/storage';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -13,186 +13,92 @@
 	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
+	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
+	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
 
 	interface Props {
 		open: boolean;
 		datasets: Dataset[];
 		downloads: Download[];
 		vm: VM;
+		vms: VM[];
 	}
 
-	let { open = $bindable(), datasets, downloads, vm }: Props = $props();
+	let { open = $bindable(), datasets, downloads, vm, vms }: Props = $props();
 
 	let options = {
-		type: '',
-		name: '',
+		type: 'import' as 'import' | 'new',
+		diskType: 'raw' as 'raw' | 'zvol' | 'image',
+		rawPath: '',
 		dataset: '',
 		size: '',
-		emulation: 'ahci-hd'
+		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'
 	};
 
 	let properties = $state(options);
-	let isos = $derived(getISOs(downloads, true));
-	let usedVolumes = $derived.by(() => {
-		const storages = vm.storages;
-		return datasets
-			.filter((dataset) => dataset.type === 'volume')
-			.map((dataset) => ({
-				name: dataset.name,
-				guid: dataset.guid
-			}))
-			.filter((dataset) => {
-				return storages.some((storage) => {
-					return storage.dataset === dataset.guid;
-				});
-			});
-	});
-
-	let existingImage = $state(false);
-
-	$effect(() => {
-		if (properties.name && properties.type === 'raw' && properties.dataset) {
-			const dataset = datasets.find(
-				(d) => d.guid === properties.dataset || d.name === properties.dataset
-			);
-			const mountPoint = dataset?.mountpoint || '';
-			if (mountPoint) {
-				getFiles(mountPoint).then((files) => {
-					for (const file of files) {
-						if (file.id === `${mountPoint}/${properties.name}.img`) {
-							existingImage = true;
-							properties.size = humanFormat(file.size || 0);
-							return;
-						}
-					}
-
-					existingImage = false;
-				});
+	let usedDatasets = $derived.by(() => {
+		const used = [] as string[];
+		for (const m of vms) {
+			for (const storage of m.storages) {
+				if (storage.dataset && storage.dataset.guid) {
+					used.push(storage.dataset.guid);
+				}
 			}
 		}
+
+		return used;
+	});
+
+	let zvolCombobox = $state({
+		open: false,
+		value: ''
 	});
 
 	async function attach() {
-		if (!properties.type || !properties.dataset) {
-			toast.error('Please select a type and dataset', {
-				position: 'bottom-center'
-			});
-			return;
-		}
+		const toastOptions = {
+			position: 'bottom-center' as const
+		};
 
-		if (properties.type === 'iso') {
-			const response = await storageAttach(vm.vmId, 'iso', properties.dataset, properties.emulation, 0, '');
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to attach CD-ROM', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				toast.success('CD-ROM attached', {
-					position: 'bottom-center'
-				});
+		if (properties.type === 'import') {
+			if (properties.diskType === 'raw') {
+				if (!isValidAbsPath(properties.rawPath)) {
+					toast.error('Invalid disk path', toastOptions);
+					return;
+				}
 
-				properties = options;
-				open = false;
-			}
-		}
-
-		if (properties.type === 'raw' || properties.type === 'zvol') {
-			if (!properties.emulation) {
-				toast.error('Please select an emulation type', {
-					position: 'bottom-center'
-				});
-				return;
+				const parent = getPathParent(properties.rawPath);
+				const files = await getFiles(parent);
+				const found = files.filter((file) => file.id === properties.rawPath);
+				if (!found || found.length !== 1) {
+					toast.error('Unable to find disk', toastOptions);
+				}
+			} else if (properties.diskType === 'zvol') {
+				if (!zvolCombobox.value) {
+					toast.error('Please select a ZFS Volume', toastOptions);
+					return;
+				}
 			}
 
-			if (!properties.dataset) {
-				let type = properties.type === 'raw' ? 'ZFS Filesystem' : 'ZFS Volume';
-				toast.error(`Please select a ${type}`, {
-					position: 'bottom-center'
-				});
-				return;
-			}
-		}
-
-		if (properties.type === 'zvol') {
-			const response = await storageAttach(
+			const response = await storageImport(
 				vm.vmId,
-				'zvol',
-				properties.dataset,
-				properties.emulation,
-				0,
-				''
+				properties.diskType as 'raw' | 'zvol',
+				properties.diskType === 'raw' ? properties.rawPath : '',
+				properties.diskType === 'zvol' ? zvolCombobox.value : '',
+				properties.emulation
 			);
 
 			if (response.error) {
 				handleAPIError(response);
-				toast.error('Failed to attach ZFS Volume', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				toast.success('ZFS Volume attached', {
+				toast.error('Failed to import disk', {
 					position: 'bottom-center'
 				});
 
-				properties = options;
-				open = false;
-			}
-		}
-
-		if (properties.type === 'raw') {
-			if (!properties.name || !properties.size) {
-				toast.error('Name and size required', {
-					position: 'bottom-center'
-				});
 				return;
 			}
 
-			let parsedSize = 0;
-
-			try {
-				parsedSize = humanFormat.parse(properties.size);
-			} catch (e) {
-				parsedSize = 0;
-			}
-
-			if (parsedSize <= 0) {
-				toast.error('Invalid size', {
-					position: 'bottom-center'
-				});
-				return;
-			}
-
-			if (!/^[a-zA-Z0-9-_]+$/.test(properties.name)) {
-				toast.error('Invalid name', {
-					position: 'bottom-center'
-				});
-				return;
-			}
-
-			const response = await storageAttach(
-				vm.vmId,
-				properties.type,
-				properties.dataset,
-				properties.emulation,
-				Math.floor(parsedSize),
-				properties.name
-			);
-
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to attach storage', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				toast.success('Storage attached', {
-					position: 'bottom-center'
-				});
-				properties = options;
-				open = false;
-			}
+			toast.success('Disk imported', toastOptions);
+			properties = options;
+			open = false;
 		}
 	}
 </script>
@@ -236,125 +142,79 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<SimpleSelect
-			label="Type"
-			placeholder="Select Type"
-			options={[
-				{ value: 'iso', label: 'CD-ROM' },
-				{ value: 'raw', label: 'Disk' },
-				{ value: 'zvol', label: 'ZFS Volume' }
-			]}
-			bind:value={properties.type}
-			onChange={(value) => (properties.type = value)}
-		/>
-
-        {#if properties.type === 'iso'}
-            <div class="flex flex-row gap-2">
-                <div class="flex-1 min-w-[0]">
-                    <div class="w-full max-w-[300px]">
-                        <SimpleSelect
-                            label="ISO / Image"
-                            placeholder="Select ISO or Image"
-                            options={isos}
-                            bind:value={properties.dataset}
-                            onChange={(value) => (properties.dataset = value)}
-                        />
-                    </div>
-                </div>
-
-                <div class="flex-1 min-w-[0]">
-                    <div class="w-full max-w-[200px]">
-                        <SimpleSelect
-                            label="Emulation"
-                            placeholder="Select Emulation"
-                            options={[
-                                { value: 'ahci-cd', label: 'AHCI CD' },
-                                { value: 'ahci-hd', label: 'AHCI HD' },
-                                { value: 'virtio-blk', label: 'VirtIO Block' },
-                                { value: 'nvme', label: 'NVMe' }
-                            ]}
-                            bind:value={properties.emulation}
-                            onChange={(value) => (properties.emulation = value)}
-                        />
-                    </div>
-                </div>
-            </div>
-        {/if}
-
-
-		{#if properties.type === 'zvol'}
+		<div class="grid grid-cols-2 gap-4">
 			<SimpleSelect
-				label="ZFS Volume"
-				placeholder="Select ZFS Volume"
-				options={datasets
-					.filter((dataset) => {
-						return (
-							dataset.type === 'volume' && !usedVolumes.some((used) => used.guid === dataset.guid)
-						);
-					})
-					.map((dataset) => ({
-						value: dataset.guid || dataset.name,
-						label: dataset.name
-					}))}
-				bind:value={properties.dataset}
-				onChange={(value) => (properties.dataset = value)}
-			/>
-		{/if}
-
-		{#if properties.type === 'raw'}
-			<SimpleSelect
-				label="ZFS Filesystem"
-				placeholder="Select ZFS Filesystem"
-				options={datasets
-					.filter((dataset) => {
-						return (
-							dataset.type === 'filesystem' &&
-							!usedVolumes.some((used) => used.guid === dataset.guid)
-						);
-					})
-					.map((dataset) => ({
-						value: dataset.guid || dataset.name,
-						label: dataset.name
-					}))}
-				bind:value={properties.dataset}
-				onChange={(value) => (properties.dataset = value)}
+				label="Type"
+				placeholder="Select Type"
+				options={[
+					{ value: 'import', label: 'Import' },
+					{ value: 'new', label: 'New' }
+				]}
+				bind:value={properties.type}
+				onChange={(value) => (properties.type = value as 'import' | 'new')}
 			/>
 
-			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-				<CustomValueInput
-					label="Name"
-					placeholder="raw-disk-1"
-					bind:value={properties.name}
-					classes="flex-1 space-y-1"
-				/>
+			<SimpleSelect
+				label="Disk Type"
+				placeholder="Select Disk Type"
+				options={[
+					{ value: 'zvol', label: 'ZFS Volume' },
+					{ value: 'raw', label: 'Raw Disk' },
+					...(properties.type !== 'import' ? [{ value: 'image', label: 'Image' }] : [])
+				]}
+				bind:value={properties.diskType}
+				onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
+			/>
+		</div>
 
-				<CustomValueInput
-					label="Size"
-					placeholder="8 GB"
-					bind:value={properties.size}
-					classes="flex-1 space-y-1"
-					disabled={existingImage}
-				/>
-
-				{#if existingImage}
-					<span class="-mt-3 text-xs text-yellow-500">Existing image will be used</span>
+		<div class="grid grid-cols-2 gap-4">
+			{#if properties.type === 'import'}
+				{#if properties.diskType === 'raw'}
+					<CustomValueInput
+						label="Raw Disk Path"
+						placeholder="/tmp/openwrt-hdd.img"
+						bind:value={properties.rawPath}
+						classes="flex-1 space-y-1"
+					/>
 				{/if}
-			</div>
-		{/if}
 
-		{#if properties.type === 'zvol' || properties.type === 'raw'}
+				{#if properties.diskType === 'zvol'}
+					<CustomComboBox
+						bind:open={zvolCombobox.open}
+						label={'ZFS Volume'}
+						bind:value={zvolCombobox.value}
+						data={datasets
+							.filter((dataset) => {
+								return (
+									dataset.type === 'volume' && !usedDatasets.some((used) => used === dataset.guid)
+								);
+							})
+							.map((dataset) => ({
+								value: dataset.guid || dataset.name,
+								label: dataset.name
+							}))}
+						classes="flex-1 space-y-1"
+						placeholder="Select ZFS Volume"
+						width="w-3/4"
+						multiple={false}
+					></CustomComboBox>
+				{/if}
+			{/if}
+
 			<SimpleSelect
 				label="Emulation"
 				placeholder="Select Emulation"
 				options={[
-					{ value: 'ahci-hd', label: 'AHCI HD' },
-					{ value: 'virtio-blk', label: 'VirtIO Block' },
-					{ value: 'nvme', label: 'NVMe' }
+					{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
+					{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
+					{ value: 'nvme', label: 'NVMe' },
+					{ value: 'virtio-blk', label: 'VirtIO Block' }
 				]}
 				bind:value={properties.emulation}
-				onChange={(value) => (properties.emulation = value)}
+				onChange={(value) =>
+					(properties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
 			/>
-		{/if}
+		</div>
 
 		<Dialog.Footer>
 			<div class="flex items-center justify-end space-x-4">

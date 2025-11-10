@@ -634,7 +634,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 	if data.ISO != "" && strings.ToLower(data.ISO) != "none" {
 		storages = append(storages, vmModels.Storage{
 			DownloadUUID: data.ISO,
-			Type:         vmModels.VMStorageTypeInstallationMedia,
+			Type:         vmModels.VMStorageTypeDiskImage,
 			Size:         0,
 			Emulation:    "ahci-cd",
 		})
@@ -723,11 +723,19 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 	}
 
 	for _, storage := range vm.Storages {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			if err := s.DB.Delete(&storage).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_storage: %w", err)
+			}
+
+			continue
+		}
+
 		var datasets *[]zfs.Dataset
 		var cSets []*zfs.Dataset
 		var err error
 
-		if storage.Type == vmModels.VMStorageTypeDiskImage {
+		if storage.Type == vmModels.VMStorageTypeRaw {
 			if deleteRawDisks {
 				cSets, err = zfs.Filesystems(fmt.Sprintf(
 					"%s/sylve/virtual-machines/%d/raw-%d",
@@ -756,6 +764,12 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 		for _, ds := range cSets {
 			datasets = &[]zfs.Dataset{}
 			*datasets = append(*datasets, *ds)
+		}
+
+		if storage.DatasetID != nil {
+			if err := s.DB.Delete(&storage.Dataset).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_storage_dataset: %w", err)
+			}
 		}
 
 		if err := s.DB.Delete(&storage).Error; err != nil {

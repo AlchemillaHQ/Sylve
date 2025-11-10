@@ -33,7 +33,7 @@ export function generateTableData(
 				const value = cell.getValue();
 				const row = cell.getRow().getData();
 
-				if (row.type === 'installation-media') {
+				if (row.type === 'image') {
 					return renderWithIcon('tdesign:cd-filled', value, 'text-green-500', 'Installation Media');
 				} else if (row.type === 'zvol') {
 					return renderWithIcon(
@@ -99,7 +99,7 @@ export function generateTableData(
 		let name = '';
 		let size = 0;
 
-		if (storage.type === 'installation-media') {
+		if (storage.type === 'image') {
 			const download = downloads.find((d) => storage.uuid === d.uuid);
 			name = download ? download.name : 'Unknown ISO';
 			size = download ? download.size : 0;
@@ -119,7 +119,7 @@ export function generateTableData(
 			emulation: storage.emulation,
 			bootorder: storage.bootOrder || 0,
 			name: name,
-			size: size
+			size: size || storage.size
 		});
 	}
 

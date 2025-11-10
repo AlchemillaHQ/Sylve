@@ -96,6 +96,7 @@
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
+	let vms: VM[] = $derived($results[0].data as VM[]);
 	let domain: VMDomain = $derived($results[1].data as VMDomain);
 	let vm: VM = $derived(
 		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
@@ -184,6 +185,7 @@
 					position: 'bottom-center'
 				});
 			} else {
+				activeRows = [];
 				toast.success('Storage detached', {
 					position: 'bottom-center'
 				});
@@ -198,4 +200,4 @@
 	}}
 />
 
-<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} />
+<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} {vms} />

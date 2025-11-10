@@ -49,8 +49,8 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 
 	var datasets []*zfs.Dataset
 
-	if storage.Type == vmModels.VMStorageTypeDiskImage || storage.Type == vmModels.VMStorageTypeZVol {
-		if storage.Type == vmModels.VMStorageTypeDiskImage {
+	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
+		if storage.Type == vmModels.VMStorageTypeRaw {
 			datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID))
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
 			datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, vmId, storage.ID))
@@ -87,7 +87,7 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 			"secondarycache": "all",
 		}
 
-		if storage.Type == vmModels.VMStorageTypeDiskImage {
+		if storage.Type == vmModels.VMStorageTypeRaw {
 			dataset, err = zfs.CreateFilesystem(
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID),
 				utils.MergeMaps(props, map[string]string{
@@ -111,7 +111,7 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 		dataset = datasets[0]
 	}
 
-	if storage.Type == vmModels.VMStorageTypeDiskImage {
+	if storage.Type == vmModels.VMStorageTypeRaw {
 		imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID))
 		if _, err := os.Stat(imagePath); err == nil {
 			logger.L.Info().Msgf("Disk image %s already exists, skipping creation", imagePath)
@@ -233,7 +233,7 @@ func (s *Service) SyncVMDisks(vmId int) error {
 		var argValue string
 		var diskValue string
 
-		if storage.Type == vmModels.VMStorageTypeDiskImage {
+		if storage.Type == vmModels.VMStorageTypeRaw {
 			diskValue = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 				storage.Pool,
 				vmId,
@@ -246,7 +246,7 @@ func (s *Service) SyncVMDisks(vmId int) error {
 				vmId,
 				storage.ID,
 			)
-		} else if storage.Type == vmModels.VMStorageTypeInstallationMedia {
+		} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 			diskValue, err = s.FindISOByUUID(storage.DownloadUUID, true)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_iso_path_by_uuid: %w", err)
@@ -307,12 +307,25 @@ func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
 
 	var filePath string
 
-	if storage.Type == vmModels.VMStorageTypeInstallationMedia &&
+	if storage.Type == vmModels.VMStorageTypeDiskImage &&
 		storage.DownloadUUID != "" {
 		filePath, err = s.FindISOByUUID(storage.DownloadUUID, true)
 		if err != nil {
 			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
 		}
+	} else if storage.Type == vmModels.VMStorageTypeRaw {
+		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+			storage.Pool,
+			vmId,
+			storage.ID,
+			storage.ID,
+		)
+	} else if storage.Type == vmModels.VMStorageTypeZVol {
+		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
+			storage.Pool,
+			vmId,
+			storage.ID,
+		)
 	}
 
 	if filePath == "" {
@@ -330,10 +343,11 @@ func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
 			continue
 		}
 
-		if storage.Type == vmModels.VMStorageTypeInstallationMedia &&
+		if (storage.Type == vmModels.VMStorageTypeDiskImage ||
+			storage.Type == vmModels.VMStorageTypeRaw ||
+			storage.Type == vmModels.VMStorageTypeZVol) &&
 			strings.Contains(val, filePath) {
 			bhyveCommandline.RemoveChild(arg)
-			continue
 		}
 	}
 
@@ -399,257 +413,7 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 }
 
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest) error {
-	off, err := s.IsDomainShutOff(req.VMID)
-	if err != nil {
-		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
-	}
-
-	if !off {
-		return fmt.Errorf("domain_state_not_shutoff: %d", req.VMID)
-	}
-
-	vm, err := s.GetVMByVmId(req.VMID)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
-	}
-
-	pool, err := s.System.GetValidPool(req.Pool)
-	if err != nil {
-		return fmt.Errorf("failed_to_validate_pool: %w", err)
-	}
-
-	if pool == nil || pool.Name == "" {
-		return fmt.Errorf("invalid_pool: %s", req.Pool)
-	}
-
-	var recordSize, volBlockSize, bootOrder int
-	var size int64
-
-	if req.RecordSize != nil {
-		recordSize = *req.RecordSize
-	} else {
-		recordSize = 0
-	}
-
-	if req.VolBlockSize != nil {
-		volBlockSize = *req.VolBlockSize
-	} else {
-		volBlockSize = 0
-	}
-
-	if req.BootOrder != nil {
-		bootOrder = *req.BootOrder
-	} else {
-		bootOrder = 0
-	}
-
-	if req.Size != nil {
-		size = *req.Size
-	} else {
-		size = 0
-	}
-
-	if recordSize == 0 ||
-		volBlockSize == 0 ||
-		size == 0 {
-		return fmt.Errorf("record_size_vol_block_size_and_size_must_be_non_zero")
-	}
-
-	vmDirectory := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool.Name, req.VMID)
-
-	if req.StorageType == libvirtServiceInterfaces.StorageTypeISO {
-		_, err := s.FindISOByUUID(req.UUID, true)
-		if err != nil {
-			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
-		}
-
-		storage := vmModels.Storage{
-			Type:         vmModels.VMStorageTypeInstallationMedia,
-			DownloadUUID: req.UUID,
-			Pool:         pool.Name,
-			Size:         size,
-			Emulation:    vmModels.VMStorageEmulationType(req.Emulation),
-			RecordSize:   int(0),
-			VolBlockSize: int(0),
-			BootOrder:    bootOrder,
-		}
-
-		err = s.DB.Model(&vm).Association("Storages").Append(&storage)
-		if err != nil {
-			return fmt.Errorf("failed_to_create_storage_record: %w", err)
-		}
-	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw {
-		if req.Emulation != libvirtServiceInterfaces.VirtIOStorageEmulation &&
-			req.Emulation != libvirtServiceInterfaces.AHCIHDStorageEmulation &&
-			req.Emulation != libvirtServiceInterfaces.AHCICDStorageEmulation &&
-			req.Emulation != libvirtServiceInterfaces.NVMEStorageEmulation {
-			return fmt.Errorf("invalid_emulation_type_for_raw_storage: %s", req.Emulation)
-		}
-
-		datasets, err := zfs.Filesystems(vmDirectory)
-		if err != nil || len(datasets) == 0 {
-			return fmt.Errorf("failed_to_get_vm_dataset: %w", err)
-		}
-
-		for _, ds := range datasets {
-			if ds.Name == vmDirectory {
-				var existingStorage vmModels.Storage
-				err = s.DB.First(&existingStorage, "boot_order = ? AND vm_id = ?", bootOrder, req.VMID).Error
-				if err == nil && existingStorage.ID != 0 {
-					return fmt.Errorf("boot_order_already_in_use: %d", bootOrder)
-				}
-
-				storage := vmModels.Storage{
-					Type:         vmModels.VMStorageTypeDiskImage,
-					DownloadUUID: "",
-					Pool:         pool.Name,
-					Size:         size,
-					Emulation:    vmModels.VMStorageEmulationType(req.Emulation),
-					RecordSize:   int(recordSize),
-					VolBlockSize: int(volBlockSize),
-					BootOrder:    bootOrder,
-				}
-
-				err = s.DB.Model(&vm).Association("Storages").Append(&storage)
-				if err != nil {
-					return fmt.Errorf("failed_to_create_storage_record: %w", err)
-				}
-
-				dataset, err := zfs.CreateFilesystem(
-					fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", pool.Name, req.VMID, storage.ID),
-					map[string]string{
-						"compression":    "zstd",
-						"logbias":        "throughput",
-						"primarycache":   "metadata",
-						"secondarycache": "all",
-						"recordsize":     strconv.Itoa(recordSize),
-					},
-				)
-
-				if err != nil {
-					_ = s.DB.Delete(&storage).Error
-					return fmt.Errorf("failed_to_create_raw_storage_dataset: %w", err)
-				}
-
-				exists, err := utils.IsFileInDirectory(
-					filepath.Join(ds.Mountpoint, fmt.Sprintf("%s.raw", req.Name)),
-					ds.Mountpoint)
-
-				if err != nil {
-					return fmt.Errorf("failed_to_check_if_file_exists: %w", err)
-				}
-
-				if exists {
-					err = os.Rename(
-						filepath.Join(ds.Mountpoint, fmt.Sprintf("%s.raw", req.Name)),
-						filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID)),
-					)
-
-					if err != nil {
-						_ = dataset.Destroy(zfs.DestroyRecursive)
-						_ = s.DB.Delete(&storage).Error
-						return fmt.Errorf("failed_to_move_existing_raw_image: %w", err)
-					}
-				} else {
-					err = utils.CreateOrTruncateFile(
-						filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID)),
-						size,
-					)
-
-					if err != nil {
-						_ = dataset.Destroy(zfs.DestroyRecursive)
-						_ = s.DB.Delete(&storage).Error
-						return fmt.Errorf("failed_to_create_or_truncate_raw_image: %w", err)
-					}
-				}
-
-				diskDataset := vmModels.VMStorageDataset{
-					Pool: pool.Name,
-					Name: dataset.Name,
-					GUID: dataset.GUID,
-					VMID: uint(req.VMID),
-				}
-
-				if err := s.DB.Create(&diskDataset).Error; err != nil {
-					_ = dataset.Destroy(zfs.DestroyRecursive)
-					_ = s.DB.Delete(&storage).Error
-					return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
-				}
-
-				storage.DatasetID = &diskDataset.ID
-
-				if err := s.DB.Save(&storage).Error; err != nil {
-					_ = dataset.Destroy(zfs.DestroyRecursive)
-					_ = s.DB.Delete(&storage).Error
-					_ = s.DB.Delete(&diskDataset).Error
-					return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
-				}
-			}
-		}
-	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL {
-		var existingStorage vmModels.Storage
-		err = s.DB.First(&existingStorage, "boot_order = ? AND vm_id = ?", bootOrder, req.VMID).Error
-		if err == nil && existingStorage.ID != 0 {
-			return fmt.Errorf("boot_order_already_in_use: %d", bootOrder)
-		}
-
-		storage := vmModels.Storage{
-			Type:         vmModels.VMStorageTypeZVol,
-			DownloadUUID: "",
-			Pool:         pool.Name,
-			Size:         size,
-			Emulation:    vmModels.VMStorageEmulationType(req.Emulation),
-			RecordSize:   int(recordSize),
-			VolBlockSize: int(volBlockSize),
-			BootOrder:    bootOrder,
-		}
-
-		err = s.DB.Model(&vm).Association("Storages").Append(&storage)
-		if err != nil {
-			return fmt.Errorf("failed_to_create_storage_record: %w", err)
-		}
-
-		dataset, err := zfs.CreateVolume(
-			fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", pool.Name, req.VMID, storage.ID),
-			uint64(size),
-			map[string]string{
-				"compression":    "zstd",
-				"logbias":        "throughput",
-				"primarycache":   "metadata",
-				"secondarycache": "all",
-				"volblocksize":   strconv.Itoa(volBlockSize),
-			},
-		)
-
-		if err != nil {
-			_ = s.DB.Delete(&storage).Error
-			return fmt.Errorf("failed_to_create_zvol_storage_dataset: %w", err)
-		}
-
-		zvolDataset := vmModels.VMStorageDataset{
-			Pool: pool.Name,
-			Name: dataset.Name,
-			GUID: dataset.GUID,
-			VMID: uint(req.VMID),
-		}
-
-		if err := s.DB.Create(&zvolDataset).Error; err != nil {
-			_ = dataset.Destroy(zfs.DestroyRecursive)
-			_ = s.DB.Delete(&storage).Error
-			return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
-		}
-
-		storage.DatasetID = &zvolDataset.ID
-
-		if err := s.DB.Save(&storage).Error; err != nil {
-			_ = dataset.Destroy(zfs.DestroyRecursive)
-			_ = s.DB.Delete(&storage).Error
-			_ = s.DB.Delete(&zvolDataset).Error
-			return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
-		}
-	}
-
-	return s.SyncVMDisks(req.VMID)
+	return nil
 }
 
 func (s *Service) CreateStorageParent(vmId int) error {

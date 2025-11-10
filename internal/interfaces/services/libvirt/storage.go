@@ -15,10 +15,10 @@ import (
 type StorageType string
 
 const (
-	StorageTypeRaw  StorageType = "raw"
-	StorageTypeZVOL StorageType = "zvol"
-	StorageTypeISO  StorageType = "iso"
-	StorageTypeNone StorageType = "none"
+	StorageTypeRaw       StorageType = "raw"
+	StorageTypeZVOL      StorageType = "zvol"
+	StorageTypeDiskImage StorageType = "image"
+	StorageTypeNone      StorageType = "none"
 )
 
 type StorageEmulationType string
@@ -48,54 +48,23 @@ type StoragePool struct {
 	UUID   string
 }
 
-/*
-type VMStorageDataset struct {
-	ID uint `gorm:"primaryKey" json:"id"`
-
-	Pool string `json:"pool"`
-	Name string `json:"name"`
-	GUID string `json:"guid"`
-
-	VMID uint `json:"vmId" gorm:"index"`
-}
-
-func (VMStorageDataset) TableName() string {
-	return "vm_storage_datasets"
-}
-
-type Storage struct {
-	ID   uint          `gorm:"primaryKey" json:"id"`
-	Type VMStorageType `json:"type"`
-
-	DownloadUUID string `json:"uuid"`
-
-	Pool string `json:"pool"`
-
-	DatasetID *uint            `json:"datasetId" gorm:"column:dataset_id"`
-	Dataset   VMStorageDataset `json:"dataset" gorm:"foreignKey:DatasetID;references:ID"`
-
-	Size      int64                  `json:"size"`
-	Emulation VMStorageEmulationType `json:"emulation"`
-
-	RecordSize   int `json:"recordSize"`
-	VolBlockSize int `json:"volBlockSize"`
-
-	BootOrder int  `json:"bootOrder"`
-	VMID      uint `json:"vmId" gorm:"index"`
-}
-*/
-
 type StorageAttachRequest struct {
-	VMID         int                  `json:"vmId" binding:"required"`
-	Name         string               `json:"name"`
-	UUID         string               `json:"uuid"`
-	Pool         string               `json:"pool" binding:"required"`
-	StorageType  StorageType          `json:"storageType" binding:"required"`
-	Emulation    StorageEmulationType `json:"emulation" binding:"required"`
-	Size         *int64               `json:"size"`
-	RecordSize   *int                 `json:"recordSize"`
-	VolBlockSize *int                 `json:"volBlockSize"`
-	BootOrder    *int                 `json:"bootOrder"`
+	AttachType string `json:"attachType" binding:"required"`
+	RawPath    string `json:"rawPath"`
+	Dataset    string `json:"dataset"`
+
+	VMID int    `json:"vmId" binding:"required"`
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
+
+	Pool        string               `json:"pool" binding:"required"`
+	StorageType StorageType          `json:"storageType" binding:"required"`
+	Emulation   StorageEmulationType `json:"emulation" binding:"required"`
+
+	Size         *int64 `json:"size"`
+	RecordSize   *int   `json:"recordSize"`
+	VolBlockSize *int   `json:"volBlockSize"`
+	BootOrder    *int   `json:"bootOrder"`
 }
 
 type StorageDetachRequest struct {
