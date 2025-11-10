@@ -1,6 +1,11 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
 
+export interface CPUPin {
+	socket: number;
+	cores: number[];
+}
+
 export interface CreateData {
 	name: string;
 	node: string;
@@ -24,7 +29,7 @@ export interface CreateData {
 		threads: number;
 		memory: number;
 		passthroughIds: number[];
-		pinnedCPUs: number[];
+		pinnedCPUs: CPUPin[];
 		isPinningOpen: boolean;
 	};
 	advanced: {
@@ -40,16 +45,29 @@ export interface CreateData {
 	};
 }
 
+export type VMStorageType = 'raw' | 'zvol' | 'installation-media';
+export type VMStorageEmulationType = 'virtio-blk' | 'ahci-hd' | 'ahci-cd' | 'nvme';
+
+export const VMStorageDatasetSchema = z.object({
+	id: z.number().int(),
+	pool: z.string(),
+	name: z.string(),
+	guid: z.string(),
+	vmId: z.number().int()
+});
+
 export const VMStorageSchema = z.object({
 	id: z.number().int(),
-	type: z.string(),
-	dataset: z.string(),
-	size: z.number().int(),
-	emulation: z.string(),
-	detached: z.boolean().optional(),
 	vmId: z.number().int().optional(),
-	bootOrder: z.number().int().optional(),
-	name: z.string().optional()
+	type: z.enum(['raw', 'zvol', 'installation-media']),
+	downloadUUID: z.string().optional(),
+	datasetId: z.number().int().nullable(),
+	dataset: VMStorageDatasetSchema.nullable(),
+	size: z.number().int(),
+	emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
+	recordSize: z.number().int().optional(),
+	volBlockSize: z.number().int().optional(),
+	bootOrder: z.number().int().optional()
 });
 
 export const VMNetworkSchema = z.object({
@@ -62,6 +80,26 @@ export const VMNetworkSchema = z.object({
 	emulation: z.string(),
 	vmId: z.number().int().optional()
 });
+
+export const VMCPUPinningSchema = z.object({
+	id: z.number().int(),
+	vmId: z.number().int(),
+	hostSocket: z.number().int(),
+	hostCpu: z.array(z.number().int())
+});
+
+export enum DomainState {
+	DomainNostate = 0,
+	DomainRunning = 1,
+	DomainBlocked = 2,
+	DomainPaused = 3,
+	DomainShutdown = 4,
+	DomainShutoff = 5,
+	DomainCrashed = 6,
+	DomainPmsuspended = 7
+}
+
+export const DomainStateSchema = z.enum(DomainState);
 
 export const VMSchema = z.object({
 	id: z.number().int(),
@@ -82,13 +120,11 @@ export const VMSchema = z.object({
 	startOrder: z.number().int(),
 	wol: z.boolean(),
 	timeOffset: z.enum(['utc', 'localtime']),
-
-	state: z.enum(['ACTIVE', 'INACTIVE']),
-
+	state: DomainStateSchema,
 	storages: z.array(VMStorageSchema),
 	networks: z.array(VMNetworkSchema),
 	pciDevices: z.union([z.array(z.number().int()), z.null()]),
-	cpuPinning: z.union([z.array(z.number().int()), z.null()]),
+	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
 
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -116,7 +152,7 @@ export const SimpleVmSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	vmId: z.number().int(),
-	state: z.string()
+	state: DomainStateSchema
 });
 
 export type VM = z.infer<typeof VMSchema>;

@@ -64,7 +64,8 @@
 		'/api/vm/stop': 'VM - Stop',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
-		'/api/utilities/download': 'Downloader'
+		'/api/utilities/download': 'Downloader',
+		'/api/vm': 'VM'
 	});
 
 	let records = $derived.by(() => {

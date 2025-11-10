@@ -108,8 +108,8 @@
 				bind:value={emulation}
 				data={comboBoxes.emulation.options}
 				classes="flex-1 space-y-1"
-				placeholder="Select emulation type"
-				width="w-[40%]"
+				placeholder="Emulation type"
+				width="w-3/4"
 			></CustomComboBox>
 
 			<CustomComboBox

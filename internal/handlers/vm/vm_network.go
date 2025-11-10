@@ -62,7 +62,7 @@ func NetworkDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "storage_detached",
+			Message: "network_detached",
 			Data:    nil,
 			Error:   "",
 		})

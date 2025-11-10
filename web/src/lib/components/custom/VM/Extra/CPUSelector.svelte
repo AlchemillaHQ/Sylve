@@ -4,13 +4,13 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Icon from '@iconify/svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
-	import { generateCores } from '$lib/utils/vm/vm';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import type { CPUPin, VM } from '$lib/types/vm/vm';
 
-	interface CoreSelectorProps {
+	interface Props {
 		open: boolean;
 		cpuInfo: CPUInfo;
-		onConfirm?: (selection: { socketId: string; coreIds: string[] }) => void;
+		vms: VM[];
+		pinnedCPUs: CPUPin[];
 	}
 
 	interface Core {
@@ -27,29 +27,91 @@
 		cores: Core[];
 	}
 
-	let { open = $bindable(), cpuInfo = $bindable(), onConfirm }: CoreSelectorProps = $props();
+	let {
+		open = $bindable(),
+		cpuInfo = $bindable(),
+		vms,
+		pinnedCPUs = $bindable()
+	}: Props = $props();
+
+	function onConfirm(newPinnedCPUs: CPUPin[]) {
+		pinnedCPUs = newPinnedCPUs;
+	}
+
+	$inspect(pinnedCPUs, 'pinnedCPUs');
 
 	let selectedSocket = $state<string | null>(null);
 	let selectedCores = $state<Set<string>>(new Set());
 	let step = $state<'socket' | 'cores'>('socket');
+	let allSelections = $state<Map<number, number[]>>(new Map());
+
+	$effect(() => {
+		if (open && pinnedCPUs.length > 0) {
+			const newSelections = new Map<number, number[]>();
+			pinnedCPUs.forEach((pin) => {
+				newSelections.set(pin.socket, pin.cores);
+			});
+			allSelections = newSelections;
+		} else if (!open) {
+			allSelections = new Map();
+			selectedSocket = null;
+			selectedCores = new Set();
+			step = 'socket';
+		}
+	});
+
+	let usedPins = $derived.by(() => {
+		const pins = [] as { vmId: number; hostSocket: number; hostCpu: number[] }[];
+		for (const vm of vms) {
+			if (vm.cpuPinning) {
+				for (const pin of vm.cpuPinning) {
+					pins.push({
+						vmId: vm.id,
+						hostSocket: pin.hostSocket,
+						hostCpu: pin.hostCpu
+					});
+				}
+			}
+		}
+
+		return pins;
+	});
 
 	const handleSocketSelect = (socketId: string) => {
 		selectedSocket = socketId;
-		selectedCores = new Set();
 		step = 'cores';
 
 		if (cpuInfo) {
+			const socketIndex = parseInt(socketId);
+			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
+			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
+				const isPinned = usedPins.some(
+					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
+				);
+
+				return {
+					id: `${socketIndex}-core-${coreIndex}`,
+					number: coreIndex,
+					frequency: '3.0 GHz',
+					status: isPinned ? 'busy' : 'available'
+				} as Core;
+			});
+
 			selectedSocketData = {
 				id: socketId,
-				name: `Socket ${socketId}`,
+				name: `Socket ${socketIndex}`,
 				model: cpuInfo.model.toString(),
-				cores: Array.from({ length: cpuInfo.logicalCores }, (_, i) => ({
-					id: `${socketId}-core-${i + 1}`,
-					number: i,
-					frequency: '3.0 GHz',
-					status: 'available'
-				}))
+				cores: cores
 			};
+
+			const existingSelection = allSelections.get(socketIndex);
+			if (existingSelection) {
+				selectedCores = new Set(
+					existingSelection.map((coreIndex) => `${socketIndex}-core-${coreIndex}`)
+				);
+			} else {
+				selectedCores = new Set();
+			}
 		}
 	};
 
@@ -64,6 +126,21 @@
 	};
 
 	const handleBack = () => {
+		if (selectedSocket && selectedCores.size > 0) {
+			const socketId = parseInt(selectedSocket);
+			const coreIds = Array.from(selectedCores).map((coreId) => {
+				return parseInt(coreId.split('-core-')[1]);
+			});
+			const newSelections = new Map(allSelections);
+			newSelections.set(socketId, coreIds);
+			allSelections = newSelections;
+		} else if (selectedSocket) {
+			const socketId = parseInt(selectedSocket);
+			const newSelections = new Map(allSelections);
+			newSelections.delete(socketId);
+			allSelections = newSelections;
+		}
+
 		step = 'socket';
 		selectedSocket = null;
 		selectedCores = new Set();
@@ -71,44 +148,65 @@
 
 	const handleConfirm = () => {
 		if (selectedSocket && selectedCores.size > 0) {
-			onConfirm?.({
-				socketId: selectedSocket,
-				coreIds: Array.from(selectedCores)
+			const socketId = parseInt(selectedSocket);
+			const coreIds = Array.from(selectedCores).map((coreId) => {
+				return parseInt(coreId.split('-core-')[1]);
 			});
-			open = false;
-			setTimeout(() => {
-				step = 'socket';
-				selectedSocket = null;
-				selectedCores = new Set();
-			}, 200);
+
+			const newSelections = new Map(allSelections);
+			if (coreIds.length > 0) {
+				newSelections.set(socketId, coreIds);
+			} else {
+				newSelections.delete(socketId);
+			}
+			allSelections = newSelections;
 		}
+
+		// Always call onConfirm, even with empty selections
+		const pinnedCPUs: CPUPin[] = Array.from(allSelections.entries()).map(
+			([hostSocket, hostCpu]) => ({
+				socket: hostSocket,
+				cores: hostCpu
+			})
+		);
+
+		onConfirm?.(pinnedCPUs);
+		open = false;
 	};
 
 	const handleClose = () => {
 		open = false;
-		setTimeout(() => {
-			step = 'socket';
-			selectedSocket = null;
-			selectedCores = new Set();
-		}, 200);
 	};
 
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
-
 	let availableCores = $derived(
 		selectedSocketData?.cores.filter((core) => core.status === 'available') || []
 	);
 
-	const Sockets = Array.from({ length: cpuInfo.sockets }, (__, socketIndex) => {
-		return {
-			id: socketIndex + 1,
-			name: 'socket ' + (socketIndex + 1),
-			model: cpuInfo.model,
-			cores: generateCores(cpuInfo.logicalCores / cpuInfo.sockets)
-		};
-	});
+	const sockets = $derived.by(() => {
+		return Array.from({ length: cpuInfo.sockets }, (__, socketIndex) => {
+			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
+			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
+				const isPinned = usedPins.some(
+					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
+				);
 
-	$inspect('Sockets', Sockets);
+				return {
+					id: `${socketIndex}-core-${coreIndex}`,
+					number: coreIndex,
+					frequency: '3.0 GHz',
+					status: isPinned ? 'busy' : 'available'
+				} as Core;
+			});
+
+			return {
+				id: socketIndex,
+				name: 'Socket ' + socketIndex,
+				model: cpuInfo.name,
+				cores: cores
+			};
+		});
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -117,7 +215,7 @@
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<Icon icon="iconoir:cpu" class="h-5 w-5 " />
-					CPU Core Selector
+					CPU Pinning
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={handleClose} title={'Close'}>
@@ -129,16 +227,18 @@
 		</Dialog.Header>
 
 		{#if step === 'socket'}
-			<div class="space-y-4">
-				<p class="text-muted-foreground">Select a CPU socket to allocate cores from:</p>
-
+			<div class="mt-4 space-y-4">
 				<div class="flex max-h-96 w-full flex-wrap items-center justify-center gap-4 overflow-auto">
-					{#each Sockets as socket (socket.id)}
+					{#each sockets as socket (socket.id)}
 						{@const availableCount = socket.cores.filter((c) => c.status === 'available').length}
 						{@const busyCount = socket.cores.filter((c) => c.status === 'busy').length}
+						{@const hasSelection = allSelections.has(socket.id)}
+						{@const selectedCount = hasSelection ? allSelections.get(socket.id)?.length || 0 : 0}
 
 						<Card.Root
-							class="hover:bg-accent/50 cursor-pointer transition-colors"
+							class="hover:bg-accent/50 w-[300px] cursor-pointer transition-colors {hasSelection
+								? 'ring-2 ring-yellow-500'
+								: ''}"
 							onclick={() => handleSocketSelect(socket.id.toString())}
 						>
 							<Card.Content class="px-6">
@@ -148,9 +248,6 @@
 											<Icon icon="iconoir:cpu" class="text-primary h-6 w-6" />
 										</div>
 										<div>
-											<h3 class="font-medium">
-												{socket.name}
-											</h3>
 											<p class="text-muted-foreground text-sm">
 												{socket.model}
 											</p>
@@ -171,6 +268,14 @@
 											{busyCount} busy
 										</span>
 									</div>
+									{#if hasSelection}
+										<div class="flex items-center gap-1">
+											<div class="h-2 w-2 rounded-full bg-yellow-500"></div>
+											<span class="text-sm">
+												{selectedCount} selected
+											</span>
+										</div>
+									{/if}
 								</div>
 
 								<div class="mt-3">
@@ -200,11 +305,10 @@
 
 				<div class="space-y-2">
 					<p class="text-muted-foreground">
-						Select cores from {selectedSocketData.name} (
-						{availableCores.length} available):
+						Select cores from {selectedSocketData.name} ({availableCores.length} available):
 					</p>
 					<p class="text-muted-foreground text-sm">
-						Selected: {selectedCores.size} cores
+						Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}
 					</p>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
@@ -231,7 +335,7 @@
 
 							{#if isSelected}
 								<div
-									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
+									class="text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
 									<Icon icon="material-symbols:check" class="h-2.5 w-2.5" />
 								</div>
@@ -265,10 +369,23 @@
 		<Dialog.Footer>
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
 			{#if step === 'cores'}
-				<Button onclick={handleConfirm} disabled={selectedCores.size === 0}>
-					Allocate {selectedCores.size} Core
-					{selectedCores.size !== 1 ? 's' : ''}
-				</Button>
+				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
+			{/if}
+			{#if step === 'socket'}
+				{#if allSelections.size > 0}
+					{@const totalCores = Array.from(allSelections.values()).reduce(
+						(sum, cores) => sum + cores.length,
+						0
+					)}
+					<Button onclick={handleConfirm}>
+						Confirm {totalCores} Core{totalCores !== 1 ? 's' : ''} from {allSelections.size} Socket{allSelections.size !==
+						1
+							? 's'
+							: ''}
+					</Button>
+				{:else if pinnedCPUs.length > 0}
+					<Button onclick={handleConfirm} variant="destructive">Clear All Pinning</Button>
+				{/if}
 			{/if}
 		</Dialog.Footer>
 	</Dialog.Content>

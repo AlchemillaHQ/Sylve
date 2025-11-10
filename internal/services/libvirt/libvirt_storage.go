@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -48,15 +49,17 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 
 	var datasets []*zfs.Dataset
 
-	if storage.Type == vmModels.VMStorageTypeDiskImage {
-		datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID))
-		if err != nil {
-			return fmt.Errorf("failed_to_get_datasets: %w", err)
+	if storage.Type == vmModels.VMStorageTypeDiskImage || storage.Type == vmModels.VMStorageTypeZVol {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID))
+		} else if storage.Type == vmModels.VMStorageTypeZVol {
+			datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, vmId, storage.ID))
 		}
-	} else if storage.Type == vmModels.VMStorageTypeZVol {
-		datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, vmId, storage.ID))
+
 		if err != nil {
-			return fmt.Errorf("failed_to_get_datasets: %w", err)
+			if !strings.Contains(err.Error(), "dataset does not exist") {
+				return fmt.Errorf("failed_to_get_datasets: %w", err)
+			}
 		}
 	}
 
@@ -108,15 +111,17 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 		dataset = datasets[0]
 	}
 
-	imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID))
-	if _, err := os.Stat(imagePath); err == nil {
-		logger.L.Info().Msgf("Disk image %s already exists, skipping creation", imagePath)
-		return nil
-	}
+	if storage.Type == vmModels.VMStorageTypeDiskImage {
+		imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID))
+		if _, err := os.Stat(imagePath); err == nil {
+			logger.L.Info().Msgf("Disk image %s already exists, skipping creation", imagePath)
+			return nil
+		}
 
-	if err := utils.CreateOrTruncateFile(imagePath, storage.Size); err != nil {
-		_ = dataset.Destroy(zfs.DestroyRecursive)
-		return fmt.Errorf("failed_to_create_or_truncate_image_file: %w", err)
+		if err := utils.CreateOrTruncateFile(imagePath, storage.Size); err != nil {
+			_ = dataset.Destroy(zfs.DestroyRecursive)
+			return fmt.Errorf("failed_to_create_or_truncate_image_file: %w", err)
+		}
 	}
 
 	storageDataset := vmModels.VMStorageDataset{

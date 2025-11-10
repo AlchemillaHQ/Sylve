@@ -26,7 +26,7 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import { type CreateData, type VM } from '$lib/types/vm/vm';
+	import { type CPUPin, type CreateData, type VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { getBasicSettings } from '$lib/api/basic';
@@ -190,7 +190,7 @@
 			threads: 1,
 			memory: 0,
 			passthroughIds: [] as number[],
-			pinnedCPUs: [] as number[],
+			pinnedCPUs: [] as CPUPin[],
 			isPinningOpen: false
 		},
 		advanced: {
@@ -245,7 +245,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed top-1/2 left-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">

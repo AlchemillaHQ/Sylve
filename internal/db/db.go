@@ -30,7 +30,7 @@ import (
 
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	ormConfig := &gorm.Config{
-		Logger:         gormLogger.Default.LogMode(gormLogger.Silent),
+		Logger:         gormLogger.Default.LogMode(gormLogger.Warn),
 		TranslateError: true,
 	}
 
@@ -63,6 +63,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&vmModels.Storage{},
 		&vmModels.Network{},
 		&vmModels.VMStats{},
+		&vmModels.VMCPUPinning{},
 		&vmModels.VM{},
 
 		&jailModels.Network{},

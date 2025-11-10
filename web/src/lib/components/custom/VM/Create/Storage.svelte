@@ -88,6 +88,17 @@
 			}
 		}
 	});
+
+	// $effect(() => {
+	//     if (type === 'none') {
+	//         pool = '';
+	//         size = 0;
+	//         emulation = '';
+	//         humanSize = '';
+	//     } else {
+	//         pool
+	//     }
+	// });
 </script>
 
 {#snippet radioItem(type: string)}
@@ -116,7 +127,7 @@
 			<CustomComboBox
 				bind:open={comboBoxes.pool.open}
 				label="Storage Pool"
-				bind:value={comboBoxes.pool.value}
+				bind:value={pool}
 				data={generateComboboxOptions(pools)}
 				classes="flex-1 space-y-1"
 				placeholder="Select storage pool"
@@ -139,7 +150,7 @@
 				classes="flex-1 space-y-1"
 				placeholder="Select emulation type"
 				triggerWidth="w-full"
-				width="w-full lg:w-[75%]"
+				width="w-full"
 			></CustomComboBox>
 		{/if}
 

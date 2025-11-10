@@ -24,23 +24,25 @@ export function isValidCreateData(modal: CreateData): boolean {
 		return false;
 	}
 
-	if (modal.storage.type === 'raw') {
+	if (modal.storage.type === 'raw' || modal.storage.type === 'zvol') {
+		if (!modal.storage.pool || modal.storage.pool.length < 1) {
+			toast.error('No ZFS pool selected', toastConfig);
+			return false;
+		}
+
 		if (!modal.storage.size || modal.storage.size < 1024 * 1024 * 128) {
 			toast.error('Disk size must be >= 128 MiB', toastConfig);
 			return false;
 		}
-	}
 
-	if (modal.storage.type === 'raw' || modal.storage.type === 'zvol') {
-		if (!modal.storage.pool || modal.storage.pool.length < 1) {
-			const noun = modal.storage.type === 'raw' ? 'filesystem' : 'volume';
-			toast.error(`No ${noun} selected`, toastConfig);
+		if (modal.storage.emulation === '') {
+			toast.error('No emulation type selected', toastConfig);
 			return false;
 		}
 	}
 
-	if (modal.storage.emulation === '') {
-		toast.error('No emulation type selected', toastConfig);
+	if (modal.storage.iso === '') {
+		toast.error(`Select 'none' if you don't want an installation media`, toastConfig);
 		return false;
 	}
 
@@ -94,7 +96,6 @@ export function getNextId(vms: VM[], jails: Jail[]): number {
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;
 }
-
 
 export function generateCores(threadCount: number) {
 	return Array.from({ length: threadCount }, (_, i) => {

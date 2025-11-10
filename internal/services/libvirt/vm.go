@@ -32,11 +32,14 @@ import (
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
 	var vms []vmModels.VM
 	if err := s.DB.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
 		Preload("Networks").
 		Preload("Networks.AddressObj").
 		Preload("Networks.AddressObj.Entries").
 		Preload("Networks.AddressObj.Resolutions").
-		Preload("Storages").Find(&vms).Error; err != nil {
+		Find(&vms).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_vms: %w", err)
 	}
 
@@ -378,8 +381,6 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 			}
 		} else if err != nil {
 			return fmt.Errorf("failed_to_check_vnc_port_usage: %w", err)
-		} else {
-			return fmt.Errorf("vnc_port_already_in_use")
 		}
 	}
 
@@ -441,12 +442,13 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 func (s *Service) GetVM(id int) (vmModels.VM, error) {
 	var vm vmModels.VM
 	err := s.DB.
-		Preload("VMCPUPinning").
-		Preload("Storage").
-		Preload("Storage.VMStorageDataset").
-		Preload("Network").
-		Preload("Network.AddressObj").
-		First(&vm).Where("id = ?", id).Error
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Where("id = ?", id).
+		First(&vm).Error
 
 	return vm, err
 }
@@ -454,12 +456,13 @@ func (s *Service) GetVM(id int) (vmModels.VM, error) {
 func (s *Service) GetVMByVmId(id int) (vmModels.VM, error) {
 	var vm vmModels.VM
 	err := s.DB.
-		Preload("VMCPUPinning").
-		Preload("Storage").
-		Preload("Storage.VMStorageDataset").
-		Preload("Network").
-		Preload("Network.AddressObj").
-		First(&vm).Where("vm_id = ?", id).Error
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Where("vm_id = ?", id).
+		First(&vm).Error
 
 	return vm, err
 }
@@ -709,8 +712,9 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 	if err := s.DB.
 		Preload("Stats").
 		Preload("Networks").
+		Preload("CPUPinning").
 		Preload("Storages").
-		Preload("Storages.VMStorageDataset").
+		Preload("Storages.Dataset").
 		First(&vm, "id = ?", id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return fmt.Errorf("vm_not_found: %d", id)
@@ -744,7 +748,9 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 		}
 
 		if err != nil {
-			logger.L.Error().Err(err).Msg("RemoveVM: failed to get filesystems for raw storage")
+			if !strings.Contains(err.Error(), "dataset does not exist") {
+				logger.L.Error().Err(err).Msg("RemoveVM: failed to get zfs datasets for storage removal")
+			}
 		}
 
 		for _, ds := range cSets {
@@ -808,6 +814,12 @@ func (s *Service) RemoveVM(id uint, cleanUpMacs bool, deleteRawDisks bool, delet
 			if err := tx.Commit().Error; err != nil {
 				return fmt.Errorf("failed_to_commit_cleanup: %w", err)
 			}
+		}
+	}
+
+	for _, p := range vm.CPUPinning {
+		if err := s.DB.Delete(&p).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_cpupinning: %w", err)
 		}
 	}
 
