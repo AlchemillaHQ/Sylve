@@ -9,13 +9,13 @@
 package libvirt
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -412,27 +412,151 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 	return nil
 }
 
+func (s *Service) GetNextBootOrderIndex(vmId int) (int, error) {
+	var maxBootOrder sql.NullInt64
+	err := s.DB.
+		Model(&vmModels.Storage{}).
+		Where("vm_id = ?", vmId).
+		Select("MAX(boot_order)").
+		Scan(&maxBootOrder).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed_to_get_max_boot_order: %w", err)
+	}
+
+	if maxBootOrder.Valid {
+		return int(maxBootOrder.Int64) + 1, nil
+	}
+
+	return 0, nil
+}
+
+func (s *Service) ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error) {
+	var count int64
+	err := s.DB.
+		Model(&vmModels.Storage{}).
+		Where("vm_id = ? AND boot_order = ?", vmId, bootOrder).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed_to_validate_boot_order_index: %w", err)
+	}
+
+	return count == 0, nil
+}
+
+func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM) error {
+	if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw {
+		exists, err := utils.FileExists(req.RawPath)
+		if err != nil {
+			return fmt.Errorf("failed_to_check_raw_path_exists: %w", err)
+		}
+
+		if !exists {
+			return fmt.Errorf("raw_path_does_not_exist: %s", req.RawPath)
+		}
+
+		info, err := os.Stat(req.RawPath)
+		if err != nil {
+			return fmt.Errorf("failed_to_stat_raw_path: %w", err)
+		}
+
+		var storage vmModels.Storage
+		storage.VMID = vm.ID
+		storage.Type = vmModels.VMStorageTypeRaw
+		storage.Pool = req.Pool
+		storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
+		storage.Size = info.Size()
+		storage.BootOrder = *req.BootOrder
+
+		if err := s.DB.Create(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_create_storage_record: %w", err)
+		}
+
+		if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
+		}
+
+		datasetPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+			storage.Pool,
+			vm.VmID,
+			storage.ID,
+			storage.ID,
+		)
+
+		err = os.Remove(datasetPath)
+		if err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_remove_created_image_file")
+		}
+
+		if err := utils.CopyFile(req.RawPath, datasetPath); err != nil {
+			return fmt.Errorf("failed_to_copy_raw_file_to_dataset: %w", err)
+		}
+	}
+
+	return s.SyncVMDisks(vm.VmID)
+}
+
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest) error {
+	vm, err := s.GetVMByVmId(req.VMID)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
+	}
+
+	off, err := s.IsDomainShutOff(req.VMID)
+	if err != nil {
+		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+
+	if !off {
+		return fmt.Errorf("domain_state_not_shutoff: %d", req.VMID)
+	}
+
+	var bootOrder int
+	if req.BootOrder != nil {
+		bootOrder = *req.BootOrder
+	} else {
+		nextIndex, err := s.GetNextBootOrderIndex(vm.VmID)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_next_boot_order_index: %w", err)
+		}
+		bootOrder = nextIndex
+	}
+
+	valid, err := s.ValidateBootOrderIndex(vm.VmID, bootOrder)
+	if err != nil {
+		return fmt.Errorf("failed_to_validate_boot_order_index: %w", err)
+	}
+
+	if !valid {
+		return fmt.Errorf("boot_order_index_already_in_use: %d", bootOrder)
+	}
+
+	err = s.CreateStorageParent(vm.VmID, req.Pool)
+	if err != nil {
+		return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+	}
+
+	if req.AttachType == libvirtServiceInterfaces.StorageAttachTypeImport {
+		req.BootOrder = &bootOrder
+		return s.StorageImport(req, vm)
+	}
+
 	return nil
 }
 
-func (s *Service) CreateStorageParent(vmId int) error {
-	var basicSettings models.BasicSettings
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return fmt.Errorf("failed_to_find_basic_settings: %w", err)
+func (s *Service) CreateStorageParent(vmId int, poolName string) error {
+	pools, err := s.System.GetUsablePools()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
 	}
 
 	var created []*zfs.Dataset
 
-	for _, pool := range basicSettings.Pools {
-		if _, err := zfs.GetZpool(pool); err != nil {
-			for _, ds := range created {
-				_ = ds.Destroy(zfs.DestroyRecursive)
-			}
-			return fmt.Errorf("pool_not_found_%s: %w", pool, err)
+	for _, pool := range pools {
+		if poolName != "" && pool.Name != poolName {
+			continue
 		}
 
-		target := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, vmId)
+		target := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool.Name, vmId)
 		datasets, _ := zfs.Filesystems(target)
 
 		if len(datasets) > 0 {

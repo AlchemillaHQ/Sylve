@@ -141,7 +141,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		pools := zfs.Group("/pools")
 		{
-			pools.GET("", zfsHandlers.GetPools(zfsService))
+			pools.GET("", zfsHandlers.GetPools(zfsService, systemService))
 			pools.GET("/disks-usage", zfsHandlers.GetDisksUsage(zfsService))
 			pools.POST("", zfsHandlers.CreatePool(infoService, zfsService))
 			pools.PATCH("", zfsHandlers.EditPool(infoService, zfsService))

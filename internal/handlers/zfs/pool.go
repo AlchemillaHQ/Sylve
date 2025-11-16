@@ -19,6 +19,7 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/services/info"
+	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	"github.com/gin-gonic/gin"
@@ -114,9 +115,9 @@ func AvgIODelayHistorical(zfsService *zfs.Service) gin.HandlerFunc {
 // @Success 200 {object} zfsHandlers.ZpoolListResponse "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/pools [get]
-func GetPools(zfsService *zfs.Service) gin.HandlerFunc {
+func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		pools, err := zfsUtils.ListZpools()
+		pools, err := systemService.GetUsablePools()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

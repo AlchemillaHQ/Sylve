@@ -30,6 +30,13 @@ const (
 	NVMEStorageEmulation   StorageEmulationType = "nvme"
 )
 
+type StorageAttachType string
+
+const (
+	StorageAttachTypeImport StorageAttachType = "import"
+	StorageAttachTypeNew    StorageAttachType = "new"
+)
+
 type StoragePoolXML struct {
 	XMLName xml.Name `xml:"pool"`
 	Text    string   `xml:",chardata"`
@@ -49,9 +56,9 @@ type StoragePool struct {
 }
 
 type StorageAttachRequest struct {
-	AttachType string `json:"attachType" binding:"required"`
-	RawPath    string `json:"rawPath"`
-	Dataset    string `json:"dataset"`
+	AttachType StorageAttachType `json:"attachType" binding:"required"`
+	RawPath    string            `json:"rawPath"`
+	Dataset    string            `json:"dataset"`
 
 	VMID int    `json:"vmId" binding:"required"`
 	Name string `json:"name"`

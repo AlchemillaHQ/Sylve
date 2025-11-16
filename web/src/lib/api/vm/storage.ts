@@ -31,7 +31,8 @@ export async function storageImport(
 	storageType: 'zvol' | 'raw',
 	rawPath: string,
 	dataset: string,
-	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk'
+	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
+	pool: string
 ) {
 	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
 		vmId,
@@ -39,7 +40,8 @@ export async function storageImport(
 		rawPath: storageType === 'zvol' ? '' : rawPath,
 		dataset: storageType === 'zvol' ? dataset : '',
 		emulation,
-		storageType
+		storageType,
+		pool
 	});
 }
 

@@ -98,6 +98,7 @@
 	let query: string = $state('');
 	let vms: VM[] = $derived($results[0].data as VM[]);
 	let domain: VMDomain = $derived($results[1].data as VMDomain);
+	let pools: Zpool[] = $derived($results[2].data as Zpool[]);
 	let vm: VM = $derived(
 		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
 	);
@@ -200,4 +201,4 @@
 	}}
 />
 
-<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} {vms} />
+<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} {vms} {pools} />

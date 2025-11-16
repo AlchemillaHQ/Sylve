@@ -13,6 +13,8 @@ import (
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
@@ -34,9 +36,33 @@ func (s *Service) GetDatasets(t string) ([]*zfsServiceInterfaces.Dataset, error)
 		return nil, err
 	}
 
+	pools, err := s.GetUsablePools()
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var usablePools []string
+	for _, pool := range pools {
+		usablePools = append(usablePools, pool.Name)
+	}
+
 	var results []*zfsServiceInterfaces.Dataset
 
 	for _, dataset := range datasets {
+		dPool, err := s.PoolFromDataset(dataset.Name)
+		if err != nil {
+			logger.L.Err(err).Msgf("failed to get pool from dataset %s", dataset.Name)
+			continue
+		}
+
+		if !utils.Contains(usablePools, dPool) {
+			continue
+		}
+
 		results = append(results, &zfsServiceInterfaces.Dataset{
 			Name:          dataset.Name,
 			Origin:        dataset.Origin,

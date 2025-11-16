@@ -310,7 +310,7 @@ func (s *Service) CreateLvVm(id int) error {
 		return err
 	}
 
-	err = s.CreateStorageParent(vm.VmID)
+	err = s.CreateStorageParent(vm.VmID, "")
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {

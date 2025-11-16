@@ -15,6 +15,7 @@
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
+	import type { Zpool } from '$lib/types/zfs/pool';
 
 	interface Props {
 		open: boolean;
@@ -22,9 +23,10 @@
 		downloads: Download[];
 		vm: VM;
 		vms: VM[];
+		pools: Zpool[];
 	}
 
-	let { open = $bindable(), datasets, downloads, vm, vms }: Props = $props();
+	let { open = $bindable(), datasets, downloads, vm, vms, pools }: Props = $props();
 
 	let options = {
 		type: 'import' as 'import' | 'new',
@@ -32,7 +34,8 @@
 		rawPath: '',
 		dataset: '',
 		size: '',
-		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'
+		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk',
+		pool: ''
 	};
 
 	let properties = $state(options);
@@ -84,7 +87,8 @@
 				properties.diskType as 'raw' | 'zvol',
 				properties.diskType === 'raw' ? properties.rawPath : '',
 				properties.diskType === 'zvol' ? zvolCombobox.value : '',
-				properties.emulation
+				properties.emulation,
+				properties.pool
 			);
 
 			if (response.error) {
@@ -142,7 +146,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-3 gap-4">
 			<SimpleSelect
 				label="Type"
 				placeholder="Select Type"
@@ -164,6 +168,14 @@
 				]}
 				bind:value={properties.diskType}
 				onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
+			/>
+
+			<SimpleSelect
+				label="Pool"
+				placeholder="Select Pool"
+				options={pools.map((pool) => ({ value: pool.name, label: pool.name }))}
+				bind:value={properties.pool}
+				onChange={(value) => (properties.pool = value as string)}
 			/>
 		</div>
 

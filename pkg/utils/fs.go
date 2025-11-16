@@ -45,18 +45,24 @@ func DeleteFile(path string) error {
 func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed_to_open_source: %w", err)
+		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(dst)
+	destinationFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("failed_to_create_dest: %w", err)
+		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer destFile.Close()
+	defer destinationFile.Close()
 
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return fmt.Errorf("failed_to_copy_file: %w", err)
+	_, err = io.Copy(destinationFile, sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	err = destinationFile.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync destination file: %w", err)
 	}
 
 	return nil
