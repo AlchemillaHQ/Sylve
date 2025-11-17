@@ -388,6 +388,10 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 		return fmt.Errorf("vnc_password_required")
 	}
 
+	if strings.Contains(data.VNCPassword, ",") {
+		return fmt.Errorf("vnc_password_cannot_contain_commas")
+	}
+
 	if data.VNCResolution == "" {
 		return fmt.Errorf("no_vnc_resolution_selected")
 	}

@@ -27,8 +27,8 @@ type CreateVMRequest struct {
 
 	ISO string `json:"iso"`
 
-	StoragePool          string               `json:"storagePool" binding:"required"`
-	StorageType          StorageType          `json:"storageType" binding:"required"`
+	StoragePool          string               `json:"storagePool"`
+	StorageType          StorageType          `json:"storageType"`
 	StorageSize          *uint64              `json:"storageSize"`
 	StorageEmulationType StorageEmulationType `json:"storageEmulationType"`
 

@@ -254,10 +254,33 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	vncWait := ""
-
 	if vm.VNCWait {
 		vncWait = ",wait"
 	}
+
+	/* Libvirt doesn't allow wait yet, so we're going to resort to using bhyve args for now
+	domain.Devices.Graphics = &libvirtServiceInterfaces.Graphics{
+		Type:     "vnc",
+		Port:     fmt.Sprintf("%d", vm.VNCPort),
+		Password: vm.VNCPassword,
+		Listen: libvirtServiceInterfaces.GraphicsListen{
+			Type:    "address",
+			Address: "127.0.0.1",
+		},
+	}
+
+	domain.Devices.Video = &libvirtServiceInterfaces.Video{
+		Model: libvirtServiceInterfaces.VideoModel{
+			Type:    "gop",
+			Heads:   "1",
+			Primary: "yes",
+			Res: &libvirtServiceInterfaces.VideoResolution{
+				X: width,
+				Y: height,
+			},
+		},
+	}
+	*/
 
 	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%s,h=%s,password=%s%s",
 		sIndex,

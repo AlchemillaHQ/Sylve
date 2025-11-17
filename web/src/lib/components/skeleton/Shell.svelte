@@ -49,7 +49,7 @@
 		{
 			queryKey: 'pool-list',
 			queryFn: async () => {
-				return getPools();
+				return getPools(true);
 			},
 			refetchOnMount: 'always',
 			keepPreviousData: true

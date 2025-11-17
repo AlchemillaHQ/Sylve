@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Dataset struct {
@@ -231,6 +232,58 @@ func (d *Dataset) SendSnapshot(output io.Writer) error {
 	}
 	_, err := d.z.run(nil, output, "zfs", "send", d.Name)
 	return err
+}
+
+func (d *Dataset) SendSnapshotToDataset(destDataset *Dataset, force bool) error {
+	if d == nil || destDataset == nil {
+		return errors.New("nil dataset")
+	}
+	if d.Type != DatasetSnapshot {
+		return errors.New("can only send snapshots")
+	}
+
+	pr, pw := io.Pipe()
+	var wg sync.WaitGroup
+	var sendErr error
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// If SendSnapshot fails, CloseWithError signals the reader side.
+		if err := d.SendSnapshot(pw); err != nil {
+			_ = pw.CloseWithError(err)
+			sendErr = err
+			return
+		}
+		_ = pw.Close()
+	}()
+
+	// Run recv; out=nil so run captures stdout internally, and error (if any) will include stderr.
+	// _, recvErr := d.z.run(pr, nil, "zfs", "recv", destDataset.Name)
+	var recvErr error
+	recvArgs := []string{"recv"}
+	if force {
+		recvArgs = append(recvArgs, "-F")
+	}
+
+	recvArgs = append(recvArgs, destDataset.Name)
+	_, recvErr = d.z.run(pr, nil, "zfs", recvArgs...)
+
+	// close read end and wait for sender to finish (synchronizes sendErr)
+	_ = pr.Close()
+	wg.Wait()
+
+	if sendErr != nil {
+		return fmt.Errorf("send failed: %w", sendErr)
+	}
+	if recvErr != nil {
+		// If your run returns *Error, include its stderr for debugging.
+		if e, ok := recvErr.(*Error); ok {
+			return fmt.Errorf("recv failed: %v: %s", e.Err, e.Stderr)
+		}
+		return fmt.Errorf("recv failed: %w", recvErr)
+	}
+	return nil
 }
 
 func (d *Dataset) IncrementalSend(baseSnapshot *Dataset, output io.Writer) error {

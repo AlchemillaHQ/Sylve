@@ -53,14 +53,13 @@ export function generateTableData(
 			title: 'Emulation',
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
-				console.log('Emulation value:', value);
 				switch (value) {
 					case 'ahci-cd':
-						return 'AHCI-CD';
+						return 'AHCI CD-ROM';
 					case 'virtio-blk':
-						return 'VirtIO-BLK';
+						return 'VirtIO Block';
 					case 'ahci-hd':
-						return 'AHCI-HD';
+						return 'AHCI Hard Disk';
 					case 'nvme':
 						return 'NVMe';
 					default:
@@ -106,10 +105,10 @@ export function generateTableData(
 		} else if (storage.type === 'zvol' || storage.type === 'raw') {
 			if (storage.type === 'zvol') {
 				zvolCount++;
-				name = `ZFS Volume - ${zvolCount}`;
+				name = storage.name ? storage.name : `ZFS Volume - ${zvolCount}`;
 			} else if (storage.type === 'raw') {
 				rawCount++;
-				name = `Raw Disk - ${rawCount}`;
+				name = storage.name ? storage.name : `Raw Disk - ${rawCount}`;
 			}
 		}
 

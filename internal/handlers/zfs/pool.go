@@ -117,7 +117,16 @@ func AvgIODelayHistorical(zfsService *zfs.Service) gin.HandlerFunc {
 // @Router /zfs/pools [get]
 func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		pools, err := systemService.GetUsablePools()
+		var pools []*zfsUtils.Zpool
+		var err error
+
+		all := c.Query("all")
+		if all == "true" {
+			pools, err = zfsUtils.ListZpools()
+		} else {
+			pools, err = systemService.GetUsablePools()
+		}
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

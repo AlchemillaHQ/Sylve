@@ -28,20 +28,45 @@ export async function storageAttach(
 
 export async function storageImport(
 	vmId: number,
+	name: string,
 	storageType: 'zvol' | 'raw',
 	rawPath: string,
 	dataset: string,
 	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
-	pool: string
+	pool: string,
+	bootOrder: number
 ) {
 	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
 		vmId,
+		name,
 		attachType: 'import',
 		rawPath: storageType === 'zvol' ? '' : rawPath,
 		dataset: storageType === 'zvol' ? dataset : '',
 		emulation,
 		storageType,
-		pool
+		pool,
+		bootOrder
+	});
+}
+
+export async function storageNew(
+	vmId: number,
+	name: string,
+	storageType: 'zvol' | 'raw' | 'image',
+	size: number,
+	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
+	pool: string,
+	bootOrder: number
+) {
+	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
+		vmId,
+		name,
+		attachType: 'new',
+		size,
+		emulation,
+		storageType,
+		pool,
+		bootOrder
 	});
 }
 

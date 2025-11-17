@@ -63,6 +63,7 @@ type Storage struct {
 	ID   uint          `gorm:"primaryKey" json:"id"`
 	Type VMStorageType `json:"type"`
 
+	Name         string `json:"name"`
 	DownloadUUID string `json:"uuid"`
 
 	Pool string `json:"pool"`

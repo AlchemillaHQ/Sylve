@@ -646,6 +646,7 @@ func findLowestIndex(xml string) (int, error) {
 	}
 	bhyveCommandline := doc.FindElement("//commandline")
 	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
+		fmt.Println("i1", 10)
 		return 10, nil
 	}
 
@@ -655,6 +656,7 @@ func findLowestIndex(xml string) (int, error) {
 		if valueAttr == nil {
 			continue
 		}
+
 		value := valueAttr.Value
 		if len(value) >= 2 && value[0:2] == "-s" {
 			parts := strings.Fields(value)
@@ -671,11 +673,46 @@ func findLowestIndex(xml string) (int, error) {
 		}
 	}
 
+	fmt.Println(usedIndices)
+
 	for i := 10; i < 30; i++ {
 		if !usedIndices[i] {
+			fmt.Println("i2", i)
 			return i, nil
 		}
 	}
 
 	return -1, fmt.Errorf("all indices 10-29 are in use")
+}
+
+func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
+	used := make(map[int]bool)
+	if bhyveCommandline == nil {
+		return used
+	}
+
+	for _, arg := range bhyveCommandline.ChildElements() {
+		valueAttr := arg.SelectAttr("value")
+		if valueAttr == nil {
+			continue
+		}
+		value := strings.TrimSpace(valueAttr.Value)
+		if value == "" {
+			continue
+		}
+
+		// handle "-s 10:0,..." and "-s10:0,..."
+		if strings.HasPrefix(value, "-s") {
+			rest := strings.TrimPrefix(value, "-s")
+			rest = strings.TrimSpace(rest)
+			colon := strings.Index(rest, ":")
+			if colon > 0 {
+				if idx, err := strconv.Atoi(rest[:colon]); err == nil {
+					used[idx] = true
+				}
+			}
+		}
+	}
+
+	return used
 }

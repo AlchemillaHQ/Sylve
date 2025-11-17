@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getFiles } from '$lib/api/system/file-explorer';
-	import { storageAttach, storageImport } from '$lib/api/vm/storage';
+	import { storageAttach, storageImport, storageNew } from '$lib/api/vm/storage';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -29,13 +29,15 @@
 	let { open = $bindable(), datasets, downloads, vm, vms, pools }: Props = $props();
 
 	let options = {
+		name: '',
 		type: 'import' as 'import' | 'new',
 		diskType: 'raw' as 'raw' | 'zvol' | 'image',
 		rawPath: '',
 		dataset: '',
 		size: '',
 		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk',
-		pool: ''
+		pool: '',
+		bootOrder: null as number | null
 	};
 
 	let properties = $state(options);
@@ -52,6 +54,17 @@
 		return used;
 	});
 
+	let usedBootOrders = $derived.by(() => {
+		const used = [] as number[];
+		for (const storage of vm.storages) {
+			if (storage.bootOrder || storage.bootOrder === 0) {
+				used.push(storage.bootOrder);
+			}
+		}
+
+		return used;
+	});
+
 	let zvolCombobox = $state({
 		open: false,
 		value: ''
@@ -61,6 +74,28 @@
 		const toastOptions = {
 			position: 'bottom-center' as const
 		};
+
+		if (
+			properties.name.trim() === '' ||
+			properties.name.length === 0 ||
+			properties.name.length > 128
+		) {
+			toast.error('Invalid storage name', toastOptions);
+			return;
+		}
+
+		if (properties.pool === '') {
+			toast.error('No ZFS pool selected', toastOptions);
+			return;
+		}
+
+		if (properties.bootOrder === null) {
+			toast.error('Please specify a boot order', toastOptions);
+			return;
+		} else if (usedBootOrders.includes(Number(properties.bootOrder))) {
+			toast.error('Boot order already in use', toastOptions);
+			return;
+		}
 
 		if (properties.type === 'import') {
 			if (properties.diskType === 'raw') {
@@ -84,11 +119,13 @@
 
 			const response = await storageImport(
 				vm.vmId,
+				properties.name,
 				properties.diskType as 'raw' | 'zvol',
 				properties.diskType === 'raw' ? properties.rawPath : '',
 				properties.diskType === 'zvol' ? zvolCombobox.value : '',
 				properties.emulation,
-				properties.pool
+				properties.pool,
+				Number(properties.bootOrder)
 			);
 
 			if (response.error) {
@@ -103,12 +140,48 @@
 			toast.success('Disk imported', toastOptions);
 			properties = options;
 			open = false;
+		} else if (properties.type === 'new') {
+			if (properties.size === '') {
+				toast.error('Please specify a size', toastOptions);
+				return;
+			}
+
+			let parsedSize: number = 0;
+			try {
+				parsedSize = humanFormat.parse(properties.size);
+			} catch (e) {
+				toast.error('Invalid size format', toastOptions);
+				return;
+			}
+
+			const response = await storageNew(
+				vm.vmId,
+				properties.name,
+				properties.diskType as 'zvol' | 'raw' | 'image',
+				parsedSize,
+				properties.emulation,
+				properties.pool,
+				Number(properties.bootOrder)
+			);
+
+			if (response.error) {
+				handleAPIError(response);
+				toast.error('Failed to attach disk', {
+					position: 'bottom-center'
+				});
+
+				return;
+			}
+
+			toast.success('Disk attached', toastOptions);
+			properties = options;
+			open = false;
 		}
 	}
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-md overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content class="w-lg overflow-hidden p-5 lg:max-w-2xl">
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
@@ -146,6 +219,13 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
+		<CustomValueInput
+			label="Name"
+			placeholder="DB Storage"
+			bind:value={properties.name}
+			classes="flex-1 space-y-1"
+		/>
+
 		<div class="grid grid-cols-3 gap-4">
 			<SimpleSelect
 				label="Type"
@@ -179,7 +259,7 @@
 			/>
 		</div>
 
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-3 gap-4">
 			{#if properties.type === 'import'}
 				{#if properties.diskType === 'raw'}
 					<CustomValueInput
@@ -211,6 +291,13 @@
 						multiple={false}
 					></CustomComboBox>
 				{/if}
+			{:else if properties.type === 'new' && properties.diskType !== 'image'}
+				<CustomValueInput
+					label="Size"
+					placeholder={humanFormat(10 * 1024 * 1024 * 1024, { unit: 'B' })}
+					bind:value={properties.size}
+					classes="flex-1 space-y-1"
+				/>
 			{/if}
 
 			<SimpleSelect
@@ -225,6 +312,14 @@
 				bind:value={properties.emulation}
 				onChange={(value) =>
 					(properties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
+			/>
+
+			<CustomValueInput
+				label="Boot Order"
+				placeholder="2"
+				type="number"
+				bind:value={properties.bootOrder as number}
+				classes="flex-1 space-y-1"
 			/>
 		</div>
 

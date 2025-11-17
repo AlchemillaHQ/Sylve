@@ -10,6 +10,7 @@ package zfs
 
 import (
 	"fmt"
+	"strings"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
@@ -155,9 +156,8 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 	defer s.Libvirt.RescanStoragePools()
 
 	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).
-		Joins("JOIN vm_storage_datasets ON vm_storage_datasets.id = vm_storages.dataset_id").
-		Where("vm_storage_datasets.guid IN ?", guids).
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("guid IN ?", guids).
 		Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to check if datasets are in use: %w", err)
 	}
@@ -176,9 +176,17 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 		available[ds.GUID] = ds
 	}
 
+	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+
 	for _, guid := range guids {
 		if _, ok := available[guid]; !ok {
 			return fmt.Errorf("dataset with guid %s not found", guid)
+		}
+
+		for _, name := range cantDelete {
+			if strings.HasSuffix(available[guid].Name, name) {
+				return fmt.Errorf("cannot_delete_critical_filesystem")
+			}
 		}
 	}
 

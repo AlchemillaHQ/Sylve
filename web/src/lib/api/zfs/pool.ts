@@ -33,8 +33,9 @@ export async function getIODelay(
 	return await apiRequest('/zfs/pool/io-delay', IODelaySchema, 'GET');
 }
 
-export async function getPools(): Promise<Zpool[]> {
-	return await apiRequest('/zfs/pools', ZpoolSchema.array(), 'GET');
+export async function getPools(all?: boolean): Promise<Zpool[]> {
+	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
+	return await apiRequest(url, ZpoolSchema.array(), 'GET');
 }
 
 export async function getPoolsDiskUsage(): Promise<number> {

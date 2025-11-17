@@ -11,10 +11,12 @@ package zfs
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/zfs"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) CreateFilesystem(name string, props map[string]string) error {
@@ -79,19 +81,12 @@ func (s *Service) DeleteFilesystem(guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).Where("dataset = ?", guid).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to check if dataset is in use: %w", err)
-	}
-
-	if count > 0 {
-		return fmt.Errorf("dataset_in_use_by_vm")
-	}
-
 	filesystems, err := zfs.Filesystems("")
 	if err != nil {
 		return err
 	}
+
+	var foundFS *zfs.Dataset
 
 	for _, filesystem := range filesystems {
 		fguid, err := filesystem.GetProperty("guid")
@@ -103,28 +98,51 @@ func (s *Service) DeleteFilesystem(guid string) error {
 			continue
 		}
 
-		keylocation, err := filesystem.GetProperty("keylocation")
-		if err != nil {
-			return err
-		}
-
-		if err := filesystem.Destroy(zfs.DestroyRecursive); err != nil {
-			return err
-		}
-
-		if keylocation != "" && keylocation != "none" {
-			keylocation = keylocation[7:]
-			if _, err := os.Stat(keylocation); err == nil {
-				if err := os.Remove(keylocation); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("keylocation_file_not_found: %s", keylocation)
-			}
-		}
-
-		return nil
+		foundFS = filesystem
+		break
 	}
 
-	return fmt.Errorf("filesystem with guid %s not found", guid)
+	if foundFS == nil {
+		return fmt.Errorf("filesystem with guid %s not found", guid)
+	}
+
+	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	for _, name := range cantDelete {
+		if strings.HasSuffix(foundFS.Name, name) {
+			return fmt.Errorf("cannot_delete_critical_filesystem")
+		}
+	}
+
+	var count int64
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("guid = ?", guid).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check if dataset is in use: %w", err)
+	}
+
+	if count > 0 {
+		return fmt.Errorf("dataset_in_use_by_vm")
+	}
+
+	keylocation, err := foundFS.GetProperty("keylocation")
+	if err != nil {
+		return err
+	}
+
+	if err := foundFS.Destroy(zfs.DestroyRecursive); err != nil {
+		return err
+	}
+
+	if keylocation != "" && keylocation != "none" {
+		keylocation = keylocation[7:]
+		if _, err := os.Stat(keylocation); err == nil {
+			if err := os.Remove(keylocation); err != nil {
+				return err
+			}
+		} else {
+			logger.L.Warn().Msgf("keylocation file not found: %s", keylocation)
+		}
+	}
+
+	return nil
 }

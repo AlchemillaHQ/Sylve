@@ -215,12 +215,42 @@ type Controller struct {
 	Address *Address `xml:"address,omitempty"`
 }
 
+type GraphicsListen struct {
+	Type    string `xml:"type,attr"`
+	Address string `xml:"address,attr"`
+}
+
+type Graphics struct {
+	Type     string         `xml:"type,attr"`
+	Port     string         `xml:"port,attr"`
+	Password string         `xml:"passwd,attr,omitempty"`
+	Listen   GraphicsListen `xml:"listen"`
+}
+
+type VideoResolution struct {
+	X string `xml:"x,attr"`
+	Y string `xml:"y,attr"`
+}
+
+type VideoModel struct {
+	Type    string           `xml:"type,attr"`
+	Heads   string           `xml:"heads,attr,omitempty"`
+	Primary string           `xml:"primary,attr,omitempty"`
+	Res     *VideoResolution `xml:"resolution,omitempty"`
+}
+
+type Video struct {
+	Model VideoModel `xml:"model"`
+}
+
 type Devices struct {
 	Disks       []Disk       `xml:"disk,omitempty"`
 	Interfaces  []Interface  `xml:"interface,omitempty"`
 	Controllers []Controller `xml:"controller,omitempty"`
 	Inputs      []Input      `xml:"input,omitempty"`
 	Serials     []Serial     `xml:"serial,omitempty"`
+	Graphics    *Graphics    `xml:"graphics,omitempty"`
+	Video       *Video       `xml:"video,omitempty"`
 }
 
 type BhyveArg struct {
