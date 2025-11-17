@@ -126,6 +126,7 @@ export const VMSchema = z.object({
 	networks: z.array(VMNetworkSchema),
 	pciDevices: z.union([z.array(z.number().int()), z.null()]),
 	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
+	shutdownWaitTime: z.number().int(),
 
 	createdAt: z.string(),
 	updatedAt: z.string(),

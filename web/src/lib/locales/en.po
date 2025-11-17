@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-17T13:07:52.130Z\n"
+"PO-Revision-Date: 2025-11-17T13:30:25.418Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -223,6 +223,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -607,6 +609,8 @@ msgstr "Terminal"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Reset"
 msgstr "Reset"
 
@@ -1164,9 +1168,9 @@ msgstr "Date"
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Value"
 msgstr "Value"
 
@@ -1315,6 +1319,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Save"
 msgstr "Save"
 
@@ -2093,9 +2098,9 @@ msgstr "Select Interfaces"
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Property"
 msgstr "Property"
 
@@ -3416,14 +3421,15 @@ msgstr "VNC modified"
 msgid "Start At Boot / Start Order"
 msgstr "Start At Boot / Start Order"
 
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Wake on LAN"
 msgstr "Wake on LAN"
 
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Start Order"
 msgstr "Start Order"
 
@@ -4009,9 +4015,9 @@ msgid "Select Time Offset"
 msgstr "Select Time Offset"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Clock Offset"
 msgstr "Clock Offset"
 
@@ -5017,3 +5023,21 @@ msgstr "Error shutting down VM"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM shut down"
 msgstr "VM shut down"
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Shutdown Wait Time"
+msgstr "Shutdown Wait Time"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Shutdown Wait Time must be a non-negative number"
+msgstr "Shutdown Wait Time must be a non-negative number"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Failed to modify shutdown wait time"
+msgstr "Failed to modify shutdown wait time"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Modified shutdown wait time"
+msgstr "Modified shutdown wait time"

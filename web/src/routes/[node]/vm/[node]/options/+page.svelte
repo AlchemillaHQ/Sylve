@@ -2,6 +2,7 @@
 	import { getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
+	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -88,6 +89,11 @@
 				id: generateNanoId('timeOffset'),
 				property: 'Clock Offset',
 				value: vm ? (vm.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
+			},
+			{
+				id: generateNanoId('shutdownWaitTime'),
+				property: 'Shutdown Wait Time',
+				value: vm ? `${vm.shutdownWaitTime} seconds` : 'N/A'
 			}
 		]
 	});
@@ -95,11 +101,12 @@
 	let properties = $state({
 		startOrder: { open: false },
 		wol: { open: false },
-		timeOffset: { open: false }
+		timeOffset: { open: false },
+		shutdownWaitTime: { open: false }
 	});
 </script>
 
-{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset', title: string)}
+{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime', title: string)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -128,6 +135,8 @@
 				{@render button('wol', 'Wake on LAN')}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
+			{:else if activeRow.property === 'Shutdown Wait Time'}
+				{@render button('shutdownWaitTime', 'Shutdown Wait Time')}
 			{/if}
 		</div>
 	{/if}
@@ -153,4 +162,8 @@
 
 {#if properties.timeOffset.open && vm}
 	<Clock bind:open={properties.timeOffset.open} {vm} bind:reload />
+{/if}
+
+{#if properties.shutdownWaitTime.open && vm}
+	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} {vm} bind:reload />
 {/if}

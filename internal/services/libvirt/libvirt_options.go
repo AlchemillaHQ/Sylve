@@ -197,3 +197,11 @@ func (s *Service) ModifySerial(vmId int, enabled bool) error {
 
 	return nil
 }
+
+func (s *Service) ModifyShutdownWaitTime(vmId int, waitTime int) error {
+	err := s.DB.
+		Model(&vmModels.VM{}).
+		Where("vm_id = ?", vmId).
+		Update("shutdown_wait_time", waitTime).Error
+	return err
+}

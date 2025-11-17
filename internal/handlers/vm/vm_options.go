@@ -33,6 +33,10 @@ type ModifySerialConsoleRequest struct {
 	Enabled *bool `json:"enabled"`
 }
 
+type ModifyShutdownWaitTimeRequest struct {
+	WaitTime *int `json:"waitTime"`
+}
+
 // @Summary Modify Wake-on-LAN of a Virtual Machine
 // @Description Modify the Wake-on-LAN configuration of a virtual machine
 // @Tags VM
@@ -317,6 +321,78 @@ func ModifySerialConsole(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "serial_console_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Shutdown Wait Time of a Virtual Machine
+// @Description Modify the Shutdown Wait Time configuration of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyShutdownWaitTimeRequest true "Modify Shutdown Wait Time Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/shutdown-wait-time/:vmid [put]
+func ModifyShutdownWaitTime(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmId := c.Param("vmid")
+		if vmId == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "vmid_not_provided",
+			})
+			return
+		}
+
+		vmIdInt, err := strconv.Atoi(vmId)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_vmid_format",
+			})
+			return
+		}
+
+		var req ModifyShutdownWaitTimeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		var waitTime int
+		if req.WaitTime != nil {
+			waitTime = *req.WaitTime
+		} else {
+			waitTime = 0
+		}
+
+		if err := libvirtService.ModifyShutdownWaitTime(vmIdInt, waitTime); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "shutdown_wait_time_modified",
 			Data:    nil,
 			Error:   "",
 		})

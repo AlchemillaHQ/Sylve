@@ -116,3 +116,9 @@ export async function modifySerialConsole(vmid: number, enabled: boolean): Promi
 		enabled
 	});
 }
+
+export async function modifyShutdownWaitTime(vmid: number, waitTime: number): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/shutdown-wait-time/${vmid}`, APIResponseSchema, 'PUT', {
+		waitTime
+	});
+}
