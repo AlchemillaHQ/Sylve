@@ -188,6 +188,31 @@
 		}
 	}
 
+	async function handleShutdown() {
+		modalState.loading.open = true;
+		modalState.loading.title = 'Shutting Down Virtual Machine';
+		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being shut down`;
+		modalState.loading.iconColor = 'text-yellow-500';
+
+		const result = await actionVm(vm.id, 'shutdown');
+		reload.leftPanel = true;
+
+		if (result.status === 'error') {
+			modalState.loading.open = false;
+			toast.error('Error shutting down VM', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else if (result.status === 'success') {
+			await sleep(1000);
+			modalState.loading.open = false;
+			toast.success('VM shut down', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+	}
+
 	let udTime = $derived.by(() => {
 		if (domain.status === 'Running') {
 			if (vm.startedAt) {
@@ -261,14 +286,23 @@
 			<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
 			{'Delete'}
 		</Button>
-	{:else if type === 'stop' && domain.id !== -1 && domain.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown') && domain.id !== -1 && domain.status === 'Running'}
 		<Button
-			onclick={() => handleStop()}
+			onclick={() => (type === 'stop' ? handleStop() : handleShutdown())}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<Icon icon="mdi:stop" class="mr-1 h-4 w-4" />
-			{'Stop'}
+			{#if type === 'stop'}
+				<div class="flex items-center">
+					<Icon icon="mdi:stop" class="mr-1 h-4 w-4" />
+					<span>Stop</span>
+				</div>
+			{:else}
+				<div class="flex items-center">
+					<Icon icon="mdi:power" class="mr-1 h-4 w-4" />
+					<span>Shutdown</span>
+				</div>
+			{/if}
 		</Button>
 	{/if}
 {/snippet}
@@ -277,6 +311,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border p-4">
 		{@render button('start')}
 		{@render button('stop')}
+		{@render button('shutdown')}
 	</div>
 
 	<div class="min-h-0 flex-1">

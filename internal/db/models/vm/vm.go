@@ -158,7 +158,8 @@ type VM struct {
 
 	RAM int `json:"ram"`
 
-	TPMEmulation bool `json:"tpmEmulation"`
+	TPMEmulation     bool `json:"tpmEmulation"`
+	ShutdownWaitTime int  `json:"shutdownWaitTime" gorm:"default:10"`
 
 	Serial bool `json:"serial" gorm:"default:false"`
 

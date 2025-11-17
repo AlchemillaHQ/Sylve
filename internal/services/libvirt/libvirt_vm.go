@@ -650,20 +650,15 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		if newState != 1 {
 			return fmt.Errorf("unexpected_state_after_start: %d", newState)
 		}
-
-		err = s.SetActionDate(vm, "start")
-
-		if err != nil {
-			return fmt.Errorf("failed_to_set_start_date: %w", err)
-		}
-
-	case "stop":
+	case "shutdown":
 		shutdown := false
 		if err := s.Conn.DomainShutdown(domain); err == nil {
 			shutdown = true
 		}
 
-		time.Sleep(10 * time.Second)
+		if vm.ShutdownWaitTime > 0 {
+			time.Sleep(time.Duration(vm.ShutdownWaitTime) * time.Second)
+		}
 
 		stateAfterShutdown, _, err := s.Conn.DomainGetState(domain, 0)
 
@@ -682,9 +677,30 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		if newState != 5 {
 			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
 		}
+	case "stop":
+		if err := s.Conn.DomainDestroy(domain); err != nil {
+			return fmt.Errorf("failed_to_stop_domain: %w", err)
+		}
+		newState, _, err := s.Conn.DomainGetState(domain, 0)
 
-		/* This is an ugly hack because sometimes bhyve does not really stop?
-		And this causes issues with the next start. So we find the user of the VNC port and kill that PID */
+		if err != nil {
+			return fmt.Errorf("could_not_verify_stop: %w", err)
+		}
+
+		if newState != 5 {
+			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
+		}
+	case "reboot":
+		if err := s.Conn.DomainReboot(domain, 0); err != nil {
+			return fmt.Errorf("failed_to_reboot_domain: %w", err)
+		}
+	default:
+		return fmt.Errorf("invalid_action: %s", action)
+	}
+
+	/* This is an ugly hack because sometimes bhyve does not really stop?
+	And this causes issues with the next start. So we find the user of the VNC port and kill that PID */
+	if action == "stop" || action == "shutdown" {
 		user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
 		if err != nil {
 			if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
@@ -697,18 +713,12 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 				return fmt.Errorf("failed_to_kill_process_using_vnc_port: %w", err)
 			}
 		}
+	}
 
-		err = s.SetActionDate(vm, "stop")
+	err = s.SetActionDate(vm, action)
 
-		if err != nil {
-			return fmt.Errorf("failed_to_set_stop_date: %w", err)
-		}
-	case "reboot":
-		if err := s.Conn.DomainReboot(domain, 0); err != nil {
-			return fmt.Errorf("failed_to_reboot_domain: %w", err)
-		}
-	default:
-		return fmt.Errorf("invalid_action: %s", action)
+	if err != nil {
+		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.VmID)
 	}
 
 	return nil
@@ -721,6 +731,8 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 	case "start":
 		vm.StartedAt = &now
 	case "stop":
+		vm.StoppedAt = &now
+	case "shutdown":
 		vm.StoppedAt = &now
 	default:
 		return fmt.Errorf("invalid_action: %s", action)

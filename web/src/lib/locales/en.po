@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-17T12:27:02.423Z\n"
+"PO-Revision-Date: 2025-11-17T13:07:52.130Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -261,10 +261,10 @@ msgstr "Action"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Status"
 msgstr "Status"
 
@@ -377,13 +377,13 @@ msgstr "Jail - Stop"
 msgid "Login - Create"
 msgstr "Login - Create"
 
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-#: src/routes/[node]/vm/[node]/network/+page.svelte
-#: src/routes/[node]/vm/[node]/network/+page.svelte
-#: src/routes/[node]/vm/[node]/storage/+page.svelte
-#: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "Shutoff"
 msgstr "Shutoff"
 
@@ -691,8 +691,8 @@ msgstr "VM ID"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Description"
 msgstr "Description"
 
@@ -1180,7 +1180,6 @@ msgstr "View"
 
 #: src/routes/[node]/network/switches/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1191,6 +1190,7 @@ msgstr "View"
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete"
 msgstr "Delete"
 
@@ -1357,9 +1357,9 @@ msgid "Updated"
 msgstr "Updated"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Are you sure?"
 msgstr "Are you sure?"
 
@@ -1370,19 +1370,19 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/lib/components/custom/VM/Extra/CPU.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Cancel"
 msgstr "Cancel"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Continue"
 msgstr "Continue"
 
@@ -4997,3 +4997,23 @@ msgstr "DB Storage"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid storage name"
 msgstr "Invalid storage name"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Shutdown"
+msgstr "Shutdown"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Shutting Down Virtual Machine"
+msgstr "Shutting Down Virtual Machine"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
+msgstr "Please wait while VM <b>{0} ({1})</b> is being shut down"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error shutting down VM"
+msgstr "Error shutting down VM"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM shut down"
+msgstr "VM shut down"
