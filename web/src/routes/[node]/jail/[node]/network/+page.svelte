@@ -27,7 +27,6 @@
 		generateMACOptions,
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -388,7 +387,8 @@
 				class="h-6"
 			>
 				<div class="flex items-center">
-					<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 					<span>New</span>
 				</div>
 			</Button>
@@ -405,10 +405,10 @@
 			>
 				<div class="flex items-center">
 					{#if inherited}
-						<Icon icon="mdi:close-network" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--close-network] mr-1 h-4 w-4"></span>
 						<span>Disinherit Network</span>
 					{:else}
-						<Icon icon="mdi:plus-network" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--plus-network] mr-1 h-4 w-4"></span>
 						<span>Inherit Network</span>
 					{/if}
 				</div>
@@ -424,7 +424,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:minus-network" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--minus-network] mr-1 h-4 w-4"></span>
 					<span>Detach</span>
 				</div>
 			</Button>
@@ -448,7 +448,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
-					<Icon icon="mdi:network" class="mr-2 h-5 w-5" />
+					<span class="icon-[mdi--network] mr-2 h-5 w-5"></span>
+
 					{#if inherited}
 						Disinherit Network
 					{:else}
@@ -466,7 +467,7 @@
 							modals.inherit.open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -521,7 +522,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
-					<Icon icon="mdi:network" class="mr-2 h-5 w-5" />
+					<span class="icon-[mdi--network] mr-2 h-5 w-5"></span>
+
 					<span>New Network</span>
 				</div>
 
@@ -536,7 +538,7 @@
 							modals.add.open = true;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 
@@ -549,7 +551,7 @@
 							modals.add.open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

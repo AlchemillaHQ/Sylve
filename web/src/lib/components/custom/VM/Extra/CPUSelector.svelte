@@ -2,7 +2,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import Icon from '@iconify/svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 
@@ -214,12 +213,13 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="iconoir:cpu" class="h-5 w-5 " />
+					<span class="icon-[iconoir--cpu] h-5 w-5"></span>
+
 					CPU Pinning
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={handleClose} title={'Close'}>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -245,7 +245,7 @@
 								<div class="flex items-start justify-between">
 									<div class="flex items-center gap-3">
 										<div class="bg-primary/10 rounded-lg p-2">
-											<Icon icon="iconoir:cpu" class="text-primary h-6 w-6" />
+											<span class="icon-[iconoir--cpu] text-primary h-6 w-6"></span>
 										</div>
 										<div>
 											<p class="text-muted-foreground text-sm">
@@ -298,7 +298,8 @@
 			<div class="space-y-4">
 				<div class="flex items-center gap-2">
 					<Button variant="outline" size="sm" class="p-0.5" onclick={handleBack}>
-						<Icon icon="material-symbols:arrow-back-ios-new-rounded" class="h-4 w-4" />
+						<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
+
 						Back to Sockets
 					</Button>
 				</div>
@@ -328,16 +329,16 @@
 								: 'border-muted bg-muted/30 text-muted-foreground cursor-not-allowed'}
       "
 						>
-							<Icon icon="mynaui:zap" class="h-4 w-4 {!isAvailable ? 'opacity-50' : ''}" />
+							<span class="icon-[mynaui--zap] h-4 w-4 {!isAvailable ? 'opacity-50' : ''}"></span>
 							<span class="text-xs">
 								{core.number}
 							</span>
 
 							{#if isSelected}
 								<div
-									class="text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
+									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
-									<Icon icon="material-symbols:check" class="h-2.5 w-2.5" />
+									<span class="icon-[material-symbols--check] h-2.5 w-2.5"></span>
 								</div>
 							{/if}
 

@@ -11,7 +11,6 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -130,7 +129,7 @@
 		disabled={data.domain.status ? data.domain.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
-			<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			<span>Edit {title}</span>
 		</div>
 	</Button>

@@ -8,7 +8,6 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -140,7 +139,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -155,7 +155,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -168,7 +168,7 @@
 		<Search bind:query />
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>

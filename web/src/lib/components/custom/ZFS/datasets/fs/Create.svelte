@@ -13,7 +13,6 @@
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
-	import Icon from '@iconify/svelte';
 	import type { ParsedInfo, ScaleLike } from 'human-format';
 	import humanFormat from 'human-format';
 	import { untrack } from 'svelte';
@@ -160,12 +159,14 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:files" class="h-5 w-5" />Create Filesystem
+					<span class="icon-[material-symbols--files] h-5 w-5"></span>
+
+					Create Filesystem
 				</div>
 
 				<div class="flex items-center gap-0.5">
@@ -178,7 +179,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -191,7 +192,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -201,7 +202,7 @@
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 				<div class="space-y-1.5">
-					<Label for="name" class="w-24 whitespace-nowrap text-sm">Name</Label>
+					<Label for="name" class="w-24 text-sm whitespace-nowrap">Name</Label>
 					<Input
 						type="text"
 						id="name"
@@ -264,7 +265,7 @@
 
 				{#if properties.encryption !== 'off'}
 					<div class="space-y-1">
-						<Label class="w-24 whitespace-nowrap text-sm">Passphrase</Label>
+						<Label class="w-24 text-sm whitespace-nowrap">Passphrase</Label>
 						<div class="flex w-full max-w-sm items-center space-x-2">
 							<Input
 								type="password"
@@ -281,20 +282,19 @@
 									properties.encryptionKey = generatePassword();
 								}}
 							>
-								<Icon
-									icon="fad:random-2dice"
-									class="h-6 w-6"
+								<span
+									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
 										properties.encryptionKey = generatePassword();
 									}}
-								/>
+								></span>
 							</Button>
 						</div>
 					</div>
 				{/if}
 
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Quota</Label>
+					<Label class="w-24 text-sm whitespace-nowrap">Quota</Label>
 					<Input
 						type="text"
 						class="w-full text-left"

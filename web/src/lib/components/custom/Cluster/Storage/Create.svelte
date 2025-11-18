@@ -6,7 +6,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterStorages } from '$lib/types/cluster/storage';
 	import { handleAPIError } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -133,7 +132,7 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:storage" class="h-6 w-6" />
+					<span class="icon-[mdi--storage] h-6 w-6"></span>
 					<span>Create Storage</span>
 				</div>
 
@@ -147,7 +146,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 
@@ -161,7 +160,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -214,7 +213,7 @@
 			<div class="flex w-full items-center justify-end gap-2">
 				<Button onclick={create} type="submit" size="sm" disabled={loading}>
 					{#if loading}
-						<Icon icon="mdi:loading" class="h-4 w-4 animate-spin" />
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						Create
 					{/if}

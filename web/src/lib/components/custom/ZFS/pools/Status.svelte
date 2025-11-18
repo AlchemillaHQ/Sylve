@@ -3,7 +3,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 
 	interface Props {
 		open: boolean;
@@ -88,12 +87,12 @@
 			<div class="bg-background relative flex items-center rounded-md border p-1.5">
 				{#if showNote && !device.__isLast}
 					<div
-						class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+						class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 						style="height: calc(100% + 0.7rem);"
 					></div>
 				{:else}
 					<div
-						class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+						class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 						style="height: 18px;"
 					></div>
 				{/if}
@@ -102,7 +101,7 @@
 			</div>
 
 			{#if device.children && device.children.length > 0 && !device.name.startsWith('replacing')}
-				<div class=" ml-5 mt-2 space-y-2 pl-4">
+				<div class=" mt-2 ml-5 space-y-2 pl-4">
 					{#each device.children as child, index (child.name)}
 						<div class="relative">
 							<div
@@ -119,7 +118,7 @@
 			{/if}
 
 			{#if device.name.startsWith('replacing') && device.children && device.children.length > 0}
-				<div class="border-border ml-5 mt-2 space-y-2 border-l-2 pl-4">
+				<div class="border-border mt-2 ml-5 space-y-2 border-l-2 pl-4">
 					{#each device.children as replaceDisk}
 						{@render deviceTreeNode(replaceDisk, true)}
 					{/each}
@@ -135,7 +134,7 @@
 			onInteractOutside={() => {
 				open = false;
 			}}
-			class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-[45%]"
+			class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-[45%]"
 		>
 			<!-- Header -->
 			<div class="flex items-center justify-between pb-3">
@@ -144,7 +143,7 @@
 						<span class="text-primary font-semibold">Pool Status</span>
 						<span class="text-muted-foreground mx-2">•</span>
 						<span class="text-xl font-medium">{pool.name}</span>
-						<Badge class="ml-2 mt-0.5 {statusColor} font-bold">{status.state}</Badge>
+						<Badge class="mt-0.5 ml-2 {statusColor} font-bold">{status.state}</Badge>
 					</Dialog.Title>
 				</Dialog.Header>
 
@@ -154,7 +153,7 @@
 						open = false;
 					}}
 				>
-					<Icon icon="material-symbols:close-rounded" class="h-5 w-5" />
+					<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
 				</Dialog.Close>
 			</div>
 
@@ -165,7 +164,7 @@
 						class="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200"
 					>
 						<div class="flex gap-3">
-							<Icon icon="mdi:alert-circle" class="mt-0.5 h-5 w-5 flex-shrink-0" />
+							<span class="icon-[mdi--alert-circle] mt-0.5 h-5 w-5 flex-shrink-0"></span>
 							<div>
 								<p class="font-medium">{status.status}</p>
 								{#if status.action && status.action.length > 0}
@@ -180,7 +179,7 @@
 				<div class="space-y-4 overflow-hidden rounded-md">
 					<div class="border">
 						<div class="bg-muted flex items-center gap-2 px-4 py-2">
-							<Icon icon="mdi:magnify" class="text-primary h-5 w-5" />
+							<span class="icon-[mdi--magnify] text-primary h-5 w-5"></span>
 							<span class="font-semibold">Scan Activity</span>
 						</div>
 						<div class="p-4">
@@ -206,7 +205,8 @@
 								{/if}
 							{:else}
 								<div class="text-muted-foreground flex items-center gap-2 py-1">
-									<Icon icon="material-symbols:info" class="h-4 w-4" />
+									<span class="icon-[material-symbols--info] h-4 w-4"></span>
+
 									<span>No recent scan activity</span>
 								</div>
 							{/if}
@@ -217,7 +217,8 @@
 				<!-- Device Topology -->
 				<div class="border">
 					<div class="bg-muted flex items-center gap-2 px-4 py-2">
-						<Icon icon="tabler:topology-bus" class="text-primary h-5 w-5" />
+						<span class="icon-[tabler--topology-bus] text-primary h-5 w-5"></span>
+
 						<span class="font-semibold">Device Topology</span>
 					</div>
 					<div class="h-full max-h-28 overflow-auto p-4 md:max-h-44 xl:max-h-72">
@@ -237,14 +238,15 @@
 										class="bg-background relative flex items-center gap-2 rounded-md border p-1.5"
 									>
 										<div
-											class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+											class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 											style="height: calc(100% + 0.7rem);"
 										></div>
-										<Icon icon="tabler:replace" />
+										<span class="icon-[tabler--replace]"></span>
+
 										<span class="font-medium">Spares</span>
 									</div>
 
-									<div class="ml-5 mt-2 space-y-2 pl-4">
+									<div class="mt-2 ml-5 space-y-2 pl-4">
 										{#each spares as spare, index (spare.name)}
 											<div class="relative">
 												<div
@@ -256,7 +258,7 @@
 														class="bg-background relative flex items-center gap-2 rounded-md border p-1.5"
 													>
 														<div
-															class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+															class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 															style="height: 18px;"
 														></div>
 														<div
@@ -280,14 +282,15 @@
 										class="bg-background relative flex items-center gap-2 rounded-md border p-1.5"
 									>
 										<div
-											class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+											class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 											style="height: calc(100% + 0.7rem);"
 										></div>
-										<Icon icon="octicon:cache-16" />
+										<span class="icon-[octicon--cache-16] min-h-4 min-w-4"></span>
+
 										<span class="font-medium">Cache</span>
 									</div>
 
-									<div class="ml-5 mt-2 space-y-2 pl-4">
+									<div class="mt-2 ml-5 space-y-2 pl-4">
 										{#each cacheDevices as cache, index (cache.name)}
 											<div class="relative">
 												<div
@@ -299,7 +302,7 @@
 														class="bg-background relative flex items-center gap-2 rounded-md border p-1.5"
 													>
 														<div
-															class="bg-secondary absolute -left-6 bottom-0 top-0 w-0.5"
+															class="bg-secondary absolute top-0 bottom-0 -left-6 w-0.5"
 															style="height: 18px;"
 														></div>
 														<div
@@ -318,7 +321,8 @@
 							{/if}
 						{:else}
 							<div class="text-muted-foreground flex items-center gap-2 py-2">
-								<Icon icon="material-symbols:info" class="h-4 w-4" />
+								<span class="icon-[material-symbols--info] h-4 w-4"></span>
+
 								<span>No devices found</span>
 							</div>
 						{/if}
@@ -327,7 +331,7 @@
 
 				<div class="border">
 					<div class="bg-muted flex items-center gap-2 px-4 py-2">
-						<Icon icon="mdi:alert" class="text-primary h-5 w-5" />
+						<span class="icon-[mdi--alert] text-primary h-5 w-5"></span>
 						<span class="font-semibold">Error Status</span>
 					</div>
 					<div class="p-4">
@@ -338,12 +342,13 @@
 								? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
 								: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'}"
 						>
-							<Icon
-								icon={status.errors.includes('No known data errors')
-									? 'mdi:check-circle'
-									: 'mdi:alert-circle'}
-								class="h-5 w-5"
-							/>
+							<span
+								class={`icon-[${
+									status.errors.includes('No known data errors')
+										? 'mdi--check-circle'
+										: 'mdi--alert-circle'
+								}] h-5 w-5`}
+							></span>
 							<span>{status.errors}</span>
 						</div>
 					</div>

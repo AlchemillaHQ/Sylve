@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { fade, slide } from 'svelte/transition';
@@ -38,7 +37,7 @@
 			class="flex h-6 w-6 min-w-[1.5rem] shrink-0 items-center justify-center"
 			onclick={toggleSearch}
 		>
-			<Icon icon="mdi:magnify" class="h-5 w-5" />
+			<span class="icon-[mdi--magnify] h-5 w-5"></span>
 		</button>
 
 		{#if expanded}

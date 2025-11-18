@@ -12,7 +12,6 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { diskSpaceAvailable, generateTableData, parseSMART } from '$lib/utils/disk';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -206,7 +205,8 @@
 	{#if type == 'smart' && buttonAbilities.smart.ability}
 		<Button onclick={() => diskAction('smart')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
-				<Icon icon="icon-park-outline:hdd" class="mr-1 h-4 w-4" />
+				<span class="icon-[icon-park-outline--hdd] mr-1 h-4 w-4"></span>
+
 				<span>S.M.A.R.T Values</span>
 			</div>
 		</Button>
@@ -215,7 +215,7 @@
 	{#if type == 'gpt' && buttonAbilities.gpt.ability}
 		<Button onclick={() => diskAction('gpt')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
-				<Icon icon="carbon:logical-partition" class="mr-1 h-4 w-4" />
+				<span class="icon-[carbon--logical-partition] mr-1 h-4 w-4"></span>
 				<span>Initialize GPT</span>
 			</div>
 		</Button>
@@ -224,7 +224,7 @@
 	{#if type == 'wipe-disk' && buttonAbilities.wipe.ability && activeDisk !== null}
 		<Button onclick={() => diskAction('wipe')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 				<span>Wipe Disk</span>
 			</div>
 		</Button>
@@ -233,7 +233,7 @@
 	{#if type == 'wipe-partition' && buttonAbilities.wipe.ability && activePartition !== null}
 		<Button onclick={() => diskAction('wipe')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 				<span>Delete Partition</span>
 			</div>
 		</Button>
@@ -242,7 +242,7 @@
 	{#if type == 'partition' && buttonAbilities.createPartition.ability}
 		<Button onclick={() => diskAction('partition')} size="sm" variant="outline" class="h-6.5">
 			<div class="flex items-center">
-				<Icon icon="ant-design:partition-outlined" class="mr-1 h-4 w-4" />
+				<span class="icon-[ant-design--partition-outlined] mr-1 h-4 w-4"></span>
 				<span>Create Partition</span>
 			</div>
 		</Button>

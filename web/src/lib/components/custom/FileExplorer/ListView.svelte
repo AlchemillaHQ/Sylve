@@ -2,7 +2,6 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { getFileIcon } from '$lib/utils/icons';
-	import Icon from '@iconify/svelte';
 	import { format, isThisYear, isToday, isYesterday } from 'date-fns';
 	import humanFormat from 'human-format';
 	import { Copy, Download, Edit, Folder, FolderOpen, Scissors, Trash2 } from 'lucide-svelte';
@@ -82,10 +81,9 @@
 					<div class="grid w-full grid-cols-12 items-center gap-4">
 						<div class="col-span-6 flex items-center gap-3">
 							{#if item.type === 'folder'}
-								<Icon
-									icon="material-symbols:folder-rounded"
-									class="mb-2 h-5 w-5 flex-shrink-0 text-blue-400"
-								/>
+								<span
+									class="icon-[material-symbols--folder-rounded] mb-2 h-5 w-5 flex-shrink-0 text-blue-400"
+								></span>
 							{:else}
 								<FileIcon class="mb-2 h-5 w-5 flex-shrink-0 text-blue-400" />
 							{/if}

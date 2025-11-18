@@ -4,7 +4,6 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { cn } from '$lib/utils.js';
-	import Icon from '@iconify/svelte';
 
 	interface Props {
 		open: boolean;
@@ -83,7 +82,7 @@
 
 <div class={classes}>
 	{#if label}
-		<Label class="w-full whitespace-nowrap text-sm" for={label.toLowerCase()}>
+		<Label class="w-full text-sm whitespace-nowrap" for={label.toLowerCase()}>
 			{label}
 		</Label>
 	{/if}
@@ -101,7 +100,7 @@
 						{#each selectedLabels as lbl, i}
 							<p
 								class={multiple
-									? 'bg-secondary/100 = max-w-full whitespace-break-spaces rounded px-2 py-0.5 text-left text-sm'
+									? 'bg-secondary/100 = max-w-full rounded px-2 py-0.5 text-left text-sm whitespace-break-spaces'
 									: ' rounded px-2 text-sm'}
 								title={lbl}
 							>
@@ -113,7 +112,7 @@
 					{/if}
 				</div>
 
-				<Icon icon="lucide:chevrons-up-down" class="ml-auto h-4 w-4 shrink-0 opacity-50" />
+				<span class="icon-[lucide--chevrons-up-down] ml-auto h-4 w-4 shrink-0 opacity-50"></span>
 			</Button>
 		</Popover.Trigger>
 
@@ -132,9 +131,8 @@
 									if (e.key === 'Enter') selectItem(element.value);
 								}}
 							>
-								<Icon
-									icon="lucide:check"
-									class={cn(
+								<span
+									class={`icon-[lucide--check] ${cn(
 										'mr-2 h-4 w-4',
 										multiple
 											? Array.isArray(value) && value.includes(element.value)
@@ -143,8 +141,8 @@
 											: value === element.value
 												? 'opacity-100'
 												: 'opacity-0'
-									)}
-								/>
+									)}`}
+								></span>
 								{element.label}
 							</Command.Item>
 						{/each}

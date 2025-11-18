@@ -10,7 +10,6 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -171,24 +170,24 @@
 					);
 				}
 			} else {
-                response = await createPeriodicSnapshot(
-                    dataset,
-                    properties.name,
-                    properties.recursive,
-                    minutes,
-                    cron,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                );
-            }
+				response = await createPeriodicSnapshot(
+					dataset,
+					properties.name,
+					properties.recursive,
+					minutes,
+					cron,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null
+				);
+			}
 
 			reload = true;
 
-            console.log(response);
+			console.log(response);
 
 			if (response?.error) {
 				handleAPIError(response);
@@ -213,7 +212,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between">
 				<div class="flex items-center">
-					<Icon icon="carbon:ibm-cloud-vpc-block-storage-snapshots" class="mr-2 h-6 w-6" />
+					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-2 h-6 w-6"></span>
+
 					<span>Create Snapshot</span>
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -226,7 +226,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -239,7 +239,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

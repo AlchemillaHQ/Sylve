@@ -6,7 +6,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -55,7 +54,8 @@
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="fluent:cloud-cube-24-regular" class="h-5 w-5" />
+					<span class="icon-[fluent--cloud-cube-24-regular] h-5 w-5"></span>
+
 					<span>Cloud Init</span>
 				</div>
 
@@ -70,7 +70,7 @@
 							cloudInit.metadata = vm.cloudInitMetaData ?? '';
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -84,7 +84,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

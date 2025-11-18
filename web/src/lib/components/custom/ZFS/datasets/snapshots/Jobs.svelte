@@ -8,7 +8,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman, dateToAgo } from '$lib/utils/time';
 	import { getDatasetByGUID } from '$lib/utils/zfs/dataset/dataset';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 	import Retention from './Retention.svelte';
 
@@ -97,13 +96,14 @@
 	<Dialog.Content
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
-		class="fixed left-1/2 top-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-hidden p-0 lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-hidden p-0 lg:max-w-3xl"
 	>
 		<div class="flex items-center justify-between p-4">
 			<Dialog.Header class="p-0">
 				<Dialog.Title>
 					<div class="flex items-center gap-2">
-						<Icon icon="material-symbols:save-clock" class="h-5 w-5" />
+						<span class="icon-[material-symbols--save-clock] h-5 w-5"></span>
+
 						<span>View Snapshot Jobs</span>
 					</div>
 				</Dialog.Title>
@@ -114,7 +114,7 @@
 				class="flex h-5 w-5 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
 				onclick={() => close()}
 			>
-				<Icon icon="material-symbols:close-rounded" class="h-5 w-5" />
+				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
 			</Dialog.Close>
 		</div>
 
@@ -167,14 +167,14 @@
 												};
 											}}
 										>
-											<Icon icon="lucide:timer-reset" class="h-4 w-4" />
+											<span class="icon-[lucide--timer-reset] h-4 w-4"></span>
 										</Button>
 										<Button
 											variant="ghost"
 											class="h-8"
 											onclick={() => shadowDeleted.push(snapshot.id)}
 										>
-											<Icon icon="gg:trash" class="h-4 w-4" />
+											<span class="icon-[gg--trash] h-4 w-4"></span>
 										</Button>
 									</Table.Cell>
 								{:else}

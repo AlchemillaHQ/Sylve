@@ -13,7 +13,6 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -163,7 +162,7 @@
 		{disabled}
 	>
 		<div class="flex items-center">
-			<Icon {icon} class="mr-1 h-4 w-4" />
+			<span class="icon-[{icon}] mr-1 h-4 w-4"></span>
 			<span>{title}</span>
 		</div>
 	</Button>
@@ -176,7 +175,8 @@
 		{#if !canCreate}
 			<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
 				<div class="flex items-center">
-					<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+
 					<span>View Join Information</span>
 				</div>
 			</Button>
@@ -187,11 +187,11 @@
 		{/if}
 
 		{#if canJoin}
-			{@render button('join', 'grommet-icons:cluster', 'Join Cluster', !canJoin)}
+			{@render button('join', 'grommet-icons--cluster', 'Join Cluster', !canJoin)}
 		{/if}
 
 		{#if canReset}
-			{@render button('reset', 'mdi:refresh', 'Reset Cluster', !canReset)}
+			{@render button('reset', 'mdi--refresh', 'Reset Cluster', !canReset)}
 		{/if}
 	</div>
 

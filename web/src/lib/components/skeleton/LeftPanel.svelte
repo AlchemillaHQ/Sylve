@@ -46,14 +46,14 @@
 			...simpleVMs.map((vm) => ({
 				id: vm.vmId,
 				label: `${vm.name} (${vm.vmId})`,
-				icon: 'material-symbols:monitor-outline',
+				icon: 'material-symbols--monitor-outline',
 				href: `/${node}/vm/${vm.vmId}`,
 				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
 			})),
 			...simpleJails.map((jail) => ({
 				id: jail.ctId,
 				label: `${jail.name} (${jail.ctId})`,
-				icon: 'hugeicons:prison',
+				icon: 'hugeicons--prison',
 				href: `/${node}/jail/${jail.ctId}`,
 				state: jail.state === 'ACTIVE' ? 'active' : 'inactive'
 			}))
@@ -75,12 +75,12 @@
 	const tree = $derived([
 		{
 			label: 'Data Center',
-			icon: 'fa-solid:server',
+			icon: 'fa-solid--server',
 			href: '/datacenter',
 			children: [
 				{
 					label: node,
-					icon: 'mdi:dns',
+					icon: 'mdi--dns',
 					href: `/${node}`,
 					children: children.length > 0 ? children : undefined
 				}

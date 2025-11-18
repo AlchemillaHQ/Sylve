@@ -22,22 +22,22 @@
 		return [
 			{
 				label: 'Summary',
-				icon: 'basil:document-outline',
+				icon: 'basil--document-outline',
 				href: '/datacenter/summary'
 			},
 			{
 				label: 'Notes',
-				icon: 'mdi:notes',
+				icon: 'mdi--notes',
 				href: '/datacenter/notes'
 			},
 			{
 				label: 'Cluster',
-				icon: 'carbon:assembly-cluster',
+				icon: 'carbon--assembly-cluster',
 				href: '/datacenter/cluster'
 			},
 			{
 				label: 'Storage',
-				icon: 'mdi:storage',
+				icon: 'mdi--storage',
 				href: '/datacenter/storage'
 			}
 		];
@@ -53,7 +53,6 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Data Center</span>
-
 		<Button
 			size="sm"
 			class="h-6"

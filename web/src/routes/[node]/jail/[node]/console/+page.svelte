@@ -13,7 +13,6 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import adze from 'adze';
 	import { get } from 'svelte/store';
@@ -115,7 +114,8 @@
 	<div
 		class="text-primary dark:text-secondary flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
-		<Icon icon="mdi:server-off" class="dark:text-secondary text-primary h-14 w-14" />
+		<span class="icon-[mdi--server-off] dark:text-secondary text-primary h-14 w-14"></span>
+
 		<div class="max-w-md">
 			The Jail is currently powered off.<br />
 			Start the Jail to access its console.

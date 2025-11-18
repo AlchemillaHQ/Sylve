@@ -24,7 +24,6 @@
 		isValidFileName
 	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
@@ -190,7 +189,8 @@
 		{#if activeRows && activeRows.length >= 1}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
 				</div>
 			</Button>
@@ -201,7 +201,7 @@
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:download" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
 					<span>Download</span>
 				</div>
 			</Button>
@@ -212,7 +212,7 @@
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:download" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
 					<span>Download</span>
 				</div>
 			</Button>
@@ -226,7 +226,8 @@
 
 		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6  ">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>
@@ -241,7 +242,7 @@
 				<Dialog.Header class="flex-1">
 					<Dialog.Title>
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:download" class="text-primary h-5 w-5" />
+							<span class="icon-[mdi--download] text-primary h-5 w-5"></span>
 							<span>Download</span>
 						</div>
 					</Dialog.Title>
@@ -258,7 +259,7 @@
 							modalState.url = '';
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="h-4 w-4" />
+						<span class="icon-[radix-icons--reset] h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -271,7 +272,7 @@
 							modalState.url = '';
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

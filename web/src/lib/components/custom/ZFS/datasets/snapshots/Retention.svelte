@@ -4,7 +4,6 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import Icon from '@iconify/svelte';
 	import { cronToHuman } from '$lib/utils/time';
 	import { modifyPeriodicSnapshot } from '$lib/api/zfs/datasets';
 	import { handleAPIError } from '$lib/utils/http';
@@ -107,7 +106,8 @@
 			<Dialog.Header class="p-0">
 				<Dialog.Title>
 					<div class="flex flex-row gap-2">
-						<Icon icon="lucide:timer-reset" class="h-5 w-5" />
+						<span class="icon-[lucide--timer-reset] h-5 w-5"></span>
+
 						<span>Retention Policies - </span>
 						<span>{dataset}@{snapshot?.prefix}</span>
 					</div>
@@ -121,7 +121,7 @@
 					open = false;
 				}}
 			>
-				<Icon icon="material-symbols:close-rounded" class="h-5 w-5" />
+				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
 			</Dialog.Close>
 		</div>
 

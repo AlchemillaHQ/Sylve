@@ -17,7 +17,6 @@
 		getPoolUsagePieData,
 		type StatType
 	} from '$lib/utils/zfs/pool';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import type { Chart } from 'chart.js';
 	import { onMount, untrack } from 'svelte';
@@ -104,27 +103,27 @@
 			case 'pools':
 				return {
 					title: 'Pools',
-					icon: 'bi:hdd-stack-fill'
+					icon: 'bi--hdd-stack-fill'
 				};
 			case 'datasets':
 				return {
 					title: 'Datasets',
-					icon: 'material-symbols:dataset'
+					icon: 'material-symbols--dataset'
 				};
 			case 'file_systems':
 				return {
 					title: 'Filesystems',
-					icon: 'eos-icons:file-system'
+					icon: 'eos-icons--file-system'
 				};
 			case 'volumes':
 				return {
 					title: 'Volumes',
-					icon: 'carbon:volume-block-storage'
+					icon: 'carbon--volume-block-storage'
 				};
 			case 'snapshots':
 				return {
 					title: 'Snapshots',
-					icon: 'carbon:ibm-cloud-vpc-block-storage-snapshots'
+					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots'
 				};
 			default:
 				return {
@@ -230,7 +229,11 @@
 		<Card.Header class="p-0">
 			<Card.Title class="p-0">
 				<div class="flex items-center">
-					<Icon icon={getCardDetails(type).icon} class="mr-2" />
+					<span
+						class={`icon-[${getCardDetails(type).icon}] mr-2`}
+						style="width: 18px; height: 18px;"
+					></span>
+
 					<span class="font-normal">{getCardDetails(type).title}</span>
 				</div>
 			</Card.Title>
@@ -260,7 +263,8 @@
 						class="flex w-full flex-col items-start justify-between gap-2 md:flex-row md:items-center"
 					>
 						<div class="flex items-center">
-							<Icon icon="mdi:data-usage" class="mr-2" />
+							<span class="icon-[mdi--data-usage] mr-2"></span>
+
 							<span class="text-sm font-bold md:text-lg xl:text-xl">Pool Stats</span>
 						</div>
 						<div class="flex items-center gap-2">
@@ -290,7 +294,8 @@
 								size="sm"
 								class="h-9"
 							>
-								<Icon icon="carbon:reset" class="h-4 w-4" />
+								<span class="icon-[carbon--reset] h-4 w-4"></span>
+
 								Reset zoom
 							</Button>
 						</div>
@@ -318,7 +323,8 @@
 							class="flex w-full flex-col items-start justify-between gap-2 md:flex-row md:items-center"
 						>
 							<div class="flex items-center">
-								<Icon icon="mdi:data-usage" class="mr-2" />
+								<span class="icon-[mdi--data-usage] mr-2"></span>
+
 								<span class="text-sm font-bold md:text-lg xl:text-xl">Dataset Compression</span>
 							</div>
 							<div class="flex items-center gap-2">
@@ -338,7 +344,8 @@
 									size="sm"
 									class="h-9"
 								>
-									<Icon icon="carbon:reset" class="h-4 w-4" />
+									<span class="icon-[carbon--reset] h-4 w-4"></span>
+
 									Reset zoom
 								</Button>
 							</div>
@@ -371,7 +378,8 @@
 					<Card.Title class="mb-[-100px]">
 						<div class="flex w-full items-center justify-between">
 							<div class="flex items-center">
-								<Icon icon="mdi:data-usage" class="mr-2" />
+								<span class="icon-[mdi--data-usage] mr-2"></span>
+
 								<span class="text-sm font-bold md:text-lg xl:text-xl">Pool Usage</span>
 							</div>
 							<CustomComboBox

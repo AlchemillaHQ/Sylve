@@ -31,7 +31,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { cleanStats } from '$lib/utils/jail/stats';
 	import { dateToAgo, secondsToHoursAgo } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
@@ -259,7 +258,8 @@
 				size="sm"
 				class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 			>
-				<Icon icon="mdi:stop" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
+
 				{'Stop'}
 			</Button>
 		{:else}
@@ -269,7 +269,7 @@
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 				>
-					<Icon icon="mdi:play" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 					{'Start'}
 				</Button>
 
@@ -280,7 +280,7 @@
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 				>
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 					{'Delete'}
 				</Button>
 			</div>
@@ -299,7 +299,7 @@
 					<Card.Content class="mt-3 p-0">
 						<div class="flex items-start">
 							<div class="flex items-center">
-								<Icon icon="fluent:status-12-filled" class="mr-1 h-5 w-5" />
+								<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
 								{'Status'}
 							</div>
 							<div class="ml-auto">
@@ -314,7 +314,7 @@
 						<div class="mt-2">
 							<div class="flex w-full justify-between pb-1">
 								<p class="inline-flex items-center">
-									<Icon icon="solar:cpu-bold" class="mr-1 h-5 w-5" />
+									<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
 									{'CPU Usage'}
 								</p>
 								<p class="ml-auto">
@@ -336,7 +336,8 @@
 						<div class="mt-2">
 							<div class="flex w-full justify-between pb-1">
 								<p class="inline-flex items-center">
-									<Icon icon="ph:memory" class="mr-1 h-5 w-5" />
+									<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
+
 									{'RAM Usage'}
 								</p>
 								<p class="ml-auto">

@@ -13,7 +13,6 @@
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -191,7 +190,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 					<span>Edit Share</span>
 				</div>
 			</Button>
@@ -207,7 +207,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete Share</span>
 				</div>
 			</Button>
@@ -227,7 +228,8 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

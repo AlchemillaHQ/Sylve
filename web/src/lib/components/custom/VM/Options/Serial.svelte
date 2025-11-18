@@ -4,7 +4,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -39,7 +38,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
-					<Icon icon="mdi:console" class="mr-2 h-5 w-5" />
+					<span class="icon-[mdi--console] mr-2 h-5 w-5"></span>
+
 					<span>Serial Console</span>
 				</div>
 
@@ -53,7 +53,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

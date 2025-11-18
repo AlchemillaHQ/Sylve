@@ -11,7 +11,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -109,10 +108,10 @@
 		>
 			<div class="flex items-center">
 				{#if jail.resourceLimits}
-					<Icon icon="lsicon:disable-filled" class="mr-1 h-4 w-4" />
+					<span class="icon-[lsicon--disable-filled] mr-1 h-4 w-4"></span>
 					<span>Disable Resource Limits</span>
 				{:else}
-					<Icon icon="clarity:resource-pool-line" class="mr-1 h-4 w-4" />
+					<span class="icon-[clarity--resource-pool-line] mr-1 h-4 w-4"></span>
 					<span>Enable Resource Limits</span>
 				{/if}
 			</div>
@@ -129,7 +128,8 @@
 			disabled={!jail.resourceLimits}
 		>
 			<div class="flex items-center">
-				<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 				<span>Edit {title}</span>
 			</div>
 		</Button>

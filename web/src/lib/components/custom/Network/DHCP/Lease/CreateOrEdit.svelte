@@ -6,7 +6,6 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Icon from '@iconify/svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
 		generateDUIDOptions,
@@ -275,7 +274,8 @@
 			<Dialog.Header>
 				<Dialog.Title>
 					<div class="flex items-center">
-						<Icon icon="memory:range" class="mr-2 h-6 w-6" />
+						<span class="icon-[memory--range] mr-2 h-6 w-6"></span>
+
 						<span>{selectedLease ? 'Edit' : 'Create'} DHCP Lease</span>
 					</div>
 				</Dialog.Title>
@@ -289,11 +289,11 @@
 					title={'Reset'}
 					onclick={() => (properties = options)}
 				>
-					<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">{'Reset'}</span>
 				</Button>
 				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">{'Close'}</span>
 				</Button>
 			</div>

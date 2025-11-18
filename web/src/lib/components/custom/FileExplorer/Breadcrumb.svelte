@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import Icon from '@iconify/svelte';
 
 	let { currentPath, onBackClick, items, onNavigate } = $props();
 </script>
@@ -14,7 +13,7 @@
 		onclick={() => onBackClick()}
 		disabled={currentPath === '/'}
 	>
-		<Icon icon="tabler:arrow-left" class="pointer-events-none !h-6 !w-6" />
+		<span class="icon-[tabler--arrow-left] pointer-events-none !h-6 !w-6"></span>
 	</Button>
 
 	<Breadcrumb.Root>

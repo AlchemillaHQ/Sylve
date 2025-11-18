@@ -7,7 +7,6 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import Icon from '@iconify/svelte';
 	import { mode } from 'mode-watcher';
 	import { onDestroy, onMount } from 'svelte';
 
@@ -151,7 +150,7 @@
 				class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
 			>
 				{#if loading}
-					<Icon icon="line-md:loading-loop" width="24" height="24" />
+					<span class="icon-[line-md--loading-loop] h-6 w-6"></span>
 				{:else}
 					Login
 				{/if}

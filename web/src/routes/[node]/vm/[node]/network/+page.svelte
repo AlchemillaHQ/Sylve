@@ -14,7 +14,6 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -202,7 +201,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="gg:remove" class="mr-1 h-4 w-4" />
+					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
+
 					<span>Detach</span>
 				</div>
 			</Button>
@@ -232,7 +232,8 @@
 			disabled={domain && domain.status !== 'Shutoff'}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

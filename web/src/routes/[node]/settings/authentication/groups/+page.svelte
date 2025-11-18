@@ -13,7 +13,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -217,7 +216,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -237,7 +237,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="material-symbols:group-add" class="mr-1 h-4 w-4" />
+					<span class="icon-[material-symbols--group-add] mr-1 h-4 w-4"></span>
+
 					<span>Add Users</span>
 				</div>
 			</Button>
@@ -254,7 +255,7 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -282,7 +283,8 @@
 			<Dialog.Header>
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon="mdi:account-group" class="h-5 w-5" />
+						<span class="icon-[mdi--account-group] h-5 w-5"></span>
+
 						<span>New Group</span>
 					</div>
 					<div class="flex items-center gap-0.5">
@@ -295,7 +297,7 @@
 								properties = options;
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -308,7 +310,8 @@
 								properties.create.open = false;
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>
@@ -353,7 +356,8 @@
 			<Dialog.Header>
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon="material-symbols:group-add" class="h-5 w-5" />
+						<span class="icon-[material-symbols--group-add] h-5 w-5"></span>
+
 						<span>Add Users</span>
 					</div>
 					<div class="flex items-center gap-0.5">
@@ -366,7 +370,7 @@
 								properties = options;
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -379,7 +383,8 @@
 								properties.addUsers.open = false;
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>

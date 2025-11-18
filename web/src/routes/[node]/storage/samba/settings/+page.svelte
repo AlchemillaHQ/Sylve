@@ -9,7 +9,6 @@
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -226,7 +225,8 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 						<span>Edit {activeRow.property}</span>
 					</div>
 				</Button>

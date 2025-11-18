@@ -12,7 +12,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { mode } from 'mode-watcher';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import Icon from '@iconify/svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { getPools } from '$lib/api/zfs/pool';
 	import { generateComboboxOptions } from '$lib/utils/input';
@@ -224,7 +223,7 @@
 
 			{#if shownErrors.length > 0}
 				<Alert.Root variant="destructive">
-					<Icon icon="mdi:alert-circle-outline" class="h-5 w-5 flex-shrink-0 text-red-600" />
+					<span class="icon-[mdi--alert-circle-outline] h-5 w-5 flex-shrink-0 text-red-600"></span>
 					<Alert.Title>We've hit the following errors during initialization</Alert.Title>
 					<Alert.Description>
 						<ul class="list-inside list-disc text-sm">

@@ -10,7 +10,6 @@
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -196,7 +195,8 @@
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="grommet-icons:storage" class="h-5 w-5" />
+					<span class="icon-[grommet-icons--storage] h-5 w-5"></span>
+
 					<span>New Storage</span>
 				</div>
 
@@ -210,7 +210,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -223,7 +223,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -358,7 +358,7 @@
 					disabled={properties.loading}
 				>
 					{#if properties.loading}
-						<Icon icon="eos-icons:loading" class="mr-2 h-4 w-4 animate-spin" />
+						<span class="icon-[eos-icons--loading] mr-2 h-4 w-4 animate-spin"></span>
 					{:else}
 						<span>Attach</span>
 					{/if}

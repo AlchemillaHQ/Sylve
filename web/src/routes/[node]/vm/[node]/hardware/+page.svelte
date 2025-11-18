@@ -15,7 +15,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -221,7 +220,7 @@
 		disabled={domain.status ? domain.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
-			<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			<span>Edit {title}</span>
 		</div>
 	</Button>

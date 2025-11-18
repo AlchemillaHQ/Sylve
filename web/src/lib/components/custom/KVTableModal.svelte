@@ -2,7 +2,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
-	import Icon from '@iconify/svelte';
 
 	interface Props {
 		open: boolean;
@@ -47,7 +46,7 @@
 		<div class="flex items-center justify-between">
 			<div class="flex items-center">
 				{#if titles.icon}
-					<Icon icon={titles.icon} class="h-6 w-6" />
+					<span class="icon-[{titles.icon}] h-6 w-6"></span>
 				{/if}
 				<h2 class="ml-2 text-lg font-semibold">{titles.main}</h2>
 			</div>
@@ -56,7 +55,7 @@
 				class="flex h-6 w-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
 				onclick={actions.close}
 			>
-				<Icon icon="material-symbols:close-rounded" class="h-6 w-6" />
+				<span class="icon-[material-symbols--close-rounded] h-6 w-6"></span>
 			</Dialog.Close>
 		</div>
 
@@ -93,12 +92,11 @@
 											class="flex w-full items-center gap-1 text-left"
 											onclick={() => toggleObjectExpansion(key)}
 										>
-											<Icon
-												icon={expandedObjects[key]
-													? 'material-symbols:keyboard-arrow-down'
-													: 'material-symbols:keyboard-arrow-right'}
-												class="h-4 w-4 opacity-70"
-											/>
+											<span
+												class="icon-[{expandedObjects[key]
+													? 'material-symbols--keyboard-arrow-down'
+													: 'material-symbols--keyboard-arrow-right'}] h-6 w-6"
+											></span>
 											{key}
 										</button>
 									</Table.Cell>

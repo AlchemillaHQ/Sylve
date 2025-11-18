@@ -20,7 +20,6 @@
 	import { generateTableData } from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
 	import { isValidSwitchName } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -426,14 +425,15 @@
 		{#if type === 'edit'}
 			<Button onclick={handleEdit} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 					<span>Edit</span>
 				</div>
 			</Button>
 		{:else if type === 'delete'}
 			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -453,7 +453,7 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -481,7 +481,7 @@
 				<Dialog.Header>
 					<Dialog.Title>
 						<div class="flex items-center">
-							<Icon icon="clarity:network-switch-line" class="mr-2 h-6 w-6" />
+							<span class="icon-[clarity--network-switch-line] mr-2 h-6 w-6"></span>
 							{#if confirmModals.active === 'editSwitch'}
 								{`Edit Standard Switch - ${confirmModals.editSwitch.oldName}`}
 							{:else}
@@ -499,7 +499,7 @@
 						title={'Reset'}
 						onclick={() => resetModal(false)}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -509,7 +509,7 @@
 						title={'Close'}
 						onclick={() => resetModal(true)}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

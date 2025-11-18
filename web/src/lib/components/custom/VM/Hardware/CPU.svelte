@@ -9,7 +9,6 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { getCache, handleAPIError } from '$lib/utils/http';
 
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -113,7 +112,8 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="solar:cpu-bold" class="h-5 w-5" />
+					<span class="icon-[solar--cpu-bold] h-5 w-5"></span>
+
 					<span>CPU</span>
 				</div>
 
@@ -127,7 +127,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -140,7 +140,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -182,18 +182,15 @@
 					>
 						{#each Array(cpuInfo.logicalCores).fill(0) as _, index (index)}
 							{#if otherVmPinnedIndices.includes(index)}
-								<Icon
-									icon="iconoir:cpu"
-									class="h-5 w-5 cursor-pointer text-red-600"
+								<span
+									class="icon-[iconoir--cpu] h-5 w-5 cursor-pointer text-red-600"
 									onclick={() => unpinCPU(index)}
-								/>
+								></span>
 							{:else}
-								<Icon
-									icon="iconoir:cpu"
-									class={`h-5 w-5 cursor-pointer
-                                ${properties.cpu.pinning.includes(index) ? 'text-yellow-600' : 'text-green-400'}`}
+								<span
+									class={`icon-[iconoir--cpu] h-5 w-5 cursor-pointer ${properties.cpu.pinning.includes(index) ? 'text-yellow-600' : 'text-green-400'}`}
 									onclick={() => pinCPU(index)}
-								/>
+								></span>
 							{/if}
 						{/each}
 					</div>

@@ -8,7 +8,6 @@
 	import { sleep } from '$lib/utils';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -40,7 +39,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between">
 				<div class="flex items-center">
-					<Icon icon="mdi:usb-flash-drive-outline" class="mr-2 h-6 w-6" />
+					<span class="icon-[mdi--usb-flash-drive-outline] mr-2 h-6 w-6"></span>
+
 					Flash File to {dataset.name}
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -53,7 +53,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -66,7 +66,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -117,7 +117,7 @@
 					disabled={!properties.select.uuid || properties.loading}
 				>
 					{#if properties.loading}
-						<Icon icon="mdi:loading" class="h-4 w-4 animate-spin" />
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						<span>Flash</span>
 					{/if}

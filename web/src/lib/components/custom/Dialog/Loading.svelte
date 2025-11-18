@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Icon from '@iconify/svelte';
 
 	interface Props {
 		open: boolean;
@@ -45,20 +44,20 @@
 
 			{#if logs}
 				<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
-					<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+					<Card.Content class="mt-3 w-full max-w-full min-w-0 p-0">
 						<!-- Make THIS the scroll container so we can bind to a real DOM node -->
 						<div
 							class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
 							bind:this={logsContainer}
 						>
-							<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
+							<pre class="block min-w-0 text-xs whitespace-pre text-[#4AF626]">
 {logs}
 							</pre>
 						</div>
 					</Card.Content>
 				</Card.Root>
 			{:else}
-				<Icon icon="mdi:loading" class={`mb-4 animate-spin text-4xl ${iconColor}`} />
+				<span class="icon-[mdi--loading] mb-4 animate-spin text-4xl {iconColor}"></span>
 			{/if}
 
 			<Dialog.Description class="text-muted-foreground mt-1 text-sm">

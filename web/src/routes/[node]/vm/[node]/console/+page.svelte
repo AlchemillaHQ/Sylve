@@ -11,7 +11,6 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import Icon from '@iconify/svelte';
 	import { onDestroy, tick } from 'svelte';
 	import { get } from 'svelte/store';
 
@@ -230,10 +229,9 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center gap-2">
-						<Icon
-							icon={consoleType === 'vnc' ? 'mdi:console' : 'material-symbols:monitor-outline'}
-							class="h-4 w-4"
-						/>
+						<span
+							class={`icon-[${consoleType === 'vnc' ? 'mdi--console' : 'material-symbols--monitor-outline'}] h-4 w-4`}
+						></span>
 						<span>Switch to {consoleType === 'vnc' ? 'Serial' : 'VNC'} Console</span>
 					</div>
 				</Button>
@@ -255,7 +253,8 @@
 					}}
 				>
 					<div class="flex items-center gap-2">
-						<Icon icon={serialConnected ? 'mdi:power' : 'mdi:refresh'} class="h-4 w-4" />
+						<span class={`icon-[${serialConnected ? 'mdi--power' : 'mdi--refresh'}] h-4 w-4`}
+						></span>
 						<span>{serialConnected ? 'Kill Serial Session' : 'Reconnect Serial'}</span>
 					</div>
 				</Button>
@@ -275,7 +274,7 @@
 				/>
 				{#if vncLoading}
 					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
-						<Icon icon="mdi:loading" class="text-primary h-10 w-10 animate-spin" />
+						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
 					</div>
 				{/if}
 			</div>
@@ -290,19 +289,19 @@
 				/>
 				{#if serialLoading}
 					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
-						<Icon icon="mdi:loading" class="text-primary h-10 w-10 animate-spin" />
+						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
 					</div>
 				{/if}
 			</div>
 		{:else}
 			<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
-				<Icon icon="mdi:monitor-off" class="text-primary dark:text-secondary h-14 w-14" />
+				<span class="icon-[mdi--monitor-off] text-primary dark:text-secondary h-14 w-14"></span>
 				<div class="max-w-md">No console is configured for this VM.</div>
 			</div>
 		{/if}
 	{:else}
 		<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
-			<Icon icon="mdi:server-off" class="text-primary dark:text-secondary h-14 w-14" />
+			<span class="icon-[mdi--server-off] text-primary dark:text-secondary h-14 w-14"></span>
 			<div class="max-w-md">
 				The VM is currently powered off.<br />
 				Start the VM to access its console.

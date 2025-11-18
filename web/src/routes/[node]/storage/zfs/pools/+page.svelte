@@ -23,7 +23,6 @@
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -182,7 +181,8 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+
 						<span>Status</span>
 					</div>
 				</Button>
@@ -210,7 +210,8 @@
 						title={scrubbing ? 'A scrub is already in progress' : ''}
 					>
 						<div class="flex items-center">
-							<Icon icon="cil:scrubber" class="mr-1 h-4 w-4" />
+							<span class="icon-[cil--scrubber] mr-1 h-4 w-4"></span>
+
 							<span>Scrub</span>
 						</div>
 					</Button>
@@ -231,7 +232,8 @@
 						: ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 						<span>Edit</span>
 					</div>
 				</Button>
@@ -249,7 +251,7 @@
 					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 						<span>Delete</span>
 					</div>
 				</Button>
@@ -275,7 +277,8 @@
 					title={replacing ? 'Replace already in progress' : ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:swap-horizontal" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+
 						<span>Replace Device</span>
 					</div>
 				</Button>
@@ -295,7 +298,8 @@
 			title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

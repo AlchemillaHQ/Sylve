@@ -12,7 +12,6 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -159,7 +158,7 @@
 		<Search bind:query />
 
 		<Button size="sm" variant="default" class="h-6.5" onclick={() => (modalOpen = true)}>
-			<Icon icon="hugeicons:system-update-01" class="h-4 w-4" />
+			<span class="icon-[hugeicons--system-update-01] h-4 w-4"></span>
 			{'Update'}
 		</Button>
 	</div>

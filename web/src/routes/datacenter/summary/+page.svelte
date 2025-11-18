@@ -15,7 +15,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import humanFormat from 'human-format';
 
@@ -153,7 +152,7 @@
 			<Card.Header>
 				<Card.Title>
 					<div class="flex items-center gap-2">
-						<Icon icon="solar:health-bold" />
+						<span class="icon-[solar--health-bold] min-h-4 min-w-4"></span>
 						<span>Health</span>
 					</div>
 				</Card.Title>
@@ -163,16 +162,17 @@
 					<div class="flex flex-1 flex-col items-center space-y-2 text-center">
 						<span class="text-xl font-bold">Status</span>
 						{#if !clustered}
-							<Icon icon="mdi:check-circle" class="h-12 w-12 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-12 w-12 text-green-500"></span>
+
 							<span class="text-sm font-semibold">Single Node</span>
 						{:else if quorumStatus === 'ok'}
-							<Icon icon="mdi:check-circle" class="h-12 w-12 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-12 w-12 text-green-500"></span>
 							<span class="text-sm font-semibold">Quorate: Yes</span>
 						{:else if quorumStatus === 'warning'}
-							<Icon icon="material-symbols:warning" class="h-12 w-12 text-yellow-500" />
+							<span class="icon-[material-symbols--warning] h-12 w-12 text-yellow-500"></span>
 							<span class="text-sm font-semibold">Quorate: Yes (Degraded)</span>
 						{:else}
-							<Icon icon="mdi:close-circle" class="h-12 w-12 text-red-500" />
+							<span class="icon-[mdi--close-circle] h-12 w-12 text-red-500"></span>
 							<span class="text-sm font-semibold">Quorate: No</span>
 						{/if}
 					</div>
@@ -181,7 +181,7 @@
 						<span class="text-xl font-bold">Nodes</span>
 
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:check-circle" class="h-5 w-5 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-5 w-5 text-green-500"></span>
 							{#if clustered}
 								<span class="text-md font-semibold">Online: {statusCounts.online || 0}</span>
 							{:else}
@@ -190,7 +190,7 @@
 						</div>
 
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:close-circle" class="h-5 w-5 text-red-500" />
+							<span class="icon-[mdi--close-circle] h-5 w-5 text-red-500"></span>
 							{#if clustered}
 								<span class="text-md font-semibold">Offline: {statusCounts.offline || 0}</span>
 							{:else}
@@ -209,7 +209,7 @@
 			<Card.Header>
 				<Card.Title>
 					<div class="flex items-center gap-2">
-						<Icon icon="clarity:resource-pool-solid" />
+						<span class="icon-[clarity--resource-pool-solid] min-h-4 min-w-4"></span>
 						<span>Resources</span>
 					</div>
 				</Card.Title>
@@ -257,7 +257,8 @@
 				<Card.Header>
 					<Card.Title>
 						<div class="flex items-center gap-2">
-							<Icon icon="fa7-solid:hexagon-nodes" />
+							<span class="icon-[fa7-solid--hexagon-nodes] min-h-4 min-w-4"></span>
+
 							<span>Nodes</span>
 						</div>
 					</Card.Title>
@@ -278,9 +279,9 @@
 									<Table.Cell>
 										<Badge variant="outline" class="text-muted-foreground px-1.5">
 											{#if node.status === 'online'}
-												<Icon icon="mdi:check-circle" class="text-green-500" />
+												<span class="icon-[mdi--check-circle] text-green-500"></span>
 											{:else}
-												<Icon icon="mdi:close-circle" class="text-red-500" />
+												<span class="icon-[mdi--close-circle] text-red-500"></span>
 											{/if}
 											{capitalizeFirstLetter(node.status)}
 										</Badge>

@@ -2,7 +2,6 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { SeriesDataWithBaseline } from '$lib/types/common';
 	import { switchColor } from '$lib/utils/chart';
-	import Icon from '@iconify/svelte';
 	import {
 		BarController,
 		BarElement,
@@ -170,7 +169,7 @@
 	<div class="flex items-center justify-between gap-4">
 		<div class="flex items-center gap-2">
 			{#if icon}
-				<Icon {icon} class="h-5 w-5" />
+				<span class="icon-[{icon}] h-5 w-5"></span>
 			{/if}
 			{title}
 		</div>
@@ -184,7 +183,7 @@
 					size="sm"
 					class="h-8"
 				>
-					<Icon icon="carbon:reset" class="h-4 w-4" />
+					<span class="icon-[carbon--reset] h-4 w-4"></span>
 					Reset zoom
 				</Button>
 			</div>

@@ -14,7 +14,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/snapshot';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -183,7 +182,8 @@
 			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<div class="flex items-center">
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 				<span>{activeRows?.length === 1 ? 'Delete Snapshot' : 'Delete Snapshots'}</span>
 			</div>
 		</Button>
@@ -198,7 +198,7 @@
 			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<div class="flex items-center">
-				<Icon icon="mdi:clock-time-four" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--clock-time-four] mr-1 h-4 w-4"></span>
 				<span>View Periodics</span>
 			</div>
 		</Button>
@@ -217,7 +217,7 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>

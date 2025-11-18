@@ -48,7 +48,7 @@
 		{
 			id: 'datacenter',
 			label: 'Data Center',
-			icon: 'ant-design:cluster-outlined',
+			icon: 'ant-design--cluster-outlined',
 			href: '/datacenter',
 			children: clusterRes.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
@@ -57,7 +57,7 @@
 						id: `jail-${j.ctId}`,
 						sortId: j.ctId,
 						label: `${j.name} (${j.ctId})`,
-						icon: 'hugeicons:prison',
+						icon: 'hugeicons--prison',
 						href: `/${nodeLabel}/jail/${j.ctId}`,
 						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 					})),
@@ -65,7 +65,7 @@
 						id: `vm-${vm.vmId}`,
 						sortId: vm.vmId,
 						label: `${vm.name} (${vm.vmId})`,
-						icon: 'material-symbols:monitor-outline',
+						icon: 'material-symbols--monitor-outline',
 						href: `/${nodeLabel}/vm/${vm.vmId}`,
 						state: (vm.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 					}))
@@ -77,7 +77,7 @@
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'mdi:server' : 'mdi:server-off',
+					icon: isActive ? 'mdi--server' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? mergedChildren : []
 				};

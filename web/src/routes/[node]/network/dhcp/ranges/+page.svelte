@@ -14,7 +14,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { secondsToDnsmasq } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -213,9 +212,9 @@
 	>
 		<div class="flex items-center">
 			{#if type === 'delete'}
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 			{:else if type === 'edit'}
-				<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			{/if}
 			<span>{type === 'delete' ? 'Delete' : 'Edit'}</span>
 		</div>
@@ -228,7 +227,7 @@
 
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>

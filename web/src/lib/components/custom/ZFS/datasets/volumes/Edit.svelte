@@ -9,7 +9,6 @@
 	import { bytesToHumanReadable, isValidSize, parseQuotaToZFSBytes } from '$lib/utils/numbers';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
 
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	type props = {
@@ -103,12 +102,14 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
-					<Icon icon="carbon:volume-block-storage" class="mr-2 h-5 w-5" />Edit Volume - {dataset.name}
+					<span class="icon-[carbon--volume-block-storage] mr-2 h-5 w-5"></span>
+
+					Edit Volume - {dataset.name}
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button
@@ -120,7 +121,8 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -133,7 +135,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -143,7 +145,7 @@
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Size</Label>
+					<Label class="w-24 text-sm whitespace-nowrap">Size</Label>
 					<Input
 						type="text"
 						class="w-full text-left"

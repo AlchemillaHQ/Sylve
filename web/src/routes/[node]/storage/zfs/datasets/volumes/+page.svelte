@@ -18,7 +18,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -201,7 +200,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:usb-flash-drive-outline" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--usb-flash-drive-outline] mr-1 h-4 w-4"></span>
+
 					<span>Flash File</span>
 				</div>
 			</Button>
@@ -219,7 +219,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 					<span>Delete Volume</span>
 				</div>
 			</Button>
@@ -237,7 +237,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 					<span>Edit Volume</span>
 				</div>
 			</Button>
@@ -273,7 +273,8 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 						<span>Delete Volumes</span>
 					</div>
 				</Button>
@@ -293,7 +294,8 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

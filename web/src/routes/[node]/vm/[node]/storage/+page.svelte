@@ -16,7 +16,6 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
-	import Icon from '@iconify/svelte';
 	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -137,7 +136,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="gg:remove" class="mr-1 h-4 w-4" />
+					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
+
 					<span>Detach</span>
 				</div>
 			</Button>
@@ -157,7 +157,8 @@
 			disabled={domain && domain.status !== 'Shutoff'}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

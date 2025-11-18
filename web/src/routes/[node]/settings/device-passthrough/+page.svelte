@@ -8,7 +8,6 @@
 	import { type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
 	import { updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/system/pci';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
@@ -106,7 +105,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="wpf:disconnected" class="mr-1 h-4 w-4" />
+					<span class="icon-[wpf--disconnected] mr-1 h-4 w-4"></span>
+
 					<span>Enable Passthrough</span>
 				</div>
 			</Button>
@@ -120,7 +120,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="wpf:connected" class="mr-1 h-4 w-4" />
+					<span class="icon-[wpf--connected] mr-1 h-4 w-4"></span>
+
 					<span>Disable Passthrough</span>
 				</div>
 			</Button>

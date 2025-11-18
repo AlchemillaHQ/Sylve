@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import Icon from '@iconify/svelte';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './TreeView.svelte';
 
@@ -79,28 +78,27 @@
 			{#if item.icon === 'material-symbols:monitor-outline' || item.icon === 'hugeicons:prison'}
 				<div class="flex items-center space-x-1 text-sm">
 					<div class="relative">
-						<Icon icon={item.icon} width="18" />
+						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+
 						{#if item.state && item.state === 'active'}
 							<div
-								class="absolute -bottom-1 -right-1 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
+								class="absolute -right-1 -bottom-1 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
 							>
-								<Icon icon="mdi:play" class="h-2 w-2 text-white" />
+								<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
 							</div>
 						{/if}
 					</div>
 				</div>
 			{:else}
-				<Icon icon={item.icon} width="18" />
+				<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
 			{/if}
 			<p class="font-inter cursor-pointer whitespace-nowrap">
 				{item.label}
 			</p>
 		</div>
 		{#if item.children && item.children.length > 0}
-			<Icon
-				icon={isOpen ? 'teenyicons:down-solid' : 'teenyicons:right-solid'}
-				class="h-3.5 w-3.5"
-			/>
+			<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+			></span>
 		{/if}
 	</a>
 </li>

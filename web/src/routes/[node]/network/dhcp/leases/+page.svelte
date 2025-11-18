@@ -10,7 +10,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import Icon from '@iconify/svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import type { Column, Row } from '$lib/types/components/tree-table';
@@ -276,7 +275,8 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 						<span>Delete</span>
 					</div>
 				</Button>
@@ -291,7 +291,7 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 						<span>Edit</span>
 					</div>
 				</Button>
@@ -306,7 +306,8 @@
 
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>

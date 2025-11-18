@@ -13,7 +13,6 @@
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -174,7 +173,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+
 					<span>View</span>
 				</div>
 			</Button>
@@ -188,7 +188,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -205,7 +205,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -224,7 +224,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="material-symbols:delete-sweep" class="mr-1 h-4 w-4" />
+					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
 					<span>Bulk Delete</span>
 				</div>
 			</Button>
@@ -238,7 +238,7 @@
 
 		<Button onclick={() => handleNote()} size="sm" class="h-6  ">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -254,7 +254,8 @@
 			<Dialog.Header class="">
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon={modalState.isEditMode ? 'mdi:note-edit' : 'mdi:note'} class="h-5 w-5" />
+						<span class={`icon-[${modalState.isEditMode ? 'mdi--note-edit' : 'mdi--note'}] h-5 w-5`}
+						></span>
 						<span>
 							{#if modalState.isEditMode}
 								{#if selectedId}
@@ -280,7 +281,8 @@
 								modalState.content = '';
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -294,7 +296,8 @@
 								modalState.content = '';
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>
@@ -323,7 +326,7 @@
 				{:else}
 					<div class="mt-2">
 						<p
-							class="mb-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+							class="mb-2 text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 						>
 							Content
 						</p>

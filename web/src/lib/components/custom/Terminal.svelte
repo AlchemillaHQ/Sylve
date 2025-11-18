@@ -10,7 +10,6 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import Icon from '@iconify/svelte';
 	import adze from 'adze';
 	import { nanoid } from 'nanoid';
 	import { untrack } from 'svelte';
@@ -204,18 +203,18 @@
 				<!-- Minimize / Close -->
 				<div class="flex space-x-3">
 					<button
-						class="rounded-full transition-colors duration-300 ease-in-out hover:bg-yellow-600 hover:text-white"
+						class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-yellow-600 hover:text-white"
 						onclick={() => visiblityAction('window-minimize')}
 						title="Minimize"
 					>
-						<Icon icon="mdi:window-minimize" class="h-5 w-5" />
+						<span class="icon-[mdi--window-minimize] h-5 w-5"></span>
 					</button>
 					<button
-						class="rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+						class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
 						onclick={() => visiblityAction('window-close')}
 						title="Close"
 					>
-						<Icon icon="mdi:close" class="h-5 w-5" />
+						<span class="icon-[mdi--close] h-5 w-5"></span>
 					</button>
 				</div>
 			</div>
@@ -234,17 +233,17 @@
 						role="button"
 						tabindex="0"
 					>
-						<span class="mr-2 whitespace-nowrap text-sm">{tab.title}</span>
+						<span class="mr-2 text-sm whitespace-nowrap">{tab.title}</span>
 						{#if tabsCount > 1}
 							<button
-								class="rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+								class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
 								data-id={tab.id}
 								onclick={(e) => {
 									e.stopPropagation();
 									visiblityAction('tab-close', e);
 								}}
 							>
-								<Icon icon="mdi:close" class="h-4 w-4" />
+								<span class="icon-[mdi--close] h-5 w-5"></span>
 							</button>
 						{/if}
 					</div>
@@ -257,7 +256,7 @@
 						onclick={() => addTab()}
 						title="Add new tab"
 					>
-						<Icon icon="ic:sharp-plus" class="h-5 w-5" />
+						<span class="icon-[ic--sharp-plus] h-5 w-5"></span>
 					</button>
 				</div>
 			</div>

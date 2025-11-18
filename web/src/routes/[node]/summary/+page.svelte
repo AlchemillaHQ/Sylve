@@ -18,7 +18,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import type { Chart } from 'chart.js';
 
@@ -293,7 +292,8 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<Icon icon="solar:cpu-bold" class="mr-1 h-5 w-5" />
+										<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
+
 										<span>CPU Usage</span>
 									</p>
 									<p>
@@ -305,7 +305,7 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<Icon icon="ri:ram-fill" class="mr-1 h-5 w-5" />
+										<span class="icon-[ri--ram-fill] mr-1 h-5 w-5"></span>
 										{'RAM Usage'}
 									</p>
 									<p>
@@ -317,7 +317,7 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<Icon icon="bxs:server" class="mr-1 h-5 w-5" />
+										<span class="icon-[bxs--server] mr-1 h-5 w-5"></span>
 										{'Disk Usage'}
 									</p>
 									<p>
@@ -333,7 +333,7 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<Icon icon="lets-icons:time-light" class="mr-1 h-5 w-5" />
+										<span class="icon-[lets-icons--time-light] mr-1 h-5 w-5"></span>
 										{'I/O Delay'}
 									</p>
 									<p>{floatToNDecimals(ioDelay.delay, 3) || 0} %</p>
@@ -347,7 +347,7 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<Icon icon="ic:baseline-loop" class="mr-1 h-5 w-5" />{'Swap Usage'}
+										<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>{'Swap Usage'}
 									</p>
 									<p>
 										{`${floatToNDecimals(swapInfo.usedPercent, 2)}% of ${bytesToHumanReadable(swapInfo.total)}`}

@@ -6,7 +6,6 @@
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import * as Table from '$lib/components/ui/table';
 	import type { Disk } from '$lib/types/disk/disk';
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -107,7 +106,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-5 lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-5 lg:max-w-3xl"
 	>
 		<div class="flex items-center justify-between">
 			<Dialog.Header class="p-0">
@@ -128,7 +127,8 @@
 						currentPartitionInput = '';
 					}}
 				>
-					<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+
 					<span class="sr-only">Reset</span>
 				</Button>
 				<Button
@@ -138,7 +138,7 @@
 					title={'Close'}
 					onclick={() => close()}
 				>
-					<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">Close</span>
 				</Button>
 			</div>
@@ -176,7 +176,7 @@
 								<Table.Cell class="text-right">-</Table.Cell>
 								<Table.Cell class="text-right">
 									<Button variant="ghost" class="h-8" onclick={() => removePartition(index)}>
-										<Icon icon="gg:trash" class="h-4 w-4" />
+										<span class="icon-[gg--trash] h-4 w-4"></span>
 									</Button>
 								</Table.Cell>
 							</Table.Row>

@@ -10,7 +10,6 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -108,12 +107,13 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="!pointer-events-auto h-6.5"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -126,12 +126,12 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="!pointer-events-auto h-6.5"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -145,7 +145,7 @@
 
 		<Button onclick={() => (modals.create.open = !modals.create.open)} size="sm" class="h-6">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>

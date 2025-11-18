@@ -2,7 +2,6 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { getFileIcon } from '$lib/utils/icons';
-	import Icon from '@iconify/svelte';
 	import { Copy, Download, Edit, FolderOpen, Scissors, Trash2 } from 'lucide-svelte';
 
 	interface Props {
@@ -53,15 +52,14 @@
 				}}
 			>
 				{#if item.type === 'folder'}
-					<Icon
-						icon="material-symbols:folder-rounded"
-						class="mb-2 h-12 w-12 flex-shrink-0 text-blue-400"
-					/>
+					<span
+						class="icon-[material-symbols--folder-rounded] mb-2 h-12 w-12 flex-shrink-0 text-blue-400"
+					></span>
 				{:else}
 					<FileIcon class="mb-2 h-12 w-12 flex-shrink-0 text-blue-400" />
 				{/if}
 				<span
-					class="line-clamp-2 w-full break-words px-1 text-center text-xs font-medium leading-tight"
+					class="line-clamp-2 w-full px-1 text-center text-xs leading-tight font-medium break-words"
 					>{itemName}</span
 				>
 			</ContextMenu.Trigger>
