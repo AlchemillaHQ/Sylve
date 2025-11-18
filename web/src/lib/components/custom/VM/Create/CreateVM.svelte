@@ -202,7 +202,11 @@
 			startAtBoot: false,
 			bootOrder: 0,
 			tpmEmulation: false,
-			timeOffset: 'utc' as 'utc' | 'localtime'
+			timeOffset: 'utc' as 'utc' | 'localtime',
+			cloudInit: {
+				data: '',
+				metadata: ''
+			}
 		}
 	};
 
@@ -335,6 +339,7 @@
 									bind:vncResolution={modal.advanced.vncResolution}
 									bind:tpmEmulation={modal.advanced.tpmEmulation}
 									bind:timeOffset={modal.advanced.timeOffset}
+									bind:cloudInit={modal.advanced.cloudInit}
 								/>
 							{/if}
 						</div>

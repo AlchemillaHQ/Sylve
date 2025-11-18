@@ -42,6 +42,10 @@ export interface CreateData {
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
+		cloudInit: {
+			data: string;
+			metadata: string;
+		};
 	};
 }
 
@@ -127,6 +131,8 @@ export const VMSchema = z.object({
 	pciDevices: z.union([z.array(z.number().int()), z.null()]),
 	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
 	shutdownWaitTime: z.number().int(),
+	cloudInitData: z.string().nullable(),
+	cloudInitMetaData: z.string().nullable(),
 
 	createdAt: z.string(),
 	updatedAt: z.string(),

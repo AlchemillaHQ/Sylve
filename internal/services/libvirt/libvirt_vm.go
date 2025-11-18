@@ -36,9 +36,12 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	var memoryBacking *libvirtServiceInterfaces.MemoryBacking
 
 	if vm.PCIDevices != nil && len(vm.PCIDevices) > 0 {
+		fmt.Println(len(vm.PCIDevices), "-> This many PCI DEVICES!")
 		memoryBacking = &libvirtServiceInterfaces.MemoryBacking{
 			Locked: struct{}{},
 		}
+	} else {
+		memoryBacking = nil
 	}
 
 	var devices libvirtServiceInterfaces.Devices
@@ -97,7 +100,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
-				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.VmID, storage.ID, storage.ID)
+				disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.VmID, storage.ID, storage.ID)
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
 				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.VmID, storage.ID)
 			} else if storage.Type == vmModels.VMStorageTypeDiskImage {
@@ -121,6 +124,24 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 			sIndex++
 		}
+	}
+
+	if vm.CloudInitData != "" || vm.CloudInitMetaData != "" {
+		cloudInitISOPath, err := s.GetCloudInitISOPath(vm.VmID)
+		if err != nil {
+			return "", fmt.Errorf("failed_to_get_cloud_init_iso_path: %w", err)
+		}
+
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: fmt.Sprintf("-s %d:0,ahci-cd,%s,ro",
+					sIndex,
+					cloudInitISOPath,
+				),
+			},
+		})
+
+		sIndex++
 	}
 
 	var interfaces []libvirtServiceInterfaces.Interface
@@ -351,6 +372,13 @@ func (s *Service) CreateLvVm(id int) error {
 	vm, err = s.GetVM(id)
 	if err != nil {
 		return err
+	}
+
+	if vm.CloudInitData != "" && vm.CloudInitMetaData != "" {
+		err = s.CreateCloudInitISO(vm)
+		if err != nil {
+			return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
+		}
 	}
 
 	generated, err := s.CreateVmXML(vm, vmPath)
@@ -691,6 +719,15 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
 		}
 	case "reboot":
+		state, _, err := s.Conn.DomainGetState(domain, 0)
+		if err != nil {
+			return fmt.Errorf("could_not_get_state: %w", err)
+		}
+
+		if state != 1 {
+			return fmt.Errorf("domain_not_running_for_reboot")
+		}
+
 		if err := s.Conn.DomainReboot(domain, 0); err != nil {
 			return fmt.Errorf("failed_to_reboot_domain: %w", err)
 		}
@@ -729,6 +766,8 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 
 	switch action {
 	case "start":
+		vm.StartedAt = &now
+	case "reboot":
 		vm.StartedAt = &now
 	case "stop":
 		vm.StoppedAt = &now

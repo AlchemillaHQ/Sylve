@@ -300,6 +300,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/clock/:vmid", vmHandlers.ModifyClock(libvirtService))
 		vm.PUT("/options/serial-console/:vmid", vmHandlers.ModifySerialConsole(libvirtService))
 		vm.PUT("/options/shutdown-wait-time/:vmid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
+		vm.PUT("/options/cloud-init/:vmid", vmHandlers.ModifyCloudInitData(libvirtService))
 
 		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}

@@ -37,10 +37,13 @@
 		size: '',
 		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk',
 		pool: '',
-		bootOrder: null as number | null
+		bootOrder: null as number | null,
+		loading: false
 	};
 
 	let properties = $state(options);
+	let images = $derived(getISOs(downloads, true));
+
 	let usedDatasets = $derived.by(() => {
 		const used = [] as string[];
 		for (const m of vms) {
@@ -70,7 +73,14 @@
 		value: ''
 	});
 
+	let imageCombobox = $state({
+		open: false,
+		value: ''
+	});
+
 	async function attach() {
+		properties.loading = true;
+
 		const toastOptions = {
 			position: 'bottom-center' as const
 		};
@@ -84,7 +94,7 @@
 			return;
 		}
 
-		if (properties.pool === '') {
+		if (properties.pool === '' && properties.diskType !== 'image') {
 			toast.error('No ZFS pool selected', toastOptions);
 			return;
 		}
@@ -120,6 +130,7 @@
 			const response = await storageImport(
 				vm.vmId,
 				properties.name,
+				imageCombobox.value,
 				properties.diskType as 'raw' | 'zvol',
 				properties.diskType === 'raw' ? properties.rawPath : '',
 				properties.diskType === 'zvol' ? zvolCombobox.value : '',
@@ -244,7 +255,7 @@
 				options={[
 					{ value: 'zvol', label: 'ZFS Volume' },
 					{ value: 'raw', label: 'Raw Disk' },
-					...(properties.type !== 'import' ? [{ value: 'image', label: 'Image' }] : [])
+					...(properties.type !== 'new' ? [{ value: 'image', label: 'Image' }] : [])
 				]}
 				bind:value={properties.diskType}
 				onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
@@ -256,12 +267,24 @@
 				options={pools.map((pool) => ({ value: pool.name, label: pool.name }))}
 				bind:value={properties.pool}
 				onChange={(value) => (properties.pool = value as string)}
+				disabled={properties.diskType === 'image'}
 			/>
 		</div>
 
 		<div class="grid grid-cols-3 gap-4">
 			{#if properties.type === 'import'}
-				{#if properties.diskType === 'raw'}
+				{#if properties.diskType === 'image'}
+					<CustomComboBox
+						bind:open={imageCombobox.open}
+						label={'ISO Image'}
+						bind:value={imageCombobox.value}
+						data={images}
+						classes="flex-1 space-y-1"
+						placeholder="Select ISO Image"
+						width="w-3/4"
+						multiple={false}
+					></CustomComboBox>
+				{:else if properties.diskType === 'raw'}
 					<CustomValueInput
 						label="Raw Disk Path"
 						placeholder="/tmp/openwrt-hdd.img"
@@ -332,8 +355,13 @@
 					onclick={() => {
 						attach();
 					}}
+					disabled={properties.loading}
 				>
-					Attach
+					{#if properties.loading}
+						<Icon icon="eos-icons:loading" class="mr-2 h-4 w-4 animate-spin" />
+					{:else}
+						<span>Attach</span>
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

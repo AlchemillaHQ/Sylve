@@ -23,6 +23,10 @@
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
+		cloudInit: {
+			data: string;
+			metadata: string;
+		};
 	}
 
 	let {
@@ -34,7 +38,8 @@
 		startAtBoot = $bindable(),
 		bootOrder = $bindable(),
 		tpmEmulation = $bindable(),
-		timeOffset = $bindable()
+		timeOffset = $bindable(),
+		cloudInit = $bindable()
 	}: Props = $props();
 
 	onMount(() => {
@@ -55,6 +60,19 @@
 		{ label: '2560x1440', value: '2560x1440' },
 		{ label: '3840x2160', value: '3840x2160' }
 	];
+
+	let cloudInitCb = $state(false);
+	let cloudInitPlaceholders = {
+		data: `#cloud-config\nusers:\n  - name: <username>\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    passwd: "$6$c8XPKY..."\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...\n\nssh_pwauth: true`,
+		metadata: `instance-id: iid-local01\nlocal-hostname: test`
+	};
+
+	$effect(() => {
+		if (!cloudInitCb) {
+			cloudInit.data = '';
+			cloudInit.metadata = '';
+		}
+	});
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
@@ -128,7 +146,7 @@
 		/>
 	</div>
 
-	<div class="mt-1 grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-3">
 		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
@@ -142,9 +160,33 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="TPM Emulation (Experimental)"
+			label="TPM Emulation"
 			bind:checked={tpmEmulation}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Enable Cloud-Init"
+			bind:checked={cloudInitCb}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
 	</div>
+
+	{#if cloudInitCb}
+		<CustomValueInput
+			label="Cloud-Init User Data"
+			placeholder={cloudInitPlaceholders.data}
+			bind:value={cloudInit.data}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+		/>
+
+		<CustomValueInput
+			label="Cloud-Init Meta Data"
+			placeholder={cloudInitPlaceholders.metadata}
+			bind:value={cloudInit.metadata}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+		/>
+	{/if}
 </div>

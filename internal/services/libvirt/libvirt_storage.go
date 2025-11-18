@@ -100,6 +100,7 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 				uint64(storage.Size),
 				utils.MergeMaps(props, map[string]string{
 					"volblocksize": volblocksize,
+					"volmode":      "dev",
 				}),
 			)
 		}
@@ -244,7 +245,7 @@ func (s *Service) SyncVMDisks(vmId int) error {
 		var diskValue string
 
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			diskValue = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+			diskValue = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 				storage.Pool,
 				vmId,
 				storage.ID,
@@ -261,9 +262,34 @@ func (s *Service) SyncVMDisks(vmId int) error {
 			if err != nil {
 				return fmt.Errorf("failed_to_get_iso_path_by_uuid: %w", err)
 			}
+
+			diskValue = fmt.Sprintf("%s,ro", diskValue)
 		}
 
 		argValue = fmt.Sprintf("%s,%s", argCommon, diskValue)
+		argValues = append(argValues, argValue)
+	}
+
+	err = s.CreateCloudInitISO(vm)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_create_cloud_init_iso")
+	}
+
+	cloudInitISOPath, err := s.GetCloudInitISOPath(vm.VmID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_get_cloud_init_iso_path")
+	} else if cloudInitISOPath != "" {
+		for currentIndex < 30 && used[currentIndex] {
+			currentIndex++
+		}
+
+		if currentIndex >= 30 {
+			return fmt.Errorf("no_free_indices_available_for_cloud_init_iso")
+		}
+
+		used[currentIndex] = true
+
+		argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s,ro", currentIndex, cloudInitISOPath)
 		argValues = append(argValues, argValue)
 	}
 
@@ -456,7 +482,13 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 
 	storage.Name = req.Name
 	storage.VMID = vm.ID
-	storage.Pool = req.Pool
+
+	if req.Pool == "" || strings.TrimSpace(req.Pool) == "" {
+		storage.Pool = ""
+	} else {
+		storage.Pool = req.Pool
+	}
+
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
 	storage.BootOrder = *req.BootOrder
 
@@ -561,6 +593,24 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		if err := snapshot.Destroy(zfs.DestroyRecursive); err != nil {
 			logger.L.Warn().Err(err).Msg("failed_to_destroy_import_snapshot")
 		}
+	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeDiskImage {
+		imagePath, err := s.FindISOByUUID(req.UUID, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
+		}
+
+		info, err := os.Stat(imagePath)
+		if err != nil {
+			return fmt.Errorf("failed_to_stat_iso_path: %w", err)
+		}
+
+		storage.Type = vmModels.VMStorageTypeDiskImage
+		storage.Size = info.Size()
+		storage.DownloadUUID = req.UUID
+
+		if err := s.DB.Create(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_create_storage_record: %w", err)
+		}
 	}
 
 	return s.SyncVMDisks(vm.VmID)
@@ -659,9 +709,11 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 		return fmt.Errorf("boot_order_index_already_in_use: %d", bootOrder)
 	}
 
-	err = s.CreateStorageParent(vm.VmID, req.Pool)
-	if err != nil {
-		return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+	if req.StorageType != libvirtServiceInterfaces.StorageTypeDiskImage {
+		err = s.CreateStorageParent(vm.VmID, req.Pool)
+		if err != nil {
+			return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+		}
 	}
 
 	req.BootOrder = &bootOrder

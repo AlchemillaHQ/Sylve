@@ -31,6 +31,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 )
 
 const Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -843,4 +844,10 @@ func MergeMaps(maps ...map[string]string) map[string]string {
 		}
 	}
 	return merged
+}
+
+func IsValidYAML(data string) bool {
+	var out interface{}
+	err := yaml.Unmarshal([]byte(data), &out)
+	return err == nil
 }

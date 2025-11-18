@@ -270,9 +270,6 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 		return fmt.Errorf("no_emulation_type_selected")
 	}
 
-	// var basicSettings models.BasicSettings
-	// err = db.First(&basicSettings).Error
-
 	if err != nil {
 		return fmt.Errorf("unable_to_get_basic_settings")
 	}
@@ -438,6 +435,19 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 		if err != nil {
 			return fmt.Errorf("failed_to_check_iso_usage: %w", err)
 		}
+	}
+
+	if (data.CloudInitData != "" && data.CloudInitMetaData == "") ||
+		(data.CloudInitData == "" && data.CloudInitMetaData != "") {
+		return fmt.Errorf("both_cloud_init_data_and_metadata_must_be_provided")
+	}
+
+	if data.CloudInitData != "" && !utils.IsValidYAML(data.CloudInitData) {
+		return fmt.Errorf("invalid_cloud_init_data_yaml")
+	}
+
+	if data.CloudInitMetaData != "" && !utils.IsValidYAML(data.CloudInitMetaData) {
+		return fmt.Errorf("invalid_cloud_init_metadata_yaml")
 	}
 
 	return nil
@@ -645,27 +655,29 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 	}
 
 	vm := &vmModels.VM{
-		Name:          data.Name,
-		VmID:          *data.VMID,
-		Description:   data.Description,
-		CPUSockets:    data.CPUSockets,
-		CPUCores:      data.CPUCores,
-		CPUThreads:    data.CPUThreads,
-		RAM:           data.RAM,
-		Serial:        serial,
-		VNCPort:       data.VNCPort,
-		VNCPassword:   data.VNCPassword,
-		VNCResolution: data.VNCResolution,
-		VNCWait:       vncWait,
-		StartAtBoot:   startAtBoot,
-		TPMEmulation:  tpmEmulation,
-		StartOrder:    data.StartOrder,
-		PCIDevices:    data.PCIDevices,
-		APIC:          apic,
-		ACPI:          acpi,
-		Storages:      storages,
-		Networks:      networks,
-		TimeOffset:    vmModels.TimeOffset(data.TimeOffset),
+		Name:              data.Name,
+		VmID:              *data.VMID,
+		Description:       data.Description,
+		CPUSockets:        data.CPUSockets,
+		CPUCores:          data.CPUCores,
+		CPUThreads:        data.CPUThreads,
+		RAM:               data.RAM,
+		Serial:            serial,
+		VNCPort:           data.VNCPort,
+		VNCPassword:       data.VNCPassword,
+		VNCResolution:     data.VNCResolution,
+		VNCWait:           vncWait,
+		StartAtBoot:       startAtBoot,
+		TPMEmulation:      tpmEmulation,
+		StartOrder:        data.StartOrder,
+		PCIDevices:        data.PCIDevices,
+		APIC:              apic,
+		ACPI:              acpi,
+		Storages:          storages,
+		Networks:          networks,
+		TimeOffset:        vmModels.TimeOffset(data.TimeOffset),
+		CloudInitData:     data.CloudInitData,
+		CloudInitMetaData: data.CloudInitMetaData,
 	}
 
 	vm.CPUPinning = []vmModels.VMCPUPinning{}

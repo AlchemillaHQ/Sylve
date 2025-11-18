@@ -6,7 +6,7 @@
 	import { reload } from '$lib/stores/api.svelte';
 	import { hostname } from '$lib/stores/basic';
 	import type { SimpleJail } from '$lib/types/jail/jail';
-	import type { SimpleVm, VM } from '$lib/types/vm/vm';
+	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 
 	let openCategories: { [key: string]: boolean } = $state({});
@@ -48,7 +48,7 @@
 				label: `${vm.name} (${vm.vmId})`,
 				icon: 'material-symbols:monitor-outline',
 				href: `/${node}/vm/${vm.vmId}`,
-				state: vm.state === 'ACTIVE' ? 'active' : 'inactive'
+				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
 			})),
 			...simpleJails.map((jail) => ({
 				id: jail.ctId,

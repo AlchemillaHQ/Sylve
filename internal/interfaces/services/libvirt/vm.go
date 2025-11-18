@@ -53,6 +53,9 @@ type CreateVMRequest struct {
 	VNCResolution string `json:"vncResolution"`
 	VNCWait       *bool  `json:"vncWait"`
 
+	CloudInitData     string `json:"cloudInitData"`
+	CloudInitMetaData string `json:"cloudInitMetaData"`
+
 	APIC *bool `json:"apic"`
 	ACPI *bool `json:"acpi"`
 

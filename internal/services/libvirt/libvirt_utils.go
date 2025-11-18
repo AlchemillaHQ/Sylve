@@ -118,7 +118,7 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 			return false
 		}
 		l := strings.ToLower(p)
-		return strings.HasSuffix(l, ".iso") || (includeImg && strings.HasSuffix(l, ".img"))
+		return strings.HasSuffix(l, ".iso") || (includeImg && (strings.HasSuffix(l, ".img") || strings.HasSuffix(l, ".raw")))
 	}
 
 	fileExists := func(p string) bool {
@@ -390,4 +390,69 @@ func (s *Service) GetVMConfigDirectory(vmId int) (string, error) {
 	}
 
 	return fmt.Sprintf("%s/%d", vmDir, vmId), nil
+}
+
+func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
+	if vm.CloudInitData == "" && vm.CloudInitMetaData == "" {
+		return nil
+	}
+
+	vmPath, err := s.GetVMConfigDirectory(vm.VmID)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vm_path: %w", err)
+	}
+
+	cloudInitISOPath := filepath.Join(vmPath, "cloud-init.iso")
+	if _, err := os.Stat(cloudInitISOPath); err == nil {
+		if err := os.Remove(cloudInitISOPath); err != nil {
+			return fmt.Errorf("failed_to_remove_existing_cloud_init_iso: %w", err)
+		}
+	}
+
+	cloudInitPath := filepath.Join(vmPath, "cloud-init")
+	if _, err := os.Stat(cloudInitPath); err == nil {
+		if err := os.RemoveAll(cloudInitPath); err != nil {
+			return fmt.Errorf("failed_to_remove_existing_cloud_init_directory: %w", err)
+		}
+	}
+
+	if err := os.MkdirAll(cloudInitPath, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_cloud_init_directory: %w", err)
+	}
+
+	userDataPath := filepath.Join(cloudInitPath, "user-data")
+	metaDataPath := filepath.Join(cloudInitPath, "meta-data")
+
+	err = os.WriteFile(userDataPath, []byte(vm.CloudInitData), 0644)
+	if err != nil {
+		return fmt.Errorf("failed_to_write_user_data: %w", err)
+	}
+
+	err = os.WriteFile(metaDataPath, []byte(vm.CloudInitMetaData), 0644)
+	if err != nil {
+		return fmt.Errorf("failed_to_write_meta_data: %w", err)
+	}
+
+	isoPath := filepath.Join(vmPath, "cloud-init.iso")
+	_, err = utils.RunCommand("makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
+
+	if err != nil {
+		return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) GetCloudInitISOPath(vmId int) (string, error) {
+	vmPath, err := s.GetVMConfigDirectory(vmId)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_vm_path: %w", err)
+	}
+
+	cloudInitISOPath := filepath.Join(vmPath, "cloud-init.iso")
+	if _, err := os.Stat(cloudInitISOPath); err != nil {
+		return "", fmt.Errorf("cloud_init_iso_not_found: %w", err)
+	}
+
+	return cloudInitISOPath, nil
 }

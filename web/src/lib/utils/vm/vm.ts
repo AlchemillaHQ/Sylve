@@ -88,6 +88,14 @@ export function isValidCreateData(modal: CreateData): boolean {
 		return false;
 	}
 
+	if (
+		(modal.advanced.cloudInit.data && !modal.advanced.cloudInit.metadata) ||
+		(!modal.advanced.cloudInit.data && modal.advanced.cloudInit.metadata)
+	) {
+		toast.error('Cloud-Init user and meta data required if enabled', toastConfig);
+		return false;
+	}
+
 	return true;
 }
 

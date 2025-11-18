@@ -62,9 +62,9 @@ type StorageAttachRequest struct {
 
 	VMID int    `json:"vmId" binding:"required"`
 	Name string `json:"name"`
-	UUID string `json:"uuid"`
+	UUID string `json:"downloadUUID"`
 
-	Pool        string               `json:"pool" binding:"required"`
+	Pool        string               `json:"pool""`
 	StorageType StorageType          `json:"storageType" binding:"required"`
 	Emulation   StorageEmulationType `json:"emulation" binding:"required"`
 

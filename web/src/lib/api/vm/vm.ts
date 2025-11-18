@@ -49,7 +49,9 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
 		vncResolution: data.advanced.vncResolution,
 		startAtBoot: data.advanced.startAtBoot,
 		bootOrder: parseInt(data.advanced.bootOrder.toString(), 10),
-		timeOffset: data.advanced.timeOffset
+		timeOffset: data.advanced.timeOffset,
+		cloudInitData: data.advanced.cloudInit.data,
+		cloudInitMetadata: data.advanced.cloudInit.metadata
 	});
 }
 
@@ -120,5 +122,16 @@ export async function modifySerialConsole(vmid: number, enabled: boolean): Promi
 export async function modifyShutdownWaitTime(vmid: number, waitTime: number): Promise<APIResponse> {
 	return await apiRequest(`/vm/options/shutdown-wait-time/${vmid}`, APIResponseSchema, 'PUT', {
 		waitTime
+	});
+}
+
+export async function modifyCloudInitData(
+	vmid: number,
+	data: string,
+	metadata: string
+): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/cloud-init/${vmid}`, APIResponseSchema, 'PUT', {
+		data,
+		metadata
 	});
 }

@@ -2,6 +2,7 @@
 	import { getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
+	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
@@ -78,12 +79,12 @@
 			{
 				id: generateNanoId('startOrder'),
 				property: 'Start At Boot / Start Order',
-				value: `${vm?.startAtBoot ? 'Yes' : 'No'} / ${vm?.startOrder}`
+				value: `${vm?.startAtBoot ? 'Yes' : 'No'} / ${vm?.startOrder || 0}`
 			},
 			{
 				id: generateNanoId('wol'),
 				property: 'Wake on LAN',
-				value: vm?.wol
+				value: vm?.wol || false
 			},
 			{
 				id: generateNanoId('timeOffset'),
@@ -94,6 +95,11 @@
 				id: generateNanoId('shutdownWaitTime'),
 				property: 'Shutdown Wait Time',
 				value: vm ? `${vm.shutdownWaitTime} seconds` : 'N/A'
+			},
+			{
+				id: generateNanoId('cloudInit'),
+				property: 'Cloud Init',
+				value: vm && (vm.cloudInitData || vm.cloudInitMetaData) ? 'Configured' : 'Not Configured'
 			}
 		]
 	});
@@ -102,11 +108,15 @@
 		startOrder: { open: false },
 		wol: { open: false },
 		timeOffset: { open: false },
-		shutdownWaitTime: { open: false }
+		shutdownWaitTime: { open: false },
+		cloudInit: { open: false }
 	});
 </script>
 
-{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime', title: string)}
+{#snippet button(
+	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit',
+	title: string
+)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -137,6 +147,8 @@
 				{@render button('timeOffset', 'Clock Offset')}
 			{:else if activeRow.property === 'Shutdown Wait Time'}
 				{@render button('shutdownWaitTime', 'Shutdown Wait Time')}
+			{:else if activeRow.property === 'Cloud Init'}
+				{@render button('cloudInit', 'Cloud Init')}
 			{/if}
 		</div>
 	{/if}
@@ -166,4 +178,8 @@
 
 {#if properties.shutdownWaitTime.open && vm}
 	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} {vm} bind:reload />
+{/if}
+
+{#if properties.cloudInit.open && vm}
+	<CloudInit bind:open={properties.cloudInit.open} {vm} bind:reload />
 {/if}

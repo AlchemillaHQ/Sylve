@@ -37,6 +37,11 @@ type ModifyShutdownWaitTimeRequest struct {
 	WaitTime *int `json:"waitTime"`
 }
 
+type ModifyCloudInitDataRequest struct {
+	Data     string `json:"data"`
+	Metadata string `json:"metadata"`
+}
+
 // @Summary Modify Wake-on-LAN of a Virtual Machine
 // @Description Modify the Wake-on-LAN configuration of a virtual machine
 // @Tags VM
@@ -393,6 +398,71 @@ func ModifyShutdownWaitTime(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "shutdown_wait_time_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Cloud-Init Data of a Virtual Machine
+// @Description Modify the Cloud-Init Data and Metadata of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyCloudInitDataRequest true "Modify Cloud-Init Data Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/cloud-init/:vmid [put]
+func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmId := c.Param("vmid")
+		if vmId == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "vmid_not_provided",
+			})
+			return
+		}
+
+		vmIdInt, err := strconv.Atoi(vmId)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_vmid_format",
+			})
+			return
+		}
+
+		var req ModifyCloudInitDataRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.ModifyCloudInitData(vmIdInt, req.Data, req.Metadata); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "cloud_init_data_modified",
 			Data:    nil,
 			Error:   "",
 		})

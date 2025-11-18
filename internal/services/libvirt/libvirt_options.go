@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/beevik/etree"
 )
 
@@ -204,4 +205,30 @@ func (s *Service) ModifyShutdownWaitTime(vmId int, waitTime int) error {
 		Where("vm_id = ?", vmId).
 		Update("shutdown_wait_time", waitTime).Error
 	return err
+}
+
+func (s *Service) ModifyCloudInitData(vmId int, data string, metadata string) error {
+	if data == "" && metadata != "" || data != "" && metadata == "" {
+		return fmt.Errorf("both_data_and_metadata_must_be_provided")
+	}
+
+	if data != "" && metadata != "" {
+		if utils.IsValidYAML(data) == false || utils.IsValidYAML(metadata) == false {
+			return fmt.Errorf("invalid_yaml_in_cloud_init_data_or_metadata")
+		}
+	}
+
+	err := s.DB.
+		Model(&vmModels.VM{}).
+		Where("vm_id = ?", vmId).
+		Updates(map[string]interface{}{
+			"cloud_init_data":      data,
+			"cloud_init_meta_data": metadata,
+		}).Error
+
+	if err != nil {
+		return fmt.Errorf("failed_to_update_cloud_init_data_in_db: %w", err)
+	}
+
+	return s.SyncVMDisks(vmId)
 }

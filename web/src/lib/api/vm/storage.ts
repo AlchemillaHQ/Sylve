@@ -29,6 +29,7 @@ export async function storageAttach(
 export async function storageImport(
 	vmId: number,
 	name: string,
+	downloadUUID: string,
 	storageType: 'zvol' | 'raw',
 	rawPath: string,
 	dataset: string,
@@ -39,6 +40,7 @@ export async function storageImport(
 	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
 		vmId,
 		name,
+		downloadUUID,
 		attachType: 'import',
 		rawPath: storageType === 'zvol' ? '' : rawPath,
 		dataset: storageType === 'zvol' ? dataset : '',

@@ -184,6 +184,9 @@ type VM struct {
 	Stats []VMStats           `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	State libvirt.DomainState `json:"state" gorm:"-"`
 
+	CloudInitData     string `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData string `json:"cloudInitMetaData" gorm:"type:text"`
+
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 
