@@ -4,7 +4,6 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { openTerminal, terminalStore } from '$lib/stores/terminal.svelte';
-	import Icon from '@iconify/svelte';
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
@@ -17,8 +16,8 @@
 			open: false
 		},
 		menuItems: [
-			{ icon: 'mdi:palette', label: 'Color Theme', shortcut: '⌘⇧T' },
-			{ icon: 'meteor-icons:language', label: 'Language', shortcut: '⌘K' }
+			{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' },
+			{ icon: 'meteor-icons--language', label: 'Language', shortcut: '⌘K' }
 		]
 	});
 
@@ -41,7 +40,7 @@
 	<Sheet.Root>
 		<Sheet.Trigger>
 			<Button variant="outline" size="icon" class="h-7 shrink-0 lg:hidden">
-				<Icon icon="material-symbols:menu-rounded" class="h-5 w-5" />
+				<span class="icon-[material-symbols--menu-rounded] h-6 w-6"></span>
 				<span class="sr-only">Toggle navigation menu</span>
 			</Button>
 		</Sheet.Trigger>
@@ -65,10 +64,10 @@
 				class="relative z-[9999] flex  w-auto items-center justify-center "
 				onclick={() => openTerminal()}
 			>
-				<Icon icon="garden:terminal-cli-stroke-16" class="h-6 w-6" />
+				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
 				{#if $terminalStore.tabs.length > 0}
 					<span
-						class="absolute -right-1 top-0.5 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+						class="absolute top-0.5 -right-1 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
 					>
 						{$terminalStore.tabs.length}
 					</span>
@@ -81,7 +80,7 @@
 				onclick={() => (menuData.createVM.open = !menuData.createVM.open)}
 			>
 				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:monitor-outline-rounded" class="h-4 w-4" />
+					<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
 					<span>Create VM</span>
 				</div>
 			</Button>
@@ -92,7 +91,7 @@
 				onclick={() => (menuData.createJail.open = !menuData.createJail.open)}
 			>
 				<div class="flex items-center gap-2">
-					<Icon icon="hugeicons:prison" class="h-4 w-4" />
+					<span class="icon-[hugeicons--prison] h-4 w-4"></span>
 					<span>Create Jail</span>
 				</div>
 			</Button>
@@ -109,9 +108,10 @@
 			<DropdownMenu.Trigger>
 				<Button variant="outline" size="sm" class="h-6.5">
 					<div class="flex items-center gap-2">
-						<Icon icon="mdi:user" class="h-4 w-4" />
+						<span class="icon-[mdi--user] h-4 w-4"></span>
+
 						<span>{jwt?.custom_claims.username}</span>
-						<Icon icon="famicons:chevron-down" class="h-4 w-4" />
+						<span class="icon-[famicons--chevron-down] h-4 w-4"></span>
 					</div>
 					<span class="sr-only">Toggle user menu</span></Button
 				>
@@ -123,7 +123,8 @@
 							class="cursor-pointer"
 							onclick={() => label === 'Color Theme' && toggleMode()}
 						>
-							<Icon {icon} class="mr-2 h-4 w-4" />
+							<span class="icon-[{icon}] mr-2 h-4 w-4"></span>
+
 							<span>{label}</span>
 							{#if shortcut}
 								<DropdownMenu.Shortcut>{shortcut}</DropdownMenu.Shortcut>
@@ -134,7 +135,7 @@
 
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
-					<Icon icon="ic:twotone-logout" class="mr-2 h-4 w-4" />
+					<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
 					<span>Log out</span>
 					<DropdownMenu.Shortcut>⌘⇧Q</DropdownMenu.Shortcut>
 				</DropdownMenu.Item>
