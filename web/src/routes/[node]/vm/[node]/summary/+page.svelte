@@ -295,7 +295,7 @@
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<span class="icon-[mdi:play] mr-1 h-4 w-4"></span>
+			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 			{'Start'}
 		</Button>
 

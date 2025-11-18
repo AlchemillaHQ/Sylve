@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-08-22T21:29:52.875Z\n"
-"PO-Revision-Date: 2025-11-18T17:53:32.461Z\n"
+"PO-Revision-Date: 2025-11-18T18:15:07.202Z\n"
 "Last-Translator: \n"
 "Language: English\n"
 "Language-Team: \n"
@@ -110,9 +110,9 @@ msgstr "Log out"
 msgid "⌘⇧Q"
 msgstr "⌘⇧Q"
 
+#: src/lib/components/skeleton/LeftPanel.svelte
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
-#: src/lib/components/skeleton/LeftPanel.svelte
 msgid "Data Center"
 msgstr "Data Center"
 
@@ -169,8 +169,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Terminal.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -227,6 +225,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -266,9 +266,9 @@ msgstr "Action"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
 msgstr "Status"
 
@@ -279,8 +279,8 @@ msgstr "Login"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Notes"
 msgstr "Notes"
 
@@ -322,8 +322,8 @@ msgid "File Explorer"
 msgstr "File Explorer"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/custom/VM/Create/Hardware.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "PCI Passthrough"
 msgstr "PCI Passthrough"
 
@@ -399,20 +399,20 @@ msgstr "VM Console"
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr "The VM is currently powered off.<0/> Start the VM to access its console."
 
-#: src/routes/datacenter/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Help"
 msgstr "Help"
 
-#: src/routes/datacenter/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Difuse-sidebar"
 msgstr "Difuse-sidebar"
 
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Summary"
 msgstr "Summary"
 
@@ -420,9 +420,9 @@ msgstr "Summary"
 msgid "Cluster"
 msgstr "Cluster"
 
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Storage"
 msgstr "Storage"
 
@@ -474,20 +474,20 @@ msgstr "Resources"
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "CPU"
 msgstr "CPU"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
-#: src/routes/datacenter/summary/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "RAM"
 msgstr "RAM"
 
@@ -496,9 +496,9 @@ msgstr "RAM"
 msgid "Disk"
 msgstr "Disk"
 
-#: src/routes/datacenter/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
 msgstr "Hostname"
 
@@ -509,11 +509,11 @@ msgstr "Hostname"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
-#: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
 msgstr "ID"
 
@@ -726,8 +726,8 @@ msgstr "CPU Threads"
 msgid "Memory Size"
 msgstr "Memory Size"
 
-#: src/lib/components/custom/VM/Create/Hardware.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Pinning"
 msgstr "CPU Pinning"
 
@@ -1152,9 +1152,9 @@ msgid "Network TX"
 msgstr "Network TX"
 
 #: src/lib/components/custom/Charts/Area.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "<0/> Reset zoom"
 msgstr "<0/> Reset zoom"
 
@@ -1381,8 +1381,8 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -5147,3 +5147,24 @@ msgstr "Reboot"
 
 #~ msgid "<0/> test -{0}"
 #~ msgstr "<0/> test -{0}"
+
+#~ msgid "/ Max: {0}"
+#~ msgstr "/ Max: {0}"
+
+#~ msgid "Selected: {0} core{1} <0/>"
+#~ msgstr "Selected: {0} core{1} <0/>"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "You can only select up to {0} cores."
+msgstr "You can only select up to {0} cores."
+
+#~ msgid "Available: {0} core{1} <0/>"
+#~ msgstr "Available: {0} core{1} <0/>"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Maximum selectable cores : {0}"
+msgstr "Maximum selectable cores : {0}"
+
+#~ msgid "Max selectable cores : {0}"
+#~ msgstr "Max selectable cores : {0}"

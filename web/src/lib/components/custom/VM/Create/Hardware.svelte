@@ -41,6 +41,9 @@
 	}: Props = $props();
 
 	let humanSize = $state('1024 M');
+
+	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
+
 	$effect(() => {
 		try {
 			const p = humanFormat.parse.raw(humanSize);
@@ -132,7 +135,13 @@
 
 	<div>
 		{#if cpuInfo}
-			<CPUSelector bind:open={isPinningOpen} bind:cpuInfo bind:pinnedCPUs {vms} />
+			<CPUSelector
+				bind:open={isPinningOpen}
+				bind:cpuInfo
+				bind:pinnedCPUs
+				{vms}
+				{coreSelectionLimit}
+			/>
 		{/if}
 	</div>
 

@@ -4,12 +4,14 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
+	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		cpuInfo: CPUInfo;
 		vms: VM[];
 		pinnedCPUs: CPUPin[];
+		coreSelectionLimit?: number;
 	}
 
 	interface Core {
@@ -30,7 +32,8 @@
 		open = $bindable(),
 		cpuInfo = $bindable(),
 		vms,
-		pinnedCPUs = $bindable()
+		pinnedCPUs = $bindable(),
+		coreSelectionLimit
 	}: Props = $props();
 
 	function onConfirm(newPinnedCPUs: CPUPin[]) {
@@ -115,6 +118,14 @@
 	};
 
 	const handleCoreToggle = (coreId: string) => {
+		if (
+			coreSelectionLimit !== undefined &&
+			selectedCores.size >= coreSelectionLimit &&
+			!selectedCores.has(coreId)
+		) {
+			toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
+			return;
+		}
 		const newSelection = new Set(selectedCores);
 		if (newSelection.has(coreId)) {
 			newSelection.delete(coreId);
@@ -227,8 +238,10 @@
 		</Dialog.Header>
 
 		{#if step === 'socket'}
-			<div class="mt-4 space-y-4">
-				<div class="flex max-h-96 w-full flex-wrap items-center justify-center gap-4 overflow-auto">
+			<div class="mt-3 space-y-3">
+				<div
+					class="flex max-h-96 w-full flex-wrap items-center justify-center gap-4 overflow-auto p-1"
+				>
 					{#each sockets as socket (socket.id)}
 						{@const availableCount = socket.cores.filter((c) => c.status === 'available').length}
 						{@const busyCount = socket.cores.filter((c) => c.status === 'busy').length}
@@ -311,23 +324,31 @@
 					<p class="text-muted-foreground text-sm">
 						Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}
 					</p>
+					<p class="text-muted-foreground text-sm">
+						Maximum selectable cores : {coreSelectionLimit}
+					</p>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
 					{#each selectedSocketData?.cores as core (core.id)}
 						{@const isSelected = selectedCores.has(core.id)}
 						{@const isAvailable = core.status === 'available'}
+						{@const disableSelect =
+							!isAvailable ||
+							(coreSelectionLimit !== undefined &&
+								selectedCores.size >= coreSelectionLimit &&
+								!isSelected)}
 
 						<button
-							disabled={!isAvailable}
 							onclick={() => isAvailable && handleCoreToggle(core.id)}
 							class="
-        relative flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all duration-200
-        {isAvailable
+						relative flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-all duration-200
+						{isAvailable
 								? isSelected
 									? 'border-yellow-600 bg-yellow-500/10 text-yellow-500'
 									: 'border-border hover:border-primary/50 hover:bg-accent'
 								: 'border-muted bg-muted/30 text-muted-foreground cursor-not-allowed'}
-      "
+						{disableSelect && !isSelected ? 'cursor-not-allowed opacity-50' : ''}
+					"
 						>
 							<span class="icon-[mynaui--zap] h-4 w-4 {!isAvailable ? 'opacity-50' : ''}"></span>
 							<span class="text-xs">
@@ -357,7 +378,14 @@
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={() => (selectedCores = new Set(availableCores.map((core) => core.id)))}
+						onclick={() => {
+							const max =
+								coreSelectionLimit !== undefined ? coreSelectionLimit : availableCores.length;
+							if (coreSelectionLimit !== undefined && availableCores.length > coreSelectionLimit) {
+								toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
+							}
+							selectedCores = new Set(availableCores.map((core) => core.id).slice(0, max));
+						}}
 					>
 						Select All Available
 					</Button>

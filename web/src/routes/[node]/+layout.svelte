@@ -305,6 +305,7 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
+
 		<Button
 			size="sm"
 			class="h-6"

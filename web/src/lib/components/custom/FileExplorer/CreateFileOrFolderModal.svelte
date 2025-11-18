@@ -30,7 +30,7 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between text-left">
 				<div class="flex items-center gap-2">
-					<span class="icon-[bi--hdd-stack-fille] h-5 w-5"></span>
+					<span class="icon-[bi--hdd-stack-fill] h-5 w-5"></span>
 					Create {isFolder ? 'Folder' : 'File'}
 				</div>
 				<div class="flex items-center gap-0.5">
