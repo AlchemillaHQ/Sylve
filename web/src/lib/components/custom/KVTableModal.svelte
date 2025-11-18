@@ -88,7 +88,7 @@
 						{#each Object.entries(KV) as [key, value]}
 							{#if typeof value === 'object' && value !== null && !Array.isArray(value)}
 								<Table.Row>
-									<Table.Cell class="h-10 w-1/2 whitespace-nowrap px-1 py-2 font-medium">
+									<Table.Cell class="h-10 w-1/2 px-1 py-2 font-medium whitespace-nowrap">
 										<button
 											class="flex w-full items-center gap-1 text-left"
 											onclick={() => toggleObjectExpansion(key)}
@@ -109,7 +109,7 @@
 								{#if expandedObjects[key]}
 									{#each Object.entries(value) as [nestedKey, nestedValue]}
 										<Table.Row>
-											<Table.Cell class="h-10 py-2 pl-8 pr-3 opacity-90">
+											<Table.Cell class="h-10 py-2 pr-3 pl-8 opacity-90">
 												{nestedKey}
 											</Table.Cell>
 											<Table.Cell class="h-10 px-3 py-2">

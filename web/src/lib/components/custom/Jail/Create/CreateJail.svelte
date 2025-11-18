@@ -20,7 +20,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextId } from '$lib/utils/vm/vm';
-	import Icon from '@iconify/svelte';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
@@ -227,17 +226,17 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
+		class="fixed top-1/2 left-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="hugeicons:prison" class="h-5 w-5 " />
+					<span class="icon-[hugeicons--prison] h-5 w-5"></span>
 					<span>Create Jail</span>
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title={'Reset'}>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -247,7 +246,7 @@
 						onclick={() => (open = false)}
 						title={'Close'}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -317,7 +316,7 @@
 				<Button size="sm" type="button" class="h-8" onclick={() => create()} disabled={creating}>
 					<!-- Create Jail -->
 					{#if creating}
-						<Icon icon="mdi:loading" class="h-4 w-4 animate-spin" />
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						Create Jail
 					{/if}

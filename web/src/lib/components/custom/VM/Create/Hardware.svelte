@@ -9,7 +9,6 @@
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { getCache } from '$lib/utils/http';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
@@ -117,7 +116,7 @@
 					class="flex w-full justify-start"
 					onclick={() => (isPinningOpen = true)}
 				>
-					<Icon icon="mdi:cpu-64-bit" class="mr-2 h-4 w-4" />
+					<span class="icon-[mdi--cpu-64-bit] mr-2 h-4 w-4"></span>
 					Manage ({pinnedCores.length} pinned)
 				</Button>
 			</div>

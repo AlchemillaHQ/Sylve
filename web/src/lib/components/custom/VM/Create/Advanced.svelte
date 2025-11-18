@@ -9,8 +9,6 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import { generatePassword } from '$lib/utils/string';
-
-	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -85,7 +83,7 @@
 		/>
 
 		<div class="space-y-1.5">
-			<Label class="w-24 whitespace-nowrap text-sm">VNC Password</Label>
+			<Label class="w-24 text-sm whitespace-nowrap">VNC Password</Label>
 			<div class="flex w-full max-w-sm items-center space-x-2">
 				<Input
 					type="password"
@@ -102,13 +100,12 @@
 						vncPassword = generatePassword();
 					}}
 				>
-					<Icon
-						icon="fad:random-2dice"
-						class="h-6 w-6"
+					<span
+						class="icon-[fad--random-2dice] h-6 w-6"
 						onclick={() => {
 							vncPassword = generatePassword();
 						}}
-					/>
+					></span>
 				</Button>
 			</div>
 		</div>
