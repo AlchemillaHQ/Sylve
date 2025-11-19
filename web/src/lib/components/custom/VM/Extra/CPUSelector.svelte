@@ -40,8 +40,6 @@
 		pinnedCPUs = newPinnedCPUs;
 	}
 
-	$inspect(pinnedCPUs, 'pinnedCPUs');
-
 	let selectedSocket = $state<string | null>(null);
 	let selectedCores = $state<Set<string>>(new Set());
 	let step = $state<'socket' | 'cores'>('socket');
@@ -181,6 +179,7 @@
 		);
 
 		onConfirm?.(pinnedCPUs);
+
 		open = false;
 	};
 

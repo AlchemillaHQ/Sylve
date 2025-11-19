@@ -6,19 +6,21 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { CPUInfo } from '$lib/types/info/cpu';
-	import type { VM } from '$lib/types/vm/vm';
+	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { getCache, handleAPIError } from '$lib/utils/http';
 
 	import { toast } from 'svelte-sonner';
+	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
 		open: boolean;
 		vm: VM | null;
 		vms: VM[];
+		pinnedCPUs: CPUPin[];
 	}
 
 	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
-	let { open = $bindable(), vm, vms }: Props = $props();
+	let { open = $bindable(), vm, vms, pinnedCPUs = $bindable() }: Props = $props();
 	let options = {
 		cpu: {
 			sockets: vm?.cpuSockets || 1,
@@ -33,35 +35,51 @@
 		return vms.filter((v) => v.id !== vm?.id).flatMap((v) => v.cpuPinning || []);
 	});
 
+	let isPinningOpen = $state(false);
+
+	let coreSelectionLimit = $derived.by(
+		() => properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads
+	);
+
+	let pinnedCores = $derived.by(() => {
+		const cores: number[] = [];
+		pinnedCPUs.forEach((pin) => {
+			pin.cores.forEach((core) => {
+				cores.push(core);
+			});
+		});
+		return cores;
+	});
+
 	let allPinnedIndices = $derived.by(() => {
 		return [...otherVmPinnedIndices, ...properties.cpu.pinning];
 	});
 
 	let vCPUs = $derived(properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads);
 
-	function pinCPU(index: number) {
-		if (properties.cpu.pinning.includes(index)) {
-			properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-		} else {
-			if (properties.cpu.pinning.length >= vCPUs) {
-				toast.info(`You can only pin up to ${vCPUs} vCPU${vCPUs > 1 ? 's' : ''}`, {
-					position: 'bottom-center'
-				});
-				return;
-			}
-			properties.cpu.pinning = [...properties.cpu.pinning, index];
-		}
-	}
+	// function pinCPU(index: number) {
+	// 	if (properties.cpu.pinning.includes(index)) {
+	// 		properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
+	// 	} else {
+	// 		if (properties.cpu.pinning.length >= vCPUs) {
+	// 			toast.info(`You can only pin up to ${vCPUs} vCPU${vCPUs > 1 ? 's' : ''}`, {
+	// 				position: 'bottom-center'
+	// 			});
+	// 			return;
+	// 		}
+	// 		properties.cpu.pinning = [...properties.cpu.pinning, index];
+	// 	}
+	// }
 
-	function unpinCPU(index: number) {
-		if (properties.cpu.pinning.includes(index)) {
-			properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-		} else {
-			toast.info(`CPU ${index} is not pinned by this VM`, {
-				position: 'bottom-center'
-			});
-		}
-	}
+	// function unpinCPU(index: number) {
+	// 	if (properties.cpu.pinning.includes(index)) {
+	// 		properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
+	// 	} else {
+	// 		toast.info(`CPU ${index} is not pinned by this VM`, {
+	// 			position: 'bottom-center'
+	// 		});
+	// 	}
+	// }
 
 	$effect(() => {
 		if (properties.cpu.pinning.length > vCPUs) {
@@ -173,7 +191,36 @@
 			/>
 		</div>
 
+		<div class="grid grid-cols-1 md:grid-cols-2">
+			<div>
+				<Label class="mb-1.5 flex items-center justify-between">
+					<span class="text-sm font-medium">CPU Pinning</span></Label
+				>
+				<Button
+					size="sm"
+					variant="outline"
+					class="flex h-9 w-full justify-start"
+					onclick={() => (isPinningOpen = true)}
+				>
+					<span class="icon-[mdi--cpu-64-bit] mr-2 h-4 w-4"></span>
+					Manage ({pinnedCores.length} pinned)
+				</Button>
+			</div>
+		</div>
+
 		<div>
+			{#if cpuInfo}
+				<CPUSelector
+					bind:open={isPinningOpen}
+					bind:cpuInfo
+					bind:pinnedCPUs
+					{vms}
+					{coreSelectionLimit}
+				/>
+			{/if}
+		</div>
+
+		<!-- <div>
 			{#if cpuInfo}
 				<Label class="mb-4 flex justify-center">CPU Pinning</Label>
 				<ScrollArea orientation="vertical" class="h-full w-full max-w-full">
@@ -196,7 +243,7 @@
 					</div>
 				</ScrollArea>
 			{/if}
-		</div>
+		</div> -->
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">

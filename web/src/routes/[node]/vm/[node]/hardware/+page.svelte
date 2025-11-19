@@ -11,7 +11,7 @@
 	import type { Row } from '$lib/components/ui/table';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { VM, VMDomain } from '$lib/types/vm/vm';
+	import type { CPUPin, VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
@@ -95,7 +95,8 @@
 			threads: data.vm.cpuThreads,
 			pinning: data.vm.cpuPinning,
 			vCPUs: data.vm.cpuSockets * data.vm.cpuCores * data.vm.cpuThreads,
-			open: false
+			open: false,
+			pinnedCPUs: [] as CPUPin[]
 		},
 		ram: {
 			value: data.vm.ram,
@@ -267,7 +268,7 @@
 {/if}
 
 {#if properties.cpu.open}
-	<CPU bind:open={properties.cpu.open} {vm} {vms} />
+	<CPU bind:open={properties.cpu.open} {vm} {vms} bind:pinnedCPUs={properties.cpu.pinnedCPUs} />
 {/if}
 
 {#if properties.vnc.open}
