@@ -19,9 +19,10 @@
 			remember: boolean
 		) => void;
 		loading: boolean;
+		changeLanguage: string;
 	}
 
-	let { onLogin, loading = $bindable() }: Props = $props();
+	let { onLogin, loading = $bindable(), changeLanguage = $bindable() }: Props = $props();
 
 	let username = $state('');
 	let password = $state('');
@@ -62,6 +63,12 @@
 		{ value: 'ru', label: 'Русский' },
 		{ value: 'tu', label: 'Türkçe' }
 	];
+
+	$effect(() => {
+		if (language) {
+			changeLanguage = language;
+		}
+	});
 </script>
 
 <div class="fixed inset-0 flex items-center justify-center px-3">

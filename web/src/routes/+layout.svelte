@@ -16,15 +16,25 @@
 	import { QueryClient, QueryClientProvider } from '@sveltestack/svelte-query';
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount, tick } from 'svelte';
-	import { loadLocale } from 'wuchale/run-client';
+	import { loadLocale } from 'wuchale/load-utils';
+	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialize.svelte';
 
-	import type { Locales } from '$lib/types/common';
 	import { sleep } from '$lib/utils';
 	import '../app.css';
+	import type { Locales } from '$lib/types/common.js';
 
 	$effect.pre(() => {
 		loadLocale($language as Locales);
+	});
+
+	let changeLanguage = $state($language);
+
+	$effect(() => {
+		if (changeLanguage) {
+			console.log('Layout detected language change to:', changeLanguage);
+			loadLocale(changeLanguage as Locales);
+		}
 	});
 
 	const queryClient = new QueryClient();
@@ -98,7 +108,7 @@
 		await sleep(500);
 
 		try {
-			loadLocale(language as Locales);
+			loadLocale(language);
 			if (await login(username, password, type, remember, language)) {
 				isLoggedIn = true;
 				loading.login = false;
@@ -181,5 +191,5 @@
 		</QueryClientProvider>
 	{/if}
 {:else}
-	<Login onLogin={handleLogin} loading={loading.login} />
+	<Login onLogin={handleLogin} loading={loading.login} bind:changeLanguage />
 {/if}

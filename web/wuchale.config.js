@@ -1,19 +1,15 @@
 // @ts-check
 import { adapter as svelte } from '@wuchale/svelte';
+import { adapter as js } from 'wuchale/adapter-vanilla';
 import { defineConfig } from 'wuchale';
 
 export default defineConfig({
-	locales: {
-		mal: { name: 'Malayalam' },
-		cn_simplified: { name: '简体中文' },
-		ar: { name: 'Arabic' },
-		ru: { name: 'Russian' },
-		tu: { name: 'Türkçe' }
-	},
+	otherLocales: ['mal'],
 	adapters: {
-		main: svelte({
-			catalog: 'src/lib/locales/{locale}'
+		main: svelte({ loader: 'sveltekit' }),
+		js: js({
+			loader: 'vite',
+			files: ['src/**/+{page,layout}.{js,ts}', 'src/**/+{page,layout}.server.{js,ts}']
 		})
 	}
-	// hmr: false
 });
