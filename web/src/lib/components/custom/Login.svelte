@@ -150,7 +150,7 @@
 				class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
 			>
 				{#if loading}
-					<span class="icon-[line-md--loading-loop] h-6 w-6"></span>
+					<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
 				{:else}
 					Login
 				{/if}

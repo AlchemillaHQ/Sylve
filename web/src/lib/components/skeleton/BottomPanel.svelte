@@ -44,7 +44,7 @@
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
-		'/api/network/switch': 'Switch',
+		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
 		'/api/disk/wipe': 'Disk - Wipe',
@@ -67,7 +67,10 @@
 		'/api/utilities/download': 'Downloader',
 		'/api/vm/storage/detach': 'VM Storage - Detach',
 		'/api/vm/storage/attach': 'VM Storage - Attach',
-		'/api/vm': 'VM'
+		'/api/vm': 'VM',
+		'/api/network/manual-switch': 'Manual Switch',
+		'/api/zfs/pools': 'ZFS Pool',
+		'/api/disk/create-partitions': 'Disk - Create Partitions'
 	});
 
 	let records = $derived.by(() => {

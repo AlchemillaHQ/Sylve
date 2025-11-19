@@ -3,7 +3,7 @@
 	import '@fontsource/noto-sans/700.css';
 
 	import { goto } from '$app/navigation';
-	import { isClusterTokenValid, isTokenValid, login } from '$lib/api/auth';
+	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -17,6 +17,7 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount, tick } from 'svelte';
 	import { loadLocale } from 'wuchale/run-client';
+	import Initialize from '$lib/components/custom/Initialize.svelte';
 
 	import type { Locales } from '$lib/types/common';
 	import { sleep } from '$lib/utils';
@@ -29,9 +30,11 @@
 	const queryClient = new QueryClient();
 	let { children } = $props();
 	let isLoggedIn = $state(false);
+	let initialized = $state(false);
 	let loading = $state({
 		throbber: true,
-		login: false
+		login: false,
+		initialization: false
 	});
 
 	$effect(() => {
@@ -59,6 +62,14 @@
 			try {
 				if ((await isTokenValid()) && (await isClusterTokenValid())) {
 					isLoggedIn = true;
+					loading.initialization = true;
+					try {
+						initialized = await isInitialized();
+					} catch (error) {
+						console.error('Initialization check error:', error);
+						initialized = false;
+					}
+					loading.initialization = false;
 				} else {
 					$token = '';
 				}
@@ -91,8 +102,18 @@
 			if (await login(username, password, type, remember, language)) {
 				isLoggedIn = true;
 				loading.login = false;
-				const path = window.location.pathname;
 
+				// Check if system is initialized after successful login
+				loading.initialization = true;
+				try {
+					initialized = await isInitialized();
+				} catch (error) {
+					console.error('Initialization check error:', error);
+					initialized = false;
+				}
+				loading.initialization = false;
+
+				const path = window.location.pathname;
 				if (path === '/') {
 					await goto('/datacenter/summary', { replaceState: true });
 				}
@@ -115,6 +136,24 @@
 		loading.throbber = false;
 		return;
 	}
+
+	$effect(() => {
+		if (isLoggedIn && $hostname && !initialized && !loading.initialization) {
+			const interval = setInterval(async () => {
+				try {
+					const isInit = await isInitialized();
+					if (isInit) {
+						initialized = true;
+						clearInterval(interval);
+					}
+				} catch (error) {
+					console.error('Initialization polling error:', error);
+				}
+			}, 2000);
+
+			return () => clearInterval(interval);
+		}
+	});
 </script>
 
 <svelte:head>
@@ -128,11 +167,19 @@
 {#if loading.throbber}
 	<Throbber />
 {:else if isLoggedIn && $hostname}
-	<QueryClientProvider client={queryClient}>
-		<Shell>
-			{@render children()}
-		</Shell>
-	</QueryClientProvider>
+	{#if loading.initialization}
+		<Throbber />
+	{:else}
+		<QueryClientProvider client={queryClient}>
+			{#if !initialized}
+				<Initialize />
+			{:else}
+				<Shell>
+					{@render children()}
+				</Shell>
+			{/if}
+		</QueryClientProvider>
+	{/if}
 {:else}
 	<Login onLogin={handleLogin} loading={loading.login} />
 {/if}

@@ -9,6 +9,7 @@
 	interface Props {
 		open: boolean;
 		cpuInfo: CPUInfo;
+		vm?: VM | null;
 		vms: VM[];
 		pinnedCPUs: CPUPin[];
 		coreSelectionLimit?: number;
@@ -18,7 +19,7 @@
 		id: string;
 		number: number;
 		frequency?: string;
-		status: 'available' | 'busy';
+		status: 'available' | 'busy' | 'inUse';
 	}
 
 	interface SocketData {
@@ -31,6 +32,7 @@
 	let {
 		open = $bindable(),
 		cpuInfo = $bindable(),
+		vm,
 		vms,
 		pinnedCPUs = $bindable(),
 		coreSelectionLimit
@@ -44,6 +46,7 @@
 	let selectedCores = $state<Set<string>>(new Set());
 	let step = $state<'socket' | 'cores'>('socket');
 	let allSelections = $state<Map<number, number[]>>(new Map());
+	let showSelectedPins = $state<boolean>(false);
 
 	$effect(() => {
 		if (open && pinnedCPUs.length > 0) {
@@ -51,13 +54,8 @@
 			pinnedCPUs.forEach((pin) => {
 				newSelections.set(pin.socket, pin.cores);
 			});
+
 			allSelections = newSelections;
-		} else if (!open) {
-			console.log('Dialog closed, resetting selections');
-			allSelections = new Map();
-			selectedSocket = null;
-			selectedCores = new Set();
-			step = 'socket';
 		}
 	});
 
@@ -85,8 +83,17 @@
 		if (cpuInfo) {
 			const socketIndex = parseInt(socketId);
 			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
+			const currentVmId = vm ? vm.id : null;
+
+			const otherPins = usedPins.filter((pin) => pin.vmId !== currentVmId);
+			const currentPins = usedPins.filter((pin) => pin.vmId === currentVmId);
+
 			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
-				const isPinned = usedPins.some(
+				const isCurrentPin = currentPins.some(
+					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
+				);
+
+				const isBusyByOther = otherPins.some(
 					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
 				);
 
@@ -94,7 +101,8 @@
 					id: `${socketIndex}-core-${coreIndex}`,
 					number: coreIndex,
 					frequency: '3.0 GHz',
-					status: isPinned ? 'busy' : 'available'
+					status: isBusyByOther ? 'busy' : 'available',
+					isCurrentPin: isCurrentPin
 				} as Core;
 			});
 
@@ -105,17 +113,21 @@
 				cores: cores
 			};
 
-			const existingSelection = allSelections.get(socketIndex);
-			if (existingSelection) {
-				selectedCores = new Set(
-					existingSelection.map((coreIndex) => `${socketIndex}-core-${coreIndex}`)
-				);
+			const currentCoreIds =
+				currentPins
+					.find((p) => p.hostSocket === socketIndex)
+					?.hostCpu?.map((c) => `${socketIndex}-core-${c}`) || [];
+
+			const savedSelection =
+				allSelections.get(socketIndex)?.map((c) => `${socketIndex}-core-${c}`) || [];
+
+			if (!showSelectedPins) {
+				selectedCores = new Set(currentCoreIds);
 			} else {
-				selectedCores = new Set();
+				selectedCores = new Set(savedSelection);
 			}
 		}
 	};
-
 	const handleCoreToggle = (coreId: string) => {
 		if (
 			coreSelectionLimit !== undefined &&
@@ -132,6 +144,7 @@
 			newSelection.add(coreId);
 		}
 		selectedCores = newSelection;
+		showSelectedPins = true;
 	};
 
 	const handleBack = () => {
@@ -153,6 +166,17 @@
 		step = 'socket';
 		selectedSocket = null;
 		selectedCores = new Set();
+	};
+
+	const handleClose = () => {
+		open = false;
+		setTimeout(() => {
+			step = 'socket';
+			selectedSocket = null;
+			selectedSocketData = undefined;
+			selectedCores = new Set();
+			allSelections = new Map();
+		}, 200);
 	};
 
 	const handleConfirm = () => {
@@ -181,12 +205,7 @@
 
 		onConfirm?.(pinnedCPUs);
 
-		open = false;
-	};
-
-	const handleClose = () => {
-		console.log('handleClose');
-		open = false;
+		handleClose();
 	};
 
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
@@ -226,7 +245,8 @@
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[iconoir--cpu] h-5 w-5"></span>
-					<span class="text-lg font-medium">CPU Pinning</span>
+
+					CPU Pinning
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={handleClose} title={'Close'}>
@@ -292,7 +312,7 @@
 								</div>
 
 								<div class="mt-3">
-									<div class="text-muted-foreground mb-1 text-xs">Cores Pinned</div>
+									<div class="text-muted-foreground mb-1 text-xs">Core utilization</div>
 									<div class="bg-muted h-2 w-full rounded-full">
 										<div
 											class="h-2 rounded-full bg-green-500"
@@ -311,10 +331,9 @@
 			<div class="space-y-4">
 				<div class="flex items-center gap-2">
 					<Button variant="outline" size="sm" class="p-0.5" onclick={handleBack}>
-						<div class="flex items-center gap-1">
-							<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
-							<span class="mr-1">Back to Sockets</span>
-						</div>
+						<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
+
+						Back to Sockets
 					</Button>
 				</div>
 
@@ -326,13 +345,14 @@
 						Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}
 					</p>
 					<p class="text-muted-foreground text-sm">
-						Maximum selectable cores: {coreSelectionLimit}
+						Maximum selectable cores : {coreSelectionLimit}
 					</p>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
 					{#each selectedSocketData?.cores as core (core.id)}
 						{@const isSelected = selectedCores.has(core.id)}
 						{@const isAvailable = core.status === 'available'}
+
 						{@const disableSelect =
 							!isAvailable ||
 							(coreSelectionLimit !== undefined &&
@@ -358,7 +378,7 @@
 
 							{#if isSelected}
 								<div
-									class="text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
+									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
 									<span class="icon-[material-symbols--check] h-2.5 w-2.5"></span>
 								</div>
@@ -396,10 +416,12 @@
 				</div>
 			</div>
 		{/if}
-
 		<Dialog.Footer>
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
-			{#if open && step === 'socket'}
+			{#if step === 'cores'}
+				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
+			{/if}
+			{#if step === 'socket'}
 				{#if allSelections.size > 0}
 					{@const totalCores = Array.from(allSelections.values()).reduce(
 						(sum, cores) => sum + cores.length,
@@ -414,10 +436,6 @@
 				{:else if pinnedCPUs.length > 0}
 					<Button onclick={handleConfirm} variant="destructive">Clear All Pinning</Button>
 				{/if}
-			{/if}
-
-			{#if step === 'cores'}
-				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
 			{/if}
 		</Dialog.Footer>
 	</Dialog.Content>

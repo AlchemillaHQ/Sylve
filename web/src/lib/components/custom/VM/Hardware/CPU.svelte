@@ -190,6 +190,7 @@
 					bind:open={isPinningOpen}
 					bind:cpuInfo
 					bind:pinnedCPUs
+					{vm}
 					{vms}
 					{coreSelectionLimit}
 				/>

@@ -183,7 +183,7 @@
 		{/if}
 
 		{#if canCreate}
-			{@render button('create', 'oui:ml-create-population-job', 'Create Cluster', !canCreate)}
+			{@render button('create', 'oui--ml-create-population-job', 'Create Cluster', !canCreate)}
 		{/if}
 
 		{#if canJoin}

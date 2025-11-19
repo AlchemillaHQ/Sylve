@@ -28,19 +28,20 @@ type DownloadedFile struct {
 }
 
 type Downloads struct {
-	ID            uint             `json:"id" gorm:"primaryKey"`
-	UUID          string           `json:"uuid" gorm:"unique;not null"`
-	Path          string           `json:"path" gorm:"unique;not null"`
-	Name          string           `json:"name" gorm:"not null"`
-	Type          string           `json:"type" gorm:"not null"`
-	URL           string           `json:"url" gorm:"unique;not null"`
-	Progress      int              `json:"progress" gorm:"not null"`
-	Size          int64            `json:"size" gorm:"not null"`
-	Files         []DownloadedFile `json:"files" gorm:"foreignKey:DownloadID;constraint:OnDelete:CASCADE"`
-	UType         string           `json:"uType"` // fbsd-base etc.
-	Error         string           `json:"error"`
-	ExtractedPath string           `json:"extractedPath"`
-	Status        DownloadStatus   `json:"status" gorm:"not null;default:'done'"`
-	CreatedAt     time.Time        `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt     time.Time        `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID                  uint             `json:"id" gorm:"primaryKey"`
+	UUID                string           `json:"uuid" gorm:"unique;not null"`
+	Path                string           `json:"path" gorm:"unique;not null"`
+	Name                string           `json:"name" gorm:"not null"`
+	Type                string           `json:"type" gorm:"not null"`
+	URL                 string           `json:"url" gorm:"unique;not null"`
+	Progress            int              `json:"progress" gorm:"not null"`
+	Size                int64            `json:"size" gorm:"not null"`
+	Files               []DownloadedFile `json:"files" gorm:"foreignKey:DownloadID;constraint:OnDelete:CASCADE"`
+	UType               string           `json:"uType"` // fbsd-base etc.
+	Error               string           `json:"error"`
+	AutomaticExtraction bool             `json:"automaticExtraction" gorm:"not null;default:false"`
+	ExtractedPath       string           `json:"extractedPath"`
+	Status              DownloadStatus   `json:"status" gorm:"not null;default:'done'"`
+	CreatedAt           time.Time        `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt           time.Time        `json:"updatedAt" gorm:"autoUpdateTime"`
 }
