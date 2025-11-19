@@ -399,7 +399,7 @@
 			{#if step === 'cores'}
 				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
 			{/if}
-			{#if step === 'socket'}
+			{#if open && step === 'socket'}
 				{#if allSelections.size > 0}
 					{@const totalCores = Array.from(allSelections.values()).reduce(
 						(sum, cores) => sum + cores.length,
