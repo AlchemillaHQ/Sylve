@@ -57,30 +57,6 @@
 
 	let vCPUs = $derived(properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads);
 
-	// function pinCPU(index: number) {
-	// 	if (properties.cpu.pinning.includes(index)) {
-	// 		properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-	// 	} else {
-	// 		if (properties.cpu.pinning.length >= vCPUs) {
-	// 			toast.info(`You can only pin up to ${vCPUs} vCPU${vCPUs > 1 ? 's' : ''}`, {
-	// 				position: 'bottom-center'
-	// 			});
-	// 			return;
-	// 		}
-	// 		properties.cpu.pinning = [...properties.cpu.pinning, index];
-	// 	}
-	// }
-
-	// function unpinCPU(index: number) {
-	// 	if (properties.cpu.pinning.includes(index)) {
-	// 		properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-	// 	} else {
-	// 		toast.info(`CPU ${index} is not pinned by this VM`, {
-	// 			position: 'bottom-center'
-	// 		});
-	// 	}
-	// }
-
 	$effect(() => {
 		if (properties.cpu.pinning.length > vCPUs) {
 			properties.cpu.pinning = properties.cpu.pinning.slice(0, vCPUs);
