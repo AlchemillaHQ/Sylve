@@ -58,6 +58,8 @@
 	let details = $derived($results[0].data);
 	let clustered = $derived(details?.cluster.enabled || false);
 	let initialized = $derived($results[1].data || false);
+
+	$inspect('initialized', initialized);
 	let pools = $derived($results[2].data || []);
 
 	let reload: boolean = $state(false);

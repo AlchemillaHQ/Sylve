@@ -9,6 +9,7 @@
 	interface Props {
 		open: boolean;
 		cpuInfo: CPUInfo;
+		vm?: VM | null;
 		vms: VM[];
 		pinnedCPUs: CPUPin[];
 		coreSelectionLimit?: number;
@@ -18,7 +19,7 @@
 		id: string;
 		number: number;
 		frequency?: string;
-		status: 'available' | 'busy';
+		status: 'available' | 'busy' | 'inUse';
 	}
 
 	interface SocketData {
@@ -31,6 +32,7 @@
 	let {
 		open = $bindable(),
 		cpuInfo = $bindable(),
+		vm,
 		vms,
 		pinnedCPUs = $bindable(),
 		coreSelectionLimit
@@ -44,6 +46,7 @@
 	let selectedCores = $state<Set<string>>(new Set());
 	let step = $state<'socket' | 'cores'>('socket');
 	let allSelections = $state<Map<number, number[]>>(new Map());
+	let showSelectedPins = $state<boolean>(false);
 
 	$effect(() => {
 		if (open && pinnedCPUs.length > 0) {
@@ -51,12 +54,8 @@
 			pinnedCPUs.forEach((pin) => {
 				newSelections.set(pin.socket, pin.cores);
 			});
+
 			allSelections = newSelections;
-		} else if (!open) {
-			allSelections = new Map();
-			selectedSocket = null;
-			selectedCores = new Set();
-			step = 'socket';
 		}
 	});
 
@@ -84,8 +83,17 @@
 		if (cpuInfo) {
 			const socketIndex = parseInt(socketId);
 			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
+			const currentVmId = vm ? vm.id : null;
+
+			const otherPins = usedPins.filter((pin) => pin.vmId !== currentVmId);
+			const currentPins = usedPins.filter((pin) => pin.vmId === currentVmId);
+
 			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
-				const isPinned = usedPins.some(
+				const isCurrentPin = currentPins.some(
+					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
+				);
+
+				const isBusyByOther = otherPins.some(
 					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
 				);
 
@@ -93,7 +101,8 @@
 					id: `${socketIndex}-core-${coreIndex}`,
 					number: coreIndex,
 					frequency: '3.0 GHz',
-					status: isPinned ? 'busy' : 'available'
+					status: isBusyByOther ? 'busy' : 'available',
+					isCurrentPin: isCurrentPin
 				} as Core;
 			});
 
@@ -104,17 +113,21 @@
 				cores: cores
 			};
 
-			const existingSelection = allSelections.get(socketIndex);
-			if (existingSelection) {
-				selectedCores = new Set(
-					existingSelection.map((coreIndex) => `${socketIndex}-core-${coreIndex}`)
-				);
+			const currentCoreIds =
+				currentPins
+					.find((p) => p.hostSocket === socketIndex)
+					?.hostCpu?.map((c) => `${socketIndex}-core-${c}`) || [];
+
+			const savedSelection =
+				allSelections.get(socketIndex)?.map((c) => `${socketIndex}-core-${c}`) || [];
+
+			if (!showSelectedPins) {
+				selectedCores = new Set(currentCoreIds);
 			} else {
-				selectedCores = new Set();
+				selectedCores = new Set(savedSelection);
 			}
 		}
 	};
-
 	const handleCoreToggle = (coreId: string) => {
 		if (
 			coreSelectionLimit !== undefined &&
@@ -131,6 +144,7 @@
 			newSelection.add(coreId);
 		}
 		selectedCores = newSelection;
+		showSelectedPins = true;
 	};
 
 	const handleBack = () => {
@@ -152,6 +166,17 @@
 		step = 'socket';
 		selectedSocket = null;
 		selectedCores = new Set();
+	};
+
+	const handleClose = () => {
+		open = false;
+		setTimeout(() => {
+			step = 'socket';
+			selectedSocket = null;
+			selectedSocketData = undefined;
+			selectedCores = new Set();
+			allSelections = new Map();
+		}, 200);
 	};
 
 	const handleConfirm = () => {
@@ -180,11 +205,7 @@
 
 		onConfirm?.(pinnedCPUs);
 
-		open = false;
-	};
-
-	const handleClose = () => {
-		open = false;
+		handleClose();
 	};
 
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
@@ -331,6 +352,7 @@
 					{#each selectedSocketData?.cores as core (core.id)}
 						{@const isSelected = selectedCores.has(core.id)}
 						{@const isAvailable = core.status === 'available'}
+
 						{@const disableSelect =
 							!isAvailable ||
 							(coreSelectionLimit !== undefined &&
@@ -399,7 +421,7 @@
 			{#if step === 'cores'}
 				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
 			{/if}
-			{#if open && step === 'socket'}
+			{#if step === 'socket'}
 				{#if allSelections.size > 0}
 					{@const totalCores = Array.from(allSelections.values()).reduce(
 						(sum, cores) => sum + cores.length,
