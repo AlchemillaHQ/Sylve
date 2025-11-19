@@ -8,13 +8,32 @@
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
 
-	let openCategories: { [key: string]: boolean } = $state({});
+	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
+
 	let node = $hostname;
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
+		saveOpenCategories(openCategories);
 	};
+
+	function initializeOpenCategories(treeItems: any[]) {
+		let hasChanges = false;
+		treeItems.forEach((item) => {
+			if (openCategories[item.label] === undefined) {
+				openCategories[item.label] = true;
+				hasChanges = true;
+			}
+			if (item.children) {
+				initializeOpenCategories(item.children);
+			}
+		});
+		if (hasChanges) {
+			saveOpenCategories(openCategories);
+		}
+	}
 
 	const queryClient = useQueryClient();
 	const results = useQueries([
@@ -96,6 +115,12 @@
 			reload.leftPanel = false;
 		}
 	});
+
+	$effect(() => {
+		if (tree && tree.length > 0) {
+			initializeOpenCategories(tree);
+		}
+	});
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">
@@ -103,7 +128,7 @@
 		<ul>
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item}
-					<TreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
+					<TreeView {item} onToggle={toggleCategory} {openCategories} />
 				{/each}
 			</ScrollArea>
 		</ul>
