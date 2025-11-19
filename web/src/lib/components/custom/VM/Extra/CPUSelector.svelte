@@ -53,6 +53,7 @@
 			});
 			allSelections = newSelections;
 		} else if (!open) {
+			console.log('Dialog closed, resetting selections');
 			allSelections = new Map();
 			selectedSocket = null;
 			selectedCores = new Set();
@@ -184,6 +185,7 @@
 	};
 
 	const handleClose = () => {
+		console.log('handleClose');
 		open = false;
 	};
 
@@ -224,8 +226,7 @@
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[iconoir--cpu] h-5 w-5"></span>
-
-					CPU Pinning
+					<span class="text-lg font-medium">CPU Pinning</span>
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={handleClose} title={'Close'}>
@@ -291,7 +292,7 @@
 								</div>
 
 								<div class="mt-3">
-									<div class="text-muted-foreground mb-1 text-xs">Core utilization</div>
+									<div class="text-muted-foreground mb-1 text-xs">Cores Pinned</div>
 									<div class="bg-muted h-2 w-full rounded-full">
 										<div
 											class="h-2 rounded-full bg-green-500"
@@ -310,9 +311,10 @@
 			<div class="space-y-4">
 				<div class="flex items-center gap-2">
 					<Button variant="outline" size="sm" class="p-0.5" onclick={handleBack}>
-						<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
-
-						Back to Sockets
+						<div class="flex items-center gap-1">
+							<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
+							<span class="mr-1">Back to Sockets</span>
+						</div>
 					</Button>
 				</div>
 
@@ -324,7 +326,7 @@
 						Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}
 					</p>
 					<p class="text-muted-foreground text-sm">
-						Maximum selectable cores : {coreSelectionLimit}
+						Maximum selectable cores: {coreSelectionLimit}
 					</p>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
@@ -356,7 +358,7 @@
 
 							{#if isSelected}
 								<div
-									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
+									class="text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
 									<span class="icon-[material-symbols--check] h-2.5 w-2.5"></span>
 								</div>
@@ -394,11 +396,9 @@
 				</div>
 			</div>
 		{/if}
+
 		<Dialog.Footer>
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
-			{#if step === 'cores'}
-				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
-			{/if}
 			{#if open && step === 'socket'}
 				{#if allSelections.size > 0}
 					{@const totalCores = Array.from(allSelections.values()).reduce(
@@ -414,6 +414,10 @@
 				{:else if pinnedCPUs.length > 0}
 					<Button onclick={handleConfirm} variant="destructive">Clear All Pinning</Button>
 				{/if}
+			{/if}
+
+			{#if step === 'cores'}
+				<Button variant="outline" onclick={handleBack}>Save & Back to Sockets</Button>
 			{/if}
 		</Dialog.Footer>
 	</Dialog.Content>
