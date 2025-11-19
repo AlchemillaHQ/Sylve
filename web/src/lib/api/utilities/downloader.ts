@@ -9,12 +9,14 @@ export async function getDownloads(): Promise<Download[]> {
 export async function startDownload(
 	url: string,
 	filename?: string,
-	ignoreTLS?: boolean
+	ignoreTLS?: boolean,
+	automaticExtraction?: boolean
 ): Promise<APIResponse> {
 	return await apiRequest('/utilities/downloads', APIResponseSchema, 'POST', {
 		url,
 		filename,
-		ignoreTLS
+		ignoreTLS,
+		automaticExtraction
 	});
 }
 

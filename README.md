@@ -66,7 +66,6 @@ We also need to enable some services in order to run Sylve, you can drop these i
 sysrc ntpd_enable="YES" # Optional
 sysrc ntpd_sync_on_start="YES" # Optional
 sysrc zfs_enable="YES"
-sysrc linux_enable="YES" # Optional
 sysrc libvirtd_enable="YES"
 sysrc dnsmasq_enable="YES"
 sysrc rpcbind_enable="YES"

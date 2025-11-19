@@ -92,6 +92,7 @@ func SetupDataPath() error {
 		filepath.Join(dataPath, "downloads"),
 		filepath.Join(dataPath, "downloads", "torrents"),
 		filepath.Join(dataPath, "downloads", "http"),
+		filepath.Join(dataPath, "downloads", "path"),
 		filepath.Join(dataPath, "downloads", "extracted"),
 	}
 
@@ -122,6 +123,8 @@ func GetDownloadsPath(dType string) string {
 		return filepath.Join(ParsedConfig.DataPath, "downloads", "torrents", "torrent.db")
 	case "http":
 		return filepath.Join(ParsedConfig.DataPath, "downloads", "http")
+	case "path":
+		return filepath.Join(ParsedConfig.DataPath, "downloads", "path")
 	case "extracted":
 		return filepath.Join(ParsedConfig.DataPath, "downloads", "extracted")
 	}

@@ -98,7 +98,7 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 	return "", fmt.Errorf("unsupported_download_type")
 }
 
-func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool) error {
+func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool) error {
 	var existing utilitiesModels.Downloads
 
 	if s.DB.Where("url = ?", url).First(&existing).RowsAffected > 0 {
@@ -120,15 +120,16 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 		}
 
 		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     t.ID(),
-			Path:     t.Dir(),
-			Type:     "torrent",
-			Name:     t.Name(),
-			Size:     0,
-			Progress: 0,
-			Files:    []utilitiesModels.DownloadedFile{},
-			Status:   utilitiesModels.DownloadStatusPending,
+			URL:                 url,
+			UUID:                t.ID(),
+			Path:                t.Dir(),
+			Type:                utilitiesModels.DownloadTypeTorrent,
+			Name:                t.Name(),
+			Size:                0,
+			Progress:            0,
+			Files:               []utilitiesModels.DownloadedFile{},
+			Status:              utilitiesModels.DownloadStatusPending,
+			AutomaticExtraction: false,
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
@@ -180,7 +181,7 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 				URL:      url,
 				UUID:     uuid,
 				Path:     filePath,
-				Type:     "http",
+				Type:     utilitiesModels.DownloadTypeHTTP,
 				Name:     filename,
 				Size:     size,
 				Progress: 100,
@@ -199,15 +200,16 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 		}
 
 		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     uuid,
-			Path:     filePath,
-			Type:     "http",
-			Name:     filename,
-			Size:     0,
-			Progress: 0,
-			Files:    []utilitiesModels.DownloadedFile{},
-			Status:   utilitiesModels.DownloadStatusPending,
+			URL:                 url,
+			UUID:                uuid,
+			Path:                filePath,
+			Type:                utilitiesModels.DownloadTypeHTTP,
+			Name:                filename,
+			Size:                0,
+			Progress:            0,
+			Files:               []utilitiesModels.DownloadedFile{},
+			Status:              utilitiesModels.DownloadStatusPending,
+			AutomaticExtraction: automaticExtraction,
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
@@ -268,15 +270,16 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 		logger.L.Info().Msgf("Copied file %s to %s (%d bytes)", url, destPath, size)
 
 		download := utilitiesModels.Downloads{
-			URL:      url,
-			UUID:     utils.GenerateDeterministicUUID(url),
-			Path:     destPath,
-			Type:     "http",
-			Name:     filename,
-			Size:     size,
-			Progress: 100,
-			Files:    []utilitiesModels.DownloadedFile{},
-			Status:   utilitiesModels.DownloadStatusDone,
+			URL:                 url,
+			UUID:                utils.GenerateDeterministicUUID(url),
+			Path:                destPath,
+			Type:                utilitiesModels.DownloadTypePath,
+			Name:                filename,
+			Size:                size,
+			Progress:            100,
+			Files:               []utilitiesModels.DownloadedFile{},
+			Status:              utilitiesModels.DownloadStatusDone,
+			AutomaticExtraction: false,
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
@@ -350,6 +353,10 @@ func (s *Service) postProcessOne(id uint) error {
 	// Double-check state (idempotent)
 	if d.Status != "processing" {
 		return nil
+	}
+
+	if !d.AutomaticExtraction {
+		return s.finishDownload(&d, "", "")
 	}
 
 	// Prepare extract dir
@@ -459,9 +466,9 @@ func (s *Service) SyncDownloadProgress() error {
 
 	for _, d := range downloads {
 		switch d.Type {
-		case "torrent":
+		case utilitiesModels.DownloadTypeTorrent:
 			s.syncTorrent(&d)
-		case "http":
+		case utilitiesModels.DownloadTypeHTTP:
 			s.syncHTTP(&d)
 		default:
 			logger.L.Warn().Msgf("Unknown download type: %s", d.Type)
@@ -592,7 +599,16 @@ func (s *Service) DeleteDownload(id int) error {
 			}
 		}
 
-		err := utils.DeleteFile(path.Join(config.GetDownloadsPath(download.Type), download.Name))
+		var dType string
+		if download.Type == utilitiesModels.DownloadTypeHTTP {
+			dType = "http"
+		} else if download.Type == utilitiesModels.DownloadTypePath {
+			dType = "path"
+		} else if download.Type == utilitiesModels.DownloadTypeTorrent {
+			dType = "torrent"
+		}
+
+		err := utils.DeleteFile(path.Join(config.GetDownloadsPath(dType), download.Name))
 		if err != nil {
 			logger.L.Debug().Msgf("Failed to delete HTTP download file: %v", err)
 			return err

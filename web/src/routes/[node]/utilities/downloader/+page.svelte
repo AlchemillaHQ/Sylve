@@ -24,7 +24,7 @@
 		isValidFileName
 	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 
@@ -33,13 +33,15 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const queryClient = useQueryClient();
 	const results = useQueries([
 		{
-			queryKey: ['downloads'],
+			queryKey: 'downloads',
 			queryFn: async () => {
 				return await getDownloads();
 			},
-			refetchInterval: 1000,
+			refetchInterval: false,
 			keepPreviousData: true,
 			initialData: data.downloads,
 			onSuccess: (data: Download[]) => {
@@ -48,15 +50,28 @@
 		}
 	]);
 
-	let modalState = $state({
+	let reload = $state(false);
+
+	$effect(() => {
+		if (reload) {
+			queryClient.invalidateQueries('downloads');
+			reload = false;
+		}
+	});
+
+	let options = {
 		isOpen: false,
 		isDelete: false,
 		isBulkDelete: false,
 		title: '',
 		url: '',
 		name: '',
-		ignoreTLS: false
-	});
+		ignoreTLS: false,
+		automaticExtraction: false,
+		loading: false
+	};
+
+	let modalState = $state(options);
 
 	let downloads = $derived($results[0].data as Download[]);
 	let tableData = $derived(generateTableData(downloads));
@@ -132,14 +147,18 @@
 			return;
 		}
 
+		modalState.loading = true;
+
 		const result = await startDownload(
 			modalState.url,
 			modalState.name || undefined,
-			modalState.ignoreTLS
+			modalState.ignoreTLS,
+			modalState.automaticExtraction
 		);
+
 		if (result) {
-			modalState.isOpen = false;
-			modalState.url = '';
+			modalState = options;
+			reload = true;
 			toast.success('Download started', { position: 'bottom-center' });
 		} else {
 			toast.error('Download failed', { position: 'bottom-center' });
@@ -280,9 +299,11 @@
 
 			<CustomValueInput
 				label={'Magnet / HTTP URL / Path'}
-				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60&dn=debian-12.10.0-amd64-netinst.iso&xl=663748608&tr=http%3A%2F%2Fbttracker.debian.org%3A6969%2Fannounce"
+				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60"
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"
+				type="textarea"
+				textAreaClasses="h-24 w-full"
 			/>
 
 			{#if modalState.url && isDownloadURL(modalState.url)}
@@ -294,17 +315,30 @@
 						classes="flex-1 space-y-1 mt-2"
 					/>
 
-					<CustomCheckbox
-						label="Ignore TLS Errors"
-						bind:checked={modalState.ignoreTLS}
-						classes="flex items-center gap-2"
-					/>
+					<div class="mt-2 flex flex-row gap-2">
+						<CustomCheckbox
+							label="Ignore TLS Errors"
+							bind:checked={modalState.ignoreTLS}
+							classes="flex items-center gap-2"
+						/>
+						<CustomCheckbox
+							label="Extract Automatically"
+							bind:checked={modalState.automaticExtraction}
+							classes="flex items-center gap-2"
+						/>
+					</div>
 				</div>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2 py-2">
-					<Button onclick={newDownload} type="submit" size="sm">Download</Button>
+					<Button onclick={newDownload} type="submit" size="sm">
+						{#if modalState.loading}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						{:else}
+							<span>Download</span>
+						{/if}
+					</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -325,9 +359,9 @@
 			onConfirm: async () => {
 				const id = activeRows ? activeRows[0]?.id : null;
 				const result = await deleteDownload(id as number);
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
-					modalState.isDelete = false;
-					modalState.title = '';
+					modalState = options;
 					activeRows = null;
 				} else {
 					handleAPIError(result as APIResponse);
@@ -335,7 +369,7 @@
 				}
 			},
 			onCancel: () => {
-				modalState.isDelete = false;
+				modalState = options;
 				modalState.title = '';
 			}
 		}}
@@ -348,9 +382,9 @@
 			onConfirm: async () => {
 				const ids = activeRows ? activeRows.map((row) => row.id) : [];
 				const result = await bulkDeleteDownloads(ids as number[]);
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
-					modalState.isBulkDelete = false;
-					modalState.title = '';
+					modalState = options;
 					activeRows = null;
 				} else {
 					handleAPIError(result as APIResponse);
@@ -358,7 +392,7 @@
 				}
 			},
 			onCancel: () => {
-				modalState.isBulkDelete = false;
+				modalState = options;
 				modalState.title = '';
 			}
 		}}
