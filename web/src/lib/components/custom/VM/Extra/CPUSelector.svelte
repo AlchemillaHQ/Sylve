@@ -5,6 +5,7 @@
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { toast } from 'svelte-sonner';
+	import Label from '$lib/components/ui/label/label.svelte';
 
 	interface Props {
 		open: boolean;
@@ -47,6 +48,16 @@
 	let step = $state<'socket' | 'cores'>('socket');
 	let allSelections = $state<Map<number, number[]>>(new Map());
 	let showSelectedPins = $state<boolean>(false);
+
+	let pinnedCores = $derived.by(() => {
+		const cores: number[] = [];
+		pinnedCPUs.forEach((pin) => {
+			pin.cores.forEach((core) => {
+				cores.push(core);
+			});
+		});
+		return cores;
+	});
 
 	$effect(() => {
 		if (open && pinnedCPUs.length > 0) {
@@ -237,7 +248,28 @@
 			};
 		});
 	});
+
+	let initialPinning = $derived.by(() => vm?.cpuPinning?.length);
 </script>
+
+<div>
+	<Label class="mb-1.5 flex items-center justify-between">
+		<span class="text-sm font-medium">CPU Pinning</span></Label
+	>
+	<Button
+		size="sm"
+		variant="outline"
+		class="flex h-9 w-full justify-start"
+		onclick={() => (open = true)}
+	>
+		<span class="icon-[mdi--cpu-64-bit] mr-2 h-4 w-4"></span>
+		{#if showSelectedPins}
+			Manage ({pinnedCores.length} pinned)
+		{:else}
+			Manage ({initialPinning || 0} pinned)
+		{/if}
+	</Button>
+</div>
 
 <Dialog.Root bind:open>
 	<Dialog.Content>
@@ -292,7 +324,7 @@
 									<div class="flex items-center gap-1">
 										<div class="h-2 w-2 rounded-full bg-green-500"></div>
 										<span class="text-sm">
-											{availableCount} available
+											{availableCount - selectedCount} available
 										</span>
 									</div>
 									<div class="flex items-center gap-1">
@@ -330,7 +362,7 @@
 		{#if step === 'cores' && selectedSocketData}
 			<div class="space-y-4">
 				<div class="flex items-center gap-2">
-					<Button variant="outline" size="sm" class="p-0.5" onclick={handleBack}>
+					<Button variant="outline" size="sm" class="px-3.5 py-2" onclick={handleBack}>
 						<span class="icon-[material-symbols--arrow-back-ios-new-rounded] h-4 w-4"></span>
 
 						Back to Sockets

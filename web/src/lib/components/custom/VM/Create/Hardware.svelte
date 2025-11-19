@@ -110,18 +110,15 @@
 
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div>
-				<Label class="mb-1.5 flex items-center justify-between">
-					<span class="text-sm font-medium">CPU Pinning</span></Label
-				>
-				<Button
-					size="sm"
-					variant="outline"
-					class="flex h-9 w-full justify-start"
-					onclick={() => (isPinningOpen = true)}
-				>
-					<span class="icon-[mdi--cpu-64-bit] mr-2 h-4 w-4"></span>
-					Manage ({pinnedCores.length} pinned)
-				</Button>
+				{#if cpuInfo}
+					<CPUSelector
+						bind:open={isPinningOpen}
+						bind:cpuInfo
+						bind:pinnedCPUs
+						{vms}
+						{coreSelectionLimit}
+					/>
+				{/if}
 			</div>
 
 			<CustomValueInput
@@ -131,18 +128,6 @@
 				classes="flex-1 space-y-1.5"
 			/>
 		</div>
-	</div>
-
-	<div>
-		{#if cpuInfo}
-			<CPUSelector
-				bind:open={isPinningOpen}
-				bind:cpuInfo
-				bind:pinnedCPUs
-				{vms}
-				{coreSelectionLimit}
-			/>
-		{/if}
 	</div>
 
 	{#if pptDevices && pptDevices.length > 0}

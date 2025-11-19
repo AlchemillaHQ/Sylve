@@ -2639,17 +2639,12 @@ msgstr "CPU Sockets"
 msgid "CPU Threads"
 msgstr "CPU Threads"
 
-#: src/lib/components/custom/VM/Create/Hardware.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Pinning"
 msgstr "CPU Pinning"
 
-#. placeholder {0}: pinnedCores.length
-#. placeholder {0}: pinnedCores.length
-#: src/lib/components/custom/VM/Create/Hardware.svelte
-#: src/lib/components/custom/VM/Hardware/CPU.svelte
-msgid "<0/> Manage ({0} pinned)"
-msgstr "<0/> Manage ({0} pinned)"
+#~ msgid "<0/> Manage ({0} pinned)"
+#~ msgstr "<0/> Manage ({0} pinned)"
 
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -2737,7 +2732,7 @@ msgstr "Socket"
 msgid "<0/> CPU Pinning"
 msgstr "<0/> CPU Pinning"
 
-#. placeholder {0}: availableCount
+#. placeholder {0}: availableCount - selectedCount
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} available"
 msgstr "{0} available"
@@ -5156,3 +5151,16 @@ msgstr "This will delete {0}. This action cannot be undone."
 #: src/lib/components/custom/Login.svelte
 msgid "हिन्दी"
 msgstr "हिन्दी"
+
+#~ msgid "<0/> Manage pinning ({0} pinned)"
+#~ msgstr "<0/> Manage pinning ({0} pinned)"
+
+#. placeholder {0}: pinnedCores.length
+#. placeholder {0}: initialPinning || 0
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Manage ({0} pinned)"
+msgstr "Manage ({0} pinned)"
+
+#~ msgid "{0} availableCountRaw"
+#~ msgstr "{0} availableCountRaw"
