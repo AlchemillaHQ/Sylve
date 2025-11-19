@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import TreeView from '$lib/components/custom/TreeView.svelte';
+	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -331,7 +331,7 @@
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
 								{#each nodeItems as item (item.label)}
-									<TreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
+									<NodeTreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
 								{/each}
 							</ScrollArea>
 						</ul>
