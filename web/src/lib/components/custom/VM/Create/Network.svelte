@@ -63,7 +63,7 @@
 </script>
 
 {#snippet radioItem(id: number, name: string, type: 'standard' | 'manual' | 'none')}
-	{@const i = `radio-${id}`}
+	{@const i = `radio-${type}-${id}`}
 	<div class="mb-2 flex items-center space-x-3 rounded-lg border p-4">
 		<RadioGroup.Item value={name} id={i} />
 		<Label for={i} class="flex flex-col items-start gap-2">
