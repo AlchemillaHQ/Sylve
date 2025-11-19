@@ -2,10 +2,10 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-11-19T16:37:17.898Z\n"
-"PO-Revision-Date: 2025-11-19T16:37:17.898Z\n"
+"POT-Creation-Date: 2025-11-19T17:08:25.910Z\n"
+"PO-Revision-Date: 2025-11-19T17:08:25.910Z\n"
 "Last-Translator: \n"
-"Language: mal\n"
+"Language: hi\n"
 "Language-Team: \n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -201,7 +201,7 @@ msgstr ""
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
-msgstr "ഡാറ്റ സെന്റർ"
+msgstr ""
 
 #: src/routes/inactive-node/+page.svelte
 msgid ""
@@ -216,7 +216,7 @@ msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "Language"
-msgstr "ഭാഷ"
+msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -346,7 +346,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Username"
-msgstr "ഉപയോക്തൃനാമം"
+msgstr "उपयोगकर्ता नाम"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Enter your username"
@@ -356,11 +356,11 @@ msgstr ""
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
-msgstr "ഗുപ്തപദം"
+msgstr ""
 
 #: src/lib/components/custom/Login.svelte
 msgid "Realm"
-msgstr "സാമ്രാജ്യം"
+msgstr ""
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
@@ -374,13 +374,13 @@ msgstr ""
 
 #: src/lib/components/custom/Login.svelte
 msgid "Remember Me"
-msgstr "എന്നെ ഓർമ്മിക്കുക"
+msgstr ""
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login"
-msgstr "ലോഗിൻ"
+msgstr ""
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/SimpleSelect.svelte
@@ -841,49 +841,6 @@ msgstr ""
 msgid "No response"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Node ID"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Address"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Suffrage"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "View Join Information"
-msgstr ""
-
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Create Cluster"
-msgstr ""
-
-#: src/lib/components/custom/Cluster/Join.svelte
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Join Cluster"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Reset Cluster"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset clustering data on this node"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Failed to reset cluster"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Login required after cluster reset"
-msgstr ""
-
 #: src/routes/[node]/notes/+page.svelte
 msgid "Note updated"
 msgstr ""
@@ -1044,6 +1001,49 @@ msgstr ""
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete notes"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Address"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Suffrage"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "View Join Information"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Create Cluster"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join Cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Reset Cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset clustering data on this node"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Failed to reset cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Login required after cluster reset"
 msgstr ""
 
 #: src/lib/components/custom/Charts/Area.svelte
@@ -1334,6 +1334,47 @@ msgstr ""
 msgid "Create"
 msgstr ""
 
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "HH:mm"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "Disable Zoom"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "Enable Zoom"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Area.svelte
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "<0/> Reset zoom"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Bar.svelte
+msgid "Baseline"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Value"
+msgstr ""
+
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Date"
+msgstr ""
+
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Invalid IP address"
@@ -1408,53 +1449,12 @@ msgstr ""
 msgid "Property"
 msgstr ""
 
-#: src/lib/components/custom/Charts/Bar.svelte
-#: src/lib/components/custom/Charts/Bar.svelte
-#: src/lib/components/custom/Cluster/JoinInformation.svelte
-#: src/routes/[node]/jail/[node]/hardware/+page.svelte
-#: src/routes/[node]/network/dhcp/config/+page.svelte
-#: src/routes/[node]/network/interfaces/+page.svelte
-#: src/routes/[node]/storage/disks/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
-#: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-msgid "Value"
-msgstr ""
-
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Leader Node"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Copy"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Area.svelte
-msgid "HH:mm"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Area.svelte
-msgid "Disable Zoom"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Area.svelte
-msgid "Enable Zoom"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Area.svelte
-#: src/lib/components/custom/Charts/Bar.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "<0/> Reset zoom"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Bar.svelte
-msgid "Baseline"
-msgstr ""
-
-#: src/lib/components/custom/Charts/Bar.svelte
-#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
-msgid "Date"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/Alert.svelte
@@ -1549,6 +1549,22 @@ msgstr ""
 msgid "<0/> Delete"
 msgstr ""
 
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "Yesterday"
+msgstr ""
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "MMM d"
+msgstr ""
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "MMM d, yyyy"
+msgstr ""
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "Modified"
+msgstr ""
+
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 msgid "Enter new name"
 msgstr ""
@@ -1595,32 +1611,6 @@ msgstr ""
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "First Modified"
-msgstr ""
-
-#: src/lib/components/custom/FileExplorer/ListView.svelte
-msgid "Yesterday"
-msgstr ""
-
-#: src/lib/components/custom/FileExplorer/ListView.svelte
-msgid "MMM d"
-msgstr ""
-
-#: src/lib/components/custom/FileExplorer/ListView.svelte
-msgid "MMM d, yyyy"
-msgstr ""
-
-#: src/lib/components/custom/FileExplorer/ListView.svelte
-msgid "Modified"
-msgstr ""
-
-#: src/lib/components/custom/TreeTable/Search.svelte
-#: src/lib/components/ui/custom-input/combobox-bindable.svelte
-#: src/lib/components/ui/custom-input/combobox.svelte
-msgid "Search..."
-msgstr ""
-
-#: src/lib/components/custom/TreeTable/Search.svelte
-msgid "Escape"
 msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
@@ -1703,6 +1693,16 @@ msgstr ""
 msgid "Read Only"
 msgstr ""
 
+#: src/lib/components/custom/TreeTable/Search.svelte
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "Search..."
+msgstr ""
+
+#: src/lib/components/custom/TreeTable/Search.svelte
+msgid "Escape"
+msgstr ""
+
 #: src/lib/components/ui/breadcrumb/breadcrumb-ellipsis.svelte
 msgid "More"
 msgstr ""
@@ -1765,6 +1765,29 @@ msgstr ""
 msgid "Details - {0}"
 msgstr ""
 
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Data"
+msgstr ""
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Updated At"
+msgstr ""
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object {0} deleted"
+msgstr ""
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object {0} is in use"
+msgstr ""
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Error deleting object {0}"
+msgstr ""
+
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
@@ -1803,29 +1826,6 @@ msgstr ""
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to remove device from passthrough"
-msgstr ""
-
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "Data"
-msgstr ""
-
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "Updated At"
-msgstr ""
-
-#. placeholder {0}: active?.name
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "Object {0} deleted"
-msgstr ""
-
-#. placeholder {0}: active?.name
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "Object {0} is in use"
-msgstr ""
-
-#. placeholder {0}: active?.name
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "Error deleting object {0}"
 msgstr ""
 
 #. placeholder {0}: activeDisk.device
@@ -1903,6 +1903,57 @@ msgstr ""
 msgid "Error {0}: {1}"
 msgstr ""
 
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Please enter a valid URL"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Please enter a valid Magnet, HTTP URL or Path"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Invalid file name"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download started"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download failed"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to get download link"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Magnet / HTTP URL / Path"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Optional File Name"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Ignore TLS Errors"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to delete download"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to delete downloads"
+msgstr ""
+
 #. placeholder {0}: isFolder ? 'folder' : 'file'
 #. placeholder {1}: name
 #: src/routes/[node]/storage/explorer/+page.svelte
@@ -1966,57 +2017,6 @@ msgstr ""
 #. placeholder {1}: selectedItems.length > 1 ? 's' : ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Please enter a valid URL"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Please enter a valid Magnet, HTTP URL or Path"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Invalid file name"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Download started"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Download failed"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to get download link"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Download"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Magnet / HTTP URL / Path"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Optional File Name"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Ignore TLS Errors"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to delete download"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Failed to delete downloads"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
@@ -2380,6 +2380,80 @@ msgstr ""
 msgid "Expand Hosts"
 msgstr ""
 
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Local Time"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Port"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Password"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Enter or generate passphrase"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "VNC Resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Select VNC resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Clock Offset"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Select Time Offset"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Startup/Shutdown Order"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "Serial Console"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Wait"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "TPM Emulation"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Enable Cloud-Init"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init User Data"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init Meta Data"
+msgstr ""
+
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2551,80 +2625,6 @@ msgstr ""
 msgid "Select DUIDs"
 msgstr ""
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-msgid "Local Time"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "VNC Port"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "VNC Password"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-msgid "Enter or generate passphrase"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-msgid "VNC Resolution"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
-msgid "Select VNC resolution"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Options/Clock.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-#: src/routes/[node]/vm/[node]/options/+page.svelte
-msgid "Clock Offset"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "Select Time Offset"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "Startup/Shutdown Order"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Options/Serial.svelte
-#: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/[node]/vm/[node]/hardware/+page.svelte
-msgid "Serial Console"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "VNC Wait"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "TPM Emulation"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "Enable Cloud-Init"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "Cloud-Init User Data"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "Cloud-Init Meta Data"
-msgstr ""
-
 #: src/lib/components/custom/VM/Create/Basic.svelte
 msgid "VM Name"
 msgstr ""
@@ -2715,90 +2715,6 @@ msgstr ""
 msgid "Select installation media"
 msgstr ""
 
-#. placeholder {0}: socketIndex
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Socket {0}"
-msgstr ""
-
-#. placeholder {0}: coreSelectionLimit
-#. placeholder {0}: coreSelectionLimit
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "You can only select up to {0} cores."
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Socket"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "<0/> CPU Pinning"
-msgstr ""
-
-#. placeholder {0}: availableCount
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "{0} available"
-msgstr ""
-
-#. placeholder {0}: busyCount
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "{0} busy"
-msgstr ""
-
-#. placeholder {0}: selectedCount
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "{0} selected"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Core utilization"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "<0/> Back to Sockets"
-msgstr ""
-
-#. placeholder {0}: selectedSocketData.name
-#. placeholder {1}: availableCores.length
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Select cores from {0} ({1} available):"
-msgstr ""
-
-#. placeholder {0}: selectedCores.size
-#. placeholder {1}: selectedCores.size !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Selected: {0} core{1}"
-msgstr ""
-
-#. placeholder {0}: coreSelectionLimit
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Maximum selectable cores : {0}"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Select All Available"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Clear Selection"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Save & Back to Sockets"
-msgstr ""
-
-#. placeholder {0}: totalCores
-#. placeholder {1}: totalCores !== 1 ? 's' : ''
-#. placeholder {2}: allSelections.size
-#. placeholder {3}: allSelections.size !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Confirm {0} Core{1} from {2} Socket{3}"
-msgstr ""
-
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Clear All Pinning"
-msgstr ""
-
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "Failed to modify CPU"
 msgstr ""
@@ -2886,18 +2802,6 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
-msgstr ""
-
-#: src/lib/components/custom/VM/Options/Clock.svelte
-msgid "Failed to modify clock offset"
-msgstr ""
-
-#: src/lib/components/custom/VM/Options/Clock.svelte
-msgid "Modified clock offset"
-msgstr ""
-
-#: src/lib/components/custom/VM/Options/Clock.svelte
-msgid "Offset"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -3061,6 +2965,102 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Wait for VNC"
+msgstr ""
+
+#. placeholder {0}: socketIndex
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket {0}"
+msgstr ""
+
+#. placeholder {0}: coreSelectionLimit
+#. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "You can only select up to {0} cores."
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> CPU Pinning"
+msgstr ""
+
+#. placeholder {0}: availableCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} available"
+msgstr ""
+
+#. placeholder {0}: busyCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} busy"
+msgstr ""
+
+#. placeholder {0}: selectedCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} selected"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Core utilization"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> Back to Sockets"
+msgstr ""
+
+#. placeholder {0}: selectedSocketData.name
+#. placeholder {1}: availableCores.length
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select cores from {0} ({1} available):"
+msgstr ""
+
+#. placeholder {0}: selectedCores.size
+#. placeholder {1}: selectedCores.size !== 1 ? 's' : ''
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Selected: {0} core{1}"
+msgstr ""
+
+#. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Maximum selectable cores : {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select All Available"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Clear Selection"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Save & Back to Sockets"
+msgstr ""
+
+#. placeholder {0}: totalCores
+#. placeholder {1}: totalCores !== 1 ? 's' : ''
+#. placeholder {2}: allSelections.size
+#. placeholder {3}: allSelections.size !== 1 ? 's' : ''
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Confirm {0} Core{1} from {2} Socket{3}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Clear All Pinning"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Failed to modify clock offset"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Modified clock offset"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Offset"
 msgstr ""
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
@@ -3548,101 +3548,6 @@ msgstr ""
 msgid "Resource limits {0}"
 msgstr ""
 
-#. placeholder {0}: dateToAgo(jail.startedAt)
-#. placeholder {0}: dateToAgo(vm.startedAt)
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Started {0}"
-msgstr ""
-
-#. placeholder {0}: dateToAgo(jail.stoppedAt)
-#. placeholder {0}: dateToAgo(vm.stoppedAt)
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Stopped {0}"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Deleting Jail"
-msgstr ""
-
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Error deleting jail"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Jail deleted"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Stopping Jail"
-msgstr ""
-
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Starting Jail"
-msgstr ""
-
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Stop"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Start"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Running"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Stopped"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "This will permanently delete Jail"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Delete MAC Object(s)"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Delete Root Filesystem"
-msgstr ""
-
-#: src/routes/[node]/network/dhcp/config/+page.svelte
-msgid "Update"
-msgstr ""
-
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "You must select at least one protocol to inherit"
 msgstr ""
@@ -3734,6 +3639,101 @@ msgstr ""
 #. placeholder {0}: modals.delete.title
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "This will detach the jail from the switch <b>{0}</b>"
+msgstr ""
+
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "Update"
+msgstr ""
+
+#. placeholder {0}: dateToAgo(jail.startedAt)
+#. placeholder {0}: dateToAgo(vm.startedAt)
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Started {0}"
+msgstr ""
+
+#. placeholder {0}: dateToAgo(jail.stoppedAt)
+#. placeholder {0}: dateToAgo(vm.stoppedAt)
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stopped {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Deleting Jail"
+msgstr ""
+
+#. placeholder {0}: jail.name
+#. placeholder {1}: jail.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Error deleting jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Stopping Jail"
+msgstr ""
+
+#. placeholder {0}: jail.name
+#. placeholder {1}: jail.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Starting Jail"
+msgstr ""
+
+#. placeholder {0}: jail.name
+#. placeholder {1}: jail.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stop"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Start"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Running"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stopped"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "This will permanently delete Jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Delete MAC Object(s)"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Delete Root Filesystem"
 msgstr ""
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -3834,63 +3834,6 @@ msgstr ""
 msgid "Error deleting switch"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Name and users are required"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Group name already exists"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to create group"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Group created"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/+page.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Created At"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "New Group"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Select users"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to delete group"
-msgstr ""
-
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Group deleted"
-msgstr ""
-
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Invalid switch name"
 msgstr ""
@@ -3964,6 +3907,63 @@ msgstr ""
 msgid "Default Route"
 msgstr ""
 
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Name and users are required"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group name already exists"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to create group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group created"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "No users selected"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to add users to group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users added to group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Created At"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Add Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "New Group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Select users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to delete group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group deleted"
+msgstr ""
+
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Last Usage"
 msgstr ""
@@ -3982,6 +3982,102 @@ msgstr ""
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User deleted"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Allocated"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Free"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Dedup Ratio"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool Stats"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Select a stat type"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Select a interval"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Dataset Compression"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Select a pool"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Pool Usage"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool contains a mirror with devices of different sizes"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool contains a RAIDZ vdev with devices of different sizes"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool is busy"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool has a dataset that is in use by a VM or Jail"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Spare device is too small"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool edit failed"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Scrub started"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "A scrub is already in progress"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Scrub"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Please wait for the scrub/replace operation to finish"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Please wait for the current replace operation to finish"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Replace already in progress"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Replace Device"
+msgstr ""
+
+#. placeholder {0}: pool?.name
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool {0} deleted"
 msgstr ""
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
@@ -4054,102 +4150,6 @@ msgstr ""
 
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Samba share deleted"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool contains a mirror with devices of different sizes"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool contains a RAIDZ vdev with devices of different sizes"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool is busy"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool has a dataset that is in use by a VM or Jail"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Spare device is too small"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool edit failed"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Scrub started"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "A scrub is already in progress"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Scrub"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Please wait for the scrub/replace operation to finish"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Please wait for the current replace operation to finish"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Replace already in progress"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Replace Device"
-msgstr ""
-
-#. placeholder {0}: pool?.name
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool {0} deleted"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Allocated"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Free"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dedup Ratio"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Stats"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a stat type"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a interval"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dataset Compression"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a pool"
-msgstr ""
-
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Usage"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
@@ -4692,6 +4692,24 @@ msgstr ""
 msgid "Select Recordsize"
 msgstr ""
 
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Quota size is less than current used or reserved space"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Failed to edit filesystem"
+msgstr ""
+
+#. placeholder {0}: n
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "File System {0} edited"
+msgstr ""
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "<0/> Edit Filesystem - {0}"
+msgstr ""
+
 #. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
 #. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -4711,24 +4729,6 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Recursive"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "Quota size is less than current used or reserved space"
-msgstr ""
-
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "Failed to edit filesystem"
-msgstr ""
-
-#. placeholder {0}: n
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "File System {0} edited"
-msgstr ""
-
-#. placeholder {0}: dataset.name
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "<0/> Edit Filesystem - {0}"
 msgstr ""
 
 #. placeholder {0}: dataset.name

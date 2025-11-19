@@ -1,12 +1,16 @@
 msgid ""
 msgstr ""
-"Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
-"Language: en\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
-"Content-Transfer-Encoding: 8bit\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-11-19T16:37:17.888Z\n"
 "PO-Revision-Date: 2025-11-19T16:37:17.888Z\n"
+"Last-Translator: \n"
+"Language: en\n"
+"Language-Team: \n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
+"MIME-Version: 1.0\n"
 
 #: src/lib/stores/terminal.svelte.ts
 msgid "Terminal"
@@ -329,21 +333,17 @@ msgstr "English"
 msgid "മലയാളം"
 msgstr "മലയാളം"
 
-#: src/lib/components/custom/Login.svelte
-msgid "简体中文"
-msgstr "简体中文"
+#~ msgid "简体中文"
+#~ msgstr "简体中文"
 
-#: src/lib/components/custom/Login.svelte
-msgid "العربية"
-msgstr "العربية"
+#~ msgid "العربية"
+#~ msgstr "العربية"
 
-#: src/lib/components/custom/Login.svelte
-msgid "Русский"
-msgstr "Русский"
+#~ msgid "Русский"
+#~ msgstr "Русский"
 
-#: src/lib/components/custom/Login.svelte
-msgid "Türkçe"
-msgstr "Türkçe"
+#~ msgid "Türkçe"
+#~ msgstr "Türkçe"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
@@ -5152,3 +5152,7 @@ msgstr "Volume GUID not found"
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "This will delete {0}. This action cannot be undone."
 msgstr "This will delete {0}. This action cannot be undone."
+
+#: src/lib/components/custom/Login.svelte
+msgid "हिन्दी"
+msgstr "हिन्दी"

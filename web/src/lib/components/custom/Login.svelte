@@ -58,10 +58,7 @@
 	let languageArr = [
 		{ value: 'en', label: 'English' },
 		{ value: 'mal', label: 'മലയാളം' },
-		{ value: 'cn_simplified', label: '简体中文' },
-		{ value: 'ar', label: 'العربية' },
-		{ value: 'ru', label: 'Русский' },
-		{ value: 'tu', label: 'Türkçe' }
+		{ value: 'hindi', label: 'हिन्दी' }
 	];
 
 	$effect(() => {
@@ -135,10 +132,7 @@
 					<Select.Content>
 						<Select.Item value="en">English</Select.Item>
 						<Select.Item value="mal">Malayalam (മലയാളം)</Select.Item>
-						<Select.Item value="cn_simplified">Chinese (简体中文)</Select.Item>
-						<Select.Item value="ar">Arabic (العربية)</Select.Item>
-						<Select.Item value="ru">Russian (Русский)</Select.Item>
-						<Select.Item value="tu">Turkish (Türkçe)</Select.Item>
+						<Select.Item value="hi">Hindi (हिन्दी)</Select.Item>
 					</Select.Content>
 				</Select.Root>
 			</div>
