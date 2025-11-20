@@ -98,7 +98,7 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 	return "", fmt.Errorf("unsupported_download_type")
 }
 
-func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool) error {
+func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool, downloadType utilitiesModels.DownloadUType) error {
 	var existing utilitiesModels.Downloads
 
 	if s.DB.Where("url = ?", url).First(&existing).RowsAffected > 0 {
@@ -178,15 +178,17 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 			}
 
 			download := utilitiesModels.Downloads{
-				URL:      url,
-				UUID:     uuid,
-				Path:     filePath,
-				Type:     utilitiesModels.DownloadTypeHTTP,
-				Name:     filename,
-				Size:     size,
-				Progress: 100,
-				Files:    []utilitiesModels.DownloadedFile{},
-				Status:   utilitiesModels.DownloadStatusDone,
+				URL:                 url,
+				UUID:                uuid,
+				Path:                filePath,
+				Type:                utilitiesModels.DownloadTypeHTTP,
+				Name:                filename,
+				Size:                size,
+				Progress:            100,
+				Files:               []utilitiesModels.DownloadedFile{},
+				Status:              utilitiesModels.DownloadStatusDone,
+				AutomaticExtraction: automaticExtraction,
+				UType:               downloadType,
 			}
 
 			if err := s.DB.Create(&download).Error; err != nil {
@@ -210,6 +212,7 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 			Files:               []utilitiesModels.DownloadedFile{},
 			Status:              utilitiesModels.DownloadStatusPending,
 			AutomaticExtraction: automaticExtraction,
+			UType:               downloadType,
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
@@ -279,7 +282,8 @@ func (s *Service) DownloadFile(url string, optFilename string, insecureOkay bool
 			Progress:            100,
 			Files:               []utilitiesModels.DownloadedFile{},
 			Status:              utilitiesModels.DownloadStatusDone,
-			AutomaticExtraction: false,
+			AutomaticExtraction: automaticExtraction,
+			UType:               downloadType,
 		}
 
 		if err := s.DB.Create(&download).Error; err != nil {
@@ -356,7 +360,7 @@ func (s *Service) postProcessOne(id uint) error {
 	}
 
 	if !d.AutomaticExtraction {
-		return s.finishDownload(&d, "", "")
+		return s.finishDownload(&d, "")
 	}
 
 	// Prepare extract dir
@@ -372,7 +376,7 @@ func (s *Service) postProcessOne(id uint) error {
 	if err != nil {
 		// If unknown, still mark done; not extractable
 		logger.L.Warn().Msgf("sniff failed (%s): %v", d.Path, err)
-		return s.finishDownload(&d, extractsPath, "")
+		return s.finishDownload(&d, extractsPath)
 	}
 
 	// Extract or decompress
@@ -382,17 +386,8 @@ func (s *Service) postProcessOne(id uint) error {
 			return s.failDownload(&d, err)
 		}
 
-		isBase, err := utils.DoesPathHaveBase(extractsPath)
-		if err != nil {
-			logger.L.Error().Msgf("Failed to classify extracted tar: %v", err)
-		}
-
-		if isBase {
-			d.UType = "fbsd-base"
-		}
-
 		d.ExtractedPath = extractsPath
-		return s.finishDownload(&d, extractsPath, d.UType)
+		return s.finishDownload(&d, extractsPath)
 	}
 
 	// Single compressed file → stream to file
@@ -418,7 +413,7 @@ func (s *Service) postProcessOne(id uint) error {
 		d.UType = "fbsd-base"
 	}
 
-	return s.finishDownload(&d, d.ExtractedPath, d.UType)
+	return s.finishDownload(&d, d.ExtractedPath)
 }
 
 func defaultOutName(src string, ext string) string {
@@ -431,18 +426,16 @@ func defaultOutName(src string, ext string) string {
 	return base // keep extensionless; container decides
 }
 
-func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath, utype string) error {
+func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath string) error {
 	d.Status = "done"
 	d.Progress = 100
 	d.ExtractedPath = extractedPath
-	d.UType = utype
 
-	return s.DB.Model(d).Select("Status", "Progress", "ExtractedPath", "UType").
+	return s.DB.Model(d).Select("Status", "Progress", "ExtractedPath").
 		Updates(map[string]any{
 			"status":         d.Status,
 			"progress":       d.Progress,
 			"extracted_path": d.ExtractedPath,
-			"u_type":         d.UType,
 		}).Error
 }
 
@@ -584,7 +577,7 @@ func (s *Service) DeleteDownload(id int) error {
 	}
 
 	if download.Type == "http" {
-		if download.UType == "fbsd-base" && download.ExtractedPath != "" {
+		if download.UType == utilitiesModels.DownloadUTypeBase && download.ExtractedPath != "" {
 			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
 			_, err := utils.RunCommand("chflags", "-R", "noschg", extractsPath)
 

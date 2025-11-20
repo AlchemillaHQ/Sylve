@@ -8,6 +8,7 @@ export async function getDownloads(): Promise<Download[]> {
 
 export async function startDownload(
 	url: string,
+	downloadType: 'base-rootfs' | 'uncategorized',
 	filename?: string,
 	ignoreTLS?: boolean,
 	automaticExtraction?: boolean
@@ -16,7 +17,8 @@ export async function startDownload(
 		url,
 		filename,
 		ignoreTLS,
-		automaticExtraction
+		automaticExtraction,
+		downloadType
 	});
 }
 

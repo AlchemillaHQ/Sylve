@@ -64,6 +64,7 @@
 		'/api/vm/stop': 'VM - Stop',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
+		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
 		'/api/utilities/download': 'Downloader',
 		'/api/vm/storage/detach': 'VM Storage - Detach',
 		'/api/vm/storage/attach': 'VM Storage - Attach',
@@ -151,7 +152,7 @@
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div class="flex h-full flex-col overflow-hidden">
-			<Table.Root class="w-full table-fixed border-collapse">
+			<Table.Root class="w-full table-auto border-collapse">
 				<Table.Header class="bg-background sticky top-0 z-[50] ">
 					<Table.Row class="dark:hover:bg-background ">
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
@@ -178,15 +179,17 @@
 				<Table.Body class="flex-grow overflow-auto pb-32">
 					{#each records as record, i (i)}
 						<Table.Row>
-							<Table.Cell class="h-10 px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{record.node}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{`${record.user}@${record.authType}`}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2" title={JSON.stringify(record.action.body)}
+							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2"
+								>{`${record.user}@${record.authType}`}</Table.Cell
+							>
+							<Table.Cell class="text-wrap px-4 py-2" title={JSON.stringify(record.action.body)}
 								>{record.resolvedAction}</Table.Cell
 							>
 							<Table.Cell
-								class="h-10 px-4 py-2"
+								class="text-wrap px-4 py-2"
 								title={record.action?.response != null
 									? typeof record.action.response === 'string'
 										? record.action.response

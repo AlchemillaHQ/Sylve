@@ -11,7 +11,7 @@ package utilitiesServiceInterfaces
 import utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 
 type UtilitiesServiceInterface interface {
-	DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool) error
+	DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool, downloadType utilitiesModels.DownloadUType) error
 	ListDownloads() ([]utilitiesModels.Downloads, error)
 	GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error)
 	SyncDownloadProgress() error

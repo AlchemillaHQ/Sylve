@@ -214,9 +214,8 @@ msgstr ""
 msgid "Color Theme"
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
-msgid "Language"
-msgstr "ഭാഷ"
+#~ msgid "Language"
+#~ msgstr "ഭാഷ"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -5167,69 +5166,6 @@ msgstr ""
 #~ msgid "Download Type§å"
 #~ msgstr ""
 
-#~ msgid "Downloads"
-#~ msgstr ""
-
-#~ msgid "Invite users"
-#~ msgstr ""
-
-#~ msgid "Email"
-#~ msgstr ""
-
-#~ msgid "Message"
-#~ msgstr ""
-
-#~ msgid "More..."
-#~ msgstr ""
-
 #: src/lib/components/custom/Header.svelte
 msgid "<0/> Language"
 msgstr ""
-
-#~ msgid "Open"
-#~ msgstr ""
-
-#~ msgid "My Account"
-#~ msgstr ""
-
-#~ msgid "Profile"
-#~ msgstr ""
-
-#~ msgid "Billing"
-#~ msgstr ""
-
-#~ msgid "Team"
-#~ msgstr ""
-
-#~ msgid "Subscription"
-#~ msgstr ""
-
-#~ msgid "Light"
-#~ msgstr ""
-
-#~ msgid "Dark"
-#~ msgstr ""
-
-#~ msgid "System"
-#~ msgstr ""
-
-#~ msgid "Appearance"
-#~ msgstr ""
-
-#~ msgid "Status Bar"
-#~ msgstr ""
-
-#~ msgid "Activity Bar"
-#~ msgstr ""
-
-#~ msgid "Panel"
-#~ msgstr ""
-
-#~ msgid "<0/> Language <1>Toggle user menu</1>"
-#~ msgstr ""
-
-#~ msgid "<0/> Language <1><0/> Language</1>"
-#~ msgstr ""
-
-#~ msgid "{0}s"
-#~ msgstr ""

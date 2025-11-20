@@ -25,10 +25,11 @@ import (
 )
 
 type DownloadFileRequest struct {
-	URL                 string  `json:"url" binding:"required"`
-	Filename            *string `json:"filename"`
-	IgnoreTLS           *bool   `json:"ignoreTLS"`
-	AutomaticExtraction *bool   `json:"automaticExtraction"`
+	URL                 string                        `json:"url" binding:"required"`
+	Filename            *string                       `json:"filename"`
+	IgnoreTLS           *bool                         `json:"ignoreTLS"`
+	AutomaticExtraction *bool                         `json:"automaticExtraction"`
+	DownloadType        utilitiesModels.DownloadUType `json:"downloadType"`
 }
 
 type BulkDeleteDownloadRequest struct {
@@ -116,7 +117,7 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 			automaticExtraction = false
 		}
 
-		if err := utilitiesService.DownloadFile(request.URL, fileName, insecureOkay, automaticExtraction); err != nil {
+		if err := utilitiesService.DownloadFile(request.URL, fileName, insecureOkay, automaticExtraction, request.DownloadType); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_download_file",

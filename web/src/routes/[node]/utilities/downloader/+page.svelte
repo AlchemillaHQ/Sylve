@@ -149,10 +149,15 @@
 			return;
 		}
 
+		if (!modalState.downloadType) {
+			modalState.downloadType = 'uncategorized';
+		}
+
 		modalState.loading = true;
 
 		const result = await startDownload(
 			modalState.url,
+			modalState.downloadType,
 			modalState.name || undefined,
 			modalState.ignoreTLS,
 			modalState.automaticExtraction
@@ -203,21 +208,25 @@
 			}
 		}
 	}
+
+	async function handleCopyURL() {
+		const row = activeRows ? activeRows[0] : null;
+		if (row) {
+			const result = await getSignedURL(row.name as string, (row.parentUUID as string) || row.uuid);
+			if (isAPIResponse(result) && result.status === 'success') {
+				const url = result.data as string;
+				const fullURl = new URL(url, window.location.origin).toString();
+				await navigator.clipboard.writeText(fullURl);
+				toast.success('Download URL copied to clipboard', { position: 'bottom-center' });
+			} else {
+				handleAPIError(result as APIResponse);
+				toast.error('Failed to get download link', { position: 'bottom-center' });
+			}
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'delete' && onlyParentsSelected}
-		{#if activeRows && activeRows.length >= 1}
-			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
-				</div>
-			</Button>
-		{/if}
-	{/if}
-
 	{#if type === 'download' && onlyChildSelected && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
@@ -239,6 +248,29 @@
 			</Button>
 		{/if}
 	{/if}
+
+	{#if type === 'copy' && ((httpDownloadSelected && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
+		{#if activeRows && activeRows.length == 1}
+			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5">
+				<div class="flex items-center">
+					<span class="icon-[mdi--content-copy] mr-1 h-4 w-4"></span>
+					<span>Copy URL</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
+
+	{#if type === 'delete' && onlyParentsSelected}
+		{#if activeRows && activeRows.length >= 1}
+			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
+				<div class="flex items-center">
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
+					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
@@ -253,8 +285,9 @@
 			</div>
 		</Button>
 
-		{@render button('delete')}
 		{@render button('download')}
+		{@render button('copy')}
+		{@render button('delete')}
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>

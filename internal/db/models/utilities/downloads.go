@@ -27,6 +27,14 @@ const (
 	DownloadTypePath    DownloadType = "path"
 )
 
+type DownloadUType string
+
+const (
+	DownloadUTypeBase      DownloadUType = "base-rootfs"
+	DownloadUTypeCloudInit DownloadUType = "cloud-init"
+	DownloadUTypeOther     DownloadUType = "uncategoried"
+)
+
 type DownloadedFile struct {
 	ID         int       `json:"id" gorm:"primaryKey"`
 	DownloadID int       `json:"downloadId" gorm:"not null"`
@@ -45,7 +53,7 @@ type Downloads struct {
 	Progress            int              `json:"progress" gorm:"not null"`
 	Size                int64            `json:"size" gorm:"not null"`
 	Files               []DownloadedFile `json:"files" gorm:"foreignKey:DownloadID;constraint:OnDelete:CASCADE"`
-	UType               string           `json:"uType"` // fbsd-base etc.
+	UType               DownloadUType    `json:"uType"`
 	Error               string           `json:"error"`
 	AutomaticExtraction bool             `json:"automaticExtraction" gorm:"not null;default:false"`
 	ExtractedPath       string           `json:"extractedPath"`
