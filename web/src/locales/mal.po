@@ -4050,13 +4050,11 @@ msgstr ""
 msgid "Pool is busy"
 msgstr ""
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool has a dataset that is in use by a VM or Jail"
-msgstr ""
+#~ msgid "Pool has a dataset that is in use by a VM or Jail"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Spare device is too small"
-msgstr ""
+#~ msgid "Spare device is too small"
+#~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Pool edit failed"
@@ -5203,4 +5201,12 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply Changes"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool is in use by a VM or Jail"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Cannot replace with smaller device"
 msgstr ""

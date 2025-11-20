@@ -4062,13 +4062,11 @@ msgstr "Pool contains a RAIDZ vdev with devices of different sizes"
 msgid "Pool is busy"
 msgstr "Pool is busy"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool has a dataset that is in use by a VM or Jail"
-msgstr "Pool has a dataset that is in use by a VM or Jail"
+#~ msgid "Pool has a dataset that is in use by a VM or Jail"
+#~ msgstr "Pool has a dataset that is in use by a VM or Jail"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Spare device is too small"
-msgstr "Spare device is too small"
+#~ msgid "Spare device is too small"
+#~ msgstr "Spare device is too small"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Pool edit failed"
@@ -5216,3 +5214,11 @@ msgstr "{0} {1} Core{2} from {3} Socket{4}"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply Changes"
 msgstr "Apply Changes"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool is in use by a VM or Jail"
+msgstr "Pool is in use by a VM or Jail"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Cannot replace with smaller device"
+msgstr "Cannot replace with smaller device"

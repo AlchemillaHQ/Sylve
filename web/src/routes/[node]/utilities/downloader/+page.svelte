@@ -36,6 +36,7 @@
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
+	let refetchInterval = $state(undefined as number | undefined);
 
 	const focused = useWindowFocus();
 	const results = createQuery(() => ({
@@ -44,6 +45,7 @@
 			return await getDownloads();
 		},
 		initialData: data.downloads,
+		refetchInterval: refetchInterval ?? false,
 		onSuccess: (data: Download[]) => {
 			updateCache('downloads', data);
 		}
@@ -55,8 +57,24 @@
 		}
 	});
 
-	let downloads = $derived(results.data as Download[]);
+	$effect(() => {
+		if (reload) {
+			results.refetch().then(() => {
+				const incomplete = (results.data as Download[]).some(
+					(d) => d.status !== 'done' && d.status !== 'failed'
+				);
 
+				if (incomplete) {
+					refetchInterval = 5000;
+				} else {
+					refetchInterval = undefined;
+					reload = false;
+				}
+			});
+		}
+	});
+
+	let downloads = $derived(results.data as Download[]);
 	let options = {
 		isOpen: false,
 		isDelete: false,
