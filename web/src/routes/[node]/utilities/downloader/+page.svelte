@@ -358,7 +358,7 @@
 								{ value: 'base-rootfs', label: 'Base / RootFS' },
 								{ value: 'uncategorized', label: 'Uncategorized' }
 							]}
-							classes={{ parent: 'mt-2 flex-1 space-y-1', label: 'mb-2' }}
+							classes={{ parent: 'mt-2.5 flex-1 space-y-1', label: 'mb-2' }}
 							bind:value={modalState.downloadType}
 							onChange={(value) =>
 								(modalState.downloadType = value as 'base-rootfs' | 'uncategorized')}
