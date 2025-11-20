@@ -6,6 +6,7 @@
 		ref = $bindable(null),
 		class: className,
 		max = 100,
+		progressClass = 'bg-blue-600',
 		value,
 		...restProps
 	}: WithoutChildrenOrChild<ProgressPrimitive.RootProps> = $props();
@@ -21,7 +22,7 @@
 >
 	<div
 		data-slot="progress-indicator"
-		class="h-full w-full flex-1 bg-blue-600 transition-all"
+		class={cn('h-full w-full flex-1 transition-all', progressClass)}
 		style="transform: translateX(-{100 - (100 * (value ?? 0)) / (max ?? 1)}%)"
 	></div>
 </ProgressPrimitive.Root>

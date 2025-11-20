@@ -6,6 +6,7 @@
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { toast } from 'svelte-sonner';
 	import Label from '$lib/components/ui/label/label.svelte';
+	import Progress from '$lib/components/ui/progress/progress.svelte';
 
 	interface Props {
 		open: boolean;
@@ -21,6 +22,7 @@
 		number: number;
 		frequency?: string;
 		status: 'available' | 'busy' | 'inUse';
+		isCurrentPin?: boolean;
 	}
 
 	interface SocketData {
@@ -60,23 +62,36 @@
 	});
 
 	$effect(() => {
-		if (open && pinnedCPUs.length > 0) {
+		if (open) {
 			const newSelections = new Map<number, number[]>();
-			pinnedCPUs.forEach((pin) => {
-				newSelections.set(pin.socket, pin.cores);
-			});
+
+			// Initialize with current pinnedCPUs (from props)
+			if (pinnedCPUs.length > 0) {
+				pinnedCPUs.forEach((pin) => {
+					newSelections.set(pin.socket, pin.cores);
+				});
+			}
+			// For edit mode, also initialize with current VM's pinning
+			else if (vm?.cpuPinning && vm.cpuPinning.length > 0) {
+				vm.cpuPinning.forEach((pin) => {
+					newSelections.set(pin.hostSocket, pin.hostCpu);
+				});
+			}
 
 			allSelections = newSelections;
+
+			// Reset the showSelectedPins flag when dialog opens
+			showSelectedPins = false;
 		}
 	});
 
 	let usedPins = $derived.by(() => {
 		const pins = [] as { vmId: number; hostSocket: number; hostCpu: number[] }[];
-		for (const vm of vms) {
-			if (vm.cpuPinning) {
-				for (const pin of vm.cpuPinning) {
+		for (const vmItem of vms) {
+			if (vmItem.cpuPinning) {
+				for (const pin of vmItem.cpuPinning) {
 					pins.push({
-						vmId: vm.id,
+						vmId: vmItem.id,
 						hostSocket: pin.hostSocket,
 						hostCpu: pin.hostCpu
 					});
@@ -96,8 +111,10 @@
 			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
 			const currentVmId = vm ? vm.id : null;
 
-			const otherPins = usedPins.filter((pin) => pin.vmId !== currentVmId);
-			const currentPins = usedPins.filter((pin) => pin.vmId === currentVmId);
+			// For edit mode: separate current VM pins from other VM pins
+			// For create mode: all pins are considered busy
+			const otherPins = currentVmId ? usedPins.filter((pin) => pin.vmId !== currentVmId) : usedPins;
+			const currentPins = currentVmId ? usedPins.filter((pin) => pin.vmId === currentVmId) : [];
 
 			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
 				const isCurrentPin = currentPins.some(
@@ -108,11 +125,20 @@
 					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
 				);
 
+				// In edit mode: current VM pins show as available but pre-selected
+				// In create mode: all used pins show as busy
+				let status: 'available' | 'busy' | 'inUse' = 'available';
+				if (isBusyByOther) {
+					status = 'busy';
+				} else if (isCurrentPin && currentVmId) {
+					status = 'inUse';
+				}
+
 				return {
 					id: `${socketIndex}-core-${coreIndex}`,
 					number: coreIndex,
 					frequency: '3.0 GHz',
-					status: isBusyByOther ? 'busy' : 'available',
+					status: status,
 					isCurrentPin: isCurrentPin
 				} as Core;
 			});
@@ -124,6 +150,7 @@
 				cores: cores
 			};
 
+			// Initialize selection based on current pins or saved selections
 			const currentCoreIds =
 				currentPins
 					.find((p) => p.hostSocket === socketIndex)
@@ -132,7 +159,8 @@
 			const savedSelection =
 				allSelections.get(socketIndex)?.map((c) => `${socketIndex}-core-${c}`) || [];
 
-			if (!showSelectedPins) {
+			// For edit mode, start with current pins; for create mode, use saved selections
+			if (currentVmId && !showSelectedPins) {
 				selectedCores = new Set(currentCoreIds);
 			} else {
 				selectedCores = new Set(savedSelection);
@@ -187,6 +215,7 @@
 			selectedSocketData = undefined;
 			selectedCores = new Set();
 			allSelections = new Map();
+			showSelectedPins = false;
 		}, 200);
 	};
 
@@ -221,22 +250,45 @@
 
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
 	let availableCores = $derived(
-		selectedSocketData?.cores.filter((core) => core.status === 'available') || []
+		selectedSocketData?.cores.filter(
+			(core) => core.status === 'available' || core.status === 'inUse'
+		) || []
 	);
 
 	const sockets = $derived.by(() => {
+		const currentVmId = vm ? vm.id : null;
+
 		return Array.from({ length: cpuInfo.sockets }, (__, socketIndex) => {
 			const coresPerSocket = cpuInfo.logicalCores / cpuInfo.sockets;
+
+			// For edit mode: separate current VM pins from other VM pins
+			// For create mode: all pins are considered busy
+			const otherPins = currentVmId ? usedPins.filter((pin) => pin.vmId !== currentVmId) : usedPins;
+			const currentPins = currentVmId ? usedPins.filter((pin) => pin.vmId === currentVmId) : [];
+
 			const cores = Array.from({ length: coresPerSocket }, (_, coreIndex) => {
-				const isPinned = usedPins.some(
+				const isCurrentPin = currentPins.some(
 					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
 				);
+
+				const isBusyByOther = otherPins.some(
+					(pin) => pin.hostSocket === socketIndex && pin.hostCpu.includes(coreIndex)
+				);
+
+				// In edit mode: current VM pins show as inUse, others as busy
+				// In create mode: all used pins show as busy
+				let status: 'available' | 'busy' | 'inUse' = 'available';
+				if (isBusyByOther) {
+					status = 'busy';
+				} else if (isCurrentPin && currentVmId) {
+					status = 'inUse';
+				}
 
 				return {
 					id: `${socketIndex}-core-${coreIndex}`,
 					number: coreIndex,
 					frequency: '3.0 GHz',
-					status: isPinned ? 'busy' : 'available'
+					status: status
 				} as Core;
 			});
 
@@ -249,7 +301,13 @@
 		});
 	});
 
-	let initialPinning = $derived.by(() => vm?.cpuPinning?.length);
+	let initialPinning = $derived.by(() => {
+		if (!vm?.cpuPinning) return 0;
+		return vm.cpuPinning.reduce((total, pin) => total + pin.hostCpu.length, 0);
+	});
+
+	$inspect('selectedSocketData', selectedSocketData);
+	$inspect('sockets', sockets);
 </script>
 
 <div>
@@ -297,11 +355,23 @@
 					{#each sockets as socket (socket.id)}
 						{@const availableCount = socket.cores.filter((c) => c.status === 'available').length}
 						{@const busyCount = socket.cores.filter((c) => c.status === 'busy').length}
+						{@const inUseCount = socket.cores.filter((c) => c.status === 'inUse').length}
 						{@const hasSelection = allSelections.has(socket.id)}
 						{@const selectedCount = hasSelection ? allSelections.get(socket.id)?.length || 0 : 0}
+						{@const totalAvailable = availableCount + inUseCount}
+						{@const actualAvailable = Math.max(0, totalAvailable - selectedCount)}
+						{@const totalCores = socket.cores.length}
+						{@const usedPins = busyCount + selectedCount}
+						{@const progressColor =
+							usedPins / totalCores > 0.75
+								? 'bg-red-500'
+								: usedPins / totalCores > 0.5
+									? 'bg-yellow-500'
+									: 'bg-green-500'}
 
 						<Card.Root
-							class="hover:bg-accent/50 w-[300px] cursor-pointer transition-colors {hasSelection
+							class="hover:bg-accent/50 w-[300px] cursor-pointer transition-colors {hasSelection ||
+							inUseCount > 0
 								? 'ring-2 ring-yellow-500'
 								: ''}"
 							onclick={() => handleSocketSelect(socket.id.toString())}
@@ -313,6 +383,7 @@
 											<span class="icon-[iconoir--cpu] text-primary h-6 w-6"></span>
 										</div>
 										<div>
+											<h3 class="font-medium">{socket.name}</h3>
 											<p class="text-muted-foreground text-sm">
 												{socket.model}
 											</p>
@@ -320,38 +391,35 @@
 									</div>
 								</div>
 
-								<div class="mt-4 flex gap-4">
+								<div class="mt-4 flex flex-wrap gap-2 text-xs">
 									<div class="flex items-center gap-1">
 										<div class="h-2 w-2 rounded-full bg-green-500"></div>
-										<span class="text-sm">
-											{availableCount - selectedCount} available
+										<span>
+											{actualAvailable} available
 										</span>
 									</div>
 									<div class="flex items-center gap-1">
 										<div class="h-2 w-2 rounded-full bg-red-500"></div>
-										<span class="text-sm">
+										<span>
 											{busyCount} busy
 										</span>
 									</div>
-									{#if hasSelection}
+									{#if hasSelection || inUseCount > 0}
 										<div class="flex items-center gap-1">
 											<div class="h-2 w-2 rounded-full bg-yellow-500"></div>
-											<span class="text-sm">
-												{selectedCount} selected
+											<span>
+												{(selectedCount || 0) + (hasSelection ? 0 : inUseCount)} selected
 											</span>
 										</div>
 									{/if}
 								</div>
 
-								<div class="mt-3">
-									<div class="text-muted-foreground mb-1 text-xs">Core utilization</div>
-									<div class="bg-muted h-2 w-full rounded-full">
-										<div
-											class="h-2 rounded-full bg-green-500"
-											style="width: {(availableCount / socket.cores.length) * 100}%"
-										></div>
-									</div>
-								</div>
+								<Progress
+									value={(usedPins / totalCores) * 100}
+									max={100}
+									class="mt-2"
+									progressClass={progressColor}
+								/>
 							</Card.Content>
 						</Card.Root>
 					{/each}
@@ -369,21 +437,37 @@
 					</Button>
 				</div>
 
-				<div class="space-y-2">
+				<div class="space-y-3">
 					<p class="text-muted-foreground">
-						Select cores from {selectedSocketData.name} ({availableCores.length} available):
+						Select cores from {selectedSocketData.name} ({availableCores.length} selectable):
 					</p>
-					<p class="text-muted-foreground text-sm">
-						Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}
-					</p>
-					<p class="text-muted-foreground text-sm">
-						Maximum selectable cores : {coreSelectionLimit}
-					</p>
+					<div class="flex flex-wrap gap-3 text-xs">
+						<div class="flex items-center gap-1">
+							<div class="h-2 w-2 rounded-full bg-green-500"></div>
+							<span>Available</span>
+						</div>
+						<div class="flex items-center gap-1">
+							<div class="h-2 w-2 rounded-full bg-red-500"></div>
+							<span>Busy (other VMs)</span>
+						</div>
+						<div class="flex items-center gap-1">
+							<div class="h-2 w-2 rounded-full bg-yellow-500"></div>
+							<span>Selected</span>
+						</div>
+					</div>
+					<div class="text-muted-foreground flex justify-between text-sm">
+						<span>Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}</span>
+						{#if coreSelectionLimit}
+							<span>Limit: {coreSelectionLimit}</span>
+						{/if}
+					</div>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
 					{#each selectedSocketData?.cores as core (core.id)}
 						{@const isSelected = selectedCores.has(core.id)}
-						{@const isAvailable = core.status === 'available'}
+						{@const isAvailable = core.status === 'available' || core.status === 'inUse'}
+						{@const isBusy = core.status === 'busy'}
+						<!-- {@const isInUse = core.status === 'inUse'} -->
 
 						{@const disableSelect =
 							!isAvailable ||
@@ -416,7 +500,7 @@
 								</div>
 							{/if}
 
-							{#if !isAvailable}
+							{#if isBusy}
 								<div
 									class="absolute inset-0 flex items-center justify-center rounded-lg bg-red-500/20"
 								>
@@ -438,11 +522,19 @@
 								toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
 							}
 							selectedCores = new Set(availableCores.map((core) => core.id).slice(0, max));
+							showSelectedPins = true;
 						}}
 					>
 						Select All Available
 					</Button>
-					<Button variant="outline" size="sm" onclick={() => (selectedCores = new Set())}>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => {
+							selectedCores = new Set();
+							showSelectedPins = true;
+						}}
+					>
 						Clear Selection
 					</Button>
 				</div>
@@ -460,13 +552,16 @@
 						0
 					)}
 					<Button onclick={handleConfirm}>
-						Confirm {totalCores} Core{totalCores !== 1 ? 's' : ''} from {allSelections.size} Socket{allSelections.size !==
+						{vm ? 'Update' : 'Apply'}
+						{totalCores} Core{totalCores !== 1 ? 's' : ''} from {allSelections.size} Socket{allSelections.size !==
 						1
 							? 's'
 							: ''}
 					</Button>
-				{:else if pinnedCPUs.length > 0}
+				{:else if pinnedCPUs.length > 0 || (vm?.cpuPinning && vm.cpuPinning.length > 0)}
 					<Button onclick={handleConfirm} variant="destructive">Clear All Pinning</Button>
+				{:else}
+					<Button onclick={handleConfirm}>Apply Changes</Button>
 				{/if}
 			{/if}
 		</Dialog.Footer>
