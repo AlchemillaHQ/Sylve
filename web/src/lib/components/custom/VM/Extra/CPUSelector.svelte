@@ -441,25 +441,9 @@
 					<p class="text-muted-foreground">
 						Select cores from {selectedSocketData.name} ({availableCores.length} selectable):
 					</p>
-					<div class="flex flex-wrap gap-3 text-xs">
-						<div class="flex items-center gap-1">
-							<div class="h-2 w-2 rounded-full bg-green-500"></div>
-							<span>Available</span>
-						</div>
-						<div class="flex items-center gap-1">
-							<div class="h-2 w-2 rounded-full bg-red-500"></div>
-							<span>Busy (other VMs)</span>
-						</div>
-						<div class="flex items-center gap-1">
-							<div class="h-2 w-2 rounded-full bg-yellow-500"></div>
-							<span>Selected</span>
-						</div>
-					</div>
-					<div class="text-muted-foreground flex justify-between text-sm">
-						<span>Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}</span>
-						{#if coreSelectionLimit}
-							<span>Limit: {coreSelectionLimit}</span>
-						{/if}
+					<div class="flex flex-col gap-1 text-sm">
+						<p>Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}</p>
+						<p>Limit: {coreSelectionLimit} core{coreSelectionLimit !== 1 ? 's' : ''}</p>
 					</div>
 				</div>
 				<div class="grid max-h-64 grid-cols-6 gap-2 overflow-auto sm:grid-cols-8 md:grid-cols-10">
