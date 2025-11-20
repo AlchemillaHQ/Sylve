@@ -216,9 +216,8 @@ msgstr ""
 msgid "Color Theme"
 msgstr "Color Theme"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Language"
-msgstr "Language"
+#~ msgid "Language"
+#~ msgstr "Language"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -325,13 +324,11 @@ msgstr "Object ({0} properties)"
 msgid "Enter"
 msgstr "Enter"
 
-#: src/lib/components/custom/Login.svelte
-msgid "English"
-msgstr "English"
+#~ msgid "English"
+#~ msgstr "English"
 
-#: src/lib/components/custom/Login.svelte
-msgid "മലയാളം"
-msgstr "മലയാളം"
+#~ msgid "മലയാളം"
+#~ msgstr "മലയാളം"
 
 #~ msgid "简体中文"
 #~ msgstr "简体中文"
@@ -5148,9 +5145,8 @@ msgstr "Volume GUID not found"
 msgid "This will delete {0}. This action cannot be undone."
 msgstr "This will delete {0}. This action cannot be undone."
 
-#: src/lib/components/custom/Login.svelte
-msgid "हिन्दी"
-msgstr "हिन्दी"
+#~ msgid "हिन्दी"
+#~ msgstr "हिन्दी"
 
 #. placeholder {0}: pinnedCores.length
 #. placeholder {0}: initialPinning || 0
@@ -5181,3 +5177,70 @@ msgstr "Uncategorized"
 
 #~ msgid "Download Type§å"
 #~ msgstr "Download Type§å"
+
+#~ msgid "Downloads"
+#~ msgstr "Downloads"
+
+#~ msgid "Invite users"
+#~ msgstr "Invite users"
+
+#~ msgid "Email"
+#~ msgstr "Email"
+
+#~ msgid "Message"
+#~ msgstr "Message"
+
+#~ msgid "More..."
+#~ msgstr "More..."
+
+#: src/lib/components/custom/Header.svelte
+msgid "<0/> Language"
+msgstr "<0/> Language"
+
+#~ msgid "Open"
+#~ msgstr "Open"
+
+#~ msgid "My Account"
+#~ msgstr "My Account"
+
+#~ msgid "Profile"
+#~ msgstr "Profile"
+
+#~ msgid "Billing"
+#~ msgstr "Billing"
+
+#~ msgid "Team"
+#~ msgstr "Team"
+
+#~ msgid "Subscription"
+#~ msgstr "Subscription"
+
+#~ msgid "Light"
+#~ msgstr "Light"
+
+#~ msgid "Dark"
+#~ msgstr "Dark"
+
+#~ msgid "System"
+#~ msgstr "System"
+
+#~ msgid "Appearance"
+#~ msgstr "Appearance"
+
+#~ msgid "Status Bar"
+#~ msgstr "Status Bar"
+
+#~ msgid "Activity Bar"
+#~ msgstr "Activity Bar"
+
+#~ msgid "Panel"
+#~ msgstr "Panel"
+
+#~ msgid "<0/> Language <1>Toggle user menu</1>"
+#~ msgstr "<0/> Language <1>Toggle user menu</1>"
+
+#~ msgid "<0/> Language <1><0/> Language</1>"
+#~ msgstr "<0/> Language <1><0/> Language</1>"
+
+#~ msgid "{0}s"
+#~ msgstr "{0}s"

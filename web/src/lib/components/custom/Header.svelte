@@ -7,6 +7,7 @@
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
+	import { language, languageArr } from '$lib/stores/basic';
 
 	let menuData = $state({
 		createVM: {
@@ -16,8 +17,8 @@
 			open: false
 		},
 		menuItems: [
-			{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' },
-			{ icon: 'meteor-icons--language', label: 'Language', shortcut: '⌘K' }
+			{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }
+			// { icon: 'meteor-icons--language', label: 'Language', shortcut: '⌘K' }
 		]
 	});
 
@@ -131,6 +132,30 @@
 							{/if}
 						</DropdownMenu.Item>
 					{/each}
+
+					<DropdownMenu.Sub>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger
+								class=" hover:bg-accent flex h-6.5 w-full cursor-pointer items-center justify-start px-2.5 py-4 text-left"
+							>
+								<span class="icon-[meteor-icons--language] mr-4 h-4 w-4"></span>
+								Language
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content class="w-48">
+								<DropdownMenu.Group>
+									{#each languageArr as { value, label }}
+										<DropdownMenu.CheckboxItem
+											class="cursor-pointer"
+											checked={$language === value}
+											onclick={() => language.set(value)}
+										>
+											{label}
+										</DropdownMenu.CheckboxItem>
+									{/each}
+								</DropdownMenu.Group>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root></DropdownMenu.Sub
+					>
 				</DropdownMenu.Group>
 
 				<DropdownMenu.Separator />

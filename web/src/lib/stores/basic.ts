@@ -11,6 +11,13 @@
 import { localStore } from '@layerstack/svelte-stores';
 import { addDays } from 'date-fns';
 
+
+export const languageArr = [
+	{ value: 'en', label: 'English' },
+	{ value: 'mal', label: 'മലയാളം' },
+	{ value: 'hindi', label: 'हिन्दी' }
+];
+
 export const hostname = localStore('hostname', '', {
 	expiry: addDays(new Date(), 1)
 });
@@ -26,3 +33,5 @@ export const nodeId = localStore('nodeId', '', {
 export const explorerCurrentPath = localStore('explorerCurrentPath', '/', {
 	expiry: addDays(new Date(), 7) // 7 days instead of 1
 });
+
+

@@ -323,13 +323,11 @@ msgstr ""
 msgid "Enter"
 msgstr ""
 
-#: src/lib/components/custom/Login.svelte
-msgid "English"
-msgstr ""
+#~ msgid "English"
+#~ msgstr ""
 
-#: src/lib/components/custom/Login.svelte
-msgid "മലയാളം"
-msgstr ""
+#~ msgid "മലയാളം"
+#~ msgstr ""
 
 #~ msgid "简体中文"
 #~ msgstr ""
@@ -5136,9 +5134,8 @@ msgstr ""
 msgid "This will delete {0}. This action cannot be undone."
 msgstr ""
 
-#: src/lib/components/custom/Login.svelte
-msgid "हिन्दी"
-msgstr ""
+#~ msgid "हिन्दी"
+#~ msgstr ""
 
 #. placeholder {0}: pinnedCores.length
 #. placeholder {0}: initialPinning || 0
@@ -5168,4 +5165,71 @@ msgid "Uncategorized"
 msgstr ""
 
 #~ msgid "Download Type§å"
+#~ msgstr ""
+
+#~ msgid "Downloads"
+#~ msgstr ""
+
+#~ msgid "Invite users"
+#~ msgstr ""
+
+#~ msgid "Email"
+#~ msgstr ""
+
+#~ msgid "Message"
+#~ msgstr ""
+
+#~ msgid "More..."
+#~ msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "<0/> Language"
+msgstr ""
+
+#~ msgid "Open"
+#~ msgstr ""
+
+#~ msgid "My Account"
+#~ msgstr ""
+
+#~ msgid "Profile"
+#~ msgstr ""
+
+#~ msgid "Billing"
+#~ msgstr ""
+
+#~ msgid "Team"
+#~ msgstr ""
+
+#~ msgid "Subscription"
+#~ msgstr ""
+
+#~ msgid "Light"
+#~ msgstr ""
+
+#~ msgid "Dark"
+#~ msgstr ""
+
+#~ msgid "System"
+#~ msgstr ""
+
+#~ msgid "Appearance"
+#~ msgstr ""
+
+#~ msgid "Status Bar"
+#~ msgstr ""
+
+#~ msgid "Activity Bar"
+#~ msgstr ""
+
+#~ msgid "Panel"
+#~ msgstr ""
+
+#~ msgid "<0/> Language <1>Toggle user menu</1>"
+#~ msgstr ""
+
+#~ msgid "<0/> Language <1><0/> Language</1>"
+#~ msgstr ""
+
+#~ msgid "{0}s"
 #~ msgstr ""
