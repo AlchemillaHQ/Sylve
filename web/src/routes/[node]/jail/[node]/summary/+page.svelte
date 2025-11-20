@@ -22,7 +22,7 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { hostname } from '$lib/stores/basic';
+	import { storage } from '$lib';
 	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
 	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
 	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
@@ -214,7 +214,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			goto(`/${$hostname}/summary`);
+			goto(`/${storage.hostname}/summary`);
 			toast.success('Jail deleted', {
 				duration: 5000,
 				position: 'bottom-center'

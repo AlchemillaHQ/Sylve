@@ -2,9 +2,9 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
-	import { nodeId } from '$lib/stores/basic';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { toast } from 'svelte-sonner';
+	import { storage } from '$lib';
 
 	interface Props {
 		open: boolean;
@@ -57,7 +57,7 @@
 			<Table.Body>
 				<Table.Row>
 					<Table.Cell>Node ID</Table.Cell>
-					<Table.Cell>{$nodeId}</Table.Cell>
+					<Table.Cell>{storage.nodeId}</Table.Cell>
 				</Table.Row>
 				<Table.Row>
 					<Table.Cell>Leader Node</Table.Cell>

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import { getJails, getJailStates } from '$lib/api/jail/jail';
-	import { clusterStore, currentHostname, store } from '$lib/stores/auth';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
-	import { sha256, toBase64, toHex } from '$lib/utils/string';
+	import { sha256, toHex } from '$lib/utils/string';
 	import {
 		Xterm,
 		XtermAddon,
@@ -15,8 +15,6 @@
 	} from '@battlefieldduck/xterm-svelte';
 	import { createQueries } from '@tanstack/svelte-query';
 	import adze from 'adze';
-	import { get } from 'svelte/store';
-
 	interface Data {
 		jails: Jail[];
 		jailStates: JailState[];
@@ -78,10 +76,10 @@
 		terminal?.loadAddon(fit);
 		fit.fit();
 
-		const hash = await sha256($store, 1);
+		const hash = await sha256(storage.token || '', 1);
 		const wssAuth = {
-			hostname: get(currentHostname),
-			token: $clusterStore
+			hostname: storage.hostname,
+			token: storage.clusterToken
 		};
 
 		ws = new WebSocket(`/api/jail/console?ctid=${jail.ctId}&hash=${hash}`, [

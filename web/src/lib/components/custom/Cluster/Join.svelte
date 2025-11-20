@@ -4,11 +4,10 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
-	import { clusterStore } from '$lib/stores/auth';
-	import { nodeId } from '$lib/stores/basic';
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
+	import { storage } from '$lib';
 
 	interface Props {
 		open: boolean;
@@ -52,7 +51,7 @@
 		}
 
 		const response = await joinCluster(
-			$nodeId,
+			storage.nodeId,
 			properties.ip,
 			Number(properties.port),
 			properties.leaderApi,
@@ -71,7 +70,7 @@
 
 		if (response.data) {
 			if (typeof response.data === 'string') {
-				clusterStore.set(response.data);
+				storage.clusterToken = response.data;
 			}
 		}
 

@@ -8,66 +8,58 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import { hostname } from '$lib/stores/basic';
-import type { Terminal as Xterm } from '@battlefieldduck/xterm-svelte';
-import { localStore } from '@layerstack/svelte-stores';
-import { nanoid } from 'nanoid';
-import { get } from 'svelte/store';
-import { getUsername } from './auth';
+import { storage } from '$lib';
+import { getUsername } from '$lib/utils/auth';
+import { createReactiveStorage } from '$lib/utils/storage';
 
-interface Tab {
+type ReactiveTab = {
 	id: string;
 	title: string;
-}
+};
 
-interface Terminal {
+type ReactiveTerminal = {
 	isOpen: boolean;
 	isMinimized: boolean;
 	title: string;
-	tabs: Tab[];
+	tabs: ReactiveTab[];
 	activeTabId: string;
-}
+};
 
-export const terminalStore = localStore<Terminal>('terminal', {
-	isOpen: false,
-	isMinimized: false,
-	title: '',
-	tabs: [],
-	activeTabId: ''
-});
+export const terminalStore = createReactiveStorage<ReactiveTerminal>(
+	[
+		['isOpen', { storage: 'local' }],
+		['isMinimized', { storage: 'local' }],
+		['title', { storage: 'local' }],
+		['tabs', { storage: 'local' }],
+		['activeTabId', { storage: 'local' }]
+	],
+	{
+		prefix: 'sylve-terminal:',
+		storage: 'local'
+	}
+);
 
 export function getDefaultTitle() {
-	return `${getUsername()}@${get(hostname)}:~`;
+	return `${getUsername()}@${storage.hostname}:~`;
 }
 
 export function openTerminal() {
-	terminalStore.set({
-		...get(terminalStore),
-		isOpen: true,
-		isMinimized: false
-	});
+	terminalStore.isOpen = true;
+	terminalStore.isMinimized = false;
 
-	let store = get(terminalStore);
-	if (store.tabs.length > 0) {
+	if (terminalStore.tabs.length > 0) {
 		return;
 	}
 
-	// name tab sylve-tabId, let tabId be the number of tabs + 1
-
-	const tabId = `sylve-${store.tabs.length + 1}`;
-	const newTerminal: Terminal = {
-		isOpen: true,
-		isMinimized: false,
-		title: 'Terminal',
-		tabs: [
-			{
-				id: tabId,
-				title: getDefaultTitle()
-			}
-		],
-
-		activeTabId: tabId
-	};
-
-	terminalStore.set(newTerminal);
+	const tabId = `sylve-${terminalStore.tabs.length + 1}`;
+	terminalStore.isOpen = true;
+	terminalStore.isMinimized = false;
+	terminalStore.title = 'Terminal';
+	terminalStore.tabs = [
+		{
+			id: tabId,
+			title: getDefaultTitle()
+		}
+	];
+	terminalStore.activeTabId = tabId;
 }

@@ -4,19 +4,21 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { type Download } from '$lib/types/utilities/downloader';
+	import { type UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generateComboboxOptions } from '$lib/utils/input';
-	import { getISOs } from '$lib/utils/utilities/downloader';
 	import humanFormat from 'human-format';
 
 	interface Props {
-		downloads: Download[];
+		downloads: UTypeGroupedDownload[];
 		pools: string[];
 		type: string;
 		pool: string;
 		size: number;
 		emulation: string;
 		iso: string;
+		cloudInit: {
+			enabled: boolean;
+		};
 	}
 
 	let {
@@ -26,7 +28,8 @@
 		size = $bindable(),
 		emulation = $bindable(),
 		iso = $bindable(),
-		pools
+		pools,
+		cloudInit
 	}: Props = $props();
 
 	function details(type: string): [string, string] {
@@ -43,11 +46,27 @@
 	}
 
 	let isos = $derived.by(() => {
-		const options = getISOs(downloads, true);
-		options.push({
-			label: 'None',
-			value: 'None'
-		});
+		const options: { label: string; value: string }[] = [];
+
+		if (cloudInit.enabled) {
+			for (const download of downloads) {
+				if (download.uType === 'cloud-init') {
+					options.push({ label: download.label.replace('@@@', ' → '), value: download.uuid });
+				}
+			}
+		} else {
+			for (const download of downloads) {
+				if (
+					download.uType === 'cloud-init' ||
+					(download.uType === 'uncategoried' &&
+						(download.label.endsWith('.iso') || download.label.endsWith('.img')))
+				) {
+					options.push({ label: download.label.replace('@@@', ' → '), value: download.uuid });
+				}
+			}
+		}
+
+		options.push({ label: 'None', value: 'none' });
 		return options;
 	});
 

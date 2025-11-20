@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { currentHostname } from '$lib/stores/auth';
 	import { triggers } from '$lib/utils/keyboard-shortcuts';
 	import { shortcut, type ShortcutTrigger } from '@svelte-put/shortcut';
 	let openCategories: { [key: string]: boolean } = $state({});
@@ -21,7 +21,7 @@
 
 	$effect(() => {
 		if (node) {
-			currentHostname.set(node);
+			storage.hostname = node;
 		}
 	});
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
-	import { store } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import type { Column } from '$lib/types/components/tree-table';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import type { Dataset } from '$lib/types/zfs/dataset';
@@ -77,7 +77,7 @@
 	let hash = $state('');
 
 	onMount(async () => {
-		hash = await sha256($store, 1);
+		hash = await sha256(storage.token || '', 1);
 	});
 </script>
 

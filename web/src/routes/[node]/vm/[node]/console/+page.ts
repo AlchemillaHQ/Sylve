@@ -1,7 +1,6 @@
+import { storage } from '$lib';
 import { getVMDomain, getVMs } from '$lib/api/vm/vm';
-import { store as token } from '$lib/stores/auth';
 import { sha256 } from '$lib/utils/string';
-import { get } from 'svelte/store';
 
 export async function load({ params }) {
 	const vms = (await getVMs()) || [];
@@ -11,7 +10,7 @@ export async function load({ params }) {
 	let id = 0;
 	let port = 0;
 	let password = '';
-	let hash = await sha256(get(token), 1);
+	let hash = await sha256(storage.token || '', 1);
 	let serial = false;
 	let vnc = false;
 

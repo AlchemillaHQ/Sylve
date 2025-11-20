@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getNetworkInterfaceInfoHistorical } from '$lib/api/info/network';
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
-	import { getIODelay, getPoolsDiskUsage } from '$lib/api/zfs/pool';
+	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
 	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
@@ -14,12 +13,13 @@
 	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
 	import type { HistoricalNetworkInterface } from '$lib/types/info/network';
 	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
-	import type { IODelay, IODelayHistorical } from '$lib/types/zfs/pool';
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import { createQueries } from '@tanstack/svelte-query';
 	import type { Chart } from 'chart.js';
+	import { useWindowFocus } from '$lib/runes/useWindowFocus.svelte';
+	import { onMount } from 'svelte';
 
 	interface Data {
 		basicInfo: BasicInfo;
@@ -29,13 +29,12 @@
 		ramInfoHistorical: RAMInfoHistorical;
 		swapInfo: RAMInfo;
 		swapInfoHistorical: RAMInfoHistorical;
-		ioDelay: IODelay;
 		totalDiskUsage: number;
-		ioDelayHistorical: IODelayHistorical;
 		networkUsageHistorical: HistoricalNetworkInterface[];
 	}
 
 	let { data }: { data: Data } = $props();
+
 	const results = createQueries(() => ({
 		queries: [
 			{
@@ -87,18 +86,6 @@
 				refetchOnWindowFocus: true
 			},
 			{
-				queryKey: ['ioDelay'],
-				queryFn: getIODelay,
-				refetchInterval: 60000,
-				keepPreviousData: true,
-				initialData: data.ioDelay,
-				onSuccess: (data: IODelay | IODelayHistorical) => {
-					updateCache('ioDelay', data as IODelay);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
 				queryKey: ['totalDiskUsage'],
 				queryFn: getPoolsDiskUsage,
 				refetchInterval: 120000,
@@ -118,18 +105,6 @@
 				initialData: data.cpuInfoHistorical,
 				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
 					updateCache('cpuInfoHistorical', data as CPUInfoHistorical);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['ioDelayHistorical'],
-				queryFn: getIODelay,
-				refetchInterval: 30000,
-				keepPreviousData: true,
-				initialData: data.ioDelayHistorical,
-				onSuccess: (data: IODelay | IODelayHistorical) => {
-					updateCache('ioDelayHistorical', data as IODelayHistorical);
 				},
 				refetchOnMount: true,
 				refetchOnWindowFocus: true
@@ -173,25 +148,15 @@
 		]
 	}));
 
-	$effect(() => {
-		if (page.url) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-		}
-	});
-
 	let basicInfo = $derived(results[0].data as BasicInfo);
 	let cpuInfo = $derived(results[1].data as CPUInfo);
 	let ramInfo = $derived(results[2].data as RAMInfo);
 	let swapInfo = $derived(results[3].data as RAMInfo);
-	let ioDelay = $derived(results[4].data as IODelay);
-	let totalDiskUsage = $derived(results[5].data as number);
-	let cpuInfoHistorical = $derived(results[6].data as CPUInfoHistorical);
-	let ioDelayHistorical = $derived(results[7].data as IODelayHistorical);
-	let ramInfoHistorical = $derived(results[8].data as RAMInfoHistorical);
-	let swapInfoHistorical = $derived(results[9].data as RAMInfoHistorical);
-	let networkUsageHistorical = $derived(results[10].data as HistoricalNetworkInterface[]);
+	let totalDiskUsage = $derived(results[4].data as number);
+	let cpuInfoHistorical = $derived(results[5].data as CPUInfoHistorical);
+	let ramInfoHistorical = $derived(results[6].data as RAMInfoHistorical);
+	let swapInfoHistorical = $derived(results[7].data as RAMInfoHistorical);
+	let networkUsageHistorical = $derived(results[8].data as HistoricalNetworkInterface[]);
 
 	let chartElements = $derived.by(() => {
 		return [
@@ -203,17 +168,6 @@
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'ioDelay',
-				label: 'I/O Delay',
-				color: 'chart-2',
-				data: ioDelayHistorical
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.delay.toFixed(2)
 					}))
 					.slice(-16)
 			},
@@ -325,20 +279,6 @@
 							<div>
 								<div class="flex w-full justify-between pb-1">
 									<p class="inline-flex items-center">
-										<span class="icon-[lets-icons--time-light] mr-1 h-5 w-5"></span>
-										{'I/O Delay'}
-									</p>
-									<p>{floatToNDecimals(ioDelay.delay, 3) || 0} %</p>
-								</div>
-								<Progress
-									value={floatToNDecimals(ioDelay.delay, 3) || 0}
-									max={100}
-									class="h-2 w-[100%]"
-								/>
-							</div>
-							<div>
-								<div class="flex w-full justify-between pb-1">
-									<p class="inline-flex items-center">
 										<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>{'Swap Usage'}
 									</p>
 									<p>
@@ -384,22 +324,16 @@
 				</Card.Root>
 
 				<AreaChart
-					title="CPU Usage"
-					elements={[chartElements[1], chartElements[0]]}
+					title="CPU / RAM Usage"
+					elements={[chartElements[1], chartElements[0], chartElements[2]]}
 					icon="icon-[solar--cpu-bold]"
 					chart={cpuUsageRef}
 					percentage={true}
 				/>
-				<AreaChart
-					title="Memory Usage"
-					elements={[chartElements[3], chartElements[2]]}
-					icon="icon-[la--memory]"
-					chart={memoryUsageRef}
-					percentage={true}
-				/>
+
 				<AreaChart
 					title="Network Usage"
-					elements={[chartElements[4], chartElements[5]]}
+					elements={[chartElements[3], chartElements[4]]}
 					formatSize={true}
 					icon="icon-[gg--smartphone-ram]"
 					chart={networkUsageRef}

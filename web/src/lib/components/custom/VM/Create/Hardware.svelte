@@ -13,6 +13,7 @@
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { onMount } from 'svelte';
 
 	interface Props {
 		sockets: number;
@@ -41,7 +42,6 @@
 	}: Props = $props();
 
 	let humanSize = $state('1024 M');
-
 	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
 
 	$effect(() => {
@@ -79,6 +79,16 @@
 			});
 		});
 		return cores;
+	});
+
+	onMount(async () => {
+		if (!cpuInfo) {
+			try {
+				cpuInfo = (await getCPUInfo()) as CPUInfo;
+			} catch (error) {
+				toast.error('Failed to load CPU information.');
+			}
+		}
 	});
 </script>
 

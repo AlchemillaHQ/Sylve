@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
-	import { getDownloads } from '$lib/api/utilities/downloader';
+	import { getDownloadsByUType } from '$lib/api/utilities/downloader';
 	import { getVMs, newVM } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { Download } from '$lib/types/utilities/downloader';
+	import type { Download, UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generatePassword } from '$lib/utils/string';
 	import { getNextId, isValidCreateData } from '$lib/utils/vm/vm';
 	import { createQueries } from '@tanstack/svelte-query';
@@ -67,9 +67,9 @@
 				refetchOnMount: 'always'
 			},
 			{
-				queryKey: ['downloads'],
+				queryKey: ['downloads-by-utype'],
 				queryFn: async () => {
-					return await getDownloads();
+					return await getDownloadsByUType();
 				},
 				keepPreviousData: true,
 				initialData: [],
@@ -142,7 +142,7 @@
 	let networkSwitches: SwitchList = $derived(results[0].data as SwitchList);
 	let pciDevices: PCIDevice[] = $derived(results[1].data as PCIDevice[]);
 	let pptDevices: PPTDevice[] = $derived(results[2].data as PPTDevice[]);
-	let downloads = $derived(results[3].data as Download[]);
+	let downloads = $derived(results[3].data as UTypeGroupedDownload[]);
 	let vms: VM[] = $derived(results[4].data as VM[]);
 	let networkObjects = $derived(results[5].data as NetworkObject[]);
 	let jails: Jail[] = $derived(results[6].data as Jail[]);
@@ -197,6 +197,7 @@
 			tpmEmulation: false,
 			timeOffset: 'utc' as 'utc' | 'localtime',
 			cloudInit: {
+				enabled: false,
 				data: '',
 				metadata: ''
 			}
@@ -299,6 +300,7 @@
 									bind:size={modal.storage.size}
 									bind:emulation={modal.storage.emulation}
 									bind:iso={modal.storage.iso}
+									cloudInit={modal.advanced.cloudInit}
 								/>
 							{:else if value === 'network'}
 								<Network

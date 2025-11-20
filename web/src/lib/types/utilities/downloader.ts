@@ -17,13 +17,20 @@ export const DownloadSchema = z.object({
 	progress: z.number(),
 	size: z.number(),
 	files: z.array(DownloadedFileSchema),
-	uType: z.string().optional(),
+	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategorized', '']),
 	extractedPath: z.string().optional(),
 	error: z.string().optional(),
-    status: z.string(),
+	status: z.string(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });
 
+export const UTypeGroupedDownloadSchema = z.object({
+	uuid: z.string(),
+	label: z.string(),
+	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategoried'])
+});
+
 export type Download = z.infer<typeof DownloadSchema>;
 export type DownloadedFile = z.infer<typeof DownloadedFileSchema>;
+export type UTypeGroupedDownload = z.infer<typeof UTypeGroupedDownloadSchema>;

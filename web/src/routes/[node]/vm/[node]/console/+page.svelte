@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { clusterStore, currentHostname } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import type { VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
 	import {
@@ -12,7 +12,6 @@
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
 	import { onDestroy, tick } from 'svelte';
-	import { get } from 'svelte/store';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
@@ -30,8 +29,8 @@
 
 	const wssAuth = $state({
 		hash: data.hash,
-		hostname: get(currentHostname) || '',
-		token: $clusterStore || ''
+		hostname: storage.hostname || '',
+		token: storage.clusterToken || ''
 	});
 
 	function resolveInitialConsole(): ConsoleType {
@@ -124,8 +123,8 @@
 
 		const headerProto = toHex(
 			JSON.stringify({
-				hostname: get(currentHostname) || '',
-				token: $clusterStore || ''
+				hostname: storage.hostname || '',
+				token: storage.clusterToken || ''
 			})
 		);
 

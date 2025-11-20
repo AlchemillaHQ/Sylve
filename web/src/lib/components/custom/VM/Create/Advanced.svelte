@@ -22,6 +22,7 @@
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
 		cloudInit: {
+			enabled: boolean;
 			data: string;
 			metadata: string;
 		};
@@ -59,14 +60,13 @@
 		{ label: '3840x2160', value: '3840x2160' }
 	];
 
-	let cloudInitCb = $state(false);
 	let cloudInitPlaceholders = {
 		data: `#cloud-config\nusers:\n  - name: <username>\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    passwd: "$6$c8XPKY..."\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...\n\nssh_pwauth: true`,
 		metadata: `instance-id: iid-local01\nlocal-hostname: test`
 	};
 
 	$effect(() => {
-		if (!cloudInitCb) {
+		if (!cloudInit.enabled) {
 			cloudInit.data = '';
 			cloudInit.metadata = '';
 		}
@@ -83,7 +83,7 @@
 		/>
 
 		<div class="space-y-1.5">
-			<Label class="w-24 text-sm whitespace-nowrap">VNC Password</Label>
+			<Label class="w-24 whitespace-nowrap text-sm">VNC Password</Label>
 			<div class="flex w-full max-w-sm items-center space-x-2">
 				<Input
 					type="password"
@@ -164,12 +164,12 @@
 
 		<CustomCheckbox
 			label="Enable Cloud-Init"
-			bind:checked={cloudInitCb}
+			bind:checked={cloudInit.enabled}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>
 
-	{#if cloudInitCb}
+	{#if cloudInit.enabled}
 		<CustomValueInput
 			label="Cloud-Init User Data"
 			placeholder={cloudInitPlaceholders.data}

@@ -7,9 +7,9 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import { languageArr } from '$lib/stores/basic';
 	import { mode } from 'mode-watcher';
 	import { onDestroy, onMount } from 'svelte';
+	import { languageArr } from '$lib';
 
 	interface Props {
 		onLogin: (

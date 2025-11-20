@@ -43,6 +43,7 @@ export interface CreateData {
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
 		cloudInit: {
+			enabled: boolean;
 			data: string;
 			metadata: string;
 		};

@@ -10,6 +10,12 @@ package utilitiesServiceInterfaces
 
 import utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 
+type UTypeGroupedDownload struct {
+	UUID  string                        `json:"uuid"`
+	Label string                        `json:"label"`
+	UType utilitiesModels.DownloadUType `json:"uType"`
+}
+
 type UtilitiesServiceInterface interface {
 	DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool, downloadType utilitiesModels.DownloadUType) error
 	ListDownloads() ([]utilitiesModels.Downloads, error)

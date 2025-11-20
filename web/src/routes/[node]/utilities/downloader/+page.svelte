@@ -29,7 +29,7 @@
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { sleep } from '$lib/utils';
-	import { useWindowFocus } from '$lib/runes/window-focus.svelte';
+	import { useWindowFocus } from '$lib/runes/useWindowFocus.svelte';
 	interface Data {
 		downloads: Download[];
 	}

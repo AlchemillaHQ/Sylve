@@ -1050,17 +1050,14 @@ msgstr "Failed to delete notes"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
 msgstr "CPU Usage"
 
-#: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
-msgid "I/O Delay"
-msgstr "I/O Delay"
+#~ msgid "I/O Delay"
+#~ msgstr "I/O Delay"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
@@ -1112,7 +1109,6 @@ msgstr "Sylve Version"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
@@ -2118,7 +2114,6 @@ msgstr "Hardware & Advanced"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -5222,3 +5217,10 @@ msgstr "Pool is in use by a VM or Jail"
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Cannot replace with smaller device"
 msgstr "Cannot replace with smaller device"
+
+#~ msgid "CPU/RAM Usage"
+#~ msgstr "CPU/RAM Usage"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "CPU / RAM Usage"
+msgstr "CPU / RAM Usage"

@@ -228,7 +228,7 @@
 						</div>
 					{:else}
 						<div class="flex flex-1 justify-center">
-							<Arc value={cpuInfo?.usage} title="CPU" subtitle="{cpuInfo.physicalCores} vCPUs" />
+							<Arc value={cpuInfo?.usage} title="CPU" subtitle="{cpuInfo?.physicalCores} vCPUs" />
 						</div>
 						<div class="flex flex-1 justify-center">
 							<Arc

@@ -8,9 +8,9 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
+import { storage } from '$lib';
 import { api } from '$lib/api/common';
 import { reload } from '$lib/stores/api.svelte';
-import { clusterStore } from '$lib/stores/auth';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import type { QueryFunctionContext } from '@tanstack/svelte-query';
 import adze from 'adze';
@@ -41,7 +41,7 @@ export async function apiRequest<T extends z.ZodType>(
 		if (apiResponse.data) {
 			if (apiResponse.data.status && apiResponse.data.status === 'error') {
 				if (apiResponse.data.error && apiResponse.data.error === 'invalid_cluster_token') {
-					clusterStore.set('');
+					storage.clusterToken = '';
 					return apiRequest(endpoint, schema, method, body);
 				}
 			}

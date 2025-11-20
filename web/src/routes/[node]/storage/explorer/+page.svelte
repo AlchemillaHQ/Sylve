@@ -17,11 +17,9 @@
 	import RenameModal from '$lib/components/custom/FileExplorer/RenameModal.svelte';
 	import Toolbar from '$lib/components/custom/FileExplorer/Toolbar.svelte';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
-	import { explorerCurrentPath } from '$lib/stores/basic';
+	import { storage } from '$lib';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { generateBreadcrumbItems, sortFileItems, type SortBy } from '$lib/utils/explorer';
-	import { get } from 'svelte/store';
-
 	interface Data {
 		files: FileNode[];
 	}
@@ -30,7 +28,7 @@
 
 	let viewMode = $state<'grid' | 'list'>('grid');
 	let searchQuery = $state('');
-	let currentPath = $state(get(explorerCurrentPath));
+	let currentPath = $state(storage.fileExplorerCurrentPath || '/');
 	let folderData = $state<{ [path: string]: FileNode[] }>({ '/': data.files });
 	let selectedItems = $state<string[]>([]);
 	let sortBy = $state<SortBy>('name-asc');
@@ -110,7 +108,7 @@
 	}
 
 	$effect(() => {
-		explorerCurrentPath.set(currentPath);
+		storage.fileExplorerCurrentPath = currentPath;
 		selectedItems = [];
 		if (currentPath !== '/' && !folderData[currentPath]) {
 			loadFolderData(currentPath);

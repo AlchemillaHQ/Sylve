@@ -17,6 +17,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -34,6 +35,42 @@ func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 	}
 
 	return downloads, nil
+}
+
+func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGroupedDownload, error) {
+	var downloads []utilitiesModels.Downloads
+	var grouped []utilitiesServiceInterfaces.UTypeGroupedDownload
+
+	if err := s.DB.Find(&downloads).Error; err != nil {
+		return grouped, err
+	}
+
+	for _, dl := range downloads {
+		label := dl.Name
+
+		if dl.ExtractedPath != "" {
+			info, err := os.Stat(dl.ExtractedPath)
+			if err == nil && info.IsDir() {
+				files, err := os.ReadDir(dl.ExtractedPath)
+				if err == nil && len(files) == 1 {
+					if strings.HasSuffix(files[0].Name(), ".raw") ||
+						strings.HasSuffix(files[0].Name(), ".img") ||
+						strings.HasSuffix(files[0].Name(), ".disk") ||
+						strings.HasSuffix(files[0].Name(), ".iso") {
+						label = fmt.Sprintf("%s@@@%s", dl.Name, files[0].Name())
+					}
+				}
+			}
+		}
+
+		grouped = append(grouped, utilitiesServiceInterfaces.UTypeGroupedDownload{
+			UUID:  dl.UUID,
+			Label: label,
+			UType: dl.UType,
+		})
+	}
+
+	return grouped, nil
 }
 
 func (s *Service) GetDownload(uuid string) (*utilitiesModels.Downloads, error) {

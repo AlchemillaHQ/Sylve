@@ -8,4 +8,37 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-// place files you want to import through the `$lib` alias in this folder.
+import type { Locales } from './types/common';
+import { createReactiveStorage } from './utils/storage';
+
+type SharedStorage = {
+	token: string | null;
+	oldToken: string | null;
+	language: Locales | null;
+	hostname: string | null;
+	nodeId: string | null;
+	clusterToken: string | null;
+	fileExplorerCurrentPath: string | null;
+};
+
+export const storage = createReactiveStorage<SharedStorage>(
+	[
+		['token', { storage: 'local' }],
+		['oldToken', { storage: 'local' }],
+		['language', { storage: 'local' }],
+		['hostname', { storage: 'local' }],
+		['nodeId', { storage: 'local' }],
+		['clusterToken', { storage: 'local' }],
+		['fileExplorerCurrentPath', { storage: 'local' }]
+	],
+	{
+		prefix: 'sylve:',
+		storage: 'local'
+	}
+);
+
+export const languageArr = [
+	{ value: 'en', label: 'English' },
+	{ value: 'mal', label: 'മലയാളം' },
+	{ value: 'hi', label: 'हिन्दी' }
+];

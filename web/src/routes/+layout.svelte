@@ -9,33 +9,26 @@
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
-	import { store as token } from '$lib/stores/auth';
-	import { hostname, language } from '$lib/stores/basic';
 	import '$lib/utils/i18n';
 	import { preloadIcons } from '$lib/utils/icons';
 	import { addTabulatorFilters } from '$lib/utils/table';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-	import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount, tick } from 'svelte';
 	import { loadLocale } from 'wuchale/load-utils';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialize.svelte';
-
 	import { sleep } from '$lib/utils';
 	import '../app.css';
 	import type { Locales } from '$lib/types/common.js';
+	import { storage } from '$lib';
 
-	$effect.pre(() => {
-		loadLocale($language as Locales);
-	});
-
-	let changeLanguage = $state($language);
+	let changeLanguage = $state(storage.language ?? 'en');
 
 	$effect(() => {
 		if (changeLanguage) {
-			console.log('Layout detected language change to:', changeLanguage);
-			loadLocale(changeLanguage as Locales);
+			loadLocale((changeLanguage || 'en') as Locales);
+			storage.language = changeLanguage;
 		}
 	});
 
@@ -57,7 +50,7 @@
 	});
 
 	$effect(() => {
-		if (isLoggedIn && $hostname) {
+		if (isLoggedIn && storage.hostname) {
 			const path = window.location.pathname;
 			if (path === '/') {
 				goto('/datacenter/summary', { replaceState: true });
@@ -77,7 +70,7 @@
 			}
 		}
 
-		if ($token) {
+		if (storage.token) {
 			try {
 				if ((await isTokenValid()) && (await isClusterTokenValid())) {
 					isLoggedIn = true;
@@ -90,11 +83,11 @@
 					}
 					loading.initialization = false;
 				} else {
-					$token = '';
+					storage.token = '';
 				}
 			} catch (error) {
 				console.error('Token validation error:', error);
-				$token = '';
+				storage.token = '';
 			}
 		}
 
@@ -121,9 +114,8 @@
 			if (await login(username, password, type, remember, language)) {
 				isLoggedIn = true;
 				loading.login = false;
-
-				// Check if system is initialized after successful login
 				loading.initialization = true;
+
 				try {
 					initialized = await isInitialized();
 				} catch (error) {
@@ -134,6 +126,7 @@
 
 				const path = window.location.pathname;
 				if (path === '/') {
+					console.log('Navigating to datacenter summary after login');
 					await goto('/datacenter/summary', { replaceState: true });
 				}
 			} else {
@@ -157,7 +150,7 @@
 	}
 
 	$effect(() => {
-		if (isLoggedIn && $hostname && !initialized && !loading.initialization) {
+		if (isLoggedIn && storage.hostname && !initialized && !loading.initialization) {
 			const interval = setInterval(async () => {
 				try {
 					const isInit = await isInitialized();
@@ -185,7 +178,7 @@
 
 {#if loading.throbber}
 	<Throbber />
-{:else if isLoggedIn && $hostname}
+{:else if isLoggedIn && storage.hostname}
 	{#if loading.initialization}
 		<Throbber />
 	{:else}

@@ -4,15 +4,14 @@
 	import { default as TreeView } from '$lib/components/custom/TreeView.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { hostname } from '$lib/stores/basic';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
 	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
 	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
+	import { storage } from '$lib';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
-
-	let node = $hostname;
+	let node = $derived(storage.hostname || 'default-node');
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];

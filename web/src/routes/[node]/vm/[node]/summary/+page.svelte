@@ -21,7 +21,6 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { hostname } from '$lib/stores/basic';
 	import type { VM, VMDomain, VMStat } from '$lib/types/vm/vm';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
@@ -30,6 +29,7 @@
 	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
+	import { storage } from '$lib';
 
 	interface Data {
 		vms: VM[];
@@ -128,7 +128,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			goto(`/${$hostname}/summary`);
+			goto(`/${storage.hostname}/summary`);
 			toast.success('VM deleted', {
 				duration: 5000,
 				position: 'bottom-center'

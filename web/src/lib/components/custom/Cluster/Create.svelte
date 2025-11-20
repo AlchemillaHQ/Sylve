@@ -3,7 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { clusterStore } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
 	import { onMount } from 'svelte';
@@ -62,7 +62,7 @@
 			});
 		} else {
 			if (typeof response.data === 'string') {
-				clusterStore.set(response.data);
+				storage.clusterToken = response.data;
 			}
 
 			toast.success('Cluster created', {

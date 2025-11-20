@@ -7,7 +7,7 @@
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
-	import { language, languageArr } from '$lib/stores/basic';
+	import { storage, languageArr } from '$lib';
 
 	let menuData = $state({
 		createVM: {
@@ -64,11 +64,11 @@
 				onclick={() => openTerminal()}
 			>
 				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
-				{#if $terminalStore.tabs.length > 0}
+				{#if terminalStore.tabs?.length > 0}
 					<span
 						class="absolute -right-1 top-0.5 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
 					>
-						{$terminalStore.tabs.length}
+						{terminalStore.tabs?.length}
 					</span>
 				{/if}
 			</Button>
@@ -144,8 +144,8 @@
 									{#each languageArr as { value, label }}
 										<DropdownMenu.CheckboxItem
 											class="cursor-pointer"
-											checked={$language === value}
-											onclick={() => language.set(value)}
+											checked={storage.language === value}
+											onclick={() => (storage.language = value)}
 										>
 											{label}
 										</DropdownMenu.CheckboxItem>

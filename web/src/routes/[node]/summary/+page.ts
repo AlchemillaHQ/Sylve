@@ -16,8 +16,6 @@ export async function load() {
 		ramInfoHistorical,
 		swapInfo,
 		swapInfoHistorical,
-		ioDelay,
-		ioDelayHistorical,
 		totalDiskUsage,
 		networkUsageHistorical
 	] = await Promise.all([
@@ -44,16 +42,6 @@ export async function load() {
 			() => getSwapInfo({ queryKey: ['swapInfoHistorical'], meta: undefined }),
 			cacheDuration
 		),
-		cachedFetch(
-			'ioDelay',
-			() => getIODelay({ queryKey: ['ioDelay'], meta: undefined }),
-			cacheDuration
-		),
-		cachedFetch(
-			'ioDelayHistorical',
-			() => getIODelay({ queryKey: ['ioDelayHistorical'], meta: undefined }),
-			cacheDuration
-		),
 		cachedFetch('totalDiskUsage', getPoolsDiskUsage, cacheDuration),
 		cachedFetch('networkUsageHistorical', getNetworkInterfaceInfoHistorical, cacheDuration)
 	]);
@@ -66,8 +54,6 @@ export async function load() {
 		ramInfoHistorical,
 		swapInfo,
 		swapInfoHistorical,
-		ioDelay,
-		ioDelayHistorical,
 		totalDiskUsage,
 		networkUsageHistorical
 	};

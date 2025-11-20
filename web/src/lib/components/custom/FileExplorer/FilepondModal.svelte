@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { store } from '$lib/stores/auth';
 	import { sha256 } from '$lib/utils/string';
 	import type { FilePond as FilePondType } from 'filepond';
 	import { registerPlugin } from 'filepond';
 	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 	import { onMount } from 'svelte';
+	import { storage } from '$lib';
 	import FilePond from '../FilePond.svelte';
 	interface Props {
 		isOpen: boolean;
@@ -33,7 +33,7 @@
 	let hash = $state('');
 
 	onMount(async () => {
-		hash = await sha256($store, 1);
+		hash = await sha256(storage.token || '', 1);
 	});
 
 	function handleInit() {
