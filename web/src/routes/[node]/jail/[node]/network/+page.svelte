@@ -7,7 +7,6 @@
 		getJails,
 		inheritHostNetwork
 	} from '$lib/api/jail/jail';
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -27,7 +26,7 @@
 		generateMACOptions,
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -40,46 +39,48 @@
 
 	let { data }: { data: Data } = $props();
 	const ctId = page.url.pathname.split('/')[3];
-	const results = useQueries([
-		{
-			queryKey: ['jail-list'],
-			queryFn: async () => {
-				return await getJails();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['jail-list'],
+				queryFn: async () => {
+					return await getJails();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.jails,
+				onSuccess: (data: Jail[]) => {
+					updateCache('jail-list', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jails,
-			onSuccess: (data: Jail[]) => {
-				updateCache('jail-list', data);
-			}
-		},
-		{
-			queryKey: ['networkSwitches'],
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['networkSwitches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('networkSwitches', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('networkSwitches', data);
+			{
+				queryKey: ['networkObjects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.networkObjects,
+				onSuccess: (data: NetworkObject[]) => {
+					updateCache('networkObjects', data);
+				}
 			}
-		},
-		{
-			queryKey: ['networkObjects'],
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.networkObjects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('networkObjects', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let jails = $derived($results[0].data || []);
+	let jails = $derived(results[0].data || []);
 	let jail = $derived.by(() => {
 		if (jails.length > 0) {
 			const found = jails.find((j) => j.ctId === parseInt(ctId));
@@ -89,8 +90,8 @@
 		return data.jail;
 	});
 
-	let switches = $derived($results[1].data as SwitchList);
-	let networkObjects = $derived($results[2].data || []);
+	let switches = $derived(results[1].data as SwitchList);
+	let networkObjects = $derived(results[2].data || []);
 	let inherited = $derived.by(() => {
 		if (jail) {
 			return jail.inheritIPv4 || jail.inheritIPv6;

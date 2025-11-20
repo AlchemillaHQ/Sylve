@@ -14,7 +14,7 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -29,75 +29,77 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
-		{
-			queryKey: ['networkInterfaces'],
-			queryFn: async () => {
-				return await getInterfaces();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['networkInterfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('networkInterfaces', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('networkInterfaces', data);
-			}
-		},
-		{
-			queryKey: ['networkSwitches'],
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['networkSwitches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('networkSwitches', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('networkSwitches', data);
-			}
-		},
-		{
-			queryKey: ['vms'],
-			queryFn: async () => {
-				return getVMs();
+			{
+				queryKey: ['vms'],
+				queryFn: async () => {
+					return getVMs();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.vms,
+				onSuccess: (data: VM[]) => {
+					updateCache('vms', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vms', data);
-			}
-		},
-		{
-			queryKey: [`vm-domain-${data.vm.vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(data.vm.vmId);
+			{
+				queryKey: [`vm-domain-${data.vm.vmId}`],
+				queryFn: async () => {
+					return await getVMDomain(data.vm.vmId);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.domain,
+				onSuccess: (uData: VMDomain) => {
+					updateCache(`vm-domain-${data.vm.vmId}`, uData);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (uData: VMDomain) => {
-				updateCache(`vm-domain-${data.vm.vmId}`, uData);
+			{
+				queryKey: ['networkObjects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.networkObjects,
+				onSuccess: (data: NetworkObject[]) => {
+					updateCache('networkObjects', data);
+				}
 			}
-		},
-		{
-			queryKey: ['networkObjects'],
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.networkObjects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('networkObjects', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let interfaces = $derived($results[0].data || []);
-	let switches = $derived($results[1].data || {});
-	let vms = $derived($results[2].data || []);
+	let interfaces = $derived(results[0].data || []);
+	let switches = $derived(results[1].data || {});
+	let vms = $derived(results[2].data || []);
 	let vm = $derived(vms.find((vm) => vm.vmId === Number(data.node)));
-	let domain = $derived(($results[3].data as VMDomain) || {});
-	let networkObjects = $derived($results[4].data || []);
+	let domain = $derived((results[3].data as VMDomain) || {});
+	let networkObjects = $derived(results[4].data || []);
 
 	function generateTableData() {
 		const rows: Row[] = [];

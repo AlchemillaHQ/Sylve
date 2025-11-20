@@ -9,7 +9,6 @@
  */
 
 import { getIcon, loadIcon } from '@iconify/svelte';
-import { Archive, FileText, ImageIcon, Music, Video } from 'lucide-svelte';
 
 export const iconCache: Record<string, string> = {};
 const icons = [
@@ -50,9 +49,9 @@ const icons = [
 	'mdi:lock',
 	'mdi:autorenew',
 	'mdi:alert-circle-outline',
-    'eos-icons:three-dots-loading',
-    'raphael:ethernet',
-    'temaki:water-tap'
+	'eos-icons:three-dots-loading',
+	'raphael:ethernet',
+	'temaki:water-tap'
 ];
 
 export async function preloadIcons() {
@@ -80,28 +79,28 @@ export function getFileIcon(filename: string) {
 		case 'gif':
 		case 'bmp':
 		case 'svg':
-			return ImageIcon;
+			return 'icon-[lucide--image-icon]';
 		case 'mp4':
 		case 'avi':
 		case 'mkv':
 		case 'mov':
 		case 'wmv':
-			return Video;
+			return 'icon-[lucide--video]';
 		case 'mp3':
 		case 'wav':
 		case 'flac':
 		case 'ogg':
-			return Music;
+			return 'icon-[lucide--music]';
 		case 'zip':
 		case 'tar':
 		case 'gz':
 		case 'rar':
 		case '7z':
-			return Archive;
+			return 'icon-[lucide--archive]';
 		case 'exe':
 		case 'sh':
 		case 'bin':
-			return FileText;
+			return 'icon-[lucide--file-text]';
 		case 'pdf':
 		case 'doc':
 		case 'docx':
@@ -116,6 +115,6 @@ export function getFileIcon(filename: string) {
 		case 'cshrc':
 		case 'profile':
 		default:
-			return FileText;
+			return 'icon-[lucide--file-text]';
 	}
 }

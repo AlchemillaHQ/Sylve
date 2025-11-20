@@ -13,7 +13,7 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import adze from 'adze';
 	import { get } from 'svelte/store';
 
@@ -31,40 +31,41 @@
 
 	let { data }: { data: Data } = $props();
 	const ctId = page.url.pathname.split('/')[3];
-
-	const results = useQueries([
-		{
-			queryKey: ['jail-list'],
-			queryFn: async () => {
-				return await getJails();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['jail-list'],
+				queryFn: async () => {
+					return await getJails();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.jails,
+				onSuccess: (data: Jail[]) => {
+					updateCache('jail-list', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jails,
-			onSuccess: (data: Jail[]) => {
-				updateCache('jail-list', data);
+			{
+				queryKey: ['jail-states'],
+				queryFn: async () => {
+					return await getJailStates();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.jailStates,
+				onSuccess: (data: JailState[]) => {
+					updateCache('jail-states', data);
+				}
 			}
-		},
-		{
-			queryKey: ['jail-states'],
-			queryFn: async () => {
-				return await getJailStates();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jailStates,
-			onSuccess: (data: JailState[]) => {
-				updateCache('jail-states', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let jail: Jail = $derived(
-		($results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
+		(results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
 	);
 
 	let jState: JailState = $derived(
-		($results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
+		(results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
 			({} as JailState)
 	);
 

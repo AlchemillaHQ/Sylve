@@ -14,7 +14,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/snapshot';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -26,50 +26,52 @@
 
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsSnapshots';
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'pools',
-			queryFn: async () => {
-				return await getPools();
+
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['pools'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				keepPreviousData: false,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			},
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
-		},
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
+			{
+				queryKey: ['zfs-datasets'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('zfs-datasets', data);
+				}
 			},
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('zfs-datasets', data);
+			{
+				queryKey: ['periodic-snapshots'],
+				queryFn: async () => {
+					return await getPeriodicSnapshots();
+				},
+				keepPreviousData: false,
+				initialData: data.periodicSnapshots,
+				onSuccess: (data: PeriodicSnapshot[]) => {
+					updateCache('zfs-datasets', data);
+				}
 			}
-		},
-		{
-			queryKey: 'periodic-snapshots',
-			queryFn: async () => {
-				return await getPeriodicSnapshots();
-			},
-			keepPreviousData: false,
-			initialData: data.periodicSnapshots,
-			onSuccess: (data: PeriodicSnapshot[]) => {
-				updateCache('zfs-datasets', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('pools');
-			queryClient.refetchQueries('zfs-datasets');
-			queryClient.refetchQueries('periodic-snapshots');
+			results.forEach((result) => {
+				result.refetch();
+			});
 
 			untrack(() => {
 				reload = false;
@@ -79,11 +81,11 @@
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
-	let grouped: GroupedByPool[] = $derived(groupByPool($results[0].data, $results[1].data));
-	let pools: Zpool[] = $derived($results[0].data || []);
-	let periodicSnapshots: PeriodicSnapshot[] = $derived($results[2].data || []);
+	let grouped: GroupedByPool[] = $derived(groupByPool(results[0].data, results[1].data));
+	let pools: Zpool[] = $derived(results[0].data || []);
+	let periodicSnapshots: PeriodicSnapshot[] = $derived(results[2].data || []);
 	let datasets: Dataset[] = $derived.by(() => {
-		return $results[1].data?.filter((dataset) => dataset.type !== 'snapshot') || [];
+		return results[1].data?.filter((dataset) => dataset.type !== 'snapshot') || [];
 	});
 
 	let tableData = $derived(generateTableData(grouped));

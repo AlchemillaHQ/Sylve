@@ -5,8 +5,6 @@
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
-	import CreateSnapshot from '$lib/components/custom/ZFS/datasets/snapshots/Create.svelte';
-	import DeleteSnapshot from '$lib/components/custom/ZFS/datasets/snapshots/Delete.svelte';
 	import CreateVolume from '$lib/components/custom/ZFS/datasets/volumes/Create.svelte';
 	import EditVolume from '$lib/components/custom/ZFS/datasets/volumes/Edit.svelte';
 	import FlashFile from '$lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte';
@@ -18,8 +16,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
-	import { untrack } from 'svelte';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -31,62 +28,61 @@
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsVolumes';
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'pools',
-			queryFn: async () => {
-				return await getPools();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['pools'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				refetchInterval: false,
+				keepPreviousData: false,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			},
-			refetchInterval: false,
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
-		},
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
+			{
+				queryKey: ['zfs-datasets'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				refetchInterval: false,
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('zfs-datasets', data);
+				}
 			},
-			refetchInterval: false,
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('zfs-datasets', data);
+			{
+				queryKey: ['downloads'],
+				queryFn: async () => {
+					return await getDownloads();
+				},
+				refetchInterval: false,
+				keepPreviousData: true,
+				initialData: data.downloads,
+				onSuccess: (data: Download[]) => {
+					updateCache('downloads', data);
+				}
 			}
-		},
-		{
-			queryKey: 'downloads',
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: data.downloads,
-			onSuccess: (data: Download[]) => {
-				updateCache('downloads', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let reload = $state(false);
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('pools');
-			queryClient.refetchQueries('zfs-datasets');
-			queryClient.refetchQueries('downloads');
-
-			untrack(() => {
-				reload = false;
+			results.forEach((result) => {
+				result.refetch();
 			});
+
+			reload = false;
 		}
 	});
 
-	let pools: Zpool[] = $derived($results[0].data as Zpool[]);
-	let downloads = $derived($results[2].data as Download[]);
-	let grouped: GroupedByPool[] = $derived(groupByPool($results[0].data, $results[1].data));
+	let pools: Zpool[] = $derived(results[0].data as Zpool[]);
+	let downloads = $derived(results[2].data as Download[]);
+	let grouped: GroupedByPool[] = $derived(groupByPool(results[0].data, results[1].data));
 	let table: {
 		rows: Row[];
 		columns: Column[];
@@ -95,7 +91,7 @@
 	let activeRows = $state<Row[] | null>(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let activePool: Zpool | null = $derived.by(() => {
-		const pool = $results[0].data?.find((pool) => pool.name === activeRow?.name);
+		const pool = results[0].data?.find((pool) => pool.name === activeRow?.name);
 		return pool ?? null;
 	});
 
@@ -128,14 +124,14 @@
 
 	let activeVolume: Dataset | null = $derived.by(() => {
 		if (activePool) return null;
-		const volumes = $results[1].data?.filter((volume) => volume.type === 'volume');
+		const volumes = results[1].data?.filter((volume) => volume.type === 'volume');
 		const volume = volumes?.find((volume) => volume.name.endsWith(activeRow?.name));
 		return volume ?? null;
 	});
 
 	let activeSnapshot: Dataset | null = $derived.by(() => {
 		if (activePool) return null;
-		const snapshots = $results[1].data?.filter((snapshot) => snapshot.type === 'snapshot');
+		const snapshots = results[1].data?.filter((snapshot) => snapshot.type === 'snapshot');
 		const snapshot = snapshots?.find((snapshot) => snapshot.name.endsWith(activeRow?.name));
 		return snapshot ?? null;
 	});

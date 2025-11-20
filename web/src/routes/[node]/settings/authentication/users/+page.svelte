@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
-	import { handleAPIResponse } from '$lib/api/common';
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -10,7 +9,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -61,31 +60,28 @@
 		return { rows, columns };
 	}
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'users',
-			queryFn: async () => {
-				return (await listUsers()) as User[];
-			},
-			keepPreviousData: true,
-			initialData: data.users,
-			onSuccess: (data: User[]) => {
-				updateCache('users', data);
-			}
+	const results = createQuery(() => ({
+		queryKey: ['users'],
+		queryFn: async () => {
+			return (await listUsers()) as User[];
+		},
+		keepPreviousData: true,
+		initialData: data.users,
+		onSuccess: (data: User[]) => {
+			updateCache('users', data);
 		}
-	]);
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('users');
+			results.refetch();
 			reload = false;
 		}
 	});
 
-	let users: User[] = $derived($results[0].data as User[]);
+	let users: User[] = $derived(results.data as User[]);
 	let tableData = $derived(generateTableData(users));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -107,7 +103,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="!pointer-events-auto h-6.5"
+				class="h-6.5 !pointer-events-auto"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
 			>
@@ -126,7 +122,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="!pointer-events-auto h-6.5"
+				class="h-6.5 !pointer-events-auto"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
 			>

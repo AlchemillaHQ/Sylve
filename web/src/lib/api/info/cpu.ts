@@ -5,7 +5,7 @@ import {
 	type CPUInfoHistorical
 } from '$lib/types/info/cpu';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
+import type { QueryFunctionContext } from '@tanstack/svelte-query';
 
 export async function getCPUInfo(
 	queryObj?: QueryFunctionContext

@@ -13,7 +13,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -23,36 +23,37 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const results = useQueries([
-		{
-			queryKey: ['users'],
-			queryFn: async () => {
-				return (await listUsers()) as User[];
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['users'],
+				queryFn: async () => {
+					return (await listUsers()) as User[];
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.users,
+				onSuccess: (data: User[]) => {
+					updateCache('users', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.users,
-			onSuccess: (data: User[]) => {
-				updateCache('users', data);
+			{
+				queryKey: ['groups'],
+				queryFn: async () => {
+					return (await listGroups()) as Group[];
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.groups,
+				onSuccess: (data: Group[]) => {
+					updateCache('groups', data);
+				}
 			}
-		},
-		{
-			queryKey: ['groups'],
-			queryFn: async () => {
-				return (await listGroups()) as Group[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.groups,
-			onSuccess: (data: Group[]) => {
-				updateCache('groups', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let users = $derived($results[0].data as User[]);
-	let groups = $derived($results[1].data as Group[]);
+	let users = $derived(results[0].data as User[]);
+	let groups = $derived(results[1].data as Group[]);
 	let usersOptions = $derived.by(() => {
 		return users.map((user) => ({
 			label: user.username,

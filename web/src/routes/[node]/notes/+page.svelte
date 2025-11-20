@@ -13,7 +13,7 @@
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -24,21 +24,23 @@
 	let { data }: { data: Data } = $props();
 
 	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'notes',
-			queryFn: async () => {
-				return (await getNotes()) as Note[];
-			},
-			keepPreviousData: true,
-			initialData: data.notes,
-			onSuccess: (data: Note[]) => {
-				updateCache('notes', data);
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['notes'],
+				queryFn: async () => {
+					return (await getNotes()) as Note[];
+				},
+				keepPreviousData: true,
+				initialData: data.notes,
+				onSuccess: (data: Note[]) => {
+					updateCache('notes', data);
+				}
 			}
-		}
-	]);
+		]
+	}));
 
-	let notes: Note[] = $derived($results[0].data as Note[]);
+	let notes: Note[] = $derived(results[0].data as Note[]);
 	let modalState = $state({
 		title: '',
 		content: '',
@@ -326,7 +328,7 @@
 				{:else}
 					<div class="mt-2">
 						<p
-							class="mb-2 text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+							class="mb-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 						>
 							Content
 						</p>

@@ -14,7 +14,7 @@ import {
 	type Zpool
 } from '$lib/types/zfs/pool';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
+import type { QueryFunctionContext } from '@tanstack/svelte-query';
 
 export async function getIODelay(
 	queryObj: QueryFunctionContext | undefined

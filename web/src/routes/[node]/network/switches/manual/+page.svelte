@@ -11,7 +11,7 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/network/switch/manual';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -21,34 +21,35 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['network-interfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('network-interfaces', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('network-switches', data);
+				}
 			}
-		},
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
-			},
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('network-switches', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	const interfaces = $derived($results[0].data);
-	const switches = $derived($results[1].data);
+	const interfaces = $derived(results[0].data);
+	const switches = $derived(results[1].data);
 	const usable = $derived.by(() => {
 		const result: string[] = [];
 		const ifaces = interfaces ? interfaces.filter((iface) => iface.groups?.includes('bridge')) : [];
@@ -75,8 +76,9 @@
 	let query: string = $state('');
 
 	function reloadData() {
-		queryClient.refetchQueries('network-interfaces');
-		queryClient.refetchQueries('network-switches');
+		results.forEach((result) => {
+			result.refetch();
+		});
 	}
 
 	let reload = $state(false);

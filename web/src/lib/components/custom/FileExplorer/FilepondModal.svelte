@@ -4,11 +4,11 @@
 	import { store } from '$lib/stores/auth';
 	import { sha256 } from '$lib/utils/string';
 	import type { FilePond as FilePondType } from 'filepond';
+	import { registerPlugin } from 'filepond';
 	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 	import { onMount } from 'svelte';
-	import FilePond, { registerPlugin } from 'svelte-filepond';
-
+	import FilePond from '../FilePond.svelte';
 	interface Props {
 		isOpen: boolean;
 		onClose: () => void;

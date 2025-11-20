@@ -15,7 +15,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -29,64 +29,67 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
-		},
-		{
-			queryKey: ['pciDevices'],
-			queryFn: async () => {
-				return (await getPCIDevices()) as PCIDevice[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pciDevices,
-			onSuccess: (data: PCIDevice[]) => {
-				updateCache('pciDevices', data);
-			}
-		},
-		{
-			queryKey: ['pptDevices'],
-			queryFn: async () => {
-				return (await getPPTDevices()) as PPTDevice[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pptDevices,
-			onSuccess: (data: PPTDevice[]) => {
-				updateCache('pptDevices', data);
-			}
-		},
-		{
-			queryKey: [`vmDomain-${data.vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(data.vmId);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (updated: VMDomain) => {
-				updateCache(`vmDomain-${data.vmId}`, updated);
-			}
-		}
-	]);
 
-	let vms: VM[] = $derived($results[0].data ? $results[0].data : data.vms);
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['vm-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.vms,
+				onSuccess: (data: VM[]) => {
+					updateCache('vm-list', data);
+				}
+			},
+			{
+				queryKey: ['pciDevices'],
+				queryFn: async () => {
+					return (await getPCIDevices()) as PCIDevice[];
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.pciDevices,
+				onSuccess: (data: PCIDevice[]) => {
+					updateCache('pciDevices', data);
+				}
+			},
+			{
+				queryKey: ['pptDevices'],
+				queryFn: async () => {
+					return (await getPPTDevices()) as PPTDevice[];
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.pptDevices,
+				onSuccess: (data: PPTDevice[]) => {
+					updateCache('pptDevices', data);
+				}
+			},
+			{
+				queryKey: [`vmDomain-${data.vmId}`],
+				queryFn: async () => {
+					return await getVMDomain(data.vmId);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.domain,
+				onSuccess: (updated: VMDomain) => {
+					updateCache(`vmDomain-${data.vmId}`, updated);
+				}
+			}
+		]
+	}));
+
+	let vms: VM[] = $derived(results[0].data ? results[0].data : data.vms);
 	let vm: VM | null = $derived(
 		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
 	);
-	let pciDevices: PCIDevice[] = $derived($results[1].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived($results[2].data as PPTDevice[]);
-	let domain = $derived($results[3].data as VMDomain);
+	let pciDevices: PCIDevice[] = $derived(results[1].data as PCIDevice[]);
+	let pptDevices: PPTDevice[] = $derived(results[2].data as PPTDevice[]);
+	let domain = $derived(results[3].data as VMDomain);
 
 	let options = {
 		cpu: {

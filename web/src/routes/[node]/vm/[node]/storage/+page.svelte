@@ -16,7 +16,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -30,79 +30,81 @@
 	let { data }: { data: Data } = $props();
 	const vmId = page.url.pathname.split('/')[3];
 
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['vm-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.vms,
+				onSuccess: (data: VM[]) => {
+					updateCache('vm-list', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
-		},
-		{
-			queryKey: [`vm-domain-${vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(vmId);
+			{
+				queryKey: [`vm-domain-${vmId}`],
+				queryFn: async () => {
+					return await getVMDomain(vmId);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.domain,
+				onSuccess: (data: VMDomain) => {
+					updateCache(`vm-domain-${vmId}`, data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (data: VMDomain) => {
-				updateCache(`vm-domain-${vmId}`, data);
-			}
-		},
-		{
-			queryKey: ['poolList'],
-			queryFn: async () => {
-				return await getPools();
+			{
+				queryKey: ['poolList'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: false,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
-		},
-		{
-			queryKey: ['datasetList'],
-			queryFn: async () => {
-				return await getDatasets();
+			{
+				queryKey: ['datasetList'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('datasets', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('datasets', data);
+			{
+				queryKey: ['downloads'],
+				queryFn: async () => {
+					return await getDownloads();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.downloads,
+				onSuccess: (data: Download[]) => {
+					updateCache('downloads', data);
+				}
 			}
-		},
-		{
-			queryKey: ['downloads'],
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.downloads,
-			onSuccess: (data: Download[]) => {
-				updateCache('downloads', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let vms: VM[] = $derived($results[0].data as VM[]);
-	let domain: VMDomain = $derived($results[1].data as VMDomain);
-	let pools: Zpool[] = $derived($results[2].data as Zpool[]);
+	let vms: VM[] = $derived(results[0].data as VM[]);
+	let domain: VMDomain = $derived(results[1].data as VMDomain);
+	let pools: Zpool[] = $derived(results[2].data as Zpool[]);
 	let vm: VM = $derived(
-		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
+		(results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
 	);
-	let datasets: Dataset[] = $derived($results[3].data as Dataset[]);
-	let downloads: Download[] = $derived($results[4].data as Download[]);
+	let datasets: Dataset[] = $derived(results[3].data as Dataset[]);
+	let downloads: Download[] = $derived(results[4].data as Download[]);
 	let tableData = $derived(generateTableData(vm, datasets, downloads));
 
 	let options = {

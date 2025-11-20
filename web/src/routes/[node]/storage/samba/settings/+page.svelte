@@ -9,7 +9,7 @@
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -21,38 +21,40 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'samba-config',
-			queryFn: async () => {
-				return await getSambaConfig();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['samba-config'],
+				queryFn: async () => {
+					return await getSambaConfig();
+				},
+				keepPreviousData: true,
+				initialData: data.sambaConfig,
+				onSuccess: (data: SambaConfig) => {
+					updateCache('samba-config', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.sambaConfig,
-			onSuccess: (data: SambaConfig) => {
-				updateCache('samba-config', data);
+			{
+				queryKey: ['network-interfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('network-interfaces', data);
+				}
 			}
-		},
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
-			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('samba-config');
-			queryClient.refetchQueries('network-interfaces');
+			results.forEach((result) => {
+				result.refetch();
+			});
 
 			untrack(() => {
 				reload = false;
@@ -60,8 +62,8 @@
 		}
 	});
 
-	let sambaConfig: SambaConfig = $derived($results[0].data as SambaConfig);
-	let interfaces: Iface[] = $derived($results[1].data as Iface[]);
+	let sambaConfig: SambaConfig = $derived(results[0].data as SambaConfig);
+	let interfaces: Iface[] = $derived(results[1].data as Iface[]);
 	let usableIfaces = $derived.by(() => {
 		let filtered = [];
 		for (const iface of interfaces) {

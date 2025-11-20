@@ -12,7 +12,7 @@ import { api } from '$lib/api/common';
 import { reload } from '$lib/stores/api.svelte';
 import { clusterStore } from '$lib/stores/auth';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
+import type { QueryFunctionContext } from '@tanstack/svelte-query';
 import adze from 'adze';
 import { z } from 'zod/v4';
 

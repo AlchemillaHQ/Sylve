@@ -13,7 +13,6 @@
 		updateDescription
 	} from '$lib/api/jail/jail';
 	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
-	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -30,8 +29,8 @@
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { cleanStats } from '$lib/utils/jail/stats';
-	import { dateToAgo, secondsToHoursAgo } from '$lib/utils/time';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { dateToAgo } from '$lib/utils/time';
+	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 
@@ -58,106 +57,108 @@
 		}
 	});
 
-	const results = useQueries([
-		{
-			queryKey: ['jail-list'],
-			queryFn: async () => {
-				return await getJails();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['jail-list'],
+				queryFn: async () => {
+					return await getJails();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.jails,
+				onSuccess: (data: Jail[]) => {
+					updateCache('jail-list', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jails,
-			onSuccess: (data: Jail[]) => {
-				updateCache('jail-list', data);
+			{
+				queryKey: ['jail-states'],
+				queryFn: async () => {
+					return await getJailStates();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.jailStates,
+				onSuccess: (data: JailState[]) => {
+					updateCache('jail-states', data);
+				}
+			},
+			{
+				queryKey: [`jail-${ctId}-start-logs`],
+				queryFn: async () => {
+					return await getJailLogs(data.jail.id, true);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: { logs: '' },
+				onSuccess: (data: any) => {
+					updateCache(`jail-${ctId}-start-logs`, data);
+				}
+			},
+			{
+				queryKey: [`jail-${ctId}-stop-logs`],
+				queryFn: async () => {
+					return await getJailLogs(data.jail.id, false);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: { logs: '' },
+				onSuccess: (data: any) => {
+					updateCache(`jail-${ctId}-stop-logs`, data);
+				}
+			},
+			{
+				queryKey: [`jail-stats-${ctId}`],
+				queryFn: async () => {
+					return await getStats(Number(ctId), 128);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.stats,
+				onSuccess: (data: JailStat[]) => {
+					updateCache(`jail-stats-${ctId}`, data);
+				}
+			},
+			{
+				queryKey: ['cpuInfo'],
+				queryFn: getCPUInfo,
+				refetchInterval: false,
+				keepPreviousData: true,
+				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
+					updateCache('cpuInfo', data as CPUInfo);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
+			},
+			{
+				queryKey: ['ramInfo'],
+				queryFn: getRAMInfo,
+				refetchInterval: false,
+				keepPreviousData: true,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('ramInfo', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			}
-		},
-		{
-			queryKey: ['jail-states'],
-			queryFn: async () => {
-				return await getJailStates();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jailStates,
-			onSuccess: (data: JailState[]) => {
-				updateCache('jail-states', data);
-			}
-		},
-		{
-			queryKey: [`jail-${ctId}-start-logs`],
-			queryFn: async () => {
-				return await getJailLogs(data.jail.id, true);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: { logs: '' },
-			onSuccess: (data: any) => {
-				updateCache(`jail-${ctId}-start-logs`, data);
-			}
-		},
-		{
-			queryKey: [`jail-${ctId}-stop-logs`],
-			queryFn: async () => {
-				return await getJailLogs(data.jail.id, false);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: { logs: '' },
-			onSuccess: (data: any) => {
-				updateCache(`jail-${ctId}-stop-logs`, data);
-			}
-		},
-		{
-			queryKey: [`jail-stats-${ctId}`],
-			queryFn: async () => {
-				return await getStats(Number(ctId), 128);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.stats,
-			onSuccess: (data: JailStat[]) => {
-				updateCache(`jail-stats-${ctId}`, data);
-			}
-		},
-		{
-			queryKey: ['cpuInfo'],
-			queryFn: getCPUInfo,
-			refetchInterval: false,
-			keepPreviousData: true,
-			onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-				updateCache('cpuInfo', data as CPUInfo);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['ramInfo'],
-			queryFn: getRAMInfo,
-			refetchInterval: false,
-			keepPreviousData: true,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('ramInfo', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		}
-	]);
+		]
+	}));
 
 	let jail: Jail = $derived(
-		($results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
+		(results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
 	);
 
 	let jState: JailState = $derived(
-		($results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
+		(results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
 			({} as JailState)
 	);
 
-	let startLogs = $derived($results[2].data);
-	let stopLogs = $derived($results[3].data);
+	let startLogs = $derived(results[2].data);
+	let stopLogs = $derived(results[3].data);
 	let jailDesc = $state(jail.description || '');
-	let jailStats = $derived($results[4].data || []);
-	let cpuInfo = $derived($results[5].data as CPUInfo);
-	let ramInfo = $derived($results[6].data as RAMInfo);
+	let jailStats = $derived(results[4].data || []);
+	let cpuInfo = $derived(results[5].data as CPUInfo);
+	let ramInfo = $derived(results[6].data as RAMInfo);
 	let logicalCores = $derived(cpuInfo?.logicalCores ?? 0);
 	let totalRAM = $derived(ramInfo?.total ?? 0);
 	let cpuHistoricalData = $derived.by(() => {

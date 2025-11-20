@@ -20,7 +20,6 @@
 	import { explorerCurrentPath } from '$lib/stores/basic';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { generateBreadcrumbItems, sortFileItems, type SortBy } from '$lib/utils/explorer';
-	import { Clipboard, FileText, Folder, RotateCcw, UploadIcon } from 'lucide-svelte';
 	import { get } from 'svelte/store';
 
 	interface Data {
@@ -257,7 +256,9 @@
 		await loadFolderData(currentPath);
 		handleAPIResponse(response, {
 			success: 'Renamed successfully',
-			error: response.error || 'Failed to rename'
+			error: Array.isArray(response.error)
+				? response.error.join(', ')
+				: (response.error ?? 'Failed to rename')
 		});
 		modals.rename.isOpen = false;
 		modals.rename.id = '';
@@ -358,7 +359,7 @@
 						class="drag-over-overlay bg-background border-muted absolute inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
 					>
 						<div class="bg-background rounded-xl border p-8 text-center shadow-xl">
-							<UploadIcon class="mx-auto mb-4 h-16 w-16 " />
+							<span class="icon-[lucide--upload] mx-auto mb-4 h-16 w-16"></span>
 							<p class="mb-2 text-xl font-semibold">Drop files here to upload</p>
 							<p class="text-sm">Files will be uploaded to the current folder</p>
 						</div>
@@ -396,12 +397,12 @@
 			</ContextMenu.Trigger>
 			<ContextMenu.Content>
 				<ContextMenu.Item class="gap-2" onclick={refreshCurrentFolder}>
-					<RotateCcw />
+					<span class="icon-[lucide--rotate-ccw] h-4 w-4"></span>
 					Refresh</ContextMenu.Item
 				>
 				{#if copyFileOrFolder.items.length > 0}
 					<ContextMenu.Item class="gap-2" onclick={pasteFileOrFolder}>
-						<Clipboard class="h-4 w-4" />
+						<span class="icon-[lucide--clipboard] h-4 w-4"></span>
 						Paste
 					</ContextMenu.Item>
 				{/if}
@@ -411,7 +412,8 @@
 						modals.create.isFolder = false;
 						modals.create.isOpen = true;
 					}}
-					><FileText />
+				>
+					<span class="icon-[lucide--file-text] h-4 w-4"></span>
 					New File
 				</ContextMenu.Item>
 				<ContextMenu.Item
@@ -420,7 +422,8 @@
 						modals.create.isFolder = true;
 						modals.create.isOpen = true;
 					}}
-					><Folder />
+				>
+					<span class="icon-[lucide--folder] h-4 w-4"></span>
 					New Folder
 				</ContextMenu.Item>
 				<ContextMenu.Item
@@ -429,7 +432,7 @@
 						modals.filepond.isOpen = true;
 					}}
 				>
-					<UploadIcon />
+					<span class="icon-[lucide--upload] h-4 w-4"></span>
 					Upload File</ContextMenu.Item
 				>
 			</ContextMenu.Content>

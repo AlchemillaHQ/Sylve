@@ -16,10 +16,7 @@
 		createJail: {
 			open: false
 		},
-		menuItems: [
-			{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }
-			// { icon: 'meteor-icons--language', label: 'Language', shortcut: '⌘K' }
-		]
+		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }]
 	});
 
 	let jwt = $state(getJWTClaims());
@@ -50,6 +47,7 @@
 			<nav class="flex flex-col text-lg font-medium">
 				<div class="mt-4 flex items-center space-x-2">
 					<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+					<!-- @wc-ignore -->
 					<p class="font-normal tracking-[.45em]">SYLVE</p>
 				</div>
 				<p class="mt-4 whitespace-nowrap">Virtual Environment 0.0.1</p>
@@ -68,7 +66,7 @@
 				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
 				{#if $terminalStore.tabs.length > 0}
 					<span
-						class="absolute top-0.5 -right-1 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+						class="absolute -right-1 top-0.5 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
 					>
 						{$terminalStore.tabs.length}
 					</span>
@@ -136,7 +134,7 @@
 					<DropdownMenu.Sub>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger
-								class=" hover:bg-accent flex h-6.5 w-full cursor-pointer items-center justify-start px-2.5 py-4 text-left"
+								class=" hover:bg-accent h-6.5 flex w-full cursor-pointer items-center justify-start px-2.5 py-4 text-left"
 							>
 								<span class="icon-[meteor-icons--language] mr-4 h-4 w-4"></span>
 								Language

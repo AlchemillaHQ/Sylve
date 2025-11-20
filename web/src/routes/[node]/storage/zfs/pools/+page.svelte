@@ -23,7 +23,7 @@
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -33,41 +33,41 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = useQueries([
-		{
-			queryKey: ['diskList'],
-			queryFn: async () => {
-				return await listDisks();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.disks,
-			onSuccess: (data: Disk[]) => {
-				updateCache('disks', data);
-			}
-		},
-		{
-			queryKey: ['poolList'],
-			queryFn: async () => {
-				let pools = await getPools();
-
-				if (pools.length === 0) {
-					return data.pools;
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['diskList'],
+				queryFn: async () => {
+					return await listDisks();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.disks,
+				onSuccess: (data: Disk[]) => {
+					updateCache('disks', data);
 				}
-
-				return pools;
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
+			{
+				queryKey: ['poolList'],
+				queryFn: async () => {
+					let pools = await getPools();
+					if (pools.length === 0) {
+						return data.pools;
+					}
+					return pools;
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			}
-		}
-	]);
+		]
+	}));
 
-	let disks = $derived($results[0].data as Disk[]);
-	let pools = $derived($results[1].data as Zpool[]);
+	let disks = $derived(results[0].data as Disk[]);
+	let pools = $derived(results[1].data as Zpool[]);
 
 	let tableData = $derived(generateTableData(pools, disks));
 	let activeRows: Row[] | null = $state(null);
@@ -146,18 +146,23 @@
 				}
 
 				if (
-					error.error.startsWith('dataset ') &&
+					!Array.isArray(error.error) &&
+					error.error.startsWith('pool ') &&
 					error.error.endsWith('is in use and cannot be deleted')
 				) {
-					return 'Pool has a dataset that is in use by a VM or Jail';
+					return 'Pool is in use by a VM or Jail';
 				}
 			}
 		}
 
 		if (error.message && error.message === 'pool_edit_failed') {
 			if (error.error) {
-				if (error.error.startsWith('spare_device') && error.error.includes('is too small')) {
-					return 'Spare device is too small';
+				if (
+					!Array.isArray(error.error) &&
+					error.error.startsWith('cannot replace') &&
+					error.error.includes('with smaller device')
+				) {
+					return 'Cannot replace with smaller device';
 				}
 			}
 

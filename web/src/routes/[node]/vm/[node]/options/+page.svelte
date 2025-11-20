@@ -11,7 +11,7 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -21,31 +21,29 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'vm-list',
-			queryFn: async () => {
-				return await getVMs();
-			},
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
+	const results = createQuery(() => ({
+		queryKey: ['vm-list'],
+		queryFn: async () => {
+			return await getVMs();
+		},
+		refetchInterval: 1000,
+		keepPreviousData: true,
+		initialData: data.vms,
+		onSuccess: (data: VM[]) => {
+			updateCache('vm-list', data);
 		}
-	]);
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('vm-list');
+			results.refetch();
 			reload = false;
 		}
 	});
 
-	let vms: VM[] = $derived($results[0].data ? $results[0].data : data.vms);
+	let vms: VM[] = $derived(results.data ? results.data : data.vms);
 	let vm: VM | null = $derived(
 		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
 	);

@@ -17,9 +17,9 @@
 		getPoolUsagePieData,
 		type StatType
 	} from '$lib/utils/zfs/pool';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import type { Chart } from 'chart.js';
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 
 	interface Data {
 		pools: Zpool[];
@@ -30,53 +30,54 @@
 	type CardType = 'pools' | 'datasets' | 'file_systems' | 'volumes' | 'snapshots';
 
 	let { data }: { data: Data } = $props();
-
 	let poolStatsRef: Chart | null = $state(null);
 	let datasetChartRef: Chart | null = $state(null);
 	let poolStatsInterval = $state('1');
 
-	const results = useQueries([
-		{
-			queryKey: ['poolList'],
-			queryFn: async () => {
-				return await getPools();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['poolList'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: false,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
-		},
-		{
-			queryKey: ['datasetList'],
-			queryFn: async () => {
-				return await getDatasets();
+			{
+				queryKey: ['datasetList'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('datasets', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('datasets', data);
+			{
+				queryKey: ['pool-stats', poolStatsInterval],
+				queryFn: async () => {
+					return await getPoolStats(Number(poolStatsInterval), 128);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: false,
+				initialData: Array.isArray(data.poolStats) ? data.poolStats[0] : data.poolStats,
+				onSuccess: (data: PoolStatPointsResponse) => {
+					updateCache('pool-stats', data);
+				}
 			}
-		},
-		{
-			queryKey: ['pool-stats'],
-			queryFn: async () => {
-				return await getPoolStats(Number(poolStatsInterval), 128);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: Array.isArray(data.poolStats) ? data.poolStats[0] : data.poolStats,
-			onSuccess: (data: PoolStatPointsResponse) => {
-				updateCache('pool-stats', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let pools: Zpool[] = $derived($results[0].data as Zpool[]);
-	let datasets: Dataset[] = $derived($results[1].data as Dataset[]);
-	let poolStats: PoolStatPointsResponse = $derived($results[2].data as PoolStatPointsResponse);
+	let pools: Zpool[] = $derived(results[0].data as Zpool[]);
+	let datasets: Dataset[] = $derived(results[1].data as Dataset[]);
+	let poolStats: PoolStatPointsResponse = $derived(results[2].data as PoolStatPointsResponse);
 
 	let filesystems: Dataset[] = $derived.by(() => {
 		return datasets.filter((dataset) => dataset.type === 'filesystem');

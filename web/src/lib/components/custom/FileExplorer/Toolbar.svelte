@@ -3,7 +3,6 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Input } from '$lib/components/ui/input';
 	import type { SortBy } from '$lib/utils/explorer';
-	import { ArrowUpDown, Grid3X3, List, Plus, Search } from 'lucide-svelte';
 
 	interface Props {
 		searchQuery: string;
@@ -35,7 +34,8 @@
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				<Button size="sm" class="!h-7 gap-2">
-					<Plus class="h-4 w-4" />
+					<!-- <Plus class="h-4 w-4" /> -->
+					<span class="icon-[lucide--plus] h-4 w-4"></span>
 					Add New
 				</Button>
 			</DropdownMenu.Trigger>
@@ -51,7 +51,8 @@
 
 	<div class="flex items-center gap-2">
 		<div class="relative">
-			<Search class="text-muted-foreground absolute left-2 top-1.5 h-4 w-4" />
+			<span class="icon-[lucide--search] text-muted-foreground absolute left-2 top-1.5 h-4 w-4"
+			></span>
 			<Input
 				placeholder="Search files..."
 				value={searchQuery}
@@ -62,7 +63,7 @@
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				<Button variant="outline" size="sm" class="h-7 gap-2">
-					<ArrowUpDown class="h-4 w-4" />
+					<span class="icon-[lucide--arrow-up-down] h-4 w-4"></span>
 					Sort
 				</Button>
 			</DropdownMenu.Trigger>
@@ -114,7 +115,8 @@
 				onclick={() => onViewModeChange('grid')}
 				class="h-7 rounded-r-none"
 			>
-				<Grid3X3 class="h-4 w-4" />
+				<!-- <Grid3X3 class="h-4 w-4" /> -->
+				<span class="icon-[lucide--grid-3x3] h-4 w-4"></span>
 			</Button>
 			<Button
 				variant={viewMode === 'list' ? 'default' : 'ghost'}
@@ -122,7 +124,8 @@
 				onclick={() => onViewModeChange('list')}
 				class="h-7 rounded-l-none"
 			>
-				<List class="h-4 w-4" />
+				<!-- <List class="h-4 w-4" /> -->
+				<span class="icon-[lucide--list] h-4 w-4"></span>
 			</Button>
 		</div>
 	</div>

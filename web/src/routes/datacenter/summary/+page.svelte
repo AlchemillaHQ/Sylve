@@ -15,7 +15,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 
 	interface Data {
@@ -27,74 +27,74 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['cluster-nodes'],
+				queryFn: async () => {
+					return (await getNodes()) as ClusterNode[];
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.nodes,
+				refetchOnMount: 'always',
+				onSuccess: (data: ClusterNode[]) => {
+					updateCache('cluster-nodes', data);
+				}
+			},
+			{
+				queryKey: ['cluster-details'],
+				queryFn: async () => {
+					return (await getDetails()) as ClusterDetails;
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.details,
+				refetchOnMount: 'always',
+				onSuccess: (data: ClusterDetails) => {
+					updateCache('cluster-details', data);
+				}
+			},
+			{
+				queryKey: ['cpu-info'],
+				queryFn: getCPUInfo,
+				keepPreviousData: true,
+				initialData: data.cpu,
+				refetchOnMount: 'always',
+				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
+					updateCache('cpu-info', data as CPUInfo);
+				}
+			},
+			{
+				queryKey: ['ram-info'],
+				queryFn: getRAMInfo,
+				keepPreviousData: true,
+				initialData: data.ram,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('ram-info', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
+			},
+			{
+				queryKey: ['total-disk-usage'],
+				queryFn: getPoolsDiskUsageFull,
+				keepPreviousData: true,
+				initialData: data.disk,
+				onSuccess: (data: PoolsDiskUsage) => {
+					updateCache('total-disk-usage', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
+			}
+		]
+	}));
 
-	const queryClient = useQueryClient();
-	let results = useQueries([
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => {
-				return (await getNodes()) as ClusterNode[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.nodes,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterNode[]) => {
-				updateCache('cluster-nodes', data);
-			}
-		},
-		{
-			queryKey: 'cluster-details',
-			queryFn: async () => {
-				return (await getDetails()) as ClusterDetails;
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.details,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterDetails) => {
-				updateCache('cluster-details', data);
-			}
-		},
-		{
-			queryKey: 'cpu-info',
-			queryFn: getCPUInfo,
-			keepPreviousData: true,
-			initialData: data.cpu,
-			refetchOnMount: 'always',
-			onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-				updateCache('cpu-info', data as CPUInfo);
-			}
-		},
-		{
-			queryKey: 'ram-info',
-			queryFn: getRAMInfo,
-			keepPreviousData: true,
-			initialData: data.ram,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('ram-info', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: 'total-disk-usage',
-			queryFn: getPoolsDiskUsageFull,
-			keepPreviousData: true,
-			initialData: data.disk,
-			onSuccess: (data: PoolsDiskUsage) => {
-				updateCache('total-disk-usage', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		}
-	]);
-
-	let nodes = $derived($results[0].data ?? []);
-	let clusterDetails = $derived($results[1].data);
-	let cpuInfo = $derived($results[2].data as CPUInfo);
-	let ramInfo = $derived($results[3].data as RAMInfo);
-	let diskInfo = $derived($results[4].data as PoolsDiskUsage);
+	let nodes = $derived(results[0].data ?? []);
+	let clusterDetails = $derived(results[1].data);
+	let cpuInfo = $derived(results[2].data as CPUInfo);
+	let ramInfo = $derived(results[3].data as RAMInfo);
+	let diskInfo = $derived(results[4].data as PoolsDiskUsage);
 	let clustered = $derived(clusterDetails?.cluster.enabled || false);
 
 	let total = $derived.by(() => {

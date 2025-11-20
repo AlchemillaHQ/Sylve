@@ -3,7 +3,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import CircleHelp from 'lucide-svelte/icons/circle-help';
 
 	let openCategories: { [key: string]: boolean } = $state({});
 
@@ -59,8 +58,7 @@
 			onclick={() => (window.location.href = 'https://github.com/AlchemillaHQ/Sylve')}
 		>
 			<div class="flex items-center">
-				<CircleHelp class="mr-2 h-5 w-5" />
-
+				<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
 				<span>Help</span>
 			</div>
 		</Button>

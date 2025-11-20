@@ -20,7 +20,7 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextId } from '$lib/utils/vm/vm';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
@@ -39,97 +39,93 @@
 		{ value: 'hardware', label: 'Hardware & Advanced' }
 	];
 
-	let queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['zfs-datasets'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				keepPreviousData: true,
+				initialData: [] as Dataset[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'downloads',
-			queryFn: async () => {
-				return await getDownloads();
+			{
+				queryKey: ['downloads'],
+				queryFn: async () => {
+					return await getDownloads();
+				},
+				keepPreviousData: true,
+				initialData: [] as Download[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-switches',
-
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: {} as SwitchList,
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: {} as SwitchList,
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'vm-list',
-			queryFn: async () => {
-				return await getVMs();
+			{
+				queryKey: ['vm-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				keepPreviousData: true,
+				initialData: [] as VM[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-objects',
-			queryFn: async () => {
-				return await getNetworkObjects();
+			{
+				queryKey: ['network-objects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				keepPreviousData: true,
+				initialData: [] as NetworkObject[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'jail-list',
-			queryFn: async () => {
-				return await getJails();
+			{
+				queryKey: ['jail-list'],
+				queryFn: async () => {
+					return await getJails();
+				},
+				keepPreviousData: true,
+				initialData: [] as Jail[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => {
-				return await getNodes();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		}
-	]);
+			{
+				queryKey: ['cluster-nodes'],
+				queryFn: async () => {
+					return await getNodes();
+				},
+				keepPreviousData: true,
+				initialData: [] as ClusterNode[],
+				refetchOnMount: 'always'
+			}
+		]
+	}));
 
 	let refetch = $state(false);
 
 	$effect(() => {
 		if (refetch) {
-			queryClient.refetchQueries('zfs-datasets');
-			queryClient.refetchQueries('downloads');
-			queryClient.refetchQueries('network-switches');
-			queryClient.refetchQueries('vm-list');
-			queryClient.refetchQueries('network-objects');
-			queryClient.refetchQueries('jail-list');
-			queryClient.refetchQueries('cluster-nodes');
+			results.forEach((result) => {
+				result.refetch();
+			});
 
 			refetch = false;
 		}
 	});
 
-	let datasets: Dataset[] = $derived($results[0].data as Dataset[]);
-	let downloads = $derived($results[1].data as Download[]);
-	let networkSwitches: SwitchList = $derived($results[2].data as SwitchList);
-	let networkObjects = $derived($results[4].data as NetworkObject[]);
-	let vms: VM[] = $derived($results[3].data as VM[]);
-	let jails: Jail[] = $derived($results[5].data as Jail[]);
-	let nodes: ClusterNode[] = $derived($results[6].data as ClusterNode[]);
+	let datasets: Dataset[] = $derived(results[0].data as Dataset[]);
+	let downloads = $derived(results[1].data as Download[]);
+	let networkSwitches: SwitchList = $derived(results[2].data as SwitchList);
+	let networkObjects = $derived(results[4].data as NetworkObject[]);
+	let vms: VM[] = $derived(results[3].data as VM[]);
+	let jails: Jail[] = $derived(results[5].data as Jail[]);
+	let nodes: ClusterNode[] = $derived(results[6].data as ClusterNode[]);
 	let creating: boolean = $state(false);
 
 	let filesystems: Dataset[] = $derived(
@@ -226,7 +222,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed top-1/2 left-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">

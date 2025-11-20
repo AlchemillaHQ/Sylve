@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 
@@ -28,7 +27,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 
@@ -41,50 +40,52 @@
 	let { data }: { data: Data } = $props();
 	const vmId = page.url.pathname.split('/')[3];
 
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['vm-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.vms,
+				onSuccess: (data: VM[]) => {
+					updateCache('vm-list', data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
-		},
-		{
-			queryKey: [`vm-domain-${vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(vmId);
+			{
+				queryKey: [`vm-domain-${vmId}`],
+				queryFn: async () => {
+					return await getVMDomain(vmId);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.domain,
+				onSuccess: (data: VMDomain) => {
+					updateCache(`vm-domain-${vmId}`, data);
+				}
 			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (data: VMDomain) => {
-				updateCache(`vm-domain-${vmId}`, data);
+			{
+				queryKey: [`vm-stats-${vmId}`],
+				queryFn: async () => {
+					return await getStats(Number(vmId), 128);
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.stats,
+				onSuccess: (data: VMStat[]) => {
+					updateCache(`vm-stats-${vmId}`, data);
+				}
 			}
-		},
-		{
-			queryKey: [`vm-stats-${vmId}`],
-			queryFn: async () => {
-				return await getStats(Number(vmId), 128);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.stats,
-			onSuccess: (data: VMStat[]) => {
-				updateCache(`vm-stats-${vmId}`, data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let domain: VMDomain = $derived($results[1].data as VMDomain);
+	let domain: VMDomain = $derived(results[1].data as VMDomain);
 	let vm: VM = $derived(
-		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
+		(results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
 	);
-	let stats: VMStat[] = $derived($results[2].data as VMStat[]);
+	let stats: VMStat[] = $derived(results[2].data as VMStat[]);
 	let recentStat = $derived(stats[stats.length - 1] || ({} as VMStat));
 
 	let vmDescription = $derived.by(() => {

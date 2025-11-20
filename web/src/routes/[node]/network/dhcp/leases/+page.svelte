@@ -8,7 +8,7 @@
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -31,91 +31,91 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['network-interfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('network-interfaces', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
-		},
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('network-switches', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('network-switches', data);
-			}
-		},
-		{
-			queryKey: 'dhcp-config',
-			queryFn: async () => {
-				return await getDHCPConfig();
+			{
+				queryKey: ['dhcp-config'],
+				queryFn: async () => {
+					return await getDHCPConfig();
+				},
+				keepPreviousData: true,
+				initialData: data.dhcpConfig,
+				onSuccess: (data: DHCPConfig) => {
+					updateCache('dhcp-config', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.dhcpConfig,
-			onSuccess: (data: DHCPConfig) => {
-				updateCache('dhcp-config', data);
-			}
-		},
-		{
-			queryKey: 'dhcp-ranges',
-			queryFn: async () => {
-				return await getDHCPRanges();
+			{
+				queryKey: ['dhcp-ranges'],
+				queryFn: async () => {
+					return await getDHCPRanges();
+				},
+				keepPreviousData: true,
+				initialData: data.dhcpRanges,
+				onSuccess: (data: DHCPRange[]) => {
+					updateCache('dhcp-ranges', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.dhcpRanges,
-			onSuccess: (data: DHCPRange[]) => {
-				updateCache('dhcp-ranges', data);
-			}
-		},
-		{
-			queryKey: 'dhcp-leases',
-			queryFn: async () => {
-				return await getLeases();
+			{
+				queryKey: ['dhcp-leases'],
+				queryFn: async () => {
+					return await getLeases();
+				},
+				keepPreviousData: true,
+				initialData: data.dhcpLeases,
+				onSuccess: (data: Leases) => {
+					updateCache('dhcp-leases', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.dhcpLeases,
-			onSuccess: (data: Leases) => {
-				updateCache('dhcp-leases', data);
+			{
+				queryKey: ['network-objects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				keepPreviousData: true,
+				initialData: data.networkObjects,
+				onSuccess: (data: NetworkObject[]) => {
+					updateCache('network-objects', data);
+				}
 			}
-		},
-		{
-			queryKey: 'network-objects',
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			keepPreviousData: true,
-			initialData: data.networkObjects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('network-objects', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let networkInterfaces = $derived($results[0].data as Iface[]);
-	let networkSwitches = $derived($results[1].data as SwitchList);
-	let dhcpConfig = $derived($results[2].data as DHCPConfig);
-	let dhcpRanges = $derived($results[3].data as DHCPRange[]);
-	let dhcpLeases = $derived($results[4].data as Leases);
-	let networkObjects = $derived($results[5].data as NetworkObject[]);
+	let networkInterfaces = $derived(results[0].data as Iface[]);
+	let networkSwitches = $derived(results[1].data as SwitchList);
+	let dhcpConfig = $derived(results[2].data as DHCPConfig);
+	let dhcpRanges = $derived(results[3].data as DHCPRange[]);
+	let dhcpLeases = $derived(results[4].data as Leases);
+	let networkObjects = $derived(results[5].data as NetworkObject[]);
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.invalidateQueries('network-interfaces');
-			queryClient.invalidateQueries('network-switches');
-			queryClient.invalidateQueries('dhcp-config');
-			queryClient.invalidateQueries('dhcp-ranges');
-			queryClient.invalidateQueries('dhcp-leases');
+			results.forEach((result) => {
+				result.refetch();
+			});
+
 			reload = false;
 		}
 	});

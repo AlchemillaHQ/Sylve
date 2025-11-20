@@ -11,9 +11,8 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
-	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		jail: Jail;
@@ -22,22 +21,21 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
-		{
-			queryKey: ['jail-list'],
-			queryFn: async () => {
-				return await getJails();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jails,
-			onSuccess: (data: Jail[]) => {
-				updateCache('jail-list', data);
-			}
-		}
-	]);
 
-	let jails = $derived($results[0].data);
+	const results = createQuery(() => ({
+		queryKey: ['jail-list'],
+		queryFn: async () => {
+			return await getJails();
+		},
+		refetchInterval: 1000,
+		keepPreviousData: true,
+		initialData: data.jails,
+		onSuccess: (data: Jail[]) => {
+			updateCache('jail-list', data);
+		}
+	}));
+
+	let jails = $derived(results.data);
 	let jail = $derived.by(() => {
 		if (jails) {
 			const found = jails.find((j) => j.ctId === data.jail?.ctId);

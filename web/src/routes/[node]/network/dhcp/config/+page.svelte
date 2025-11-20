@@ -12,7 +12,7 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -23,53 +23,55 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['network-interfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('network-interfaces', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
-		},
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('network-switches', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('network-switches', data);
+			{
+				queryKey: ['dhcp-config'],
+				queryFn: async () => {
+					return await getDHCPConfig();
+				},
+				keepPreviousData: true,
+				initialData: data.dhcpConfig,
+				onSuccess: (data: DHCPConfig) => {
+					updateCache('dhcp-config', data);
+				}
 			}
-		},
-		{
-			queryKey: 'dhcp-config',
-			queryFn: async () => {
-				return await getDHCPConfig();
-			},
-			keepPreviousData: true,
-			initialData: data.dhcpConfig,
-			onSuccess: (data: DHCPConfig) => {
-				updateCache('dhcp-config', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let networkInterfaces = $derived($results[0].data as Iface[]);
-	let networkSwitches = $derived($results[1].data as SwitchList);
-	let dhcpConfig = $derived($results[2].data as DHCPConfig);
+	let networkInterfaces = $derived(results[0].data as Iface[]);
+	let networkSwitches = $derived(results[1].data as SwitchList);
+	let dhcpConfig = $derived(results[2].data as DHCPConfig);
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.invalidateQueries('network-interfaces');
-			queryClient.invalidateQueries('network-switches');
-			queryClient.invalidateQueries('dhcp-config');
+			results.forEach((result) => {
+				result.refetch();
+			});
+
 			reload = false;
 		}
 	});

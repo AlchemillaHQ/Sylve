@@ -13,7 +13,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
 	import { createFSProps, generateTableData, handleError } from '$lib/utils/zfs/dataset/fs';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -25,36 +25,37 @@
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsDatasets';
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'pools',
-			queryFn: async () => {
-				return await getPools();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['pools'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				refetchInterval: false,
+				keepPreviousData: false,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			},
-			refetchInterval: false,
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
+			{
+				queryKey: ['zfs-datasets'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				refetchInterval: false,
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('zfs-datasets', data);
+				}
 			}
-		},
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
-			},
-			refetchInterval: false,
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('zfs-datasets', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let pools: Zpool[] = $derived($results[0].data as Zpool[]);
-	let datasets: Dataset[] = $derived($results[1].data as Dataset[]);
+	let pools: Zpool[] = $derived(results[0].data as Zpool[]);
+	let datasets: Dataset[] = $derived(results[1].data as Dataset[]);
 	let grouped = $derived(groupByPool(pools, datasets));
 	let tableData = $derived(generateTableData(grouped));
 	let activeRows: Row[] | null = $state(null);
@@ -63,12 +64,11 @@
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('pools');
-			queryClient.refetchQueries('zfs-datasets');
-
-			untrack(() => {
-				reload = false;
+			results.forEach((result) => {
+				result.refetch();
 			});
+
+			reload = false;
 		}
 	});
 

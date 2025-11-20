@@ -9,7 +9,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 
 	let openIds = $state(new Set<string>(['datacenter']));
@@ -21,28 +21,29 @@
 		saveOpenIds(openIds);
 	};
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'cluster-resources',
-			queryFn: async () => await getClusterResources(),
-			keepPreviousData: true,
-			refetchInterval: 30000,
-			initialData: [] as NodeResource[],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => await getNodes(),
-			keepPreviousData: true,
-			refetchInterval: 30000,
-			initialData: [] as ClusterNode[],
-			refetchOnMount: 'always'
-		}
-	]);
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['cluster-resources'],
+				queryFn: async () => await getClusterResources(),
+				keepPreviousData: true,
+				refetchInterval: 30000,
+				initialData: [] as NodeResource[],
+				refetchOnMount: 'always'
+			},
+			{
+				queryKey: ['cluster-nodes'],
+				queryFn: async () => await getNodes(),
+				keepPreviousData: true,
+				refetchInterval: 30000,
+				initialData: [] as ClusterNode[],
+				refetchOnMount: 'always'
+			}
+		]
+	}));
 
-	const clusterRes = $derived(($results[0]?.data as NodeResource[]) ?? []);
-	const nodes = $derived(($results[1]?.data as ClusterNode[]) ?? []);
+	const clusterRes = $derived((results[0]?.data as NodeResource[]) ?? []);
+	const nodes = $derived((results[1]?.data as ClusterNode[]) ?? []);
 
 	const tree = $derived([
 		{
@@ -100,7 +101,8 @@
 
 	$effect(() => {
 		if (reload.leftPanel) {
-			queryClient.refetchQueries('cluster-resources');
+			results[0].refetch();
+			results[1].refetch();
 			reload.leftPanel = false;
 		}
 	});

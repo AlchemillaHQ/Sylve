@@ -12,7 +12,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { diskSpaceAvailable, generateTableData, parseSMART } from '$lib/utils/disk';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -22,35 +22,36 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const results = useQueries([
-		{
-			queryKey: 'disks',
-			queryFn: async () => {
-				return await listDisks();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['disks'],
+				queryFn: async () => {
+					return await listDisks();
+				},
+				refetchInterval: 2000,
+				keepPreviousData: true,
+				initialData: data.disks,
+				onSuccess: (data: Disk[]) => {
+					updateCache('disks', data);
+				}
 			},
-			refetchInterval: 2000,
-			keepPreviousData: true,
-			initialData: data.disks,
-			onSuccess: (data: Disk[]) => {
-				updateCache('disks', data);
+			{
+				queryKey: ['pools'],
+				queryFn: async () => {
+					return await getPools();
+				},
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.pools,
+				onSuccess: (data: Zpool[]) => {
+					updateCache('pools', data);
+				}
 			}
-		},
-		{
-			queryKey: 'pools',
-			queryFn: async () => {
-				return await getPools();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	let disks = $derived($results[0].data as Disk[]);
+	let disks = $derived(results[0].data as Disk[]);
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let { rows, columns } = $derived(generateTableData(disks));

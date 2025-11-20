@@ -2,7 +2,6 @@
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { getFileIcon } from '$lib/utils/icons';
-	import { Copy, Download, Edit, FolderOpen, Scissors, Trash2 } from 'lucide-svelte';
 
 	interface Props {
 		items: FileNode[];
@@ -56,38 +55,39 @@
 						class="icon-[material-symbols--folder-rounded] mb-2 h-12 w-12 flex-shrink-0 text-blue-400"
 					></span>
 				{:else}
-					<FileIcon class="mb-2 h-12 w-12 flex-shrink-0 text-blue-400" />
+					<!-- <FileIcon class="mb-2 h-12 w-12 flex-shrink-0 text-blue-400" /> -->
+					<span class="{FileIcon} mb-2 h-12 w-12 flex-shrink-0 text-blue-400"></span>
 				{/if}
 				<span
-					class="line-clamp-2 w-full px-1 text-center text-xs leading-tight font-medium break-words"
+					class="line-clamp-2 w-full break-words px-1 text-center text-xs font-medium leading-tight"
 					>{itemName}</span
 				>
 			</ContextMenu.Trigger>
 			<ContextMenu.Content>
 				{#if item.type === 'folder'}
 					<ContextMenu.Item class="gap-2" onclick={() => onItemClick(item)}>
-						<FolderOpen class="h-4 w-4" />
+						<span class="icon-[lucide--folder-open] h-4 w-4"></span>
 						Open
 					</ContextMenu.Item>
 				{:else}
 					<ContextMenu.Item class="gap-2" onclick={() => onItemDownload?.(item)}>
-						<Download class="h-4 w-4" />
+						<span class="icon-[lucide--download] h-4 w-4"></span>
 						Download
 					</ContextMenu.Item>
 				{/if}
 				{#if !isCopying}
 					<ContextMenu.Item class="gap-2" onclick={() => onItemCopy?.(item, false)}>
-						<Copy class="h-4 w-4" />
+						<span class="icon-[lucide--copy] h-4 w-4"></span>
 						Copy
 					</ContextMenu.Item>
 					<ContextMenu.Item class="gap-2" onclick={() => onItemCopy?.(item, true)}>
-						<Scissors class="h-4 w-4" />
+						<span class="icon-[lucide--scissors] h-4 w-4"></span>
 						Cut
 					</ContextMenu.Item>
 				{/if}
 
 				<ContextMenu.Item class="gap-2" onclick={() => onItemRename?.(item)}>
-					<Edit class="h-4 w-4" />
+					<span class="icon-[lucide--edit] h-4 w-4"></span>
 					Rename
 				</ContextMenu.Item>
 				<ContextMenu.Item
@@ -98,7 +98,8 @@
 						}
 					}}
 				>
-					<Trash2 class="h-4 w-4" />
+					<!-- <Trash2 class="h-4 w-4" /> -->
+					<span class="icon-[lucide--trash-2] h-4 w-4"></span>
 					Delete
 				</ContextMenu.Item>
 			</ContextMenu.Content>

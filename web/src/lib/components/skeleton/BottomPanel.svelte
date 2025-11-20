@@ -7,39 +7,43 @@
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { VM } from '$lib/types/vm/vm';
 	import { convertDbTime } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
 
 	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'audit-record',
-			queryFn: async () => {
-				return await getAuditRecords();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['audit-record'],
+				queryFn: async () => {
+					return await getAuditRecords();
+				},
+				refetchInterval: false,
+				keepPreviousData: true,
+				initialData: [] as AuditRecord[]
 			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: [] as AuditRecord[]
-		},
-		{
-			queryKey: 'vms-list',
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: [] as VM[]
-		}
-	]);
+			{
+				queryKey: ['vms-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				refetchInterval: false,
+				keepPreviousData: true,
+				initialData: [] as VM[]
+			}
+		]
+	}));
 
 	$effect(() => {
 		if (reload.auditLog) {
-			queryClient.refetchQueries('audit-record');
+			queryClient.refetchQueries({
+				queryKey: ['audit-record']
+			});
 			reload.auditLog = false;
 		}
 	});
 
-	let data = $derived($results[0].data as AuditRecord[]);
-	let vms = $derived($results[1].data as VM[]);
+	let data = $derived(results[0].data as AuditRecord[]);
+	let vms = $derived(results[1].data as VM[]);
 
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',

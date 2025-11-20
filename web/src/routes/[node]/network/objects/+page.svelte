@@ -8,7 +8,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -18,22 +18,19 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'networkObjects',
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			keepPreviousData: true,
-			initialData: data.objects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('networkObjects', data);
-			}
+	const results = createQuery(() => ({
+		queryKey: ['networkObjects'],
+		queryFn: async () => {
+			return await getNetworkObjects();
+		},
+		keepPreviousData: true,
+		initialData: data.objects,
+		onSuccess: (data: NetworkObject[]) => {
+			updateCache('networkObjects', data);
 		}
-	]);
+	}));
 
-	let objects = $derived($results[0].data || []);
+	let objects = $derived(results.data || []);
 	let modals = $state({
 		create: {
 			open: false
@@ -192,7 +189,7 @@
 		networkObjects={objects}
 		edit={false}
 		afterChange={() => {
-			queryClient.refetchQueries('networkObjects');
+			results.refetch();
 		}}
 	/>
 {/if}
@@ -204,7 +201,7 @@
 		edit={true}
 		id={Number(modals.edit.id)}
 		afterChange={() => {
-			queryClient.refetchQueries('networkObjects');
+			results.refetch();
 		}}
 	/>
 {/if}

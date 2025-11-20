@@ -18,7 +18,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import type { Chart } from 'chart.js';
 
 	interface Data {
@@ -36,170 +36,162 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: ['basicInfo'],
-			queryFn: getBasicInfo,
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.basicInfo,
-			onSuccess: (data: BasicInfo) => {
-				updateCache('basicInfo', data);
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['basicInfo'],
+				queryFn: getBasicInfo,
+				refetchInterval: 1000,
+				keepPreviousData: true,
+				initialData: data.basicInfo,
+				onSuccess: (data: BasicInfo) => {
+					updateCache('basicInfo', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['cpuInfo'],
-			queryFn: getCPUInfo,
-			refetchInterval: 5000,
-			keepPreviousData: true,
-			initialData: data.cpuInfo,
-			onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-				updateCache('cpuInfo', data as CPUInfo);
+			{
+				queryKey: ['cpuInfo'],
+				queryFn: getCPUInfo,
+				refetchInterval: 5000,
+				keepPreviousData: true,
+				initialData: data.cpuInfo,
+				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
+					updateCache('cpuInfo', data as CPUInfo);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['ramInfo'],
-			queryFn: getRAMInfo,
-			refetchInterval: 5000,
-			keepPreviousData: true,
-			initialData: data.ramInfo,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('ramInfo', data);
+			{
+				queryKey: ['ramInfo'],
+				queryFn: getRAMInfo,
+				refetchInterval: 5000,
+				keepPreviousData: true,
+				initialData: data.ramInfo,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('ramInfo', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['swapInfo'],
-			queryFn: getSwapInfo,
-			refetchInterval: 60000,
-			keepPreviousData: true,
-			initialData: data.swapInfo,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('swapInfo', data);
+			{
+				queryKey: ['swapInfo'],
+				queryFn: getSwapInfo,
+				refetchInterval: 60000,
+				keepPreviousData: true,
+				initialData: data.swapInfo,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('swapInfo', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['ioDelay'],
-			queryFn: getIODelay,
-			refetchInterval: 60000,
-			keepPreviousData: true,
-			initialData: data.ioDelay,
-			onSuccess: (data: IODelay | IODelayHistorical) => {
-				updateCache('ioDelay', data as IODelay);
+			{
+				queryKey: ['ioDelay'],
+				queryFn: getIODelay,
+				refetchInterval: 60000,
+				keepPreviousData: true,
+				initialData: data.ioDelay,
+				onSuccess: (data: IODelay | IODelayHistorical) => {
+					updateCache('ioDelay', data as IODelay);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['totalDiskUsage'],
-			queryFn: getPoolsDiskUsage,
-			refetchInterval: 120000,
-			keepPreviousData: true,
-			initialData: data.totalDiskUsage,
-			onSuccess: (data: number) => {
-				updateCache('totalDiskUsage', data);
+			{
+				queryKey: ['totalDiskUsage'],
+				queryFn: getPoolsDiskUsage,
+				refetchInterval: 120000,
+				keepPreviousData: true,
+				initialData: data.totalDiskUsage,
+				onSuccess: (data: number) => {
+					updateCache('totalDiskUsage', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['cpuInfoHistorical'],
-			queryFn: getCPUInfo,
-			refetchInterval: 30000,
-			keepPreviousData: true,
-			initialData: data.cpuInfoHistorical,
-			onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-				updateCache('cpuInfoHistorical', data as CPUInfoHistorical);
+			{
+				queryKey: ['cpuInfoHistorical'],
+				queryFn: getCPUInfo,
+				refetchInterval: 30000,
+				keepPreviousData: true,
+				initialData: data.cpuInfoHistorical,
+				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
+					updateCache('cpuInfoHistorical', data as CPUInfoHistorical);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['ioDelayHistorical'],
-			queryFn: getIODelay,
-			refetchInterval: 30000,
-			keepPreviousData: true,
-			initialData: data.ioDelayHistorical,
-			onSuccess: (data: IODelay | IODelayHistorical) => {
-				updateCache('ioDelayHistorical', data as IODelayHistorical);
+			{
+				queryKey: ['ioDelayHistorical'],
+				queryFn: getIODelay,
+				refetchInterval: 30000,
+				keepPreviousData: true,
+				initialData: data.ioDelayHistorical,
+				onSuccess: (data: IODelay | IODelayHistorical) => {
+					updateCache('ioDelayHistorical', data as IODelayHistorical);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['ramInfoHistorical'],
-			queryFn: getRAMInfo,
-			refetchInterval: 30000,
-			keepPreviousData: true,
-			initialData: data.ramInfoHistorical,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('ramInfoHistorical', data as RAMInfoHistorical);
+			{
+				queryKey: ['ramInfoHistorical'],
+				queryFn: getRAMInfo,
+				refetchInterval: 30000,
+				keepPreviousData: true,
+				initialData: data.ramInfoHistorical,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('ramInfoHistorical', data as RAMInfoHistorical);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['swapInfoHistorical'],
-			queryFn: getSwapInfo,
-			refetchInterval: 30000,
-			keepPreviousData: true,
-			initialData: data.swapInfoHistorical,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('swapInfoHistorical', data as RAMInfoHistorical);
+			{
+				queryKey: ['swapInfoHistorical'],
+				queryFn: getSwapInfo,
+				refetchInterval: 30000,
+				keepPreviousData: true,
+				initialData: data.swapInfoHistorical,
+				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
+					updateCache('swapInfoHistorical', data as RAMInfoHistorical);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
 			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: ['networkUsageHistorical'],
-			queryFn: getNetworkInterfaceInfoHistorical,
-			refetchInterval: 30000,
-			keepPreviousData: true,
-			initialData: data.networkUsageHistorical,
-			onSuccess: (data: HistoricalNetworkInterface[]) => {
-				updateCache('networkUsageHistorical', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		}
-	]);
+			{
+				queryKey: ['networkUsageHistorical'],
+				queryFn: getNetworkInterfaceInfoHistorical,
+				refetchInterval: 30000,
+				keepPreviousData: true,
+				initialData: data.networkUsageHistorical,
+				onSuccess: (data: HistoricalNetworkInterface[]) => {
+					updateCache('networkUsageHistorical', data);
+				},
+				refetchOnMount: true,
+				refetchOnWindowFocus: true
+			}
+		]
+	}));
 
 	$effect(() => {
 		if (page.url) {
-			queryClient.refetchQueries('cpuInfo');
-			queryClient.refetchQueries('basicInfo');
-			queryClient.refetchQueries('ramInfo');
-			queryClient.refetchQueries('swapInfo');
-			queryClient.refetchQueries('ioDelay');
-			queryClient.refetchQueries('totalDiskUsage');
-			queryClient.refetchQueries('cpuInfoHistorical');
-			queryClient.refetchQueries('ioDelayHistorical');
-			queryClient.refetchQueries('ramInfoHistorical');
-			queryClient.refetchQueries('swapInfoHistorical');
-			queryClient.refetchQueries('networkUsageHistorical');
+			results.forEach((result) => {
+				result.refetch();
+			});
 		}
 	});
 
-	let basicInfo = $derived($results[0].data as BasicInfo);
-	let cpuInfo = $derived($results[1].data as CPUInfo);
-	let ramInfo = $derived($results[2].data as RAMInfo);
-	let swapInfo = $derived($results[3].data as RAMInfo);
-	let ioDelay = $derived($results[4].data as IODelay);
-	let totalDiskUsage = $derived($results[5].data as number);
-	let cpuInfoHistorical = $derived($results[6].data as CPUInfoHistorical);
-	let ioDelayHistorical = $derived($results[7].data as IODelayHistorical);
-	let ramInfoHistorical = $derived($results[8].data as RAMInfoHistorical);
-	let swapInfoHistorical = $derived($results[9].data as RAMInfoHistorical);
-	let networkUsageHistorical = $derived($results[10].data as HistoricalNetworkInterface[]);
+	let basicInfo = $derived(results[0].data as BasicInfo);
+	let cpuInfo = $derived(results[1].data as CPUInfo);
+	let ramInfo = $derived(results[2].data as RAMInfo);
+	let swapInfo = $derived(results[3].data as RAMInfo);
+	let ioDelay = $derived(results[4].data as IODelay);
+	let totalDiskUsage = $derived(results[5].data as number);
+	let cpuInfoHistorical = $derived(results[6].data as CPUInfoHistorical);
+	let ioDelayHistorical = $derived(results[7].data as IODelayHistorical);
+	let ramInfoHistorical = $derived(results[8].data as RAMInfoHistorical);
+	let swapInfoHistorical = $derived(results[9].data as RAMInfoHistorical);
+	let networkUsageHistorical = $derived(results[10].data as HistoricalNetworkInterface[]);
 
 	let chartElements = $derived.by(() => {
 		return [

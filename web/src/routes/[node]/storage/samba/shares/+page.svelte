@@ -13,7 +13,7 @@
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -26,50 +26,51 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['zfs-datasets'],
+				queryFn: async () => {
+					return await getDatasets();
+				},
+				keepPreviousData: false,
+				initialData: data.datasets,
+				onSuccess: (data: Dataset[]) => {
+					updateCache('zfs-datasets', data);
+				}
 			},
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('zfs-datasets', data);
-			}
-		},
-		{
-			queryKey: 'samba-shares',
-			queryFn: async () => {
-				return await getSambaShares();
+			{
+				queryKey: ['samba-shares'],
+				queryFn: async () => {
+					return await getSambaShares();
+				},
+				keepPreviousData: false,
+				initialData: data.shares,
+				onSuccess: (data: SambaShare[]) => {
+					updateCache('samba-shares', data);
+				}
 			},
-			keepPreviousData: false,
-			initialData: data.shares,
-			onSuccess: (data: SambaShare[]) => {
-				updateCache('samba-shares', data);
+			{
+				queryKey: ['groups'],
+				queryFn: async () => {
+					return (await listGroups()) as Group[];
+				},
+				keepPreviousData: true,
+				initialData: data.groups,
+				onSuccess: (data: Group[]) => {
+					updateCache('groups', data);
+				}
 			}
-		},
-		{
-			queryKey: 'groups',
-			queryFn: async () => {
-				return (await listGroups()) as Group[];
-			},
-			keepPreviousData: true,
-			initialData: data.groups,
-			onSuccess: (data: Group[]) => {
-				updateCache('groups', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('zfs-datasets');
-			queryClient.refetchQueries('samba-shares');
-			queryClient.refetchQueries('groups');
+			results.forEach((result) => {
+				result.refetch();
+			});
 
 			untrack(() => {
 				reload = false;
@@ -77,9 +78,9 @@
 		}
 	});
 
-	let datasets: Dataset[] = $derived($results[0].data as Dataset[]);
-	let shares: SambaShare[] = $derived($results[1].data as SambaShare[]);
-	let groups: Group[] = $derived($results[2].data as Group[]);
+	let datasets: Dataset[] = $derived(results[0].data as Dataset[]);
+	let shares: SambaShare[] = $derived(results[1].data as SambaShare[]);
+	let groups: Group[] = $derived(results[2].data as Group[]);
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 

@@ -228,7 +228,6 @@ msgid "Sylve Logo"
 msgstr ""
 
 #: src/lib/components/custom/Header.svelte
-#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialize.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Throbber.svelte
@@ -2728,7 +2727,7 @@ msgstr ""
 msgid "<0/> CPU Pinning"
 msgstr ""
 
-#. placeholder {0}: availableCount - selectedCount
+#. placeholder {0}: actualAvailable
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} available"
 msgstr ""
@@ -2738,24 +2737,20 @@ msgstr ""
 msgid "{0} busy"
 msgstr ""
 
-#. placeholder {0}: selectedCount
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} selected"
 msgstr ""
 
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Core utilization"
-msgstr ""
+#~ msgid "Core utilization"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> Back to Sockets"
 msgstr ""
 
-#. placeholder {0}: selectedSocketData.name
-#. placeholder {1}: availableCores.length
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Select cores from {0} ({1} available):"
-msgstr ""
+#~ msgid "Select cores from {0} ({1} available):"
+#~ msgstr ""
 
 #. placeholder {0}: selectedCores.size
 #. placeholder {1}: selectedCores.size !== 1 ? 's' : ''
@@ -2763,10 +2758,8 @@ msgstr ""
 msgid "Selected: {0} core{1}"
 msgstr ""
 
-#. placeholder {0}: coreSelectionLimit
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Maximum selectable cores : {0}"
-msgstr ""
+#~ msgid "Maximum selectable cores : {0}"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Select All Available"
@@ -2780,13 +2773,8 @@ msgstr ""
 msgid "Save & Back to Sockets"
 msgstr ""
 
-#. placeholder {0}: totalCores
-#. placeholder {1}: totalCores !== 1 ? 's' : ''
-#. placeholder {2}: allSelections.size
-#. placeholder {3}: allSelections.size !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Confirm {0} Core{1} from {2} Socket{3}"
-msgstr ""
+#~ msgid "Confirm {0} Core{1} from {2} Socket{3}"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Clear All Pinning"
@@ -3632,6 +3620,7 @@ msgstr ""
 msgid "Delete Root Filesystem"
 msgstr ""
 
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update"
 msgstr ""
@@ -5185,4 +5174,33 @@ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
+msgstr ""
+
+#. placeholder {0}: selectedSocketData.name
+#. placeholder {1}: availableCores.length
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select cores from {0} ({1} selectable):"
+msgstr ""
+
+#. placeholder {0}: coreSelectionLimit
+#. placeholder {1}: coreSelectionLimit !== 1 ? 's' : ''
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Limit: {0} core{1}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Apply"
+msgstr ""
+
+#. placeholder {0}: vm ? 'Update' : 'Apply'
+#. placeholder {1}: totalCores
+#. placeholder {2}: totalCores !== 1 ? 's' : ''
+#. placeholder {3}: allSelections.size
+#. placeholder {4}: allSelections.size !== 1 ? 's' : ''
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} {1} Core{2} from {3} Socket{4}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Apply Changes"
 msgstr ""

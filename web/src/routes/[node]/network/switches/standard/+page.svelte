@@ -20,7 +20,7 @@
 	import { generateTableData } from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
 	import { isValidSwitchName } from '$lib/utils/string';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -31,46 +31,47 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['network-interfaces'],
+				queryFn: async () => {
+					return await getInterfaces();
+				},
+				keepPreviousData: true,
+				initialData: data.interfaces,
+				onSuccess: (data: Iface[]) => {
+					updateCache('network-interfaces', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
-		},
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: data.switches,
+				onSuccess: (data: SwitchList) => {
+					updateCache('network-switches', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('network-switches', data);
+			{
+				queryKey: ['network-objects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				keepPreviousData: true,
+				initialData: data.objects,
+				onSuccess: (data: NetworkObject[]) => {
+					updateCache('network-objects', data);
+				}
 			}
-		},
-		{
-			queryKey: 'network-objects',
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			keepPreviousData: true,
-			initialData: data.objects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('network-objects', data);
-			}
-		}
-	]);
+		]
+	}));
 
-	const interfaces = $derived($results[0].data);
-	const switches = $derived($results[1].data);
-	const networkObjects = $derived($results[2].data);
+	const interfaces = $derived(results[0].data);
+	const switches = $derived(results[1].data);
+	const networkObjects = $derived(results[2].data);
 
 	let query: string = $state('');
 	let useablePorts = $derived.by(() => {
@@ -153,9 +154,9 @@
 	});
 
 	function reloadData() {
-		queryClient.refetchQueries('network-interfaces');
-		queryClient.refetchQueries('network-switches');
-		queryClient.refetchQueries('network-objects');
+		results.forEach((result) => {
+			result.refetch();
+		});
 	}
 
 	async function confirmAction() {

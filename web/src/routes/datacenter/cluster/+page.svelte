@@ -13,7 +13,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -23,34 +23,28 @@
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
-	let queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'cluster-info',
-			queryFn: async () => {
-				return await getDetails();
-			},
-			keepPreviousData: true,
-			initialData: data.cluster,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterDetails) => {
-				updateCache('cluster-info', data);
-			}
+	const results = createQuery(() => ({
+		queryKey: ['cluster-info'],
+		queryFn: async () => {
+			return await getDetails();
+		},
+		keepPreviousData: true,
+		initialData: data.cluster,
+		refetchOnMount: 'always',
+		onSuccess: (data: ClusterDetails) => {
+			updateCache('cluster-info', data);
 		}
-	]);
+	}));
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('cluster-info');
-
+			results.refetch();
 			reload = false;
 		}
 	});
 
-	let dataCenter = $derived($results[0].data);
-
+	let dataCenter = $derived(results.data);
 	let canReset = $derived(dataCenter?.cluster.enabled === true);
-
 	let canCreate = $derived(
 		dataCenter?.cluster.raftBootstrap === null && dataCenter?.cluster.enabled === false
 	);

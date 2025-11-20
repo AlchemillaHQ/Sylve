@@ -5,7 +5,7 @@ import {
 	type RAMInfoHistorical
 } from '$lib/types/info/ram';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
+import type { QueryFunctionContext } from '@tanstack/svelte-query';
 
 export async function getRAMInfo(
 	queryObj?: QueryFunctionContext

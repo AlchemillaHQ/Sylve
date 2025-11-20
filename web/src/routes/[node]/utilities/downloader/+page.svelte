@@ -24,41 +24,38 @@
 		isValidFileName
 	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-
+	import { sleep } from '$lib/utils';
+	import { useWindowFocus } from '$lib/runes/window-focus.svelte';
 	interface Data {
 		downloads: Download[];
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'downloads',
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: data.downloads,
-			onSuccess: (data: Download[]) => {
-				updateCache('downloads', data);
-			}
-		}
-	]);
-
 	let reload = $state(false);
 
+	const focused = useWindowFocus();
+	const results = createQuery(() => ({
+		queryKey: ['downloads'],
+		queryFn: async () => {
+			return await getDownloads();
+		},
+		initialData: data.downloads,
+		onSuccess: (data: Download[]) => {
+			updateCache('downloads', data);
+		}
+	}));
+
 	$effect(() => {
-		if (reload) {
-			queryClient.invalidateQueries('downloads');
-			reload = false;
+		if (focused.value) {
+			results.refetch();
 		}
 	});
+
+	let downloads = $derived(results.data as Download[]);
 
 	let options = {
 		isOpen: false,
@@ -75,7 +72,6 @@
 
 	let modalState = $state(options);
 
-	let downloads = $derived($results[0].data as Download[]);
 	let tableData = $derived(generateTableData(downloads));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -154,6 +150,8 @@
 		}
 
 		modalState.loading = true;
+
+		await sleep(500);
 
 		const result = await startDownload(
 			modalState.url,
@@ -355,8 +353,8 @@
 							label="Download Type"
 							placeholder="Select Download Type"
 							options={[
-								{ value: 'base-rootfs', label: 'Base / RootFS' },
 								{ value: 'uncategorized', label: 'Uncategorized' },
+								{ value: 'base-rootfs', label: 'Base / RootFS' },
 								{ value: 'cloud-init', label: 'Cloud-Init' }
 							]}
 							classes={{ parent: 'mt-2.5 flex-1 space-y-1', label: 'mb-2' }}

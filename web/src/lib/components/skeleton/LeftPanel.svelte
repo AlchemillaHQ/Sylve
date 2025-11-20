@@ -7,8 +7,8 @@
 	import { hostname } from '$lib/stores/basic';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
+	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
 
@@ -36,29 +36,31 @@
 	}
 
 	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'simple-vms-list',
-			queryFn: async () => {
-				return await getSimpleVMs();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['simple-vms-list'],
+				queryFn: async () => {
+					return await getSimpleVMs();
+				},
+				keepPreviousData: true,
+				initialData: [] as SimpleVm[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [] as SimpleVm[],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'simple-jails-list',
-			queryFn: async () => {
-				return await getSimpleJails();
-			},
-			keepPreviousData: true,
-			initialData: [] as SimpleJail[],
-			refetchOnMount: 'always'
-		}
-	]);
+			{
+				queryKey: ['simple-jails-list'],
+				queryFn: async () => {
+					return await getSimpleJails();
+				},
+				keepPreviousData: true,
+				initialData: [] as SimpleJail[],
+				refetchOnMount: 'always'
+			}
+		]
+	}));
 
-	const simpleVMs = $derived($results[0].data || []);
-	const simpleJails = $derived($results[1].data || []);
+	const simpleVMs = $derived(results[0].data || []);
+	const simpleJails = $derived(results[1].data || []);
 
 	let children = $derived(
 		[
@@ -109,8 +111,13 @@
 
 	$effect(() => {
 		if (reload.leftPanel) {
-			queryClient.refetchQueries('simple-vms-list');
-			queryClient.refetchQueries('simple-jails-list');
+			queryClient.refetchQueries({
+				queryKey: ['simple-vms-list']
+			});
+
+			queryClient.refetchQueries({
+				queryKey: ['simple-jails-list']
+			});
 
 			reload.leftPanel = false;
 		}

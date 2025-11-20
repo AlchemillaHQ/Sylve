@@ -11,7 +11,7 @@
 	import type { Download } from '$lib/types/utilities/downloader';
 	import { generatePassword } from '$lib/utils/string';
 	import { getNextId, isValidCreateData } from '$lib/utils/vm/vm';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import Advanced from './Advanced.svelte';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
@@ -37,123 +37,117 @@
 
 	let { open = $bindable() }: Props = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['network-switches'],
+				queryFn: async () => {
+					return await getSwitches();
+				},
+				keepPreviousData: true,
+				initialData: {} as SwitchList,
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: {} as SwitchList,
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'pci-devices',
-			queryFn: async () => {
-				return (await getPCIDevices()) as PCIDevice[];
+			{
+				queryKey: ['pci-devices'],
+				queryFn: async () => {
+					return (await getPCIDevices()) as PCIDevice[];
+				},
+				keepPreviousData: true,
+				initialData: [] as PCIDevice[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [] as PCIDevice[],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'ppt-devices',
-			queryFn: async () => {
-				return (await getPPTDevices()) as PPTDevice[];
+			{
+				queryKey: ['ppt-devices'],
+				queryFn: async () => {
+					return (await getPPTDevices()) as PPTDevice[];
+				},
+				keepPreviousData: true,
+				initialData: [] as PPTDevice[],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [] as PPTDevice[],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'downloads',
-			queryFn: async () => {
-				return await getDownloads();
+			{
+				queryKey: ['downloads'],
+				queryFn: async () => {
+					return await getDownloads();
+				},
+				keepPreviousData: true,
+				initialData: [],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'vm-list',
-			queryFn: async () => {
-				return await getVMs();
+			{
+				queryKey: ['vm-list'],
+				queryFn: async () => {
+					return await getVMs();
+				},
+				keepPreviousData: true,
+				initialData: [],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-objects',
-			queryFn: async () => {
-				return await getNetworkObjects();
+			{
+				queryKey: ['network-objects'],
+				queryFn: async () => {
+					return await getNetworkObjects();
+				},
+				keepPreviousData: true,
+				initialData: [],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'jail-list',
-			queryFn: async () => {
-				return await getJails();
+			{
+				queryKey: ['jail-list'],
+				queryFn: async () => {
+					return await getJails();
+				},
+				keepPreviousData: true,
+				initialData: [],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => {
-				return await getNodes();
+			{
+				queryKey: ['cluster-nodes'],
+				queryFn: async () => {
+					return await getNodes();
+				},
+				keepPreviousData: true,
+				initialData: [],
+				refetchOnMount: 'always'
 			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'basic-settings',
-			queryFn: async () => {
-				return await getBasicSettings();
-			},
-			keepPreviousData: true,
-			initialData: {
-				pools: [],
-				services: [],
-				initialized: false
-			},
-			refetchOnMount: 'always'
-		}
-	]);
+			{
+				queryKey: ['basic-settings'],
+				queryFn: async () => {
+					return await getBasicSettings();
+				},
+				keepPreviousData: true,
+				initialData: {
+					pools: [],
+					services: [],
+					initialized: false
+				},
+				refetchOnMount: 'always'
+			}
+		]
+	}));
 
 	let refetch = $state(false);
 
 	$effect(() => {
 		if (refetch) {
-			queryClient.refetchQueries('network-interfaces');
-			queryClient.refetchQueries('network-switches');
-			queryClient.refetchQueries('pci-devices');
-			queryClient.refetchQueries('ppt-devices');
-			queryClient.refetchQueries('downloads');
-			queryClient.refetchQueries('vm-list');
-			queryClient.refetchQueries('network-objects');
-			queryClient.refetchQueries('jail-list');
-			queryClient.refetchQueries('cluster-nodes');
-			queryClient.refetchQueries('basic-settings');
+			results.forEach((result) => {
+				result.refetch();
+			});
 
 			refetch = false;
 		}
 	});
 
-	let networkSwitches: SwitchList = $derived($results[0].data as SwitchList);
-	let pciDevices: PCIDevice[] = $derived($results[1].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived($results[2].data as PPTDevice[]);
-	let downloads = $derived($results[3].data as Download[]);
-	let vms: VM[] = $derived($results[4].data as VM[]);
-	let networkObjects = $derived($results[5].data as NetworkObject[]);
-	let jails: Jail[] = $derived($results[6].data as Jail[]);
-	let nodes = $derived($results[7].data as ClusterNode[]);
-	let basicSettings = $derived($results[8].data as BasicSettings);
+	let networkSwitches: SwitchList = $derived(results[0].data as SwitchList);
+	let pciDevices: PCIDevice[] = $derived(results[1].data as PCIDevice[]);
+	let pptDevices: PPTDevice[] = $derived(results[2].data as PPTDevice[]);
+	let downloads = $derived(results[3].data as Download[]);
+	let vms: VM[] = $derived(results[4].data as VM[]);
+	let networkObjects = $derived(results[5].data as NetworkObject[]);
+	let jails: Jail[] = $derived(results[6].data as Jail[]);
+	let nodes = $derived(results[7].data as ClusterNode[]);
+	let basicSettings = $derived(results[8].data as BasicSettings);
 	let passablePci: PCIDevice[] = $derived.by(() => {
 		return pciDevices.filter((device) => device.name.startsWith('ppt'));
 	});
@@ -248,7 +242,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed top-1/2 left-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">

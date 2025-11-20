@@ -5,7 +5,7 @@
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
 
 	interface Props {
@@ -13,19 +13,17 @@
 	}
 
 	let { children }: Props = $props();
-	const results = useQueries([
-		{
-			queryKey: 'cluster-details',
-			queryFn: async () => {
-				return await getDetails();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			refetchOnMount: 'always'
-		}
-	]);
+	const clusterDetails = createQuery(() => ({
+		queryKey: ['cluster-details'],
+		queryFn: async () => {
+			return await getDetails();
+		},
+		refetchInterval: 1000,
+		keepPreviousData: true,
+		refetchOnMount: 'always'
+	}));
 
-	let details = $derived($results[0].data);
+	let details = $derived(clusterDetails.data);
 	let clustered = $derived(details?.cluster.enabled || false);
 </script>
 

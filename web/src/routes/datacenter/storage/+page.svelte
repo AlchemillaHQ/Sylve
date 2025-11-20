@@ -8,7 +8,7 @@
 	import type { ClusterStorages } from '$lib/types/cluster/storage';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -16,32 +16,30 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const queryClient = useQueryClient();
-	let results = useQueries([
-		{
-			queryKey: 'cluster-storages',
-			queryFn: getStorages,
-			keepPreviousData: true,
-			initialData: data.storages,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterStorages) => {
-				updateCache('cluster-storages', data);
-			}
+	const results = createQuery(() => ({
+		queryKey: ['cluster-storages'],
+		queryFn: async () => {
+			return await getStorages();
+		},
+		keepPreviousData: true,
+		initialData: data.storages,
+		refetchOnMount: 'always',
+		onSuccess: (data: ClusterStorages) => {
+			updateCache('cluster-storages', data);
 		}
-	]);
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('cluster-storages');
+			results.refetch();
 			activeRows = null;
 			reload = false;
 		}
 	});
 
-	let storages = $derived($results[0].data as ClusterStorages);
+	let storages = $derived(results.data as ClusterStorages);
 
 	let table = $derived.by(() => {
 		const rows = [];

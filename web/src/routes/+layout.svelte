@@ -4,6 +4,7 @@
 
 	import { goto } from '$app/navigation';
 	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
+	import { browser } from '$app/environment';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -13,7 +14,8 @@
 	import '$lib/utils/i18n';
 	import { preloadIcons } from '$lib/utils/icons';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { QueryClient, QueryClientProvider } from '@sveltestack/svelte-query';
+	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+	import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount, tick } from 'svelte';
 	import { loadLocale } from 'wuchale/load-utils';
@@ -37,7 +39,14 @@
 		}
 	});
 
-	const queryClient = new QueryClient();
+	const queryClient = new QueryClient({
+		defaultOptions: {
+			queries: {
+				enabled: browser
+			}
+		}
+	});
+
 	let { children } = $props();
 	let isLoggedIn = $state(false);
 	let initialized = $state(false);

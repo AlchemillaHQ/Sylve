@@ -8,7 +8,7 @@
 	import { type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
 	import { updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/system/pci';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -17,44 +17,46 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'pci-devices',
-			queryFn: async () => {
-				return (await getPCIDevices()) as PCIDevice[];
+	const results = createQueries(() => ({
+		queries: [
+			{
+				queryKey: ['pci-devices'],
+				queryFn: async () => {
+					return await getPCIDevices();
+				},
+				keepPreviousData: true,
+				initialData: data.pciDevices,
+				onSuccess: (data: PCIDevice[]) => {
+					updateCache('pci-devices', data);
+				}
 			},
-			keepPreviousData: true,
-			initialData: data.pciDevices,
-			onSuccess: (data: PCIDevice[]) => {
-				updateCache('pci-devices', data);
+			{
+				queryKey: ['ppt-devices'],
+				queryFn: async () => {
+					return await getPPTDevices();
+				},
+				keepPreviousData: true,
+				initialData: data.pptDevices,
+				onSuccess: (data: PPTDevice[]) => {
+					updateCache('ppt-devices', data);
+				}
 			}
-		},
-		{
-			queryKey: 'ppt-devices',
-			queryFn: async () => {
-				return (await getPPTDevices()) as PPTDevice[];
-			},
-			keepPreviousData: true,
-			initialData: data.pptDevices,
-			onSuccess: (data: PPTDevice[]) => {
-				updateCache('ppt-devices', data);
-			}
-		}
-	]);
+		]
+	}));
 
 	let reload = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('pci-devices');
-			queryClient.refetchQueries('ppt-devices');
+			results.forEach((result) => {
+				result.refetch();
+			});
 			reload = false;
 		}
 	});
 
-	let pciDevices: PCIDevice[] = $derived($results[0].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived($results[1].data as PPTDevice[]);
+	let pciDevices: PCIDevice[] = $derived(results[0].data as PCIDevice[]);
+	let pptDevices: PPTDevice[] = $derived(results[1].data as PPTDevice[]);
 	let tableData = $derived(generateTableData(pciDevices, pptDevices));
 	let tableName: string = 'device-passthrough-tt';
 	let query: string = $state('');

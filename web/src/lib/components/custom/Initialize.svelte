@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { mode } from 'mode-watcher';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -12,24 +12,21 @@
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'pool-list',
-			queryFn: async () => {
-				return getPools(true);
-			},
-			refetchOnMount: 'always',
-			keepPreviousData: true
-		}
-	]);
+	const results = createQuery(() => ({
+		queryKey: ['pool-list'],
+		queryFn: async () => {
+			return getPools(true);
+		},
+		refetchOnMount: 'always',
+		keepPreviousData: true
+	}));
 
-	let pools = $derived($results[0].data || []);
+	let pools = $derived(results.data || []);
 	let reload: boolean = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('pool-list');
+			results.refetch();
 			reload = false;
 		}
 	});
