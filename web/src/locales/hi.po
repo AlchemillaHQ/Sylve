@@ -5140,9 +5140,6 @@ msgstr ""
 msgid "हिन्दी"
 msgstr ""
 
-#~ msgid "<0/> Manage pinning ({0} pinned)"
-#~ msgstr ""
-
 #. placeholder {0}: pinnedCores.length
 #. placeholder {0}: initialPinning || 0
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -5150,5 +5147,25 @@ msgstr ""
 msgid "Manage ({0} pinned)"
 msgstr ""
 
-#~ msgid "{0} availableCountRaw"
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Extract Automatically"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download Type"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Select Download Type"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Base / RootFS"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Uncategorized"
+msgstr ""
+
+#~ msgid "Download Type§å"
 #~ msgstr ""

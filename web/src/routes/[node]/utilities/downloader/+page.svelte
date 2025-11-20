@@ -27,6 +27,7 @@
 	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 
 	interface Data {
 		downloads: Download[];
@@ -68,7 +69,8 @@
 		name: '',
 		ignoreTLS: false,
 		automaticExtraction: false,
-		loading: false
+		loading: false,
+		downloadType: 'uncategorized' as 'base-rootfs' | 'uncategorized'
 	};
 
 	let modalState = $state(options);
@@ -306,21 +308,38 @@
 				textAreaClasses="h-24 w-full"
 			/>
 
-			{#if modalState.url && isDownloadURL(modalState.url)}
+			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}
 				<div class="flex flex-col gap-4">
-					<CustomValueInput
-						label={'Optional File Name'}
-						placeholder="freebsd-14.3-base-amd64.txz"
-						bind:value={modalState.name}
-						classes="flex-1 space-y-1 mt-2"
-					/>
+					<div class="flex flex-row gap-4">
+						<CustomValueInput
+							label={'Optional File Name'}
+							placeholder="freebsd-14.3-base-amd64.txz"
+							bind:value={modalState.name}
+							classes="flex-1 space-y-1 mt-2"
+						/>
+
+						<SimpleSelect
+							label="Download Type"
+							placeholder="Select Download Type"
+							options={[
+								{ value: 'base-rootfs', label: 'Base / RootFS' },
+								{ value: 'uncategorized', label: 'Uncategorized' }
+							]}
+							classes={{ parent: 'mt-2 flex-1 space-y-1', label: 'mb-2' }}
+							bind:value={modalState.downloadType}
+							onChange={(value) =>
+								(modalState.downloadType = value as 'base-rootfs' | 'uncategorized')}
+						/>
+					</div>
 
 					<div class="mt-2 flex flex-row gap-2">
-						<CustomCheckbox
-							label="Ignore TLS Errors"
-							bind:checked={modalState.ignoreTLS}
-							classes="flex items-center gap-2"
-						/>
+						{#if isDownloadURL(modalState.url)}
+							<CustomCheckbox
+								label="Ignore TLS Errors"
+								bind:checked={modalState.ignoreTLS}
+								classes="flex items-center gap-2"
+							/>
+						{/if}
 						<CustomCheckbox
 							label="Extract Automatically"
 							bind:checked={modalState.automaticExtraction}

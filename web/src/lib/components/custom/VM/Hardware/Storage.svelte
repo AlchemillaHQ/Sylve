@@ -29,8 +29,8 @@
 
 	let options = {
 		name: '',
-		type: 'import' as 'import' | 'new',
-		diskType: 'raw' as 'raw' | 'zvol' | 'image',
+		type: 'new' as 'import' | 'new',
+		diskType: 'zvol' as 'raw' | 'zvol' | 'image',
 		rawPath: '',
 		dataset: '',
 		size: '',
@@ -78,8 +78,6 @@
 	});
 
 	async function attach() {
-		properties.loading = true;
-
 		const toastOptions = {
 			position: 'bottom-center' as const
 		};
@@ -125,6 +123,8 @@
 					return;
 				}
 			}
+
+			properties.loading = true;
 
 			const response = await storageImport(
 				vm.vmId,
@@ -242,8 +242,8 @@
 				label="Type"
 				placeholder="Select Type"
 				options={[
-					{ value: 'import', label: 'Import' },
-					{ value: 'new', label: 'New' }
+					{ value: 'new', label: 'New' },
+					{ value: 'import', label: 'Import' }
 				]}
 				bind:value={properties.type}
 				onChange={(value) => (properties.type = value as 'import' | 'new')}
