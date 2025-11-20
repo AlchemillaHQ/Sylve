@@ -14,19 +14,19 @@ msgstr ""
 
 #: src/lib/stores/terminal.svelte.ts
 msgid "Terminal"
-msgstr ""
+msgstr "टर्मिनल"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
-msgstr ""
+msgstr "सारांश"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
-msgstr ""
+msgstr "कंसोल"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -34,13 +34,13 @@ msgstr ""
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Storage"
-msgstr ""
+msgstr "भंडारण"
 
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
-msgstr ""
+msgstr "हार्डवेयर"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -50,172 +50,172 @@ msgstr ""
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Network"
-msgstr ""
+msgstr "नेटवर्क"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
-msgstr ""
+msgstr "विकल्प"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Notes"
-msgstr ""
+msgstr "नोट्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Objects"
-msgstr ""
+msgstr "वस्तुएँ"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Interfaces"
-msgstr ""
+msgstr "इंटरफेस"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Switches"
-msgstr ""
+msgstr "स्विचेस"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Manual"
-msgstr ""
+msgstr "मैनुअल"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Standard"
-msgstr ""
+msgstr "मानक"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Ranges"
-msgstr ""
+msgstr "श्रेणियाँ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Leases"
-msgstr ""
+msgstr "पट्टे"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Config"
-msgstr ""
+msgstr "कॉन्फ़िग"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Explorer"
-msgstr ""
+msgstr "एक्सप्लोरर"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Disks"
-msgstr ""
+msgstr "डिस्क्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Dashboard"
-msgstr ""
+msgstr "डैशबोर्ड"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Pools"
-msgstr ""
+msgstr "पूल्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Datasets"
-msgstr ""
+msgstr "डेटासेट्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "File Systems"
-msgstr ""
+msgstr "फ़ाइल सिस्टम्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Volumes"
-msgstr ""
+msgstr "वॉल्यूम्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
-msgstr ""
+msgstr "स्नैपशॉट्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Samba"
-msgstr ""
+msgstr "साम्बा"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Shares"
-msgstr ""
+msgstr "शेयरस्"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Settings"
-msgstr ""
+msgstr "सेटिंग्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Audit Logs"
-msgstr ""
+msgstr "ऑडिट लॉग्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Utilities"
-msgstr ""
+msgstr "उपयोगिताएँ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Downloader"
-msgstr ""
+msgstr "डाउनलोडर"
 
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "PCI Passthrough"
-msgstr ""
+msgstr "PCI पासथ्रू"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Authentication"
-msgstr ""
+msgstr "प्रमाणीकरण"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Users"
-msgstr ""
+msgstr "यूज़र्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Groups"
-msgstr ""
+msgstr "ग्रुप्स"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Node — <0/>"
-msgstr ""
+msgstr "नोड"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Help"
-msgstr ""
+msgstr "हेल्प"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Difuse-sidebar"
-msgstr ""
+msgstr "डिफ्यूज़-साइडबार"
 
 #: src/routes/datacenter/+layout.svelte
 msgid "Cluster"
-msgstr ""
+msgstr "क्लस्टर"
 
 #: src/lib/components/skeleton/LeftPanel.svelte
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
-msgstr ""
+msgstr "डेटा सेंटर"
 
 #: src/routes/inactive-node/+page.svelte
 msgid ""
 "This node can’t be reached right now. Check the network connection and confirm the node is\n"
 "powered on."
-msgstr ""
+msgstr "यह नोड अभी पहुँच में नहीं है। नेटवर्क कनेक्शन जाँचें और सुनिश्चित करें कि नोड चालू है।"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Color Theme"
-msgstr ""
+msgstr "रंग थीम"
 
 #~ msgid "Language"
-#~ msgstr ""
+#~ msgstr "भाषा"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -225,7 +225,7 @@ msgstr ""
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve Logo"
-msgstr ""
+msgstr "Sylve लोगो"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -233,86 +233,85 @@ msgstr ""
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Throbber.svelte
 msgid "SYLVE"
-msgstr ""
+msgstr "Sylve"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Toggle navigation menu"
-msgstr ""
+msgstr "नेविगेशन मेनू टॉगल करें"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Virtual Environment 0.0.1"
-msgstr ""
+msgstr "वर्चुअल एनवायरनमेंट 0.0.1"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Create VM"
-msgstr ""
+msgstr "VM बनाएँ"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
-msgstr ""
+msgstr "जेल बनाएँ"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Toggle user menu"
-msgstr ""
+msgstr "यूज़र मेनू टॉगल करें"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Log out"
-msgstr ""
+#~ msgid "log out"
+#~ msgstr "लॉग आउट"
 
 #: src/lib/components/custom/Header.svelte
 msgid "⌘⇧Q"
-msgstr ""
+msgstr "⌘⇧Q"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Sylve initialized"
-msgstr ""
+msgstr "Sylve प्रारंभ किया गया"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "ZFS Storage Pools"
-msgstr ""
+msgstr "ZFS स्टोरेज पूल्स"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Select Pools"
-msgstr ""
+msgstr "पूल्स चुनें"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Services"
-msgstr ""
+msgstr "सेवाएँ"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Virtualization"
-msgstr ""
+msgstr "वर्चुअलाइज़ेशन"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Jails"
-msgstr ""
+msgstr "जेल्स"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Samba Server"
-msgstr ""
+msgstr "साम्बा सर्वर"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "DHCP Server"
-msgstr ""
+msgstr "DHCP सर्वर"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "WOL Server"
-msgstr ""
+msgstr "WOL सर्वर"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "We've hit the following errors during initialization"
-msgstr ""
+msgstr "आरंभ के दौरान हमें निम्न त्रुटियाँ मिली हैं"
 
 #: src/lib/components/custom/Initialize.svelte
 msgid "Initialize"
-msgstr ""
+msgstr "इनिशियलाइज़"
 
 #. placeholder {0}: Object.keys(value).length
 #: src/lib/components/custom/KVTableModal.svelte
 msgid "Object ({0} properties)"
-msgstr ""
+msgstr "ऑब्जेक्ट ({0} गुण)"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Terminal.svelte
@@ -320,13 +319,13 @@ msgstr ""
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Enter"
-msgstr ""
+msgstr "एंटर"
 
 #~ msgid "English"
-#~ msgstr ""
+#~ msgstr "अंग्रेज़ी"
 
 #~ msgid "മലയാളം"
-#~ msgstr ""
+#~ msgstr "मलयालम"
 
 #~ msgid "简体中文"
 #~ msgstr ""
@@ -347,51 +346,51 @@ msgstr "उपयोगकर्ता नाम"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Enter your username"
-msgstr ""
+msgstr "अपना उपयोगकर्ता नाम दर्ज करें"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
-msgstr ""
+msgstr "पासवर्ड"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Realm"
-msgstr ""
+msgstr "रियल्म"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "PAM"
-msgstr ""
+msgstr "PAM"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve"
-msgstr ""
+msgstr "Sylve"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Remember Me"
-msgstr ""
+msgstr "मुझे याद रखें"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login"
-msgstr ""
+msgstr "लॉगिन"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/SimpleSelect.svelte
 msgid "Select an option"
-msgstr ""
+msgstr "एक विकल्प चुनें"
 
 #. placeholder {0}: sessionId
 #: src/lib/components/custom/Terminal.svelte
 msgid "Session killed: {0}"
-msgstr ""
+msgstr "सत्र समाप्त: {0}"
 
 #: src/lib/components/custom/Terminal.svelte
 msgid "Minimize"
-msgstr ""
+msgstr "मिनिमाइज़"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -499,26 +498,26 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Close"
-msgstr ""
+msgstr "बंद करें"
 
 #: src/lib/components/custom/Terminal.svelte
 msgid "Add new tab"
-msgstr ""
+msgstr "नया टैब जोड़ें"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
-msgstr ""
+msgstr "कोई डेटा उपलब्ध नहीं"
 
 #. placeholder {0}: sizes.length > 1 ? 's' : ''
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Partition{0} created"
-msgstr ""
+msgstr "Partition{0} बनाया गया"
 
 #. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Error creating {0}"
-msgstr ""
+msgstr "{0} बनाने में त्रुटि"
 
 #. placeholder {0}: newPartitions.length + 1
 #: src/lib/components/disk/CreatePartition.svelte
@@ -527,7 +526,7 @@ msgstr ""
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
-msgstr ""
+msgstr "पार्टिशन बनाएँ"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -620,7 +619,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Reset"
-msgstr ""
+msgstr "रीसेट"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
@@ -650,7 +649,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Name"
-msgstr ""
+msgstr "नाम"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
@@ -660,168 +659,168 @@ msgstr ""
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
-msgstr ""
+msgstr "आकार"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
-msgstr ""
+msgstr "उपयोग"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Actions"
-msgstr ""
+msgstr "कार्यों"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Existing"
-msgstr ""
+msgstr "मौजूदा"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No partitions created yet"
-msgstr ""
+msgstr "अभी तक कोई पार्टिशन नहीं बनाया गया"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Add Partition"
-msgstr ""
+msgstr "पार्टिशन जोड़ें"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No space left"
-msgstr ""
+msgstr "स्थान समाप्त"
 
 #. placeholder {0}: humanFormat(currentPartition)
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Size: {0}"
-msgstr ""
+msgstr "आकार: {0}"
 
 #. placeholder {0}: humanFormat(remainingSpace)
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: {0}"
-msgstr ""
+msgstr "शेष स्थान: {0}"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
-msgstr ""
+msgstr "पार्टिशन सहेजें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Standard Switch"
-msgstr ""
+msgstr "स्टैंडर्ड स्विच"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Initialize GPT"
-msgstr ""
+msgstr "डिस्क - GPT प्रारंभ करें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Wipe"
-msgstr ""
+msgstr "डिस्क - वाइप"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Network Object"
-msgstr ""
+msgstr "नेटवर्क ऑब्जेक्ट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "File Explorer - Delete"
-msgstr ""
+msgstr "फ़ाइल एक्सप्लोरर - हटाएँ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "File Explorer"
-msgstr ""
+msgstr "फ़ाइल एक्सप्लोरर"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Filesystem"
-msgstr ""
+msgstr "ZFS फ़ाइलसिस्टम"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Volume"
-msgstr ""
+msgstr "ZFS वॉल्यूम"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Samba Share"
-msgstr ""
+msgstr "साम्बा शेयर"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Auth Group"
-msgstr ""
+msgstr "ऑथ ग्रुप"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Auth User"
-msgstr ""
+msgstr "ऑथ यूज़र"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Samba Config - Edit"
-msgstr ""
+msgstr "साम्बा कॉन्फ़िग - संपादित करें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Bulk Delete"
-msgstr ""
+msgstr "ZFS डेटासेट - बल्क डिलीट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Snapshot"
-msgstr ""
+msgstr "ZFS स्नैपशॉट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Start"
-msgstr ""
+msgstr "VM - प्रारंभ करें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Stop"
-msgstr ""
+msgstr "VM - रोकें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Start"
-msgstr ""
+msgstr "जेल - प्रारंभ करें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Stop"
-msgstr ""
+msgstr "जेल - रोकें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Detach"
-msgstr ""
+msgstr "VM स्टोरेज - डिटैच"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Attach"
-msgstr ""
+msgstr "VM स्टोरेज - अटैच"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Manual Switch"
-msgstr ""
+msgstr "मैनुअल स्विच"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
-msgstr ""
+msgstr "ZFS पूल"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Create Partitions"
-msgstr ""
+msgstr "डिस्क - पार्टिशन बनाएँ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login - Create"
-msgstr ""
+msgstr "लॉगिन - बनाएँ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Start Time"
-msgstr ""
+msgstr "प्रारंभ समय"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "End Time"
-msgstr ""
+msgstr "समाप्ति समय"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Node"
-msgstr ""
+msgstr "नोड"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User"
-msgstr ""
+msgstr "उपयोगकर्ता"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Action"
-msgstr ""
+msgstr "क्रिया"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -832,39 +831,39 @@ msgstr ""
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
-msgstr ""
+msgstr "स्थिति"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "No response"
-msgstr ""
+msgstr "कोई प्रतिक्रिया नहीं"
 
 #: src/routes/[node]/notes/+page.svelte
 msgid "Note updated"
-msgstr ""
+msgstr "नोट अपडेट किया गया"
 
 #: src/routes/[node]/notes/+page.svelte
 msgid "Failed to update note"
-msgstr ""
+msgstr "नोट अपडेट करने में विफल रहा"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note created"
-msgstr ""
+msgstr "नोट बनाया गया"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to create note"
-msgstr ""
+msgstr "नोट बनाने में विफल रहा"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
-msgstr ""
+msgstr "बनाया गया"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
-msgstr ""
+msgstr "अपडेट किया गया"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -872,7 +871,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "View"
-msgstr ""
+msgstr "देखें"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -889,7 +888,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Delete"
-msgstr ""
+msgstr "हटाएँ"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -909,13 +908,13 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
-msgstr ""
+msgstr "संपादित करें"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
-msgstr ""
+msgstr "बल्क डिलीट"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
@@ -940,29 +939,29 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "New"
-msgstr ""
+msgstr "नया"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note"
-msgstr ""
+msgstr "नोट"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Post Upgrade Summary"
-msgstr ""
+msgstr "पोस्ट अपग्रेड सारांश"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
-msgstr ""
+msgstr "सामग्री"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
-msgstr ""
+msgstr "यह एक नोट है"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
@@ -988,60 +987,59 @@ msgstr ""
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
-msgstr ""
+msgstr "सहेजें"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete note"
-msgstr ""
+msgstr "नोट्स हटाने में विफल रहा"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete notes"
-msgstr ""
+msgstr "नोट्स हटाने में विफल रहा"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Node ID"
-msgstr ""
+msgstr "नोड ID"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Address"
-msgstr ""
+msgstr "पता"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Suffrage"
-msgstr ""
+msgstr "मताधिकार"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "View Join Information"
-msgstr ""
+msgstr "जॉइन जानकारी देखें"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Create Cluster"
-msgstr ""
+msgstr "क्लस्टर बनाएँ"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Join Cluster"
-msgstr ""
+msgstr "क्लस्टर जॉइन करें"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Reset Cluster"
-msgstr ""
+msgstr "क्लस्टर रीसेट करें"
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset clustering data on this node"
-msgstr ""
+#~ msgid "This will reset the clustering data on this node"
+#~ msgstr "यह नोड पर क्लस्टरिंग डेटा को रीसेट कर देगा"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Failed to reset cluster"
-msgstr ""
+msgstr "क्लस्टर रीसेट करने में विफल रहा"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Login required after cluster reset"
-msgstr ""
+msgstr "क्लस्टर रीसेट के बाद लॉगिन आवश्यक है"
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1054,60 +1052,60 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
-msgstr ""
+msgstr "CPU उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 msgid "I/O Delay"
-msgstr ""
+msgstr "I/O विलंब"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "RAM Usage"
-msgstr ""
+msgstr "RAM उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 msgid "Swap Usage"
-msgstr ""
+msgstr "स्वैप उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network RX"
-msgstr ""
+msgstr "नेटवर्क RX"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network TX"
-msgstr ""
+msgstr "नेटवर्क TX"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Disk Usage"
-msgstr ""
+msgstr "डिस्क उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU(s)"
-msgstr ""
+msgstr "CPU(s)"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Operating System"
-msgstr ""
+msgstr "ऑपरेटिंग सिस्टम"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Uptime"
-msgstr ""
+msgstr "अपटाइम"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Load Average"
-msgstr ""
+msgstr "लोड एवरेज"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Boot Mode"
-msgstr ""
+msgstr "बूट मोड"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Sylve Version"
-msgstr ""
+msgstr "Sylve संस्करण"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1115,11 +1113,11 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
-msgstr ""
+msgstr "मेमोरी उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network Usage"
-msgstr ""
+msgstr "नेटवर्क उपयोग"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
@@ -1130,75 +1128,75 @@ msgstr ""
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Type"
-msgstr ""
+msgstr "प्रकार"
 
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Details"
-msgstr ""
+msgstr "विवरण"
 
 #. placeholder {0}: s3Storage.bucket
 #. placeholder {1}: s3Storage.region
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Bucket: {0}<br/>Region: {1}"
-msgstr ""
+msgstr "बकेट: {0}<br/>क्षेत्र: {1}"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Directory"
-msgstr ""
+msgstr "निर्देशिका"
 
 #. placeholder {0}: dirStorage.path
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Path: {0}"
-msgstr ""
+msgstr "पाथ"
 
 #. placeholder {0}: activeRow?.name
 #: src/routes/datacenter/storage/+page.svelte
 msgid "This will delete {0}"
-msgstr ""
+msgstr "यह {0} को हटाएगा"
 
 #. placeholder {0}: activeRow?.name
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Failed to delete {0}"
-msgstr ""
+msgstr "{0} हटाने में विफल"
 
 #. placeholder {0}: activeRow?.name
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Deleted {0}"
-msgstr ""
+msgstr "{0} हटाया गया"
 
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note deleted"
-msgstr ""
+msgstr "नोट हटाया गया"
 
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Notes deleted"
-msgstr ""
+msgstr "नोट्स हटाए गए"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Health"
-msgstr ""
+msgstr "स्वास्थ्य"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Single Node"
-msgstr ""
+msgstr "सिंगल नोड"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: Yes"
-msgstr ""
+msgstr "क्वोरेट: हाँ"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: Yes (Degraded)"
-msgstr ""
+msgstr "क्वोरम: हाँ (क्षीण)"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: No"
-msgstr ""
+msgstr "क्वोरम: नहीं"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Nodes"
-msgstr ""
+msgstr "नोड्स"
 
 #. placeholder {0}: statusCounts.online || 0
 #: src/routes/datacenter/summary/+page.svelte
@@ -1207,44 +1205,44 @@ msgstr ""
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Online: 1"
-msgstr ""
+msgstr "ऑनलाइन: 1"
 
 #. placeholder {0}: statusCounts.offline || 0
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Offline: {0}"
-msgstr ""
+msgstr "ऑफ़लाइन: {0}"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Offline: N/A"
-msgstr ""
+msgstr "ऑफ़लाइन: N/A"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Resources"
-msgstr ""
+msgstr "संसाधन"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Disk"
-msgstr ""
+msgstr "डिस्क"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
-msgstr ""
+msgstr "होस्टनेम"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
-msgstr ""
+msgstr "आईडी"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Last Ping"
-msgstr ""
+msgstr "अंतिम पिंग"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Username and password are required"
-msgstr ""
+msgstr "यूज़रनेम और पासवर्ड आवश्यक हैं"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -1254,60 +1252,60 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Username already exists"
-msgstr ""
+msgstr "अमान्य उपयोगकर्ता नाम"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Invalid email address"
-msgstr ""
+msgstr "अमान्य ईमेल पता"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Password must be at least 8 characters long"
-msgstr ""
+msgstr "पासवर्ड कम से कम 8 अक्षरों का होना चाहिए"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to create user"
-msgstr ""
+msgstr "उपयोगकर्ता बनाने में विफल"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "User created"
-msgstr ""
+msgstr "उपयोगकर्ता बनाया गया"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "No user selected for editing"
-msgstr ""
+msgstr "संपादन के लिए कोई उपयोगकर्ता चयनित नहीं"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to edit user"
-msgstr ""
+msgstr "उपयोगकर्ता संपादित करने में विफल"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "User edited"
-msgstr ""
+msgstr "उपयोगकर्ता संपादित किया गया"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Create User"
-msgstr ""
+msgstr "उपयोगकर्ता बनाएँ"
 
 #. placeholder {0}: user?.username
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Edit User - {0}"
-msgstr ""
+msgstr "उपयोगकर्ता संपादित करें - {0}"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "E-Mail"
-msgstr ""
+msgstr "ई-मेल"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Enter or generate password"
-msgstr ""
+msgstr "पासवर्ड दर्ज करें या उत्पन्न करें"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Admin"
-msgstr ""
+msgstr "एडमिन"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
@@ -1329,30 +1327,30 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Create"
-msgstr ""
+msgstr "बनाएँ"
 
 #: src/lib/components/custom/Charts/Area.svelte
 msgid "HH:mm"
-msgstr ""
+msgstr "HH:mm"
 
 #: src/lib/components/custom/Charts/Area.svelte
 msgid "Disable Zoom"
-msgstr ""
+msgstr "ज़ूम निष्क्रिय करें"
 
 #: src/lib/components/custom/Charts/Area.svelte
 msgid "Enable Zoom"
-msgstr ""
+msgstr "ज़ूम सक्षम करें"
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "<0/> Reset zoom"
-msgstr ""
+msgstr "<0/> ज़ूम रीसेट करें"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 msgid "Baseline"
-msgstr ""
+msgstr "बेसलाइन"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
@@ -1365,77 +1363,77 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Value"
-msgstr ""
+msgstr "मान"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Date"
-msgstr ""
+msgstr "तारीख"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Invalid IP address"
-msgstr ""
+msgstr "अमान्य IP पता"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Invalid port number"
-msgstr ""
+msgstr "अमान्य पोर्ट संख्या"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
-msgstr ""
+msgstr "क्लस्टर बनाने में विफल"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Cluster created"
-msgstr ""
+msgstr "क्लस्टर बनाया गया"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Node IP"
-msgstr ""
+msgstr "नोड IP"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Node Port"
-msgstr ""
+msgstr "नोड पोर्ट"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Leader API is required"
-msgstr ""
+msgstr "लीडर API आवश्यक है"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Cluster Key is required"
-msgstr ""
+msgstr "क्लस्टर कुंजी आवश्यक है"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Unable to join cluster"
-msgstr ""
+msgstr "क्लस्टर से जुड़ने में असमर्थ"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Joined cluster"
-msgstr ""
+msgstr "क्लस्टर में शामिल हुआ"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Leader API (192.168.1.1:8181)"
-msgstr ""
+msgstr "लीडर API (192.168.1.1:8181)"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Cluster Key"
-msgstr ""
+msgstr "क्लस्टर कुंजी"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Join"
-msgstr ""
+msgstr "जुड़ें"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Cluster key copied"
-msgstr ""
+msgstr "क्लस्टर कुंजी कॉपी की गई"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Cluster Information"
-msgstr ""
+msgstr "क्लस्टर जानकारी"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -1444,26 +1442,26 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Property"
-msgstr ""
+msgstr "गुण"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Leader Node"
-msgstr ""
+msgstr "लीडर नोड"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Copy"
-msgstr ""
+msgstr "कॉपी करें"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Are you sure?"
-msgstr ""
+msgstr "क्या आप निश्चित हैं?"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 msgid "This action cannot be undone. This will permanently delete"
-msgstr ""
+msgstr "यह क्रिया पूर्ववत नहीं की जा सकती। यह स्थायी रूप से हटाएगी"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -1472,7 +1470,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Cancel"
-msgstr ""
+msgstr "रद्द करें"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -1481,74 +1479,74 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Continue"
-msgstr ""
+msgstr "जारी रखें"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 msgid "Enter value"
-msgstr ""
+msgstr "मान दर्ज करें"
 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Folder"
-msgstr ""
+msgstr "फ़ोल्डर"
 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "File"
-msgstr ""
+msgstr "फ़ाइल"
 
 #. placeholder {0}: isFolder ? 'Folder' : 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
-msgstr ""
+msgstr "<0/> {0} बनाएँ"
 
 #. placeholder {0}: isFolder ? 'folder' : 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
-msgstr ""
+msgstr "{0} नाम दर्ज करें"
 
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Upload File"
-msgstr ""
+msgstr "<0/> फ़ाइल अपलोड करें"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Open"
-msgstr ""
+msgstr "<0/> खोलें"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Download"
-msgstr ""
+msgstr "<0/> डाउनलोड"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Copy"
-msgstr ""
+msgstr "<0/> कॉपी"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Cut"
-msgstr ""
+msgstr "<0/> कट"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 msgid "<0/> Rename"
-msgstr ""
+msgstr "<0/> नाम बदलें"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "<0/> Delete"
-msgstr ""
+msgstr "<0/> हटाएँ"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "Yesterday"
-msgstr ""
+msgstr "कल"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "MMM d"
@@ -1556,177 +1554,177 @@ msgstr ""
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "MMM d, yyyy"
-msgstr ""
+msgstr "MMM d, yyyy"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "Modified"
-msgstr ""
+msgstr "संशोधित"
 
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 msgid "Enter new name"
-msgstr ""
+msgstr "नया नाम दर्ज करें"
 
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 msgid "Rename"
-msgstr ""
+msgstr "नाम बदलें"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "<0/> Add New"
-msgstr ""
+msgstr "<0/> नया जोड़ें"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "New File"
-msgstr ""
+msgstr "नई फ़ाइल"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "New Folder"
-msgstr ""
+msgstr "नया फ़ोल्डर"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Upload File"
-msgstr ""
+msgstr "फ़ाइल अपलोड करें"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Search files..."
-msgstr ""
+msgstr "फ़ाइलें खोजें"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "<0/> Sort"
-msgstr ""
+msgstr "<0/> क्रमबद्ध करें"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "A - Z"
-msgstr ""
+msgstr "A - Z"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Z - A"
-msgstr ""
+msgstr "Z - A"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Last Modified"
-msgstr ""
+msgstr "अंतिम संशोधित"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "First Modified"
-msgstr ""
+msgstr "पहले संशोधित"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Share name already exists"
-msgstr ""
+msgstr "शेयर नाम पहले से मौजूद है"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Name is required"
-msgstr ""
+msgstr "नाम आवश्यक है"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Dataset is required"
-msgstr ""
+msgstr "डेटासेट आवश्यक है"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "No groups selected and guests are not allowed"
-msgstr ""
+msgstr "कोई ग्रुप चयनित नहीं है और मेहमानों की अनुमति नहीं है"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Share cannot have overlapping groups"
-msgstr ""
+msgstr "शेयर में ओवरलैपिंग ग्रुप्स नहीं हो सकते"
 
 #. placeholder {0}: edit ? 'edit' : 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
-msgstr ""
+msgstr "Samba शेयर {0} करने में विफल"
 
 #. placeholder {0}: edit ? 'edited' : 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
-msgstr ""
+msgstr "Samba शेयर {0}"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Edit Samba Share"
-msgstr ""
+msgstr "Samba शेयर संपादित करें"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Samba Share"
-msgstr ""
+msgstr "Samba शेयर बनाएँ"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
-msgstr ""
+msgstr "डेटासेट"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select dataset"
-msgstr ""
+msgstr "डेटासेट चुनें"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Read-Only Groups"
-msgstr ""
+msgstr "केवल-पठन ग्रुप्स"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
-msgstr ""
+msgstr "ग्रुप्स चुनें"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Writeable Groups"
-msgstr ""
+msgstr "लेखनीय ग्रुप्स"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Mask"
-msgstr ""
+msgstr "क्रिएट मास्क"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Directory Mask"
-msgstr ""
+msgstr "डायरेक्टरी मास्क"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Guests"
-msgstr ""
+msgstr "मेहमान"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Read Only"
-msgstr ""
+msgstr "केवल पठन"
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Search..."
-msgstr ""
+msgstr "खोजें..."
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Escape"
-msgstr ""
+msgstr "एस्केप"
 
 #: src/lib/components/ui/breadcrumb/breadcrumb-ellipsis.svelte
 msgid "More"
-msgstr ""
+msgstr "और"
 
 #: src/lib/components/ui/command/command-dialog.svelte
 msgid "Command Palette"
-msgstr ""
+msgstr "कमांड पैलेट"
 
 #: src/lib/components/ui/command/command-dialog.svelte
 msgid "Search for a command to run"
-msgstr ""
+msgstr "चलाने के लिए कमांड खोजें"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "Type to create"
-msgstr ""
+msgstr "टाइप करके बनाएँ"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "Add"
-msgstr ""
+msgstr "जोड़ें"
 
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "No data"
-msgstr ""
+msgstr "कोई डेटा नहीं"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Model"
-msgstr ""
+msgstr "मॉडल"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -1734,7 +1732,7 @@ msgstr ""
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Description"
-msgstr ""
+msgstr "विवरण"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -1742,93 +1740,93 @@ msgstr ""
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "MAC Address"
-msgstr ""
+msgstr "MAC पता"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Metric"
-msgstr ""
+msgstr "मेट्रिक"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Active"
-msgstr ""
+msgstr "सक्रिय"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Attribute"
-msgstr ""
+msgstr "एट्रिब्यूट"
 
 #. placeholder {0}: ifaceData.name
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Details - {0}"
-msgstr ""
+msgstr "विवरण - {0}"
 
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Data"
-msgstr ""
+msgstr "डेटा"
 
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Updated At"
-msgstr ""
+msgstr "अपडेट किया गया समय"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Object {0} deleted"
-msgstr ""
+msgstr "ऑब्जेक्ट {0} हटाया गया"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Object {0} is in use"
-msgstr ""
+msgstr "ऑब्जेक्ट {0} उपयोग में है"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Error deleting object {0}"
-msgstr ""
+msgstr "ऑब्जेक्ट {0} हटाने में त्रुटि"
 
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will make it unavailable to the host."
-msgstr ""
+msgstr "क्या आप वाकई <b>{0}</b> को <b>{1}</b> द्वारा पासथ्रू करना चाहते हैं? इससे यह होस्ट के लिए अनुपलब्ध हो जाएगा।"
 
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? This will make it available to the host again."
-msgstr ""
+msgstr "क्या आप वाकई <b>{0}</b> के लिए <b>{1}</b> द्वारा पासथ्रू हटाना चाहते हैं? इससे यह फिर से होस्ट के लिए उपलब्ध हो जाएगा।"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Enable Passthrough"
-msgstr ""
+msgstr "पासथ्रू सक्षम करें"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Disable Passthrough"
-msgstr ""
+msgstr "पासथ्रू निष्क्रिय करें"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device added to passthrough"
-msgstr ""
+msgstr "डिवाइस पासथ्रू में जोड़ा गया"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to add device to passthrough"
-msgstr ""
+msgstr "डिवाइस पासथ्रू में जोड़ने में विफल"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device removed from passthrough"
-msgstr ""
+msgstr "डिवाइस पासथ्रू से हटाया गया"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device is in use by a VM, failed to remove"
-msgstr ""
+msgstr "डिवाइस एक VM द्वारा उपयोग में है, हटाने में विफल"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to remove device from passthrough"
-msgstr ""
+msgstr "डिवाइस पासथ्रू से हटाने में विफल"
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "S.M.A.R.T Values ({0})"
-msgstr ""
+msgstr "S.M.A.R.T मान ({0})"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -1837,166 +1835,167 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "NVMe"
-msgstr ""
+msgstr "NVMe"
 
 #. placeholder {0}: activePartition.name
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "This action cannot be undone. This will permanently <b>delete</b> partition <b>{0}</b>."
-msgstr ""
+msgstr "यह क्रिया पूर्ववत नहीं की जा सकती। यह स्थायी रूप से <b>पार्टिशन</b> <b>{0}</b> को <b>हटा</b> देगी।"
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
-msgstr ""
+msgstr "यह क्रिया पूर्ववत नहीं की जा सकती। यह स्थायी रूप से डिस्क <b>{0}</b> को <b>मिटा</b> देगी।"
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk {0} initialized with GPT"
-msgstr ""
+msgstr "डिस्क {0} GPT के साथ इनिशियलाइज़ की गई"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "S.M.A.R.T Values"
-msgstr ""
+msgstr "S.M.A.R.T मान"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Initialize GPT"
-msgstr ""
+msgstr "GPT इनिशियलाइज़ करें"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Wipe Disk"
-msgstr ""
+msgstr "डिस्क मिटाएँ"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Delete Partition"
-msgstr ""
+msgstr "पार्टिशन हटाएँ"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Create Partition"
-msgstr ""
+msgstr "पार्टिशन बनाएँ"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk Wiped"
-msgstr ""
+msgstr "डिस्क मिटाई गई"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partition Deleted"
-msgstr ""
+msgstr "पार्टिशन हटाया गया"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Device busy"
-msgstr ""
+msgstr "डिवाइस व्यस्त"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to wipe busy disk"
-msgstr ""
+msgstr "व्यस्त डिस्क को मिटाने में असमर्थ"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to delete busy partition"
-msgstr ""
+msgstr "व्यस्त पार्टिशन को हटाने में असमर्थ"
 
 #. placeholder {0}: activeDisk ? 'wiping disk' : 'deleting partition'
 #. placeholder {1}: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
-msgstr ""
+msgstr "त्रुटि {0}: {1}"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Please enter a valid URL"
-msgstr ""
+msgstr "कृपया एक मान्य URL दर्ज करें"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Please enter a valid Magnet, HTTP URL or Path"
-msgstr ""
+msgstr "कृपया एक मान्य मैग्नेट, HTTP URL या पाथ दर्ज करें"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Invalid file name"
-msgstr ""
+msgstr "अमान्य फ़ाइल नाम"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download started"
-msgstr ""
+msgstr "डाउनलोड शुरू हुआ"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download failed"
-msgstr ""
+msgstr "डाउनलोड विफल"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to get download link"
-msgstr ""
+msgstr "डाउनलोड लिंक प्राप्त करने में विफल"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download"
-msgstr ""
+msgstr "डाउनलोड"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Magnet / HTTP URL / Path"
-msgstr ""
+msgstr "मैग्नेट / HTTP URL / पाथ"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Optional File Name"
-msgstr ""
+msgstr "वैकल्पिक फ़ाइल नाम"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Ignore TLS Errors"
-msgstr ""
+msgstr "TLS त्रुटियों की अनदेखी करें"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to delete download"
-msgstr ""
+msgstr "डाउनलोड्स हटाने में विफल"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to delete downloads"
-msgstr ""
+msgstr "डाउनलोड्स हटाने में विफल"
 
 #. placeholder {0}: isFolder ? 'folder' : 'file'
 #. placeholder {1}: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
-msgstr ""
+msgstr "{0} \"{1}\" बनाने में विफल"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Renamed successfully"
-msgstr ""
+msgstr "नाम सफलतापूर्वक बदला गया"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to rename"
-msgstr ""
+msgstr "नाम बदलने में विफल"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Files"
-msgstr ""
+msgstr "फ़ाइलें"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Drop files here to upload"
-msgstr ""
+msgstr "अपलोड करने के लिए फ़ाइलें यहाँ छोड़ें"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Files will be uploaded to the current folder"
-msgstr ""
+msgstr "फ़ाइलें वर्तमान फ़ोल्डर में अपलोड की जाएंगी"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Refresh"
-msgstr ""
+msgstr "<0/> रिफ्रेश"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Paste"
-msgstr ""
+msgstr "<0/> पेस्ट करें"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New File"
-msgstr ""
+msgstr "<0/> नई फ़ाइल"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New Folder"
-msgstr ""
+msgstr "<0/> नया फ़ोल्डर"
 
 #. placeholder {0}: sortedItems.length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} items"
-msgstr ""
+msgstr "{0} आइटम्स"
 
 #. placeholder {0}: sortedItems.filter((item: any) => item.type === 'folder').length
 #. placeholder {1}: sortedItems.filter((item: any) => item.type === 'file').length
@@ -5136,15 +5135,12 @@ msgstr ""
 #~ msgid "हिन्दी"
 #~ msgstr ""
 
-#. placeholder {0}: pinnedCores.length
-#. placeholder {0}: initialPinning || 0
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Manage ({0} pinned)"
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download URL copied to clipboard"
 msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Extract Automatically"
+msgid "Copy URL"
 msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
@@ -5163,9 +5159,33 @@ msgstr ""
 msgid "Uncategorized"
 msgstr ""
 
-#~ msgid "Download Type§å"
-#~ msgstr ""
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Cloud-Init"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Extract Automatically"
+msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "<0/> Language"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "Log out"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - Create Signed URL"
+msgstr ""
+
+#. placeholder {0}: pinnedCores.length
+#. placeholder {0}: initialPinning || 0
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Manage ({0} pinned)"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset clustering data on this node"
 msgstr ""

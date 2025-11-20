@@ -1988,6 +1988,7 @@ msgid "Download failed"
 msgstr "Download failed"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to get download link"
 msgstr "Failed to get download link"
 
@@ -5181,3 +5182,19 @@ msgstr "Uncategorized"
 #: src/lib/components/custom/Header.svelte
 msgid "<0/> Language"
 msgstr "<0/> Language"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download URL copied to clipboard"
+msgstr "Download URL copied to clipboard"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Copy URL"
+msgstr "Copy URL"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - Create Signed URL"
+msgstr "Downloader - Create Signed URL"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Cloud-Init"
+msgstr "Cloud-Init"

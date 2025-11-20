@@ -356,7 +356,8 @@
 							placeholder="Select Download Type"
 							options={[
 								{ value: 'base-rootfs', label: 'Base / RootFS' },
-								{ value: 'uncategorized', label: 'Uncategorized' }
+								{ value: 'uncategorized', label: 'Uncategorized' },
+								{ value: 'cloud-init', label: 'Cloud-Init' }
 							]}
 							classes={{ parent: 'mt-2.5 flex-1 space-y-1', label: 'mb-2' }}
 							bind:value={modalState.downloadType}
