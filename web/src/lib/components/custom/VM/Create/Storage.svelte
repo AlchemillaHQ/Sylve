@@ -58,7 +58,7 @@
 			for (const download of downloads) {
 				if (
 					download.uType === 'cloud-init' ||
-					(download.uType === 'uncategoried' &&
+					(download.uType === 'uncategorized' &&
 						(download.label.endsWith('.iso') || download.label.endsWith('.img')))
 				) {
 					options.push({ label: download.label.replace('@@@', ' → '), value: download.uuid });

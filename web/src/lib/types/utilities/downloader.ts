@@ -28,7 +28,7 @@ export const DownloadSchema = z.object({
 export const UTypeGroupedDownloadSchema = z.object({
 	uuid: z.string(),
 	label: z.string(),
-	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategoried'])
+	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategorized'])
 });
 
 export type Download = z.infer<typeof DownloadSchema>;

@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { getSimpleJails } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getVMs } from '$lib/api/vm/vm';
+	import { updateCache } from '$lib/utils/http';
+
 	import { default as TreeView } from '$lib/components/custom/TreeView.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
 	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
-	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
 	import { storage } from '$lib';
+	import { useQueries } from '$lib/runes/useQuery.svelte';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
 	let node = $derived(storage.hostname || 'default-node');
@@ -34,32 +36,32 @@
 		}
 	}
 
-	const queryClient = useQueryClient();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['simple-vms-list'],
-				queryFn: async () => {
-					return await getSimpleVMs();
-				},
-				keepPreviousData: true,
-				initialData: [] as SimpleVm[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['simple-jails-list'],
-				queryFn: async () => {
-					return await getSimpleJails();
-				},
-				keepPreviousData: true,
-				initialData: [] as SimpleJail[],
-				refetchOnMount: 'always'
+	const {
+		simpleVms: simpleVmsQuery,
+		simpleJails: simpleJailsQuery,
+		refetch,
+		refetchAll
+	} = useQueries(() => ({
+		simpleVms: () => ({
+			key: 'simple-vm-list',
+			queryFn: () => getSimpleVMs(),
+			initialData: [],
+			onSuccess: (f: SimpleVm[]) => {
+				updateCache('simple-vm-list', f);
 			}
-		]
+		}),
+		simpleJails: () => ({
+			key: 'simple-jails-list',
+			queryFn: () => getSimpleJails(),
+			initialData: [],
+			onSuccess: (f: SimpleJail[]) => {
+				updateCache('simple-jails-list', f);
+			}
+		})
 	}));
 
-	const simpleVMs = $derived(results[0].data || []);
-	const simpleJails = $derived(results[1].data || []);
+	const simpleVMs = $derived(simpleVmsQuery.data || []);
+	const simpleJails = $derived(simpleJailsQuery.data || []);
 
 	let children = $derived(
 		[
@@ -110,14 +112,9 @@
 
 	$effect(() => {
 		if (reload.leftPanel) {
-			queryClient.refetchQueries({
-				queryKey: ['simple-vms-list']
-			});
-
-			queryClient.refetchQueries({
-				queryKey: ['simple-jails-list']
-			});
-
+			console.log('LeftPanel reload triggered');
+			refetch('simpleJails');
+			refetch('simpleVms');
 			reload.leftPanel = false;
 		}
 	});

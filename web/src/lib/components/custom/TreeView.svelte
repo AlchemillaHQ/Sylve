@@ -19,7 +19,6 @@
 	}
 
 	let { item, onToggle, openCategories = {} }: Props = $props();
-
 	let isOpen = $derived(openCategories[item.label] ?? false);
 
 	const handleLabelClick = (e: MouseEvent) => {
@@ -73,14 +72,13 @@
 		onclick={handleLabelClick}
 	>
 		<div class="flex items-center space-x-1 text-sm">
-			{#if item.icon === 'material-symbols:monitor-outline' || item.icon === 'hugeicons:prison'}
+			{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 				<div class="flex items-center space-x-1 text-sm">
 					<div class="relative">
 						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-
 						{#if item.state && item.state === 'active'}
 							<div
-								class="absolute -right-1 -bottom-1 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
+								class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
 							>
 								<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
 							</div>
