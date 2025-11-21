@@ -24,6 +24,80 @@ type VMEditDescRequest struct {
 	Description string `json:"description" binding:"required"`
 }
 
+// @Summary Get a Virtual Machine by VMID or ID
+// @Description Retrieve a virtual machine by its VMID or ID
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param vmid path string true "Virtual Machine ID or VmId"
+// @Param type query string false "Type of identifier (vmid or id)"  Enums(vmid, id) default(vmid)
+// @Success 200 {object} internal.APIResponse[vmModels.VM] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /vm/{id} [get]
+func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmID := c.Param("id")
+		if vmID == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_vm_id",
+				Data:    nil,
+				Error:   "Virtual Machine ID is required",
+			})
+			return
+		}
+
+		var t string = c.DefaultQuery("type", "vmid")
+		if t != "vmid" && t != "id" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_type_param",
+				Data:    nil,
+				Error:   "Type parameter must be either 'vmid' or 'id'",
+			})
+			return
+		}
+
+		identifier, err := strconv.Atoi(vmID)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_vm_id_format",
+				Data:    nil,
+				Error:   "Virtual Machine ID must be a valid integer",
+			})
+			return
+		}
+
+		var vm vmModels.VM
+		if t == "vmid" {
+			vm, err = libvirtService.GetVMByVmId(identifier)
+		} else {
+			vm, err = libvirtService.GetVM(identifier)
+		}
+
+		if err != nil || vm.ID == 0 {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_vm",
+				Data:    nil,
+				Error:   "failed_to_get_vm: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[vmModels.VM]{
+			Status:  "success",
+			Message: "vm_retrieved_by_vmid",
+			Data:    vm,
+			Error:   "",
+		})
+	}
+}
+
 // @Summary List all Virtual Machines
 // @Description Retrieve a list of all virtual machines
 // @Tags VM

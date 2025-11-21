@@ -277,6 +277,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		vm.POST("/:action/:id", vmHandlers.VMActionHandler(libvirtService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
 		vm.DELETE("/:id", vmHandlers.RemoveVM(libvirtService))
@@ -301,6 +302,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/serial-console/:vmid", vmHandlers.ModifySerialConsole(libvirtService))
 		vm.PUT("/options/shutdown-wait-time/:vmid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
 		vm.PUT("/options/cloud-init/:vmid", vmHandlers.ModifyCloudInitData(libvirtService))
+		vm.PUT("/options/ignore-umsrs/:vmid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
 
 		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}

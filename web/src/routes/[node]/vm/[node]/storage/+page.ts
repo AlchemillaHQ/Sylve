@@ -13,12 +13,13 @@ export async function load({ params }) {
 		cachedFetch('vm-list', async () => getVMs(), cacheDuration),
 		cachedFetch(`vm-domain-${vmId}`, async () => getVMDomain(Number(vmId)), cacheDuration),
 		cachedFetch('datasets', async () => await getDatasets(), cacheDuration),
-		cachedFetch('pools', getPools, cacheDuration),
+		cachedFetch('pools', async () => getPools(), cacheDuration),
 		cachedFetch('downloads', async () => getDownloads(), cacheDuration)
 	]);
 
 	return {
 		vms: vms,
+		vmId: vmId,
 		domain: domain,
 		datasets: datasets,
 		pools: pools,

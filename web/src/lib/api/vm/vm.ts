@@ -13,6 +13,10 @@ import {
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+export async function getVmById(id: number, type: 'vmid' | 'id'): Promise<VM> {
+	return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
+}
+
 export async function getVMs(): Promise<VM[]> {
 	return await apiRequest('/vm', z.array(VMSchema), 'GET');
 }
@@ -50,8 +54,10 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
 		startAtBoot: data.advanced.startAtBoot,
 		bootOrder: parseInt(data.advanced.bootOrder.toString(), 10),
 		timeOffset: data.advanced.timeOffset,
+		cloudInit: data.advanced.cloudInit.enabled,
 		cloudInitData: data.advanced.cloudInit.data,
-		cloudInitMetadata: data.advanced.cloudInit.metadata
+		cloudInitMetadata: data.advanced.cloudInit.metadata,
+		ignoreUMSR: data.advanced.ignoreUmsrs
 	});
 }
 
@@ -90,6 +96,12 @@ export async function updateDescription(id: number, description: string): Promis
 export async function modifyWoL(vmid: number, enabled: boolean): Promise<APIResponse> {
 	return await apiRequest(`/vm/options/wol/${vmid}`, APIResponseSchema, 'PUT', {
 		enabled
+	});
+}
+
+export async function modifyIgnoreUMSR(vmid: number, ignore: boolean): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/ignore-umsrs/${vmid}`, APIResponseSchema, 'PUT', {
+		ignoreUMSRs: ignore
 	});
 }
 

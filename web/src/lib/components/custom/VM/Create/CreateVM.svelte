@@ -8,28 +8,27 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { Download, UTypeGroupedDownload } from '$lib/types/utilities/downloader';
+	import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generatePassword } from '$lib/utils/string';
 	import { getNextId, isValidCreateData } from '$lib/utils/vm/vm';
-	import { createQueries } from '@tanstack/svelte-query';
 	import Advanced from './Advanced.svelte';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
-
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getJails } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
-	import { reload } from '$lib/stores/api.svelte';
+	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { type CPUPin, type CreateData, type VM } from '$lib/types/vm/vm';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { getBasicSettings } from '$lib/api/basic';
 	import type { BasicSettings } from '$lib/types/basic';
+	import { useQueries } from '$lib/runes/useQuery.svelte';
 
 	interface Props {
 		open: boolean;
@@ -37,117 +36,96 @@
 
 	let { open = $bindable() }: Props = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: {} as SwitchList,
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['pci-devices'],
-				queryFn: async () => {
-					return (await getPCIDevices()) as PCIDevice[];
-				},
-				keepPreviousData: true,
-				initialData: [] as PCIDevice[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['ppt-devices'],
-				queryFn: async () => {
-					return (await getPPTDevices()) as PPTDevice[];
-				},
-				keepPreviousData: true,
-				initialData: [] as PPTDevice[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['downloads-by-utype'],
-				queryFn: async () => {
-					return await getDownloadsByUType();
-				},
-				keepPreviousData: true,
-				initialData: [],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				keepPreviousData: true,
-				initialData: [],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['network-objects'],
-				queryFn: async () => {
-					return await getNetworkObjects();
-				},
-				keepPreviousData: true,
-				initialData: [],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['jail-list'],
-				queryFn: async () => {
-					return await getJails();
-				},
-				keepPreviousData: true,
-				initialData: [],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['cluster-nodes'],
-				queryFn: async () => {
-					return await getNodes();
-				},
-				keepPreviousData: true,
-				initialData: [],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['basic-settings'],
-				queryFn: async () => {
-					return await getBasicSettings();
-				},
-				keepPreviousData: true,
-				initialData: {
-					pools: [],
-					services: [],
-					initialized: false
-				},
-				refetchOnMount: 'always'
-			}
-		]
+	const {
+		networkObjects: networkObjectsQuery,
+		networkSwitches: networkSwitchesQuery,
+		pciDevices: pciDevicesQuery,
+		pptDevices: pptDevicesQuery,
+		downloadsByUType: downloadsByUTypeQuery,
+		vms: vmsQuery,
+		jails: jailsQuery,
+		clusterNodes: clusterNodesQuery,
+		basicSettings: basicSettingsQuery,
+		refetchAll
+	} = useQueries(() => ({
+		networkObjects: () => ({
+			key: 'network-objects',
+			queryFn: async () => await getNetworkObjects(),
+			initialData: [] as NetworkObject[],
+			onSuccess: (networkObjects) => updateCache('network-objects', networkObjects)
+		}),
+		networkSwitches: () => ({
+			key: 'network-switches',
+			queryFn: async () => await getSwitches(),
+			initialData: {} as SwitchList,
+			onSuccess: (networkSwitches) => updateCache('network-switches', networkSwitches)
+		}),
+		pciDevices: () => ({
+			key: 'pci-devices',
+			queryFn: async () => (await getPCIDevices()) as PCIDevice[],
+			initialData: [] as PCIDevice[],
+			onSuccess: (pciDevices) => updateCache('pci-devices', pciDevices)
+		}),
+		pptDevices: () => ({
+			key: 'ppt-devices',
+			queryFn: async () => (await getPPTDevices()) as PPTDevice[],
+			initialData: [] as PPTDevice[],
+			onSuccess: (pptDevices) => updateCache('ppt-devices', pptDevices)
+		}),
+		downloadsByUType: () => ({
+			key: 'downloads-by-utype',
+			queryFn: async () => await getDownloadsByUType(),
+			initialData: [] as UTypeGroupedDownload[],
+			onSuccess: (downloads) => updateCache('downloads-by-utype', downloads)
+		}),
+		vms: () => ({
+			key: 'vm-list',
+			queryFn: async () => await getVMs(),
+			initialData: [] as VM[],
+			onSuccess: (vms) => updateCache('vm-list', vms)
+		}),
+		jails: () => ({
+			key: 'jail-list',
+			queryFn: async () => await getJails(),
+			initialData: [] as Jail[],
+			onSuccess: (jails) => updateCache('jail-list', jails)
+		}),
+		clusterNodes: () => ({
+			key: 'cluster-nodes',
+			queryFn: async () => await getNodes(),
+			initialData: [] as ClusterNode[],
+			onSuccess: (nodes) => updateCache('cluster-nodes', nodes)
+		}),
+		basicSettings: () => ({
+			key: 'basic-settings',
+			queryFn: async () => await getBasicSettings(),
+			initialData: {
+				pools: [],
+				services: [],
+				initialized: false
+			} as BasicSettings,
+			onSuccess: (settings) => updateCache('basic-settings', settings)
+		})
 	}));
 
-	let refetch = $state(false);
+	let reload = $state(false);
 
 	$effect(() => {
-		if (refetch) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-
-			refetch = false;
+		if (reload) {
+			refetchAll();
+			reload = false;
 		}
 	});
 
-	let networkSwitches: SwitchList = $derived(results[0].data as SwitchList);
-	let pciDevices: PCIDevice[] = $derived(results[1].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived(results[2].data as PPTDevice[]);
-	let downloads = $derived(results[3].data as UTypeGroupedDownload[]);
-	let vms: VM[] = $derived(results[4].data as VM[]);
-	let networkObjects = $derived(results[5].data as NetworkObject[]);
-	let jails: Jail[] = $derived(results[6].data as Jail[]);
-	let nodes = $derived(results[7].data as ClusterNode[]);
-	let basicSettings = $derived(results[8].data as BasicSettings);
+	let networkObjects = $derived(networkObjectsQuery.data as NetworkObject[]);
+	let networkSwitches: SwitchList = $derived(networkSwitchesQuery.data as SwitchList);
+	let pciDevices = $derived(pciDevicesQuery.data as PCIDevice[]);
+	let pptDevices = $derived(pptDevicesQuery.data as PPTDevice[]);
+	let downloads = $derived(downloadsByUTypeQuery.data as UTypeGroupedDownload[]);
+	let vms = $derived(vmsQuery.data as VM[]);
+	let jails = $derived(jailsQuery.data as Jail[]);
+	let nodes = $derived(clusterNodesQuery.data as ClusterNode[]);
+	let basicSettings = $derived(basicSettingsQuery.data as BasicSettings);
 	let passablePci: PCIDevice[] = $derived.by(() => {
 		return pciDevices.filter((device) => device.name.startsWith('ppt'));
 	});
@@ -200,7 +178,8 @@
 				enabled: false,
 				data: '',
 				metadata: ''
-			}
+			},
+			ignoreUmsrs: false
 		}
 	};
 
@@ -214,7 +193,7 @@
 
 	async function create() {
 		const data = $state.snapshot(modal);
-		if (isValidCreateData(data)) {
+		if (isValidCreateData(data, downloads)) {
 			loading = true;
 			const response = await newVM(data);
 			loading = false;
@@ -232,7 +211,7 @@
 				});
 			}
 
-			reload.leftPanel = true;
+			reloadStore.leftPanel = true;
 		}
 	}
 
@@ -289,7 +268,7 @@
 									bind:id={modal.id}
 									bind:description={modal.description}
 									{nodes}
-									bind:refetch
+									bind:refetch={reload}
 								/>
 							{:else if value === 'storage'}
 								<Storage
@@ -336,6 +315,7 @@
 									bind:tpmEmulation={modal.advanced.tpmEmulation}
 									bind:timeOffset={modal.advanced.timeOffset}
 									bind:cloudInit={modal.advanced.cloudInit}
+									bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
 								/>
 							{/if}
 						</div>

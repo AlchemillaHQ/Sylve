@@ -42,6 +42,10 @@ type ModifyCloudInitDataRequest struct {
 	Metadata string `json:"metadata"`
 }
 
+type ModifyIgnoreUMSRsRequest struct {
+	IgnoreUMSRs *bool `json:"ignoreUMSRs"`
+}
+
 // @Summary Modify Wake-on-LAN of a Virtual Machine
 // @Description Modify the Wake-on-LAN configuration of a virtual machine
 // @Tags VM
@@ -463,6 +467,76 @@ func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cloud_init_data_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Ignore UMSRs of a Virtual Machine
+// @Description Modify the Ignore UMSRs configuration of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyIgnoreUMSRsRequest true "Modify Ignore UMSRs Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/ignore-umsrs/:vmid [put]
+func ModifyIgnoreUMSRs(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmId := c.Param("vmid")
+		if vmId == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "vmid_not_provided",
+			})
+			return
+		}
+
+		vmIdInt, err := strconv.Atoi(vmId)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_vmid_format",
+			})
+			return
+		}
+
+		var req ModifyIgnoreUMSRsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		ignoreUMSRs := false
+		if req.IgnoreUMSRs != nil {
+			ignoreUMSRs = *req.IgnoreUMSRs
+		}
+
+		if err := libvirtService.ModifyIgnoreUMSRs(vmIdInt, ignoreUMSRs); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "ignore_umsrs_modified",
 			Data:    nil,
 			Error:   "",
 		})

@@ -191,12 +191,11 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-lg overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content class="w-full overflow-hidden p-5 lg:max-w-2xl">
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<span class="icon-[grommet-icons--storage] h-5 w-5"></span>
-
 					<span>New Storage</span>
 				</div>
 

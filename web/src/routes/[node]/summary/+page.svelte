@@ -16,10 +16,8 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
-	import { createQueries } from '@tanstack/svelte-query';
 	import type { Chart } from 'chart.js';
-	import { useWindowFocus } from '$lib/runes/useWindowFocus.svelte';
-	import { onMount } from 'svelte';
+	import { useQueries } from '$lib/runes/useQuery.svelte';
 
 	interface Data {
 		basicInfo: BasicInfo;
@@ -35,128 +33,111 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['basicInfo'],
-				queryFn: getBasicInfo,
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.basicInfo,
-				onSuccess: (data: BasicInfo) => {
-					updateCache('basicInfo', data);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['cpuInfo'],
-				queryFn: getCPUInfo,
-				refetchInterval: 5000,
-				keepPreviousData: true,
-				initialData: data.cpuInfo,
-				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-					updateCache('cpuInfo', data as CPUInfo);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['ramInfo'],
-				queryFn: getRAMInfo,
-				refetchInterval: 5000,
-				keepPreviousData: true,
-				initialData: data.ramInfo,
-				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-					updateCache('ramInfo', data);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['swapInfo'],
-				queryFn: getSwapInfo,
-				refetchInterval: 60000,
-				keepPreviousData: true,
-				initialData: data.swapInfo,
-				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-					updateCache('swapInfo', data);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['totalDiskUsage'],
-				queryFn: getPoolsDiskUsage,
-				refetchInterval: 120000,
-				keepPreviousData: true,
-				initialData: data.totalDiskUsage,
-				onSuccess: (data: number) => {
-					updateCache('totalDiskUsage', data);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['cpuInfoHistorical'],
-				queryFn: getCPUInfo,
-				refetchInterval: 30000,
-				keepPreviousData: true,
-				initialData: data.cpuInfoHistorical,
-				onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-					updateCache('cpuInfoHistorical', data as CPUInfoHistorical);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['ramInfoHistorical'],
-				queryFn: getRAMInfo,
-				refetchInterval: 30000,
-				keepPreviousData: true,
-				initialData: data.ramInfoHistorical,
-				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-					updateCache('ramInfoHistorical', data as RAMInfoHistorical);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['swapInfoHistorical'],
-				queryFn: getSwapInfo,
-				refetchInterval: 30000,
-				keepPreviousData: true,
-				initialData: data.swapInfoHistorical,
-				onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-					updateCache('swapInfoHistorical', data as RAMInfoHistorical);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
-			},
-			{
-				queryKey: ['networkUsageHistorical'],
-				queryFn: getNetworkInterfaceInfoHistorical,
-				refetchInterval: 30000,
-				keepPreviousData: true,
-				initialData: data.networkUsageHistorical,
-				onSuccess: (data: HistoricalNetworkInterface[]) => {
-					updateCache('networkUsageHistorical', data);
-				},
-				refetchOnMount: true,
-				refetchOnWindowFocus: true
+	const {
+		basicInfo: basicInfoQuery,
+		cpuInfo: cpuInfoQuery,
+		ramInfo: ramInfoQuery,
+		swapInfo: swapInfoQuery,
+		totalDiskUsage: totalDiskUsageQuery,
+		cpuInfoHistorical: cpuInfoHistoricalQuery,
+		ramInfoHistorical: ramInfoHistoricalQuery,
+		swapInfoHistorical: swapInfoHistoricalQuery,
+		networkUsageHistorical: networkUsageHistoricalQuery,
+		refetchAll
+	} = useQueries(() => ({
+		basicInfo: () => ({
+			key: 'basic-info',
+			queryFn: () => getBasicInfo(),
+			initialData: data.basicInfo,
+			onSuccess: (data: BasicInfo) => {
+				updateCache('basic-info', data);
 			}
-		]
+		}),
+		cpuInfo: () => ({
+			key: 'cpu-info',
+			queryFn: () => getCPUInfo('current'),
+			initialData: data.cpuInfo,
+			onSuccess: (data: CPUInfo) => {
+				updateCache('cpu-info', data);
+			},
+			refetchInterval: 2000
+		}),
+		ramInfo: () => ({
+			key: 'ram-info',
+			queryFn: () => getRAMInfo('current'),
+			initialData: data.ramInfo,
+			onSuccess: (data: RAMInfo) => {
+				updateCache('ram-info', data);
+			},
+			refetchInterval: 2000
+		}),
+		swapInfo: () => ({
+			key: 'swap-info',
+			queryFn: () => getSwapInfo('current'),
+			initialData: data.swapInfo,
+			onSuccess: (data: RAMInfo) => {
+				updateCache('swap-info', data);
+			},
+			refetchInterval: 60000
+		}),
+		totalDiskUsage: () => ({
+			key: 'total-disk-usage',
+			queryFn: () => getPoolsDiskUsage(),
+			initialData: data.totalDiskUsage,
+			onSuccess: (data: number) => {
+				updateCache('total-disk-usage', data);
+			},
+			refetchInterval: 120000
+		}),
+		cpuInfoHistorical: () => ({
+			key: 'cpu-info-historical',
+			queryFn: () => getCPUInfo('historical'),
+			initialData: data.cpuInfoHistorical,
+			onSuccess: (data: CPUInfoHistorical) => {
+				updateCache('cpu-info-historical', data);
+			},
+			refetchInterval: 30000
+		}),
+		ramInfoHistorical: () => ({
+			key: 'ram-info-historical',
+			queryFn: () => getRAMInfo('historical'),
+			initialData: data.ramInfoHistorical,
+			onSuccess: (data: RAMInfoHistorical) => {
+				updateCache('ram-info-historical', data);
+			},
+			refetchInterval: 30000
+		}),
+		swapInfoHistorical: () => ({
+			key: 'swap-info-historical',
+			queryFn: () => getSwapInfo('historical'),
+			initialData: data.swapInfoHistorical,
+			onSuccess: (data: RAMInfoHistorical) => {
+				updateCache('swap-info-historical', data);
+			},
+			refetchInterval: 30000
+		}),
+		networkUsageHistorical: () => ({
+			key: 'network-usage-historical',
+			queryFn: () => getNetworkInterfaceInfoHistorical(),
+			initialData: data.networkUsageHistorical,
+			onSuccess: (data: HistoricalNetworkInterface[]) => {
+				updateCache('network-usage-historical', data);
+			},
+			refetchInterval: 30000
+		})
 	}));
 
-	let basicInfo = $derived(results[0].data as BasicInfo);
-	let cpuInfo = $derived(results[1].data as CPUInfo);
-	let ramInfo = $derived(results[2].data as RAMInfo);
-	let swapInfo = $derived(results[3].data as RAMInfo);
-	let totalDiskUsage = $derived(results[4].data as number);
-	let cpuInfoHistorical = $derived(results[5].data as CPUInfoHistorical);
-	let ramInfoHistorical = $derived(results[6].data as RAMInfoHistorical);
-	let swapInfoHistorical = $derived(results[7].data as RAMInfoHistorical);
-	let networkUsageHistorical = $derived(results[8].data as HistoricalNetworkInterface[]);
+	let basicInfo = $derived(basicInfoQuery.data as BasicInfo);
+	let cpuInfo = $derived(cpuInfoQuery.data as CPUInfo);
+	let ramInfo = $derived(ramInfoQuery.data as RAMInfo);
+	let swapInfo = $derived(swapInfoQuery.data as RAMInfo);
+	let totalDiskUsage = $derived(totalDiskUsageQuery.data as number);
+	let cpuInfoHistorical = $derived(cpuInfoHistoricalQuery.data as CPUInfoHistorical);
+	let ramInfoHistorical = $derived(ramInfoHistoricalQuery.data as RAMInfoHistorical);
+	let swapInfoHistorical = $derived(swapInfoHistoricalQuery.data as RAMInfoHistorical);
+	let networkUsageHistorical = $derived(
+		networkUsageHistoricalQuery.data as HistoricalNetworkInterface[]
+	);
 
 	let chartElements = $derived.by(() => {
 		return [

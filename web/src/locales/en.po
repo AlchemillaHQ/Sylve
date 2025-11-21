@@ -212,7 +212,6 @@ msgstr ""
 "powered on."
 
 #: src/lib/components/custom/Header.svelte
-#: src/lib/components/custom/Header.svelte
 msgid "Color Theme"
 msgstr "Color Theme"
 
@@ -229,7 +228,6 @@ msgstr "Color Theme"
 msgid "Sylve Logo"
 msgstr "Sylve Logo"
 
-#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialize.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Throbber.svelte
@@ -451,6 +449,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -578,6 +578,8 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
@@ -1022,6 +1024,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
@@ -3207,6 +3210,7 @@ msgstr "Select Auto Expand"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Yes"
 msgstr "Yes"
 
@@ -3223,6 +3227,7 @@ msgstr "Yes"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "No"
@@ -5224,3 +5229,63 @@ msgstr "Cannot replace with smaller device"
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU / RAM Usage"
 msgstr "CPU / RAM Usage"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unimplemented MSR Accesses"
+msgstr "Ignore Unimplemented MSR Accesses"
+
+#~ msgid "Ignore Unknown MSRs Accesses"
+#~ msgstr "Ignore Unknown MSRs Accesses"
+
+#~ msgid "Failed to modify unknown MSRs access setting"
+#~ msgstr "Failed to modify unknown MSRs access setting"
+
+#~ msgid "Modified unknown MSRs access setting"
+#~ msgstr "Modified unknown MSRs access setting"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unknown MSR Accesses"
+msgstr "Ignore Unknown MSR Accesses"
+
+#~ msgid ""
+#~ "Enable this option to ignore accesses to unknown Model-Specific Registers (MSRs) by the VM.\n"
+#~ "This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+#~ "unexpected behavior if the guest OS relies on these MSRs."
+#~ msgstr ""
+#~ "Enable this option to ignore accesses to unknown Model-Specific Registers (MSRs) by the VM.\n"
+#~ "This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+#~ "unexpected behavior if the guest OS relies on these MSRs."
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Ignore Unimplemented MSRs Accesses"
+msgstr "Ignore Unimplemented MSRs Accesses"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Failed to modify unimplemented MSRs access setting"
+msgstr "Failed to modify unimplemented MSRs access setting"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Modified unimplemented MSRs access setting"
+msgstr "Modified unimplemented MSRs access setting"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid ""
+"Enable this option to ignore accesses to unimplemented Model-Specific Registers (MSRs) by the\n"
+"VM. This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+"unexpected behavior if the guest OS relies on these MSRs."
+msgstr ""
+"Enable this option to ignore accesses to unimplemented Model-Specific Registers (MSRs) by the\n"
+"VM. This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+"unexpected behavior if the guest OS relies on these MSRs."
+
+#~ msgid "Source Pool"
+#~ msgstr "Source Pool"
+
+#~ msgid "Destination Pool"
+#~ msgstr "Destination Pool"
+
+#~ msgid "No {0} ZFS pool selected"
+#~ msgstr "No {0} ZFS pool selected"

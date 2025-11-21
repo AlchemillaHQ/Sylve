@@ -194,4 +194,10 @@
 <span class="icon-[clarity--resource-pool-solid]"></span>
 <span class="icon-[fa7-solid--hexagon-nodes]"></span> 
 <span class="icon-[oui--ml-create-population-job]"></span>
+<span class="icon-[mdi--magnet]"></span>
+<span class="icon-[mdi--internet]"></span>
+<span class="icon-[mdi--file]"></span>
+<span class="icon-[eos-icons--three-dots-loading]"></span>
+<span class="icon-[line-md--downloading-loop]"></span>
+<span class="icon-[lets-icons--check-fill]"></span
 -->

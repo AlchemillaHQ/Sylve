@@ -210,7 +210,6 @@ msgid ""
 msgstr "यह नोड अभी पहुँच में नहीं है। नेटवर्क कनेक्शन जाँचें और सुनिश्चित करें कि नोड चालू है।"
 
 #: src/lib/components/custom/Header.svelte
-#: src/lib/components/custom/Header.svelte
 msgid "Color Theme"
 msgstr "रंग थीम"
 
@@ -227,7 +226,6 @@ msgstr "रंग थीम"
 msgid "Sylve Logo"
 msgstr "Sylve लोगो"
 
-#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialize.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Throbber.svelte
@@ -448,6 +446,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -575,6 +575,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
@@ -976,6 +978,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
@@ -3193,6 +3196,7 @@ msgstr "ऑटो विस्तार चुनें"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Yes"
 msgstr "हाँ"
 
@@ -3209,6 +3213,7 @@ msgstr "हाँ"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "No"
@@ -5221,3 +5226,57 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Failed to add network"
 msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unimplemented MSR Accesses"
+msgstr ""
+
+#~ msgid "Ignore Unknown MSRs Accesses"
+#~ msgstr ""
+
+#~ msgid "Failed to modify unknown MSRs access setting"
+#~ msgstr ""
+
+#~ msgid "Modified unknown MSRs access setting"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unknown MSR Accesses"
+msgstr ""
+
+#~ msgid ""
+#~ "Enable this option to ignore accesses to unknown Model-Specific Registers (MSRs) by the VM.\n"
+#~ "This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+#~ "unexpected behavior if the guest OS relies on these MSRs."
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Ignore Unimplemented MSRs Accesses"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Failed to modify unimplemented MSRs access setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Modified unimplemented MSRs access setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid ""
+"Enable this option to ignore accesses to unimplemented Model-Specific Registers (MSRs) by the\n"
+"VM. This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+"unexpected behavior if the guest OS relies on these MSRs."
+msgstr ""
+
+#~ msgid "Source Pool"
+#~ msgstr ""
+
+#~ msgid "Destination Pool"
+#~ msgstr ""
+
+#~ msgid "No {0} ZFS pool selected"
+#~ msgstr ""

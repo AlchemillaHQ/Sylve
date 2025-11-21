@@ -551,47 +551,84 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			return fmt.Errorf("zvol_dataset_not_found_in_pool: %s", req.Dataset)
 		}
 
-		var storage vmModels.Storage
+		var sourcePool string
+		if found != nil {
+			parts := strings.SplitN(found.Name, "/", 2)
+			if len(parts) > 0 {
+				sourcePool = parts[0]
+			}
+		}
+
 		storage.Type = vmModels.VMStorageTypeZVol
 		storage.Size = int64(found.Volsize)
-
 		if err := s.DB.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
-			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
-		}
+		if sourcePool == req.Pool {
+			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
+				req.Pool,
+				vm.VmID,
+				storage.ID,
+			)
 
-		snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.VmID, storage.ID)
-		snapshot, err := found.Snapshot(snapshotName, false)
-		if err != nil {
-			return fmt.Errorf("failed_to_create_snapshot_of_imported_zvol: %w", err)
-		}
+			dataset, err := found.Rename(targetDatasetPath, true, true, false)
+			if err != nil || dataset == nil {
+				_ = s.DB.Delete(&storage).Error
+				return fmt.Errorf("failed_to_rename_zvol_dataset: %w", err)
+			}
 
-		targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-			req.Pool,
-			vm.VmID,
-			storage.ID,
-		)
+			storageDataset := vmModels.VMStorageDataset{
+				Pool: req.Pool,
+				Name: dataset.Name,
+				GUID: dataset.GUID,
+				VMID: uint(vm.VmID),
+			}
 
-		targetDatasets, err := zfs.Volumes(targetDatasetPath)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_target_zvols: %w", err)
-		}
+			if err := s.DB.Create(&storageDataset).Error; err != nil {
+				return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
+			}
 
-		if len(targetDatasets) == 0 {
-			return fmt.Errorf("target_zvol_dataset_not_found: %s", targetDatasetPath)
-		}
+			storage.DatasetID = &storageDataset.ID
 
-		targetDataset := targetDatasets[0]
-		err = snapshot.SendSnapshotToDataset(targetDataset, true)
-		if err != nil {
-			return fmt.Errorf("failed_to_send_snapshot_to_dataset: %w", err)
-		}
+			if err := s.DB.Save(&storage).Error; err != nil {
+				return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
+			}
+		} else {
+			if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+				return fmt.Errorf("failed_to_create_vm_disk: %w", err)
+			}
 
-		if err := snapshot.Destroy(zfs.DestroyRecursive); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_destroy_import_snapshot")
+			snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.VmID, storage.ID)
+			snapshot, err := found.Snapshot(snapshotName, false)
+			if err != nil {
+				return fmt.Errorf("failed_to_create_snapshot_of_imported_zvol: %w", err)
+			}
+
+			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
+				req.Pool,
+				vm.VmID,
+				storage.ID,
+			)
+
+			targetDatasets, err := zfs.Volumes(targetDatasetPath)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_target_zvols: %w", err)
+			}
+
+			if len(targetDatasets) == 0 {
+				return fmt.Errorf("target_zvol_dataset_not_found: %s", targetDatasetPath)
+			}
+
+			targetDataset := targetDatasets[0]
+			err = snapshot.SendSnapshotToDataset(targetDataset, true)
+			if err != nil {
+				return fmt.Errorf("failed_to_send_snapshot_to_dataset: %w", err)
+			}
+
+			if err := snapshot.Destroy(zfs.DestroyRecursive); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_destroy_import_snapshot")
+			}
 		}
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeDiskImage {
 		imagePath, err := s.FindISOByUUID(req.UUID, true)

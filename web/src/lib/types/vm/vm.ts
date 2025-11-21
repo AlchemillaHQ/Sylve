@@ -47,6 +47,7 @@ export interface CreateData {
 			data: string;
 			metadata: string;
 		};
+		ignoreUmsrs: boolean;
 	};
 }
 
@@ -134,6 +135,7 @@ export const VMSchema = z.object({
 	shutdownWaitTime: z.number().int(),
 	cloudInitData: z.string().nullable(),
 	cloudInitMetaData: z.string().nullable(),
+	ignoreUMSR: z.boolean(),
 
 	createdAt: z.string(),
 	updatedAt: z.string(),

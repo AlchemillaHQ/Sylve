@@ -26,6 +26,7 @@
 			data: string;
 			metadata: string;
 		};
+		ignoreUmsrs: boolean;
 	}
 
 	let {
@@ -38,7 +39,8 @@
 		bootOrder = $bindable(),
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
-		cloudInit = $bindable()
+		cloudInit = $bindable(),
+		ignoreUmsrs = $bindable()
 	}: Props = $props();
 
 	onMount(() => {
@@ -165,6 +167,12 @@
 		<CustomCheckbox
 			label="Enable Cloud-Init"
 			bind:checked={cloudInit.enabled}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Ignore Unimplemented MSR Accesses"
+			bind:checked={ignoreUmsrs}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>

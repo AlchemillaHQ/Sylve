@@ -318,6 +318,14 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		},
 	})
 
+	if vm.IgnoreUMSR {
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: "-w",
+			},
+		})
+	}
+
 	var flatBhyveArgs []libvirtServiceInterfaces.BhyveArg
 	for _, args := range bhyveArgs {
 		flatBhyveArgs = append(flatBhyveArgs, args...)
@@ -378,6 +386,24 @@ func (s *Service) CreateLvVm(id int) error {
 		err = s.CreateCloudInitISO(vm)
 		if err != nil {
 			return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
+		}
+
+		err = s.FlashCloudInitMediaToDisk(vm)
+		if err != nil {
+			return fmt.Errorf("failed_to_flash_cloud_init_to_disk: %w", err)
+		}
+
+		err := s.DB.
+			Where("vm_id = ? AND type = ?", vm.ID, vmModels.VMStorageTypeDiskImage).
+			Delete(&vmModels.Storage{}).Error
+
+		if err != nil {
+			return fmt.Errorf("failed_to_remove_cloud_init_storage_entry: %w", err)
+		}
+
+		vm, err = s.GetVM(id)
+		if err != nil {
+			return err
 		}
 	}
 

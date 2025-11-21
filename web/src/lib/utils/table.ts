@@ -16,7 +16,6 @@ import {
 	type RowComponent,
 	type Tabulator
 } from 'tabulator-tables';
-import { iconCache } from './icons';
 
 export function deselectAllRows(table: Tabulator | null) {
 	if (table) {
@@ -75,13 +74,15 @@ export const renderWithIcon = (
 	extraClass?: string,
 	title?: string
 ) => {
-	const icon = iconCache[iconKey] || '';
+	const [set, icon] = iconKey.split(':');
+	const twIcon = `<span class="icon-[${set}--${icon}]"></span>`;
+
 	return `
-                        <span class="gap-1 w-full" title="${title || ''}">
-                            <span class="shrink-0 ${extraClass || ''}">${icon}</span>
-                            <span class="">${suffix}</span>
-                        </span>
-                    `.trim();
+		<span class="flex items-center gap-1 w-full" title="${title || ''}">
+			<span class="shrink-0 leading-none ${extraClass || ''} mt-0.5">${twIcon}</span>
+			<span>${suffix}</span>
+		</span>
+	`.trim();
 };
 
 export function sizeFormatter(cell: CellComponent) {

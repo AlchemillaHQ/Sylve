@@ -7,13 +7,13 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
+	import { useQuery } from '$lib/runes/useQuery.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Note } from '$lib/types/info/notes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -23,24 +23,16 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['notes'],
-				queryFn: async () => {
-					return (await getNotes()) as Note[];
-				},
-				keepPreviousData: true,
-				initialData: data.notes,
-				onSuccess: (data: Note[]) => {
-					updateCache('notes', data);
-				}
-			}
-		]
+	const notesQuery = useQuery<Note[]>(() => ({
+		key: 'notes',
+		queryFn: async () => (await getNotes()) as Note[],
+		initialData: data.notes,
+		onSuccess: (notes) => {
+			updateCache('notes', notes);
+		}
 	}));
 
-	let notes: Note[] = $derived(results[0].data as Note[]);
+	let notes = $derived(notesQuery.data);
 	let modalState = $state({
 		title: '',
 		content: '',
@@ -75,7 +67,7 @@
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
 			const response = await updateNote(selectedId, modalState.title, modalState.content);
-			queryClient.refetchQueries('notes');
+			notesQuery.refetch();
 			if (response.status === 'success') {
 				toast.success('Note updated', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -87,8 +79,7 @@
 			}
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
-			queryClient.refetchQueries('notes');
-
+			notesQuery.refetch();
 			if ((response as Note).id) {
 				toast.success('Note created', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -361,7 +352,7 @@
 			onConfirm: async () => {
 				const id = activeRow ? activeRow[0]?.id : null;
 				const result = await deleteNote(id as number);
-				queryClient.refetchQueries('notes');
+				notesQuery.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					handleNote(undefined, false, true);
 				} else {
@@ -386,7 +377,7 @@
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
 				const result = await deleteNotes(ids);
-				queryClient.refetchQueries('notes');
+				notesQuery.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					handleNote(undefined, false, true);
 				} else {

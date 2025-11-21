@@ -10,7 +10,6 @@
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
-	import { preloadIcons } from '$lib/utils/icons';
 	import { addTabulatorFilters } from '$lib/utils/table';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { ModeWatcher } from 'mode-watcher';
@@ -91,7 +90,6 @@
 			}
 		}
 
-		await preloadIcons();
 		await sleep(1000);
 		loading.throbber = false;
 		await tick();

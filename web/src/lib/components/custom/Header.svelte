@@ -8,6 +8,7 @@
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
 	import { storage, languageArr } from '$lib';
+	import { loadLocale } from 'wuchale/load-utils';
 
 	let menuData = $state({
 		createVM: {
@@ -32,6 +33,7 @@
 			{:else}
 				<img src="/logo/black.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
 			{/if}
+			<!-- @wc-ignore -->
 			<p class="font-normal tracking-[.45em]">SYLVE</p>
 		</div>
 	</nav>
@@ -118,10 +120,7 @@
 			<DropdownMenu.Content class="w-56">
 				<DropdownMenu.Group>
 					{#each menuData.menuItems as { icon, label, shortcut }}
-						<DropdownMenu.Item
-							class="cursor-pointer"
-							onclick={() => label === 'Color Theme' && toggleMode()}
-						>
+						<DropdownMenu.Item class="cursor-pointer" onclick={toggleMode}>
 							<span class="icon-[{icon}] mr-2 h-4 w-4"></span>
 
 							<span>{label}</span>
@@ -145,7 +144,10 @@
 										<DropdownMenu.CheckboxItem
 											class="cursor-pointer"
 											checked={storage.language === value}
-											onclick={() => (storage.language = value)}
+											onclick={() => {
+												storage.language = value;
+												loadLocale(value);
+											}}
 										>
 											{label}
 										</DropdownMenu.CheckboxItem>

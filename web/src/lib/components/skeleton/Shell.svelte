@@ -7,20 +7,19 @@
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { createQuery } from '@tanstack/svelte-query';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
+	import { useQuery } from '$lib/runes/useQuery.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
 
 	let { children }: Props = $props();
-	const clusterDetails = createQuery(() => ({
+	const clusterDetails = useQuery(() => ({
 		queryKey: ['cluster-details'],
 		queryFn: async () => {
 			return await getDetails();
 		},
-		refetchInterval: 1000,
-		keepPreviousData: true,
-		refetchOnMount: 'always'
+		refetchInterval: 1000
 	}));
 
 	let details = $derived(clusterDetails.data);

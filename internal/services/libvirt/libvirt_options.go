@@ -232,3 +232,86 @@ func (s *Service) ModifyCloudInitData(vmId int, data string, metadata string) er
 
 	return s.SyncVMDisks(vmId)
 }
+
+func (s *Service) ModifyIgnoreUMSRs(vmId int, ignore bool) error {
+	var vm vmModels.VM
+	if err := s.DB.Where("vm_id = ?", vmId).First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
+	}
+
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.Conn.DomainGetState(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("domain_state_not_shutoff: %d", vmId)
+	}
+
+	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xml); err != nil {
+		return fmt.Errorf("failed_to_parse_xml: %w", err)
+	}
+
+	root := doc.Root()
+	if root == nil {
+		return fmt.Errorf("invalid_domain_xml: root_missing")
+	}
+
+	bhyveCmdEl := doc.FindElement("//bhyve:commandline")
+	if bhyveCmdEl == nil {
+		bhyveCmdEl = root.CreateElement("bhyve:commandline")
+	}
+
+	for {
+		found := false
+		children := bhyveCmdEl.ChildElements()
+		for _, el := range children {
+			if el.Tag == "bhyve:arg" || el.Tag == "arg" {
+				if a := el.SelectAttr("value"); a != nil && a.Value == "-w" {
+					bhyveCmdEl.RemoveChild(el)
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			break
+		}
+	}
+
+	if ignore {
+		argEl := etree.NewElement("bhyve:arg")
+		argEl.CreateAttr("value", "-w")
+		bhyveCmdEl.AddChild(argEl)
+	}
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+
+	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.DB.
+		Model(&vmModels.VM{}).
+		Where("vm_id = ?", vmId).
+		Update("ignore_umsr", ignore).Error
+	return err
+}

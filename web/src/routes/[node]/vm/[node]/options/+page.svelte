@@ -1,39 +1,40 @@
 <script lang="ts">
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVmById } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
 	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
+	import IgnoreUMSR from '$lib/components/custom/VM/Options/IgnoreUMSR.svelte';
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { useQuery } from '$lib/runes/useQuery.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
-	import { createQuery } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		vm: VM;
-		vms: VM[];
 		domain: VMDomain;
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = createQuery(() => ({
-		queryKey: ['vm-list'],
+	const results = useQuery(() => ({
+		key: `vm-${data.vm.vmId}`,
 		queryFn: async () => {
-			return await getVMs();
+			return await getVmById(data.vm.vmId, 'vmid');
 		},
 		refetchInterval: 1000,
 		keepPreviousData: true,
-		initialData: data.vms,
-		onSuccess: (data: VM[]) => {
-			updateCache('vm-list', data);
+		initialData: data.vm,
+		onSuccess: (data: VM) => {
+			updateCache(`vm-${data.vmId}`, data);
 		}
 	}));
 
+	let vm: VM | null = $derived(results.data);
 	let reload = $state(false);
 
 	$effect(() => {
@@ -42,11 +43,6 @@
 			reload = false;
 		}
 	});
-
-	let vms: VM[] = $derived(results.data ? results.data : data.vms);
-	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
-	);
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -97,6 +93,11 @@
 				id: generateNanoId('cloudInit'),
 				property: 'Cloud Init',
 				value: vm && (vm.cloudInitData || vm.cloudInitMetaData) ? 'Configured' : 'Not Configured'
+			},
+			{
+				id: generateNanoId('ignoreUMSRs'),
+				property: 'Ignore Unimplemented MSRs Accesses',
+				value: vm ? (vm.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
 			}
 		]
 	});
@@ -106,12 +107,13 @@
 		wol: { open: false },
 		timeOffset: { open: false },
 		shutdownWaitTime: { open: false },
-		cloudInit: { open: false }
+		cloudInit: { open: false },
+		ignoreUMSR: { open: false }
 	});
 </script>
 
 {#snippet button(
-	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit',
+	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit' | 'ignoreUMSR',
 	title: string
 )}
 	<Button
@@ -146,6 +148,8 @@
 				{@render button('shutdownWaitTime', 'Shutdown Wait Time')}
 			{:else if activeRow.property === 'Cloud Init'}
 				{@render button('cloudInit', 'Cloud Init')}
+			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
+				{@render button('ignoreUMSR', 'Ignore Unimplemented MSRs Accesses')}
 			{/if}
 		</div>
 	{/if}
@@ -179,4 +183,8 @@
 
 {#if properties.cloudInit.open && vm}
 	<CloudInit bind:open={properties.cloudInit.open} {vm} bind:reload />
+{/if}
+
+{#if properties.ignoreUMSR.open && vm}
+	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} {vm} bind:reload />
 {/if}

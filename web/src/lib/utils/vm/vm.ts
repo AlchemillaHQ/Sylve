@@ -2,8 +2,12 @@ import type { Jail } from '$lib/types/jail/jail';
 import type { CreateData, VM } from '$lib/types/vm/vm';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
+import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 
-export function isValidCreateData(modal: CreateData): boolean {
+export function isValidCreateData(
+	modal: CreateData,
+	utypeDownloads: UTypeGroupedDownload[]
+): boolean {
 	const toastConfig: Record<string, unknown> = {
 		duration: 3000,
 		position: 'bottom-center'
@@ -94,6 +98,31 @@ export function isValidCreateData(modal: CreateData): boolean {
 	) {
 		toast.error('Cloud-Init user and meta data required if enabled', toastConfig);
 		return false;
+	}
+
+	if (modal.advanced.cloudInit.enabled) {
+		if (!modal.advanced.cloudInit.data || !modal.advanced.cloudInit.metadata) {
+			toast.error('Cloud-Init user and meta data required if enabled', toastConfig);
+			return false;
+		}
+
+		if (modal.storage.iso === '' || modal.storage.iso.toLowerCase() === 'none') {
+			toast.error('Cloud-Init requires installation media', toastConfig);
+			return false;
+		}
+
+		const initImage = utypeDownloads.find(
+			(download) => download.uType === 'cloud-init' && download.uuid === modal.storage.iso
+		);
+		if (!initImage) {
+			toast.error('Selected installation media is not a valid Cloud-Init image', toastConfig);
+			return false;
+		}
+
+		if (modal.storage.type === 'none') {
+			toast.error('Cloud-Init requires a storage device', toastConfig);
+			return false;
+		}
 	}
 
 	return true;

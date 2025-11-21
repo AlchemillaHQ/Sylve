@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/h2non/filetype"
@@ -445,4 +446,76 @@ func IsFileInDirectory(filePath, dirPath string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+const (
+	defaultBlockSize  = "1M"
+	defaultQueueDepth = 8
+)
+
+func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
+	if source == "" || dest == "" {
+		return fmt.Errorf("source and dest must be non-empty")
+	}
+	if source == dest {
+		return fmt.Errorf("source and dest must not be the same path")
+	}
+
+	srcInfo, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("stat source %q: %w", source, err)
+	}
+	if srcInfo.IsDir() {
+		return fmt.Errorf("source %q is a directory, expected a file", source)
+	}
+
+	if _, err := exec.LookPath("camdd"); err != nil {
+		return fmt.Errorf("camdd not found in PATH: %w", err)
+	}
+
+	inArg := fmt.Sprintf("file=%s,bs=%s", source, defaultBlockSize)
+
+	var outArg string
+	if strings.HasPrefix(dest, "/dev/") {
+		if _, err := os.Stat(dest); err != nil {
+			return fmt.Errorf("destination device %q not found or not accessible: %w", dest, err)
+		}
+
+		if strings.HasPrefix(dest, "/dev/pass") {
+			// True pass(4) device
+			outArg = fmt.Sprintf("pass=%s,bs=%s,depth=%d", dest, defaultBlockSize, defaultQueueDepth)
+		} else {
+			// zvols, /dev/da0, /dev/nvd0, /dev/md*, etc.
+			outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
+		}
+	} else {
+		if info, err := os.Stat(dest); err == nil && info.IsDir() {
+			return fmt.Errorf("destination %q is a directory, expected a file", dest)
+		}
+		if !filepath.IsAbs(dest) {
+			if abs, err := filepath.Abs(dest); err == nil {
+				dest = abs
+			}
+		}
+		outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
+	}
+
+	args := []string{"-i", inArg, "-o", outArg}
+
+	cmd := exec.CommandContext(ctx, "camdd", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("camdd canceled or timed out: %w", ctx.Err())
+		}
+		return fmt.Errorf("camdd failed: %w", err)
+	}
+
+	return nil
+}
+
+func FlashImageToDisk(source, dest string) error {
+	return FlashImageToDiskCtx(context.Background(), source, dest)
 }

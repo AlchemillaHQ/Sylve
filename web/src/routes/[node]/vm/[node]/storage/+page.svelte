@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { storageDetach } from '$lib/api/vm/storage';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
@@ -9,6 +8,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { useQueries } from '$lib/runes/useQuery.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
@@ -16,7 +16,6 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
-	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -25,86 +24,77 @@
 		datasets: Dataset[];
 		pools: Zpool[];
 		downloads: Download[];
+		vmId: string;
 	}
 
 	let { data }: { data: Data } = $props();
-	const vmId = page.url.pathname.split('/')[3];
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.vms,
-				onSuccess: (data: VM[]) => {
-					updateCache('vm-list', data);
-				}
+	const {
+		vms: vmsQuery,
+		domain: domainQuery,
+		pools: poolsQuery,
+		datasets: datasetsQuery,
+		downloads: downloadsQuery,
+		refetchAll
+	} = useQueries(() => ({
+		vms: () => ({
+			key: 'vm-list',
+			queryFn: () => getVMs(),
+			initialData: data.vms,
+			onSuccess: (f: VM[]) => {
+				updateCache('vm-list', f);
 			},
-			{
-				queryKey: [`vm-domain-${vmId}`],
-				queryFn: async () => {
-					return await getVMDomain(vmId);
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.domain,
-				onSuccess: (data: VMDomain) => {
-					updateCache(`vm-domain-${vmId}`, data);
-				}
+			refetchInterval: 1000
+		}),
+		domain: () => ({
+			key: `vm-domain-${data.vmId}`,
+			queryFn: () => getVMDomain(Number(data.vmId)),
+			initialData: data.domain,
+			onSuccess: (f: VMDomain) => {
+				updateCache(`vm-domain-${data.vmId}`, f);
 			},
-			{
-				queryKey: ['poolList'],
-				queryFn: async () => {
-					return await getPools();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: false,
-				initialData: data.pools,
-				onSuccess: (data: Zpool[]) => {
-					updateCache('pools', data);
-				}
+			refetchInterval: 1000
+		}),
+		pools: () => ({
+			key: 'pool-list',
+			queryFn: () => getPools(),
+			initialData: data.pools,
+			onSuccess: (f: Zpool[]) => {
+				updateCache('pool-list', f);
 			},
-			{
-				queryKey: ['datasetList'],
-				queryFn: async () => {
-					return await getDatasets();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: false,
-				initialData: data.datasets,
-				onSuccess: (data: Dataset[]) => {
-					updateCache('datasets', data);
-				}
+			refetchInterval: 1000
+		}),
+		datasets: () => ({
+			key: 'dataset-list',
+			queryFn: () => getDatasets(),
+			initialData: data.datasets,
+			onSuccess: (f: Dataset[]) => {
+				updateCache('datasets', f);
 			},
-			{
-				queryKey: ['downloads'],
-				queryFn: async () => {
-					return await getDownloads();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.downloads,
-				onSuccess: (data: Download[]) => {
-					updateCache('downloads', data);
-				}
-			}
-		]
+			refetchInterval: 1000
+		}),
+		downloads: () => ({
+			key: 'download-list',
+			queryFn: () => getDownloads(),
+			initialData: data.downloads,
+			onSuccess: (f: Download[]) => {
+				updateCache('download-list', f);
+			},
+			refetchInterval: 1000
+		})
 	}));
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let vms: VM[] = $derived(results[0].data as VM[]);
-	let domain: VMDomain = $derived(results[1].data as VMDomain);
-	let pools: Zpool[] = $derived(results[2].data as Zpool[]);
+	let vms: VM[] = $derived(vmsQuery.data);
+	let pools: Zpool[] = $derived(poolsQuery.data);
+	let datasets: Dataset[] = $derived(datasetsQuery.data);
+	let downloads: Download[] = $derived(downloadsQuery.data);
 	let vm: VM = $derived(
-		(results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
+		vmsQuery.data.find((vm: VM) => vm.vmId === parseInt(data.vmId)) || ({} as VM)
 	);
-	let datasets: Dataset[] = $derived(results[3].data as Dataset[]);
-	let downloads: Download[] = $derived(results[4].data as Download[]);
+	let domain: VMDomain = $derived(domainQuery.data);
+
 	let tableData = $derived(generateTableData(vm, datasets, downloads));
 
 	let options = {
@@ -182,7 +172,7 @@
 	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await storageDetach(Number(vmId), properties.detach.id as number);
+			let response = await storageDetach(Number(data.vmId), properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach storage', {

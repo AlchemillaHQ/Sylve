@@ -437,17 +437,43 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 		}
 	}
 
-	if (data.CloudInitData != "" && data.CloudInitMetaData == "") ||
-		(data.CloudInitData == "" && data.CloudInitMetaData != "") {
-		return fmt.Errorf("both_cloud_init_data_and_metadata_must_be_provided")
+	var cloudInit bool
+	if data.CloudInit != nil {
+		cloudInit = *data.CloudInit
+	} else {
+		cloudInit = false
 	}
 
-	if data.CloudInitData != "" && !utils.IsValidYAML(data.CloudInitData) {
-		return fmt.Errorf("invalid_cloud_init_data_yaml")
-	}
+	if cloudInit {
+		if data.StorageType == libvirtServiceInterfaces.StorageTypeNone {
+			return fmt.Errorf("cloud_init_requires_storage")
+		}
 
-	if data.CloudInitMetaData != "" && !utils.IsValidYAML(data.CloudInitMetaData) {
-		return fmt.Errorf("invalid_cloud_init_metadata_yaml")
+		if data.ISO == "" {
+			return fmt.Errorf("cloud_init_requires_iso")
+		} else {
+			var download utilitiesModels.Downloads
+			err := s.DB.
+				Where("uuid = ?", data.ISO).
+				First(&download).Error
+
+			if err != nil {
+				return fmt.Errorf("failed_to_fetch_iso_for_cloud_init_validation: %w", err)
+			}
+
+			if download.UType != "cloud-init" {
+				return fmt.Errorf("media_not_cloud_init_capable: %s", data.ISO)
+			}
+		}
+
+		if data.CloudInitData == "" || data.CloudInitMetaData == "" {
+			return fmt.Errorf("cloud_init_data_missing")
+		}
+
+		if !utils.IsValidYAML(data.CloudInitData) ||
+			!utils.IsValidYAML(data.CloudInitMetaData) {
+			return fmt.Errorf("invalid_cloud_init_yaml")
+		}
 	}
 
 	return nil
@@ -493,6 +519,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 	serial := false
 	apic := true
 	acpi := true
+	ignoreUMSRs := false
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -531,6 +558,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 
 	if data.ACPI != nil {
 		acpi = *data.ACPI
+	}
+
+	if data.IgnoreUMSRs != nil {
+		ignoreUMSRs = *data.IgnoreUMSRs
 	}
 
 	var networks []vmModels.Network
@@ -678,6 +709,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 		TimeOffset:        vmModels.TimeOffset(data.TimeOffset),
 		CloudInitData:     data.CloudInitData,
 		CloudInitMetaData: data.CloudInitMetaData,
+		IgnoreUMSR:        ignoreUMSRs,
 	}
 
 	vm.CPUPinning = []vmModels.VMCPUPinning{}

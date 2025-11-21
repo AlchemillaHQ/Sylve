@@ -11,6 +11,7 @@
 		actionVm,
 		deleteVM,
 		getStats,
+		getVmById,
 		getVMDomain,
 		getVMs,
 		updateDescription
@@ -26,13 +27,14 @@
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
-	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
+	import { useQueries } from '$lib/runes/useQuery.svelte';
+	import type { Chart } from 'chart.js';
 
 	interface Data {
-		vms: VM[];
+		vm: VM;
 		domain: VMDomain;
 		stats: VMStat[];
 	}
@@ -40,52 +42,44 @@
 	let { data }: { data: Data } = $props();
 	const vmId = page.url.pathname.split('/')[3];
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.vms,
-				onSuccess: (data: VM[]) => {
-					updateCache('vm-list', data);
-				}
+	const {
+		vm: vmQuery,
+		domain: domainQuery,
+		stats: statsQuery,
+		refetchAll
+	} = useQueries(() => ({
+		vm: () => ({
+			key: 'vm-list',
+			queryFn: () => getVmById(Number(vmId), 'vmid'),
+			initialData: data.vm,
+			onSuccess: (data: VM) => {
+				updateCache(`vm-${vmId}`, data);
 			},
-			{
-				queryKey: [`vm-domain-${vmId}`],
-				queryFn: async () => {
-					return await getVMDomain(vmId);
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.domain,
-				onSuccess: (data: VMDomain) => {
-					updateCache(`vm-domain-${vmId}`, data);
-				}
+			refetchInterval: 1000
+		}),
+		domain: () => ({
+			key: `vm-domain-${vmId}`,
+			queryFn: () => getVMDomain(vmId),
+			initialData: data.domain,
+			onSuccess: (data: VMDomain) => {
+				updateCache(`vm-domain-${vmId}`, data);
 			},
-			{
-				queryKey: [`vm-stats-${vmId}`],
-				queryFn: async () => {
-					return await getStats(Number(vmId), 128);
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.stats,
-				onSuccess: (data: VMStat[]) => {
-					updateCache(`vm-stats-${vmId}`, data);
-				}
-			}
-		]
+			refetchInterval: 1000
+		}),
+		stats: () => ({
+			key: `vm-stats-${vmId}`,
+			queryFn: () => getStats(Number(vmId), 128),
+			initialData: data.stats,
+			onSuccess: (data: VMStat[]) => {
+				updateCache(`vm-stats-${vmId}`, data);
+			},
+			refetchInterval: 1000
+		})
 	}));
 
-	let domain: VMDomain = $derived(results[1].data as VMDomain);
-	let vm: VM = $derived(
-		(results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
-	);
-	let stats: VMStat[] = $derived(results[2].data as VMStat[]);
+	let domain: VMDomain = $derived(domainQuery.data);
+	let vm: VM = $derived(vmQuery.data as VM);
+	let stats: VMStat[] = $derived(statsQuery.data as VMStat[]);
 	let recentStat = $derived(stats[stats.length - 1] || ({} as VMStat));
 
 	let vmDescription = $derived.by(() => {

@@ -9,11 +9,13 @@
 package libvirt
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
@@ -141,9 +143,20 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 			return isoPath, nil
 		}
 
-		// Otherwise, use extracted if it's usable.
 		if extractExists && hasAllowedExt(download.ExtractedPath) {
 			return download.ExtractedPath, nil
+		}
+
+		if download.ExtractedPath != "" {
+			files, err := os.ReadDir(download.ExtractedPath)
+			if err == nil {
+				for _, f := range files {
+					full := filepath.Join(download.ExtractedPath, f.Name())
+					if fileExists(full) && hasAllowedExt(full) {
+						return full, nil
+					}
+				}
+			}
 		}
 
 		// Nothing usable; craft a helpful error (often main is compressed like .iso.bz2).
@@ -455,4 +468,85 @@ func (s *Service) GetCloudInitISOPath(vmId int) (string, error) {
 	}
 
 	return cloudInitISOPath, nil
+}
+
+func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
+	if vm.Storages == nil || len(vm.Storages) == 0 {
+		return fmt.Errorf("need_storage_to_flash_cloud_init_disk")
+	} else if len(vm.Storages) > 2 {
+		return fmt.Errorf("too_many_storages_to_flash_cloud_init_disk")
+	}
+
+	if vm.CloudInitData == "" && vm.CloudInitMetaData == "" {
+		return nil
+	}
+
+	var mediaStorage *vmModels.Storage
+	var diskStorage *vmModels.Storage
+
+	for _, storage := range vm.Storages {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			mediaStorage = &storage
+		} else if storage.Type == vmModels.VMStorageTypeRaw ||
+			storage.Type == vmModels.VMStorageTypeZVol {
+			diskStorage = &storage
+		}
+	}
+
+	if mediaStorage == nil || diskStorage == nil {
+		return fmt.Errorf("media_and_disk_required")
+	}
+
+	mediaPath, err := s.FindISOByUUID(mediaStorage.DownloadUUID, true)
+	if err != nil {
+		return fmt.Errorf("failed_to_find_media_iso: %w", err)
+	}
+
+	mediaInfo, err := os.Stat(mediaPath)
+	if err != nil {
+		return fmt.Errorf("failed_to_stat_media_iso: %w", err)
+	}
+
+	mediaSize := mediaInfo.Size()
+
+	if diskStorage.Size < mediaSize {
+		return fmt.Errorf("disk_too_small_for_media: disk_size=%d media_size=%d",
+			diskStorage.Size, mediaSize)
+	}
+
+	var storagePath string
+
+	if diskStorage.Type == vmModels.VMStorageTypeRaw {
+		storagePath = fmt.Sprintf(
+			"/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+			diskStorage.Dataset.Pool,
+			vm.VmID,
+			diskStorage.ID,
+			diskStorage.ID,
+		)
+
+		if _, err := os.Stat(storagePath); err != nil {
+			return fmt.Errorf("disk_image_not_found: %w", err)
+		}
+	} else if diskStorage.Type == vmModels.VMStorageTypeZVol {
+		storagePath = fmt.Sprintf(
+			"/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d",
+			diskStorage.Dataset.Pool,
+			vm.VmID,
+			diskStorage.ID,
+		)
+
+		if _, err := os.Stat(storagePath); err != nil {
+			return fmt.Errorf("zvol_not_found: %w", err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	if err := utils.FlashImageToDiskCtx(ctx, mediaPath, storagePath); err != nil {
+		return fmt.Errorf("failed_to_flash_media_to_disk: %w", err)
+	}
+
+	return nil
 }

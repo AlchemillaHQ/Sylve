@@ -204,17 +204,23 @@ func (d *Dataset) GetAllProperties() (map[string]string, error) {
 	return props, nil
 }
 
-func (d *Dataset) Rename(name string, createParent, recursiveRenameSnapshots bool) (*Dataset, error) {
-	args := make([]string, 3, 5)
-	args[0] = "rename"
-	args[1] = d.Name
-	args[2] = name
+func (d *Dataset) Rename(name string, force, createParent, recursiveRenameSnapshots bool) (*Dataset, error) {
+	args := []string{"rename"}
+
 	if createParent {
 		args = append(args, "-p")
 	}
+
+	if force {
+		args = append(args, "-f")
+	}
+
 	if recursiveRenameSnapshots {
 		args = append(args, "-r")
 	}
+
+	args = append(args, d.Name, name)
+
 	if err := d.z.do(args...); err != nil {
 		return d, err
 	}
