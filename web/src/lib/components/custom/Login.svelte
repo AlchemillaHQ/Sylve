@@ -9,27 +9,36 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { mode } from 'mode-watcher';
 	import { onDestroy, onMount } from 'svelte';
-	import { languageArr } from '$lib';
+	import { languageArr, storage } from '$lib';
+	import { loadLocale } from 'wuchale/load-utils';
+	import type { Locales } from '$lib/types/common';
 
 	interface Props {
 		onLogin: (
 			username: string,
 			password: string,
 			type: string,
-			language: string,
-			remember: boolean
+			remember: boolean,
+			toLoginPath: string
 		) => void;
 		loading: boolean;
-		changeLanguage: string;
 	}
 
-	let { onLogin, loading = $bindable(), changeLanguage = $bindable() }: Props = $props();
+	let toLoginPath = $derived(page.url.pathname);
+	let { onLogin, loading = $bindable() }: Props = $props();
 
 	let username = $state('');
 	let password = $state('');
+	let language = $derived(storage.language ?? 'en');
 	let authType = $state('sylve');
-	let language = $state('en');
 	let remember = $state(false);
+
+	$effect(() => {
+		if (language) {
+			loadLocale((language || 'en') as Locales);
+			storage.language = language;
+		}
+	});
 
 	$effect(() => {
 		if (page.url.search.includes('loggedOut')) {
@@ -41,7 +50,7 @@
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			try {
-				onLogin(username, password, authType, language, remember);
+				onLogin(username, password, authType, remember, toLoginPath);
 			} catch (error) {
 				console.error('Login error:', error);
 			}
@@ -55,12 +64,6 @@
 	onDestroy(() => {
 		window.removeEventListener('keydown', handleKeydown);
 	});
-
-	$effect(() => {
-		if (language) {
-			changeLanguage = language;
-		}
-	});
 </script>
 
 <div class="fixed inset-0 flex items-center justify-center px-3">
@@ -71,6 +74,7 @@
 			{:else}
 				<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto" />
 			{/if}
+			<!-- @wc-ignore -->
 			<p class="ml-2 text-xl font-medium tracking-[.45em] text-gray-800 dark:text-white">SYLVE</p>
 		</Card.Header>
 
@@ -140,7 +144,7 @@
 			</div>
 			<Button
 				onclick={() => {
-					onLogin(username, password, authType, language, remember);
+					onLogin(username, password, authType, remember, toLoginPath);
 				}}
 				size="sm"
 				class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"

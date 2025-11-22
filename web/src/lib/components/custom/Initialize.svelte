@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createQuery } from '@tanstack/svelte-query';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { mode } from 'mode-watcher';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -11,22 +10,27 @@
 	import { initialize } from '$lib/api/basic';
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { useQuery } from '$lib/runes/useQuery.svelte';
 
-	const results = createQuery(() => ({
-		queryKey: ['pool-list'],
+	interface Props {
+		initialized: boolean;
+	}
+
+	let { initialized = $bindable() }: Props = $props();
+
+	const poolsQuery = useQuery(() => ({
+		queryKey: 'pool-list',
 		queryFn: async () => {
 			return getPools(true);
-		},
-		refetchOnMount: 'always',
-		keepPreviousData: true
+		}
 	}));
 
-	let pools = $derived(results.data || []);
+	let pools = $derived(poolsQuery.data || []);
 	let reload: boolean = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			results.refetch();
+			poolsQuery.refetch();
 			reload = false;
 		}
 	});
@@ -62,11 +66,13 @@
 		const errors = await initialize(pools, services);
 		if (errors.length === 0) {
 			shownErrors = [];
-			reload = true;
 			toast.success('Sylve initialized', {
 				position: 'bottom-center'
 			});
+
+			initialized = true;
 		} else {
+			reload = true;
 			shownErrors = errors;
 		}
 	}
@@ -139,7 +145,7 @@
 
 		{#if shownErrors.length > 0}
 			<Alert.Root variant="destructive">
-				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 flex-shrink-0 text-red-600"></span>
+				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 shrink-0 text-red-600"></span>
 				<Alert.Title>We've hit the following errors during initialization</Alert.Title>
 				<Alert.Description>
 					<ul class="list-inside list-disc text-sm">

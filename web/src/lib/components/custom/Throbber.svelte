@@ -93,8 +93,10 @@
 			/>
 		</g>
 	</svg>
+
+	<!-- @wc-ignore -->
 	<p
-		class="animate-blurFadePerfect ml-3 flex w-full justify-center text-center font-[500] tracking-[.45em] opacity-0"
+		class="animate-blurFadePerfect ml-3 flex w-full justify-center text-center font-medium tracking-[.45em] opacity-0"
 	>
 		SYLVE
 	</p>

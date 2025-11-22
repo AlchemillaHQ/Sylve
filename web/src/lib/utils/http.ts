@@ -109,7 +109,9 @@ export async function cachedFetch<T>(
 		try {
 			const entry: CacheEntry<T> = JSON.parse(storedEntry);
 			if (now - entry.timestamp < duration) {
-				return entry.data;
+				if (entry.data !== null && entry.data !== undefined) {
+					return entry.data;
+				}
 			}
 		} catch (error) {
 			console.error(`Failed to parse cached data for key "${key}"`, error);

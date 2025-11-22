@@ -229,8 +229,6 @@ msgid "Sylve Logo"
 msgstr "Sylve Logo"
 
 #: src/lib/components/custom/Initialize.svelte
-#: src/lib/components/custom/Login.svelte
-#: src/lib/components/custom/Throbber.svelte
 msgid "SYLVE"
 msgstr "SYLVE"
 
@@ -5289,3 +5287,6 @@ msgstr ""
 
 #~ msgid "No {0} ZFS pool selected"
 #~ msgstr "No {0} ZFS pool selected"
+
+#~ msgid "Single Node1"
+#~ msgstr "Single Node1"

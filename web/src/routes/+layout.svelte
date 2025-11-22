@@ -2,6 +2,7 @@
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
 
+	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
 	import { browser } from '$app/environment';
@@ -13,23 +14,15 @@
 	import { addTabulatorFilters } from '$lib/utils/table';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { ModeWatcher } from 'mode-watcher';
-	import { onMount, tick } from 'svelte';
-	import { loadLocale } from 'wuchale/load-utils';
+	import { onMount } from 'svelte';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialize.svelte';
 	import { sleep } from '$lib/utils';
 	import '../app.css';
-	import type { Locales } from '$lib/types/common.js';
 	import { storage } from '$lib';
-
-	let changeLanguage = $state(storage.language ?? 'en');
-
-	$effect(() => {
-		if (changeLanguage) {
-			loadLocale((changeLanguage || 'en') as Locales);
-			storage.language = changeLanguage;
-		}
-	});
+	import { loadLocale } from 'wuchale/load-utils';
+	import type { Locales } from '$lib/types/common.js';
+	import { page } from '$app/state';
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -40,78 +33,59 @@
 	});
 
 	let { children } = $props();
-	let isLoggedIn = $state(false);
-	let initialized = $state(false);
+	let initialized = $state<boolean | null>(null);
 	let loading = $state({
-		throbber: true,
+		throbber: false,
 		login: false,
 		initialization: false
 	});
 
-	$effect(() => {
-		if (isLoggedIn && storage.hostname) {
-			const path = window.location.pathname;
-			if (path === '/') {
-				goto('/datacenter/summary', { replaceState: true });
-			}
-		}
-	});
-
 	onMount(async () => {
+		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
-		const faviconEl = document.getElementById('favicon');
-		if (faviconEl) {
-			const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-			if (darkMode) {
-				faviconEl.setAttribute('href', '/logo/white.svg');
-			} else {
-				faviconEl.setAttribute('href', '/logo/black.svg');
-			}
-		}
 
-		if (storage.token) {
+		const [validToken, validClusterToken] = await Promise.all([
+			isTokenValid(),
+			isClusterTokenValid()
+		]);
+
+		if (validToken && validClusterToken) {
+			loading.initialization = true;
+			loading.throbber = true;
+
 			try {
-				if ((await isTokenValid()) && (await isClusterTokenValid())) {
-					isLoggedIn = true;
-					loading.initialization = true;
-					try {
-						initialized = await isInitialized();
-					} catch (error) {
-						console.error('Initialization check error:', error);
-						initialized = false;
-					}
-					loading.initialization = false;
-				} else {
-					storage.token = '';
-				}
+				initialized = await isInitialized();
 			} catch (error) {
-				console.error('Token validation error:', error);
-				storage.token = '';
+				initialized = false;
 			}
-		}
 
-		await sleep(1000);
-		loading.throbber = false;
-		await tick();
+			loading.initialization = false;
+
+			if (initialized && page.url.pathname === '/') {
+				await goto('/datacenter/summary', { replaceState: true });
+			}
+
+			loading.throbber = false;
+		} else {
+			storage.token = '';
+			initialized = null;
+		}
 	});
 
 	async function handleLogin(
 		username: string,
 		password: string,
 		type: string,
-		language: string,
-		remember: boolean
+		remember: boolean,
+		toLoginPath: string = ''
 	) {
 		let isError = false;
 		loading.login = true;
 
-		await sleep(500);
-
 		try {
-			loadLocale(language);
-			if (await login(username, password, type, remember, language)) {
-				isLoggedIn = true;
+			if (await login(username, password, type, remember)) {
 				loading.login = false;
+				loading.throbber = true;
 				loading.initialization = true;
 
 				try {
@@ -120,21 +94,33 @@
 					console.error('Initialization check error:', error);
 					initialized = false;
 				}
+
 				loading.initialization = false;
 
-				const path = window.location.pathname;
-				if (path === '/') {
-					console.log('Navigating to datacenter summary after login');
-					await goto('/datacenter/summary', { replaceState: true });
+				// Decide where to go
+				let target = toLoginPath;
+
+				// If caller didn't pass a target, use current path
+				if (!target) {
+					target = page.url.pathname;
 				}
+
+				// If target is root, send to datacenter summary
+				if (target === '/') {
+					target = '/datacenter/summary';
+				}
+
+				await goto(target, { replaceState: true });
+
+				// Success path: turn off throbber *after* navigation completes
+				loading.throbber = false;
+				return;
 			} else {
 				isError = true;
-				isLoggedIn = false;
 				loading.login = false;
 			}
 		} catch (error) {
 			isError = true;
-			isLoggedIn = false;
 			loading.login = false;
 		} finally {
 			if (!isError) {
@@ -146,24 +132,6 @@
 		loading.throbber = false;
 		return;
 	}
-
-	$effect(() => {
-		if (isLoggedIn && storage.hostname && !initialized && !loading.initialization) {
-			const interval = setInterval(async () => {
-				try {
-					const isInit = await isInitialized();
-					if (isInit) {
-						initialized = true;
-						clearInterval(interval);
-					}
-				} catch (error) {
-					console.error('Initialization polling error:', error);
-				}
-			}, 2000);
-
-			return () => clearInterval(interval);
-		}
-	});
 </script>
 
 <svelte:head>
@@ -176,20 +144,24 @@
 
 {#if loading.throbber}
 	<Throbber />
-{:else if isLoggedIn && storage.hostname}
-	{#if loading.initialization}
-		<Throbber />
-	{:else}
-		<QueryClientProvider client={queryClient}>
-			{#if !initialized}
-				<Initialize />
-			{:else}
+{:else if storage.hostname && storage.token && !loading.throbber}
+	<QueryClientProvider client={queryClient}>
+		{#if initialized === null}
+			<Throbber />
+		{:else if initialized === false}
+			<div transition:fade|global={{ duration: 400 }}>
+				<Initialize bind:initialized />
+			</div>
+		{:else}
+			<div transition:fade|global={{ duration: 400 }}>
 				<Shell>
 					{@render children()}
 				</Shell>
-			{/if}
-		</QueryClientProvider>
-	{/if}
+			</div>
+		{/if}
+	</QueryClientProvider>
 {:else}
-	<Login onLogin={handleLogin} loading={loading.login} bind:changeLanguage />
+	<div transition:fade|global={{ duration: 400 }}>
+		<Login onLogin={handleLogin} loading={loading.login} />
+	</div>
 {/if}

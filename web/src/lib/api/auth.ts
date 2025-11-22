@@ -23,8 +23,7 @@ export async function login(
 	username: string,
 	password: string,
 	authType: string,
-	remember: boolean,
-	language: string
+	remember: boolean
 ): Promise<boolean> {
 	try {
 		if (username === '' || password === '') {
@@ -54,7 +53,6 @@ export async function login(
 			if (response.data.data?.hostname && response.data.data?.token) {
 				console.log('Received login data:', response.data.data);
 
-				storage.language = language as Locales;
 				storage.hostname = response.data.data.hostname;
 				storage.nodeId = response.data.data.nodeId || '';
 				storage.token = response.data.data.token || '';
@@ -115,6 +113,10 @@ export function getClusterToken(): string | null {
 }
 
 export async function isTokenValid(): Promise<boolean> {
+	if (!storage.token) {
+		return false;
+	}
+
 	try {
 		const response = await axios.get('/api/health/basic', {
 			headers: {
@@ -124,7 +126,6 @@ export async function isTokenValid(): Promise<boolean> {
 
 		if (response.status < 400) {
 			if (response.data?.hostname) {
-				// setLocalStorage('hostname', response.data.hostname);
 				storage.hostname = response.data.hostname;
 			}
 			if (response.data?.nodeId) {
@@ -142,7 +143,7 @@ export async function isTokenValid(): Promise<boolean> {
 export async function isClusterTokenValid(): Promise<boolean> {
 	try {
 		const clusterToken = storage.clusterToken;
-		if (clusterToken === null || clusterToken === '') {
+		if (!clusterToken) {
 			return true;
 		}
 
