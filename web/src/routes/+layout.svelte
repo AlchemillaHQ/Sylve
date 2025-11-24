@@ -2,8 +2,9 @@
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
 
+	import { IsDocumentVisible } from 'runed';
 	import { fade } from 'svelte/transition';
-	import { goto } from '$app/navigation';
+	import { goto, preloadData } from '$app/navigation';
 	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
 	import { browser } from '$app/environment';
 	import Login from '$lib/components/custom/Login.svelte';
@@ -62,9 +63,11 @@
 			loading.initialization = false;
 
 			if (initialized && page.url.pathname === '/') {
+				await preloadData('/datacenter/summary');
 				await goto('/datacenter/summary', { replaceState: true });
 			}
 
+			await sleep(1500);
 			loading.throbber = false;
 		} else {
 			storage.token = '';
@@ -97,22 +100,20 @@
 
 				loading.initialization = false;
 
-				// Decide where to go
 				let target = toLoginPath;
 
-				// If caller didn't pass a target, use current path
 				if (!target) {
 					target = page.url.pathname;
 				}
 
-				// If target is root, send to datacenter summary
 				if (target === '/') {
 					target = '/datacenter/summary';
 				}
 
+				await preloadData(target);
 				await goto(target, { replaceState: true });
 
-				// Success path: turn off throbber *after* navigation completes
+				await sleep(1500);
 				loading.throbber = false;
 				return;
 			} else {
@@ -129,9 +130,19 @@
 		}
 
 		loading.login = false;
+		await sleep(1500);
 		loading.throbber = false;
 		return;
 	}
+
+	const visible = new IsDocumentVisible();
+	$effect(() => {
+		if (visible.current) {
+			storage.visible = true;
+		} else {
+			storage.visible = false;
+		}
+	});
 </script>
 
 <svelte:head>
@@ -144,7 +155,7 @@
 
 {#if loading.throbber}
 	<Throbber />
-{:else if storage.hostname && storage.token && !loading.throbber}
+{:else if storage.hostname && storage.token && !loading.throbber && !loading.login}
 	<QueryClientProvider client={queryClient}>
 		{#if initialized === null}
 			<Throbber />

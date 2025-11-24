@@ -7,7 +7,6 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
-	import { useQuery } from '$lib/runes/useQuery.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Note } from '$lib/types/info/notes';
@@ -16,6 +15,9 @@
 	import { convertDbTime } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource } from 'runed';
+	import { storage } from '$lib';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		notes: Note[];
@@ -23,16 +25,27 @@
 
 	let { data }: { data: Data } = $props();
 
-	const notesQuery = useQuery<Note[]>(() => ({
-		key: 'notes',
-		queryFn: async () => (await getNotes()) as Note[],
-		initialData: data.notes,
-		onSuccess: (notes) => {
-			updateCache('notes', notes);
+	const notes = resource(
+		[],
+		async () => {
+			const result = await getNotes();
+			updateCache('notes', result);
+			return result || ([] as Note[]);
+		},
+		{
+			lazy: true,
+			initialValue: data.notes as Note[]
 		}
-	}));
+	);
 
-	let notes = $derived(notesQuery.data);
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				notes.refetch();
+			});
+		}
+	});
+
 	let modalState = $state({
 		title: '',
 		content: '',
@@ -67,7 +80,7 @@
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
 			const response = await updateNote(selectedId, modalState.title, modalState.content);
-			notesQuery.refetch();
+			notes.refetch();
 			if (response.status === 'success') {
 				toast.success('Note updated', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -79,7 +92,7 @@
 			}
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
-			notesQuery.refetch();
+			notes.refetch();
 			if ((response as Note).id) {
 				toast.success('Note created', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -95,30 +108,36 @@
 	}
 
 	function viewNote(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
-		if (note) {
-			modalState.title = note.title;
-			modalState.content = note.content;
-			modalState.isEditMode = false;
-			modalState.isOpen = true;
+		if (notes.current && Array.isArray(notes.current)) {
+			const note = notes.current.find((note) => note.id === id);
+			if (note) {
+				modalState.title = note.title;
+				modalState.content = note.content;
+				modalState.isEditMode = false;
+				modalState.isOpen = true;
+			}
 		}
 	}
 
 	function handleDelete(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
-		if (note) {
-			modalState.title = note.title;
-			modalState.content = note.content;
-			modalState.isEditMode = false;
-			modalState.isDeleteOpen = true;
+		if (notes.current && Array.isArray(notes.current)) {
+			const note = notes.current.find((note) => note.id === id);
+			if (note) {
+				modalState.title = note.title;
+				modalState.content = note.content;
+				modalState.isEditMode = false;
+				modalState.isDeleteOpen = true;
+			}
 		}
 	}
 
 	function handleBulkDelete(ids: number[]) {
-		const notesToDelete = notes.filter((note) => ids.includes(note.id));
-		if (notesToDelete.length > 0) {
-			modalState.title = `${notesToDelete.length} notes`;
-			modalState.isBulkDeleteOpen = true;
+		if (notes.current && Array.isArray(notes.current)) {
+			const notesToDelete = notes.current.filter((note) => ids.includes(note.id));
+			if (notesToDelete.length > 0) {
+				modalState.title = `${notesToDelete.length} notes`;
+				modalState.isBulkDeleteOpen = true;
+			}
 		}
 	}
 
@@ -151,7 +170,9 @@
 		}
 	]);
 
-	let tableData = $derived(generateTableData(columns, notes));
+	let tableData = $derived(
+		generateTableData(columns, notes.current && Array.isArray(notes.current) ? notes.current : [])
+	);
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
 </script>
@@ -190,8 +211,10 @@
 		{#if type === 'edit-note'}
 			<Button
 				onclick={() => {
-					const note = notes.find((note) => activeRow && note.id === activeRow[0]?.id);
-					handleNote(note, true);
+					if (notes.current && Array.isArray(notes)) {
+						const note = notes.find((note) => activeRow && note.id === activeRow[0]?.id);
+						handleNote(note, true);
+					}
 				}}
 				size="sm"
 				variant="outline"
@@ -352,7 +375,8 @@
 			onConfirm: async () => {
 				const id = activeRow ? activeRow[0]?.id : null;
 				const result = await deleteNote(id as number);
-				notesQuery.refetch();
+				// notesQuery.refetch();
+				notes.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					handleNote(undefined, false, true);
 				} else {
@@ -377,7 +401,7 @@
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
 				const result = await deleteNotes(ids);
-				notesQuery.refetch();
+				notes.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					handleNote(undefined, false, true);
 				} else {

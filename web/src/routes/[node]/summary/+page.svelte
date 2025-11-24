@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getNetworkInterfaceInfoHistorical } from '$lib/api/info/network';
@@ -17,7 +18,8 @@
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import type { Chart } from 'chart.js';
-	import { useQueries } from '$lib/runes/useQuery.svelte';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		basicInfo: BasicInfo;
@@ -33,111 +35,161 @@
 
 	let { data }: { data: Data } = $props();
 
-	const {
-		basicInfo: basicInfoQuery,
-		cpuInfo: cpuInfoQuery,
-		ramInfo: ramInfoQuery,
-		swapInfo: swapInfoQuery,
-		totalDiskUsage: totalDiskUsageQuery,
-		cpuInfoHistorical: cpuInfoHistoricalQuery,
-		ramInfoHistorical: ramInfoHistoricalQuery,
-		swapInfoHistorical: swapInfoHistoricalQuery,
-		networkUsageHistorical: networkUsageHistoricalQuery,
-		refetchAll
-	} = useQueries(() => ({
-		basicInfo: () => ({
-			key: 'basic-info',
-			queryFn: () => getBasicInfo(),
-			initialData: data.basicInfo,
-			onSuccess: (data: BasicInfo) => {
-				updateCache('basic-info', data);
-			}
-		}),
-		cpuInfo: () => ({
-			key: 'cpu-info',
-			queryFn: () => getCPUInfo('current'),
-			initialData: data.cpuInfo,
-			onSuccess: (data: CPUInfo) => {
-				updateCache('cpu-info', data);
-			},
-			refetchInterval: 2000
-		}),
-		ramInfo: () => ({
-			key: 'ram-info',
-			queryFn: () => getRAMInfo('current'),
-			initialData: data.ramInfo,
-			onSuccess: (data: RAMInfo) => {
-				updateCache('ram-info', data);
-			},
-			refetchInterval: 2000
-		}),
-		swapInfo: () => ({
-			key: 'swap-info',
-			queryFn: () => getSwapInfo('current'),
-			initialData: data.swapInfo,
-			onSuccess: (data: RAMInfo) => {
-				updateCache('swap-info', data);
-			},
-			refetchInterval: 60000
-		}),
-		totalDiskUsage: () => ({
-			key: 'total-disk-usage',
-			queryFn: () => getPoolsDiskUsage(),
-			initialData: data.totalDiskUsage,
-			onSuccess: (data: number) => {
-				updateCache('total-disk-usage', data);
-			},
-			refetchInterval: 120000
-		}),
-		cpuInfoHistorical: () => ({
-			key: 'cpu-info-historical',
-			queryFn: () => getCPUInfo('historical'),
-			initialData: data.cpuInfoHistorical,
-			onSuccess: (data: CPUInfoHistorical) => {
-				updateCache('cpu-info-historical', data);
-			},
-			refetchInterval: 30000
-		}),
-		ramInfoHistorical: () => ({
-			key: 'ram-info-historical',
-			queryFn: () => getRAMInfo('historical'),
-			initialData: data.ramInfoHistorical,
-			onSuccess: (data: RAMInfoHistorical) => {
-				updateCache('ram-info-historical', data);
-			},
-			refetchInterval: 30000
-		}),
-		swapInfoHistorical: () => ({
-			key: 'swap-info-historical',
-			queryFn: () => getSwapInfo('historical'),
-			initialData: data.swapInfoHistorical,
-			onSuccess: (data: RAMInfoHistorical) => {
-				updateCache('swap-info-historical', data);
-			},
-			refetchInterval: 30000
-		}),
-		networkUsageHistorical: () => ({
-			key: 'network-usage-historical',
-			queryFn: () => getNetworkInterfaceInfoHistorical(),
-			initialData: data.networkUsageHistorical,
-			onSuccess: (data: HistoricalNetworkInterface[]) => {
-				updateCache('network-usage-historical', data);
-			},
-			refetchInterval: 30000
-		})
-	}));
-
-	let basicInfo = $derived(basicInfoQuery.data as BasicInfo);
-	let cpuInfo = $derived(cpuInfoQuery.data as CPUInfo);
-	let ramInfo = $derived(ramInfoQuery.data as RAMInfo);
-	let swapInfo = $derived(swapInfoQuery.data as RAMInfo);
-	let totalDiskUsage = $derived(totalDiskUsageQuery.data as number);
-	let cpuInfoHistorical = $derived(cpuInfoHistoricalQuery.data as CPUInfoHistorical);
-	let ramInfoHistorical = $derived(ramInfoHistoricalQuery.data as RAMInfoHistorical);
-	let swapInfoHistorical = $derived(swapInfoHistoricalQuery.data as RAMInfoHistorical);
-	let networkUsageHistorical = $derived(
-		networkUsageHistoricalQuery.data as HistoricalNetworkInterface[]
+	const basicInfo = resource(
+		() => 'basic-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getBasicInfo();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.basicInfo
+		}
 	);
+
+	const cpuInfo = resource(
+		() => 'cpu-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getCPUInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.cpuInfo
+		}
+	);
+
+	const ramInfo = resource(
+		() => 'ram-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getRAMInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.ramInfo
+		}
+	);
+
+	const swapInfo = resource(
+		() => 'swap-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getSwapInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.swapInfo
+		}
+	);
+
+	const totalDiskUsage = resource(
+		() => 'total-disk-usage',
+		async (key, prevKey, { signal }) => {
+			const result = await getPoolsDiskUsage();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.totalDiskUsage
+		}
+	);
+
+	const cpuInfoHistorical = resource(
+		() => 'cpu-info-historical',
+		async (key, prevKey, { signal }) => {
+			const result = await getCPUInfo('historical');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.cpuInfoHistorical
+		}
+	);
+
+	const ramInfoHistorical = resource(
+		() => 'ram-info-historical',
+		async (key, prevKey, { signal }) => {
+			const result = await getRAMInfo('historical');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.ramInfoHistorical
+		}
+	);
+
+	const swapInfoHistorical = resource(
+		() => 'swap-info-historical',
+		async (key, prevKey, { signal }) => {
+			const result = await getSwapInfo('historical');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.swapInfoHistorical
+		}
+	);
+
+	const networkUsageHistorical = resource(
+		() => 'network-usage-historical',
+		async (key, prevKey, { signal }) => {
+			const result = await getNetworkInterfaceInfoHistorical();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.networkUsageHistorical
+		}
+	);
+
+	useInterval(() => 2000, {
+		callback: () => {
+			cpuInfo.refetch();
+			ramInfo.refetch();
+		}
+	});
+
+	useInterval(() => 6000, {
+		callback: () => {
+			swapInfo.refetch();
+			totalDiskUsage.refetch();
+		}
+	});
+
+	useInterval(() => 30000, {
+		callback: () => {
+			cpuInfoHistorical.refetch();
+			ramInfoHistorical.refetch();
+			swapInfoHistorical.refetch();
+			networkUsageHistorical.refetch();
+		}
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				basicInfo.refetch();
+				cpuInfo.refetch();
+				ramInfo.refetch();
+				swapInfo.refetch();
+				totalDiskUsage.refetch();
+				cpuInfoHistorical.refetch();
+				ramInfoHistorical.refetch();
+				swapInfoHistorical.refetch();
+				networkUsageHistorical.refetch();
+			});
+		}
+	});
 
 	let chartElements = $derived.by(() => {
 		return [
@@ -145,7 +197,7 @@
 				field: 'cpuUsage',
 				label: 'CPU Usage',
 				color: 'chart-1',
-				data: cpuInfoHistorical
+				data: cpuInfoHistorical.current
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.usage.toFixed(2)
@@ -156,7 +208,7 @@
 				field: 'ramUsage',
 				label: 'RAM Usage',
 				color: 'chart-3',
-				data: ramInfoHistorical
+				data: ramInfoHistorical.current
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.usage.toFixed(2)
@@ -167,7 +219,7 @@
 				field: 'swapUsage',
 				label: 'Swap Usage',
 				color: 'chart-4',
-				data: swapInfoHistorical
+				data: swapInfoHistorical.current
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.usage.toFixed(2)
@@ -178,7 +230,7 @@
 				field: 'networkUsageRx',
 				label: 'Network RX',
 				color: 'chart-1',
-				data: networkUsageHistorical
+				data: networkUsageHistorical.current
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.receivedBytes.toFixed(2)
@@ -189,7 +241,7 @@
 				field: 'networkUsageTx',
 				label: 'Network TX',
 				color: 'chart-4',
-				data: networkUsageHistorical
+				data: networkUsageHistorical.current
 					.map((data) => ({
 						date: new Date(data.createdAt),
 						value: data.sentBytes.toFixed(2)
@@ -211,7 +263,7 @@
 				<Card.Root class="w-full gap-0 p-0">
 					<Card.Header class="p-4 pb-0">
 						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-							{basicInfo.hostname}
+							{basicInfo.current.hostname}
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="p-4 pt-2.5">
@@ -224,10 +276,10 @@
 										<span>CPU Usage</span>
 									</p>
 									<p>
-										{`${floatToNDecimals(cpuInfo.usage, 2)}% of ${cpuInfo.logicalCores} CPU(s)`}
+										{`${floatToNDecimals(cpuInfo.current.usage, 2)}% of ${cpuInfo.current.logicalCores} CPU(s)`}
 									</p>
 								</div>
-								<Progress value={cpuInfo.usage || 0} max={100} class="h-2 w-[100%]" />
+								<Progress value={cpuInfo.current.usage || 0} max={100} class="h-2 w-full" />
 							</div>
 							<div>
 								<div class="flex w-full justify-between pb-1">
@@ -236,10 +288,10 @@
 										{'RAM Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(ramInfo.usedPercent, 2)}% of ${bytesToHumanReadable(ramInfo.total)}`}
+										{`${floatToNDecimals(ramInfo.current.usedPercent, 2)}% of ${bytesToHumanReadable(ramInfo.current.total)}`}
 									</p>
 								</div>
-								<Progress value={ramInfo.usedPercent || 0} max={100} class="h-2 w-[100%]" />
+								<Progress value={ramInfo.current.usedPercent || 0} max={100} class="h-2 w-full" />
 							</div>
 							<div>
 								<div class="flex w-full justify-between pb-1">
@@ -248,13 +300,13 @@
 										{'Disk Usage'}
 									</p>
 									<p>
-										{floatToNDecimals(totalDiskUsage, 2)} %
+										{floatToNDecimals(totalDiskUsage.current, 2)} %
 									</p>
 								</div>
 								<Progress
-									value={floatToNDecimals(totalDiskUsage, 2)}
+									value={floatToNDecimals(totalDiskUsage.current, 2)}
 									max={100}
-									class="h-2 w-[100%]"
+									class="h-2 w-full"
 								/>
 							</div>
 							<div>
@@ -263,10 +315,10 @@
 										<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>{'Swap Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(swapInfo.usedPercent, 2)}% of ${bytesToHumanReadable(swapInfo.total)}`}
+										{`${floatToNDecimals(swapInfo.current.usedPercent, 2)}% of ${bytesToHumanReadable(swapInfo.current.total)}`}
 									</p>
 								</div>
-								<Progress value={swapInfo.usedPercent || 0} max={100} class="h-2 w-[100%]" />
+								<Progress value={swapInfo.current.usedPercent || 0} max={100} class="h-2 w-full" />
 							</div>
 						</div>
 
@@ -275,29 +327,31 @@
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">CPU(s)</Table.Cell>
 									<Table.Cell class="p-1.5 px-4">
-										{`${cpuInfo.logicalCores} x ${cpuInfo.name}`}
+										{`${cpuInfo.current.logicalCores} x ${cpuInfo.current.name}`}
 									</Table.Cell>
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">Operating System</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.os}</Table.Cell>
+									<Table.Cell class="p-1.5 px-4">{basicInfo.current.os}</Table.Cell>
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">Uptime</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{formatUptime(basicInfo.uptime)}</Table.Cell>
+									<Table.Cell class="p-1.5 px-4"
+										>{formatUptime(basicInfo.current.uptime)}</Table.Cell
+									>
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">Load Average</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.loadAverage}</Table.Cell>
+									<Table.Cell class="p-1.5 px-4">{basicInfo.current.loadAverage}</Table.Cell>
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">Boot Mode</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.bootMode}</Table.Cell>
+									<Table.Cell class="p-1.5 px-4">{basicInfo.current.bootMode}</Table.Cell>
 								</Table.Row>
 
 								<Table.Row>
 									<Table.Cell class="p-1.5 px-4">Sylve Version</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.sylveVersion}</Table.Cell>
+									<Table.Cell class="p-1.5 px-4">{basicInfo.current.sylveVersion}</Table.Cell>
 								</Table.Row>
 							</Table.Body>
 						</Table.Root>

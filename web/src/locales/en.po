@@ -5290,3 +5290,6 @@ msgstr ""
 
 #~ msgid "Single Node1"
 #~ msgstr "Single Node1"
+
+#~ msgid "Mdi <0/> <1/> <2/>"
+#~ msgstr "Mdi <0/> <1/> <2/>"

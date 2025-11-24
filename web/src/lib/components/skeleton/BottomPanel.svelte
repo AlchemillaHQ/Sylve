@@ -8,6 +8,7 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { convertDbTime } from '$lib/utils/time';
 	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
+	import { fade } from 'svelte/transition';
 
 	const queryClient = useQueryClient();
 	const results = createQueries(() => ({
@@ -155,7 +156,7 @@
 
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
-		<div class="flex h-full flex-col overflow-hidden">
+		<div class="flex h-full flex-col overflow-hidden" transition:fade|global={{ duration: 400 }}>
 			<Table.Root class="w-full table-auto border-collapse">
 				<Table.Header class="bg-background sticky top-0 z-[50] ">
 					<Table.Row class="dark:hover:bg-background ">

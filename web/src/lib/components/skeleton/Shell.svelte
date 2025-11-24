@@ -5,9 +5,9 @@
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
-	import { createQuery } from '@tanstack/svelte-query';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
 	import { useQuery } from '$lib/runes/useQuery.svelte';
+	import { fade } from 'svelte/transition';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -42,13 +42,14 @@
 						autoSaveId="child-left-pane-auto-save"
 					>
 						<Resizable.Pane defaultSize={12} class="border-l">
-							{#if clustered}
-								<LeftPanelClustered />
-							{:else}
-								<LeftPanel />
-							{/if}
+							<div transition:fade|global={{ duration: 400 }}>
+								{#if clustered}
+									<LeftPanelClustered />
+								{:else}
+									<LeftPanel />
+								{/if}
+							</div>
 						</Resizable.Pane>
-
 						<Resizable.Handle withHandle />
 
 						<Resizable.Pane class="border-r">

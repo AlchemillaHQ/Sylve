@@ -11,7 +11,7 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { useQueries } from '$lib/runes/useQuery.svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
@@ -91,8 +91,15 @@
 		setTimeout(() => (vncLoading = false), 1500);
 	}
 
+	onMount(() => {
+		if (consoleType === 'vnc' && vm.vncEnabled) {
+			startVncLoading();
+		}
+	});
+
 	let prevConsoleType: ConsoleType = consoleType;
 	$effect(() => {
+		console.log('Console type changed:', consoleType);
 		if (prevConsoleType !== consoleType) {
 			prevConsoleType = consoleType;
 
@@ -298,7 +305,7 @@
 					class="w-full flex-1 transition-opacity duration-500"
 					class:opacity-0={vncLoading}
 					class:opacity-100={!vncLoading}
-					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.vncPassword}`}
+					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.vncPassword}&resize=scale&show_dot=true`}
 					title="VM Console"
 				/>
 				{#if vncLoading}
