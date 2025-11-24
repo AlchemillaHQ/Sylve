@@ -154,24 +154,30 @@
 
 	useInterval(() => 2000, {
 		callback: () => {
-			cpuInfo.refetch();
-			ramInfo.refetch();
+			if (storage.visible) {
+				cpuInfo.refetch();
+				ramInfo.refetch();
+			}
 		}
 	});
 
 	useInterval(() => 6000, {
 		callback: () => {
-			swapInfo.refetch();
-			totalDiskUsage.refetch();
+			if (storage.visible) {
+				swapInfo.refetch();
+				totalDiskUsage.refetch();
+			}
 		}
 	});
 
 	useInterval(() => 30000, {
 		callback: () => {
-			cpuInfoHistorical.refetch();
-			ramInfoHistorical.refetch();
-			swapInfoHistorical.refetch();
-			networkUsageHistorical.refetch();
+			if (storage.visible) {
+				cpuInfoHistorical.refetch();
+				ramInfoHistorical.refetch();
+				swapInfoHistorical.refetch();
+				networkUsageHistorical.refetch();
+			}
 		}
 	});
 
