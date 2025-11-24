@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -15,8 +16,9 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import { createQueries } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		vmId: number;
@@ -30,66 +32,83 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.vms,
-				onSuccess: (data: VM[]) => {
-					updateCache('vm-list', data);
-				}
-			},
-			{
-				queryKey: ['pciDevices'],
-				queryFn: async () => {
-					return (await getPCIDevices()) as PCIDevice[];
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.pciDevices,
-				onSuccess: (data: PCIDevice[]) => {
-					updateCache('pciDevices', data);
-				}
-			},
-			{
-				queryKey: ['pptDevices'],
-				queryFn: async () => {
-					return (await getPPTDevices()) as PPTDevice[];
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.pptDevices,
-				onSuccess: (data: PPTDevice[]) => {
-					updateCache('pptDevices', data);
-				}
-			},
-			{
-				queryKey: [`vmDomain-${data.vmId}`],
-				queryFn: async () => {
-					return await getVMDomain(data.vmId);
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.domain,
-				onSuccess: (updated: VMDomain) => {
-					updateCache(`vmDomain-${data.vmId}`, updated);
-				}
-			}
-		]
-	}));
-
-	let vms: VM[] = $derived(results[0].data ? results[0].data : data.vms);
-	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
+	const vms = resource(
+		() => 'vm-list',
+		async (key) => {
+			const result = await getVMs();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.vms
+		}
 	);
-	let pciDevices: PCIDevice[] = $derived(results[1].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived(results[2].data as PPTDevice[]);
-	let domain = $derived(results[3].data as VMDomain);
+
+	const pciDevices = resource(
+		() => 'pciDevices',
+		async (key) => {
+			const result = (await getPCIDevices()) as PCIDevice[];
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.pciDevices
+		}
+	);
+
+	const pptDevices = resource(
+		() => 'pptDevices',
+		async (key) => {
+			const result = (await getPPTDevices()) as PPTDevice[];
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.pptDevices
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.vmId}`,
+		async (key) => {
+			const result = await getVMDomain(Number(data.vmId));
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vms.refetch();
+				pciDevices.refetch();
+				pptDevices.refetch();
+				domain.refetch();
+			}
+		}
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vms.refetch();
+				pciDevices.refetch();
+				pptDevices.refetch();
+				domain.refetch();
+			});
+		}
+	});
+
+	let vm: VM | null = $derived(
+		vms && data.vm ? (vms.current.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
+	);
 
 	let options = {
 		cpu: {
@@ -153,7 +172,7 @@
 					if (row.getData().property === 'PCI Devices') {
 						if (!Array.isArray(value) || value.length === 0) return '-';
 
-						const selected = pptDevices.filter((d) => value.includes(d.id));
+						const selected = pptDevices.current.filter((d) => value.includes(d.id));
 						const labels: string[] = [];
 
 						for (const dev of selected) {
@@ -162,7 +181,7 @@
 							const deviceC = Number(deviceStr);
 							const functionC = Number(functionStr);
 
-							for (const pci of pciDevices) {
+							for (const pci of pciDevices.current) {
 								if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
 									labels.push(`${pci.names.vendor} ${pci.names.device}`);
 								}
@@ -220,8 +239,10 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={domain.status === 'Shutoff' ? '' : `${title} can only be edited when the VM is shut off`}
-		disabled={domain.status ? domain.status !== 'Shutoff' : false}
+		title={domain.current.status === 'Shutoff'
+			? ''
+			: `${title} can only be edited when the VM is shut off`}
+		disabled={domain.current.status ? domain.current.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
 			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
@@ -271,15 +292,25 @@
 {/if}
 
 {#if properties.cpu.open}
-	<CPU bind:open={properties.cpu.open} {vm} {vms} bind:pinnedCPUs={properties.cpu.pinnedCPUs} />
+	<CPU
+		bind:open={properties.cpu.open}
+		{vm}
+		vms={vms.current}
+		bind:pinnedCPUs={properties.cpu.pinnedCPUs}
+	/>
 {/if}
 
 {#if properties.vnc.open}
-	<VNC bind:open={properties.vnc.open} {vm} {vms} />
+	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} />
 {/if}
 
 {#if properties.pciDevices.open}
-	<PCIDevices bind:open={properties.pciDevices.open} {vm} {pciDevices} {pptDevices} />
+	<PCIDevices
+		bind:open={properties.pciDevices.open}
+		{vm}
+		pciDevices={pciDevices.current}
+		pptDevices={pptDevices.current}
+	/>
 {/if}
 
 {#if properties.serial.open && vm}
