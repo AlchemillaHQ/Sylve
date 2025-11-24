@@ -8,12 +8,14 @@
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { useQuery } from '$lib/runes/useQuery.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
+	import { storage } from '$lib';
 
 	interface Data {
 		vm: VM;
@@ -21,26 +23,36 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQuery(() => ({
-		key: `vm-${data.vm.vmId}`,
-		queryFn: async () => {
-			return await getVmById(data.vm.vmId, 'vmid');
-		},
-		refetchInterval: 1000,
-		keepPreviousData: true,
-		initialData: data.vm,
-		onSuccess: (data: VM) => {
-			updateCache(`vm-${data.vmId}`, data);
-		}
-	}));
 
-	let vm: VM | null = $derived(results.data);
+	const vm = resource(
+		() => `vm-${data.vm.vmId}`,
+		async (key) => {
+			const result = await getVmById(data.vm.vmId, 'vmid');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.vm
+		}
+	);
+
+	// let vm: VM | null = $derived(results.data);
 	let reload = $state(false);
 
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vm.refetch();
+			}
+		}
+	});
+
 	$effect(() => {
-		if (reload) {
-			results.refetch();
-			reload = false;
+		if (storage.visible || reload) {
+			untrack(() => {
+				vm.refetch();
+			});
 		}
 	});
 
@@ -72,32 +84,35 @@
 			{
 				id: generateNanoId('startOrder'),
 				property: 'Start At Boot / Start Order',
-				value: `${vm?.startAtBoot ? 'Yes' : 'No'} / ${vm?.startOrder || 0}`
+				value: `${vm?.current.startAtBoot ? 'Yes' : 'No'} / ${vm?.current.startOrder || 0}`
 			},
 			{
 				id: generateNanoId('wol'),
 				property: 'Wake on LAN',
-				value: vm?.wol || false
+				value: vm?.current.wol || false
 			},
 			{
 				id: generateNanoId('timeOffset'),
 				property: 'Clock Offset',
-				value: vm ? (vm.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
+				value: vm ? (vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
 			},
 			{
 				id: generateNanoId('shutdownWaitTime'),
 				property: 'Shutdown Wait Time',
-				value: vm ? `${vm.shutdownWaitTime} seconds` : 'N/A'
+				value: vm ? `${vm.current.shutdownWaitTime} seconds` : 'N/A'
 			},
 			{
 				id: generateNanoId('cloudInit'),
 				property: 'Cloud Init',
-				value: vm && (vm.cloudInitData || vm.cloudInitMetaData) ? 'Configured' : 'Not Configured'
+				value:
+					vm && (vm.current.cloudInitData || vm.current.cloudInitMetaData)
+						? 'Configured'
+						: 'Not Configured'
 			},
 			{
 				id: generateNanoId('ignoreUMSRs'),
 				property: 'Ignore Unimplemented MSRs Accesses',
-				value: vm ? (vm.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
+				value: vm ? (vm.current.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
 			}
 		]
 	});
@@ -166,25 +181,25 @@
 </div>
 
 {#if properties.wol.open && vm}
-	<WoL bind:open={properties.wol.open} {vm} bind:reload />
+	<WoL bind:open={properties.wol.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.startOrder.open && vm}
-	<StartOrder bind:open={properties.startOrder.open} {vm} bind:reload />
+	<StartOrder bind:open={properties.startOrder.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.timeOffset.open && vm}
-	<Clock bind:open={properties.timeOffset.open} {vm} bind:reload />
+	<Clock bind:open={properties.timeOffset.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.shutdownWaitTime.open && vm}
-	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} {vm} bind:reload />
+	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.cloudInit.open && vm}
-	<CloudInit bind:open={properties.cloudInit.open} {vm} bind:reload />
+	<CloudInit bind:open={properties.cloudInit.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.ignoreUMSR.open && vm}
-	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} {vm} bind:reload />
+	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} vm={vm.current} bind:reload />
 {/if}
