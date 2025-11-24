@@ -8,7 +8,6 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { useQueries } from '$lib/runes/useQuery.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
@@ -17,6 +16,8 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		vms: VM[];
@@ -29,73 +30,101 @@
 
 	let { data }: { data: Data } = $props();
 
-	const {
-		vms: vmsQuery,
-		domain: domainQuery,
-		pools: poolsQuery,
-		datasets: datasetsQuery,
-		downloads: downloadsQuery,
-		refetchAll
-	} = useQueries(() => ({
-		vms: () => ({
-			key: 'vm-list',
-			queryFn: () => getVMs(),
-			initialData: data.vms,
-			onSuccess: (f: VM[]) => {
-				updateCache('vm-list', f);
-			},
-			refetchInterval: 1000
-		}),
-		domain: () => ({
-			key: `vm-domain-${data.vmId}`,
-			queryFn: () => getVMDomain(Number(data.vmId)),
-			initialData: data.domain,
-			onSuccess: (f: VMDomain) => {
-				updateCache(`vm-domain-${data.vmId}`, f);
-			},
-			refetchInterval: 1000
-		}),
-		pools: () => ({
-			key: 'pool-list',
-			queryFn: () => getPools(),
-			initialData: data.pools,
-			onSuccess: (f: Zpool[]) => {
-				updateCache('pool-list', f);
-			},
-			refetchInterval: 1000
-		}),
-		datasets: () => ({
-			key: 'dataset-list',
-			queryFn: () => getDatasets(),
-			initialData: data.datasets,
-			onSuccess: (f: Dataset[]) => {
-				updateCache('datasets', f);
-			},
-			refetchInterval: 1000
-		}),
-		downloads: () => ({
-			key: 'download-list',
-			queryFn: () => getDownloads(),
-			initialData: data.downloads,
-			onSuccess: (f: Download[]) => {
-				updateCache('download-list', f);
-			},
-			refetchInterval: 1000
-		})
-	}));
+	const vms = resource(
+		() => 'vm-list',
+		async (key) => {
+			const result = await getVMs();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.vms
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.vmId}`,
+		async (key) => {
+			const result = await getVMDomain(Number(data.vmId));
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	const pools = resource(
+		() => 'pool-list',
+		async (key) => {
+			const result = await getPools();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.pools
+		}
+	);
+
+	const datasets = resource(
+		() => 'dataset-list',
+		async (key) => {
+			const result = await getDatasets();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.datasets
+		}
+	);
+
+	const downloads = resource(
+		() => 'download-list',
+		async (key) => {
+			const result = await getDownloads();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.downloads
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vms.refetch();
+				domain.refetch();
+				pools.refetch();
+				datasets.refetch();
+				downloads.refetch();
+			}
+		}
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vms.refetch();
+				domain.refetch();
+				pools.refetch();
+				datasets.refetch();
+				downloads.refetch();
+			});
+		}
+	});
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let vms: VM[] = $derived(vmsQuery.data);
-	let pools: Zpool[] = $derived(poolsQuery.data);
-	let datasets: Dataset[] = $derived(datasetsQuery.data);
-	let downloads: Download[] = $derived(downloadsQuery.data);
 	let vm: VM = $derived(
 		vmsQuery.data.find((vm: VM) => vm.vmId === parseInt(data.vmId)) || ({} as VM)
 	);
-	let domain: VMDomain = $derived(domainQuery.data);
-
-	let tableData = $derived(generateTableData(vm, datasets, downloads));
+	let tableData = $derived(generateTableData(vm, datasets.current, downloads.current));
 
 	let options = {
 		attach: {
@@ -115,7 +144,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if domain && domain.status === 'Shutoff'}
+	{#if domain && domain.current.status === 'Shutoff'}
 		{#if type === 'detach' && activeRows && activeRows.length === 1}
 			<Button
 				onclick={() => {
@@ -145,8 +174,10 @@
 			}}
 			size="sm"
 			class="h-6"
-			title={domain && domain.status !== 'Shutoff' ? 'VM must be shut off to attach storage' : ''}
-			disabled={domain && domain.status !== 'Shutoff'}
+			title={domain && domain.current.status !== 'Shutoff'
+				? 'VM must be shut off to attach storage'
+				: ''}
+			disabled={domain && domain.current.status !== 'Shutoff'}
 		>
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
@@ -194,4 +225,11 @@
 	}}
 />
 
-<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} {vms} {pools} />
+<Storage
+	bind:open={properties.attach.open}
+	datasets={datasets.current}
+	downloads={downloads.current}
+	{vm}
+	vms={vms.current}
+	pools={pools.current}
+/>
