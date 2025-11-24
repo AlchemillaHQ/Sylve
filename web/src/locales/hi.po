@@ -252,8 +252,9 @@ msgstr "जेल बनाएँ"
 msgid "Toggle user menu"
 msgstr "यूज़र मेनू टॉगल करें"
 
-#~ msgid "log out"
-#~ msgstr "लॉग आउट"
+#: src/lib/components/custom/Header.svelte
+msgid "Log Out"
+msgstr "लॉग आउट"
 
 #: src/lib/components/custom/Header.svelte
 msgid "⌘⇧Q"
@@ -5110,11 +5111,10 @@ msgstr "यह {0} को हटा देगा। यह क्रिया �
 
 #: src/lib/components/custom/Header.svelte
 msgid "<0/> Language"
-msgstr ""
+msgstr "<0/> भाषा"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Log out"
-msgstr ""
+#~ msgid "Log out"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Downloader - Create Signed URL"

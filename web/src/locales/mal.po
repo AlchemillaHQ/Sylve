@@ -252,9 +252,8 @@ msgstr ""
 msgid "Toggle user menu"
 msgstr ""
 
-#: src/lib/components/custom/Header.svelte
-msgid "Log out"
-msgstr ""
+#~ msgid "Log out"
+#~ msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "⌘⇧Q"
@@ -5275,3 +5274,7 @@ msgstr ""
 
 #~ msgid "Mdi <0/> <1/> <2/>"
 #~ msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "Log Out"
+msgstr ""
