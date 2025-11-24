@@ -253,7 +253,7 @@ html {
 
 	transition: 0.5s ease-in-out;
 
-	background-color: var(--novnc-blue);
+	background-color: black;
 	border-radius: 0 12px 12px 0;
 
 	user-select: none;
@@ -298,7 +298,7 @@ html {
 	z-index: -1;
 	cursor: pointer;
 	border-radius: 6px;
-	background-color: var(--novnc-darkblue);
+	background-color: black;
 
 	background-image: url('../images/handle_bg.svg');
 	background-repeat: no-repeat;
@@ -499,7 +499,8 @@ html {
 }
 
 .noVNC_panel .noVNC_heading {
-	background-color: var(--novnc-blue);
+	/* background-color: var(--novnc-blue); */
+	background-color: #272727;
 	border-radius: 6px;
 	padding: 5px 8px;
 	/* Compensate for padding in image */
@@ -924,6 +925,12 @@ html {
 #noVNC_bell {
 	display: none;
 }
+/* #noVNC_clipboard {
+	background-color: black;
+	border: black;
+	color: white;
+	box-shadow: 4px 4px 4px 4px #444444;
+} */
 
 /* ----------------------------------------
  * Media sizing
