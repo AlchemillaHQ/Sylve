@@ -98,6 +98,8 @@
 					initialized = false;
 				}
 
+				await goto('/');
+
 				loading.initialization = false;
 
 				let target = toLoginPath;
