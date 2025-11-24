@@ -16,6 +16,8 @@
 	import { updateCache } from '$lib/utils/http';
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
+	import { mode } from 'mode-watcher';
+
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
 	interface Data {
@@ -325,7 +327,7 @@
 					class="w-full flex-1 transition-opacity duration-500"
 					class:opacity-0={vncLoading}
 					class:opacity-100={!vncLoading}
-					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true`}
+					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true&theme=${mode.current}`}
 					title="VM Console"
 				></iframe>
 				{#if vncLoading}
