@@ -38,7 +38,8 @@ body {
 	margin: 0;
 	padding: 0;
 	/*Background image with light grey curve.*/
-	background-color: #494949;
+	/* background-color: #494949; */
+	background-color: white;
 	background-repeat: no-repeat;
 	background-position: right bottom;
 	height: 100%;
@@ -761,14 +762,15 @@ html {
 	}
 }
 #noVNC_connect_dlg div {
-	padding: 18px;
+	/* padding: 18px; */
 
-	background-color: var(--novnc-darkgrey);
+	/* background-color: var(--novnc-darkgrey); */
+	background-color: white;
 	border-radius: 12px;
 	text-align: center;
 	font-size: 20px;
 
-	box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
+	/* box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5); */
 }
 #noVNC_connect_button {
 	width: 100%;
@@ -776,7 +778,8 @@ html {
 	cursor: pointer;
 	border-color: transparent;
 	border-radius: 12px;
-	background-color: var(--novnc-blue);
+	/* background-color: var(--novnc-blue); */
+	background-color: black;
 	color: white;
 
 	display: flex;
@@ -871,7 +874,8 @@ html {
 #noVNC_container {
 	width: 100%;
 	height: 100%;
-	background-color: #313131;
+	/* background-color: #313131; */
+	background-color: white;
 	border-bottom-right-radius: 800px 600px;
 	/*border-top-left-radius: 800px 600px;*/
 
@@ -953,6 +957,24 @@ html {
 	#noVNC_logo {
 		font-size: 90px;
 	}
+}
+
+.dark body {
+	background-color: #161616;
+}
+
+.dark #noVNC_container {
+	background-color: #161616;
+}
+
+.dark #noVNC_connect_dlg div {
+	padding: 0px;
+	background-color: #222222;
+	box-shadow: none;
+}
+
+.dark #noVNC_connect_button {
+	background-color: #444444;
 }
 
 .dark #noVNC_container > div {

@@ -49,16 +49,7 @@
 
   <script type="module" crossorigin="anonymous" src="app/error-handler.js"></script>
 
-  <script>
-    const params = new URLSearchParams(location.search);
-    const theme = params.get("theme");
 
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  </script>
 
   <script type="module">
     import UI from "./app/ui.js";
@@ -140,9 +131,8 @@
 
         <!-- <h1 class="noVNC_logo" translate="no"><span>no</span><br>VNC</h1> -->
         <h1 class="noVNC_logo" translate="no">
-          <img src="app/images/logo/white.svg" alt="Logo" height="30px" width="40px">
+          <img id="brandLogo" alt="Logo" height="30px" width="40px">
         </h1>
-
         <hr>
 
         <!-- Drag/Pan the viewport -->
@@ -345,7 +335,11 @@
   <!-- Connect button -->
   <div class="noVNC_center">
     <div id="noVNC_connect_dlg">
-      <p class="noVNC_logo" translate="no"><span>no</span>VNC</p>
+      <!-- <p class="noVNC_logo" translate="no"><span>no</span>VNC</p> -->
+      <p class="noVNC_logo" translate="no">
+        <img id="brandLogoLarge" alt="Logo" height="100px" width="100px">
+      </p>
+
       <div>
         <button id="noVNC_connect_button">
           <img alt="" src="app/images/connect.svg"> Connect
@@ -424,6 +418,29 @@
     <source src="app/sounds/bell.oga" type="audio/ogg">
     <source src="app/sounds/bell.mp3" type="audio/mpeg">
   </audio>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const theme = params.get("theme");
+
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
+    const logo = document.getElementById("brandLogo");
+    const logoLarge = document.getElementById("brandLogoLarge");
+
+    const isDark = theme === "dark" || theme === null || theme === "";
+
+    if (logo) logo.src = isDark ?
+      "app/images/logo/white.svg": "app/images/logo/white.svg";
+
+    if (logoLarge) logoLarge.src = isDark ?
+      "app/images/logo/white.svg" :
+      "app/images/logo/black.svg";
+  </script>
 </body>
 
 </html>
