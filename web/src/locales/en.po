@@ -3535,14 +3535,14 @@ msgid "Resource limits {0}"
 msgstr "Resource limits {0}"
 
 #. placeholder {0}: dateToAgo(jail.startedAt)
-#. placeholder {0}: dateToAgo(vm.startedAt)
+#. placeholder {0}: dateToAgo(vm.current.startedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Started {0}"
 msgstr "Started {0}"
 
 #. placeholder {0}: dateToAgo(jail.stoppedAt)
-#. placeholder {0}: dateToAgo(vm.stoppedAt)
+#. placeholder {0}: dateToAgo(vm.current.stoppedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopped {0}"
@@ -4253,8 +4253,8 @@ msgstr "Storage detached"
 msgid "Deleting Virtual Machine"
 msgstr "Deleting Virtual Machine"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4271,8 +4271,8 @@ msgstr "VM deleted"
 msgid "Starting Virtual Machine"
 msgstr "Starting Virtual Machine"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
 msgstr "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4289,8 +4289,8 @@ msgstr "VM started"
 msgid "Stopping Virtual Machine"
 msgstr "Stopping Virtual Machine"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being stopped"
@@ -4307,8 +4307,8 @@ msgstr "VM stopped"
 msgid "Shutting Down Virtual Machine"
 msgstr "Shutting Down Virtual Machine"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being shut down"
@@ -4325,8 +4325,8 @@ msgstr "VM shut down"
 msgid "Rebooting Virtual Machine"
 msgstr "Rebooting Virtual Machine"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being rebooted"

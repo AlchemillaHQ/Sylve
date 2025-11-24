@@ -3620,14 +3620,14 @@ msgid "Update"
 msgstr "अपडेट करें"
 
 #. placeholder {0}: dateToAgo(jail.startedAt)
-#. placeholder {0}: dateToAgo(vm.startedAt)
+#. placeholder {0}: dateToAgo(vm.current.startedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Started {0}"
 msgstr "शुरू किया {0}"
 
 #. placeholder {0}: dateToAgo(jail.stoppedAt)
-#. placeholder {0}: dateToAgo(vm.stoppedAt)
+#. placeholder {0}: dateToAgo(vm.current.stoppedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopped {0}"
@@ -4231,8 +4231,8 @@ msgstr "संग्रहण अलग किया गया"
 msgid "Deleting Virtual Machine"
 msgstr "आभासी मशीन हटा रहे हैं"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
 msgstr "कृपया प्रतीक्षा करें जबकि VM <b>{0} ({1})</b> हटाई जा रही है"
@@ -4249,8 +4249,8 @@ msgstr "VM हटा दी गई"
 msgid "Starting Virtual Machine"
 msgstr "आभासी मशीन शुरू हो रही है"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
 msgstr "कृपया प्रतीक्षा करें जबकि VM <b>{0} ({1})</b> शुरू की जा रही है"
@@ -4267,8 +4267,8 @@ msgstr "VM शुरू हो गई"
 msgid "Stopping Virtual Machine"
 msgstr "आभासी मशीन रोक रहे हैं"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
 msgstr "कृपया प्रतीक्षा करें जबकि VM <b>{0} ({1})</b> रोकी जा रही है"
@@ -4285,8 +4285,8 @@ msgstr "VM रोकी गई"
 msgid "Shutting Down Virtual Machine"
 msgstr "आभासी मशीन बंद की जा रही है"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
 msgstr "कृपया प्रतीक्षा करें जबकि VM <b>{0} ({1})</b> बंद की जा रही है"
@@ -4303,8 +4303,8 @@ msgstr "VM बंद कर दी गई"
 msgid "Rebooting Virtual Machine"
 msgstr "आभासी मशीन पुनः प्रारंभ की जा रही है"
 
-#. placeholder {0}: vm.name
-#. placeholder {1}: vm.vmId
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.vmId
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
 msgstr "कृपया प्रतीक्षा करें जबकि VM <b>{0} ({1})</b> पुनः प्रारंभ की जा रही है"

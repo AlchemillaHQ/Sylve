@@ -18,6 +18,7 @@
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
+	import { storage } from '$lib/index';
 
 	interface Data {
 		vms: VM[];
@@ -121,9 +122,10 @@
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let vm: VM = $derived(
-		vmsQuery.data.find((vm: VM) => vm.vmId === parseInt(data.vmId)) || ({} as VM)
+	let vm: VM = $derived.by(
+		() => vms.current.find((vm: VM) => vm.vmId === parseInt(data.vmId)) || ({} as VM)
 	);
+
 	let tableData = $derived(generateTableData(vm, datasets.current, downloads.current));
 
 	let options = {

@@ -327,7 +327,7 @@
 					class:opacity-100={!vncLoading}
 					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true`}
 					title="VM Console"
-				/>
+				></iframe>
 				{#if vncLoading}
 					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
 						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
