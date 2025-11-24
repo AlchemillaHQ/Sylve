@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { getSimpleJails } from '$lib/api/jail/jail';
-	import { getSimpleVMs, getVMs } from '$lib/api/vm/vm';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
-
 	import { default as TreeView } from '$lib/components/custom/TreeView.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { SimpleJail } from '$lib/types/jail/jail';
-	import { DomainState, type SimpleVm, type VM } from '$lib/types/vm/vm';
+	import { DomainState, type SimpleVm } from '$lib/types/vm/vm';
 	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
 	import { storage } from '$lib';
-	import { useQueries } from '$lib/runes/useQuery.svelte';
+	import { resource } from 'runed';
+	import { untrack } from 'svelte';
+	import type { SimpleJail } from '$lib/types/jail/jail';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
 	let node = $derived(storage.hostname || 'default-node');
@@ -36,49 +36,55 @@
 		}
 	}
 
-	const {
-		simpleVms: simpleVmsQuery,
-		simpleJails: simpleJailsQuery,
-		refetch,
-		refetchAll
-	} = useQueries(() => ({
-		simpleVms: () => ({
-			key: 'simple-vm-list',
-			queryFn: () => getSimpleVMs(),
-			initialData: [],
-			onSuccess: (f: SimpleVm[]) => {
-				updateCache('simple-vm-list', f);
-			}
-		}),
-		simpleJails: () => ({
-			key: 'simple-jails-list',
-			queryFn: () => getSimpleJails(),
-			initialData: [],
-			onSuccess: (f: SimpleJail[]) => {
-				updateCache('simple-jails-list', f);
-			}
-		})
-	}));
+	const simpleVMs = resource(
+		[],
+		async () => {
+			const result = await getSimpleVMs();
+			updateCache('simple-vm-list', result);
+			return result;
+		},
+		{
+			initialValue: [] as SimpleVm[]
+		}
+	);
 
-	const simpleVMs = $derived(simpleVmsQuery.data || []);
-	const simpleJails = $derived(simpleJailsQuery.data || []);
+	const simpleJails = resource(
+		[],
+		async () => {
+			const result = await getSimpleJails();
+			updateCache('simple-jail-list', result);
+			return result;
+		},
+		{
+			initialValue: [] as SimpleJail[]
+		}
+	);
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				simpleVMs.refetch();
+				simpleJails.refetch();
+			});
+		}
+	});
 
 	let children = $derived(
 		[
-			...simpleVMs.map((vm) => ({
+			...(simpleVMs.current.map((vm) => ({
 				id: vm.vmId,
 				label: `${vm.name} (${vm.vmId})`,
 				icon: 'material-symbols--monitor-outline',
 				href: `/${node}/vm/${vm.vmId}`,
 				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
-			})),
-			...simpleJails.map((jail) => ({
+			})) || []),
+			...(simpleJails.current.map((jail) => ({
 				id: jail.ctId,
 				label: `${jail.name} (${jail.ctId})`,
 				icon: 'hugeicons--prison',
 				href: `/${node}/jail/${jail.ctId}`,
 				state: jail.state === 'ACTIVE' ? 'active' : 'inactive'
-			}))
+			})) || [])
 		].sort((a, b) => a.id - b.id)
 	) as {
 		id: number;
@@ -113,8 +119,8 @@
 	$effect(() => {
 		if (reload.leftPanel) {
 			console.log('LeftPanel reload triggered');
-			refetch('simpleJails');
-			refetch('simpleVms');
+			simpleVMs.refetch();
+			simpleJails.refetch();
 			reload.leftPanel = false;
 		}
 	});

@@ -10,7 +10,7 @@
 	import { storage, languageArr } from '$lib';
 	import { loadLocale } from 'wuchale/load-utils';
 
-	let menuData = $state({
+	let menuData = $derived({
 		createVM: {
 			open: false
 		},
@@ -161,7 +161,7 @@
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
 					<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
-					<span>Log out</span>
+					<span>Log Out</span>
 					<DropdownMenu.Shortcut>⌘⇧Q</DropdownMenu.Shortcut>
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>

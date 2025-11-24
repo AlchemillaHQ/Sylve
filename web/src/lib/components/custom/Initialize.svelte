@@ -10,27 +10,22 @@
 	import { initialize } from '$lib/api/basic';
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { useQuery } from '$lib/runes/useQuery.svelte';
-
+	import { resource } from 'runed';
 	interface Props {
 		initialized: boolean;
 	}
 
 	let { initialized = $bindable() }: Props = $props();
 
-	const poolsQuery = useQuery(() => ({
-		queryKey: 'pool-list',
-		queryFn: async () => {
-			return getPools(true);
-		}
-	}));
+	const pools = resource([], async () => {
+		return getPools(true);
+	});
 
-	let pools = $derived(poolsQuery.data || []);
 	let reload: boolean = $state(false);
 
 	$effect(() => {
 		if (reload) {
-			poolsQuery.refetch();
+			pools.refetch();
 			reload = false;
 		}
 	});
@@ -78,89 +73,91 @@
 	}
 </script>
 
-<Dialog.Root open={true}>
-	<Dialog.Content
-		overlayClass="bg-background"
-		class="bg-card text-card-foreground"
-		onInteractOutside={(e) => e.preventDefault()}
-		onEscapeKeydown={(e) => e.preventDefault()}
-	>
-		<Dialog.Header>
-			<div class="flex w-full items-center justify-between">
-				<Dialog.Title class="flex-1 text-center">
-					<div class="flex items-center justify-center space-x-2">
-						{#if mode.current === 'dark'}
-							<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
-						{:else}
-							<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
-						{/if}
-						<p class="font-normal tracking-[.45em]">SYLVE</p>
-					</div>
-				</Dialog.Title>
+{#if pools.current}
+	<Dialog.Root open={true}>
+		<Dialog.Content
+			overlayClass="bg-background"
+			class="bg-card text-card-foreground"
+			onInteractOutside={(e) => e.preventDefault()}
+			onEscapeKeydown={(e) => e.preventDefault()}
+		>
+			<Dialog.Header>
+				<div class="flex w-full items-center justify-between">
+					<Dialog.Title class="flex-1 text-center">
+						<div class="flex items-center justify-center space-x-2">
+							{#if mode.current === 'dark'}
+								<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
+							{:else}
+								<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
+							{/if}
+							<p class="font-normal tracking-[.45em]">SYLVE</p>
+						</div>
+					</Dialog.Title>
+				</div>
+			</Dialog.Header>
+
+			<div class="flex flex-col gap-4">
+				<ComboBox
+					bind:open={properties.pools.combobox.open}
+					label={'ZFS Storage Pools'}
+					bind:value={properties.pools.combobox.values}
+					data={generateComboboxOptions(pools.current.map((p) => p.name))}
+					classes="flex-1 space-y-3"
+					placeholder="Select Pools"
+					width="w-full"
+					multiple={true}
+				></ComboBox>
+
+				<Label class="text-sm font-medium text-gray-600 dark:text-gray-300">Services</Label>
+
+				<div class="grid grid-cols-3 gap-2">
+					<CustomCheckbox
+						label="Virtualization"
+						bind:checked={properties.services.virtualization}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="Jails"
+						bind:checked={properties.services.jails}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="Samba Server"
+						bind:checked={properties.services.sambaServer}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="DHCP Server"
+						bind:checked={properties.services.dhcpServer}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="WOL Server"
+						bind:checked={properties.services.wolServer}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+				</div>
 			</div>
-		</Dialog.Header>
 
-		<div class="flex flex-col gap-4">
-			<ComboBox
-				bind:open={properties.pools.combobox.open}
-				label={'ZFS Storage Pools'}
-				bind:value={properties.pools.combobox.values}
-				data={generateComboboxOptions(pools.map((p) => p.name))}
-				classes="flex-1 space-y-3"
-				placeholder="Select Pools"
-				width="w-full"
-				multiple={true}
-			></ComboBox>
+			{#if shownErrors.length > 0}
+				<Alert.Root variant="destructive">
+					<span class="icon-[mdi--alert-circle-outline] h-5 w-5 shrink-0 text-red-600"></span>
+					<Alert.Title>We've hit the following errors during initialization</Alert.Title>
+					<Alert.Description>
+						<ul class="list-inside list-disc text-sm">
+							{#each shownErrors as error}
+								<li>{error}</li>
+							{/each}
+						</ul>
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
 
-			<Label class="text-sm font-medium text-gray-600 dark:text-gray-300">Services</Label>
-
-			<div class="grid grid-cols-3 gap-2">
-				<CustomCheckbox
-					label="Virtualization"
-					bind:checked={properties.services.virtualization}
-					classes="flex items-center gap-2"
-				></CustomCheckbox>
-				<CustomCheckbox
-					label="Jails"
-					bind:checked={properties.services.jails}
-					classes="flex items-center gap-2"
-				></CustomCheckbox>
-				<CustomCheckbox
-					label="Samba Server"
-					bind:checked={properties.services.sambaServer}
-					classes="flex items-center gap-2"
-				></CustomCheckbox>
-				<CustomCheckbox
-					label="DHCP Server"
-					bind:checked={properties.services.dhcpServer}
-					classes="flex items-center gap-2"
-				></CustomCheckbox>
-				<CustomCheckbox
-					label="WOL Server"
-					bind:checked={properties.services.wolServer}
-					classes="flex items-center gap-2"
-				></CustomCheckbox>
-			</div>
-		</div>
-
-		{#if shownErrors.length > 0}
-			<Alert.Root variant="destructive">
-				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 shrink-0 text-red-600"></span>
-				<Alert.Title>We've hit the following errors during initialization</Alert.Title>
-				<Alert.Description>
-					<ul class="list-inside list-disc text-sm">
-						{#each shownErrors as error}
-							<li>{error}</li>
-						{/each}
-					</ul>
-				</Alert.Description>
-			</Alert.Root>
-		{/if}
-
-		<Dialog.Footer class="flex justify-end">
-			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={startInit} type="submit" size="sm">{'Initialize'}</Button>
-			</div>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+			<Dialog.Footer class="flex justify-end">
+				<div class="flex w-full items-center justify-end gap-2">
+					<Button onclick={startInit} type="submit" size="sm">{'Initialize'}</Button>
+				</div>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}

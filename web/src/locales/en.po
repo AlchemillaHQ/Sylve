@@ -254,9 +254,8 @@ msgstr "Create Jail"
 msgid "Toggle user menu"
 msgstr "Toggle user menu"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Log out"
-msgstr "Log out"
+#~ msgid "Log out"
+#~ msgstr "Log out"
 
 #: src/lib/components/custom/Header.svelte
 msgid "⌘⇧Q"
@@ -5290,3 +5289,10 @@ msgstr ""
 
 #~ msgid "Single Node1"
 #~ msgstr "Single Node1"
+
+#~ msgid "Mdi <0/> <1/> <2/>"
+#~ msgstr "Mdi <0/> <1/> <2/>"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Log Out"
+msgstr "Log Out"

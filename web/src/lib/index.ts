@@ -19,6 +19,7 @@ type SharedStorage = {
 	nodeId: string | null;
 	clusterToken: string | null;
 	fileExplorerCurrentPath: string | null;
+	visible: boolean | null;
 };
 
 export const storage = createReactiveStorage<SharedStorage>(
@@ -29,7 +30,8 @@ export const storage = createReactiveStorage<SharedStorage>(
 		['hostname', { storage: 'local' }],
 		['nodeId', { storage: 'local' }],
 		['clusterToken', { storage: 'local' }],
-		['fileExplorerCurrentPath', { storage: 'local' }]
+		['fileExplorerCurrentPath', { storage: 'local' }],
+		['visible', { storage: 'local' }]
 	],
 	{
 		prefix: 'sylve:',
