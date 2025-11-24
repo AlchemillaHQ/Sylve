@@ -12,10 +12,10 @@
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
 	import { onDestroy, onMount, tick } from 'svelte';
-	import { useQueries } from '$lib/runes/useQuery.svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
-
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
 	interface Data {
@@ -26,33 +26,50 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const {
-		vm: vmQuery,
-		domain: domainQuery,
-		refetchAll
-	} = useQueries(() => ({
-		vm: () => ({
-			key: `vm-${data.vmId}`,
-			queryFn: () => getVmById(Number(data.vmId), 'vmid'),
-			initialData: data.vm,
-			onSuccess: (f: VM) => {
-				updateCache(`vm-${data.vmId}`, f);
-			},
-			refetchInterval: 1000
-		}),
-		domain: () => ({
-			key: `vm-domain-${data.vmId}`,
-			queryFn: () => getVMDomain(data.vmId),
-			initialData: data.domain,
-			onSuccess: (f: VMDomain) => {
-				updateCache(`vm-domain-${data.vmId}`, f);
-			},
-			refetchInterval: 1000
-		})
-	}));
 
-	let vm = $derived(vmQuery.data);
-	let domain = $derived(domainQuery.data);
+	const vm = resource(
+		() => `vm-${data.vmId}`,
+		async (key) => {
+			const result = await getVmById(Number(data.vmId), 'vmid');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.vm
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.vmId}`,
+		async (key) => {
+			const result = await getVMDomain(data.vmId);
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vm.refetch();
+				domain.refetch();
+			}
+		}
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vm.refetch();
+				domain.refetch();
+			});
+		}
+	});
 
 	const wssAuth = $state({
 		hash: data.hash,
@@ -61,13 +78,16 @@
 	});
 
 	function resolveInitialConsole(): ConsoleType {
-		const both = vm.vncEnabled && vm.serial;
-		const onlyVnc = vm.vncEnabled && !vm.serial;
-		const onlySerial = !vm.vncEnabled && vm.serial;
+		const both = vm.current.vncEnabled && vm.current.serial;
+		const onlyVnc = vm.current.vncEnabled && !vm.current.serial;
+		const onlySerial = !vm.current.vncEnabled && vm.current.serial;
 
 		if (both) {
-			const preferred = localStorage.getItem(`vm-${vm.vmId}-console-preferred`);
-			if ((preferred === 'vnc' && vm.vncEnabled) || (preferred === 'serial' && vm.serial)) {
+			const preferred = localStorage.getItem(`vm-${vm.current.vmId}-console-preferred`);
+			if (
+				(preferred === 'vnc' && vm.current.vncEnabled) ||
+				(preferred === 'serial' && vm.current.serial)
+			) {
 				return preferred as ConsoleType;
 			}
 			return 'vnc';
@@ -79,20 +99,20 @@
 
 	let consoleType: ConsoleType = $state(resolveInitialConsole());
 	let vncPath = $derived.by(() => {
-		return vm.vncEnabled
-			? `/api/vnc/${encodeURIComponent(String(vm.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`
+		return vm.current.vncEnabled
+			? `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`
 			: '';
 	});
 
 	let vncLoading = $state(false);
 	function startVncLoading() {
-		if (!vm.vncEnabled) return;
+		if (!vm.current.vncEnabled) return;
 		vncLoading = true;
 		setTimeout(() => (vncLoading = false), 1500);
 	}
 
 	onMount(() => {
-		if (consoleType === 'vnc' && vm.vncEnabled) {
+		if (consoleType === 'vnc' && vm.current.vncEnabled) {
 			startVncLoading();
 		}
 	});
@@ -103,12 +123,12 @@
 		if (prevConsoleType !== consoleType) {
 			prevConsoleType = consoleType;
 
-			if (consoleType === 'vnc' && vm.vncEnabled) {
-				localStorage.setItem(`vm-${vm.vmId}-console-preferred`, 'vnc');
+			if (consoleType === 'vnc' && vm.current.vncEnabled) {
+				localStorage.setItem(`vm-${vm.current.vmId}-console-preferred`, 'vnc');
 				startVncLoading();
 				serialConnected = false;
-			} else if (consoleType === 'serial' && vm.serial) {
-				localStorage.setItem(`vm-${vm.vmId}-console-preferred`, 'serial');
+			} else if (consoleType === 'serial' && vm.current.serial) {
+				localStorage.setItem(`vm-${vm.current.vmId}-console-preferred`, 'serial');
 			}
 		}
 	});
@@ -154,7 +174,7 @@
 	}
 
 	async function serialConnect() {
-		if (!vm.serial) return;
+		if (!vm.current.serial) return;
 
 		serialLoading = true;
 
@@ -165,7 +185,7 @@
 			})
 		);
 
-		const url = `/api/vm/console?vmid=${vm.vmId}&hash=${data.hash}`;
+		const url = `/api/vm/console?vmid=${vm.current.vmId}&hash=${data.hash}`;
 
 		if (ws) {
 			try {
@@ -252,10 +272,10 @@
 
 <div class="flex h-full min-h-0 w-full flex-col">
 	<!-- Header: show only if at least one console is available -->
-	{#if (vm.vncEnabled || vm.serial) && domain.status !== 'Shutoff'}
+	{#if (vm.current.vncEnabled || vm.current.serial) && domain.current.status !== 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			<!-- Switcher: show only if BOTH consoles exist -->
-			{#if vm.vncEnabled && vm.serial}
+			{#if vm.current.vncEnabled && vm.current.serial}
 				<Button
 					onclick={() => {
 						consoleType = consoleType === 'vnc' ? 'serial' : 'vnc';
@@ -274,7 +294,7 @@
 			{/if}
 
 			<!-- Serial control: only when Serial is selected and available -->
-			{#if consoleType === 'serial' && vm.serial}
+			{#if consoleType === 'serial' && vm.current.serial}
 				<Button
 					size="sm"
 					variant="outline"
@@ -299,13 +319,13 @@
 	{/if}
 
 	{#if data.domain && data.domain.status !== 'Shutoff'}
-		{#if consoleType === 'vnc' && vm.vncEnabled}
+		{#if consoleType === 'vnc' && vm.current.vncEnabled}
 			<div class="relative flex min-h-0 flex-1 flex-col">
 				<iframe
 					class="w-full flex-1 transition-opacity duration-500"
 					class:opacity-0={vncLoading}
 					class:opacity-100={!vncLoading}
-					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.vncPassword}&resize=scale&show_dot=true`}
+					src={`/vnc/vnc.html?path=${vncPath}&password=${vm.current.vncPassword}&resize=scale&show_dot=true`}
 					title="VM Console"
 				/>
 				{#if vncLoading}
@@ -314,7 +334,7 @@
 					</div>
 				{/if}
 			</div>
-		{:else if consoleType === 'serial' && vm.serial}
+		{:else if consoleType === 'serial' && vm.current.serial}
 			<div bind:this={serialEl} class="relative flex min-h-0 flex-1 flex-col">
 				<Xterm
 					bind:terminal
