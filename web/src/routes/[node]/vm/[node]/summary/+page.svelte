@@ -30,8 +30,9 @@
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
-	import { useQueries } from '$lib/runes/useQuery.svelte';
 	import type { Chart } from 'chart.js';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		vm: VM;
@@ -42,48 +43,60 @@
 	let { data }: { data: Data } = $props();
 	const vmId = page.url.pathname.split('/')[3];
 
-	const {
-		vm: vmQuery,
-		domain: domainQuery,
-		stats: statsQuery,
-		refetchAll
-	} = useQueries(() => ({
-		vm: () => ({
-			key: 'vm-list',
-			queryFn: () => getVmById(Number(vmId), 'vmid'),
-			initialData: data.vm,
-			onSuccess: (data: VM) => {
-				updateCache(`vm-${vmId}`, data);
-			},
-			refetchInterval: 1000
-		}),
-		domain: () => ({
-			key: `vm-domain-${vmId}`,
-			queryFn: () => getVMDomain(vmId),
-			initialData: data.domain,
-			onSuccess: (data: VMDomain) => {
-				updateCache(`vm-domain-${vmId}`, data);
-			},
-			refetchInterval: 1000
-		}),
-		stats: () => ({
-			key: `vm-stats-${vmId}`,
-			queryFn: () => getStats(Number(vmId), 128),
-			initialData: data.stats,
-			onSuccess: (data: VMStat[]) => {
-				updateCache(`vm-stats-${vmId}`, data);
-			},
-			refetchInterval: 1000
-		})
-	}));
+	const vm = resource(
+		() => 'vm',
+		async (key) => {
+			const result = await getVmById(Number(vmId), 'vmid');
+			updateCache(key, result);
+			return result;
+		},
+		{ lazy: true, initialValue: data.vm }
+	);
 
-	let domain: VMDomain = $derived(domainQuery.data);
-	let vm: VM = $derived(vmQuery.data as VM);
-	let stats: VMStat[] = $derived(statsQuery.data as VMStat[]);
-	let recentStat = $derived(stats[stats.length - 1] || ({} as VMStat));
+	const domain = resource(
+		() => `vm-domain-${vmId}`,
+		async (key) => {
+			const result = await getVMDomain(vmId);
+			updateCache(key, result);
+			return result;
+		},
+		{ lazy: true, initialValue: data.domain }
+	);
+
+	const stats = resource(
+		() => `vm-stats-${vmId}`,
+		async (key) => {
+			const result = await getStats(Number(vmId), 128);
+			updateCache(key, result);
+			return result;
+		},
+		{ lazy: true, initialValue: data.stats }
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vm.refetch();
+				domain.refetch();
+				stats.refetch();
+			}
+		}
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vm.refetch();
+				domain.refetch();
+				stats.refetch();
+			});
+		}
+	});
+
+	let recentStat = $derived(stats.current[stats.current.length - 1] || ({} as VMStat));
 
 	let vmDescription = $derived.by(() => {
-		return vm.description || '';
+		return vm.current.description || '';
 	});
 
 	let modalState = $state({
@@ -104,11 +117,11 @@
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being deleted`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being deleted`;
 
 		await sleep(1000);
 		const result = await deleteVM(
-			vm.id,
+			vm.current.id,
 			modalState.deleteMACs,
 			modalState.deleteRAWDisks,
 			modalState.deleteVolumes
@@ -133,10 +146,10 @@
 	async function handleStart() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Starting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being started.`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being started.`;
 		modalState.loading.iconColor = 'text-green-500';
 
-		const result = await actionVm(vm.id, 'start');
+		const result = await actionVm(vm.current.id, 'start');
 
 		reload.leftPanel = true;
 
@@ -159,10 +172,10 @@
 	async function handleStop() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Stopping Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being stopped`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being stopped`;
 		modalState.loading.iconColor = 'text-red-500';
 
-		const result = await actionVm(vm.id, 'stop');
+		const result = await actionVm(vm.current.id, 'stop');
 
 		reload.leftPanel = true;
 
@@ -185,10 +198,10 @@
 	async function handleShutdown() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Shutting Down Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being shut down`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being shut down`;
 		modalState.loading.iconColor = 'text-yellow-500';
 
-		const result = await actionVm(vm.id, 'shutdown');
+		const result = await actionVm(vm.current.id, 'shutdown');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
@@ -210,10 +223,10 @@
 	async function handleReboot() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Rebooting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being rebooted`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being rebooted`;
 		modalState.loading.iconColor = 'text-blue-500';
 
-		const result = await actionVm(vm.id, 'reboot');
+		const result = await actionVm(vm.current.id, 'reboot');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
@@ -233,13 +246,13 @@
 	}
 
 	let udTime = $derived.by(() => {
-		if (domain.status === 'Running') {
-			if (vm.startedAt) {
-				return `Started ${dateToAgo(vm.startedAt)}`;
+		if (domain.current.status === 'Running') {
+			if (vm.current.startedAt) {
+				return `Started ${dateToAgo(vm.current.startedAt)}`;
 			}
-		} else if (domain.status === 'Stopped' || domain.status === 'Shutoff') {
-			if (vm.stoppedAt) {
-				return `Stopped ${dateToAgo(vm.stoppedAt)}`;
+		} else if (domain.current.status === 'Stopped' || domain.current.status === 'Shutoff') {
+			if (vm.current.stoppedAt) {
+				return `Stopped ${dateToAgo(vm.current.stoppedAt)}`;
 			}
 		}
 		return '';
@@ -250,7 +263,7 @@
 			field: 'cpuUsage',
 			label: 'CPU Usage',
 			color: 'chart-1',
-			data: stats
+			data: stats.current
 				.map((data) => ({
 					date: new Date(data.createdAt),
 					value: Math.floor(data.cpuUsage)
@@ -264,7 +277,7 @@
 			field: 'memoryUsage',
 			label: 'Memory Usage',
 			color: 'chart-2',
-			data: stats
+			data: stats.current
 				.map((data) => ({
 					date: new Date(data.createdAt),
 					value: Math.floor(data.memoryUsage)
@@ -275,7 +288,7 @@
 
 	$effect(() => {
 		if (vmDescription) {
-			updateDescription(vm.id, vmDescription);
+			updateDescription(vm.current.id, vmDescription);
 		}
 	});
 
@@ -284,7 +297,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && domain.id == -1 && domain.status !== 'Running'}
+	{#if type === 'start' && domain.current.id == -1 && domain.current.status !== 'Running'}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
@@ -297,7 +310,7 @@
 		<Button
 			onclick={() => {
 				modalState.isDeleteOpen = true;
-				modalState.title = `${vm.name} (${vm.vmId})`;
+				modalState.title = `${vm.current.name} (${vm.current.vmId})`;
 			}}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
@@ -306,7 +319,7 @@
 
 			{'Delete'}
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && domain.id !== -1 && domain.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && domain.current.id !== -1 && domain.current.status === 'Running'}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
@@ -347,7 +360,7 @@
 				<Card.Root class="w-full gap-0 p-4">
 					<Card.Header class="p-0">
 						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-							{`${vm.name} ${udTime ? `(${udTime})` : ''}`}
+							{`${vm.current.name} ${udTime ? `(${udTime})` : ''}`}
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="mt-3 p-0">
@@ -357,7 +370,7 @@
 								{'Status'}
 							</div>
 							<div class="ml-auto">
-								{domain.status}
+								{domain.current.status}
 							</div>
 						</div>
 
@@ -369,15 +382,15 @@
 									{'CPU Usage'}
 								</p>
 								<p class="ml-auto">
-									{#if domain.status === 'Running'}
-										{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.cpuCores * vm.cpuThreads * vm.cpuSockets} vCPU(s)`}
+									{#if domain.current.status === 'Running'}
+										{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 									{:else}
-										{`0% of ${vm.cpuCores * vm.cpuThreads * vm.cpuSockets} vCPU(s)`}
+										{`0% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 									{/if}
 								</p>
 							</div>
 
-							{#if domain.status === 'Running'}
+							{#if domain.current.status === 'Running'}
 								<Progress value={recentStat.cpuUsage || 0} max={100} class="ml-auto h-2" />
 							{:else}
 								<Progress value={0} max={100} class="ml-auto h-2" />
@@ -393,16 +406,16 @@
 								</p>
 								<p class="ml-auto">
 									{#if vm}
-										{#if domain.status === 'Running'}
-											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${humanFormat(vm.ram || 0)}`}
+										{#if domain.current.status === 'Running'}
+											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${humanFormat(vm.current.ram || 0)}`}
 										{:else}
-											{`0% of ${humanFormat(vm.ram || 0)}`}
+											{`0% of ${humanFormat(vm.current.ram || 0)}`}
 										{/if}
 									{/if}
 								</p>
 							</div>
 
-							{#if domain.status === 'Running'}
+							{#if domain.current.status === 'Running'}
 								<Progress value={recentStat.memoryUsage || 0} max={100} class="ml-auto h-2" />
 							{:else}
 								<Progress value={0} max={100} class="ml-auto h-2" />
