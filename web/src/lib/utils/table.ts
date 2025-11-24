@@ -75,11 +75,10 @@ export const renderWithIcon = (
 	title?: string
 ) => {
 	const [set, icon] = iconKey.split(':');
-	const twIcon = `<span class="icon-[${set}--${icon}]"></span>`;
 
 	return `
-		<span class="flex items-center gap-1 w-full" title="${title || ''}">
-			<span class="shrink-0 leading-none ${extraClass || ''} mt-0.5">${twIcon}</span>
+		<span class="inline-flex items-center gap-1" title="${title || ''}">
+			<span class="icon-[${set}--${icon}] shrink-0 leading-none ${extraClass || ''}"></span>
 			<span>${suffix}</span>
 		</span>
 	`.trim();
