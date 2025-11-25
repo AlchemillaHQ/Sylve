@@ -99,3 +99,45 @@ func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Update Virtual Machine Storage
+// @Description Update properties of a virtual machine's storage volume
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /storage/update [post]
+func StorageUpdate(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req libvirtServiceInterfaces.StorageUpdateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.StorageUpdate(req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "storage_updated",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}

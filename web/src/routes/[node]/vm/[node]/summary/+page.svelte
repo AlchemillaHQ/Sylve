@@ -13,7 +13,6 @@
 		getStats,
 		getVmById,
 		getVMDomain,
-		getVMs,
 		updateDescription
 	} from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
@@ -313,7 +312,7 @@
 				modalState.title = `${vm.current.name} (${vm.current.vmId})`;
 			}}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 
@@ -324,7 +323,7 @@
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			{#if type === 'stop'}
 				<div class="flex items-center">

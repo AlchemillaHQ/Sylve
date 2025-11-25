@@ -629,6 +629,7 @@ msgstr "Reset"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -654,6 +655,7 @@ msgstr "Name"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -949,6 +951,7 @@ msgstr "Delete"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
@@ -1829,6 +1832,7 @@ msgstr "S.M.A.R.T Values ({0})"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -2140,6 +2144,7 @@ msgid "Memory Size"
 msgstr "Memory Size"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot Order"
 msgstr "Boot Order"
@@ -2857,11 +2862,13 @@ msgstr "Select Switch"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Emulation"
 msgstr "Emulation"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
 msgstr "Select Emulation"
@@ -2879,6 +2886,7 @@ msgid "Offset"
 msgstr "Offset"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid storage name"
 msgstr "Invalid storage name"
 
@@ -2887,9 +2895,11 @@ msgid "No ZFS pool selected"
 msgstr "No ZFS pool selected"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a boot order"
 msgstr "Please specify a boot order"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot order already in use"
 msgstr "Boot order already in use"
@@ -2915,6 +2925,7 @@ msgid "Disk imported"
 msgstr "Disk imported"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a size"
 msgstr "Please specify a size"
 
@@ -2930,6 +2941,7 @@ msgstr "Disk attached"
 msgid "New Storage"
 msgstr "New Storage"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "DB Storage"
 msgstr "DB Storage"
@@ -2982,16 +2994,17 @@ msgid "Select ZFS Volume"
 msgstr "Select ZFS Volume"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "AHCI Hard Disk"
 msgstr "AHCI Hard Disk"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "VirtIO Block"
 msgstr "VirtIO Block"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Attach"
-msgstr "Attach"
+#~ msgid "Attach"
+#~ msgstr "Attach"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password too short"
@@ -5296,3 +5309,28 @@ msgstr ""
 #: src/lib/components/custom/Header.svelte
 msgid "Log Out"
 msgstr "Log Out"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Save Changes"
+msgstr "Save Changes"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Attach Storage"
+msgstr "Attach Storage"
+
+#. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Edit - {0}"
+msgstr "Edit - {0}"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "New size cannot be smaller than current size"
+msgstr "New size cannot be smaller than current size"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to update storage"
+msgstr "Failed to update storage"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Storage updated"
+msgstr "Storage updated"

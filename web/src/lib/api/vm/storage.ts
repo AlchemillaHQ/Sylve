@@ -81,3 +81,19 @@ export async function reorderBootOrder(
 		storages
 	});
 }
+
+export async function storageUpdate(
+	id: number,
+	name: string,
+	size: number,
+	emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
+	bootOrder: number
+): Promise<APIResponse> {
+	return await apiRequest(`/vm/storage/update`, APIResponseSchema, 'PUT', {
+		id,
+		name,
+		size,
+		emulation,
+		bootOrder
+	});
+}

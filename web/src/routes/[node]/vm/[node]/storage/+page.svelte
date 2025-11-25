@@ -137,8 +137,9 @@
 			id: null as number | null,
 			name: ''
 		},
-		setBootOrder: {
-			open: false
+		edit: {
+			open: false,
+			id: null as number | null
 		}
 	};
 
@@ -160,8 +161,24 @@
 			>
 				<div class="flex items-center">
 					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
-
 					<span>Detach</span>
+				</div>
+			</Button>
+		{/if}
+
+		{#if type === 'edit' && activeRows && activeRows.length === 1}
+			<Button
+				onclick={() => {
+					properties.edit.open = true;
+					properties.edit.id = activeRows[0].id as number;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+					<span>Edit</span>
 				</div>
 			</Button>
 		{/if}
@@ -183,11 +200,11 @@
 		>
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
 				<span>New</span>
 			</div>
 		</Button>
 
+		{@render button('edit')}
 		{@render button('detach')}
 	</div>
 
@@ -227,11 +244,38 @@
 	}}
 />
 
-<Storage
-	bind:open={properties.attach.open}
+{#if properties.attach.open}
+	<Storage
+		bind:open={properties.attach.open}
+		storageId={null}
+		datasets={datasets.current}
+		downloads={downloads.current}
+		{vm}
+		vms={vms.current}
+		pools={pools.current}
+		tableData={null}
+	/>
+{/if}
+
+{#if properties.edit.open}
+	<Storage
+		bind:open={properties.edit.open}
+		storageId={properties.edit.id}
+		datasets={datasets.current}
+		downloads={downloads.current}
+		{vm}
+		vms={vms.current}
+		pools={pools.current}
+		{tableData}
+	/>
+{/if}
+
+<!-- <Storage
+	bind:open={properties.edit.open}
+    storage={}
 	datasets={datasets.current}
 	downloads={downloads.current}
 	{vm}
 	vms={vms.current}
 	pools={pools.current}
-/>
+/> -->

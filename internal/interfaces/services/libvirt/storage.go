@@ -64,7 +64,7 @@ type StorageAttachRequest struct {
 	Name string `json:"name"`
 	UUID string `json:"downloadUUID"`
 
-	Pool        string               `json:"pool""`
+	Pool        string               `json:"pool" binding:"required"`
 	StorageType StorageType          `json:"storageType" binding:"required"`
 	Emulation   StorageEmulationType `json:"emulation" binding:"required"`
 
@@ -72,6 +72,14 @@ type StorageAttachRequest struct {
 	RecordSize   *int   `json:"recordSize"`
 	VolBlockSize *int   `json:"volBlockSize"`
 	BootOrder    *int   `json:"bootOrder"`
+}
+
+type StorageUpdateRequest struct {
+	ID        int                  `json:"id" binding:"required"`
+	Name      string               `json:"name" binding:"required"`
+	Size      int64                `json:"size" binding:"required"`
+	Emulation StorageEmulationType `json:"emulation" binding:"required"`
+	BootOrder *int                 `json:"bootOrder"`
 }
 
 type StorageDetachRequest struct {

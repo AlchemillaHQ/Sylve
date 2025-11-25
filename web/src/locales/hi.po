@@ -628,6 +628,7 @@ msgstr "रीसेट"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -653,6 +654,7 @@ msgstr "नाम"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -905,6 +907,7 @@ msgstr "हटाएँ"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
@@ -1827,6 +1830,7 @@ msgstr "S.M.A.R.T मान ({0})"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -2138,6 +2142,7 @@ msgid "Memory Size"
 msgstr "मेमोरी आकार"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot Order"
 msgstr "बूट क्रम"
@@ -2778,15 +2783,18 @@ msgstr "स्विच चुनें"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Emulation"
 msgstr "इम्यूलेशन"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
 msgstr "इम्यूलेशन चुनें"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid storage name"
 msgstr "अमान्य स्टोरेज नाम"
@@ -2796,9 +2804,11 @@ msgid "No ZFS pool selected"
 msgstr "कोई ZFS पूल चयनित नहीं है"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a boot order"
 msgstr "कृपया बूट आदेश निर्दिष्ट करें"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot order already in use"
 msgstr "बूट आदेश पहले से उपयोग में है"
@@ -2824,6 +2834,7 @@ msgid "Disk imported"
 msgstr "डिस्क आयात की गई"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a size"
 msgstr "कृपया आकार निर्दिष्ट करें"
 
@@ -2839,6 +2850,7 @@ msgstr "डिस्क जोड़ी गई"
 msgid "New Storage"
 msgstr "नया स्टोरेज"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "DB Storage"
 msgstr "DB स्टोरेज"
@@ -2891,16 +2903,17 @@ msgid "Select ZFS Volume"
 msgstr "जेडएफएस वॉल्यूम चुनें"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "AHCI Hard Disk"
 msgstr "एएचसीआई हार्ड डिस्क"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "VirtIO Block"
 msgstr "विर्टआईओ ब्लॉक"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Attach"
-msgstr "जोड़ें"
+#~ msgid "Attach"
+#~ msgstr "जोड़ें"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password too short"
@@ -5284,3 +5297,28 @@ msgstr ""
 
 #~ msgid "Mdi <0/> <1/> <2/>"
 #~ msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Save Changes"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Attach Storage"
+msgstr ""
+
+#. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Edit - {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "New size cannot be smaller than current size"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to update storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Storage updated"
+msgstr ""

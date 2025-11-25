@@ -119,6 +119,24 @@ func CreateOrTruncateFile(path string, size int64) error {
 	return nil
 }
 
+func CreateOrResizeFile(path string, size int64) error {
+	if !IsAbsPath(path) {
+		return fmt.Errorf("path must be absolute: %s", path)
+	}
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open raw file: %w", err)
+	}
+	defer f.Close()
+
+	if err := f.Truncate(size); err != nil {
+		return fmt.Errorf("failed_to_resize_raw_file: %w", err)
+	}
+
+	return nil
+}
+
 func FileExists(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {

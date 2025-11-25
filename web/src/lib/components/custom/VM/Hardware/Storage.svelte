@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getFiles } from '$lib/api/system/file-explorer';
-	import { storageAttach, storageImport, storageNew } from '$lib/api/vm/storage';
+	import { storageImport, storageNew, storageUpdate } from '$lib/api/vm/storage';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -15,6 +15,8 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
 	import type { Zpool } from '$lib/types/zfs/pool';
+	import type { Column, Row } from '$lib/types/components/tree-table';
+	import { Debounced } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -23,9 +25,32 @@
 		vm: VM;
 		vms: VM[];
 		pools: Zpool[];
+		storageId: number | null;
+		tableData: { rows: Row[]; columns: Column[] } | null;
 	}
 
-	let { open = $bindable(), datasets, downloads, vm, vms, pools }: Props = $props();
+	let {
+		open = $bindable(),
+		datasets,
+		downloads,
+		vm,
+		vms,
+		pools,
+		storageId,
+		tableData
+	}: Props = $props();
+	let storages = $derived.by(() => vm.storages || []);
+
+	let selectedStorage = $derived.by(() => {
+		if (storageId === null) return null;
+		return storages.find((s) => s.id === storageId) || null;
+	});
+
+	let selectedName = $derived.by(() => {
+		if (storageId === null) return null;
+		const storage = tableData?.rows.find((s) => s.id === storageId) || null;
+		return storage ? storage.name : null;
+	});
 
 	let options = {
 		name: '',
@@ -40,9 +65,51 @@
 		loading: false
 	};
 
-	let properties = $state(options);
-	let images = $derived(getISOs(downloads, true));
+	let editOptions = {
+		name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
+		size: selectedStorage ? humanFormat(selectedStorage.size, { unit: 'B' }) : '',
+		emulation: selectedStorage
+			? selectedStorage.emulation
+			: ('ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'),
+		bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
+		loading: false
+	};
 
+	let properties = $state(options);
+	let editProperties = $state(editOptions);
+	let lastRejectedSize: string | null = null;
+
+	const debouncedSize = new Debounced(() => editProperties.size, 800);
+
+	$effect(() => {
+		if (!selectedStorage) return;
+
+		const currentSize = selectedStorage.size || 0;
+		const sizeStr = debouncedSize.current;
+
+		if (!sizeStr) return;
+
+		let newSize = 0;
+		try {
+			newSize = humanFormat.parse(sizeStr);
+		} catch (e) {
+			return;
+		}
+
+		if (newSize < currentSize) {
+			if (lastRejectedSize === sizeStr) return;
+			lastRejectedSize = sizeStr;
+
+			editProperties.size = humanFormat(currentSize, { unit: 'B' });
+			toast.error('New size cannot be smaller than current size', {
+				position: 'bottom-center'
+			});
+		} else {
+			lastRejectedSize = null;
+		}
+	});
+
+	let images = $derived(getISOs(downloads, true));
 	let usedDatasets = $derived.by(() => {
 		const used = [] as string[];
 		for (const m of vms) {
@@ -59,6 +126,10 @@
 	let usedBootOrders = $derived.by(() => {
 		const used = [] as number[];
 		for (const storage of vm.storages) {
+			if (storageId && storage.id === storageId) {
+				continue;
+			}
+
 			if (storage.bootOrder || storage.bootOrder === 0) {
 				used.push(storage.bootOrder);
 			}
@@ -77,11 +148,11 @@
 		value: ''
 	});
 
-	async function attach() {
-		const toastOptions = {
-			position: 'bottom-center' as const
-		};
+	const toastOptions = {
+		position: 'bottom-center' as const
+	};
 
+	async function attach() {
 		if (
 			properties.name.trim() === '' ||
 			properties.name.length === 0 ||
@@ -188,15 +259,85 @@
 			open = false;
 		}
 	}
+
+	async function update() {
+		// Implementation for updating storage goes here
+		if (
+			editProperties.name.trim() === '' ||
+			editProperties.name.length === 0 ||
+			editProperties.name.length > 128
+		) {
+			toast.error('Invalid storage name', toastOptions);
+			return;
+		}
+
+		if (editProperties.size === '') {
+			toast.error('Please specify a size', toastOptions);
+			return;
+		}
+
+		// make sure the size is greater than or equal to current size
+		let parsedSize: number = 0;
+		try {
+			parsedSize = humanFormat.parse(editProperties.size);
+		} catch (e) {
+			toast.error('Invalid size format', toastOptions);
+			return;
+		}
+
+		if (selectedStorage) {
+			if (parsedSize < selectedStorage.size) {
+				toast.error('New size cannot be smaller than current size', toastOptions);
+				return;
+			}
+		}
+
+		// validate boot order
+		if (editProperties.bootOrder === null) {
+			toast.error('Please specify a boot order', toastOptions);
+			return;
+		}
+
+		if (usedBootOrders.includes(Number(editProperties.bootOrder))) {
+			toast.error('Boot order already in use', toastOptions);
+			return;
+		}
+
+		editProperties.loading = true;
+		const response = await storageUpdate(
+			selectedStorage ? selectedStorage.id : 0,
+			editProperties.name,
+			parsedSize,
+			editProperties.emulation,
+			Number(editProperties.bootOrder)
+		);
+
+		if (response.error) {
+			handleAPIError(response);
+			toast.error('Failed to update storage', {
+				position: 'bottom-center'
+			});
+
+			return;
+		}
+
+		toast.success('Storage updated', toastOptions);
+		editProperties = editOptions;
+		open = false;
+	}
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content
+		class={selectedStorage
+			? 'w-1/3 overflow-hidden p-5 lg:max-w-2xl'
+			: 'w-full overflow-hidden p-5 lg:max-w-2xl'}
+	>
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<span class="icon-[grommet-icons--storage] h-5 w-5"></span>
-					<span>New Storage</span>
+					{selectedName ? `Edit - ${selectedName}` : 'New Storage'}
 				</div>
 
 				<div class="flex items-center gap-0.5">
@@ -206,7 +347,11 @@
 						title={'Reset'}
 						class="h-4"
 						onclick={() => {
-							properties = options;
+							if (selectedStorage) {
+								editProperties = editOptions;
+							} else {
+								properties = options;
+							}
 						}}
 					>
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
@@ -218,7 +363,11 @@
 						class="h-4"
 						title={'Close'}
 						onclick={() => {
-							properties = options;
+							if (selectedStorage) {
+								editProperties = editOptions;
+							} else {
+								properties = options;
+							}
 							open = false;
 						}}
 					>
@@ -229,121 +378,161 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<CustomValueInput
-			label="Name"
-			placeholder="DB Storage"
-			bind:value={properties.name}
-			classes="flex-1 space-y-1"
-		/>
-
-		<div class="grid grid-cols-3 gap-4">
-			<SimpleSelect
-				label="Type"
-				placeholder="Select Type"
-				options={[
-					{ value: 'new', label: 'New' },
-					{ value: 'import', label: 'Import' }
-				]}
-				bind:value={properties.type}
-				onChange={(value) => (properties.type = value as 'import' | 'new')}
+		{#if !selectedStorage}
+			<CustomValueInput
+				label="Name"
+				placeholder="DB Storage"
+				bind:value={properties.name}
+				classes="flex-1 space-y-1"
 			/>
 
-			<SimpleSelect
-				label="Disk Type"
-				placeholder="Select Disk Type"
-				options={[
-					{ value: 'zvol', label: 'ZFS Volume' },
-					{ value: 'raw', label: 'Raw Disk' },
-					...(properties.type !== 'new' ? [{ value: 'image', label: 'Image' }] : [])
-				]}
-				bind:value={properties.diskType}
-				onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
-			/>
+			<div class="grid grid-cols-3 gap-4">
+				<SimpleSelect
+					label="Type"
+					placeholder="Select Type"
+					options={[
+						{ value: 'new', label: 'New' },
+						{ value: 'import', label: 'Import' }
+					]}
+					bind:value={properties.type}
+					onChange={(value) => (properties.type = value as 'import' | 'new')}
+				/>
 
-			<SimpleSelect
-				label="Pool"
-				placeholder="Select Pool"
-				options={pools.map((pool) => ({ value: pool.name, label: pool.name }))}
-				bind:value={properties.pool}
-				onChange={(value) => (properties.pool = value as string)}
-				disabled={properties.diskType === 'image'}
-			/>
-		</div>
+				<SimpleSelect
+					label="Disk Type"
+					placeholder="Select Disk Type"
+					options={[
+						{ value: 'zvol', label: 'ZFS Volume' },
+						{ value: 'raw', label: 'Raw Disk' },
+						...(properties.type !== 'new' ? [{ value: 'image', label: 'Image' }] : [])
+					]}
+					bind:value={properties.diskType}
+					onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
+				/>
 
-		<div class="grid grid-cols-3 gap-4">
-			{#if properties.type === 'import'}
-				{#if properties.diskType === 'image'}
-					<CustomComboBox
-						bind:open={imageCombobox.open}
-						label={'ISO Image'}
-						bind:value={imageCombobox.value}
-						data={images}
-						classes="flex-1 space-y-1"
-						placeholder="Select ISO Image"
-						width="w-3/4"
-						multiple={false}
-					></CustomComboBox>
-				{:else if properties.diskType === 'raw'}
+				<SimpleSelect
+					label="Pool"
+					placeholder="Select Pool"
+					options={pools.map((pool) => ({ value: pool.name, label: pool.name }))}
+					bind:value={properties.pool}
+					onChange={(value) => (properties.pool = value as string)}
+					disabled={properties.diskType === 'image'}
+				/>
+			</div>
+
+			<div class="grid grid-cols-3 gap-4">
+				{#if properties.type === 'import'}
+					{#if properties.diskType === 'image'}
+						<CustomComboBox
+							bind:open={imageCombobox.open}
+							label={'ISO Image'}
+							bind:value={imageCombobox.value}
+							data={images}
+							classes="flex-1 space-y-1"
+							placeholder="Select ISO Image"
+							width="w-3/4"
+							multiple={false}
+						></CustomComboBox>
+					{:else if properties.diskType === 'raw'}
+						<CustomValueInput
+							label="Raw Disk Path"
+							placeholder="/tmp/openwrt-hdd.img"
+							bind:value={properties.rawPath}
+							classes="flex-1 space-y-1"
+						/>
+					{/if}
+
+					{#if properties.diskType === 'zvol'}
+						<CustomComboBox
+							bind:open={zvolCombobox.open}
+							label={'ZFS Volume'}
+							bind:value={zvolCombobox.value}
+							data={datasets
+								.filter((dataset) => {
+									return (
+										dataset.type === 'volume' && !usedDatasets.some((used) => used === dataset.guid)
+									);
+								})
+								.map((dataset) => ({
+									value: dataset.guid || dataset.name,
+									label: dataset.name
+								}))}
+							classes="flex-1 space-y-1"
+							placeholder="Select ZFS Volume"
+							width="w-3/4"
+							multiple={false}
+						></CustomComboBox>
+					{/if}
+				{:else if properties.type === 'new' && properties.diskType !== 'image'}
 					<CustomValueInput
-						label="Raw Disk Path"
-						placeholder="/tmp/openwrt-hdd.img"
-						bind:value={properties.rawPath}
+						label="Size"
+						placeholder={humanFormat(10 * 1024 * 1024 * 1024, { unit: 'B' })}
+						bind:value={properties.size}
 						classes="flex-1 space-y-1"
 					/>
 				{/if}
 
-				{#if properties.diskType === 'zvol'}
-					<CustomComboBox
-						bind:open={zvolCombobox.open}
-						label={'ZFS Volume'}
-						bind:value={zvolCombobox.value}
-						data={datasets
-							.filter((dataset) => {
-								return (
-									dataset.type === 'volume' && !usedDatasets.some((used) => used === dataset.guid)
-								);
-							})
-							.map((dataset) => ({
-								value: dataset.guid || dataset.name,
-								label: dataset.name
-							}))}
-						classes="flex-1 space-y-1"
-						placeholder="Select ZFS Volume"
-						width="w-3/4"
-						multiple={false}
-					></CustomComboBox>
-				{/if}
-			{:else if properties.type === 'new' && properties.diskType !== 'image'}
+				<SimpleSelect
+					label="Emulation"
+					placeholder="Select Emulation"
+					options={[
+						{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
+						{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
+						{ value: 'nvme', label: 'NVMe' },
+						{ value: 'virtio-blk', label: 'VirtIO Block' }
+					]}
+					bind:value={properties.emulation}
+					onChange={(value) =>
+						(properties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
+				/>
+
+				<CustomValueInput
+					label="Boot Order"
+					placeholder="2"
+					type="number"
+					bind:value={properties.bootOrder as number}
+					classes="flex-1 space-y-1"
+				/>
+			</div>
+		{:else}
+			<CustomValueInput
+				label="Name"
+				placeholder="DB Storage"
+				bind:value={editProperties.name}
+				classes="flex-1 space-y-1"
+			/>
+
+			<div class="grid grid-cols-3 gap-4">
 				<CustomValueInput
 					label="Size"
 					placeholder={humanFormat(10 * 1024 * 1024 * 1024, { unit: 'B' })}
-					bind:value={properties.size}
+					bind:value={editProperties.size}
 					classes="flex-1 space-y-1"
 				/>
-			{/if}
 
-			<SimpleSelect
-				label="Emulation"
-				placeholder="Select Emulation"
-				options={[
-					{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
-					{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
-					{ value: 'nvme', label: 'NVMe' },
-					{ value: 'virtio-blk', label: 'VirtIO Block' }
-				]}
-				bind:value={properties.emulation}
-				onChange={(value) =>
-					(properties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
-			/>
+				<SimpleSelect
+					label="Emulation"
+					placeholder="Select Emulation"
+					options={[
+						{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
+						{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
+						{ value: 'nvme', label: 'NVMe' },
+						{ value: 'virtio-blk', label: 'VirtIO Block' }
+					]}
+					bind:value={editProperties.emulation}
+					onChange={(value) =>
+						(editProperties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
+				/>
 
-			<CustomValueInput
-				label="Boot Order"
-				placeholder="2"
-				type="number"
-				bind:value={properties.bootOrder as number}
-				classes="flex-1 space-y-1"
-			/>
-		</div>
+				<CustomValueInput
+					label="Boot Order"
+					placeholder="2"
+					type="number"
+					bind:value={editProperties.bootOrder as number}
+					classes="flex-1 space-y-1"
+				/>
+			</div>
+		{/if}
 
 		<Dialog.Footer>
 			<div class="flex items-center justify-end space-x-4">
@@ -352,14 +541,18 @@
 					type="button"
 					class="h-8 w-full lg:w-28 "
 					onclick={() => {
-						attach();
+						if (selectedStorage) {
+							update();
+						} else {
+							attach();
+						}
 					}}
-					disabled={properties.loading}
+					disabled={properties.loading || editProperties.loading}
 				>
-					{#if properties.loading}
+					{#if properties.loading || editProperties.loading}
 						<span class="icon-[eos-icons--loading] mr-2 h-4 w-4 animate-spin"></span>
 					{:else}
-						<span>Attach</span>
+						<span>{selectedStorage ? 'Save Changes' : 'Attach Storage'}</span>
 					{/if}
 				</Button>
 			</div>

@@ -287,6 +287,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))
 		vm.POST("/storage/attach", vmHandlers.StorageAttach(libvirtService))
+		vm.PUT("/storage/update", vmHandlers.StorageUpdate(libvirtService))
 
 		vm.POST("/network/detach", vmHandlers.NetworkDetach(libvirtService))
 		vm.POST("/network/attach", vmHandlers.NetworkAttach(libvirtService))

@@ -764,6 +764,117 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 	return fmt.Errorf("invalid_storage_attach_type: %s", req.AttachType)
 }
 
+func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest) error {
+	if strings.TrimSpace(req.Name) == "" || len(req.Name) > 128 {
+		return fmt.Errorf("invalid_storage_name")
+	}
+
+	var current vmModels.Storage
+	if err := s.DB.
+		Preload("Dataset").
+		First(&current, "id = ?", req.ID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_storage_record: %w", err)
+	}
+
+	var vm vmModels.VM
+	if err := s.DB.First(&vm, "id = ?", current.VMID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_vm_record: %w", err)
+	}
+
+	off, err := s.IsDomainShutOff(vm.VmID)
+	if err != nil {
+		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
+	}
+
+	if !off {
+		return fmt.Errorf("domain_state_not_shutoff: %d", vm.VmID)
+	}
+
+	if req.BootOrder != nil && *req.BootOrder != current.BootOrder {
+		var count int64
+		if err := s.DB.
+			Model(&vmModels.Storage{}).
+			Where("vm_id = ? AND boot_order = ? AND id != ?", current.VMID, *req.BootOrder, current.ID).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed_to_validate_boot_order_index: %w", err)
+		}
+
+		if count > 0 {
+			return fmt.Errorf("boot_order_index_already_in_use: %d", *req.BootOrder)
+		}
+
+		current.BootOrder = *req.BootOrder
+	}
+
+	if req.Size != 0 && req.Size != current.Size {
+		if req.Size < current.Size {
+			return fmt.Errorf("shrinking_storage_not_supported")
+		}
+
+		growBy := req.Size - current.Size
+
+		if current.Pool != "" && growBy > 0 {
+			pool, err := zfs.GetZpool(current.Pool)
+			if err != nil || pool == nil {
+				return err
+			}
+
+			if pool.Free < uint64(growBy) {
+				return fmt.Errorf("insufficient_space_in_pool: %s", current.Pool)
+			}
+		}
+
+		switch current.Type {
+		case vmModels.VMStorageTypeRaw:
+			imagePath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
+				current.Pool,
+				vm.VmID,
+				current.ID,
+				current.ID,
+			)
+
+			if err := utils.CreateOrResizeFile(imagePath, req.Size); err != nil {
+				return fmt.Errorf("failed_to_resize_raw_image_file: %w", err)
+			}
+
+		case vmModels.VMStorageTypeZVol:
+			dsList, err := zfs.Volumes(current.Dataset.Name)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_zvol_dataset: %w", err)
+			}
+
+			if len(dsList) == 0 {
+				return fmt.Errorf("zvol_dataset_not_found: %s", current.Dataset.Name)
+			}
+
+			ds := dsList[0]
+			if err := ds.SetProperty("volsize", fmt.Sprintf("%d", req.Size)); err != nil {
+				return fmt.Errorf("failed_to_set_zvol_volsize: %w", err)
+			}
+
+		case vmModels.VMStorageTypeDiskImage:
+			return fmt.Errorf("size_edit_not_supported_for_disk_image_storage")
+		default:
+			return fmt.Errorf("size_edit_not_supported_for_storage_type: %s", current.Type)
+		}
+
+		current.Size = req.Size
+	}
+
+	current.Name = req.Name
+	current.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
+
+	if err := s.DB.Save(&current).Error; err != nil {
+		return fmt.Errorf("failed_to_update_storage_record: %w", err)
+	}
+
+	if err := s.SyncVMDisks(vm.VmID); err != nil {
+		return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) CreateStorageParent(vmId int, poolName string) error {
 	pools, err := s.System.GetUsablePools()
 	if err != nil {
