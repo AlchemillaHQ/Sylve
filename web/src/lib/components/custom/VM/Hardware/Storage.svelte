@@ -261,7 +261,6 @@
 	}
 
 	async function update() {
-		// Implementation for updating storage goes here
 		if (
 			editProperties.name.trim() === '' ||
 			editProperties.name.length === 0 ||
@@ -276,7 +275,6 @@
 			return;
 		}
 
-		// make sure the size is greater than or equal to current size
 		let parsedSize: number = 0;
 		try {
 			parsedSize = humanFormat.parse(editProperties.size);
@@ -292,7 +290,6 @@
 			}
 		}
 
-		// validate boot order
 		if (editProperties.bootOrder === null) {
 			toast.error('Please specify a boot order', toastOptions);
 			return;

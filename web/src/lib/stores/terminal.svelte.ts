@@ -44,16 +44,13 @@ export function getDefaultTitle() {
 }
 
 export function openTerminal() {
-	terminalStore.isOpen = true;
-	terminalStore.isMinimized = false;
-
-	if (terminalStore.tabs.length > 0) {
+	if (terminalStore.tabs?.length > 0) {
+		terminalStore.isOpen = true;
+		terminalStore.isMinimized = false;
 		return;
 	}
 
-	const tabId = `sylve-${terminalStore.tabs.length + 1}`;
-	terminalStore.isOpen = true;
-	terminalStore.isMinimized = false;
+	const tabId = `sylve-${terminalStore.tabs?.length || 0 + 1}`;
 	terminalStore.title = 'Terminal';
 	terminalStore.tabs = [
 		{
@@ -62,4 +59,6 @@ export function openTerminal() {
 		}
 	];
 	terminalStore.activeTabId = tabId;
+	terminalStore.isOpen = true;
+	terminalStore.isMinimized = false;
 }

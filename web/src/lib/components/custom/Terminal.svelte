@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import { getDefaultTitle, terminalStore } from '$lib/stores/terminal.svelte';
 	import { sha256 } from '$lib/utils/string';
 	import {
@@ -21,7 +22,7 @@
 	};
 
 	let tabsCount = $derived.by(() => {
-		return terminalStore.tabs.length;
+		return terminalStore.tabs?.length || 0;
 	});
 
 	let currentTab = $derived.by(() => {
@@ -182,11 +183,9 @@
 <svelte:window bind:innerWidth />
 
 {#if terminalStore.isOpen && !terminalStore.isMinimized}
+	<div class="z-9998 fixed inset-0 bg-black/30 backdrop-blur-sm transition-all duration-150"></div>
 	<div
-		class="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-sm transition-all duration-150"
-	></div>
-	<div
-		class="fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-150"
+		class="z-9999 fixed inset-0 flex items-center justify-center transition-all duration-150"
 		in:scale={{ start: 0.9, duration: 150 }}
 		out:scale={{ start: 0.9, duration: 150 }}
 	>
@@ -260,10 +259,7 @@
 			</div>
 
 			<!-- Terminal Body -->
-			<div
-				id="terminal-container"
-				class="relative min-h-0 w-full flex-grow overflow-hidden bg-black"
-			>
+			<div id="terminal-container" class="relative min-h-0 w-full grow overflow-hidden bg-black">
 				{#each terminalStore.tabs as tab}
 					{#if tab.id === terminalStore.activeTabId}
 						<div in:fade={{ duration: 150 }}>

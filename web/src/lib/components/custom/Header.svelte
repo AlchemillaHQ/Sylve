@@ -10,7 +10,7 @@
 	import { storage, languageArr } from '$lib';
 	import { loadLocale } from 'wuchale/load-utils';
 
-	let menuData = $derived({
+	let options = {
 		createVM: {
 			open: false
 		},
@@ -18,8 +18,9 @@
 			open: false
 		},
 		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }]
-	});
+	};
 
+	let properties = $state(options);
 	let jwt = $state(getJWTClaims());
 </script>
 
@@ -62,13 +63,13 @@
 			<Button
 				size="icon"
 				variant="link"
-				class="relative z-[9999] flex  w-auto items-center justify-center "
+				class="z-9999 relative flex  w-auto items-center justify-center "
 				onclick={() => openTerminal()}
 			>
 				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
 				{#if terminalStore.tabs?.length > 0}
 					<span
-						class="absolute -right-1 top-0.5 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+						class="absolute -right-1 top-0.5 flex h-4 min-w-2 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
 					>
 						{terminalStore.tabs?.length}
 					</span>
@@ -78,7 +79,7 @@
 			<Button
 				class="h-6"
 				size="sm"
-				onclick={() => (menuData.createVM.open = !menuData.createVM.open)}
+				onclick={() => (properties.createVM.open = !properties.createVM.open)}
 			>
 				<div class="flex items-center gap-2">
 					<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
@@ -89,7 +90,7 @@
 			<Button
 				class="h-6"
 				size="sm"
-				onclick={() => (menuData.createJail.open = !menuData.createJail.open)}
+				onclick={() => (properties.createJail.open = !properties.createJail.open)}
 			>
 				<div class="flex items-center gap-2">
 					<span class="icon-[hugeicons--prison] h-4 w-4"></span>
@@ -97,12 +98,12 @@
 				</div>
 			</Button>
 
-			{#if menuData.createVM.open}
-				<CreateVM bind:open={menuData.createVM.open} />
+			{#if properties.createVM.open}
+				<CreateVM bind:open={properties.createVM.open} />
 			{/if}
 
-			{#if menuData.createJail.open}
-				<CreateJail bind:open={menuData.createJail.open} />
+			{#if properties.createJail.open}
+				<CreateJail bind:open={properties.createJail.open} />
 			{/if}
 		</div>
 		<DropdownMenu.Root>
@@ -119,7 +120,7 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="w-56">
 				<DropdownMenu.Group>
-					{#each menuData.menuItems as { icon, label, shortcut }}
+					{#each properties.menuItems as { icon, label, shortcut }}
 						<DropdownMenu.Item class="cursor-pointer" onclick={toggleMode}>
 							<span class="icon-[{icon}] mr-2 h-4 w-4"></span>
 
