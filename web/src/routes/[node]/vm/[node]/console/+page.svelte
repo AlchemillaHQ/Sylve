@@ -2,7 +2,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
-	import { sha256, toHex } from '$lib/utils/string';
+	import { toHex } from '$lib/utils/string';
 	import {
 		Xterm,
 		XtermAddon,
@@ -23,16 +23,16 @@
 	interface Data {
 		vm: VM;
 		domain: VMDomain;
-		vmId: string;
+		rid: string;
 		hash: string;
 	}
 
 	let { data }: { data: Data } = $props();
 
 	const vm = resource(
-		() => `vm-${data.vmId}`,
+		() => `vm-${data.rid}`,
 		async (key) => {
-			const result = await getVmById(Number(data.vmId), 'vmid');
+			const result = await getVmById(Number(data.rid), 'rid');
 			updateCache(key, result);
 			return result;
 		},
@@ -43,9 +43,9 @@
 	);
 
 	const domain = resource(
-		() => `vm-domain-${data.vmId}`,
+		() => `vm-domain-${data.rid}`,
 		async (key) => {
-			const result = await getVMDomain(data.vmId);
+			const result = await getVMDomain(data.rid);
 			updateCache(key, result);
 			return result;
 		},
@@ -85,7 +85,7 @@
 		const onlySerial = !vm.current.vncEnabled && vm.current.serial;
 
 		if (both) {
-			const preferred = localStorage.getItem(`vm-${vm.current.vmId}-console-preferred`);
+			const preferred = localStorage.getItem(`vm-${vm.current.rid}-console-preferred`);
 			if (
 				(preferred === 'vnc' && vm.current.vncEnabled) ||
 				(preferred === 'serial' && vm.current.serial)
@@ -121,16 +121,15 @@
 
 	let prevConsoleType: ConsoleType = consoleType;
 	$effect(() => {
-		console.log('Console type changed:', consoleType);
 		if (prevConsoleType !== consoleType) {
 			prevConsoleType = consoleType;
 
 			if (consoleType === 'vnc' && vm.current.vncEnabled) {
-				localStorage.setItem(`vm-${vm.current.vmId}-console-preferred`, 'vnc');
+				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'vnc');
 				startVncLoading();
 				serialConnected = false;
 			} else if (consoleType === 'serial' && vm.current.serial) {
-				localStorage.setItem(`vm-${vm.current.vmId}-console-preferred`, 'serial');
+				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
 			}
 		}
 	});
@@ -187,7 +186,7 @@
 			})
 		);
 
-		const url = `/api/vm/console?vmid=${vm.current.vmId}&hash=${data.hash}`;
+		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}`;
 
 		if (ws) {
 			try {

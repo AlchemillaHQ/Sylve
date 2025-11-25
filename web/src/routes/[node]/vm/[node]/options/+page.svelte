@@ -25,9 +25,9 @@
 	let { data }: { data: Data } = $props();
 
 	const vm = resource(
-		() => `vm-${data.vm.vmId}`,
+		() => `vm-${data.vm.rid}`,
 		async (key) => {
-			const result = await getVmById(data.vm.vmId, 'vmid');
+			const result = await getVmById(data.vm.rid, 'rid');
 			updateCache(key, result);
 			return result;
 		},

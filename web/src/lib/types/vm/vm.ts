@@ -58,8 +58,7 @@ export const VMStorageDatasetSchema = z.object({
 	id: z.number().int(),
 	pool: z.string(),
 	name: z.string(),
-	guid: z.string(),
-	vmId: z.number().int()
+	guid: z.string()
 });
 
 export const VMStorageSchema = z.object({
@@ -112,7 +111,7 @@ export const VMSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: z.string(),
-	vmId: z.number().int(),
+	rid: z.number().int(),
 	cpuSockets: z.number().int(),
 	cpuCores: z.number().int(),
 	cpuThreads: z.number().int(),
@@ -162,7 +161,7 @@ export const VMDomainSchema = z.object({
 export const SimpleVmSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
-	vmId: z.number().int(),
+	rid: z.number().int(),
 	state: DomainStateSchema
 });
 

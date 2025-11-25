@@ -56,27 +56,27 @@ type ModifyIgnoreUMSRsRequest struct {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/wol/:vmid [put]
+// @Router /options/wol/:rid [put]
 func ModifyWakeOnLan(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -97,7 +97,7 @@ func ModifyWakeOnLan(libvirtService *libvirt.Service) gin.HandlerFunc {
 			enabled = *req.Enabled
 		}
 
-		if err := libvirtService.ModifyWakeOnLan(vmIdInt, enabled); err != nil {
+		if err := libvirtService.ModifyWakeOnLan(uint(ridInt), enabled); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -126,27 +126,27 @@ func ModifyWakeOnLan(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/boot-order/:vmid [put]
+// @Router /options/boot-order/:rid [put]
 func ModifyBootOrder(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -172,7 +172,7 @@ func ModifyBootOrder(libvirtService *libvirt.Service) gin.HandlerFunc {
 			bootOrder = *req.BootOrder
 		}
 
-		if err := libvirtService.ModifyBootOrder(vmIdInt, startAtBoot, bootOrder); err != nil {
+		if err := libvirtService.ModifyBootOrder(uint(ridInt), startAtBoot, bootOrder); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -201,27 +201,27 @@ func ModifyBootOrder(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/clock/:vmid [put]
+// @Router /options/clock/:rid [put]
 func ModifyClock(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -247,7 +247,7 @@ func ModifyClock(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.ModifyClock(vmIdInt, req.TimeOffset); err != nil {
+		if err := libvirtService.ModifyClock(uint(ridInt), req.TimeOffset); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -276,27 +276,27 @@ func ModifyClock(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/serial-console/:vmid [put]
+// @Router /options/serial-console/:rid [put]
 func ModifySerialConsole(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -317,7 +317,7 @@ func ModifySerialConsole(libvirtService *libvirt.Service) gin.HandlerFunc {
 			enabled = *req.Enabled
 		}
 
-		if err := libvirtService.ModifySerial(vmIdInt, enabled); err != nil {
+		if err := libvirtService.ModifySerial(uint(ridInt), enabled); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -346,27 +346,27 @@ func ModifySerialConsole(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/shutdown-wait-time/:vmid [put]
+// @Router /options/shutdown-wait-time/:rid [put]
 func ModifyShutdownWaitTime(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -389,7 +389,7 @@ func ModifyShutdownWaitTime(libvirtService *libvirt.Service) gin.HandlerFunc {
 			waitTime = 0
 		}
 
-		if err := libvirtService.ModifyShutdownWaitTime(vmIdInt, waitTime); err != nil {
+		if err := libvirtService.ModifyShutdownWaitTime(uint(ridInt), waitTime); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -418,27 +418,27 @@ func ModifyShutdownWaitTime(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/cloud-init/:vmid [put]
+// @Router /options/cloud-init/:rid [put]
 func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -454,7 +454,7 @@ func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.ModifyCloudInitData(vmIdInt, req.Data, req.Metadata); err != nil {
+		if err := libvirtService.ModifyCloudInitData(uint(ridInt), req.Data, req.Metadata); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -483,27 +483,27 @@ func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /options/ignore-umsrs/:vmid [put]
+// @Router /options/ignore-umsrs/:rid [put]
 func ModifyIgnoreUMSRs(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmid")
-		if vmId == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmId)
+		ridInt, err := strconv.Atoi(rid)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
@@ -524,7 +524,7 @@ func ModifyIgnoreUMSRs(libvirtService *libvirt.Service) gin.HandlerFunc {
 			ignoreUMSRs = *req.IgnoreUMSRs
 		}
 
-		if err := libvirtService.ModifyIgnoreUMSRs(vmIdInt, ignoreUMSRs); err != nil {
+		if err := libvirtService.ModifyIgnoreUMSRs(uint(ridInt), ignoreUMSRs); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

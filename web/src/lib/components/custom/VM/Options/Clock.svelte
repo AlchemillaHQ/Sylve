@@ -1,9 +1,7 @@
 <script lang="ts">
-	import { modifyBootOrder, modifyClockOffset, modifyWoL } from '$lib/api/vm/vm';
+	import { modifyClockOffset } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
@@ -34,7 +32,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyClockOffset(vm.vmId, comboBox.value as 'localtime' | 'utc');
+		const response = await modifyClockOffset(vm.rid, comboBox.value as 'localtime' | 'utc');
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify clock offset', {

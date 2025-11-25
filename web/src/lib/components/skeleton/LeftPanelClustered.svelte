@@ -11,6 +11,7 @@
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
 	import { createQueries } from '@tanstack/svelte-query';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
+	import { DomainState } from '$lib/types/vm/vm';
 
 	let openIds = $state(new Set<string>(['datacenter']));
 
@@ -63,12 +64,14 @@
 						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 					})),
 					...(n.vms ?? []).map((vm) => ({
-						id: `vm-${vm.vmId}`,
-						sortId: vm.vmId,
-						label: `${vm.name} (${vm.vmId})`,
+						id: `vm-${vm.rid}`,
+						sortId: vm.rid,
+						label: `${vm.name} (${vm.rid})`,
 						icon: 'material-symbols--monitor-outline',
-						href: `/${nodeLabel}/vm/${vm.vmId}`,
-						state: (vm.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+						href: `/${nodeLabel}/vm/${vm.rid}`,
+						state: (vm.state === DomainState.DomainRunning ? 'active' : 'inactive') as
+							| 'active'
+							| 'inactive'
 					}))
 				].sort((a, b) => a.sortId - b.sortId);
 

@@ -24,7 +24,7 @@ import (
 	"github.com/beevik/etree"
 )
 
-func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
+func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 	usable, err := s.System.GetUsablePools()
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
@@ -51,9 +51,9 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 
 	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID))
+			datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID))
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
-			datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, vmId, storage.ID))
+			datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID))
 		}
 
 		if err != nil {
@@ -89,14 +89,14 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 
 		if storage.Type == vmModels.VMStorageTypeRaw {
 			dataset, err = zfs.CreateFilesystem(
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, vmId, storage.ID),
+				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
 				utils.MergeMaps(props, map[string]string{
 					"recordsize": recordSize,
 				}),
 			)
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
 			dataset, err = zfs.CreateVolume(
-				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, vmId, storage.ID),
+				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),
 				uint64(storage.Size),
 				utils.MergeMaps(props, map[string]string{
 					"volblocksize": volblocksize,
@@ -129,7 +129,6 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 		Pool: target.Name,
 		Name: dataset.Name,
 		GUID: dataset.GUID,
-		VMID: uint(vmId),
 	}
 
 	if err := s.DB.Create(&storageDataset).Error; err != nil {
@@ -147,21 +146,17 @@ func (s *Service) CreateVMDisk(vmId int, storage vmModels.Storage) error {
 	return nil
 }
 
-func (s *Service) RemoveLibvirtDisks(vmId int) error {
-	return nil
-}
-
-func (s *Service) SyncVMDisks(vmId int) error {
-	off, err := s.IsDomainShutOff(vmId)
+func (s *Service) SyncVMDisks(rid uint) error {
+	off, err := s.IsDomainShutOff(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
 
 	if !off {
-		return fmt.Errorf("domain_state_not_shutoff: %d", vmId)
+		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -209,7 +204,7 @@ func (s *Service) SyncVMDisks(vmId int) error {
 		}
 	}
 
-	vm, err := s.GetVMByVmId(vmId)
+	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
@@ -247,14 +242,14 @@ func (s *Service) SyncVMDisks(vmId int) error {
 		if storage.Type == vmModels.VMStorageTypeRaw {
 			diskValue = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 				storage.Pool,
-				vmId,
+				rid,
 				storage.ID,
 				storage.ID,
 			)
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
 			diskValue = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d",
 				storage.Pool,
-				vmId,
+				rid,
 				storage.ID,
 			)
 		} else if storage.Type == vmModels.VMStorageTypeDiskImage {
@@ -275,7 +270,7 @@ func (s *Service) SyncVMDisks(vmId int) error {
 		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_create_cloud_init_iso")
 	}
 
-	cloudInitISOPath, err := s.GetCloudInitISOPath(vm.VmID)
+	cloudInitISOPath, err := s.GetCloudInitISOPath(vm.RID)
 	if err != nil {
 		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_get_cloud_init_iso_path")
 	} else if cloudInitISOPath != "" {
@@ -314,8 +309,8 @@ func (s *Service) SyncVMDisks(vmId int) error {
 	return nil
 }
 
-func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -350,14 +345,14 @@ func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
 	} else if storage.Type == vmModels.VMStorageTypeRaw {
 		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			storage.Pool,
-			vmId,
+			rid,
 			storage.ID,
 			storage.ID,
 		)
 	} else if storage.Type == vmModels.VMStorageTypeZVol {
 		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
 			storage.Pool,
-			vmId,
+			rid,
 			storage.ID,
 		)
 	}
@@ -402,16 +397,16 @@ func (s *Service) RemoveStorageXML(vmId int, storage vmModels.Storage) error {
 }
 
 func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
-	off, err := s.IsDomainShutOff(req.VMID)
+	off, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
 
 	if !off {
-		return fmt.Errorf("domain_state_not_shutoff: %d", req.VMID)
+		return fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
 	}
 
-	vm, err := s.GetVMByVmId(req.VMID)
+	vm, err := s.GetVMByRID(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
@@ -424,7 +419,7 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 		return fmt.Errorf("failed_to_find_storage_record: %w", err)
 	}
 
-	if err := s.RemoveStorageXML(req.VMID, storage); err != nil {
+	if err := s.RemoveStorageXML(req.RID, storage); err != nil {
 		logger.L.Error().Err(err).Msg("vm: storage_detach: failed_to_remove_storage_xml")
 	}
 
@@ -514,13 +509,13 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 
 		datasetPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			storage.Pool,
-			vm.VmID,
+			vm.RID,
 			storage.ID,
 			storage.ID,
 		)
@@ -568,7 +563,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		if sourcePool == req.Pool {
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
 				req.Pool,
-				vm.VmID,
+				vm.RID,
 				storage.ID,
 			)
 
@@ -582,7 +577,6 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				Pool: req.Pool,
 				Name: dataset.Name,
 				GUID: dataset.GUID,
-				VMID: uint(vm.VmID),
 			}
 
 			if err := s.DB.Create(&storageDataset).Error; err != nil {
@@ -595,11 +589,11 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 			}
 		} else {
-			if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+			if err := s.CreateVMDisk(vm.RID, storage); err != nil {
 				return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 			}
 
-			snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.VmID, storage.ID)
+			snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.RID, storage.ID)
 			snapshot, err := found.Snapshot(snapshotName, false)
 			if err != nil {
 				return fmt.Errorf("failed_to_create_snapshot_of_imported_zvol: %w", err)
@@ -607,7 +601,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
 				req.Pool,
-				vm.VmID,
+				vm.RID,
 				storage.ID,
 			)
 
@@ -650,7 +644,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		}
 	}
 
-	return s.SyncVMDisks(vm.VmID)
+	return s.SyncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM) error {
@@ -670,13 +664,13 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 
 		diskPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			storage.Pool,
-			vm.VmID,
+			vm.RID,
 			storage.ID,
 			storage.ID,
 		)
@@ -696,12 +690,12 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.VmID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 	}
 
-	return s.SyncVMDisks(vm.VmID)
+	return s.SyncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest) error {
@@ -712,32 +706,32 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 		return fmt.Errorf("invalid_storage_name")
 	}
 
-	vm, err := s.GetVMByVmId(req.VMID)
+	vm, err := s.GetVMByRID(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
 
-	off, err := s.IsDomainShutOff(req.VMID)
+	off, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
 
 	if !off {
-		return fmt.Errorf("domain_state_not_shutoff: %d", req.VMID)
+		return fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
 	}
 
 	var bootOrder int
 	if req.BootOrder != nil {
 		bootOrder = *req.BootOrder
 	} else {
-		nextIndex, err := s.GetNextBootOrderIndex(vm.VmID)
+		nextIndex, err := s.GetNextBootOrderIndex(int(vm.ID))
 		if err != nil {
 			return fmt.Errorf("failed_to_get_next_boot_order_index: %w", err)
 		}
 		bootOrder = nextIndex
 	}
 
-	valid, err := s.ValidateBootOrderIndex(vm.VmID, bootOrder)
+	valid, err := s.ValidateBootOrderIndex(int(vm.ID), bootOrder)
 	if err != nil {
 		return fmt.Errorf("failed_to_validate_boot_order_index: %w", err)
 	}
@@ -747,7 +741,7 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 	}
 
 	if req.StorageType != libvirtServiceInterfaces.StorageTypeDiskImage {
-		err = s.CreateStorageParent(vm.VmID, req.Pool)
+		err = s.CreateStorageParent(vm.RID, req.Pool)
 		if err != nil {
 			return fmt.Errorf("failed_to_create_storage_parent: %w", err)
 		}
@@ -781,13 +775,13 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		return fmt.Errorf("failed_to_find_vm_record: %w", err)
 	}
 
-	off, err := s.IsDomainShutOff(vm.VmID)
+	off, err := s.IsDomainShutOff(vm.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
 
 	if !off {
-		return fmt.Errorf("domain_state_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_state_not_shutoff: %d", vm.RID)
 	}
 
 	if req.BootOrder != nil && *req.BootOrder != current.BootOrder {
@@ -828,7 +822,7 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		case vmModels.VMStorageTypeRaw:
 			imagePath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 				current.Pool,
-				vm.VmID,
+				vm.RID,
 				current.ID,
 				current.ID,
 			)
@@ -868,14 +862,14 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		return fmt.Errorf("failed_to_update_storage_record: %w", err)
 	}
 
-	if err := s.SyncVMDisks(vm.VmID); err != nil {
+	if err := s.SyncVMDisks(vm.RID); err != nil {
 		return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Service) CreateStorageParent(vmId int, poolName string) error {
+func (s *Service) CreateStorageParent(rid uint, poolName string) error {
 	pools, err := s.System.GetUsablePools()
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
@@ -888,7 +882,7 @@ func (s *Service) CreateStorageParent(vmId int, poolName string) error {
 			continue
 		}
 
-		target := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool.Name, vmId)
+		target := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool.Name, rid)
 		datasets, _ := zfs.Filesystems(target)
 
 		if len(datasets) > 0 {

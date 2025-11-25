@@ -4267,7 +4267,7 @@ msgid "Deleting Virtual Machine"
 msgstr "Deleting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.vmId
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4285,7 +4285,7 @@ msgid "Starting Virtual Machine"
 msgstr "Starting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.vmId
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
 msgstr "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4303,7 +4303,7 @@ msgid "Stopping Virtual Machine"
 msgstr "Stopping Virtual Machine"
 
 #. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.vmId
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being stopped"
@@ -4321,7 +4321,7 @@ msgid "Shutting Down Virtual Machine"
 msgstr "Shutting Down Virtual Machine"
 
 #. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.vmId
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being shut down"
@@ -4339,7 +4339,7 @@ msgid "Rebooting Virtual Machine"
 msgstr "Rebooting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.vmId
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
 msgstr "Please wait while VM <b>{0} ({1})</b> is being rebooted"
@@ -5334,3 +5334,6 @@ msgstr "Failed to update storage"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Storage updated"
 msgstr "Storage updated"
+
+#~ msgid "Manage ({0} lpinned)"
+#~ msgstr "Manage ({0} lpinned)"

@@ -18,7 +18,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyIgnoreUMSR(vm.vmId, ignoreUMSR);
+		const response = await modifyIgnoreUMSR(vm.rid, ignoreUMSR);
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify unimplemented MSRs access setting', {

@@ -22,7 +22,7 @@ type CPUPinning struct {
 
 type CreateVMRequest struct {
 	Name        string `json:"name" binding:"required"`
-	VMID        *int   `json:"vmId" binding:"required"`
+	RID         *uint  `json:"rid" binding:"required"`
 	Description string `json:"description"`
 
 	ISO string `json:"iso"`

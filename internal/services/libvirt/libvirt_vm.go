@@ -65,15 +65,15 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			{
 				Type: "nmdm",
 				Source: libvirtServiceInterfaces.SerialSource{
-					Master: fmt.Sprintf("/dev/nmdm%dA", vm.VmID),
-					Slave:  fmt.Sprintf("/dev/nmdm%dB", vm.VmID),
+					Master: fmt.Sprintf("/dev/nmdm%dA", vm.RID),
+					Slave:  fmt.Sprintf("/dev/nmdm%dB", vm.RID),
 				},
 			},
 		}
 	}
 
 	sIndex := 10
-	uefi := fmt.Sprintf("%s,%s/%d_vars.fd", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", vmPath, vm.VmID)
+	uefi := fmt.Sprintf("%s,%s/%d_vars.fd", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", vmPath, vm.RID)
 
 	var bhyveArgs [][]libvirtServiceInterfaces.BhyveArg
 
@@ -83,7 +83,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	*/
 
 	if vm.TPMEmulation {
-		tpmArg := fmt.Sprintf("-ltpm,swtpm,%s", filepath.Join(vmPath, fmt.Sprintf("%d_tpm.socket", vm.VmID)))
+		tpmArg := fmt.Sprintf("-ltpm,swtpm,%s", filepath.Join(vmPath, fmt.Sprintf("%d_tpm.socket", vm.RID)))
 		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 			{
 				Value: tpmArg,
@@ -100,9 +100,9 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
-				disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.VmID, storage.ID, storage.ID)
+				disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.RID, storage.ID, storage.ID)
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
-				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.VmID, storage.ID)
+				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.RID, storage.ID)
 			} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 				var err error
 				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
@@ -127,7 +127,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	if vm.CloudInitData != "" || vm.CloudInitMetaData != "" {
-		cloudInitISOPath, err := s.GetCloudInitISOPath(vm.VmID)
+		cloudInitISOPath, err := s.GetCloudInitISOPath(vm.RID)
 		if err != nil {
 			return "", fmt.Errorf("failed_to_get_cloud_init_iso_path: %w", err)
 		}
@@ -206,7 +206,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	domain := libvirtServiceInterfaces.Domain{
 		Type:       "bhyve",
 		XMLNSBhyve: "http://libvirt.org/schemas/domain/bhyve/1.0",
-		Name:       strconv.Itoa(vm.VmID),
+		Name:       strconv.Itoa(int(vm.RID)),
 		Memory: libvirtServiceInterfaces.Memory{
 			Unit: "B",
 			Text: strconv.Itoa(vm.RAM),
@@ -352,23 +352,23 @@ func (s *Service) CreateLvVm(id int) error {
 		return err
 	}
 
-	vmPath, err := s.CreateVMDirectory(vm.VmID)
+	vmPath, err := s.CreateVMDirectory(vm.RID)
 	if err != nil {
 		return err
 	}
 
-	err = s.ResetUEFIVars(vm.VmID)
+	err = s.ResetUEFIVars(vm.RID)
 	if err != nil {
 		return err
 	}
 
-	err = s.CreateStorageParent(vm.VmID, "")
+	err = s.CreateStorageParent(vm.RID, "")
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
 			if storage.Type == vmModels.VMStorageTypeRaw ||
 				storage.Type == vmModels.VMStorageTypeZVol {
-				err = s.CreateVMDisk(vm.VmID, storage)
+				err = s.CreateVMDisk(vm.RID, storage)
 
 				if err != nil {
 					return err
@@ -421,11 +421,11 @@ func (s *Service) CreateLvVm(id int) error {
 	return nil
 }
 
-func (s *Service) RemoveLvVm(vmId int) error {
+func (s *Service) RemoveLvVm(rid uint) error {
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -445,12 +445,12 @@ func (s *Service) RemoveLvVm(vmId int) error {
 		return fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	err = s.StopTPM(vmId)
+	err = s.StopTPM(rid)
 	if err != nil {
-		return fmt.Errorf("failed to stop TPM for VM %d: %w", vmId, err)
+		return fmt.Errorf("failed to stop TPM for VM %d: %w", rid, err)
 	}
 
-	vmPath := filepath.Join(vmDir, strconv.Itoa(vmId))
+	vmPath := filepath.Join(vmDir, strconv.Itoa(int(rid)))
 	if _, err := os.Stat(vmPath); err == nil {
 		if err := os.RemoveAll(vmPath); err != nil {
 			return fmt.Errorf("failed to remove VM directory: %w", err)
@@ -460,10 +460,10 @@ func (s *Service) RemoveLvVm(vmId int) error {
 	return nil
 }
 
-func (s *Service) GetLvDomain(vmId int) (*libvirtServiceInterfaces.LvDomain, error) {
+func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error) {
 	var dom libvirtServiceInterfaces.LvDomain
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -504,10 +504,10 @@ func (s *Service) StartTPM() error {
 		return fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	vmIds := make([]int, 0, len(vms))
+	rids := make([]uint, 0, len(vms))
 	for _, vm := range vms {
 		if vm.TPMEmulation {
-			vmIds = append(vmIds, vm.VmID)
+			rids = append(rids, vm.RID)
 		}
 	}
 
@@ -524,22 +524,22 @@ func (s *Service) StartTPM() error {
 		return fmt.Errorf("failed_to_unmarshal_ps_output: %w", err)
 	}
 
-	swtpmRunning := make(map[int]bool)
+	swtpmRunning := make(map[uint]bool)
 
 	for _, proc := range top.ProcessInformation.Process {
-		for _, vmId := range vmIds {
-			if strings.Contains(proc.Command, fmt.Sprintf("%d_tpm.socket", vmId)) {
-				swtpmRunning[vmId] = true
+		for _, rid := range rids {
+			if strings.Contains(proc.Command, fmt.Sprintf("%d_tpm.socket", rid)) {
+				swtpmRunning[rid] = true
 			}
 		}
 	}
 
-	for _, vmId := range vmIds {
-		if !swtpmRunning[vmId] {
-			vmPath := fmt.Sprintf("%s/%d", vmDir, vmId)
-			tpmSocket := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.socket", vmId))
-			tpmState := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.state", vmId))
-			tpmLog := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.log", vmId))
+	for _, rid := range rids {
+		if !swtpmRunning[rid] {
+			vmPath := fmt.Sprintf("%s/%d", vmDir, rid)
+			tpmSocket := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.socket", rid))
+			tpmState := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.state", rid))
+			tpmLog := filepath.Join(vmPath, fmt.Sprintf("%d_tpm.log", rid))
 
 			args := []string{
 				"socket",
@@ -557,7 +557,7 @@ func (s *Service) StartTPM() error {
 
 			_, err = utils.RunCommand("swtpm", args...)
 			if err != nil {
-				return fmt.Errorf("failed_to_start_swtpm_for_vm: %d, error: %w", vmId, err)
+				return fmt.Errorf("failed_to_start_swtpm_for_vm: %d, error: %w", rid, err)
 			}
 		}
 	}
@@ -565,16 +565,16 @@ func (s *Service) StartTPM() error {
 	return nil
 }
 
-func (s *Service) StopTPM(vmId int) error {
+func (s *Service) StopTPM(rid uint) error {
 	var vm vmModels.VM
 
-	err := s.DB.Find(&vm, "vm_id = ?", vmId).Error
+	err := s.DB.Find(&vm, "rid = ?", rid).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_find_vm: %w", err)
 	}
 
 	if vm.ID == 0 {
-		return fmt.Errorf("vm_not_found: %d", vmId)
+		return fmt.Errorf("vm_not_found: %d", rid)
 	}
 
 	if !vm.TPMEmulation {
@@ -586,7 +586,7 @@ func (s *Service) StopTPM(vmId int) error {
 		return fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	tpmSocket := filepath.Join(vmDir, strconv.Itoa(vmId), fmt.Sprintf("%d_tpm.socket", vmId))
+	tpmSocket := filepath.Join(vmDir, strconv.Itoa(int(rid)), fmt.Sprintf("%d_tpm.socket", rid))
 	if _, err := os.Stat(tpmSocket); os.IsNotExist(err) {
 		return fmt.Errorf("tpm_socket_not_found: %s", tpmSocket)
 	}
@@ -615,7 +615,7 @@ func (s *Service) StopTPM(vmId int) error {
 				if err := utils.KillProcess(pid); err != nil {
 					return fmt.Errorf("failed_to_kill_swtpm_process: %d, error: %w", pid, err)
 				}
-				logger.L.Info().Msgf("Stopped swtpm process for VM ID %d", vmId)
+				logger.L.Info().Msgf("Stopped swtpm process for VM RID %d", rid)
 			}
 		}
 	}
@@ -634,11 +634,11 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 	}
 
 	for _, other := range vms {
-		if other.VmID == vm.VmID {
+		if other.RID == vm.RID {
 			continue
 		}
 
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(other.VmID))
+		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(other.RID)))
 		if err != nil {
 			continue
 		}
@@ -651,7 +651,7 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 		for _, pci := range vm.PCIDevices {
 			for _, o := range other.PCIDevices {
 				if pci == o {
-					return fmt.Errorf("pci_device_%d_in_use_by_vm_%d", pci, other.VmID)
+					return fmt.Errorf("pci_device_%d_in_use_by_vm_%d", pci, other.RID)
 				}
 			}
 		}
@@ -664,7 +664,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vm.VmID))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -781,7 +781,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	err = s.SetActionDate(vm, action)
 
 	if err != nil {
-		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.VmID)
+		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.RID)
 	}
 
 	return nil
@@ -810,8 +810,8 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 	return nil
 }
 
-func (s *Service) GetVMXML(vmId int) (string, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) GetVMXML(rid uint) (string, error) {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return "", fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -824,8 +824,8 @@ func (s *Service) GetVMXML(vmId int) (string, error) {
 	return xmlDesc, nil
 }
 
-func (s *Service) IsDomainInactive(vmId int) (bool, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) IsDomainInactive(rid uint) (bool, error) {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -843,8 +843,8 @@ func (s *Service) IsDomainInactive(vmId int) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) GetDomainState(vmId int) (libvirt.DomainState, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) GetDomainState(rid int) (libvirt.DomainState, error) {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(rid))
 	if err != nil {
 		return libvirt.DomainState(libvirt.DomainNostate), err
 	}

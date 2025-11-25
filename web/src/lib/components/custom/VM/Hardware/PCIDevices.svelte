@@ -60,7 +60,7 @@
 	async function modify() {
 		if (vm) {
 			const response = await modifyPPT(
-				vm.vmId,
+				vm.rid,
 				properties.combobox.value.map((id) => Number(id)) || []
 			);
 

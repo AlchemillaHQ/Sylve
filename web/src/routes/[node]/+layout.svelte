@@ -282,9 +282,9 @@
 		if (page.url.pathname === `/${node}`) {
 			goto(`/${node}/summary`);
 		} else if (page.url.pathname.startsWith(`/${node}/vm`)) {
-			const vmId = page.url.pathname.split('/')[3];
-			if (page.url.pathname === `/${node}/vm/${vmId}`) {
-				goto(`/${node}/vm/${vmId}/summary`, { replaceState: true });
+			const rid = page.url.pathname.split('/')[3];
+			if (page.url.pathname === `/${node}/vm/${rid}`) {
+				goto(`/${node}/vm/${rid}/summary`, { replaceState: true });
 			}
 		} else if (page.url.pathname.startsWith(`/${node}/jail`)) {
 			const jailId = page.url.pathname.split('/')[3];

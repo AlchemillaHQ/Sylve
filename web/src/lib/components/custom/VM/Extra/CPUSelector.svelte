@@ -478,7 +478,7 @@
 
 							{#if isSelected}
 								<div
-									class="text-primary-foreground absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
+									class="text-primary-foreground absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-yellow-600"
 								>
 									<span class="icon-[material-symbols--check] h-2.5 w-2.5"></span>
 								</div>

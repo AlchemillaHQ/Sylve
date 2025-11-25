@@ -46,13 +46,10 @@ const (
 )
 
 type VMStorageDataset struct {
-	ID uint `gorm:"primaryKey" json:"id"`
-
+	ID   uint   `gorm:"primaryKey" json:"id"`
 	Pool string `json:"pool"`
 	Name string `json:"name"`
 	GUID string `json:"guid"`
-
-	VMID uint `json:"vmId" gorm:"index"`
 }
 
 func (VMStorageDataset) TableName() string {
@@ -148,7 +145,7 @@ type VM struct {
 	ID          uint   `gorm:"primaryKey" json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	VmID        int    `json:"vmId"`
+	RID         uint   `json:"rid" gorm:"column:rid;not null;uniqueIndex;"`
 
 	CPUSockets int `json:"cpuSockets"`
 	CPUCores   int `json:"cpuCores"`

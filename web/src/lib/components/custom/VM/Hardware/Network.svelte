@@ -75,7 +75,7 @@
 		}
 
 		const response = await attachNetwork(
-			vm?.vmId ?? 0,
+			vm?.rid ?? 0,
 			properties.switchId,
 			properties.emulation,
 			properties.mac.value !== '0' ? Number(properties.mac.value) : 0

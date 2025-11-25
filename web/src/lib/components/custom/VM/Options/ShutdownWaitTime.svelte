@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { modifyShutdownWaitTime } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
@@ -28,7 +27,7 @@
 			return;
 		}
 
-		const response = await modifyShutdownWaitTime(vm.vmId, Number(shutdownWaitTime));
+		const response = await modifyShutdownWaitTime(vm.rid, Number(shutdownWaitTime));
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify shutdown wait time', {

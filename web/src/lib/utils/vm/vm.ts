@@ -129,7 +129,7 @@ export function isValidCreateData(
 }
 
 export function getNextId(vms: VM[], jails: Jail[]): number {
-	const usedIds = [...vms.map((vm) => vm.vmId), ...jails.map((jail) => jail.ctId)];
+	const usedIds = [...vms.map((vm) => vm.rid), ...jails.map((jail) => jail.ctId)];
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;
 }

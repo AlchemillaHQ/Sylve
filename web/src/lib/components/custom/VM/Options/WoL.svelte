@@ -18,7 +18,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyWoL(vm.vmId, wol);
+		const response = await modifyWoL(vm.rid, wol);
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify WoL setting', {

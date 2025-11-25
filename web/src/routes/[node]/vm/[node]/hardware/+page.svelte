@@ -21,7 +21,7 @@
 	import { untrack } from 'svelte';
 
 	interface Data {
-		vmId: number;
+		rid: number;
 		vms: VM[];
 		vm: VM;
 		ram: RAMInfo;
@@ -72,9 +72,9 @@
 	);
 
 	const domain = resource(
-		() => `vm-domain-${data.vmId}`,
+		() => `vm-domain-${data.rid}`,
 		async (key) => {
-			const result = await getVMDomain(Number(data.vmId));
+			const result = await getVMDomain(Number(data.rid));
 			updateCache(key, result);
 			return result;
 		},
@@ -107,7 +107,7 @@
 	});
 
 	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.current.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
+		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null
 	);
 
 	let options = {

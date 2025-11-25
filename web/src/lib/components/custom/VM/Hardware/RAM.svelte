@@ -54,7 +54,7 @@
 		}
 
 		if (vm) {
-			const response = await modifyRAM(vm.vmId, bytes);
+			const response = await modifyRAM(vm.rid, bytes);
 
 			if (response.error) {
 				handleAPIError(response);

@@ -225,7 +225,7 @@ func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {
 				return false
 			}
 
-			domain, err := s.Libvirt.GetLvDomain(vm.VmID)
+			domain, err := s.Libvirt.GetLvDomain(vm.RID)
 			if err != nil {
 				return false
 			}

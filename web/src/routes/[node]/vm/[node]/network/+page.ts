@@ -6,20 +6,20 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
 	const cacheDuration = 1000 * 60000;
-	const vmId = params.node;
+	const rid = params.node;
 
 	const [vms, domain, interfaces, switches, networkObjects] = await Promise.all([
 		cachedFetch('vm-list', async () => getVMs(), cacheDuration),
-		cachedFetch(`vm-domain-${vmId}`, async () => getVMDomain(Number(vmId)), cacheDuration),
+		cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(Number(rid)), cacheDuration),
 		cachedFetch('networkInterfaces', async () => await getInterfaces(), cacheDuration),
 		cachedFetch('networkSwitches', async () => await getSwitches(), cacheDuration),
 		cachedFetch('networkObjects', async () => await getNetworkObjects(), cacheDuration)
 	]);
 
-	const vm = vms.find((vm) => vm.vmId === Number(vmId));
+	const vm = vms.find((vm) => vm.rid === Number(rid));
 
 	return {
-		node: params.node,
+		rid,
 		domain,
 		interfaces,
 		switches,

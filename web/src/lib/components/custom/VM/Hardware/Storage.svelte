@@ -198,7 +198,7 @@
 			properties.loading = true;
 
 			const response = await storageImport(
-				vm.vmId,
+				vm.rid,
 				properties.name,
 				imageCombobox.value,
 				properties.diskType as 'raw' | 'zvol',
@@ -236,7 +236,7 @@
 			}
 
 			const response = await storageNew(
-				vm.vmId,
+				vm.rid,
 				properties.name,
 				properties.diskType as 'zvol' | 'raw' | 'image',
 				parsedSize,

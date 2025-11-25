@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { modifyBootOrder, modifyWoL } from '$lib/api/vm/vm';
+	import { modifyBootOrder } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -21,7 +21,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyBootOrder(vm.vmId, startAtBoot, Number(startOrder));
+		const response = await modifyBootOrder(vm.rid, startAtBoot, Number(startOrder));
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify start order', {

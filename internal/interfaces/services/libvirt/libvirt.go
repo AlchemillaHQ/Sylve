@@ -24,16 +24,16 @@ type LibvirtServiceInterface interface {
 	DeleteStoragePool(name string) error
 	RescanStoragePools() error
 
-	NetworkDetach(vmId int, networkId int) error
-	NetworkAttach(vmId int, switchName string, emulation string, macObjId uint) error
-	FindAndChangeMAC(vmId int, oldMac string, newMac string) error
+	NetworkDetach(rid uint, networkId uint) error
+	NetworkAttach(rid uint, switchName string, emulation string, macObjId uint) error
+	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 
 	StoreVMUsage() error
 
 	FindISOByUUID(uuid string, includeImg bool) (string, error)
 
-	GetLvDomain(vmId int) (*LvDomain, error)
-	IsDomainInactive(vmId int) (bool, error)
+	GetLvDomain(rid uint) (*LvDomain, error)
+	IsDomainInactive(rid uint) (bool, error)
 
 	FindVmByMac(mac string) (vmModels.VM, error)
 	WolTasks()
@@ -48,8 +48,8 @@ type LvDomain struct {
 
 type SimpleList struct {
 	ID    uint                `json:"id"`
+	RID   uint                `json:"rid"`
 	Name  string              `json:"name"`
-	VMID  int                 `json:"vmId"`
 	State libvirt.DomainState `json:"state"`
 }
 

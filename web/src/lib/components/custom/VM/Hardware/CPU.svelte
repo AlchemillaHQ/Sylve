@@ -63,7 +63,7 @@
 	async function modify() {
 		if (vm) {
 			const response = await modifyCPU(
-				vm.vmId,
+				vm.rid,
 				parseInt(properties.cpu.sockets.toString(), 10),
 				parseInt(properties.cpu.cores.toString(), 10),
 				parseInt(properties.cpu.threads.toString(), 10),

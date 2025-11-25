@@ -4,8 +4,6 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
 	const cacheDuration = SEVEN_DAYS;
-	const vmId = params.node;
-
 	const [jails, jailStates] = await Promise.all([
 		cachedFetch('jail-list', async () => getJails(), cacheDuration),
 		cachedFetch('jail-states', async () => getJailStates(), cacheDuration)

@@ -20,6 +20,7 @@
 	import type { Chart } from 'chart.js';
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
+	import { fade } from 'svelte/transition';
 
 	interface Data {
 		basicInfo: BasicInfo;
@@ -265,7 +266,7 @@
 <div class="flex h-full w-full flex-col">
 	<div class="min-h-0 flex-1">
 		<ScrollArea orientation="both" class="h-full w-full">
-			<div class="space-y-4 p-4">
+			<div class="space-y-4 p-4" transition:fade|global={{ duration: 300 }}>
 				<Card.Root class="w-full gap-0 p-0">
 					<Card.Header class="p-4 pb-0">
 						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">

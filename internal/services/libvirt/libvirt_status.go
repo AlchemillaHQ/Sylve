@@ -42,17 +42,17 @@ func (s *Service) StoreVMUsage() error {
 
 	defer s.crudMutex.Unlock()
 
-	var vmIds []int
-	if err := s.DB.Model(&vmModels.VM{}).Pluck("vm_id", &vmIds).Error; err != nil {
-		return fmt.Errorf("failed_to_get_vm_ids: %w", err)
+	var rids []int
+	if err := s.DB.Model(&vmModels.VM{}).Pluck("rid", &rids).Error; err != nil {
+		return fmt.Errorf("failed_to_get_rids: %w", err)
 	}
 
-	if len(vmIds) == 0 {
+	if len(rids) == 0 {
 		return nil
 	}
 
-	for _, vmId := range vmIds {
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	for _, rid := range rids {
+		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(rid))
 		if err != nil {
 			continue
 		}
@@ -90,7 +90,7 @@ func (s *Service) StoreVMUsage() error {
 
 		var rssKB uint64
 		for _, proc := range top.ProcessInformation.Process {
-			if strings.Contains(proc.Command, fmt.Sprintf("bhyve: %d", vmId)) {
+			if strings.Contains(proc.Command, fmt.Sprintf("bhyve: %d", rid)) {
 				rssKB, _ = strconv.ParseUint(proc.RSS, 10, 64)
 				break
 			}
@@ -101,7 +101,7 @@ func (s *Service) StoreVMUsage() error {
 		var vmDbId uint
 
 		if err := s.DB.Model(&vmModels.VM{}).
-			Where("vm_id = ?", vmId).
+			Where("rid = ?", rid).
 			Select("id").
 			First(&vmDbId).Error; err != nil {
 			return fmt.Errorf("failed_to_get_actual_vm_id: %w", err)
@@ -152,10 +152,10 @@ func (s *Service) StoreVMUsage() error {
 	return nil
 }
 
-func (s *Service) GetVMUsage(vmId int, limit int) ([]vmModels.VMStats, error) {
+func (s *Service) GetVMUsage(rid int, limit int) ([]vmModels.VMStats, error) {
 	var vmDbId uint
 	if err := s.DB.Model(&vmModels.VM{}).
-		Where("vm_id = ?", vmId).
+		Where("rid = ?", rid).
 		Select("id").
 		First(&vmDbId).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_actual_vm_id: %w", err)

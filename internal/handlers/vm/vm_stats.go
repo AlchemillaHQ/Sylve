@@ -26,22 +26,22 @@ import (
 // @Success 200 {object} internal.APIResponse[[]vmModels.VMStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/stats/:vmId/:limit [get]
+// @Router /vm/stats/:rid/:limit [get]
 func GetVMStats(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmId := c.Param("vmId")
+		rid := c.Param("rid")
 		limit := c.Param("limit")
-		if vmId == "" || limit == "" {
+		if rid == "" || limit == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid and limit are required",
+				Error:   "rid and limit are required",
 			})
 			return
 		}
 
-		stats, err := libvirtService.GetVMUsage(int(utils.StringToUint64(vmId)), int(utils.StringToUint64(limit)))
+		stats, err := libvirtService.GetVMUsage(int(utils.StringToUint64(rid)), int(utils.StringToUint64(limit)))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

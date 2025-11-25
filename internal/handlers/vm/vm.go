@@ -20,23 +20,23 @@ import (
 )
 
 type VMEditDescRequest struct {
-	ID          uint   `json:"id" binding:"required"`
-	Description string `json:"description" binding:"required"`
+	RID         uint   `json:"rid" binding:"required"`
+	Description string `json:"description"`
 }
 
-// @Summary Get a Virtual Machine by VMID or ID
-// @Description Retrieve a virtual machine by its VMID or ID
+// @Summary Get a Virtual Machine by RID or ID
+// @Description Retrieve a virtual machine by its RID or ID
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param vmid path string true "Virtual Machine ID or VmId"
-// @Param type query string false "Type of identifier (vmid or id)"  Enums(vmid, id) default(vmid)
+// @Param rid path string true "Virtual Machine RID or ID"
+// @Param type query string false "Type of identifier (rid or id)"  Enums(rid, id) default(rid)
 // @Success 200 {object} internal.APIResponse[vmModels.VM] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/{id} [get]
+// @Router /vm/:id [get]
 func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		vmID := c.Param("id")
@@ -50,13 +50,13 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		var t string = c.DefaultQuery("type", "vmid")
-		if t != "vmid" && t != "id" {
+		var t string = c.DefaultQuery("type", "rid")
+		if t != "rid" && t != "id" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_type_param",
 				Data:    nil,
-				Error:   "Type parameter must be either 'vmid' or 'id'",
+				Error:   "Type parameter must be either 'rid' or 'id'",
 			})
 			return
 		}
@@ -73,8 +73,8 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		var vm vmModels.VM
-		if t == "vmid" {
-			vm, err = libvirtService.GetVMByVmId(identifier)
+		if t == "rid" {
+			vm, err = libvirtService.GetVMByRID(uint(identifier))
 		} else {
 			vm, err = libvirtService.GetVM(identifier)
 		}
@@ -140,48 +140,48 @@ func ListVMs(libvirtService *libvirt.Service) gin.HandlerFunc {
 }
 
 // @Summary Get a Virtual Machine's Domain
-// @Description Retrieve the domain information of a virtual machine by its ID
+// @Description Retrieve the domain information of a virtual machine by its RID
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path string true "Virtual Machine ID"
+// @Param rid path string true "Virtual Machine RID"
 // @Success 200 {object} internal.APIResponse[libvirtServiceInterfaces.LvDomain] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/domain/{id} [get]
+// @Router /vm/domain/:rid [get]
 func GetLvDomain(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmID := c.Param("id")
-		if vmID == "" {
+		rid := c.Param("rid")
+		if rid == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_vm_id",
+				Message: "invalid_rid",
 				Data:    nil,
 				Error:   "Virtual Machine ID is required",
 			})
 			return
 		}
 
-		vmInt, err := strconv.Atoi(vmID)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_vm_id_format",
+				Message: "invalid_rid_format",
+				Error:   "Virtual Machine RID must be a valid integer",
 				Data:    nil,
-				Error:   "Virtual Machine ID must be a valid integer",
 			})
 			return
 		}
 
-		domain, err := libvirtService.GetLvDomain(vmInt)
+		domain, err := libvirtService.GetLvDomain(uint(ridInt))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_domain",
-				Data:    nil,
 				Error:   "failed_to_get_domain: " + err.Error(),
+				Data:    nil,
 			})
 			return
 		}
@@ -360,24 +360,24 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 }
 
 // @Summary Perform an action on a Virtual Machine
-// @Description Perform a specified action (start, stop, reboot) on a virtual machine by its ID
+// @Description Perform a specified action (start, stop, reboot) on a virtual machine by its RID
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path string true "Virtual Machine ID"
+// @Param rid path string true "Virtual Machine RID"
 // @Param action path string true "Action to perform (start, stop, reboot)"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/{action}/{id} [post]
+// @Router /vm/{action}/:rid [post]
 func VMActionHandler(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		vmID := c.Param("id")
+		rid := c.Param("rid")
 		action := c.Param("action")
 
-		if vmID == "" || action == "" {
+		if rid == "" || action == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
@@ -387,18 +387,18 @@ func VMActionHandler(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vmInt, err := strconv.Atoi(vmID)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_vm_id_format",
+				Message: "invalid_rid_format",
 				Data:    nil,
 				Error:   "Virtual Machine ID must be a valid integer",
 			})
 			return
 		}
 
-		err = libvirtService.PerformAction(uint(vmInt), action)
+		err = libvirtService.PerformAction(uint(ridInt), action)
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
@@ -419,7 +419,7 @@ func VMActionHandler(libvirtService *libvirt.Service) gin.HandlerFunc {
 }
 
 // @Summary Edit a Virtual Machine's description
-// @Description Update the description of a virtual machine by its ID
+// @Description Update the description of a virtual machine by its RID
 // @Tags VM
 // @Accept json
 // @Produce json
@@ -441,7 +441,7 @@ func UpdateVMDescription(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := libvirtService.UpdateDescription(req.ID, req.Description)
+		err := libvirtService.UpdateDescription(req.RID, req.Description)
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

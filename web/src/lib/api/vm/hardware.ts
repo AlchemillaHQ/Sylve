@@ -2,13 +2,13 @@ import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 
 export async function modifyCPU(
-	vmId: number,
+	rid: number,
 	cpuSockets: number,
 	cpuCores: number,
 	cpuThreads: number,
 	cpuPinning: number[]
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/cpu/${vmId}`, APIResponseSchema, 'PUT', {
+	return await apiRequest(`/vm/hardware/cpu/${rid}`, APIResponseSchema, 'PUT', {
 		cpuSockets,
 		cpuCores,
 		cpuThreads,
@@ -16,21 +16,21 @@ export async function modifyCPU(
 	});
 }
 
-export async function modifyRAM(vmId: number, ram: number): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/ram/${vmId}`, APIResponseSchema, 'PUT', {
+export async function modifyRAM(rid: number, ram: number): Promise<APIResponse> {
+	return await apiRequest(`/vm/hardware/ram/${rid}`, APIResponseSchema, 'PUT', {
 		ram
 	});
 }
 
 export async function modifyVNC(
-	vmId: number,
+	rid: number,
 	vncEnabled: boolean,
 	vncPort: number,
 	vncResolution: string,
 	vncPassword: string,
 	vncWait: boolean
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/vnc/${vmId}`, APIResponseSchema, 'PUT', {
+	return await apiRequest(`/vm/hardware/vnc/${rid}`, APIResponseSchema, 'PUT', {
 		vncEnabled,
 		vncPort,
 		vncResolution,
@@ -39,8 +39,8 @@ export async function modifyVNC(
 	});
 }
 
-export async function modifyPPT(vmId: number, pciDevices: number[]): Promise<APIResponse> {
-	return await apiRequest(`/vm/hardware/ppt/${vmId}`, APIResponseSchema, 'PUT', {
+export async function modifyPPT(rid: number, pciDevices: number[]): Promise<APIResponse> {
+	return await apiRequest(`/vm/hardware/ppt/${rid}`, APIResponseSchema, 'PUT', {
 		pciDevices
 	});
 }

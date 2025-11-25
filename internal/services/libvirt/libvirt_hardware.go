@@ -316,22 +316,22 @@ func cleanPassthrough(xml string) (string, error) {
 	return out, nil
 }
 
-func (s *Service) ModifyCPU(vmId int, req libvirtServiceInterfaces.ModifyCPURequest) error {
-	vm, err := s.GetVMByVmId(vmId)
+func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequest) error {
+	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return err
 	}
 
-	status, err := s.IsDomainShutOff(vm.VmID)
+	status, err := s.IsDomainShutOff(vm.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_domain_shutoff_status: %w", err)
 	}
 
 	if !status {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	err = s.ValidateCPUPins(uint(vmId), req.CPUPinning, 0)
+	err = s.ValidateCPUPins(uint(vm.RID), req.CPUPinning, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_validate_cpu_pins: %w", err)
 	}
@@ -403,7 +403,7 @@ func (s *Service) ModifyCPU(vmId int, req libvirtServiceInterfaces.ModifyCPURequ
 		vm.CPUSockets == req.CPUSockets &&
 		vm.CPUCores == req.CPUCores &&
 		vm.CPUThreads == req.CPUThreads {
-		return fmt.Errorf("no_changes_detected: %d", vmId)
+		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
 	tx := s.DB.Begin()
@@ -434,7 +434,7 @@ func (s *Service) ModifyCPU(vmId int, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_commit_cpu_update_transaction: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -461,28 +461,28 @@ func (s *Service) ModifyCPU(vmId int, req libvirtServiceInterfaces.ModifyCPURequ
 	return nil
 }
 
-func (s *Service) ModifyRAM(vmId int, ram int) error {
-	vm, err := s.GetVMByVmId(vmId)
+func (s *Service) ModifyRAM(rid uint, ram int) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
 	if vm.RAM == ram {
-		return fmt.Errorf("no_changes_detected: %d", vmId)
+		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -516,21 +516,21 @@ func (s *Service) ModifyRAM(vmId int, ram int) error {
 	return nil
 }
 
-func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
-	vm, err := s.GetVMByVmId(vmId)
+func (s *Service) ModifyVNC(rid uint, vncEnabled bool, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
 	if vm.VNCPort == vncPort &&
@@ -538,10 +538,10 @@ func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolutio
 		vm.VNCPassword == vncPassword &&
 		vm.VNCWait == vncWait &&
 		vm.VNCEnabled == vncEnabled {
-		return fmt.Errorf("no_changes_detected: %d", vmId)
+		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -580,24 +580,24 @@ func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolutio
 	return nil
 }
 
-func (s *Service) ModifyPassthrough(vmId int, pciDevices []int) error {
-	vm, err := s.GetVMByVmId(vmId)
+func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}

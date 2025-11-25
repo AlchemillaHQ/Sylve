@@ -72,10 +72,10 @@
 	let children = $derived(
 		[
 			...(simpleVMs.current.map((vm) => ({
-				id: vm.vmId,
-				label: `${vm.name} (${vm.vmId})`,
+				id: vm.rid,
+				label: `${vm.name} (${vm.rid})`,
 				icon: 'material-symbols--monitor-outline',
-				href: `/${node}/vm/${vm.vmId}`,
+				href: `/${node}/vm/${vm.rid}`,
 				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
 			})) || []),
 			...(simpleJails.current.map((jail) => ({

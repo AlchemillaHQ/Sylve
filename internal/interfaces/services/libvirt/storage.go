@@ -60,7 +60,7 @@ type StorageAttachRequest struct {
 	RawPath    string            `json:"rawPath"`
 	Dataset    string            `json:"dataset"`
 
-	VMID int    `json:"vmId" binding:"required"`
+	RID  uint   `json:"rid" binding:"required"`
 	Name string `json:"name"`
 	UUID string `json:"downloadUUID"`
 
@@ -83,6 +83,6 @@ type StorageUpdateRequest struct {
 }
 
 type StorageDetachRequest struct {
-	VMID      int `json:"vmId" binding:"required"`
-	StorageId int `json:"storageId" binding:"required"`
+	RID       uint `json:"rid" binding:"required"`
+	StorageId int  `json:"storageId" binding:"required"`
 }

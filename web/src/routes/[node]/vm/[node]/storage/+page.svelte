@@ -26,7 +26,7 @@
 		datasets: Dataset[];
 		pools: Zpool[];
 		downloads: Download[];
-		vmId: string;
+		rid: string;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -45,9 +45,9 @@
 	);
 
 	const domain = resource(
-		() => `vm-domain-${data.vmId}`,
+		() => `vm-domain-${data.rid}`,
 		async (key) => {
-			const result = await getVMDomain(Number(data.vmId));
+			const result = await getVMDomain(Number(data.rid));
 			updateCache(key, result);
 			return result;
 		},
@@ -123,7 +123,7 @@
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
 	let vm: VM = $derived.by(
-		() => vms.current.find((vm: VM) => vm.vmId === parseInt(data.vmId)) || ({} as VM)
+		() => vms.current.find((vm: VM) => vm.rid === parseInt(data.rid)) || ({} as VM)
 	);
 
 	let tableData = $derived(generateTableData(vm, datasets.current, downloads.current));
@@ -222,7 +222,7 @@
 	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await storageDetach(Number(data.vmId), properties.detach.id as number);
+			let response = await storageDetach(Number(data.rid), properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach storage', {

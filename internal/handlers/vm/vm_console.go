@@ -42,19 +42,19 @@ var WSUpgrader = websocket.Upgrader{
 }
 
 func HandleLibvirtTerminalWebsocket(c *gin.Context) {
-	vmId := c.Query("vmid")
-	if vmId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "vmid is required"})
+	rid := c.Query("rid")
+	if rid == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rid is required"})
 		return
 	}
 
 	baudRate := c.DefaultQuery("baudrate", "115200")
 
-	sessionName := "sylve-vmc-" + vmId
+	sessionName := "sylve-vmc-" + rid
 	checkSession := exec.Command("tmux", "has-session", "-t", sessionName)
-	vmIdInt, err := strconv.Atoi(vmId)
+	ridInt, err := strconv.Atoi(rid)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid vmid"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rid"})
 		return
 	}
 
@@ -64,7 +64,7 @@ func HandleLibvirtTerminalWebsocket(c *gin.Context) {
 			"new-session",
 			"-s", sessionName,
 			"-d",
-			"cu", "-l", "/dev/nmdm"+strconv.Itoa(vmIdInt)+"B", "-s", baudRate,
+			"cu", "-l", "/dev/nmdm"+strconv.Itoa(ridInt)+"B", "-s", baudRate,
 		)
 
 		if err := createSession.Run(); err != nil {

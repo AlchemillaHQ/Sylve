@@ -1,33 +1,15 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 
-export async function storageDetach(vmId: number, storageId: number): Promise<APIResponse> {
+export async function storageDetach(rid: number, storageId: number): Promise<APIResponse> {
 	return await apiRequest(`/vm/storage/detach`, APIResponseSchema, 'POST', {
-		vmId,
+		rid,
 		storageId
 	});
 }
 
-export async function storageAttach(
-	vmId: number,
-	storageType: string,
-	dataset: string,
-	emulation: string,
-	size: number,
-	name: string
-): Promise<APIResponse> {
-	return await apiRequest(`/vm/storage/attach`, APIResponseSchema, 'POST', {
-		vmId,
-		storageType,
-		dataset,
-		emulation,
-		size,
-		name
-	});
-}
-
 export async function storageImport(
-	vmId: number,
+	rid: number,
 	name: string,
 	downloadUUID: string,
 	storageType: 'zvol' | 'raw',
@@ -38,7 +20,7 @@ export async function storageImport(
 	bootOrder: number
 ) {
 	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
-		vmId,
+		rid,
 		name,
 		downloadUUID,
 		attachType: 'import',
@@ -52,7 +34,7 @@ export async function storageImport(
 }
 
 export async function storageNew(
-	vmId: number,
+	rid: number,
 	name: string,
 	storageType: 'zvol' | 'raw' | 'image',
 	size: number,
@@ -61,7 +43,7 @@ export async function storageNew(
 	bootOrder: number
 ) {
 	return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
-		vmId,
+		rid,
 		name,
 		attachType: 'new',
 		size,
@@ -69,16 +51,6 @@ export async function storageNew(
 		storageType,
 		pool,
 		bootOrder
-	});
-}
-
-export async function reorderBootOrder(
-	vmId: number,
-	storages: { id: number; order: number }[]
-): Promise<APIResponse> {
-	return await apiRequest(`/vm/storage/reorder-boot-order`, APIResponseSchema, 'POST', {
-		vmId,
-		storages
 	});
 }
 

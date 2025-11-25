@@ -73,7 +73,7 @@
 		}
 
 		const response = await modifyVNC(
-			vm.vmId,
+			vm.rid,
 			parseBoolean(properties.vncEnabled),
 			Number(properties.port),
 			properties.resolution,
@@ -168,7 +168,7 @@
 
 		<div class="grid grid-cols-1">
 			<div class="space-y-1">
-				<Label class="w-24 text-sm whitespace-nowrap">Password</Label>
+				<Label class="w-24 whitespace-nowrap text-sm">Password</Label>
 				<div class="flex w-full items-center space-x-2">
 					<Input
 						type="password"

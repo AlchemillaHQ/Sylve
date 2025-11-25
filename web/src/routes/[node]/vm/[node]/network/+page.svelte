@@ -26,7 +26,7 @@
 		domain: VMDomain;
 		interfaces: Iface[];
 		switches: SwitchList;
-		node: string;
+		rid: string;
 		networkObjects: NetworkObject[];
 	}
 
@@ -72,9 +72,9 @@
 	);
 
 	const domain = resource(
-		() => `vm-domain-${data.vm.vmId}`,
+		() => `vm-domain-${data.vm.rid}`,
 		async (key) => {
-			const result = await getVMDomain(data.vm.vmId);
+			const result = await getVMDomain(data.vm.rid);
 			updateCache(key, result);
 			return result;
 		},
@@ -121,7 +121,7 @@
 		}
 	});
 
-	let vm = $derived(vms.current.find((vm) => vm.vmId === Number(data.node)));
+	let vm = $derived(vms.current.find((vm) => vm.rid === Number(data.rid)));
 
 	function generateTableData() {
 		const rows: Row[] = [];
@@ -283,7 +283,7 @@
 	customTitle={`This will detach the VM <b>${vm?.name}</b> from the switch <b>${properties.detach.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await detachNetwork(vm?.vmId as number, properties.detach.id as number);
+			let response = await detachNetwork(vm?.rid as number, properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach network', {

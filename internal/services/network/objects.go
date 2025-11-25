@@ -503,10 +503,10 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				active, err := s.LibVirt.IsDomainInactive(int(vm.VmID))
+				active, err := s.LibVirt.IsDomainInactive(vm.RID)
 
 				if err != nil {
-					return fmt.Errorf("failed to check if VM %d is inactive: %w", vm.VmID, err)
+					return fmt.Errorf("failed to check if VM %d is inactive: %w", vm.RID, err)
 				}
 
 				if !active {
@@ -536,9 +536,9 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err = s.LibVirt.FindAndChangeMAC(int(vm.VmID), object.Entries[0].Value, values[0])
+				err = s.LibVirt.FindAndChangeMAC(vm.RID, object.Entries[0].Value, values[0])
 				if err != nil {
-					return fmt.Errorf("failed to change MAC address in VM %d: %w", vm.VmID, err)
+					return fmt.Errorf("failed to change MAC address in VM %d: %w", vm.RID, err)
 				}
 			}
 

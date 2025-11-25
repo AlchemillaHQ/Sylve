@@ -16,12 +16,12 @@ import (
 )
 
 type NetworkDetachRequest struct {
-	VMID      int `json:"vmId" binding:"required"`
-	NetworkId int `json:"networkId" binding:"required"`
+	RID       uint `json:"rid" binding:"required"`
+	NetworkId uint `json:"networkId" binding:"required"`
 }
 
 type NetworkAttachRequest struct {
-	VMID       int    `json:"vmId" binding:"required"`
+	RID        uint   `json:"rid" binding:"required"`
 	SwitchName string `json:"switchName" binding:"required"`
 	Emulation  string `json:"emulation" binding:"required"`
 	MacId      *uint  `json:"macId"`
@@ -50,7 +50,7 @@ func NetworkDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.NetworkDetach(req.VMID, req.NetworkId); err != nil {
+		if err := libvirtService.NetworkDetach(req.RID, req.NetworkId); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -97,7 +97,7 @@ func NetworkAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			macId = *req.MacId
 		}
 
-		if err := libvirtService.NetworkAttach(req.VMID, req.SwitchName, req.Emulation, macId); err != nil {
+		if err := libvirtService.NetworkAttach(req.RID, req.SwitchName, req.Emulation, macId); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

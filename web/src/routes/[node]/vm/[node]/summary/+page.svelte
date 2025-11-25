@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 
@@ -30,7 +29,7 @@
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import type { Chart } from 'chart.js';
-	import { resource, useInterval } from 'runed';
+	import { resource, useInterval, Debounced } from 'runed';
 	import { untrack } from 'svelte';
 
 	interface Data {
@@ -40,12 +39,11 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const vmId = page.url.pathname.split('/')[3];
 
 	const vm = resource(
-		() => 'vm',
+		() => 'vm-' + data.vm.rid,
 		async (key) => {
-			const result = await getVmById(Number(vmId), 'vmid');
+			const result = await getVmById(Number(data.vm.rid), 'rid');
 			updateCache(key, result);
 			return result;
 		},
@@ -53,9 +51,9 @@
 	);
 
 	const domain = resource(
-		() => `vm-domain-${vmId}`,
+		() => `vm-domain-${data.vm.rid}`,
 		async (key) => {
-			const result = await getVMDomain(vmId);
+			const result = await getVMDomain(data.vm.rid);
 			updateCache(key, result);
 			return result;
 		},
@@ -63,9 +61,9 @@
 	);
 
 	const stats = resource(
-		() => `vm-stats-${vmId}`,
+		() => `vm-stats-${data.vm.rid}`,
 		async (key) => {
-			const result = await getStats(Number(vmId), 128);
+			const result = await getStats(Number(data.vm.rid), 128);
 			updateCache(key, result);
 			return result;
 		},
@@ -93,9 +91,17 @@
 	});
 
 	let recentStat = $derived(stats.current[stats.current.length - 1] || ({} as VMStat));
+	let vmDescription = $state(vm.current.description || '');
+	let debouncedDesc = new Debounced(() => vmDescription, 500);
+	let lastDesc = $state('');
 
-	let vmDescription = $derived.by(() => {
-		return vm.current.description || '';
+	$effect(() => {
+		const value = debouncedDesc.current;
+
+		if (value !== undefined && value !== null && value !== lastDesc) {
+			updateDescription(vm.current.rid, value);
+			lastDesc = value;
+		}
 	});
 
 	let modalState = $state({
@@ -116,11 +122,11 @@
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being deleted`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
 
 		await sleep(1000);
 		const result = await deleteVM(
-			vm.current.id,
+			vm.current.rid,
 			modalState.deleteMACs,
 			modalState.deleteRAWDisks,
 			modalState.deleteVolumes
@@ -145,10 +151,10 @@
 	async function handleStart() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Starting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being started.`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being started.`;
 		modalState.loading.iconColor = 'text-green-500';
 
-		const result = await actionVm(vm.current.id, 'start');
+		const result = await actionVm(vm.current.rid, 'start');
 
 		reload.leftPanel = true;
 
@@ -171,10 +177,10 @@
 	async function handleStop() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Stopping Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being stopped`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being stopped`;
 		modalState.loading.iconColor = 'text-red-500';
 
-		const result = await actionVm(vm.current.id, 'stop');
+		const result = await actionVm(vm.current.rid, 'stop');
 
 		reload.leftPanel = true;
 
@@ -197,10 +203,10 @@
 	async function handleShutdown() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Shutting Down Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being shut down`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being shut down`;
 		modalState.loading.iconColor = 'text-yellow-500';
 
-		const result = await actionVm(vm.current.id, 'shutdown');
+		const result = await actionVm(vm.current.rid, 'shutdown');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
@@ -222,10 +228,10 @@
 	async function handleReboot() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Rebooting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.vmId})</b> is being rebooted`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being rebooted`;
 		modalState.loading.iconColor = 'text-blue-500';
 
-		const result = await actionVm(vm.current.id, 'reboot');
+		const result = await actionVm(vm.current.rid, 'reboot');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
@@ -285,12 +291,6 @@
 		};
 	});
 
-	$effect(() => {
-		if (vmDescription) {
-			updateDescription(vm.current.id, vmDescription);
-		}
-	});
-
 	let cpuUsageRef: Chart | null = $state(null);
 	let memoryUsageRef: Chart | null = $state(null);
 </script>
@@ -309,7 +309,7 @@
 		<Button
 			onclick={() => {
 				modalState.isDeleteOpen = true;
-				modalState.title = `${vm.current.name} (${vm.current.vmId})`;
+				modalState.title = `${vm.current.name} (${vm.current.rid})`;
 			}}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"

@@ -15,7 +15,7 @@
 	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
 
 	async function setSerial(enable: boolean) {
-		const response = await modifySerialConsole(vm.vmId, enable);
+		const response = await modifySerialConsole(vm.rid, enable);
 		reload = true;
 		if (response.error) {
 			handleAPIError(response);

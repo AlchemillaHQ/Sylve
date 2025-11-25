@@ -222,8 +222,8 @@ func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, err
 	return states, nil
 }
 
-func (s *Service) IsDomainShutOff(vmId int) (bool, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) IsDomainShutOff(rid uint) (bool, error) {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -241,14 +241,14 @@ func (s *Service) IsDomainShutOff(vmId int) (bool, error) {
 	return false, nil
 }
 
-func (s *Service) CreateVMDirectory(vmId int) (string, error) {
+func (s *Service) CreateVMDirectory(rid uint) (string, error) {
 	vmDir, err := config.GetVMsPath()
 
 	if err != nil {
 		return "", fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	vmPath := fmt.Sprintf("%s/%d", vmDir, vmId)
+	vmPath := fmt.Sprintf("%s/%d", vmDir, rid)
 
 	if _, err := os.Stat(vmPath); err == nil {
 		if err := os.RemoveAll(vmPath); err != nil {
@@ -263,15 +263,15 @@ func (s *Service) CreateVMDirectory(vmId int) (string, error) {
 	return vmPath, nil
 }
 
-func (s *Service) ResetUEFIVars(vmId int) error {
+func (s *Service) ResetUEFIVars(rid uint) error {
 	vmDir, err := config.GetVMsPath()
 	if err != nil {
 		return fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	vmPath := fmt.Sprintf("%s/%d", vmDir, vmId)
+	vmPath := fmt.Sprintf("%s/%d", vmDir, rid)
 	uefiVarsBase := "/usr/local/share/uefi-firmware/BHYVE_UEFI_VARS.fd"
-	uefiVarsPath := filepath.Join(vmPath, fmt.Sprintf("%d_vars.fd", vmId))
+	uefiVarsPath := filepath.Join(vmPath, fmt.Sprintf("%d_vars.fd", rid))
 
 	err = utils.CopyFile(uefiVarsBase, uefiVarsPath)
 
@@ -286,7 +286,7 @@ func (s *Service) ResetUEFIVars(vmId int) error {
 	return nil
 }
 
-func (s *Service) ValidateCPUPins(vmId uint, pins []libvirtServiceInterfaces.CPUPinning, hostLogicalPerSocket int) error {
+func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUPinning, hostLogicalPerSocket int) error {
 	if len(pins) == 0 {
 		return nil
 	}
@@ -360,21 +360,21 @@ func (s *Service) ValidateCPUPins(vmId uint, pins []libvirtServiceInterfaces.CPU
 		return fmt.Errorf("failed_to_fetch_vms: %w", err)
 	}
 
-	occupied := make(map[int]uint, 512) // core -> VMID
+	occupied := make(map[int]uint, 512)
 	for _, vm := range vms {
-		if vmId != 0 && vm.ID == vmId {
+		if rid != 0 && uint(vm.RID) == rid {
 			continue
 		}
 		for _, p := range vm.CPUPinning {
 			for _, c := range p.HostCPU {
-				occupied[c] = vm.ID
+				occupied[c] = uint(vm.RID)
 			}
 		}
 	}
 
 	for c := range seenCores {
 		if owner, taken := occupied[c]; taken {
-			return fmt.Errorf("core_conflict: core=%d already_pinned_by_vmid=%d", c, owner)
+			return fmt.Errorf("core_conflict: core=%d already_pinned_by_rid=%d", c, owner)
 		}
 	}
 
@@ -396,13 +396,13 @@ func (s *Service) GeneratePinArgs(pins []vmModels.VMCPUPinning) []string {
 	return args
 }
 
-func (s *Service) GetVMConfigDirectory(vmId int) (string, error) {
+func (s *Service) GetVMConfigDirectory(rid uint) (string, error) {
 	vmDir, err := config.GetVMsPath()
 	if err != nil {
 		return "", fmt.Errorf("failed to get VMs path: %w", err)
 	}
 
-	return fmt.Sprintf("%s/%d", vmDir, vmId), nil
+	return fmt.Sprintf("%s/%d", vmDir, rid), nil
 }
 
 func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
@@ -410,7 +410,7 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 		return nil
 	}
 
-	vmPath, err := s.GetVMConfigDirectory(vm.VmID)
+	vmPath, err := s.GetVMConfigDirectory(vm.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_path: %w", err)
 	}
@@ -456,8 +456,8 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 	return nil
 }
 
-func (s *Service) GetCloudInitISOPath(vmId int) (string, error) {
-	vmPath, err := s.GetVMConfigDirectory(vmId)
+func (s *Service) GetCloudInitISOPath(rid uint) (string, error) {
+	vmPath, err := s.GetVMConfigDirectory(rid)
 	if err != nil {
 		return "", fmt.Errorf("failed_to_get_vm_path: %w", err)
 	}
@@ -520,7 +520,7 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 		storagePath = fmt.Sprintf(
 			"/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			diskStorage.Dataset.Pool,
-			vm.VmID,
+			vm.RID,
 			diskStorage.ID,
 			diskStorage.ID,
 		)
@@ -532,7 +532,7 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 		storagePath = fmt.Sprintf(
 			"/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d",
 			diskStorage.Dataset.Pool,
-			vm.VmID,
+			vm.RID,
 			diskStorage.ID,
 		)
 
