@@ -12,7 +12,7 @@
 	} from 'layerchart';
 	import { curveBasis } from 'd3-shape';
 	import * as Card from '$lib/components/ui/card/index.js';
-
+	import humanFormat from 'human-format';
 	interface Props {
 		points: { date: Date; value: number }[];
 		maxY?: number;
@@ -21,6 +21,8 @@
 		icon?: string;
 		containerClass?: string;
 		description?: string;
+		color?: string;
+		type?: 'number' | 'percentage' | 'bytes';
 	}
 
 	let {
@@ -30,7 +32,9 @@
 		showPoints = false,
 		icon = '',
 		containerClass = 'p-5',
-		description = ''
+		description = '',
+		color = 'chart-1',
+		type = 'number'
 	}: Props = $props();
 </script>
 
@@ -50,7 +54,7 @@
 	</Card.Header>
 
 	<Card.Content class="h-full min-h-[300px] w-full p-0">
-		<div class="grid gap-1 rounded-sm border p-4">
+		<div class="grid gap-1 overflow-hidden rounded-sm border p-4">
 			<State initial={[null, null]} let:value={xDomain} let:set>
 				<div class="h-[300px]">
 					<Chart
@@ -70,13 +74,32 @@
 						tooltip={{ mode: 'quadtree-x' }}
 					>
 						<Layer type="svg">
-							<Axis placement="left" grid rule />
-							<Axis placement="bottom" rule />
+							<Axis
+								placement="left"
+								grid
+								rule
+								tickLength={6}
+								tickMarks={true}
+								classes={{
+									tickLabel: '!text-muted-foreground stroke-[0.5px] stroke-muted-foreground'
+								}}
+								ticks={5}
+							/>
+							<Axis
+								placement="bottom"
+								rule
+								tickLength={6}
+								tickMarks={true}
+								classes={{
+									tickLabel: '!text-muted-foreground stroke-[0.5px] stroke-muted-foreground'
+								}}
+								ticks={10}
+							/>
 							<ChartClipPath>
-								<LinearGradient class="from-primary/50 to-primary/1" vertical>
+								<LinearGradient class={`from-${color}/50 to-${color}/1`} vertical>
 									{#snippet children({ gradient })}
 										<Area
-											line={{ class: 'stroke-2 stroke-primary' }}
+											line={{ class: `stroke-2 stroke-${color}` }}
 											fill={gradient}
 											curve={curveBasis}
 											motion={'tween'}
@@ -86,7 +109,7 @@
 							</ChartClipPath>
 
 							{#if showPoints}
-								<Points motion={'tween'} r={3} />
+								<Points style={`fill: var(--${color});`} motion={'tween'} r={3} />
 							{/if}
 						</Layer>
 
@@ -94,7 +117,16 @@
 							{#snippet children({ data })}
 								<Tooltip.Header value={data.date} format="daytime" />
 								<Tooltip.List>
-									<Tooltip.Item {label} value={Number(data.value).toFixed(2)} />
+									<Tooltip.Item
+										{label}
+										value={`${
+											type === 'percentage'
+												? `${Number(data.value).toFixed(2)}%`
+												: type === 'bytes'
+													? `${humanFormat(data.value)}`
+													: `${Number(data.value).toFixed(2)}`
+										}`}
+									/>
 								</Tooltip.List>
 							{/snippet}
 						</Tooltip.Root>

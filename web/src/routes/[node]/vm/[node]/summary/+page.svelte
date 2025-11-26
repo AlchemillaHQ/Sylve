@@ -265,35 +265,6 @@
 		}
 		return '';
 	});
-
-	// let cpuHistoricalData = $derived.by(() => {
-	// 	return {
-	// 		field: 'cpuUsage',
-	// 		label: 'CPU Usage',
-	// 		color: 'chart-1',
-	// 		data: stats.current.map((data) => ({
-	// 			date: new Date(data.createdAt),
-	// 			value: Math.floor(data.cpuUsage)
-	// 		}))
-	// 	};
-	// });
-
-	let memoryUsageData = $derived.by(() => {
-		return {
-			field: 'memoryUsage',
-			label: 'Memory Usage',
-			color: 'chart-2',
-			data: stats.current
-				.map((data) => ({
-					date: new Date(data.createdAt),
-					value: Math.floor(data.memoryUsage)
-				}))
-				.slice(-12)
-		};
-	});
-
-	let cpuUsageRef: Chart | null = $state(null);
-	let memoryUsageRef: Chart | null = $state(null);
 </script>
 
 {#snippet button(type: string)}
@@ -301,7 +272,7 @@
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 			{'Start'}
@@ -313,7 +284,7 @@
 				modalState.title = `${vm.current.name} (${vm.current.rid})`;
 			}}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 
@@ -324,7 +295,7 @@
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			{#if type === 'stop'}
 				<div class="flex items-center">
@@ -462,28 +433,29 @@
 				</Card.Root>
 			</div>
 
-			<div class="space-y-4 p-3">
-				<!-- <AreaChart
-					title="CPU Usage"
-					elements={[cpuHistoricalData]}
-					chart={cpuUsageRef}
-					percentage={true}
-				/>
-				<AreaChart
-					title="Memory Usage"
-					elements={[memoryUsageData]}
-					chart={memoryUsageRef}
-					percentage={true}
-				/> -->
-
+			<div class="space-y-4 px-4 pb-4">
 				<LayerBrush
+					color="chart-2"
 					points={stats.current.map((data) => ({
 						date: new Date(data.createdAt),
 						value: Number(data.cpuUsage)
 					}))}
 					maxY={100}
 					label="CPU Usage"
-					showPoints={true}
+					showPoints={false}
+					type="percentage"
+				/>
+
+				<LayerBrush
+					color="chart-1"
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt),
+						value: Number(data.memoryUsage)
+					}))}
+					maxY={100}
+					label="Memory Usage"
+					showPoints={false}
+					type="percentage"
 				/>
 			</div>
 		</ScrollArea>
