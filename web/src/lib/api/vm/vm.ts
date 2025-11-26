@@ -82,8 +82,8 @@ export async function actionVm(rid: number | string, action: string): Promise<AP
 	return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST');
 }
 
-export async function getStats(rid: number, limit: number): Promise<VMStat[]> {
-	return await apiRequest(`/vm/stats/${rid}/${limit}`, z.array(VMStatSchema), 'GET');
+export async function getStats(rid: number, step: string): Promise<VMStat[]> {
+	return await apiRequest(`/vm/stats/${rid}/${step}`, z.array(VMStatSchema), 'GET');
 }
 
 export async function updateDescription(rid: number, description: string): Promise<APIResponse> {

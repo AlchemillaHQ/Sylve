@@ -282,7 +282,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
 		vm.DELETE("/:id", vmHandlers.RemoveVM(libvirtService))
 		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService))
-		vm.GET("/stats/:rid/:limit", vmHandlers.GetVMStats(libvirtService))
+		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
 		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
 
 		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))

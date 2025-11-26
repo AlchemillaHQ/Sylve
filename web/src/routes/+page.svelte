@@ -199,5 +199,6 @@
 <span class="icon-[mdi--file]"></span>
 <span class="icon-[eos-icons--three-dots-loading]"></span>
 <span class="icon-[line-md--downloading-loop]"></span>
-<span class="icon-[lets-icons--check-fill]"></span
+<span class="icon-[lets-icons--check-fill]"></span>
+<span class="icon-[mdi--calendar]"></span>
 -->

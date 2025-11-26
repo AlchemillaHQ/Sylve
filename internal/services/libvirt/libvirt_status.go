@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -32,6 +33,49 @@ func (s *Service) PruneOrphanedVMStats() error {
 		Error; err != nil {
 		return fmt.Errorf("failed to prune orphaned VMStats: %w", err)
 	}
+	return nil
+}
+
+func (s *Service) ApplyVMStatsRetention() error {
+	var vmIDs []uint
+	if err := s.DB.
+		Model(&vmModels.VMStats{}).
+		Select("DISTINCT vm_id").
+		Pluck("vm_id", &vmIDs).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_ids_for_retention: %w", err)
+	}
+
+	now := time.Now()
+
+	for _, vmID := range vmIDs {
+		var stats []vmModels.VMStats
+		if err := s.DB.
+			Where("vm_id = ?", vmID).
+			Order("created_at ASC").
+			Find(&stats).Error; err != nil {
+			return fmt.Errorf("failed_to_get_vm_stats_for_retention: %w", err)
+		}
+
+		if len(stats) == 0 {
+			continue
+		}
+
+		_, deleteIDs := db.ApplyGFS(now, stats)
+		if len(deleteIDs) == 0 {
+			continue
+		}
+
+		if err := s.DB.
+			Where("id IN ?", deleteIDs).
+			Delete(&vmModels.VMStats{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_old_vm_stats: %w", err)
+		}
+	}
+
+	if err := s.PruneOrphanedVMStats(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -119,40 +163,10 @@ func (s *Service) StoreVMUsage() error {
 		}
 	}
 
-	var vmIdsToKeep []int
-	if err := s.DB.Model(&vmModels.VMStats{}).
-		Select("DISTINCT vm_id").
-		Pluck("vm_id", &vmIdsToKeep).Error; err != nil {
-		return fmt.Errorf("failed_to_get_vm_ids_to_keep: %w", err)
-	}
-
-	for _, vmId := range vmIdsToKeep {
-		var vmStats []vmModels.VMStats
-		if err := s.DB.Where("vm_id = ?", vmId).
-			Order("id DESC").
-			Limit(256).
-			Find(&vmStats).Error; err != nil {
-			return fmt.Errorf("failed_to_get_vm_stats: %w", err)
-		}
-
-		if len(vmStats) < 256 {
-			continue
-		}
-
-		if err := s.DB.Where("vm_id = ? AND id < ?", vmId, vmStats[255].ID).
-			Delete(&vmModels.VMStats{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_old_vm_stats: %w", err)
-		}
-	}
-
-	if err := s.PruneOrphanedVMStats(); err != nil {
-		return err
-	}
-
-	return nil
+	return s.ApplyVMStatsRetention()
 }
 
-func (s *Service) GetVMUsage(rid int, limit int) ([]vmModels.VMStats, error) {
+func (s *Service) GetVMUsage(rid int, step db.GFSStep) ([]vmModels.VMStats, error) {
 	var vmDbId uint
 	if err := s.DB.Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
@@ -165,21 +179,20 @@ func (s *Service) GetVMUsage(rid int, limit int) ([]vmModels.VMStats, error) {
 		return nil, fmt.Errorf("vm_not_found")
 	}
 
-	var vmStats []vmModels.VMStats
-	sub := s.DB.
-		Model(&vmModels.VMStats{}).
-		Where("vm_id = ?", vmDbId).
-		Order("id DESC").
-		Limit(limit)
-
-	if err := s.DB.Table("(?) as sub", sub).
-		Order("id ASC").
-		Find(&vmStats).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_get_vm_usage: %w", err)
+	window, err := step.Window()
+	if err != nil {
+		return nil, err
 	}
 
-	if len(vmStats) == 0 {
-		return vmStats, nil
+	now := time.Now()
+	from := now.Add(-window)
+
+	var vmStats []vmModels.VMStats
+	if err := s.DB.
+		Where("vm_id = ? AND created_at >= ?", vmDbId, from).
+		Order("created_at ASC").
+		Find(&vmStats).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_get_vm_usage: %w", err)
 	}
 
 	return vmStats, nil

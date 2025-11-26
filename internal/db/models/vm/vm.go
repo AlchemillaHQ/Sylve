@@ -133,6 +133,14 @@ func (VMStats) TableName() string {
 	return "vm_stats"
 }
 
+func (s VMStats) GetID() uint {
+	return s.ID
+}
+
+func (s VMStats) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
 type VMCPUPinning struct {
 	ID   uint `gorm:"primaryKey" json:"id"`
 	VMID uint `json:"vmId" gorm:"index"`

@@ -10,6 +10,7 @@ package libvirtHandlers
 
 import (
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -26,22 +27,22 @@ import (
 // @Success 200 {object} internal.APIResponse[[]vmModels.VMStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/stats/:rid/:limit [get]
+// @Router /vm/stats/:rid/:step [get]
 func GetVMStats(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Param("rid")
-		limit := c.Param("limit")
-		if rid == "" || limit == "" {
+		step := c.Param("step")
+		if rid == "" || step == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "rid and limit are required",
+				Error:   "rid and step are required",
 			})
 			return
 		}
 
-		stats, err := libvirtService.GetVMUsage(int(utils.StringToUint64(rid)), int(utils.StringToUint64(limit)))
+		stats, err := libvirtService.GetVMUsage(int(utils.StringToUint64(rid)), db.GFSStep(step))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

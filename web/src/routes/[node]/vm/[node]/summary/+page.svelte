@@ -1,11 +1,8 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-
 	import { goto } from '$app/navigation';
-	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
-
 	import {
 		actionVm,
 		deleteVM,
@@ -31,14 +28,19 @@
 	import type { Chart } from 'chart.js';
 	import { resource, useInterval, Debounced } from 'runed';
 	import { untrack } from 'svelte';
+	import type { GFSStep } from '$lib/types/common';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import LayerBrush from '$lib/components/custom/Charts/LayerBrush.svelte';
 
 	interface Data {
+		rid: number;
 		vm: VM;
 		domain: VMDomain;
 		stats: VMStat[];
 	}
 
 	let { data }: { data: Data } = $props();
+	let gfsStep = $state<GFSStep>('hourly');
 
 	const vm = resource(
 		() => 'vm-' + data.vm.rid,
@@ -61,9 +63,10 @@
 	);
 
 	const stats = resource(
-		() => `vm-stats-${data.vm.rid}`,
-		async (key) => {
-			const result = await getStats(Number(data.vm.rid), 128);
+		[() => gfsStep],
+		async ([gfsStep]) => {
+			const result = await getStats(Number(data.vm.rid), gfsStep);
+			const key = `vm-stats-${data.vm.rid}`;
 			updateCache(key, result);
 			return result;
 		},
@@ -263,19 +266,17 @@
 		return '';
 	});
 
-	let cpuHistoricalData = $derived.by(() => {
-		return {
-			field: 'cpuUsage',
-			label: 'CPU Usage',
-			color: 'chart-1',
-			data: stats.current
-				.map((data) => ({
-					date: new Date(data.createdAt),
-					value: Math.floor(data.cpuUsage)
-				}))
-				.slice(-12)
-		};
-	});
+	// let cpuHistoricalData = $derived.by(() => {
+	// 	return {
+	// 		field: 'cpuUsage',
+	// 		label: 'CPU Usage',
+	// 		color: 'chart-1',
+	// 		data: stats.current.map((data) => ({
+	// 			date: new Date(data.createdAt),
+	// 			value: Math.floor(data.cpuUsage)
+	// 		}))
+	// 	};
+	// });
 
 	let memoryUsageData = $derived.by(() => {
 		return {
@@ -351,6 +352,25 @@
 		{@render button('reboot')}
 		{@render button('shutdown')}
 		{@render button('stop')}
+
+		<!-- Towards the right we should have another button -->
+		<div class="ml-auto flex h-full items-center">
+			<SimpleSelect
+				options={[
+					{ label: 'Hourly', value: 'hourly' },
+					{ label: 'Daily', value: 'daily' },
+					{ label: 'Weekly', value: 'weekly' },
+					{ label: 'Monthly', value: 'monthly' },
+					{ label: 'Yearly', value: 'yearly' }
+				]}
+				bind:value={gfsStep}
+				onChange={() => {
+					stats.refetch();
+				}}
+				classes={{ trigger: 'h-6!' }}
+				icon="icon-[mdi--calendar]"
+			/>
+		</div>
 	</div>
 
 	<div class="min-h-0 flex-1">
@@ -443,7 +463,7 @@
 			</div>
 
 			<div class="space-y-4 p-3">
-				<AreaChart
+				<!-- <AreaChart
 					title="CPU Usage"
 					elements={[cpuHistoricalData]}
 					chart={cpuUsageRef}
@@ -454,6 +474,16 @@
 					elements={[memoryUsageData]}
 					chart={memoryUsageRef}
 					percentage={true}
+				/> -->
+
+				<LayerBrush
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt),
+						value: Number(data.cpuUsage)
+					}))}
+					maxY={100}
+					label="CPU Usage"
+					showPoints={true}
 				/>
 			</div>
 		</ScrollArea>

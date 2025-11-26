@@ -13,6 +13,7 @@ export async function load({ params }) {
 	]);
 
 	return {
+		rid: Number(rid),
 		vm: vm,
 		domain: domain,
 		stats: stats
