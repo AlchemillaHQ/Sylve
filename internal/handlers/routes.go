@@ -316,6 +316,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/state", jailHandlers.ListJailStates(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
+		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
@@ -327,7 +328,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.POST("", jailHandlers.CreateJail(jailService))
 		jail.DELETE("/:ctid", jailHandlers.DeleteJail(jailService))
 
-		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket)
+		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket(jailService))
 		jail.POST("/network/inheritance", jailHandlers.InheritJailNetwork(jailService))
 		jail.DELETE("/network/disinherit/:ctId", jailHandlers.DisinheritJailNetwork(jailService))
 

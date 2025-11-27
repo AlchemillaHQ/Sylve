@@ -75,6 +75,10 @@ func ApplyGFS[T TimeSeriesRow](now time.Time, rows []T) (keepIDs []uint, deleteI
 		var keep bool
 
 		switch {
+		case age <= time.Minute:
+			// 0–1min -> keep all
+			keep = true
+
 		case age <= time.Hour:
 			// 0–1h, 1/min
 			keep = shouldKeep(&state.lastHour, t, time.Minute)

@@ -11,6 +11,9 @@ package startup
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -161,6 +164,132 @@ func (s *Service) CheckServiceDependencies() error {
 	return nil
 }
 
+func (s *Service) EnableLinux() error {
+	loadKLD := func(module string) error {
+		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+		}
+		return nil
+	}
+
+	ensureFallbackBrand := func(name string) error {
+		out, err := utils.RunCommand("sysctl", "-ni", name)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", name, err)
+		}
+
+		valStr := strings.TrimSpace(out)
+		if valStr == "" {
+			return nil
+		}
+
+		val, err := strconv.Atoi(valStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse %s value %q: %w", name, valStr, err)
+		}
+
+		if val == -1 {
+			if _, err := utils.RunCommand("sysctl", fmt.Sprintf("%s=3", name)); err != nil {
+				return fmt.Errorf("failed to set %s=3: %w", name, err)
+			}
+		}
+		return nil
+	}
+
+	linuxMount := func(fs, mountPoint, opts string) error {
+		mountOut, err := utils.RunCommand("mount")
+		if err != nil {
+			return fmt.Errorf("failed to list mounts: %w", err)
+		}
+
+		pattern := fmt.Sprintf("%s on %s (", fs, mountPoint)
+		if strings.Contains(mountOut, pattern) {
+			return nil
+		}
+
+		if err := os.MkdirAll(mountPoint, 0755); err != nil {
+			return fmt.Errorf("failed to create mountpoint %s: %w", mountPoint, err)
+		}
+
+		args := []string{}
+
+		if opts != "" {
+			args = append(args, "-o", opts)
+		}
+
+		args = append(args, "-t", fs, fs, mountPoint)
+
+		if _, err := utils.RunCommand("mount", args...); err != nil {
+			return fmt.Errorf("failed to mount %s on %s: %w", fs, mountPoint, err)
+		}
+		return nil
+	}
+
+	switch runtime.GOARCH {
+	case "amd64":
+		if err := loadKLD("linux"); err != nil {
+			return err
+		}
+		if err := loadKLD("linux64"); err != nil {
+			return err
+		}
+	case "arm64":
+		if err := loadKLD("linux64"); err != nil {
+			return err
+		}
+	case "386":
+		if err := loadKLD("linux"); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("Linux ABI not supported on GOARCH=%q", runtime.GOARCH)
+	}
+
+	if err := loadKLD("pty"); err != nil {
+		return err
+	}
+
+	for _, mod := range []string{"fdescfs", "linprocfs", "linsysfs"} {
+		if err := loadKLD(mod); err != nil {
+			return err
+		}
+	}
+
+	if err := ensureFallbackBrand("kern.elf64.fallback_brand"); err != nil {
+		return err
+	}
+	if err := ensureFallbackBrand("kern.elf32.fallback_brand"); err != nil {
+		return err
+	}
+
+	emulPathRaw, err := utils.RunCommand("sysctl", "-n", "compat.linux.emul_path")
+	if err != nil {
+		return fmt.Errorf("failed to get compat.linux.emul_path: %w", err)
+	}
+	emulPath := strings.TrimSpace(emulPathRaw)
+	if emulPath == "" {
+		emulPath = "/compat/linux"
+	}
+
+	if err := linuxMount("linprocfs", filepath.Join(emulPath, "proc"), "nocover"); err != nil {
+		return err
+	}
+	if err := linuxMount("linsysfs", filepath.Join(emulPath, "sys"), "nocover"); err != nil {
+		return err
+	}
+	if err := linuxMount("devfs", filepath.Join(emulPath, "dev"), "nocover"); err != nil {
+		return err
+	}
+	if err := linuxMount("fdescfs", filepath.Join(emulPath, "dev", "fd"), "nocover,linrdlnk"); err != nil {
+		return err
+	}
+	if err := linuxMount("tmpfs", filepath.Join(emulPath, "dev", "shm"), "nocover,mode=1777"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Service) CheckKernelModules() error {
 	requiredModules := []string{
 		"vmm",
@@ -169,12 +298,18 @@ func (s *Service) CheckKernelModules() error {
 		"zfs",
 		"cryptodev",
 		"if_epair",
+		"nullfs",
 	}
 
 	for _, module := range requiredModules {
 		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
+	}
+
+	err := s.EnableLinux()
+	if err != nil {
+		return fmt.Errorf("Failed to enable Linux ABI: %w", err)
 	}
 
 	return nil
@@ -219,7 +354,7 @@ func (s *Service) CheckSyslogConfig() error {
 func (s *Service) DevfsSync() error {
 	const devfsRulesPath = "/etc/devfs.rules"
 
-	requiredBlock := `[devfsrules_jails=8181]
+	requiredBlock := `[devfsrules_jails=61181]
 add include $devfsrules_hide_all
 add include $devfsrules_unhide_basic
 add include $devfsrules_unhide_login
@@ -230,7 +365,7 @@ add path 'bpf*' unhide
 	if data, err := os.ReadFile(devfsRulesPath); err == nil {
 		existing = string(data)
 
-		if strings.Contains(existing, "[devfsrules_jails=8181]") &&
+		if strings.Contains(existing, "[devfsrules_jails=61181]") &&
 			strings.Contains(existing, "add path 'bpf*' unhide") {
 			return nil
 		}

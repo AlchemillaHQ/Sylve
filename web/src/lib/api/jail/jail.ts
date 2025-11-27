@@ -1,3 +1,4 @@
+import { hostname } from '$lib/stores/basic';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	JailLogsSchema,
@@ -18,11 +19,13 @@ import { z } from 'zod/v4';
 export async function newJail(data: CreateData): Promise<APIResponse> {
 	return await apiRequest('/jail', APIResponseSchema, 'POST', {
 		name: data.name,
+		hostname: data.hostname,
 		node: data.node,
 		ctId: parseInt(data.id.toString(), 10),
 		description: data.description,
-		dataset: data.storage.dataset,
+		pool: data.storage.pool,
 		base: data.storage.base,
+		fstab: data.storage.fstab,
 		switchName: data.network.switch,
 		dhcp: data.network.dhcp,
 		slaac: data.network.slaac,
@@ -37,7 +40,14 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
 		cores: parseInt(data.hardware.cpuCores.toString(), 10),
 		memory: parseInt(data.hardware.ram.toString(), 10),
 		startAtBoot: data.hardware.startAtBoot,
-		startOrder: data.hardware.bootOrder
+		startOrder: data.hardware.bootOrder,
+		devfsRuleset: data.hardware.devfsRuleset,
+		jailType: data.advanced.jailType,
+		additionalOptions: data.advanced.additionalOptions,
+		allowedOptions: data.advanced.allowedOptions,
+		hooks: data.advanced.execScripts,
+		cleanEnvironment: data.advanced.cleanEnvironment,
+		type: data.advanced.jailType
 	});
 }
 
@@ -47,6 +57,10 @@ export async function getSimpleJails(): Promise<SimpleJail[]> {
 
 export async function getJails(): Promise<Jail[]> {
 	return await apiRequest('/jail', z.array(JailSchema), 'GET');
+}
+
+export async function getJailById(id: number, type: 'ctid' | 'id'): Promise<Jail> {
+	return await apiRequest(`/jail/${id}?type=${type}`, JailSchema, 'GET');
 }
 
 export async function deleteJail(

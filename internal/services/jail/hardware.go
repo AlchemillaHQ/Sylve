@@ -67,9 +67,9 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 		return fmt.Errorf("failed to save jail config: %w", err)
 	}
 
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
 
 	jail.Memory = int(memoryBytes)
@@ -110,7 +110,7 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 	// Track usage of each core across all jails
 	coreUsage := map[int]int{}
 	for _, j := range currentJails {
-		if j.CTID == int(ctId) {
+		if j.CTID == ctId {
 			continue
 		}
 		for _, c := range j.CPUSet {
@@ -173,13 +173,14 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		return fmt.Errorf("failed to save jail config: %w", err)
 	}
 
-	// Update DB
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
+
 	jail.Cores = int(cores)
 	jail.CPUSet = selected
+
 	if err := s.DB.Save(&jail).Error; err != nil {
 		return fmt.Errorf("failed to update jail CPU in database: %w", err)
 	}
@@ -196,9 +197,9 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 }
 
 func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := s.GetJailConfig(ctId)

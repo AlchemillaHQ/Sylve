@@ -9,7 +9,7 @@ export async function load({ params }) {
 	const [vm, domain, stats] = await Promise.all([
 		cachedFetch(`vm-${rid}`, async () => getVmById(Number(rid), 'rid'), cacheDuration),
 		cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(Number(rid)), cacheDuration),
-		cachedFetch(`vm-stats-${rid}`, async () => getStats(Number(rid), 10), cacheDuration)
+		cachedFetch(`vm-stats-${rid}`, async () => getStats(Number(rid), 'hourly'), cacheDuration)
 	]);
 
 	return {

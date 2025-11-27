@@ -26,7 +26,7 @@
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import type { Chart } from 'chart.js';
-	import { resource, useInterval, Debounced } from 'runed';
+	import { resource, useInterval, Debounced, IsDocumentVisible } from 'runed';
 	import { untrack } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -73,9 +73,11 @@
 		{ lazy: true, initialValue: data.stats }
 	);
 
+	const visible = new IsDocumentVisible();
+
 	useInterval(() => 1000, {
 		callback: () => {
-			if (storage.visible) {
+			if (visible.current) {
 				vm.refetch();
 				domain.refetch();
 				stats.refetch();
@@ -272,7 +274,7 @@
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 			{'Start'}
@@ -284,7 +286,7 @@
 				modalState.title = `${vm.current.name} (${vm.current.rid})`;
 			}}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 
@@ -295,7 +297,7 @@
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			{#if type === 'stop'}
 				<div class="flex items-center">

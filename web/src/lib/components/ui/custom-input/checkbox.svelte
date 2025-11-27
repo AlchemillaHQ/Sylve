@@ -4,18 +4,20 @@
 	import { generateNanoId } from '$lib/utils/string';
 
 	interface Props {
+		id?: string;
 		label: string;
 		checked: boolean;
 		classes: string;
 	}
 
 	let {
+		id = '',
 		label = '',
 		checked = $bindable(false),
 		classes = 'flex items-center gap-2'
 	}: Props = $props();
 
-	let nanoId = $state(generateNanoId(label));
+	let nanoId = $state(generateNanoId(label + id));
 </script>
 
 <div class={classes}>

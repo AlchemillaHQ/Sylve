@@ -17,26 +17,31 @@
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM } from '$lib/types/vm/vm';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextId } from '$lib/utils/vm/vm';
 	import { createQueries } from '@tanstack/svelte-query';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
+	import Advanced from './Advanced.svelte';
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
+	import { getPools } from '$lib/api/zfs/pool';
 
 	interface Props {
 		open: boolean;
+		minimize: boolean;
 	}
 
-	let { open = $bindable() }: Props = $props();
+	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 	const tabs = [
 		{ value: 'basic', label: 'Basic' },
 		{ value: 'storage', label: 'Storage' },
 		{ value: 'network', label: 'Network' },
-		{ value: 'hardware', label: 'Hardware & Advanced' }
+		{ value: 'hardware', label: 'Hardware' },
+		{ value: 'advanced', label: 'Advanced' }
 	];
 
 	const results = createQueries(() => ({
@@ -107,6 +112,15 @@
 		]
 	}));
 
+	let pools = resource(
+		() => 'pool-list',
+		async (key, prevKey, { signal }) => {
+			const pools = await getPools();
+			updateCache(key, pools);
+			return pools;
+		}
+	);
+
 	let refetch = $state(false);
 
 	$effect(() => {
@@ -119,7 +133,6 @@
 		}
 	});
 
-	let datasets: Dataset[] = $derived(results[0].data as Dataset[]);
 	let downloads = $derived(results[1].data as Download[]);
 	let networkSwitches: SwitchList = $derived(results[2].data as SwitchList);
 	let networkObjects = $derived(results[4].data as NetworkObject[]);
@@ -128,18 +141,16 @@
 	let nodes: ClusterNode[] = $derived(results[6].data as ClusterNode[]);
 	let creating: boolean = $state(false);
 
-	let filesystems: Dataset[] = $derived(
-		datasets.filter((dataset) => dataset.type === 'filesystem')
-	);
-
 	let options = {
 		name: '',
+		hostname: '',
 		id: 0,
 		node: '',
 		description: '',
 		storage: {
-			dataset: '',
-			base: ''
+			pool: '',
+			base: '',
+			fstab: ''
 		},
 		network: {
 			switch: 'None',
@@ -158,7 +169,22 @@
 			ram: 0,
 			startAtBoot: false,
 			resourceLimits: true,
-			bootOrder: 0
+			bootOrder: 0,
+			devfsRuleset: ''
+		},
+		advanced: {
+			jailType: 'freebsd' as 'linux' | 'freebsd',
+			additionalOptions: '',
+			cleanEnvironment: true,
+			execScripts: {
+				prestart: { enabled: false, script: '' },
+				start: { enabled: false, script: '' },
+				poststart: { enabled: false, script: '' },
+				prestop: { enabled: false, script: '' },
+				stop: { enabled: false, script: '' },
+				poststop: { enabled: false, script: '' }
+			},
+			allowedOptions: [] as string[]
 		}
 	};
 
@@ -181,7 +207,7 @@
 			data.hardware.ram = 0;
 		}
 
-		if (!(await isValidCreateData(data, filesystems))) {
+		if (!(await isValidCreateData(data))) {
 			return;
 		} else {
 			creating = true;
@@ -239,6 +265,19 @@
 						size="sm"
 						variant="link"
 						class="h-4"
+						onclick={() => {
+							minimize = true;
+							open = false;
+						}}
+						title={'Minimize'}
+					>
+						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">{'Minimize'}</span>
+					</Button>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
 						onclick={() => (open = false)}
 						title={'Close'}
 					>
@@ -251,7 +290,7 @@
 
 		<div class="mt-6 flex-1 overflow-y-auto">
 			<Tabs.Root value="basic" class="w-full overflow-hidden">
-				<Tabs.List class="grid w-full grid-cols-4 p-0 ">
+				<Tabs.List class="grid w-full grid-cols-5 p-0">
 					{#each tabs as { value, label }}
 						<Tabs.Trigger class="border-b" {value}>{label}</Tabs.Trigger>
 					{/each}
@@ -264,18 +303,20 @@
 								<Basic
 									bind:name={modal.name}
 									bind:id={modal.id}
+									bind:hostname={modal.hostname}
 									bind:description={modal.description}
 									bind:refetch
 									bind:node={modal.node}
 									{nodes}
 								/>
-							{:else if value === 'storage'}
+							{:else if value === 'storage' && pools.current}
 								<Storage
-									{filesystems}
 									{downloads}
 									{jails}
-									bind:dataset={modal.storage.dataset}
+									pools={pools.current}
+									bind:pool={modal.storage.pool}
 									bind:base={modal.storage.base}
+									bind:fstab={modal.storage.fstab}
 								/>
 							{:else if value === 'network'}
 								<Network
@@ -299,6 +340,15 @@
 									bind:startAtBoot={modal.hardware.startAtBoot}
 									bind:bootOrder={modal.hardware.bootOrder}
 									bind:resourceLimits={modal.hardware.resourceLimits}
+									bind:devfsRuleset={modal.hardware.devfsRuleset}
+								/>
+							{:else if value === 'advanced'}
+								<Advanced
+									bind:jailType={modal.advanced.jailType}
+									bind:additionalOptions={modal.advanced.additionalOptions}
+									bind:cleanEnvironment={modal.advanced.cleanEnvironment}
+									bind:execScripts={modal.advanced.execScripts}
+									bind:allowedOptions={modal.advanced.allowedOptions}
 								/>
 							{/if}
 						</div>

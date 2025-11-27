@@ -44,7 +44,7 @@
 	}: Props = $props();
 
 	onMount(() => {
-		vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
+		if (!vncPort) vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
 	});
 
 	let timeOffsetOpen = $state(false);

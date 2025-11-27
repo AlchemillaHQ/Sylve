@@ -210,7 +210,7 @@ func (s *Service) AddNetwork(ctId uint,
 		network.MacID = &macId
 	}
 
-	network.CTID = ctId
+	network.JailID = jail.ID
 	err := s.DB.Create(&network).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_create_network: %w", err)

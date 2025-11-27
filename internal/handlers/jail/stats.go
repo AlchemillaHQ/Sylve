@@ -134,7 +134,11 @@ func GetJailStats(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		stats, err := jailService.GetJailUsage(int(utils.StringToUint64(ctId)), int(utils.StringToUint64(limit)))
+		stats, err := jailService.GetJailUsage(
+			uint(utils.StringToUint64(ctId)),
+			int(utils.StringToUint64(limit)),
+		)
+
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

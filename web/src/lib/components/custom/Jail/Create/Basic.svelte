@@ -6,6 +6,7 @@
 
 	interface Props {
 		name: string;
+		hostname: string;
 		id: number;
 		description: string;
 		refetch: boolean;
@@ -16,6 +17,7 @@
 	let {
 		name = $bindable(),
 		id = $bindable(),
+		hostname = $bindable(),
 		description = $bindable(),
 		refetch = $bindable(),
 		nodes,
@@ -44,7 +46,7 @@
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 {hosts.length > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'}">
 		{#if hosts.length > 0}
 			<CustomComboBox
 				bind:open={host.combobox.open}
@@ -62,6 +64,13 @@
 			label="Jail Name"
 			placeholder="Postgres"
 			bind:value={name}
+			classes="flex-1 space-y-1"
+		/>
+
+		<CustomValueInput
+			label="Hostname"
+			placeholder="postgres"
+			bind:value={hostname}
 			classes="flex-1 space-y-1"
 		/>
 

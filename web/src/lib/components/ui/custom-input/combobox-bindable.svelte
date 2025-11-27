@@ -16,8 +16,10 @@
 		classes?: string;
 		triggerWidth?: string;
 		width?: string;
+		labelExtraClasses?: string;
 		disallowEmpty?: boolean;
 		multiple?: boolean;
+		showSelected?: boolean;
 	}
 
 	let {
@@ -29,9 +31,11 @@
 		disabled = false,
 		classes = 'space-y-1',
 		triggerWidth = 'w-full',
+		labelExtraClasses = '',
 		width = 'w-1/2',
 		disallowEmpty = false,
 		multiple = false,
+		showSelected = true,
 		value = $bindable(multiple ? [] : '')
 	}: Props = $props();
 
@@ -80,7 +84,7 @@
 
 <div class={classes}>
 	{#if label}
-		<Label class="w-full text-sm whitespace-nowrap" for={label.toLowerCase()}>
+		<Label class="w-full whitespace-nowrap text-sm {labelExtraClasses}" for={label.toLowerCase()}>
 			{label}
 		</Label>
 	{/if}
@@ -95,16 +99,22 @@
 			>
 				<!-- <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"> -->
 				{#if selectedLabels.length > 0}
-					{#each selectedLabels as lbl, i}
-						<span
-							class={multiple
-								? 'bg-secondary/100 truncate rounded px-2 py-0.5 text-sm'
-								: 'truncate rounded px-2 text-sm'}
-							title={lbl}
-						>
-							{lbl}
+					{#if showSelected}
+						{#each selectedLabels as lbl, i}
+							<span
+								class={multiple
+									? 'bg-secondary truncate rounded px-2 py-0.5 text-sm'
+									: 'truncate rounded px-2 text-sm'}
+								title={lbl}
+							>
+								{lbl}
+							</span>
+						{/each}
+					{:else}
+						<span class="truncate rounded px-2 text-sm">
+							{selectedLabels.length} selected
 						</span>
-					{/each}
+					{/if}
 				{:else}
 					<span class="truncate opacity-50">{placeholder}</span>
 				{/if}
@@ -112,7 +122,7 @@
 			</Button>
 		</Popover.Trigger>
 
-		<Popover.Content class="{width} mx-auto overflow-x-auto overflow-y-auto !p-0 whitespace-nowrap">
+		<Popover.Content class="{width} p-0! mx-auto overflow-x-auto overflow-y-auto whitespace-nowrap">
 			<Command.Root shouldFilter={false}>
 				<Command.Input bind:value={search} placeholder={placeholder || 'Search...'} />
 				<Command.Empty>Type to create</Command.Empty>
@@ -155,7 +165,7 @@
 											}
 										}}
 										variant="ghost"
-										class="hover:!bg-muted !m-0 !ml-auto !h-5 !w-5 !p-1 "
+										class="hover:bg-muted! m-0! ml-auto! h-5! w-5! p-1!"
 									>
 										<span
 											class="icon-[material-symbols--delete-outline] text-foreground ml-auto h-4 w-4 transition-colors duration-200"
@@ -182,7 +192,7 @@
 								<span class="icon-[lucide--plus] mr-2 h-4 w-4 opacity-100"></span>
 
 								<span>Add</span>
-								<p class="w-full text-left text-sm break-words">
+								<p class="wrap-break-word w-full text-left text-sm">
 									"{search}"
 								</p>
 							</Command.Item>

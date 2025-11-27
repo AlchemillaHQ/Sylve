@@ -41,7 +41,7 @@
 		isPinningOpen = $bindable()
 	}: Props = $props();
 
-	let humanSize = $state('1024 M');
+	let humanSize = $state(humanFormat(memory) ?? '1 G');
 	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
 
 	$effect(() => {
@@ -49,7 +49,7 @@
 			const p = humanFormat.parse.raw(humanSize);
 			memory = p.factor * p.value;
 		} catch {
-			memory = 1024;
+			memory = 1000 * 1000 * 1000;
 		}
 	});
 
@@ -84,7 +84,7 @@
 	onMount(async () => {
 		if (!cpuInfo) {
 			try {
-				cpuInfo = (await getCPUInfo()) as CPUInfo;
+				cpuInfo = (await getCPUInfo('current')) as CPUInfo;
 			} catch (error) {
 				toast.error('Failed to load CPU information.');
 			}

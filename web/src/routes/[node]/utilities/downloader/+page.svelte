@@ -371,11 +371,15 @@
 							label="Download Type"
 							placeholder="Select Download Type"
 							options={[
-								{ value: 'uncategorized', label: 'Uncategorized' },
+								{ value: 'uncategorized', label: 'Uncategorized (ISOs, IMGs, etc.)' },
 								{ value: 'base-rootfs', label: 'Base / RootFS' },
 								{ value: 'cloud-init', label: 'Cloud-Init' }
 							]}
-							classes={{ parent: 'mt-2.5 flex-1 space-y-1', label: 'mb-2' }}
+							classes={{
+								parent: 'mt-2.5 flex-1 space-y-1 w-full',
+								label: 'mb-2',
+								trigger: 'w-full'
+							}}
 							bind:value={modalState.downloadType}
 							onChange={(value) =>
 								(modalState.downloadType = value as 'base-rootfs' | 'uncategorized')}

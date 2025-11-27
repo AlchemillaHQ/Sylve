@@ -95,7 +95,7 @@
 		}
 	});
 
-	let humanSize = $state('1024 M');
+	let humanSize = $derived(humanFormat(size) ?? '1 G');
 
 	$effect(() => {
 		if (humanSize) {

@@ -201,4 +201,5 @@
 <span class="icon-[line-md--downloading-loop]"></span>
 <span class="icon-[lets-icons--check-fill]"></span>
 <span class="icon-[mdi--calendar]"></span>
+<span class="icon-[tdesign--cd-filled]"></span>
 -->

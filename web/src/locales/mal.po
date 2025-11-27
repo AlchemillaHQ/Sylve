@@ -36,6 +36,7 @@ msgstr ""
 msgid "Storage"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -383,7 +384,11 @@ msgstr ""
 msgid "Session killed: {0}"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
 msgstr ""
 
@@ -1119,6 +1124,7 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -1223,6 +1229,7 @@ msgstr ""
 msgid "Disk"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
@@ -2105,9 +2112,8 @@ msgstr ""
 msgid "Basic"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Hardware & Advanced"
-msgstr ""
+#~ msgid "Hardware & Advanced"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -2269,13 +2275,11 @@ msgstr ""
 msgid "Select MAC"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Storage.svelte
-msgid "Filesystem"
-msgstr ""
+#~ msgid "Filesystem"
+#~ msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Storage.svelte
-msgid "Select filesystem"
-msgstr ""
+#~ msgid "Select filesystem"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Base"
@@ -2640,6 +2644,7 @@ msgstr ""
 #~ msgid "<0/> Manage ({0} pinned)"
 #~ msgstr ""
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Advanced"
@@ -2654,10 +2659,10 @@ msgstr ""
 msgid "Failed to create VM"
 msgstr ""
 
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-msgid "<0/> Create Virtual Machine"
-msgstr ""
+#~ msgid "<0/> Create Virtual Machine"
+#~ msgstr ""
 
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Create Virtual Machine"
 msgstr ""
@@ -2737,7 +2742,9 @@ msgid "{0} busy"
 msgstr ""
 
 #. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
 msgstr ""
 
@@ -2963,6 +2970,7 @@ msgstr ""
 msgid "Image"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -3106,6 +3114,7 @@ msgid ""
 "below."
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
 msgstr ""
@@ -3510,7 +3519,7 @@ msgid "Enable resource limits to edit"
 msgstr ""
 
 #. placeholder {0}: title
-#. placeholder {0}: activeRow.property
+#. placeholder {0}: title
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -5156,9 +5165,8 @@ msgstr ""
 msgid "Base / RootFS"
 msgstr ""
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Uncategorized"
-msgstr ""
+#~ msgid "Uncategorized"
+#~ msgstr ""
 
 #~ msgid "Download Type§å"
 #~ msgstr ""
@@ -5337,4 +5345,241 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Yearly"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "VM creation form minimized"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Uncategorized (ISOs, IMGs, etc.)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select ZFS pool"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "Jail creation form minimized"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "FStab Additions"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "FStab Entries"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Additional Options"
+msgstr ""
+
+#~ msgid "Hello World"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Select Jail Type"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "FreeBSD"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Linux"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Set Hostname (allow.set_hostname)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Raw Sockets (allow.raw_sockets)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Change File Flags (allow.chflags)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount Filesystems (allow.mount)"
+msgstr ""
+
+#~ msgid "Mount devfs (allow.mount.devfs"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "FS Quotas (allow.quotas)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Socket Address Families (allow.socket_af)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Memory Locking (allow.mlock)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "NFS Daemon (allow.nfsd)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Reserved Ports (allow.reserved_ports)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount fdescfs (allow.mount.fdescfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount fusefs (allow.mount.fusefs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount nullfs (allow.mount.nullfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount procfs (allow.mount.procfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount linprocfs (allow.mount.linprocfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount linsysfs (allow.mount.linsysfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount tmpfs (allow.mount.tmpfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount ZFS (allow.mount.zfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Virtual Machines (allow.vmm)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Allowed Options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Select Allowed Options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Clean Environment"
+msgstr ""
+
+#~ msgid "Pre-start (exec.prestart)"
+#~ msgstr ""
+
+#~ msgid "Runs on the host before the jail starts."
+#~ msgstr ""
+
+#~ msgid "Start (exec.start)"
+#~ msgstr ""
+
+#~ msgid "Runs inside the jail to start it. Often /bin/sh /etc/rc."
+#~ msgstr ""
+
+#~ msgid "Post-start (exec.poststart)"
+#~ msgstr ""
+
+#~ msgid "Runs inside the jail after it has started."
+#~ msgstr ""
+
+#~ msgid "Pre-stop (exec.prestop)"
+#~ msgstr ""
+
+#~ msgid "Runs inside the jail before it is stopped."
+#~ msgstr ""
+
+#~ msgid "Stop (exec.stop)"
+#~ msgstr ""
+
+#~ msgid "Runs inside the jail to stop it. Often /bin/sh /etc/rc.shutdown."
+#~ msgstr ""
+
+#~ msgid "Post-stop (exec.poststop)"
+#~ msgstr ""
+
+#~ msgid "Runs on the host after the jail has stopped."
+#~ msgstr ""
+
+#~ msgid "Jail lifecycle hooks (exec.* scripts)"
+#~ msgstr ""
+
+#~ msgid "Commands"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "One shell command per line, e.g.\n"
+#~ "service nginx start\n"
+#~ "/usr/local/bin/warm-cache.sh"
+#~ msgstr ""
+
+#~ msgid "Each line becomes a separate <0/> entry in <1/>, executed in order as <2/>."
+#~ msgstr ""
+
+#~ msgid "Jail Lifecycle Hooks (exec.* scripts)"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "The above script will be executed during the <0/>. You can\n"
+#~ "enter multiple commands separated by new lines. Make sure the commands are valid and\n"
+#~ "executable in the appropriate context (host or jail)."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "The above script will run during {0}. Ensure they are valid for the host or\n"
+#~ "jail."
+#~ msgstr ""
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid ""
+"The above script will run during {0}, Ensure they are valid for the host or\n"
+"jail"
+msgstr ""
+
+#~ msgid "Script"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Custom Options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Devfs Ruleset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Leave empty for default ruleset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Custom Devfs Ruleset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount devfs (allow.mount.devfs)"
 msgstr ""

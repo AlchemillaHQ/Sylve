@@ -77,37 +77,5 @@ func (s *Service) AppendToConfig(ctid uint, current string, toAppend string) (st
 }
 
 func (s *Service) GetJailMountPoint(ctid uint) (string, error) {
-	// var jail jailModels.Jail
-
-	// err := s.DB.Where("ct_id = ?", ctid).First(&jail).Error
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed_to_get_jail: %w", err)
-	// }
-
-	// var dataset *zfs.Dataset
-
-	// datasets, err := zfs.Datasets("")
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed_to_get_datasets: %w", err)
-	// }
-
-	// for _, ds := range datasets {
-	// 	if ds.GUID == jail.Dataset {
-	// 		dataset = ds
-	// 		break
-	// 	}
-	// }
-
-	// if dataset == nil {
-	// 	return "", fmt.Errorf("failed_to_find_jail_dataset")
-	// }
-
-	// mountPoint, err := dataset.GetProperty("mountpoint")
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed_to_get_jail_mountpoint: %w", err)
-	// }
-
-	// return mountPoint, nil
-
 	return "", fmt.Errorf("not_implemented")
 }

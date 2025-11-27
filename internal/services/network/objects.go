@@ -381,7 +381,7 @@ func (s *Service) IsObjectUsedByJail(id uint) (bool, []uint, error) {
 
 	if len(jailNetworks) > 0 {
 		for _, jn := range jailNetworks {
-			jailIds = append(jailIds, jn.CTID)
+			jailIds = append(jailIds, jn.JailID)
 		}
 
 		return true, jailIds, nil

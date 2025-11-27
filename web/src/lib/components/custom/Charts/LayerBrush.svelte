@@ -53,6 +53,14 @@
 		{/if}
 	</Card.Header>
 
+	<!-- 
+        from-chart-1/50 to-chart-1/100
+        stroke-chart-1
+
+        from-chart-2/50 to-chart-2/100
+        stroke-chart-2
+    -->
+
 	<Card.Content class="h-full min-h-[300px] w-full p-0">
 		<div class="grid gap-1 overflow-hidden rounded-sm border p-4">
 			<State initial={[null, null]} let:value={xDomain} let:set>
@@ -93,7 +101,7 @@
 								classes={{
 									tickLabel: '!text-muted-foreground stroke-[0.5px] stroke-muted-foreground'
 								}}
-								ticks={10}
+								ticks={5}
 							/>
 							<ChartClipPath>
 								<LinearGradient class={`from-${color}/50 to-${color}/1`} vertical>
@@ -102,14 +110,13 @@
 											line={{ class: `stroke-2 stroke-${color}` }}
 											fill={gradient}
 											curve={curveBasis}
-											motion={'tween'}
 										/>
 									{/snippet}
 								</LinearGradient>
 							</ChartClipPath>
 
 							{#if showPoints}
-								<Points style={`fill: var(--${color});`} motion={'tween'} r={3} />
+								<Points style={`fill: var(--${color});`} r={3} />
 							{/if}
 						</Layer>
 

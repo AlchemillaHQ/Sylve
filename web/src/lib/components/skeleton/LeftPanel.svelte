@@ -37,10 +37,10 @@
 	}
 
 	const simpleVMs = resource(
-		[],
-		async () => {
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
 			const result = await getSimpleVMs();
-			updateCache('simple-vm-list', result);
+			updateCache(key, result);
 			return result;
 		},
 		{
@@ -49,10 +49,10 @@
 	);
 
 	const simpleJails = resource(
-		[],
-		async () => {
+		() => 'simple-jail-list',
+		async (key, prevKey, { signal }) => {
 			const result = await getSimpleJails();
-			updateCache('simple-jail-list', result);
+			updateCache(key, result);
 			return result;
 		},
 		{

@@ -331,6 +331,12 @@ func IsValidVMName(name string) bool {
 	return regex.MatchString(name)
 }
 
+func IsValidHostname(name string) bool {
+	v := validator.New()
+	err := v.Var(name, "hostname_rfc1123")
+	return err == nil
+}
+
 func IsValidMACAddress(mac string) bool {
 	regex := regexp.MustCompile(`^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$`)
 	return regex.MatchString(mac)
@@ -850,4 +856,13 @@ func IsValidYAML(data string) bool {
 	var out interface{}
 	err := yaml.Unmarshal([]byte(data), &out)
 	return err == nil
+}
+
+func HashPasswordSHA512(password string) (string, error) {
+	output, err := RunCommand("openssl", "passwd", "-6", password)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(output), nil
 }

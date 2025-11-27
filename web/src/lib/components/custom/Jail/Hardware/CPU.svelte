@@ -9,9 +9,10 @@
 	interface Props {
 		open: boolean;
 		jail: Jail | undefined;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), jail }: Props = $props();
+	let { open = $bindable(), jail, reload = $bindable() }: Props = $props();
 	let cores = $derived(jail?.cores || 1);
 
 	async function modify() {
@@ -29,6 +30,7 @@
 		}
 
 		const response = await modifyCPU(jail?.ctId || 0, cores);
+		reload = true;
 		if (response.error) {
 			toast.error(response.error, {
 				position: 'bottom-center'

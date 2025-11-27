@@ -95,7 +95,8 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 		return samba.NewSambaService(db, zfsService)
 	case *jail.Service:
 		networkService := dependencies[0].(networkServiceInterfaces.NetworkServiceInterface)
-		return jail.NewJailService(db, networkService)
+		systemService := dependencies[1].(systemServiceInterfaces.SystemServiceInterface)
+		return jail.NewJailService(db, networkService, systemService)
 	case *cluster.Service:
 		authService := dependencies[0].(serviceInterfaces.AuthServiceInterface)
 		return cluster.NewClusterService(db, authService)
@@ -113,7 +114,7 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 	utilitiesService := NewService[utilities.Service](db)
 	sambaService := NewService[samba.Service](db, zfsService)
 	networkService := NewService[network.Service](db, libvirtService)
-	jailService := NewService[jail.Service](db, networkService)
+	jailService := NewService[jail.Service](db, networkService, systemService)
 	clusterService := NewService[cluster.Service](db, authService)
 
 	return &ServiceRegistry{

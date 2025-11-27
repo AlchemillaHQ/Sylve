@@ -12,10 +12,12 @@
 
 	let options = {
 		createVM: {
-			open: false
+			open: false,
+			minimize: false
 		},
 		createJail: {
-			open: false
+			open: false,
+			minimize: false
 		},
 		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }]
 	};
@@ -77,33 +79,59 @@
 			</Button>
 
 			<Button
-				class="h-6"
+				class="relative h-6"
 				size="sm"
-				onclick={() => (properties.createVM.open = !properties.createVM.open)}
+				onclick={() => {
+					properties.createVM.open = true;
+					properties.createVM.minimize = false;
+				}}
 			>
 				<div class="flex items-center gap-2">
 					<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
 					<span>Create VM</span>
 				</div>
+
+				{#if properties.createVM.minimize}
+					<span
+						class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+						title="VM creation form minimized"
+					></span>
+				{/if}
 			</Button>
 
 			<Button
-				class="h-6"
+				class="relative h-6"
 				size="sm"
-				onclick={() => (properties.createJail.open = !properties.createJail.open)}
+				onclick={() => {
+					properties.createJail.open = true;
+					properties.createJail.minimize = false;
+				}}
 			>
 				<div class="flex items-center gap-2">
 					<span class="icon-[hugeicons--prison] h-4 w-4"></span>
 					<span>Create Jail</span>
 				</div>
+
+				{#if properties.createJail.minimize}
+					<span
+						class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+						title="Jail creation form minimized"
+					></span>
+				{/if}
 			</Button>
 
-			{#if properties.createVM.open}
-				<CreateVM bind:open={properties.createVM.open} />
+			{#if properties.createVM.open || properties.createVM.minimize}
+				<CreateVM
+					bind:open={properties.createVM.open}
+					bind:minimize={properties.createVM.minimize}
+				/>
 			{/if}
 
-			{#if properties.createJail.open}
-				<CreateJail bind:open={properties.createJail.open} />
+			{#if properties.createJail.open || properties.createJail.minimize}
+				<CreateJail
+					bind:open={properties.createJail.open}
+					bind:minimize={properties.createJail.minimize}
+				/>
 			{/if}
 		</div>
 		<DropdownMenu.Root>

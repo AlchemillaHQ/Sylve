@@ -14,9 +14,10 @@
 		open: boolean;
 		ram: RAMInfo;
 		jail: Jail | undefined;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), ram, jail }: Props = $props();
+	let { open = $bindable(), ram, jail, reload = $bindable() }: Props = $props();
 	let options = {
 		ram: humanFormat(jail?.memory || 1)
 	};
@@ -55,7 +56,7 @@
 
 		if (jail) {
 			const response = await modifyRAM(jail.ctId, bytes);
-
+			reload = true;
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to modify RAM', {

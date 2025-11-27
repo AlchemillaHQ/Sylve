@@ -8,12 +8,37 @@
 
 package jailServiceInterfaces
 
+import jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+
+type HookPhase struct {
+	Enabled bool   `json:"enabled"`
+	Script  string `json:"script"`
+}
+
+type Hooks struct {
+	Prestart  HookPhase `json:"prestart"`
+	Start     HookPhase `json:"start"`
+	Poststart HookPhase `json:"poststart"`
+	Prestop   HookPhase `json:"prestop"`
+	Stop      HookPhase `json:"stop"`
+	Poststop  HookPhase `json:"poststop"`
+}
+
+type JailCreationState struct {
+	CTID        uint
+	DatasetName string
+	JailDir     string
+}
+
 type CreateJailRequest struct {
 	Name        string `json:"name" binding:"required"`
-	CTID        *int   `json:"ctId" binding:"required"`
+	CTID        *uint  `json:"ctId" binding:"required"`
+	Hostname    string `json:"hostname"`
 	Description string `json:"description"`
-	Dataset     string `json:"dataset"`
-	Base        string `json:"base"`
+
+	Pool  string `json:"pool" binding:"required"`
+	Base  string `json:"base"`
+	Fstab string `json:"fstab"`
 
 	SwitchName string `json:"switchName"`
 
@@ -31,23 +56,29 @@ type CreateJailRequest struct {
 
 	MAC *int `json:"mac"`
 
-	ResourceLimits *bool `json:"resourceLimits"`
-	Cores          *int  `json:"cores"`
-	Memory         *int  `json:"memory"`
+	ResourceLimits *bool  `json:"resourceLimits"`
+	Cores          *int   `json:"cores"`
+	Memory         *int   `json:"memory"`
+	StartAtBoot    *bool  `json:"startAtBoot"`
+	StartOrder     int    `json:"startOrder"`
+	DevFSRuleset   string `json:"devfsRuleset"`
 
-	StartAtBoot *bool `json:"startAtBoot"`
-	StartOrder  int   `json:"startOrder"`
+	Type              jailModels.JailType `json:"type" binding:"required"`
+	AllowedOptions    []string            `json:"allowedOptions"`
+	CleanEnvironment  bool                `json:"cleanEnvironment"`
+	AdditionalOptions string              `json:"additionalOptions"`
+	Hooks             Hooks               `json:"hooks"`
 }
 
 type SimpleList struct {
 	ID    uint   `json:"id"`
 	Name  string `json:"name"`
-	CTID  int    `json:"ctId"`
+	CTID  uint   `json:"ctId"`
 	State string `json:"state"`
 }
 
 type State struct {
-	CTID   int     `json:"ctId"`
+	CTID   uint    `json:"ctId"`
 	State  string  `json:"state"`
 	PCPU   float64 `json:"pcpu"`
 	Memory int64   `json:"memory"`

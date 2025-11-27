@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getJails, updateResourceLimits } from '$lib/api/jail/jail';
+	import { getJailById, updateResourceLimits } from '$lib/api/jail/jail';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CPU from '$lib/components/custom/Jail/Hardware/CPU.svelte';
 	import RAM from '$lib/components/custom/Jail/Hardware/RAM.svelte';
@@ -11,47 +11,38 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
+	import { resource } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		jail: Jail;
-		jails: Jail[];
 		ram: RAMInfo;
 	}
 
 	let { data }: { data: Data } = $props();
+	let reload = $state(true);
 
-	const results = createQuery(() => ({
-		queryKey: ['jail-list'],
-		queryFn: async () => {
-			return await getJails();
+	const jail = resource(
+		() => 'jail-' + data.jail.ctId,
+		async (key) => {
+			const jail = await getJailById(data.jail.ctId, 'ctid');
+			updateCache(key, jail);
+			return jail;
 		},
-		refetchInterval: 1000,
-		keepPreviousData: true,
-		initialData: data.jails,
-		onSuccess: (data: Jail[]) => {
-			updateCache('jail-list', data);
+		{
+			lazy: true,
+			initialValue: data.jail
 		}
-	}));
-
-	let jails = $derived(results.data);
-	let jail = $derived.by(() => {
-		if (jails) {
-			const found = jails.find((j) => j.ctId === data.jail?.ctId);
-			return found || data.jail;
-		}
-
-		return data.jail;
-	});
+	);
 
 	let options = {
 		ram: {
-			value: jail?.memory,
+			value: data.jail.memory,
 			open: false
 		},
 		cpu: {
-			value: jail?.cores,
+			value: data.jail.cores,
 			open: false
 		},
 		resourceLimits: {
@@ -62,9 +53,14 @@
 	let properties = $state(options);
 
 	$effect(() => {
-		if (jail) {
-			properties.ram.value = jail.memory;
-			properties.cpu.value = jail.cores;
+		if (reload) {
+			untrack(() => {
+				jail.refetch().then(() => {
+					properties.ram.value = jail.current.memory;
+					properties.cpu.value = jail.current.cores;
+					reload = false;
+				});
+			});
 		}
 	});
 
@@ -105,7 +101,7 @@
 			class="h-6.5"
 		>
 			<div class="flex items-center">
-				{#if jail.resourceLimits}
+				{#if jail.current.resourceLimits}
 					<span class="icon-[lsicon--disable-filled] mr-1 h-4 w-4"></span>
 					<span>Disable Resource Limits</span>
 				{:else}
@@ -121,9 +117,9 @@
 			}}
 			size="sm"
 			variant="outline"
-			class="h-6.5 disabled:!pointer-events-auto"
-			title={!jail.resourceLimits ? 'Enable resource limits to edit' : ''}
-			disabled={!jail.resourceLimits}
+			class="h-6.5 disabled:pointer-events-auto!"
+			title={!jail.current.resourceLimits ? 'Enable resource limits to edit' : ''}
+			disabled={!jail.current.resourceLimits}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
@@ -161,24 +157,24 @@
 </div>
 
 {#if properties.ram.open}
-	<RAM bind:open={properties.ram.open} ram={data.ram} {jail} />
+	<RAM bind:open={properties.ram.open} ram={data.ram} jail={jail.current} bind:reload />
 {/if}
 
 {#if properties.cpu.open}
-	<CPU bind:open={properties.cpu.open} {jail} />
+	<CPU bind:open={properties.cpu.open} jail={jail.current} bind:reload />
 {/if}
 
 <AlertDialog
 	open={properties.resourceLimits.open}
-	customTitle={jail.resourceLimits
+	customTitle={jail.current.resourceLimits
 		? 'This will give unlimited resources to this jail, proceed with <b>caution!</b>'
 		: 'This will enable resource limits for this jail, defaulting to <b>1 GB RAM</b> and <b>1 vCPU</b>, you can change this later'}
 	actions={{
 		onConfirm: async () => {
-			const response = await updateResourceLimits(jail.ctId, !jail.resourceLimits);
+			const response = await updateResourceLimits(jail.current.ctId, !jail.current.resourceLimits);
 			if (response.error) {
 				handleAPIError(response);
-				let adjective = jail.resourceLimits ? 'disable' : 'enable';
+				let adjective = jail.current.resourceLimits ? 'disable' : 'enable';
 				toast.error(`Failed to ${adjective} resource limits`, {
 					position: 'bottom-center'
 				});
@@ -186,7 +182,7 @@
 				return;
 			}
 
-			let adjective = jail.resourceLimits ? 'disabled' : 'enabled';
+			let adjective = jail.current.resourceLimits ? 'disabled' : 'enabled';
 			toast.success(`Resource limits ${adjective}`, {
 				position: 'bottom-center'
 			});

@@ -74,8 +74,7 @@ func (s *Service) DeleteEpair(name string) error {
 
 func (s *Service) SyncEpairs() error {
 	var jails []jailModels.Jail
-	err := s.DB.Preload("Networks").Find(&jails).Error
-	if err != nil {
+	if err := s.DB.Preload("Networks").Find(&jails).Error; err != nil {
 		return fmt.Errorf("failed to find jails: %w", err)
 	}
 
@@ -84,24 +83,47 @@ func (s *Service) SyncEpairs() error {
 		return fmt.Errorf("failed to list interfaces: %w", err)
 	}
 
-	for _, jail := range jails {
-		for _, network := range jail.Networks {
+	for _, j := range jails {
+		hash := utils.HashIntToNLetters(int(j.CTID), 5)
+
+		for _, network := range j.Networks {
 			networkId := fmt.Sprintf("%d", network.SwitchID)
-			epairA := utils.HashIntToNLetters(jail.CTID, 5) + "_" + networkId + "a"
+			base := hash + "_" + networkId
 
-			found := false
-			for _, iface := range ifaces {
-				if iface.Name == epairA {
-					found = true
-					break
+			epairA := base + "a"
+			epairB := base + "b"
+
+			hasA, hasB := false, false
+			for _, ifc := range ifaces {
+				switch ifc.Name {
+				case epairA:
+					hasA = true
+				case epairB:
+					hasB = true
 				}
 			}
 
-			if !found {
-				if err := s.CreateEpair(utils.HashIntToNLetters(jail.CTID, 5) + "_" + networkId); err != nil {
-					return fmt.Errorf("failed to create epair for jail %d network %d: %w", jail.CTID, network.SwitchID, err)
+			// Healthy: both sides exist
+			if hasA && hasB {
+				continue
+			}
+
+			// Half-broken: A exists but B is gone (common after jail kill).
+			// Destroy A so we can recreate a clean pair with CreateEpair.
+			if hasA && !hasB {
+				if _, err := utils.RunCommand("ifconfig", epairA, "destroy"); err != nil {
+					return fmt.Errorf("failed to destroy orphaned epair %s: %w", epairA, err)
 				}
 			}
+
+			// Either both missing, or we just destroyed A: create fresh pair.
+			if err := s.CreateEpair(base); err != nil {
+				return fmt.Errorf("failed to create epair for jail %d network %d: %w",
+					j.CTID, network.SwitchID, err)
+			}
+
+			// Refresh iface list so later iterations see the new epairs
+			ifaces, _ = iface.List()
 		}
 	}
 
