@@ -29,7 +29,7 @@ We’re proud to be supported by:
   </a>
 </p>
 
-- [FreeBSD Foundation](https://freebsdfoundation.org)  
+- [FreeBSD Foundation](https://freebsdfoundation.org)
 - [Alchemilla](https://alchemilla.io)
 
 You can also support the project by [sponsoring us on GitHub](https://github.com/sponsors/AlchemillaHQ).
@@ -92,7 +92,7 @@ kern.racct.enable=1
 Install required packages.
 
 ```sh
-pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm 
+pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm
 ```
 
 Clone the repo and build Sylve.
@@ -117,6 +117,53 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 > [!IMPORTANT]
 > Bhyve does not support boot orders, so you cannot add installation media after creating the VM.
 > So make sure to add an installation media when creating a new VM.
+
+## Configuration
+
+### TLS
+
+TLS is enabled by default. To use your own certificates, set the parameters
+below inside the `tlsConfig` section:
+
+- `certFile`: Path to the TLS certificate.
+- `keyFile`: Path to the TLS key.
+
+Example for letsencrypt:
+
+```json
+"tlsConfig": {
+    "certFile": "/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
+    "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem"
+}
+```
+
+## Jail Configuration
+
+To run Sylve inside a jail environment, allow the permissions below and adjust
+the settings as shown:
+
+```ucl
+allow.vmm;
+allow.nfsd;
+allow.mount;
+allow.mount.zfs;
+zfs.dataset="tank/sylve";
+enforce_statfs=1;
+vnet;
+
+# For Samba
+allow.mount.fdescfs;
+
+# For zfs-jail
+exec.poststart += "zfs jailed=on tank/sylve";
+exec.poststart += "zfs jail ${name} tank/sylve";
+exec.prestop += "zfs unjail ${name} tank/sylve";
+exec.prestop += "zfs jailed=off tank/sylve";
+```
+
+Note:
+
+* Replace `tank/sylve` with your desired ZFS dataset.
 
 # Contributing
 

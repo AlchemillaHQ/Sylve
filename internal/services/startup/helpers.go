@@ -172,8 +172,10 @@ func (s *Service) CheckKernelModules() error {
 	}
 
 	for _, module := range requiredModules {
-		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
-			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+		if _, err := utils.RunCommand("kldstat", "-m", module); err != nil {
+			if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+				return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+			}
 		}
 	}
 
