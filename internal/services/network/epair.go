@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	utils "github.com/alchemillahq/sylve/pkg/utils"
 
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
@@ -103,26 +104,38 @@ func (s *Service) SyncEpairs() error {
 				}
 			}
 
-			// Healthy: both sides exist
+			isRunning := j.StartedAt != nil && (j.StoppedAt == nil || j.StartedAt.After(*j.StoppedAt))
+			if isRunning {
+				if hasA {
+					continue
+				}
+
+				// A is missing while jail is running; log and skip, don't auto-destruct/recreate.
+				logger.L.Warn().Msgf("jail %d is running but epair %s is missing on host; not recreating automatically", j.CTID, epairA)
+				continue
+			}
+
+			// Jail is stopped: now it is safe to "repair" things.
+
+			// Both ends present? Good.
 			if hasA && hasB {
 				continue
 			}
 
-			// Half-broken: A exists but B is gone (common after jail kill).
-			// Destroy A so we can recreate a clean pair with CreateEpair.
-			if hasA && !hasB {
-				if _, err := utils.RunCommand("ifconfig", epairA, "destroy"); err != nil {
-					return fmt.Errorf("failed to destroy orphaned epair %s: %w", epairA, err)
-				}
+			// Exactly one side present (half-broken) → destroy whatever exists.
+			if hasA {
+				_, _ = utils.RunCommand("ifconfig", epairA, "destroy")
+			}
+			if hasB {
+				_, _ = utils.RunCommand("ifconfig", epairB, "destroy")
 			}
 
-			// Either both missing, or we just destroyed A: create fresh pair.
+			// Now create a fresh, clean pair.
 			if err := s.CreateEpair(base); err != nil {
 				return fmt.Errorf("failed to create epair for jail %d network %d: %w",
 					j.CTID, network.SwitchID, err)
 			}
 
-			// Refresh iface list so later iterations see the new epairs
 			ifaces, _ = iface.List()
 		}
 	}

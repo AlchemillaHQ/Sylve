@@ -23,6 +23,7 @@
 		query?: string;
 		multipleSelect?: boolean;
 		customPlaceholder?: string;
+		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
 	}
 
 	let {
@@ -31,11 +32,16 @@
 		parentActiveRow = $bindable([]),
 		query = $bindable(),
 		multipleSelect = true,
-		customPlaceholder = 'No data available'
+		customPlaceholder = 'No data available',
+		initialSort
 	}: Props = $props();
 
+	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
-	let scroll = $state([0, 0]);
+	let scrollTop = 0;
+	let scrollLeft = 0;
+	let shouldPreserveScroll = false;
+
 	let aboutToClick = $state(false);
 
 	function updateParentActiveRows() {
@@ -44,10 +50,24 @@
 		}
 	}
 
+	async function replaceDataPreservingScroll(rows: Row[]) {
+		if (!tableInitialized) {
+			await table?.replaceData(rows);
+			return;
+		}
+
+		if (tableHolder) {
+			scrollTop = tableHolder.scrollTop;
+			scrollLeft = tableHolder.scrollLeft;
+			shouldPreserveScroll = true;
+		}
+
+		await table?.replaceData(rows);
+	}
+
 	$effect(() => {
 		if (data.rows) {
 			untrack(async () => {
-				if (query && query !== '') return;
 				if (data.rows.length === 0) {
 					table?.clearData();
 					return;
@@ -61,7 +81,8 @@
 
 				if (hasRowsChanged(table, data.rows) && !aboutToClick) {
 					if (tableInitialized) {
-						await table?.replaceData(pruneEmptyChildren(data.rows));
+						await replaceDataPreservingScroll(pruneEmptyChildren(data.rows));
+						tableFilter(query || '');
 					}
 				}
 
@@ -119,7 +140,8 @@
 				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
 				paginationSize: 25,
-				paginationCounter: 'pages'
+				paginationCounter: 'pages',
+				initialSort: initialSort ? initialSort : []
 			});
 		}
 
@@ -132,6 +154,9 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
+			tableHolder = tableComponent?.querySelector(
+				'.tabulator-tableholder'
+			) as HTMLDivElement | null;
 
 			document.querySelector('.tabulator-footer')?.addEventListener('mouseover', () => {
 				aboutToClick = true;
@@ -142,20 +167,15 @@
 			});
 		});
 
-		table?.on('scrollVertical', (top) => {
-			scroll = [top, scroll[1]];
-		});
-
-		table?.on('scrollHorizontal', (left) => {
-			scroll = [scroll[0], left];
-		});
-
 		table?.on('renderComplete', () => {
-			const container = document.querySelector('.tabulator-tableholder') as HTMLDivElement;
-			if (container) {
-				container.scrollTop = scroll[0];
-				container.scrollLeft = scroll[1];
-			}
+			if (!shouldPreserveScroll || !tableHolder) return;
+			shouldPreserveScroll = false;
+
+			requestAnimationFrame(() => {
+				if (!tableHolder) return;
+				tableHolder.scrollTop = scrollTop;
+				tableHolder.scrollLeft = scrollLeft;
+			});
 		});
 
 		table?.on('cellClick', (_event: UIEvent, cell) => {

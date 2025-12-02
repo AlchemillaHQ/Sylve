@@ -17,11 +17,11 @@ const (
 )
 
 type gfsState struct {
-	lastHour  time.Time // 0–1h, 1m
-	lastDay   time.Time // 1h–1d, 30m
-	lastWeek  time.Time // 1d–7d, 3h
-	lastMonth time.Time // 7d–30d, 12h
-	lastYear  time.Time // 30d–365d, 7d
+	lastHour  time.Time
+	lastDay   time.Time
+	lastWeek  time.Time
+	lastMonth time.Time
+	lastYear  time.Time
 }
 
 type GFSStep string
@@ -60,7 +60,25 @@ func shouldKeep(last *time.Time, t time.Time, step time.Duration) bool {
 }
 
 func ApplyGFS[T TimeSeriesRow](now time.Time, rows []T) (keepIDs []uint, deleteIDs []uint) {
-	state := gfsState{}
+	const (
+		day  = 24 * time.Hour
+		week = 7 * day
+		year = 365 * day
+	)
+
+	type chosen struct {
+		id uint
+		t  time.Time
+	}
+
+	buckets := map[string]map[int64]chosen{
+		"hour":  {},
+		"day":   {},
+		"week":  {},
+		"month": {},
+		"year":  {},
+	}
+
 	keepSet := make(map[uint]struct{}, len(rows))
 
 	for _, r := range rows {
@@ -72,49 +90,64 @@ func ApplyGFS[T TimeSeriesRow](now time.Time, rows []T) (keepIDs []uint, deleteI
 		}
 
 		age := now.Sub(t)
-		var keep bool
 
-		switch {
-		case age <= time.Minute:
-			// 0–1min -> keep all
-			keep = true
-
-		case age <= time.Hour:
-			// 0–1h, 1/min
-			keep = shouldKeep(&state.lastHour, t, time.Minute)
-
-		case age <= 24*time.Hour:
-			// 1h–1d, 30min
-			keep = shouldKeep(&state.lastDay, t, 30*time.Minute)
-
-		case age <= 7*day:
-			// 1d–7d, 3h
-			keep = shouldKeep(&state.lastWeek, t, 3*time.Hour)
-
-		case age <= 30*day:
-			// 7d–30d, 12h
-			keep = shouldKeep(&state.lastMonth, t, 12*time.Hour)
-
-		case age <= year:
-			// 30d–365d, 7d
-			keep = shouldKeep(&state.lastYear, t, week)
-
-		default:
-			// > 1 year -> drop
-			keep = false
+		if age <= time.Minute {
+			keepSet[id] = struct{}{}
+			continue
 		}
 
-		if keep {
-			keepSet[id] = struct{}{}
+		var interval time.Duration
+		var bucketMap map[int64]chosen
+
+		switch {
+		case age <= time.Hour:
+			interval = time.Minute
+			bucketMap = buckets["hour"]
+		case age <= 24*time.Hour:
+			interval = 30 * time.Minute
+			bucketMap = buckets["day"]
+		case age <= 7*day:
+			interval = 3 * time.Hour
+			bucketMap = buckets["week"]
+		case age <= 30*day:
+			interval = 12 * time.Hour
+			bucketMap = buckets["month"]
+		case age <= year:
+			interval = week
+			bucketMap = buckets["year"]
+		default:
+			continue
+		}
+
+		bucketID := t.UnixNano() / interval.Nanoseconds()
+
+		cur, exists := bucketMap[bucketID]
+		if !exists || t.After(cur.t) {
+			bucketMap[bucketID] = chosen{id: id, t: t}
 		}
 	}
 
+	for _, m := range buckets {
+		for _, ch := range m {
+			keepSet[ch.id] = struct{}{}
+		}
+	}
+
+	seenKeep := make(map[uint]struct{}, len(keepSet))
+	seenDel := make(map[uint]struct{}, len(rows))
+
 	for _, r := range rows {
 		id := r.GetID()
-		if _, ok := keepSet[id]; ok {
-			keepIDs = append(keepIDs, id)
+		if _, keep := keepSet[id]; keep {
+			if _, s := seenKeep[id]; !s {
+				keepIDs = append(keepIDs, id)
+				seenKeep[id] = struct{}{}
+			}
 		} else {
-			deleteIDs = append(deleteIDs, id)
+			if _, s := seenDel[id]; !s {
+				deleteIDs = append(deleteIDs, id)
+				seenDel[id] = struct{}{}
+			}
 		}
 	}
 

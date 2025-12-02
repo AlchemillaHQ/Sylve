@@ -19,7 +19,7 @@ import (
 func (s *Service) GetJailLogs(id uint) (string, error) {
 	var jail jailModels.Jail
 
-	if err := s.DB.First(&jail, "id = ?", id).Error; err != nil {
+	if err := s.DB.First(&jail, "ct_id = ?", id).Error; err != nil {
 		return "", fmt.Errorf("failed to find jail with id %d: %w", id, err)
 	}
 

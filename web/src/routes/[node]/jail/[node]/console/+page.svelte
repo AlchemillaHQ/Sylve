@@ -1,115 +1,164 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getJails, getJailStates } from '$lib/api/jail/jail';
+	import { getJailById, getJailStateById } from '$lib/api/jail/jail';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
-	import {
-		Xterm,
-		XtermAddon,
-		type FitAddon,
-		type ITerminalInitOnlyOptions,
-		type ITerminalOptions,
-		type Terminal
-	} from '@battlefieldduck/xterm-svelte';
-	import { createQueries } from '@tanstack/svelte-query';
 	import adze from 'adze';
-	interface Data {
-		jails: Jail[];
-		jailStates: JailState[];
-	}
+	import { resource, useInterval, useResizeObserver } from 'runed';
+	import { onMount } from 'svelte';
+	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+	import Button from '$lib/components/ui/button/button.svelte';
 
-	let terminal = $state<Terminal>();
-	let ws: WebSocket;
-	let fitAddon: FitAddon;
-	let options: ITerminalOptions & ITerminalInitOnlyOptions = {
-		cursorBlink: true
-	};
+	interface Data {
+		jail: Jail;
+		state: JailState;
+		ctId: number;
+	}
 
 	let { data }: { data: Data } = $props();
-	const ctId = page.url.pathname.split('/')[3];
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['jail-list'],
-				queryFn: async () => {
-					return await getJails();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.jails,
-				onSuccess: (data: Jail[]) => {
-					updateCache('jail-list', data);
-				}
-			},
-			{
-				queryKey: ['jail-states'],
-				queryFn: async () => {
-					return await getJailStates();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.jailStates,
-				onSuccess: (data: JailState[]) => {
-					updateCache('jail-states', data);
-				}
-			}
-		]
-	}));
 
-	let jail: Jail = $derived(
-		(results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
+	let terminal = $state<GhosttyTerminal | null>(null);
+	let ws: WebSocket | null = null;
+	let terminalContainer = $state<HTMLElement | null>(null);
+	let lastWidth = 0;
+	let lastHeight = 0;
+
+	const jail = resource(
+		() => `jail-${data.jail.ctId}`,
+		async () => {
+			const jail = await getJailById(data.jail.ctId, 'ctid');
+			updateCache(`jail-${data.jail.ctId}`, jail);
+			return jail;
+		},
+		{
+			initialValue: data.jail
+		}
 	);
 
-	let jState: JailState = $derived(
-		(results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
-			({} as JailState)
+	const jState = resource(
+		() => `jail-${data.state.ctId}-state`,
+		async () => {
+			const state = await getJailStateById(data.state.ctId);
+			updateCache(`jail-${data.state.ctId}-state`, state);
+			return state;
+		},
+		{
+			initialValue: data.state
+		}
 	);
 
-	async function onLoad() {
-		if (!jail || !jail.ctId) return;
-		terminal?.clear();
-		terminal?.reset();
-
-		const fit = new (await XtermAddon.FitAddon()).FitAddon();
-		terminal?.loadAddon(fit);
-		fit.fit();
-
-		const hash = await sha256(storage.token || '', 1);
-		const wssAuth = {
-			hostname: storage.hostname,
-			token: storage.clusterToken
-		};
-
-		ws = new WebSocket(`/api/jail/console?ctid=${jail.ctId}&hash=${hash}`, [
-			toHex(JSON.stringify(wssAuth))
-		]);
-
-		ws.binaryType = 'arraybuffer';
-		ws.onopen = () => {
-			adze.info(`Jail console connected for jail ${jail.ctId}`);
-			const dims = fit.proposeDimensions();
-			ws.send(
-				new TextEncoder().encode('\x01' + JSON.stringify({ rows: dims?.rows, cols: dims?.cols }))
-			);
-
-			fitAddon = fit;
-		};
-
-		ws.onmessage = (e) => {
-			if (e.data instanceof ArrayBuffer) {
-				terminal?.write(new Uint8Array(e.data));
-			}
-		};
+	function sendSize(cols: number, rows: number) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
 	}
 
-	function onData(data: string) {
-		ws?.send(new TextEncoder().encode('\x00' + data));
+	function resizeTerminal(width: number, height: number) {
+		if (!terminal) return;
+
+		const root = terminal.element as HTMLElement | undefined;
+		if (!root) return;
+
+		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
+		if (!canvas) return;
+
+		const currentCols = terminal.cols || 80;
+		const currentRows = terminal.rows || 24;
+
+		const cellWidth = canvas.clientWidth / currentCols || 8;
+		const cellHeight = canvas.clientHeight / currentRows || 16;
+		if (!cellWidth || !cellHeight) return;
+
+		const cols = Math.max(2, Math.floor(width / cellWidth));
+		const rows = Math.max(2, Math.floor(height / cellHeight));
+		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
+
+		terminal.resize(cols, rows);
+		sendSize(cols, rows);
 	}
+
+	useResizeObserver(
+		() => terminalContainer,
+		(entries) => {
+			const entry = entries[0];
+			if (!entry) return;
+			const { width, height } = entry.contentRect;
+			lastWidth = width;
+			lastHeight = height;
+			resizeTerminal(width, height);
+		}
+	);
+
+	onMount(() => {
+		let destroyed = false;
+
+		const setup = async () => {
+			if (!jail.current || !jail.current.ctId) return;
+			if (jState.current && jState.current.state === 'INACTIVE') return;
+			if (!terminalContainer) return;
+
+			await initGhostty();
+			if (destroyed) return;
+
+			terminal = new GhosttyTerminal({
+				cursorBlink: true,
+				fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+				fontSize: 14,
+				theme: {
+					background: '#282c34',
+					foreground: '#FFFFFF'
+				}
+			});
+
+			terminal.open(terminalContainer);
+
+			const hash = await sha256(storage.token || '', 1);
+			const wssAuth = {
+				hostname: storage.hostname,
+				token: storage.clusterToken
+			};
+
+			ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`, [
+				toHex(JSON.stringify(wssAuth))
+			]);
+			ws.binaryType = 'arraybuffer';
+
+			ws.onopen = () => {
+				adze.info(`Jail console connected for jail ${data.ctId}`);
+
+				// initial size once WS is open
+				if (lastWidth && lastHeight) {
+					resizeTerminal(lastWidth, lastHeight);
+				} else if (terminalContainer) {
+					const rect = terminalContainer.getBoundingClientRect();
+					resizeTerminal(rect.width, rect.height);
+				}
+			};
+
+			ws.onmessage = (e) => {
+				if (e.data instanceof ArrayBuffer) {
+					terminal?.write(new Uint8Array(e.data));
+				} else {
+					terminal?.write(e.data as string);
+				}
+			};
+
+			terminal.onData((data: string) => {
+				ws?.send(new TextEncoder().encode('\x00' + data));
+			});
+		};
+
+		setup();
+
+		return () => {
+			destroyed = true;
+			ws?.close();
+			terminal?.dispose?.();
+		};
+	});
 </script>
 
-{#if jState && jState?.state === 'INACTIVE'}
+{#if jState.current && jState.current.state === 'INACTIVE'}
 	<div
 		class="text-primary dark:text-secondary flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
@@ -121,5 +170,13 @@
 		</div>
 	</div>
 {:else}
-	<Xterm bind:terminal {options} {onLoad} {onData} class="h-full w-full" />
+	<div class="flex h-full w-full flex-col">
+		<div class="flex h-10 w-full items-center gap-2 border p-4"></div>
+		<div
+			class="terminal-wrapper h-full w-full"
+			tabindex="0"
+			style="outline: none;"
+			bind:this={terminalContainer}
+		/>
+	</div>
 {/if}

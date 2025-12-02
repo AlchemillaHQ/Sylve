@@ -108,10 +108,18 @@ export async function cachedFetch<T>(
 	if (storedEntry) {
 		try {
 			const entry: CacheEntry<T> = JSON.parse(storedEntry);
-			if (now - entry.timestamp < duration) {
-				if (entry.data !== null && entry.data !== undefined) {
-					return entry.data;
-				}
+
+			const isFresh = now - entry.timestamp < duration;
+			const hasData = entry.data !== null && entry.data !== undefined;
+			const looksLikeError =
+				hasData &&
+				typeof entry.data === 'object' &&
+				entry.data !== null &&
+				'status' in (entry.data as any) &&
+				(entry.data as any).status === 'error';
+
+			if (isFresh && hasData && !looksLikeError) {
+				return entry.data;
 			}
 		} catch (error) {
 			console.error(`Failed to parse cached data for key "${key}"`, error);
@@ -120,7 +128,17 @@ export async function cachedFetch<T>(
 
 	const data = await fetchFunction();
 	const entry: CacheEntry<T> = { timestamp: now, data };
-	localStorage.setItem(key, JSON.stringify(entry));
+
+	const looksLikeError =
+		data &&
+		typeof data === 'object' &&
+		'status' in (data as any) &&
+		(data as any).status === 'error';
+
+	if (!looksLikeError) {
+		localStorage.setItem(key, JSON.stringify(entry));
+	}
+
 	return data;
 }
 

@@ -315,6 +315,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/state", jailHandlers.ListJailStates(jailService))
+		jail.GET("/state/:id", jailHandlers.GetJailState(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
 		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService))

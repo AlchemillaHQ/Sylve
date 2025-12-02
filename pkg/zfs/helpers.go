@@ -30,8 +30,59 @@ const (
 	Renamed
 )
 
+/*
+{
+   "output_version":{
+      "command":"zfs get",
+      "vers_major":0,
+      "vers_minor":1
+   },
+   "datasets":{
+      "zroot/sylve":{
+         "name":"zroot/sylve",
+         "type":"FILESYSTEM",
+         "pool":"zroot",
+         "createtxg":"780440",
+         "properties":{
+            "mountpoint":{
+               "value":"/zroot/sylve",
+               "source":{
+                  "type":"INHERITED",
+                  "data":"zroot"
+               }
+            }
+         }
+      }
+   }
+}
+*/
+
+type DatasetType string
+
+const (
+	Filesystem DatasetType = "FILESYSTEM"
+	Snapshot   DatasetType = "SNAPSHOT"
+	Volume     DatasetType = "VOLUME"
+)
+
+type JSONOutputVersion struct {
+	Command   string `json:"command"`
+	VersMajor int    `json:"vers_major"`
+	VersMinor int    `json:"vers_minor"`
+}
+
+type JSONProperty struct {
+	Value  string          `json:"value"`
+	Source JSONPropertySrc `json:"source"`
+}
+
+type JSONPropertySrc struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
 var (
-	dsPropList           = []string{"name", "origin", "used", "avail", "recordsize", "mountpoint", "compression", "type", "volsize", "quota", "referenced", "written", "logicalused", "usedbydataset", "guid", "mounted", "checksum", "aclmode", "aclinherit", "primarycache", "volmode"}
+	dsPropList           = []string{"name", "origin", "used", "avail", "recordsize", "mountpoint", "compression", "type", "volsize", "quota", "referenced", "written", "logicalused", "usedbydataset", "guid", "mounted", "checksum", "aclmode", "aclinherit", "acltype", "primarycache", "volmode"}
 	zpoolPropList        = []string{"name", "health", "allocated", "size", "free", "readonly", "dedupratio", "fragmentation", "freeing", "leaked", "guid"}
 	zpoolPropListOptions = strings.Join(zpoolPropList, ",")
 	zpoolArgs            = []string{"get", "-Hp", zpoolPropListOptions}
@@ -145,6 +196,28 @@ func setString(field *string, value string) {
 		v = value
 	}
 	*field = v
+}
+
+func setBool(field *bool, value string) error {
+	if value == "-" {
+		*field = false
+		return nil
+	}
+
+	switch strings.ToLower(value) {
+	case "yes", "on":
+		value = "true"
+	case "no", "off":
+		value = "false"
+	}
+
+	v, err := strconv.ParseBool(value)
+	if err != nil {
+		return err
+	}
+
+	*field = v
+	return nil
 }
 
 func setUint(field *uint64, value string) error {

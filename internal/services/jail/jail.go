@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
+	cpuid "github.com/klauspost/cpuid/v2"
 
 	"gorm.io/gorm"
 )
@@ -302,7 +304,8 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 			return fmt.Errorf("linux_jails_cannot_use_dhcp_or_slaac")
 		}
 
-		if data.IPv4 != nil || data.IPv6 != nil {
+		if !((data.IPv4 == nil && data.IPv6 == nil) ||
+			(data.IPv4 != nil && data.IPv6 != nil && *data.IPv4 == 0 && *data.IPv6 == 0)) {
 			return fmt.Errorf("linux_jails_cannot_use_ip4_or_ip6")
 		}
 	}
@@ -316,6 +319,61 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 	}
 
 	return nil
+}
+
+func (s *Service) CreateHardwareConfig(data jailModels.Jail) (string, string, error) {
+	cpuCores := data.Cores
+	memory := data.Memory
+
+	cpuCfg := ""
+	memoryCfg := ""
+
+	ctidHash := utils.HashIntToNLetters(int(data.CTID), 5)
+
+	jails, err := s.GetJails()
+	if err != nil {
+		return "", "", fmt.Errorf("failed_to_get_jails: %w", err)
+	}
+
+	numLogicalCores := cpuid.CPU.LogicalCores
+	coreUsage := map[int]int{}
+	for _, jail := range jails {
+		for _, core := range jail.CPUSet {
+			coreUsage[core]++
+		}
+	}
+
+	type CoreCount struct {
+		Core  int
+		Count int
+	}
+
+	var allCores []CoreCount
+	for i := 0; i < numLogicalCores; i++ {
+		allCores = append(allCores, CoreCount{Core: i, Count: coreUsage[i]})
+	}
+
+	sort.Slice(allCores, func(i, j int) bool {
+		return allCores[i].Count < allCores[j].Count
+	})
+
+	if cpuCores > 0 && len(allCores) > 0 {
+		selectedCores := []int{}
+		for i := 0; i < cpuCores && i < len(allCores); i++ {
+			selectedCores = append(selectedCores, allCores[i].Core)
+		}
+		if len(selectedCores) > 0 {
+			coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selectedCores), " ", ",", -1), "[]")
+			cpuCfg = fmt.Sprintf("cpuset -l %s -j %s", coreListStr, ctidHash)
+		}
+	}
+
+	if memory > 0 {
+		memoryMB := memory / (1024 * 1024)
+		memoryCfg = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", ctidHash, memoryMB)
+	}
+
+	return cpuCfg, memoryCfg, nil
 }
 
 func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac string) (string, error) {
@@ -360,10 +418,26 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		return "", fmt.Errorf("failed_to_create_in_jail_scripts_directory: %w", err)
 	}
 
+	var rcConfPath string
+
+	if data.Type == jailModels.JailTypeFreeBSD {
+		rcConfPath = filepath.Join(mountPoint, "etc", "rc.conf")
+		if _, err := os.Stat(rcConfPath); os.IsNotExist(err) {
+			if err := os.WriteFile(rcConfPath, []byte(""), 0644); err != nil {
+				return "", fmt.Errorf("failed_to_create_rc_conf: %w", err)
+			}
+		}
+	}
+
 	logPath := filepath.Join(jailDir, fmt.Sprintf("%d.log", ctid))
 
 	// Small helper to write scripts
 	writeScript := func(path, content string, executable bool) error {
+		if content == "" {
+			// ensure every script file has at least a shebang
+			content = "#!/bin/sh\n"
+		}
+
 		mode := os.FileMode(0644)
 		if executable {
 			mode = 0755
@@ -407,18 +481,18 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 	}
 
-	// Hook script contents (just plain shell snippets)
 	var preStartCfg, startCfg, postStartCfg, preStopCfg, stopCfg, postStopCfg string
 
-	// Networking (host side, so goes into preStartCfg)
 	if len(data.Networks) > 0 {
 		if mac == "" {
 			return "", fmt.Errorf("missing_mac_for_network")
 		}
 
+		var networkId string
+
 		network := data.Networks[0]
 		if network.SwitchID > 0 {
-			networkId := fmt.Sprintf("%d", network.SwitchID)
+			networkId = fmt.Sprintf("%d", network.SwitchID)
 
 			cfg += "\tvnet;\n"
 			cfg += fmt.Sprintf("\tvnet.interface = \"%s_%sb\";\n", ctidHash, networkId)
@@ -440,33 +514,163 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 
 			preStartCfg += fmt.Sprintf("if ! ifconfig %s | grep -qw %s_%sa; then\n",
 				bridgeName, ctidHash, networkId)
-			preStartCfg += fmt.Sprintf("\tifconfig %s addm %s_%sa;\n",
+			preStartCfg += fmt.Sprintf("\tifconfig %s addm %s_%sa 2>&1 || true\n",
 				bridgeName, ctidHash, networkId)
 			preStartCfg += "fi\n\n\n"
 		}
 
-		// TODO: DHCP / SLAAC / static config inside jail in future.
+		// DHCP / SLAAC / static config inside jail — FreeBSD JAILS ONLY
+		if data.Type == jailModels.JailTypeFreeBSD {
+			ifName := fmt.Sprintf("ifconfig_%s_%sb", ctidHash, networkId)
+			lineDHCP := fmt.Sprintf("%s=\"SYNCDHCP\"\n", ifName)
+			ipv6Name := fmt.Sprintf("%s_ipv6", ifName)
+			lineSLAAC := fmt.Sprintf("%s=\"inet6 accept_rtadv\"\n", ipv6Name)
+
+			rcF, err := os.OpenFile(rcConfPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return "", fmt.Errorf("open rc.conf: %w", err)
+			}
+
+			defer rcF.Close()
+
+			b, err := os.ReadFile(rcConfPath)
+			if err != nil && !os.IsNotExist(err) {
+				return "", fmt.Errorf("read rc.conf: %w", err)
+			}
+
+			existing := string(b)
+			var rcToAppend strings.Builder
+
+			if network.DHCP {
+				if !strings.Contains(existing, lineDHCP) {
+					rcToAppend.WriteString(lineDHCP)
+				}
+			} else {
+				ipv4Addr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4ID)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_get_ipv4_address_object: %w", err)
+				}
+
+				ip, mask, err := utils.SplitIPv4AndMask(ipv4Addr)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_split_ipv4_address_and_mask: %w", err)
+				}
+
+				lineIPv4 := fmt.Sprintf("%s=\"inet %s netmask %s\"\n", ifName, ip, mask)
+				if !strings.Contains(existing, lineIPv4) {
+					rcToAppend.WriteString(lineIPv4)
+				}
+
+				if network.IPv4GwID != nil && *network.IPv4GwID > 0 {
+					ipv4GwAddr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4GwID)
+					if err != nil {
+						return "", fmt.Errorf("failed_to_get_ipv4_gateway_object: %w", err)
+					}
+
+					lineGw4 := fmt.Sprintf("defaultrouter=\"%s\"\n", ipv4GwAddr)
+					if !strings.Contains(existing, lineGw4) {
+						rcToAppend.WriteString(lineGw4)
+					}
+				}
+			}
+
+			if network.SLAAC {
+				if !strings.Contains(existing, lineSLAAC) {
+					rcToAppend.WriteString(lineSLAAC)
+				}
+			}
+
+			if network.IPv6ID != nil && *network.IPv6ID > 0 {
+				ipv6Addr, err := s.NetworkService.GetObjectEntryByID(*network.IPv6ID)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_get_ipv6_address_object: %w", err)
+				}
+
+				lineIPv6 := fmt.Sprintf("%s=\"inet6 %s\"\n", ipv6Name, ipv6Addr)
+				if !strings.Contains(existing, lineIPv6) {
+					rcToAppend.WriteString(lineIPv6)
+				}
+			}
+
+			if network.IPv6GwID != nil && *network.IPv6GwID > 0 {
+				ipv6GwAddr, err := s.NetworkService.GetObjectEntryByID(*network.IPv6GwID)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_get_ipv6_gateway_object: %w", err)
+				}
+
+				lineGw6 := fmt.Sprintf("defaultrouter_ipv6=\"%s\"\n", ipv6GwAddr)
+				if !strings.Contains(existing, lineGw6) {
+					rcToAppend.WriteString(lineGw6)
+				}
+			}
+
+			if len(rcToAppend.String()) > 0 {
+				if _, err := rcF.WriteString(rcToAppend.String()); err != nil {
+					return "", fmt.Errorf("append to rc.conf: %w", err)
+				}
+			}
+		}
 	}
 
-	// User-defined hook scripts
+	if data.Type == jailModels.JailTypeFreeBSD {
+		var inheritLines strings.Builder
+
+		if data.InheritIPv4 {
+			inheritLines.WriteString(fmt.Sprintf("\tip4=\"inherit\";\n"))
+		}
+
+		if data.InheritIPv6 {
+			inheritLines.WriteString(fmt.Sprintf("\tip6=\"inherit\";\n"))
+		}
+
+		if inheritLines.Len() > 0 {
+			cfg += fmt.Sprintf("\n%s\n", inheritLines.String())
+		}
+	}
+
 	for _, hook := range data.JailHooks {
 		if !hook.Enabled || hook.Script == "" {
 			continue
 		}
+
+		add := func(buf *string) {
+			if *buf == "" {
+				*buf = "#!/bin/sh\n"
+			}
+			*buf += hook.Script + "\n"
+		}
+
 		switch hook.Phase {
 		case jailModels.JailHookPhasePreStart:
-			preStartCfg += hook.Script + "\n"
+			add(&preStartCfg)
 		case jailModels.JailHookPhaseStart:
-			startCfg += hook.Script + "\n"
+			add(&startCfg)
 		case jailModels.JailHookPhasePostStart:
-			postStartCfg += hook.Script + "\n"
+			add(&postStartCfg)
 		case jailModels.JailHookPhasePreStop:
-			preStopCfg += hook.Script + "\n"
+			add(&preStopCfg)
 		case jailModels.JailHookPhaseStop:
-			stopCfg += hook.Script + "\n"
+			add(&stopCfg)
 		case jailModels.JailHookPhasePostStop:
-			postStopCfg += hook.Script + "\n"
+			add(&postStopCfg)
 		}
+	}
+
+	cpuCfg, memoryCfg, err := s.CreateHardwareConfig(data)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_create_hardware_config: %w", err)
+	}
+
+	if cpuCfg != "" {
+		postStartCfg += cpuCfg + "\n"
+	}
+
+	if memoryCfg != "" {
+		postStartCfg += memoryCfg + "\n"
+	}
+
+	if cpuCfg != "" || memoryCfg != "" {
+		postStartCfg += "\n"
 	}
 
 	// Logging & env
@@ -547,7 +751,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		if err := os.WriteFile(fstabPath, []byte(data.Fstab), 0644); err != nil {
 			return "", fmt.Errorf("failed_to_write_fstab_file: %w", err)
 		}
-		cfg += fmt.Sprintf("\tfstab = \"%s\";\n\n", fstabPath)
+		cfg += fmt.Sprintf("\tmount.fstab = \"%s\";\n\n", fstabPath)
 	}
 
 	// User additional options
@@ -556,7 +760,13 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		cfg += "\n" + data.AdditionalOptions + "\n"
 	}
 
-	// TODO: CPU / Memory limits later
+	if data.MetadataMeta != "" {
+		cfg += fmt.Sprintf("\tmeta = \"%s\";\n", data.MetadataMeta)
+	}
+
+	if data.MetadataEnv != "" {
+		cfg += fmt.Sprintf("\tenv = \"%s\";\n", data.MetadataEnv)
+	}
 
 	cfg += "\n\tpersist;\n"
 	cfg += "}\n"
@@ -630,6 +840,14 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 	jail.Fstab = data.Fstab
 	jail.AllowedOptions = data.AllowedOptions
 	jail.Type = data.Type
+	jail.MetadataEnv = data.MetadataEnv
+	jail.MetadataMeta = data.MetadataMeta
+
+	if data.CleanEnvironment != nil {
+		jail.CleanEnvironment = *data.CleanEnvironment
+	} else {
+		jail.CleanEnvironment = false
+	}
 
 	jail.JailHooks = []jailModels.JailHooks{
 		{
@@ -903,12 +1121,6 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 	jailConfigPath := filepath.Join(jailDir, fmt.Sprintf("%d.conf", *data.CTID))
 	if err = os.WriteFile(jailConfigPath, []byte(jCfg), 0644); err != nil {
 		err = fmt.Errorf("failed_to_write_jail_config_file: %w", err)
-		return
-	}
-
-	err = s.SetFBSDJailRootPassword(mountPoint, "sylve_default_password")
-	if err != nil {
-		err = fmt.Errorf("failed_to_set_jail_root_password: %w", err)
 		return
 	}
 

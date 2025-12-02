@@ -13,6 +13,7 @@
 	import { curveBasis } from 'd3-shape';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import humanFormat from 'human-format';
+	import { onMount } from 'svelte';
 	interface Props {
 		points: { date: Date; value: number }[];
 		maxY?: number;
@@ -36,6 +37,8 @@
 		color = 'chart-1',
 		type = 'number'
 	}: Props = $props();
+
+	let xDomain = $state([points[0]?.date, points[points.length - 1]?.date]);
 </script>
 
 <Card.Root class={containerClass}>
@@ -62,7 +65,7 @@
     -->
 
 	<Card.Content class="h-full min-h-[300px] w-full p-0">
-		<div class="grid gap-1 overflow-hidden rounded-sm border p-4">
+		<div class="grid gap-1 overflow-hidden rounded-sm p-4">
 			<State initial={[null, null]} let:value={xDomain} let:set>
 				<div class="h-[300px]">
 					<Chart

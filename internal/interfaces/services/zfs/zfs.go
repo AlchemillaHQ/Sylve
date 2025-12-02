@@ -30,7 +30,7 @@ type ZfsServiceInterface interface {
 	CreatePool(Zpool) error
 	DeletePool(poolName string) error
 
-	GetDatasets(t string) ([]*Dataset, error)
+	GetDatasets(t string) ([]*zfs.Dataset, error)
 	BulkDeleteDataset(guids []string) error
 
 	CreateSnapshot(guid string, name string, recursive bool) error

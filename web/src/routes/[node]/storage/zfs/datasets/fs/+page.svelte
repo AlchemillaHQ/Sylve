@@ -12,10 +12,10 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
-	import { createFSProps, generateTableData, handleError } from '$lib/utils/zfs/dataset/fs';
-	import { createQueries } from '@tanstack/svelte-query';
-	import { untrack } from 'svelte';
+	import { generateTableData } from '$lib/utils/zfs/dataset/fs';
 	import { toast } from 'svelte-sonner';
+	import { resource, IsDocumentVisible } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
 		pools: Zpool[];
@@ -24,39 +24,33 @@
 
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsDatasets';
+	let visible = new IsDocumentVisible();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['pools'],
-				queryFn: async () => {
-					return await getPools();
-				},
-				refetchInterval: false,
-				keepPreviousData: false,
-				initialData: data.pools,
-				onSuccess: (data: Zpool[]) => {
-					updateCache('pools', data);
-				}
-			},
-			{
-				queryKey: ['zfs-datasets'],
-				queryFn: async () => {
-					return await getDatasets();
-				},
-				refetchInterval: false,
-				keepPreviousData: false,
-				initialData: data.datasets,
-				onSuccess: (data: Dataset[]) => {
-					updateCache('zfs-datasets', data);
-				}
-			}
-		]
-	}));
+	const pools = resource(
+		() => 'pools',
+		async (key, prevKey, { signal }) => {
+			const result = await getPools();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.pools
+		}
+	);
 
-	let pools: Zpool[] = $derived(results[0].data as Zpool[]);
-	let datasets: Dataset[] = $derived(results[1].data as Dataset[]);
-	let grouped = $derived(groupByPool(pools, datasets));
+	const datasets = resource(
+		() => 'zfs-filesystems',
+		async (key, prevKey, { signal }) => {
+			const result = await getDatasets();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.datasets
+		}
+	);
+
+	let grouped = $derived(groupByPool(pools.current, datasets.current));
 	let tableData = $derived(generateTableData(grouped));
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -64,11 +58,20 @@
 
 	$effect(() => {
 		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
+			console.log('Reloading datasets and pools');
+			pools.refetch();
+			datasets.refetch();
 
 			reload = false;
+		}
+	});
+
+	$effect(() => {
+		if (visible.current) {
+			untrack(() => {
+				pools.refetch();
+				datasets.refetch();
+			});
 		}
 	});
 
@@ -263,6 +266,7 @@
 		bind:parentActiveRow={activeRows}
 		multipleSelect={true}
 		bind:query
+		initialSort={[{ column: 'name', dir: 'asc' }]}
 	/>
 </div>
 
@@ -335,7 +339,7 @@
 
 <!-- Create FS -->
 {#if modals.fs.create.open}
-	<CreateFS bind:open={modals.fs.create.open} {datasets} {grouped} bind:reload />
+	<CreateFS bind:open={modals.fs.create.open} datasets={datasets.current} {grouped} bind:reload />
 {/if}
 
 <!-- Edit FS -->

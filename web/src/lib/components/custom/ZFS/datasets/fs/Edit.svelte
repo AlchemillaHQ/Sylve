@@ -26,7 +26,8 @@
 		quota: dataset.quota ? bytesToHumanReadable(dataset.quota) : '',
 		aclinherit: dataset.aclinherit || 'passthrough',
 		aclmode: dataset.aclmode || 'passthrough',
-		recordsize: dataset.recordsize ? dataset.recordsize.toString() : '131072'
+		recordsize: dataset.recordsize ? dataset.recordsize.toString() : '131072',
+		mountpoint: dataset.mountpoint || ('' as string | undefined)
 	};
 
 	let zfsProperties = $state(createFSProps);
@@ -50,7 +51,8 @@
 			quota: parseQuotaToZFSBytes(properties.quota),
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
-			recordsize: properties.recordsize
+			recordsize: properties.recordsize,
+			mountpoint: properties.mountpoint || undefined
 		});
 
 		reload = true;
@@ -84,7 +86,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
@@ -157,7 +159,7 @@
 				/>
 
 				<div class="space-y-1">
-					<Label class="w-24 text-sm whitespace-nowrap">Quota</Label>
+					<Label class="w-24 whitespace-nowrap text-sm">Quota</Label>
 					<Input
 						type="text"
 						class="w-full text-left"
@@ -184,12 +186,23 @@
 				/>
 
 				<SimpleSelect
-					label="Recordsize"
-					placeholder="Select Recordsize"
+					label="Record Size"
+					placeholder="Select Record Size"
 					options={zfsProperties.recordsize}
 					bind:value={properties.recordsize}
 					onChange={(value) => (properties.recordsize = value)}
 				/>
+
+				<div class="space-y-1.5">
+					<Label for="mountpoint" class="w-24 whitespace-nowrap text-sm">Custom Mount Point</Label>
+					<Input
+						type="text"
+						id="mountpoint"
+						placeholder="/custom/mountpoint"
+						autocomplete="off"
+						bind:value={properties.mountpoint}
+					/>
+				</div>
 			</div>
 		</div>
 

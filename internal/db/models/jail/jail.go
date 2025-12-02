@@ -144,6 +144,9 @@ type Jail struct {
 	Networks []Network   `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 	Stats    []JailStats `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
+	MetadataMeta string `json:"metadataMeta"`
+	MetadataEnv  string `json:"metadataEnv"`
+
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 

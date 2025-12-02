@@ -138,7 +138,6 @@
 				<div class="flex items-center gap-2">
 					{#if !edit}
 						<span class="icon-[mdi--user-plus] h-5 w-5"></span>
-
 						<span>Create User</span>
 					{:else}
 						<span class="icon-[mdi--user-edit] h-5 w-5"></span>
@@ -170,7 +169,6 @@
 						}}
 					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="icon-[mdi--user-edit] h-5 w-5"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -195,7 +193,7 @@
 
 		<div class="grid grid-cols-1">
 			<div class="space-y-1">
-				<Label class="w-24 text-sm whitespace-nowrap">Password</Label>
+				<Label class="w-24 whitespace-nowrap text-sm">Password</Label>
 				<div class="flex w-full items-center space-x-2">
 					<Input
 						type="password"

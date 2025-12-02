@@ -144,11 +144,11 @@ export const VMSchema = z.object({
 });
 
 export const VMStatSchema = z.object({
-	vmId: z.number().int(),
-	cpuUsage: z.number(),
-	memoryUsage: z.number(),
-	memoryUsed: z.number(),
-	createdAt: z.string()
+	vmId: z.number().int().default(0),
+	cpuUsage: z.number().default(0),
+	memoryUsage: z.number().default(0),
+	memoryUsed: z.number().default(0),
+	createdAt: z.string().default(new Date(0).toISOString())
 });
 
 export const VMDomainSchema = z.object({

@@ -65,9 +65,12 @@ type CreateJailRequest struct {
 
 	Type              jailModels.JailType `json:"type" binding:"required"`
 	AllowedOptions    []string            `json:"allowedOptions"`
-	CleanEnvironment  bool                `json:"cleanEnvironment"`
+	CleanEnvironment  *bool               `json:"cleanEnvironment"`
 	AdditionalOptions string              `json:"additionalOptions"`
 	Hooks             Hooks               `json:"hooks"`
+
+	MetadataMeta string `json:"metadataMeta"`
+	MetadataEnv  string `json:"metadataEnv"`
 }
 
 type SimpleList struct {

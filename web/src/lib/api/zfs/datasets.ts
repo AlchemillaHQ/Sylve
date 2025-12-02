@@ -99,7 +99,7 @@ export async function deletePeriodicSnapshot(guid: string): Promise<APIResponse>
 export async function createFileSystem(
 	name: string,
 	parent: string,
-	properties: Record<string, string>
+	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/filesystem', APIResponseSchema, 'POST', {
 		name: name,
@@ -110,7 +110,7 @@ export async function createFileSystem(
 
 export async function editFileSystem(
 	guid: string,
-	properties: Record<string, string>
+	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
 	return await apiRequest(`/zfs/datasets/filesystem`, APIResponseSchema, 'PATCH', {
 		guid: guid,

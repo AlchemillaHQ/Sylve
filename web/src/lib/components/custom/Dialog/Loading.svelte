@@ -18,7 +18,7 @@
 		logs
 	}: Props = $props();
 
-	let logsContainer: HTMLDivElement | null = null;
+	let logsContainer: HTMLDivElement | null = $state(null);
 
 	function scrollToBottom() {
 		if (logsContainer) {
@@ -41,28 +41,29 @@
 	>
 		<Dialog.Header class="flex w-full min-w-0 flex-col items-center justify-center text-center">
 			<Dialog.Title class="mb-2 text-lg font-semibold">{title}</Dialog.Title>
-
-			{#if logs}
-				<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
-					<Card.Content class="mt-3 w-full max-w-full min-w-0 p-0">
-						<!-- Make THIS the scroll container so we can bind to a real DOM node -->
-						<div
-							class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
-							bind:this={logsContainer}
-						>
-							<pre class="block min-w-0 text-xs whitespace-pre text-[#4AF626]">
-{logs}
-							</pre>
-						</div>
-					</Card.Content>
-				</Card.Root>
-			{:else}
-				<span class="icon-[mdi--loading] mb-4 animate-spin text-4xl {iconColor}"></span>
-			{/if}
-
-			<Dialog.Description class="text-muted-foreground mt-1 text-sm">
-				{@html description}
-			</Dialog.Description>
 		</Dialog.Header>
+
+		{#if logs}
+			<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
+				<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+					<div
+						class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+						bind:this={logsContainer}
+					>
+						<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
+							{logs}
+						</pre>
+					</div>
+				</Card.Content>
+			</Card.Root>
+		{:else}
+			<div class="flex w-full items-center justify-center py-3">
+				<span class="icon-[mdi--loading] animate-spin text-4xl {iconColor}"></span>
+			</div>
+		{/if}
+
+		<div class="text-muted-foreground mt-1 justify-center text-center text-sm">
+			{@html description}
+		</div>
 	</Dialog.Content>
 </Dialog.Root>

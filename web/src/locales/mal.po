@@ -83,6 +83,8 @@ msgstr ""
 msgid "Switches"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Manual"
 msgstr ""
@@ -487,6 +489,8 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -2641,8 +2645,10 @@ msgstr ""
 msgid "CPU Pinning"
 msgstr ""
 
-#~ msgid "<0/> Manage ({0} pinned)"
-#~ msgstr ""
+#. placeholder {0}: displayPinnedCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> Manage ({0} pinned)"
+msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -2711,10 +2717,8 @@ msgstr ""
 msgid "Select installation media"
 msgstr ""
 
-#. placeholder {0}: socketIndex
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Socket {0}"
-msgstr ""
+#~ msgid "Socket {0}"
+#~ msgstr ""
 
 #. placeholder {0}: coreSelectionLimit
 #. placeholder {0}: coreSelectionLimit
@@ -3441,7 +3445,7 @@ msgstr ""
 msgid "Select ASHIFT"
 msgstr ""
 
-#. placeholder {0}: jail.ctId
+#. placeholder {0}: data.ctId
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Jail console connected for jail {0}"
 msgstr ""
@@ -3519,7 +3523,7 @@ msgid "Enable resource limits to edit"
 msgstr ""
 
 #. placeholder {0}: title
-#. placeholder {0}: title
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -3547,14 +3551,14 @@ msgstr ""
 msgid "Resource limits {0}"
 msgstr ""
 
-#. placeholder {0}: dateToAgo(jail.startedAt)
+#. placeholder {0}: dateToAgo(jail.current.startedAt)
 #. placeholder {0}: dateToAgo(vm.current.startedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Started {0}"
 msgstr ""
 
-#. placeholder {0}: dateToAgo(jail.stoppedAt)
+#. placeholder {0}: dateToAgo(jail.current.stoppedAt)
 #. placeholder {0}: dateToAgo(vm.current.stoppedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3565,8 +3569,8 @@ msgstr ""
 msgid "Deleting Jail"
 msgstr ""
 
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
 msgstr ""
@@ -3583,8 +3587,8 @@ msgstr ""
 msgid "Stopping Jail"
 msgstr ""
 
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
 msgstr ""
@@ -3593,8 +3597,8 @@ msgstr ""
 msgid "Starting Jail"
 msgstr ""
 
-#. placeholder {0}: jail.name
-#. placeholder {1}: jail.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
 msgstr ""
@@ -4680,15 +4684,11 @@ msgstr ""
 msgid "Select ACL Mode"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "Recordsize"
-msgstr ""
+#~ msgid "Recordsize"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "Select Recordsize"
-msgstr ""
+#~ msgid "Select Recordsize"
+#~ msgstr ""
 
 #. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
 #. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
@@ -5142,12 +5142,8 @@ msgstr ""
 #~ msgid "हिन्दी"
 #~ msgstr ""
 
-#. placeholder {0}: pinnedCores.length
-#. placeholder {0}: initialPinning || 0
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Manage ({0} pinned)"
-msgstr ""
+#~ msgid "Manage ({0} pinned)"
+#~ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
@@ -5207,7 +5203,7 @@ msgstr ""
 msgid "Apply"
 msgstr ""
 
-#. placeholder {0}: vm ? 'Update' : 'Apply'
+#. placeholder {0}: vm ? 'Update ' : 'Apply '
 #. placeholder {1}: totalCores
 #. placeholder {2}: totalCores !== 1 ? 's' : ''
 #. placeholder {3}: allSelections.size
@@ -5386,9 +5382,8 @@ msgstr ""
 msgid "FreeBSD"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Advanced.svelte
-msgid "Linux"
-msgstr ""
+#~ msgid "Linux"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Set Hostname (allow.set_hostname)"
@@ -5582,4 +5577,127 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount devfs (allow.mount.devfs)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Linux (Experimental)"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "View Logs"
+msgstr ""
+
+#~ msgid "Logs for {0} ({1})"
+#~ msgstr ""
+
+#~ msgid "No logs available."
+#~ msgstr ""
+
+#~ msgid "No start logs available."
+#~ msgstr ""
+
+#~ msgid "No stop logs available."
+#~ msgstr ""
+
+#~ msgid "Start / stop logs for this jail."
+#~ msgstr ""
+
+#~ msgid "Start logs"
+#~ msgstr ""
+
+#~ msgid "Stop logs"
+#~ msgstr ""
+
+#. placeholder {0}: jail.current.name
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "{0} Logs"
+msgstr ""
+
+#~ msgid "{0} — Logs"
+#~ msgstr ""
+
+#~ msgid "This terminal fills the container."
+#~ msgstr ""
+
+#~ msgid "Resize the window / parent and it refits."
+#~ msgstr ""
+
+#~ msgid "Minimal Working Demo of a Resize-Aware Terminal"
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Monaco, Menlo, \"Courier New\", monospace"
+msgstr ""
+
+#~ msgid "Clear"
+#~ msgstr ""
+
+#~ msgid "Zoom In"
+#~ msgstr ""
+
+#~ msgid "Terminal WebSocket connected for tab {0}"
+#~ msgstr ""
+
+#~ msgid "Terminal WebSocket disconnected for tab {0}"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Record Size"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select Record Size"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Custom Mount Point"
+msgstr ""
+
+#~ msgid "Mountpoint"
+#~ msgstr ""
+
+#~ msgid "Leave empty for none"
+#~ msgstr ""
+
+#~ msgid "Example Entries"
+#~ msgstr ""
+
+#~ msgid "Mount /usr/local/bin from host"
+#~ msgstr ""
+
+#~ msgid "Mount /dev/random to avoid entropy issues"
+#~ msgstr ""
+
+#~ msgid "Mount arbitrary path from host"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Simple Linux"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select FStab Option"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (env)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (meta)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (Environment Variables)"
+msgstr ""
+
+#~ msgid "Metadata (Metadata Entries)"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (Meta)"
 msgstr ""

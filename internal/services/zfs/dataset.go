@@ -13,24 +13,27 @@ import (
 	"strings"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
-func (s *Service) GetDatasets(t string) ([]*zfsServiceInterfaces.Dataset, error) {
-	var datasets []*zfs.Dataset
-	var err error
+func (s *Service) GetDatasets(t string) ([]*zfs.Dataset, error) {
+	var (
+		datasets []*zfs.Dataset
+		err      error
+	)
 
-	if t == "" || t == "all" {
+	switch t {
+	case "", "all":
 		datasets, err = zfs.Datasets("")
-	} else if t == "filesystem" {
+	case "filesystem":
 		datasets, err = zfs.Filesystems("")
-	} else if t == "snapshot" {
+	case "snapshot":
 		datasets, err = zfs.Snapshots("")
-	} else if t == "volume" {
+	case "volume":
 		datasets, err = zfs.Volumes("")
+	default:
+		return nil, fmt.Errorf("unknown dataset type %q", t)
 	}
 
 	if err != nil {
@@ -42,17 +45,12 @@ func (s *Service) GetDatasets(t string) ([]*zfsServiceInterfaces.Dataset, error)
 		return nil, err
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	var usablePools []string
+	usablePools := make(map[string]struct{}, len(pools))
 	for _, pool := range pools {
-		usablePools = append(usablePools, pool.Name)
+		usablePools[pool.Name] = struct{}{}
 	}
 
-	var results []*zfsServiceInterfaces.Dataset
-
+	filtered := make([]*zfs.Dataset, 0, len(datasets))
 	for _, dataset := range datasets {
 		dPool, err := s.PoolFromDataset(dataset.Name)
 		if err != nil {
@@ -60,38 +58,14 @@ func (s *Service) GetDatasets(t string) ([]*zfsServiceInterfaces.Dataset, error)
 			continue
 		}
 
-		if !utils.Contains(usablePools, dPool) {
+		if _, ok := usablePools[dPool]; !ok {
 			continue
 		}
 
-		results = append(results, &zfsServiceInterfaces.Dataset{
-			Name:          dataset.Name,
-			Origin:        dataset.Origin,
-			GUID:          dataset.GUID,
-			Used:          dataset.Used,
-			Avail:         dataset.Avail,
-			Recordsize:    dataset.Recordsize,
-			Mountpoint:    dataset.Mountpoint,
-			Compression:   dataset.Compression,
-			Type:          dataset.Type,
-			Written:       dataset.Written,
-			Volsize:       dataset.Volsize,
-			VolBlockSize:  dataset.VolBlockSize,
-			Logicalused:   dataset.Logicalused,
-			Usedbydataset: dataset.Usedbydataset,
-			Quota:         dataset.Quota,
-			Referenced:    dataset.Referenced,
-			Mounted:       dataset.Mounted,
-			Checksum:      dataset.Checksum,
-			Dedup:         dataset.Dedup,
-			ACLInherit:    dataset.ACLInherit,
-			ACLMode:       dataset.ACLMode,
-			PrimaryCache:  dataset.PrimaryCache,
-			VolMode:       dataset.VolMode,
-		})
+		filtered = append(filtered, dataset)
 	}
 
-	return results, nil
+	return filtered, nil
 }
 
 func (s *Service) GetDatasetByGUID(guid string) (*zfs.Dataset, error) {

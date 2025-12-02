@@ -38,6 +38,10 @@ export interface CreateData {
 		cleanEnvironment: boolean;
 		execScripts: Record<ExecPhaseKey, ExecPhaseState>;
 		allowedOptions: string[];
+		metadata: {
+			env: string;
+			meta: string;
+		};
 	};
 }
 

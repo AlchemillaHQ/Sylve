@@ -13,6 +13,10 @@
 		cleanEnvironment: boolean;
 		execScripts: Record<ExecPhaseKey, ExecPhaseState>;
 		allowedOptions: string[];
+		metadata: {
+			env: string;
+			meta: string;
+		};
 	}
 
 	let {
@@ -20,7 +24,8 @@
 		additionalOptions = $bindable(),
 		cleanEnvironment = $bindable(),
 		execScripts = $bindable(),
-		allowedOptions = $bindable()
+		allowedOptions = $bindable(),
+		metadata = $bindable()
 	}: Props = $props();
 	let allowed = [
 		{
@@ -117,7 +122,11 @@
 	});
 
 	let checkBoxes = $state({
-		additionalOptions: false
+		additionalOptions: false,
+		metadata: {
+			env: false,
+			meta: false
+		}
 	});
 
 	function templateSelect() {
@@ -145,8 +154,8 @@
 				'allow.mount.linsysfs'
 			];
 
-			execScripts['start'].script = '/bin/true';
-			execScripts['stop'].script = '/bin/true';
+			execScripts['start'].script = '#!/bin/sh\n\n/bin/true';
+			execScripts['stop'].script = '#!/bin/sh\n\n/bin/true';
 			execScripts['start'].enabled = true;
 			execScripts['stop'].enabled = true;
 		}
@@ -168,7 +177,7 @@
 			placeholder="Select Jail Type"
 			options={[
 				{ label: 'FreeBSD', value: 'freebsd' },
-				{ label: 'Linux', value: 'linux' }
+				{ label: 'Linux (Experimental)', value: 'linux' }
 			]}
 			bind:value={jailType}
 			onChange={(value) => {
@@ -203,6 +212,18 @@
 			bind:checked={checkBoxes.additionalOptions}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Metadata (meta)"
+			bind:checked={checkBoxes.metadata.meta}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Metadata (env)"
+			bind:checked={checkBoxes.metadata.env}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
 	</div>
 
 	{#if checkBoxes.additionalOptions}
@@ -214,6 +235,30 @@
 			textAreaClasses="h-12"
 			type="textarea"
 			disabled={!checkBoxes.additionalOptions}
+		/>
+	{/if}
+
+	{#if checkBoxes.metadata.meta}
+		<CustomValueInput
+			label="Metadata (Meta)"
+			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			bind:value={metadata.meta}
+			classes="flex-1 space-y-1.5"
+			textAreaClasses="h-12"
+			type="textarea"
+			disabled={!checkBoxes.metadata.meta}
+		/>
+	{/if}
+
+	{#if checkBoxes.metadata.env}
+		<CustomValueInput
+			label="Metadata (Environment Variables)"
+			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			bind:value={metadata.env}
+			classes="flex-1 space-y-1.5"
+			textAreaClasses="h-12"
+			type="textarea"
+			disabled={!checkBoxes.metadata.env}
 		/>
 	{/if}
 

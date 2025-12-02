@@ -29,7 +29,7 @@ type Dataset struct {
 	Usedbydataset uint64 `json:"usedbydataset"`
 	Quota         uint64 `json:"quota"`
 	Referenced    uint64 `json:"referenced"`
-	Mounted       string `json:"mounted"`
+	Mounted       bool   `json:"mounted"`
 	Checksum      string `json:"checksum"`
 	Dedup         string `json:"dedup"`
 	ACLInherit    string `json:"aclinherit"`

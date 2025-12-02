@@ -4,13 +4,16 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
 	const cacheDuration = SEVEN_DAYS;
-	const [jails, jailStates] = await Promise.all([
-		cachedFetch('jail-list', async () => getJails(), cacheDuration),
-		cachedFetch('jail-states', async () => getJailStates(), cacheDuration)
+	const ctId = parseInt(params.node);
+
+	const [jail, state] = await Promise.all([
+		cachedFetch(`jail-${ctId}`, async () => getJails(), cacheDuration),
+		cachedFetch(`jail-${ctId}-state`, async () => getJailStates(), cacheDuration)
 	]);
 
 	return {
-		jails: jails,
-		jailStates: jailStates
+		ctId,
+		jail,
+		state
 	};
 }

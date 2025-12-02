@@ -202,4 +202,5 @@
 <span class="icon-[lets-icons--check-fill]"></span>
 <span class="icon-[mdi--calendar]"></span>
 <span class="icon-[tdesign--cd-filled]"></span>
+<span class="icon-[material-symbols--terminal]"></span>
 -->

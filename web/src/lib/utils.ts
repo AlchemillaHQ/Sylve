@@ -12,6 +12,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';
 import { twMerge } from 'tailwind-merge';
+import z from 'zod/v4';
 
 export const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
@@ -69,6 +70,14 @@ export const flyAndScale = (
 
 export function sleep(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function getObjectSchemaDefaults<Schema extends z.ZodObject>(schema: Schema) {
+	return Object.fromEntries(
+		Object.entries(schema.shape).map(([key, value]) => {
+			return [key, value.unwrap().def.defaultValue];
+		})
+	);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

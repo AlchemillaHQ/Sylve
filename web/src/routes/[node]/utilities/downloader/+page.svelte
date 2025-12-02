@@ -24,57 +24,52 @@
 		isValidFileName
 	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
-	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { sleep } from '$lib/utils';
-	import { useWindowFocus } from '$lib/runes/useWindowFocus.svelte';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 	interface Data {
 		downloads: Download[];
 	}
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
-	let refetchInterval = $state(undefined as number | undefined);
 
-	const focused = useWindowFocus();
-	const results = createQuery(() => ({
-		queryKey: ['downloads'],
-		queryFn: async () => {
-			return await getDownloads();
+	const visible = new IsDocumentVisible();
+	const downloads = resource(
+		() => 'downloads',
+		async () => {
+			const results = await getDownloads();
+			updateCache('downloads', results);
+			return results;
 		},
-		initialData: data.downloads,
-		refetchInterval: refetchInterval ?? false,
-		onSuccess: (data: Download[]) => {
-			updateCache('downloads', data);
+		{
+			initialValue: data.downloads
 		}
-	}));
+	);
 
 	$effect(() => {
-		if (focused.value) {
-			results.refetch();
-		}
-	});
-
-	$effect(() => {
-		if (reload) {
-			results.refetch().then(() => {
-				const incomplete = (results.data as Download[]).some(
-					(d) => d.status !== 'done' && d.status !== 'failed'
-				);
-
-				if (incomplete) {
-					refetchInterval = 5000;
-				} else {
-					refetchInterval = undefined;
-					reload = false;
-				}
+		if (visible.current) {
+			untrack(() => {
+				downloads.refetch();
 			});
 		}
 	});
 
-	let downloads = $derived(results.data as Download[]);
+	useInterval(1000, {
+		callback: () => {
+			const incomplete = (downloads.current as Download[]).some(
+				(d) => d.status !== 'done' && d.status !== 'failed'
+			);
+
+			if (incomplete) {
+				downloads.refetch();
+			}
+		}
+	});
+
 	let options = {
 		isOpen: false,
 		isDelete: false,
@@ -90,7 +85,7 @@
 
 	let modalState = $state(options);
 
-	let tableData = $derived(generateTableData(downloads));
+	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let onlyParentsSelected: boolean = $derived.by(() => {

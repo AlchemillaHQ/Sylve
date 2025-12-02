@@ -89,7 +89,6 @@ func (s *Service) CheckPackageDependencies() error {
 		"bhyve-firmware",
 		"smartmontools",
 		"tmux",
-		"samba419",
 		"jansson",
 		"swtpm",
 	}

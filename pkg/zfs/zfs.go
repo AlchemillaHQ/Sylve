@@ -1,10 +1,12 @@
 package zfs
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/exe"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -72,6 +74,41 @@ func (z *zfs) doOutput(arg ...string) ([][]string, error) {
 	return z.run(nil, nil, "zfs", arg...)
 }
 
+func (z *zfs) doOutputJSON(arg ...string) ([]byte, error) {
+	return z.runJSON("zfs", arg...)
+}
+
+func (z *zfs) listByType(t, filter string) ([]*Dataset, error) {
+	var datasets []*Dataset
+
+	args := []string{"list", "-rp", "-t", t, "-o", strings.Join(dsPropList, ","), "-j"}
+
+	if filter != "" {
+		args = append(args, filter)
+	}
+
+	outBytes, err := z.doOutputJSON(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var output JSONDatasets
+	if err := json.Unmarshal(outBytes, &output); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal zfs list output: %w", err)
+	}
+
+	for name, jds := range output.Datasets {
+		ds := &Dataset{z: z, Name: name, Props: make(map[string]string)}
+		if err := ds.parsePropsJSON(jds); err != nil {
+			return nil, err
+		}
+
+		datasets = append(datasets, ds)
+	}
+
+	return datasets, nil
+}
+
 func (z *zfs) Datasets(filter string) ([]*Dataset, error) {
 	return z.listByType("all", filter)
 }
@@ -89,13 +126,16 @@ func (z *zfs) Volumes(filter string) ([]*Dataset, error) {
 }
 
 func (z *zfs) GetDataset(name string) (*Dataset, error) {
-	out, err := z.doOutput("list", "-p", "-o", "all", name)
+	datasets, err := z.listByType("all", name)
 	if err != nil {
 		return nil, err
 	}
 
-	ds := &Dataset{z: z, Name: name, Props: make(map[string]string)}
-	return ds, ds.parseProps(out)
+	if len(datasets) == 0 {
+		return nil, fmt.Errorf("dataset_not_found: %s", name)
+	}
+
+	return datasets[0], nil
 }
 
 func (z *zfs) ReceiveSnapshot(input io.Reader, name string, force ...bool) (*Dataset, error) {

@@ -17,15 +17,14 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { VM, VMDomain, VMStat } from '$lib/types/vm/vm';
-	import { sleep } from '$lib/utils';
+	import { VMStatSchema, type VM, type VMDomain, type VMStat } from '$lib/types/vm/vm';
+	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
-	import type { Chart } from 'chart.js';
 	import { resource, useInterval, Debounced, IsDocumentVisible } from 'runed';
 	import { untrack } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
@@ -95,7 +94,10 @@
 		}
 	});
 
-	let recentStat = $derived(stats.current[stats.current.length - 1] || ({} as VMStat));
+	let recentStat = $derived(
+		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
+	);
+
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
 	let lastDesc = $state('');
@@ -274,7 +276,7 @@
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 			{'Start'}
@@ -286,7 +288,7 @@
 				modalState.title = `${vm.current.name} (${vm.current.rid})`;
 			}}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 
@@ -297,7 +299,7 @@
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			{#if type === 'stop'}
 				<div class="flex items-center">
@@ -320,7 +322,7 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border p-4">
+	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{@render button('start')}
 		{@render button('reboot')}
 		{@render button('shutdown')}
@@ -437,18 +439,6 @@
 
 			<div class="space-y-4 px-4 pb-4">
 				<LayerBrush
-					color="chart-2"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt),
-						value: Number(data.cpuUsage)
-					}))}
-					maxY={100}
-					label="CPU Usage"
-					showPoints={false}
-					type="percentage"
-				/>
-
-				<LayerBrush
 					color="chart-1"
 					points={stats.current.map((data) => ({
 						date: new Date(data.createdAt),
@@ -458,6 +448,20 @@
 					label="Memory Usage"
 					showPoints={false}
 					type="percentage"
+					{gfsStep}
+				/>
+
+				<LayerBrush
+					color="chart-2"
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt),
+						value: Number(data.cpuUsage)
+					}))}
+					maxY={100}
+					label="CPU Usage"
+					showPoints={false}
+					type="percentage"
+					{gfsStep}
 				/>
 			</div>
 		</ScrollArea>

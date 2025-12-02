@@ -16,6 +16,7 @@ import (
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
+	zfsUtils "github.com/alchemillahq/sylve/pkg/zfs"
 
 	"github.com/gin-gonic/gin"
 )
@@ -63,10 +64,10 @@ type FlashVolumeRequest struct {
 }
 
 type DatasetListResponse struct {
-	Status  string                          `json:"status"`
-	Message string                          `json:"message"`
-	Error   string                          `json:"error"`
-	Data    []*zfsServiceInterfaces.Dataset `json:"data"`
+	Status  string              `json:"status"`
+	Message string              `json:"message"`
+	Error   string              `json:"error"`
+	Data    []*zfsUtils.Dataset `json:"data"`
 }
 
 // @Summary Get all ZFS datasets
@@ -95,7 +96,7 @@ func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[[]*zfsServiceInterfaces.Dataset]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]*zfsUtils.Dataset]{
 			Status:  "success",
 			Message: "datasets",
 			Error:   "",

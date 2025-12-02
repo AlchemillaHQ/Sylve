@@ -1,8 +1,7 @@
 import type { APIResponse } from '$lib/types/common';
 import type { Column, Row } from '$lib/types/components/tree-table';
-import type { Dataset, GroupedByPool } from '$lib/types/zfs/dataset';
+import type { GroupedByPool } from '$lib/types/zfs/dataset';
 import { generateNumberFromString } from '$lib/utils/numbers';
-import { capitalizeFirstLetter } from '$lib/utils/string';
 import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 import { cleanChildren } from '$lib/utils/tree-table';
 import { toast } from 'svelte-sonner';
@@ -170,24 +169,24 @@ export const createFSProps = {
 			value: 'restricted'
 		}
 	],
-        recordsize: [
-                {
-                        label: '8K - Postgres',
-                        value: '8192'
-                },
-                {
-                        label: '16K - MySQL',
-                        value: '16384'
-                },
-                {
-                        label: '128K - default',
-                        value: '131072'
-                },
-                {
-                        label: '1M - Large Files',
-                        value: '1048576'
-                }
-       ]
+	recordsize: [
+		{
+			label: '8K - Postgres',
+			value: '8192'
+		},
+		{
+			label: '16K - MySQL',
+			value: '16384'
+		},
+		{
+			label: '128K - default',
+			value: '131072'
+		},
+		{
+			label: '1M - Large Files',
+			value: '1048576'
+		}
+	]
 };
 
 export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; columns: Column[] } {
@@ -206,7 +205,7 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			}
 		},
 		{ field: 'used', title: 'Used', formatter: sizeFormatter },
-		{ field: 'avail', title: 'Available', formatter: sizeFormatter },
+		{ field: 'available', title: 'Available', formatter: sizeFormatter },
 		{ field: 'referenced', title: 'Referenced', formatter: sizeFormatter },
 		{ field: 'mountpoint', title: 'Mount Point' },
 		{ field: 'type', title: 'Type', visible: false }
@@ -217,7 +216,7 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			id: generateNumberFromString(group.name),
 			name: group.name,
 			used: 0,
-			avail: 0,
+			available: 0,
 			referenced: 0,
 			mountpoint: '',
 			children: [],
@@ -227,7 +226,7 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 		for (const fs of group.filesystems) {
 			if (fs.name === group.name) {
 				poolNode.used = fs.used;
-				poolNode.avail = fs.avail;
+				poolNode.available = fs.available;
 				poolNode.referenced = fs.referenced;
 				poolNode.mountpoint = fs.mountpoint || '';
 				continue;
@@ -245,7 +244,7 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 						id: generateNumberFromString(pathSoFar),
 						name: pathSoFar,
 						used: fs.used,
-						avail: fs.avail,
+						available: fs.available,
 						referenced: fs.referenced,
 						mountpoint: fs.mountpoint || '',
 						children: [],

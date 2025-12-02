@@ -1,4 +1,3 @@
-import { hostname } from '$lib/stores/basic';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	JailLogsSchema,
@@ -47,7 +46,9 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
 		allowedOptions: data.advanced.allowedOptions,
 		hooks: data.advanced.execScripts,
 		cleanEnvironment: data.advanced.cleanEnvironment,
-		type: data.advanced.jailType
+		type: data.advanced.jailType,
+		metadataMeta: data.advanced.metadata.meta,
+		metadataEnv: data.advanced.metadata.env
 	});
 }
 
@@ -79,6 +80,10 @@ export async function getJailStates(): Promise<JailState[]> {
 	return await apiRequest('/jail/state', z.array(JailStateSchema), 'GET');
 }
 
+export async function getJailStateById(ctId: number): Promise<JailState> {
+	return await apiRequest(`/jail/state/${ctId}`, JailStateSchema, 'GET');
+}
+
 export async function jailAction(ctId: number, action: string): Promise<APIResponse> {
 	return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST');
 }
@@ -90,8 +95,8 @@ export async function updateDescription(id: number, description: string): Promis
 	});
 }
 
-export async function getJailLogs(id: number, start: boolean): Promise<JailLogs> {
-	return await apiRequest(`/jail/${id}/logs?start=${start}`, JailLogsSchema, 'GET');
+export async function getJailLogs(id: number): Promise<JailLogs> {
+	return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET');
 }
 
 export async function getStats(ctId: number, limit: number): Promise<JailStat[]> {

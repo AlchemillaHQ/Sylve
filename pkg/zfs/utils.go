@@ -2,125 +2,10 @@ package zfs
 
 import (
 	"bytes"
-	"errors"
-	"fmt"
 	"io"
 	"regexp"
-	"runtime"
 	"strings"
 )
-
-func (z *zfs) listByType(t, filter string) ([]*Dataset, error) {
-	args := []string{"list", "-rp", "-t", t, "-o", strings.Join(dsPropList, ",")}
-
-	if filter != "" {
-		args = append(args, filter)
-	}
-	out, err := z.doOutput(args...)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(out) == 0 {
-		return nil, nil
-	}
-
-	var datasets []*Dataset
-
-	name := ""
-	var ds *Dataset
-	for _, line := range out[1:] {
-		if name != line[0] {
-			name = line[0]
-			ds = &Dataset{z: z, Name: name, Props: make(map[string]string)}
-			datasets = append(datasets, ds)
-		}
-		if err := ds.parseProps([][]string{out[0], line}); err != nil {
-			return nil, err
-		}
-	}
-
-	return datasets, nil
-}
-
-func (d *Dataset) parseProps(out [][]string) error {
-	var err error
-
-	if len(out) != 2 {
-		return errors.New("output does not match what is expected on this platform")
-	}
-
-	for i, v := range out[0] {
-		val := "-"
-		if i < len(out[1]) {
-			val = out[1][i]
-		}
-		d.Props[strings.ToLower(v)] = val
-	}
-
-	if len(d.Props) < len(dsPropList) {
-		return errors.New("output does not match what is expected on this platform")
-	}
-
-	setString(&d.Name, d.Props["name"])
-	setString(&d.Origin, d.Props["origin"])
-	setString(&d.GUID, d.Props["guid"])
-	setString(&d.Mounted, d.Props["mounted"])
-	setString(&d.Checksum, d.Props["checksum"])
-	setString(&d.Dedup, d.Props["dedup"])
-	setString(&d.ACLInherit, d.Props["aclinherit"])
-	setString(&d.ACLMode, d.Props["aclmode"])
-	setString(&d.PrimaryCache, d.Props["primarycache"])
-	setString(&d.VolMode, d.Props["volmode"])
-
-	if err = setUint(&d.Used, d.Props["used"]); err != nil {
-		return fmt.Errorf("failed to parse used: %w", err)
-	}
-
-	if err = setUint(&d.Avail, d.Props["avail"]); err != nil {
-		return fmt.Errorf("failed to parse avail: %w", err)
-	}
-
-	setString(&d.Mountpoint, d.Props["mountpoint"])
-	setString(&d.Compression, d.Props["compress"])
-	setString(&d.Type, d.Props["type"])
-
-	if err = setUint(&d.Recordsize, d.Props["recsize"]); err != nil {
-		return fmt.Errorf("failed to parse recordsize: %w", err)
-	}
-	
-	if err = setUint(&d.Volsize, d.Props["volsize"]); err != nil {
-		return fmt.Errorf("failed to parse volsize: %w", err)
-	}
-
-	if d.Props["volblock"] != "" && d.Props["volblock"] != "-" {
-		if err = setUint(&d.VolBlockSize, d.Props["volblock"]); err != nil {
-			return fmt.Errorf("failed to parse volblock: %w", err)
-		}
-	}
-
-	if err = setUint(&d.Quota, d.Props["quota"]); err != nil {
-		return fmt.Errorf("failed to parse quota: %w", err)
-	}
-	if err = setUint(&d.Referenced, d.Props["refer"]); err != nil {
-		return fmt.Errorf("failed to parse refer: %w", err)
-	}
-
-	if runtime.GOOS == "solaris" {
-		return nil
-	}
-
-	if err = setUint(&d.Written, d.Props["written"]); err != nil {
-		return fmt.Errorf("failed to parse written: %w", err)
-	}
-	if err = setUint(&d.Logicalused, d.Props["lused"]); err != nil {
-		return fmt.Errorf("failed to parse lused: %w", err)
-	}
-	if err = setUint(&d.Usedbydataset, d.Props["usedds"]); err != nil {
-		return fmt.Errorf("failed to parse usedds: %w", err)
-	}
-	return nil
-}
 
 func (z *zfs) run(in io.Reader, out io.Writer, cmd string, args ...string) ([][]string, error) {
 	var stdout, stderr bytes.Buffer
@@ -160,6 +45,27 @@ func (z *zfs) run(in io.Reader, out io.Writer, cmd string, args ...string) ([][]
 	}
 
 	return output, nil
+}
+
+func (s *zfs) runJSON(cmd string, args ...string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+
+	if s.sudo {
+		args = append([]string{cmd}, args...)
+		cmd = "sudo"
+	}
+
+	joinedArgs := strings.Join(args, " ")
+
+	if err := s.exec.Run(nil, &stdout, &stderr, cmd, args...); err != nil {
+		return nil, &Error{
+			Err:    err,
+			Debug:  strings.Join([]string{cmd, joinedArgs}, " "),
+			Stderr: stderr.String(),
+		}
+	}
+
+	return stdout.Bytes(), nil
 }
 
 // https://docs.oracle.com/cd/E26505_01/html/E37384/gbcpt.html

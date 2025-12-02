@@ -184,7 +184,11 @@
 				stop: { enabled: false, script: '' },
 				poststop: { enabled: false, script: '' }
 			},
-			allowedOptions: [] as string[]
+			allowedOptions: [] as string[],
+			metadata: {
+				env: '',
+				meta: ''
+			}
 		}
 	};
 
@@ -314,6 +318,7 @@
 									{downloads}
 									{jails}
 									pools={pools.current}
+									ctId={modal.id}
 									bind:pool={modal.storage.pool}
 									bind:base={modal.storage.base}
 									bind:fstab={modal.storage.fstab}
@@ -349,6 +354,7 @@
 									bind:cleanEnvironment={modal.advanced.cleanEnvironment}
 									bind:execScripts={modal.advanced.execScripts}
 									bind:allowedOptions={modal.advanced.allowedOptions}
+									bind:metadata={modal.advanced.metadata}
 								/>
 							{/if}
 						</div>

@@ -19,7 +19,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -78,17 +77,10 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 		}
 
 		ctidHash := utils.HashIntToNLetters(ctidInt, 5)
-
-		if j.Type == jailModels.JailTypeFreeBSD {
-			cmdArgs = append(cmdArgs,
-				"jexec", "-l", ctidHash,
-				"login", "-f", "root",
-			)
-		} else if j.Type == jailModels.JailTypeLinux {
-			cmdArgs = append(cmdArgs,
-				"jexec", "-l", "-U", "root", ctidHash,
-			)
-		}
+		cmdArgs = append(cmdArgs,
+			"jexec", "-l", ctidHash,
+			"login", "-f", "root",
+		)
 
 		if err := checkSession.Run(); err != nil {
 			createSession := exec.Command(cmdArgs[0], cmdArgs[1:]...)

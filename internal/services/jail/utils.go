@@ -3,7 +3,6 @@ package jail
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -54,20 +53,6 @@ func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
 
 	if err := os.Rename(tmpPath, devFsRulesetPath); err != nil {
 		return fmt.Errorf("failed_to_replace_devfs_rules: %w", err)
-	}
-
-	return nil
-}
-
-func (s *Service) SetFBSDJailRootPassword(mountPoint, password string) error {
-	// Run pw inside the jail's root using chroot.
-	// -h 0  => read password from stdin (fd 0)
-	cmd := exec.Command("chroot", mountPoint, "pw", "usermod", "root", "-h", "0")
-	cmd.Stdin = strings.NewReader(password + "\n")
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("command execution failed: %w, output: %s", err, string(output))
 	}
 
 	return nil

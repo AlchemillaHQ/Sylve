@@ -139,6 +139,22 @@ func (s *Service) GetStates() ([]jailServiceInterfaces.State, error) {
 	return states, nil
 }
 
+func (s *Service) GetStateByCtId(ctId uint) (jailServiceInterfaces.State, error) {
+	var state jailServiceInterfaces.State
+
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return state, fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	state, err = s.GetJailStats(ctId, jail)
+	if err != nil {
+		return state, fmt.Errorf("failed_to_get_jail_stats: %w", err)
+	}
+
+	return state, nil
+}
+
 func (s *Service) IsJailActive(ctId uint) (bool, error) {
 	states, err := s.GetStates()
 	if err != nil {
