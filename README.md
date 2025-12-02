@@ -143,12 +143,14 @@ To run Sylve inside a jail environment, allow the permissions below and adjust
 the settings as shown:
 
 ```ucl
+devfs_ruleset=5;
 allow.vmm;
 allow.nfsd;
 allow.mount;
 allow.mount.zfs;
 zfs.dataset="tank/sylve";
 enforce_statfs=1;
+children.max=100;
 vnet;
 
 # For Samba
@@ -161,9 +163,30 @@ exec.prestop += "zfs unjail ${name} tank/sylve";
 exec.prestop += "zfs jailed=off tank/sylve";
 ```
 
-Note:
+Notes:
 
 * Replace `tank/sylve` with your desired ZFS dataset.
+* Replace `100` in `children.max` with your desired number of maximum hierarchial jails.
+* Replace your `devfs_ruleset` number based on your own custom rules.
+* Add your own desired interface to `vnet.interface`.
+
+### devfs ruleset
+
+Here is the example for your `devfs.rules` file:
+
+```devfs
+[devfsrules_jail_sylve=6]
+add include $devfsrules_hide_all
+add include $devfsrules_unhide_basic
+add include $devfsrules_unhide_login
+add include $devfsrules_jail
+add include $devfsrules_jail_vnet
+add path 'bpf*' unhide
+add path 'vmmctl' unhide
+add path 'da*' unhide
+add path 'ada*' unhide
+add path 'nda*' unhide
+```
 
 # Contributing
 
