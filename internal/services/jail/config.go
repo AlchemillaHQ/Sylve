@@ -76,6 +76,24 @@ func (s *Service) AppendToConfig(ctid uint, current string, toAppend string) (st
 	return newConfig, nil
 }
 
+func (s *Service) GetHookScriptPath(ctid uint, hookName string) (string, error) {
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_jails_path: %w", err)
+	}
+
+	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctid))
+	hookScriptPath := filepath.Join(jailDir, "scripts", fmt.Sprintf("%s.sh", hookName))
+
+	if _, err := os.Stat(hookScriptPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("hook_script_not_found")
+	} else if err != nil {
+		return "", fmt.Errorf("failed_to_stat_hook_script: %w", err)
+	}
+
+	return hookScriptPath, nil
+}
+
 func (s *Service) GetJailMountPoint(ctid uint) (string, error) {
 	return "", fmt.Errorf("not_implemented")
 }

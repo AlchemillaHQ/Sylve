@@ -431,17 +431,28 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 
 	logPath := filepath.Join(jailDir, fmt.Sprintf("%d.log", ctid))
 
-	// Small helper to write scripts
 	writeScript := func(path, content string, executable bool) error {
-		if content == "" {
-			// ensure every script file has at least a shebang
+		// If completely empty, just write a minimal shell script
+		if strings.TrimSpace(content) == "" {
 			content = "#!/bin/sh\n"
+		} else {
+			// Strip leading blank lines so we can ensure the shebang is line 1
+			trimmed := strings.TrimLeft(content, "\r\n")
+
+			if !strings.HasPrefix(trimmed, "#!") {
+				// Prepend shebang if it's not already there
+				content = "#!/bin/sh\n" + trimmed
+			} else {
+				// Already has a shebang at the top after trimming blank lines
+				content = trimmed
+			}
 		}
 
 		mode := os.FileMode(0644)
 		if executable {
 			mode = 0755
 		}
+
 		return os.WriteFile(path, []byte(content), mode)
 	}
 
@@ -634,9 +645,6 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 
 		add := func(buf *string) {
-			if *buf == "" {
-				*buf = "#!/bin/sh\n"
-			}
 			*buf += hook.Script + "\n"
 		}
 
@@ -676,7 +684,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	// Logging & env
 	cfg += fmt.Sprintf("\texec.consolelog += \"%s\";\n", logPath)
 	if data.CleanEnvironment {
-		cfg += "\texec.clean = true;\n"
+		cfg += "\texec.clean;\n"
 	}
 
 	// --- Write scripts & wire them into exec.* ---
@@ -1233,7 +1241,7 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 		return fmt.Errorf("invalid_description")
 	}
 
-	jail, err := s.GetJailByCTID(id)
+	jail, err := s.GetJail(id)
 	if err != nil {
 		return err
 	}

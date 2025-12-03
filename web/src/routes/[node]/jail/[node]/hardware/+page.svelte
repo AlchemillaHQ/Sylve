@@ -5,7 +5,7 @@
 	import RAM from '$lib/components/custom/Jail/Hardware/RAM.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Row } from '$lib/types/components/tree-table';
+	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
@@ -14,6 +14,7 @@
 	import { toast } from 'svelte-sonner';
 	import { resource } from 'runed';
 	import { untrack } from 'svelte';
+	import { renderWithIcon } from '$lib/utils/table';
 
 	interface Data {
 		jail: Jail;
@@ -72,9 +73,21 @@
 			{ title: 'Property', field: 'property' },
 			{
 				title: 'Value',
-				field: 'value'
+				field: 'value',
+				/* 
+                	formatter?:
+		| ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
+		| string;
+                */
+				formatter: function (cell, formatterParams, onRendered) {
+					const value = cell.getValue();
+					if (value === 'Unlimited') {
+						return renderWithIcon('mdi:infinity', '');
+					}
+					return value;
+				}
 			}
-		],
+		] as Column[],
 		rows: [
 			{
 				id: generateNanoId(`${properties.ram.value}-ram`),
@@ -92,24 +105,26 @@
 
 {#snippet button(property: 'ram' | 'cpu' | 'resource-limits', title: string)}
 	{#if property === 'resource-limits'}
-		<Button
-			onclick={() => {
-				properties.resourceLimits.open = true;
-			}}
-			size="sm"
-			variant="outline"
-			class="h-6.5"
-		>
-			<div class="flex items-center">
-				{#if jail.current.resourceLimits}
-					<span class="icon-[lsicon--disable-filled] mr-1 h-4 w-4"></span>
-					<span>Disable Resource Limits</span>
-				{:else}
-					<span class="icon-[clarity--resource-pool-line] mr-1 h-4 w-4"></span>
-					<span>Enable Resource Limits</span>
-				{/if}
-			</div>
-		</Button>
+		{#if !activeRows || activeRows.length === 0}
+			<Button
+				onclick={() => {
+					properties.resourceLimits.open = true;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					{#if jail.current.resourceLimits}
+						<span class="icon-[lsicon--disable-filled] mr-1 h-4 w-4"></span>
+						<span>Disable Resource Limits</span>
+					{:else}
+						<span class="icon-[clarity--resource-pool-line] mr-1 h-4 w-4"></span>
+						<span>Enable Resource Limits</span>
+					{/if}
+				</div>
+			</Button>
+		{/if}
 	{:else}
 		<Button
 			onclick={() => {
@@ -172,6 +187,7 @@
 	actions={{
 		onConfirm: async () => {
 			const response = await updateResourceLimits(jail.current.ctId, !jail.current.resourceLimits);
+			reload = true;
 			if (response.error) {
 				handleAPIError(response);
 				let adjective = jail.current.resourceLimits ? 'disable' : 'enable';

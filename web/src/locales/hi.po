@@ -3503,6 +3503,7 @@ msgstr "कोई ज्ञात डेटा त्रुटियाँ न�
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Unlimited"
 msgstr "असीमित"
 
@@ -5706,4 +5707,46 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Meta)"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Disconnect"
+msgstr ""
+
+#~ msgid "Connecting to console..."
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Reconnect"
+msgstr ""
+
+#~ msgid "The console session is disconnected.<0/> Reconnect to access the Jail console."
+#~ msgstr ""
+
+#~ msgid "Connecting…"
+#~ msgstr ""
+
+#~ msgid "Jail console is marked as disconnected for jail {0}, skipping setup."
+#~ msgstr ""
+
+#~ msgid "Console disconnected. Click \"Reconnect\" to re-establish the connection."
+#~ msgstr ""
+
+#~ msgid "The console has been disconnected.<0/> Reconnect to access the console."
+#~ msgstr ""
+
+#~ msgid "Centered Content"
+#~ msgstr ""
+
+#~ msgid "Console disconnected.<0/> Click \"Reconnect\" to open a new session."
+#~ msgstr ""
+
+#~ msgid "Console is disconnected. Click \"Reconnect\" to connect."
+#~ msgstr ""
+
+#~ msgid "Hello"
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr ""

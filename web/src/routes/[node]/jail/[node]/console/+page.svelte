@@ -5,10 +5,11 @@
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
 	import adze from 'adze';
-	import { resource, useInterval, useResizeObserver } from 'runed';
+	import { resource, useResizeObserver, PersistedState } from 'runed';
 	import { onMount } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import { fade } from 'svelte/transition';
 
 	interface Data {
 		jail: Jail;
@@ -19,10 +20,11 @@
 	let { data }: { data: Data } = $props();
 
 	let terminal = $state<GhosttyTerminal | null>(null);
-	let ws: WebSocket | null = null;
+	let ws = $state<WebSocket | null>(null);
 	let terminalContainer = $state<HTMLElement | null>(null);
 	let lastWidth = 0;
 	let lastHeight = 0;
+	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
 
 	const jail = resource(
 		() => `jail-${data.jail.ctId}`,
@@ -51,6 +53,27 @@
 	function sendSize(cols: number, rows: number) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
 		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
+	}
+
+	function disconnect() {
+		cState.current = true;
+
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			const payload = JSON.stringify({ kill: '' });
+			const data = new TextEncoder().encode('\x02' + payload);
+
+			ws.send(data);
+			ws.close();
+		}
+
+		terminal?.dispose?.();
+		terminal = null;
+		ws = null;
+	}
+
+	function reconnect() {
+		cState.current = false;
+		setup();
 	}
 
 	function resizeTerminal(width: number, height: number) {
@@ -89,66 +112,68 @@
 		}
 	);
 
-	onMount(() => {
-		let destroyed = false;
+	let destroyed = $state(false);
 
-		const setup = async () => {
-			if (!jail.current || !jail.current.ctId) return;
-			if (jState.current && jState.current.state === 'INACTIVE') return;
-			if (!terminalContainer) return;
+	const setup = async () => {
+		cState.current = false;
 
-			await initGhostty();
-			if (destroyed) return;
+		if (!jail.current || !jail.current.ctId) return;
+		if (jState.current && jState.current.state === 'INACTIVE') return;
+		if (!terminalContainer) return;
 
-			terminal = new GhosttyTerminal({
-				cursorBlink: true,
-				fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-				fontSize: 14,
-				theme: {
-					background: '#282c34',
-					foreground: '#FFFFFF'
-				}
-			});
+		await initGhostty();
+		if (destroyed) return;
 
-			terminal.open(terminalContainer);
+		terminal = new GhosttyTerminal({
+			cursorBlink: true,
+			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+			fontSize: 14,
+			theme: {
+				background: '#282c34',
+				foreground: '#FFFFFF'
+			}
+		});
 
-			const hash = await sha256(storage.token || '', 1);
-			const wssAuth = {
-				hostname: storage.hostname,
-				token: storage.clusterToken
-			};
+		terminal.open(terminalContainer);
 
-			ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`, [
-				toHex(JSON.stringify(wssAuth))
-			]);
-			ws.binaryType = 'arraybuffer';
-
-			ws.onopen = () => {
-				adze.info(`Jail console connected for jail ${data.ctId}`);
-
-				// initial size once WS is open
-				if (lastWidth && lastHeight) {
-					resizeTerminal(lastWidth, lastHeight);
-				} else if (terminalContainer) {
-					const rect = terminalContainer.getBoundingClientRect();
-					resizeTerminal(rect.width, rect.height);
-				}
-			};
-
-			ws.onmessage = (e) => {
-				if (e.data instanceof ArrayBuffer) {
-					terminal?.write(new Uint8Array(e.data));
-				} else {
-					terminal?.write(e.data as string);
-				}
-			};
-
-			terminal.onData((data: string) => {
-				ws?.send(new TextEncoder().encode('\x00' + data));
-			});
+		const hash = await sha256(storage.token || '', 1);
+		const wssAuth = {
+			hostname: storage.hostname,
+			token: storage.clusterToken
 		};
 
-		setup();
+		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`, [
+			toHex(JSON.stringify(wssAuth))
+		]);
+		ws.binaryType = 'arraybuffer';
+
+		ws.onopen = () => {
+			adze.info(`Jail console connected for jail ${data.ctId}`);
+			if (lastWidth && lastHeight) {
+				resizeTerminal(lastWidth, lastHeight);
+			} else if (terminalContainer) {
+				const rect = terminalContainer.getBoundingClientRect();
+				resizeTerminal(rect.width, rect.height);
+			}
+		};
+
+		ws.onmessage = (e) => {
+			if (e.data instanceof ArrayBuffer) {
+				terminal?.write(new Uint8Array(e.data));
+			} else {
+				terminal?.write(e.data as string);
+			}
+		};
+
+		terminal.onData((data: string) => {
+			ws?.send(new TextEncoder().encode('\x00' + data));
+		});
+	};
+
+	onMount(() => {
+		if (!cState.current) {
+			setup();
+		}
 
 		return () => {
 			destroyed = true;
@@ -160,20 +185,58 @@
 
 {#if jState.current && jState.current.state === 'INACTIVE'}
 	<div
-		class="text-primary dark:text-secondary flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
+		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
-		<span class="icon-[mdi--server-off] dark:text-secondary text-primary h-14 w-14"></span>
-
+		<span class="icon-[mdi--server-off] h-14 w-14"></span>
 		<div class="max-w-md">
 			The Jail is currently powered off.<br />
 			Start the Jail to access its console.
 		</div>
 	</div>
 {:else}
-	<div class="flex h-full w-full flex-col">
-		<div class="flex h-10 w-full items-center gap-2 border p-4"></div>
+	<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
+		<div class="flex h-10 w-full items-center gap-2 border p-4">
+			{#if ws?.OPEN === 1}
+				<Button
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+					onclick={disconnect}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--close-circle-outline] h-4 w-4"></span>
+						<span>Disconnect</span>
+					</div>
+				</Button>
+			{:else}
+				<Button
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					onclick={reconnect}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--refresh] h-4 w-4"></span>
+						<span>Reconnect</span>
+					</div>
+				</Button>
+			{/if}
+		</div>
+
+		{#if cState.current}
+			<div
+				class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center"
+			>
+				<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
+
+				<div class="max-w-md">
+					The console has been disconnected.<br />
+					Click the "Reconnect" button to re-establish the connection.
+				</div>
+			</div>
+		{/if}
+
 		<div
 			class="terminal-wrapper h-full w-full"
+			class:hidden={cState.current}
 			tabindex="0"
 			style="outline: none;"
 			bind:this={terminalContainer}

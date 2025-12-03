@@ -36,7 +36,7 @@
 	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
-	import { resource, useInterval, IsDocumentVisible } from 'runed';
+	import { resource, useInterval, IsDocumentVisible, Debounced } from 'runed';
 	import { untrack } from 'svelte';
 	import { current } from 'immer';
 
@@ -166,7 +166,6 @@
 	});
 
 	let showLogs = $state(false);
-	let jailDesc = $state(jail.current.description || '');
 	let logicalCores = $derived(cpuInfo.current?.logicalCores ?? 0);
 	let totalRAM = $derived(ramInfo.current?.total ?? 0);
 	let cpuHistoricalData = $derived.by(() => {
@@ -187,9 +186,16 @@
 		};
 	});
 
+	let jailDesc = $state(jail.current.description || '');
+	let debouncedDesc = new Debounced(() => jailDesc, 500);
+	let lastDesc = $state('');
+
 	$effect(() => {
-		if (jailDesc) {
-			updateDescription(jail.current.id, jailDesc);
+		const value = debouncedDesc.current;
+
+		if (value !== undefined && value !== null && value !== lastDesc) {
+			updateDescription(jail.current.id, value);
+			lastDesc = value;
 		}
 	});
 

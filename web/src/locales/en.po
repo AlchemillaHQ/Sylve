@@ -3515,6 +3515,7 @@ msgstr "No known data errors"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Unlimited"
 msgstr "Unlimited"
 
@@ -5729,3 +5730,45 @@ msgstr "Metadata (Environment Variables)"
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Meta)"
 msgstr "Metadata (Meta)"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Disconnect"
+msgstr "Disconnect"
+
+#~ msgid "Connecting to console..."
+#~ msgstr "Connecting to console..."
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Reconnect"
+msgstr "Reconnect"
+
+#~ msgid "The console session is disconnected.<0/> Reconnect to access the Jail console."
+#~ msgstr "The console session is disconnected.<0/> Reconnect to access the Jail console."
+
+#~ msgid "Connecting…"
+#~ msgstr "Connecting…"
+
+#~ msgid "Jail console is marked as disconnected for jail {0}, skipping setup."
+#~ msgstr "Jail console is marked as disconnected for jail {0}, skipping setup."
+
+#~ msgid "Console disconnected. Click \"Reconnect\" to re-establish the connection."
+#~ msgstr "Console disconnected. Click \"Reconnect\" to re-establish the connection."
+
+#~ msgid "The console has been disconnected.<0/> Reconnect to access the console."
+#~ msgstr "The console has been disconnected.<0/> Reconnect to access the console."
+
+#~ msgid "Centered Content"
+#~ msgstr "Centered Content"
+
+#~ msgid "Console disconnected.<0/> Click \"Reconnect\" to open a new session."
+#~ msgstr "Console disconnected.<0/> Click \"Reconnect\" to open a new session."
+
+#~ msgid "Console is disconnected. Click \"Reconnect\" to connect."
+#~ msgstr "Console is disconnected. Click \"Reconnect\" to connect."
+
+#~ msgid "Hello"
+#~ msgstr "Hello"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
+msgstr "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."

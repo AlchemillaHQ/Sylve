@@ -1,4 +1,4 @@
-import { getJails, getJailStates } from '$lib/api/jail/jail';
+import { getJails, getJailStateById, getJailStates } from '$lib/api/jail/jail';
 import { SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch } from '$lib/utils/http';
 
@@ -8,7 +8,7 @@ export async function load({ params }) {
 
 	const [jail, state] = await Promise.all([
 		cachedFetch(`jail-${ctId}`, async () => getJails(), cacheDuration),
-		cachedFetch(`jail-${ctId}-state`, async () => getJailStates(), cacheDuration)
+		cachedFetch(`jail-${ctId}-state`, async () => getJailStateById(ctId), cacheDuration)
 	]);
 
 	return {

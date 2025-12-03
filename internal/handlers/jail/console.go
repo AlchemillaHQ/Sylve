@@ -109,16 +109,26 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 
 		tty, err := pty.Start(cmd)
 		if err != nil {
-			safeWrite(websocket.TextMessage, []byte(err.Error()))
+			_ = safeWrite(websocket.TextMessage, []byte(err.Error()))
 			return
 		}
 		defer func() {
-			cmd.Process.Kill()
-			cmd.Process.Wait()
-			tty.Close()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+				_, _ = cmd.Process.Wait()
+			}
+			_ = tty.Close()
 		}()
 
 		done := make(chan struct{})
+		var closeOnce sync.Once
+		closeDone := func() {
+			closeOnce.Do(func() {
+				close(done)
+			})
+		}
+
+		// Read from tmux (pty) and forward to WebSocket
 		go func() {
 			buf := make([]byte, 1024)
 			for {
@@ -128,43 +138,51 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 				default:
 					n, err := tty.Read(buf)
 					if err != nil {
-						exec.Command("tmux", "kill-session", "-t", sessionName).Run()
-						safeWrite(websocket.TextMessage, []byte("Terminal session closed."))
+						// Do NOT kill the tmux session here; just inform client and stop.
+						_ = safeWrite(websocket.TextMessage, []byte("Terminal session closed."))
+						closeDone()
 						return
 					}
-					safeWrite(websocket.BinaryMessage, buf[:n])
+					if n > 0 {
+						if err := safeWrite(websocket.BinaryMessage, buf[:n]); err != nil {
+							// WebSocket write failed; stop this goroutine.
+							closeDone()
+							return
+						}
+					}
 				}
 			}
 		}()
 
+		// Read from WebSocket and forward to tmux (pty)
 		for {
 			messageType, reader, err := conn.NextReader()
 			if err != nil {
-				exec.Command("tmux", "kill-session", "-t", sessionName).Run()
-				close(done)
+				// WebSocket closed/errored; detach client only.
+				closeDone()
 				return
 			}
 
 			if messageType == websocket.TextMessage {
-				safeWrite(websocket.TextMessage, []byte("Unexpected text message"))
+				_ = safeWrite(websocket.TextMessage, []byte("Unexpected text message"))
 				continue
 			}
 
 			header := make([]byte, 1)
 			if _, err := reader.Read(header); err != nil {
-				exec.Command("tmux", "kill-session", "-t", sessionName).Run()
-				close(done)
+				// Reader error; don't kill tmux session.
+				closeDone()
 				return
 			}
 
 			switch header[0] {
 			case 0: // stdin
-				io.Copy(tty, reader)
+				_, _ = io.Copy(tty, reader)
 
 			case 1: // resize
 				var ws WindowSize
 				if err := json.NewDecoder(reader).Decode(&ws); err != nil {
-					safeWrite(websocket.TextMessage, []byte("Error decoding resize: "+err.Error()))
+					_ = safeWrite(websocket.TextMessage, []byte("Error decoding resize: "+err.Error()))
 					continue
 				}
 				_, _, errno := syscall.Syscall(
@@ -174,7 +192,7 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 					uintptr(unsafe.Pointer(&ws)),
 				)
 				if errno != 0 {
-					safeWrite(websocket.TextMessage, []byte("Resize error: "+errno.Error()))
+					_ = safeWrite(websocket.TextMessage, []byte("Resize error: "+errno.Error()))
 				}
 
 			case 2: // kill
@@ -188,10 +206,11 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 				if sid == "" {
 					sid = sessionName
 				}
-				exec.Command("tmux", "kill-session", "-t", sid).Run()
-				safeWrite(websocket.TextMessage, []byte("Session killed: "+sid))
+				// Only explicit kill message actually destroys tmux session.
+				_ = exec.Command("tmux", "kill-session", "-t", sid).Run()
+				_ = safeWrite(websocket.TextMessage, []byte("Session killed: "+sid))
 				if sid == sessionName {
-					close(done)
+					closeDone()
 					return
 				}
 			}
