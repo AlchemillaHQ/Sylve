@@ -420,6 +420,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -487,13 +489,8 @@ msgstr "Minimize"
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -614,9 +611,6 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -973,7 +967,6 @@ msgid "Bulk Delete"
 msgstr "Bulk Delete"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1023,6 +1016,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -1038,9 +1032,6 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
@@ -1748,7 +1739,6 @@ msgstr "Description"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "MAC Address"
@@ -2207,7 +2197,6 @@ msgid "Inherit"
 msgstr "Inherit"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Network"
 msgstr "IPv4 Network"
@@ -2215,34 +2204,28 @@ msgstr "IPv4 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4"
 msgstr "IPv4"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Select IPv4"
 msgstr "Select IPv4"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Gateway"
 msgstr "IPv4 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr "Select IPv4 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Network"
 msgstr "IPv6 Network"
@@ -2250,28 +2233,23 @@ msgstr "IPv6 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6"
 msgstr "IPv6"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Select IPv6"
 msgstr "Select IPv6"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Gateway"
 msgstr "IPv6 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr "Select IPv6 Gateway"
@@ -2834,7 +2812,6 @@ msgid "Select PCI Devices"
 msgstr "Select PCI Devices"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Switch is required"
 msgstr "Switch is required"
 
@@ -2851,22 +2828,17 @@ msgid "VM attached to switch"
 msgstr "VM attached to switch"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "New Network"
 msgstr "New Network"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-#: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Switch"
 msgstr "Switch"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Select Switch"
 msgstr "Select Switch"
 
@@ -3656,102 +3628,85 @@ msgstr "Delete Root Filesystem"
 msgid "Update"
 msgstr "Update"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "You must select at least one protocol to inherit"
-msgstr "You must select at least one protocol to inherit"
+#~ msgid "You must select at least one protocol to inherit"
+#~ msgstr "You must select at least one protocol to inherit"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Failed to inherit network"
 msgstr "Failed to inherit network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Host network inherited"
-msgstr "Host network inherited"
+#~ msgid "Host network inherited"
+#~ msgstr "Host network inherited"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Failed to disinherit network"
 msgstr "Failed to disinherit network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Host network disinherited"
-msgstr "Host network disinherited"
+#~ msgid "Host network disinherited"
+#~ msgstr "Host network disinherited"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "At least one network configuration is required"
-msgstr "At least one network configuration is required"
+#~ msgid "At least one network configuration is required"
+#~ msgstr "At least one network configuration is required"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "IPv4 Gateway is required when IPv4 network is selected"
-msgstr "IPv4 Gateway is required when IPv4 network is selected"
+#~ msgid "IPv4 Gateway is required when IPv4 network is selected"
+#~ msgstr "IPv4 Gateway is required when IPv4 network is selected"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "IPv6 Gateway is required when IPv6 network is selected"
-msgstr "IPv6 Gateway is required when IPv6 network is selected"
+#~ msgid "IPv6 Gateway is required when IPv6 network is selected"
+#~ msgstr "IPv6 Gateway is required when IPv6 network is selected"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Failed to add network"
-msgstr "Failed to add network"
+#~ msgid "Failed to add network"
+#~ msgstr "Failed to add network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Network added"
-msgstr "Network added"
+#~ msgid "Network added"
+#~ msgstr "Network added"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Failed to delete network"
-msgstr "Failed to delete network"
+#~ msgid "Failed to delete network"
+#~ msgstr "Failed to delete network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Network deleted"
-msgstr "Network deleted"
+#~ msgid "Network deleted"
+#~ msgstr "Network deleted"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "No available switches to add"
-msgstr "No available switches to add"
+#~ msgid "No available switches to add"
+#~ msgstr "No available switches to add"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Disinherit Network"
 msgstr "Disinherit Network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Inherit Network"
 msgstr "Inherit Network"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "Detach"
 msgstr "Detach"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid ""
-"This option will <0>disinherit the network configuration</0> from the host. Choose this if\n"
-"you want to <1>attach a custom network switch</1> to this jail or <2>disable networking</2> entirely. <3>Changes will take effect after restarting the jail.</3>"
-msgstr ""
-"This option will <0>disinherit the network configuration</0> from the host. Choose this if\n"
-"you want to <1>attach a custom network switch</1> to this jail or <2>disable networking</2> entirely. <3>Changes will take effect after restarting the jail.</3>"
+#~ msgid ""
+#~ "This option will <0>disinherit the network configuration</0> from the host. Choose this if\n"
+#~ "you want to <1>attach a custom network switch</1> to this jail or <2>disable networking</2> entirely. <3>Changes will take effect after restarting the jail.</3>"
+#~ msgstr ""
+#~ "This option will <0>disinherit the network configuration</0> from the host. Choose this if\n"
+#~ "you want to <1>attach a custom network switch</1> to this jail or <2>disable networking</2> entirely. <3>Changes will take effect after restarting the jail.</3>"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid ""
-"This option will inherit the <0>network configuration</0> from the host. Choose this if you\n"
-"want the jail to <1>share the host's networking</1>. You can select which <2>protocols</2> to inherit below. <3>Changes will take effect after restarting the jail.</3>"
-msgstr ""
-"This option will inherit the <0>network configuration</0> from the host. Choose this if you\n"
-"want the jail to <1>share the host's networking</1>. You can select which <2>protocols</2> to inherit below. <3>Changes will take effect after restarting the jail.</3>"
+#~ msgid ""
+#~ "This option will inherit the <0>network configuration</0> from the host. Choose this if you\n"
+#~ "want the jail to <1>share the host's networking</1>. You can select which <2>protocols</2> to inherit below. <3>Changes will take effect after restarting the jail.</3>"
+#~ msgstr ""
+#~ "This option will inherit the <0>network configuration</0> from the host. Choose this if you\n"
+#~ "want the jail to <1>share the host's networking</1>. You can select which <2>protocols</2> to inherit below. <3>Changes will take effect after restarting the jail.</3>"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Disinherit"
 msgstr "Disinherit"
 
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "Select MAC Address"
-msgstr "Select MAC Address"
+#~ msgid "Select MAC Address"
+#~ msgstr "Select MAC Address"
 
-#. placeholder {0}: modals.delete.title
-#: src/routes/[node]/jail/[node]/network/+page.svelte
-msgid "This will detach the jail from the switch <b>{0}</b>"
-msgstr "This will detach the jail from the switch <b>{0}</b>"
+#~ msgid "This will detach the jail from the switch <b>{0}</b>"
+#~ msgstr "This will detach the jail from the switch <b>{0}</b>"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Static"
@@ -5772,3 +5727,47 @@ msgstr "Reconnect"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
+
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores update failed"
+msgstr "CPU cores update failed"
+
+#. placeholder {0}: cpu.logicalCores
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores larger than logical cores ({0})"
+msgstr "CPU cores larger than logical cores ({0})"
+
+#~ msgid "Linux Jails do not support networking configuration."
+#~ msgstr "Linux Jails do not support networking configuration."
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will disinherit the network configuration from the host. Choose this if you want\n"
+"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+"take effect after restarting the jail."
+msgstr ""
+"This option will disinherit the network configuration from the host. Choose this if you want\n"
+"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+"take effect after restarting the jail."
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will inherit the network configuration from the host. Choose this if you want\n"
+"the jail to share the host's networking. You can select which protocols to inherit below.\n"
+"Changes will take effect after restarting the jail."
+msgstr ""
+"This option will inherit the network configuration from the host. Choose this if you want\n"
+"the jail to share the host's networking. You can select which protocols to inherit below.\n"
+"Changes will take effect after restarting the jail."
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network disinherited"
+msgstr "Network disinherited"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "At least one protocol required"
+msgstr "At least one protocol required"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network inherited"
+msgstr "Network inherited"

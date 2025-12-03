@@ -23,6 +23,11 @@ type JailInheritNetworkRequest struct {
 	IPv6 *bool `json:"ipv6"`
 }
 
+type SetInheritanceRequest struct {
+	IPv4 *bool `json:"ipv4"`
+	IPv6 *bool `json:"ipv6"`
+}
+
 type AddNetworkRequest struct {
 	CTID       uint   `json:"ctId" binding:"required"`
 	SwitchName string `json:"switchName" binding:"required"`
@@ -147,6 +152,71 @@ func DisinheritJailNetwork(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_network_disinherited",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Set Network Inheritance
+// @Description Set network inheritance for a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body SetInheritanceRequest true "Set Inheritance Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Router /jail/network/inheritance/:ctId [put]
+func SetNetworkInheritance(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req SetInheritanceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		ctidParam := c.Param("ctId")
+		ctid, err := strconv.ParseUint(ctidParam, 10, 32)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_ct_id",
+				Data:    nil,
+				Error:   "Invalid CT ID: " + err.Error(),
+			})
+			return
+		}
+
+		var ipv4, ipv6 bool
+
+		if req.IPv4 != nil {
+			ipv4 = *req.IPv4
+		}
+
+		if req.IPv6 != nil {
+			ipv6 = *req.IPv6
+		}
+
+		err = jailService.SetInheritance(uint(ctid), ipv4, ipv6)
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_set_network_inheritance",
+				Data:    nil,
+				Error:   "failed_to_set_network_inheritance: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "network_inheritance_set",
 			Data:    nil,
 			Error:   "",
 		})

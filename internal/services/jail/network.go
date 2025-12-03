@@ -25,7 +25,8 @@ import (
 func (s *Service) DisinheritNetwork(ctId uint) error {
 	var jail jailModels.Jail
 
-	if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
+	if err := s.DB.Preload("Networks").
+		Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
 		return err
 	}
 
@@ -46,6 +47,117 @@ func (s *Service) InheritNetwork(ctId uint, ipv4 bool, ipv6 bool) error {
 	jail.InheritIPv6 = ipv6
 
 	return s.SyncNetwork(ctId, jail, true)
+}
+
+func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
+	}
+
+	mountPoint, err := s.GetJailBaseMountPoint(ctId)
+	if err != nil {
+		return err
+	}
+
+	if jail.InheritIPv4 == ipv4 && jail.InheritIPv6 == ipv6 {
+		return nil
+	}
+
+	preStartPath, err := s.GetHookScriptPath(ctId, "pre-start")
+	if err != nil {
+		return err
+	}
+
+	var inheriting bool
+
+	if ipv4 || ipv6 {
+		inheriting = true
+	} else {
+		inheriting = false
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return err
+	}
+
+	// This will clean up jail config from any existing vnet settings
+	lines := strings.Split(cfg, "\n")
+	for i := 0; i < len(lines); i++ {
+		if strings.Contains(lines[i], "vnet;") ||
+			strings.Contains(lines[i], "vnet.interface") ||
+			strings.Contains(lines[i], "ip4=") ||
+			strings.Contains(lines[i], "ip6=") {
+			lines = append(lines[:i], lines[i+1:]...)
+			i--
+		}
+	}
+
+	// We need to clean up rc.conf if it's a FreeBSD jail
+	if jail.Type == jailModels.JailTypeFreeBSD {
+		rcConfPath := filepath.Join(mountPoint, "etc", "rc.conf")
+		if _, statErr := os.Stat(rcConfPath); statErr == nil {
+			rcConf, err := os.ReadFile(rcConfPath)
+			if err != nil {
+				return err
+			}
+
+			rcLines := strings.Split(string(rcConf), "\n")
+			for i := 0; i < len(rcLines); i++ {
+				if strings.HasPrefix(rcLines[i], "ifconfig") {
+					rcLines = append(rcLines[:i], rcLines[i+1:]...)
+					i--
+				}
+			}
+
+			if err := os.WriteFile(rcConfPath, []byte(strings.Join(rcLines, "\n")), 0644); err != nil {
+				return err
+			}
+		}
+	}
+
+	preStartCfg, err := os.ReadFile(preStartPath)
+	if err != nil {
+		return err
+	}
+
+	cleanedCfg := s.RemoveSylveAdditionsFromHook(string(preStartCfg))
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(preStartPath, []byte(cleanedCfg), 0755); err != nil {
+		return err
+	}
+
+	if inheriting {
+		var toAppend strings.Builder
+		if ipv4 {
+			toAppend.WriteString("\tip4=inherit;\n")
+		}
+		if ipv6 {
+			toAppend.WriteString("\tip6=inherit;\n")
+		}
+
+		newCfg, err := s.AppendToConfig(ctId, strings.Join(lines, "\n"), toAppend.String())
+		if err != nil {
+			return err
+		}
+
+		if err := s.SaveJailConfig(ctId, newCfg); err != nil {
+			return err
+		}
+	}
+
+	jail.InheritIPv4 = ipv4
+	jail.InheritIPv6 = ipv6
+
+	if err := s.DB.Save(&jail).Error; err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) AddNetwork(ctId uint,
@@ -446,7 +558,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 	}
 
 	// If inherited, scrub rc.conf of per-if ifconfig/ipv6* lines
-	mountPoint, err := s.GetJailMountPoint(ctId)
+	mountPoint, err := s.GetJailBaseMountPoint(ctId)
 	if err != nil {
 		return err
 	}

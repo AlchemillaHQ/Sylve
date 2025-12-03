@@ -15,10 +15,12 @@
 	import { resource } from 'runed';
 	import { untrack } from 'svelte';
 	import { renderWithIcon } from '$lib/utils/table';
+	import type { CPUInfo } from '$lib/types/info/cpu';
 
 	interface Data {
 		jail: Jail;
 		ram: RAMInfo;
+		cpu: CPUInfo;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -74,11 +76,6 @@
 			{
 				title: 'Value',
 				field: 'value',
-				/* 
-                	formatter?:
-		| ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
-		| string;
-                */
 				formatter: function (cell, formatterParams, onRendered) {
 					const value = cell.getValue();
 					if (value === 'Unlimited') {
@@ -176,7 +173,7 @@
 {/if}
 
 {#if properties.cpu.open}
-	<CPU bind:open={properties.cpu.open} jail={jail.current} bind:reload />
+	<CPU bind:open={properties.cpu.open} cpu={data.cpu} jail={jail.current} bind:reload />
 {/if}
 
 <AlertDialog

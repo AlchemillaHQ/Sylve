@@ -154,3 +154,14 @@ export async function updateResourceLimits(ctId: number, enabled: boolean): Prom
 		'PUT'
 	);
 }
+
+export async function setNetworkInheritance(
+	ctId: number,
+	ipv4: boolean,
+	ipv6: boolean
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/network/inheritance/${ctId}`, APIResponseSchema, 'PUT', {
+		ipv4,
+		ipv6
+	});
+}

@@ -44,8 +44,8 @@ func (s *Service) SaveJailConfig(ctid uint, cfg string) error {
 		return fmt.Errorf("invalid_ct_id")
 	}
 
-	re := regexp.MustCompile(`\n{2,}`)
-	cfg = re.ReplaceAllString(cfg, "\n")
+	re := regexp.MustCompile(`\n{3,}`)
+	cfg = re.ReplaceAllString(cfg, "\n\n")
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
@@ -94,6 +94,36 @@ func (s *Service) GetHookScriptPath(ctid uint, hookName string) (string, error) 
 	return hookScriptPath, nil
 }
 
-func (s *Service) GetJailMountPoint(ctid uint) (string, error) {
-	return "", fmt.Errorf("not_implemented")
+func (s *Service) RemoveSylveAdditionsFromHook(content string) string {
+	const start = "### Start User-Managed Hook ###"
+	const end = "### End User-Managed Hook ###"
+
+	si := strings.Index(content, start)
+	if si == -1 {
+		return ""
+	}
+
+	ei := strings.Index(content[si:], end)
+	if ei == -1 {
+		return content[si:]
+	}
+
+	ei = si + ei + len(end)
+
+	return content[si:ei]
+}
+
+func (s *Service) GetJailBaseMountPoint(ctid uint) (string, error) {
+	cfg, err := s.GetJailConfig(ctid)
+	if err != nil {
+		return "", err
+	}
+
+	re := regexp.MustCompile(`path\s*=\s*["']([^"']+)["']`)
+	matches := re.FindStringSubmatch(cfg)
+	if len(matches) < 2 {
+		return "", fmt.Errorf("jail_path_not_found_in_config")
+	}
+
+	return matches[1], nil
 }

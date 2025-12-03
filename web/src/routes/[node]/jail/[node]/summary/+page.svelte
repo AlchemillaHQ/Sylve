@@ -8,9 +8,7 @@
 		deleteJail,
 		getJailById,
 		getJailLogs,
-		getJails,
 		getJailStateById,
-		getJailStates,
 		getStats,
 		jailAction,
 		updateDescription
@@ -26,19 +24,17 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { storage } from '$lib';
-	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
-	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
+	import type { CPUInfo } from '$lib/types/info/cpu';
+	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { cleanStats } from '$lib/utils/jail/stats';
 	import { dateToAgo } from '$lib/utils/time';
-	import { createQueries } from '@tanstack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced } from 'runed';
 	import { untrack } from 'svelte';
-	import { current } from 'immer';
 
 	interface Data {
 		ctId: number;
@@ -283,38 +279,40 @@
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border p-4">
-		{#if jState.current?.state === 'ACTIVE'}
-			<Button
-				onclick={handleStop}
-				size="sm"
-				class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-			>
-				<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-
-				{'Stop'}
-			</Button>
-		{:else}
-			<div class="flex items-center gap-2">
+		{#if jState.current}
+			{#if jState.current.state === 'ACTIVE'}
 				<Button
-					onclick={handleStart}
+					onclick={handleStop}
 					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
-					<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-					{'Start'}
-				</Button>
+					<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
 
-				<Button
-					onclick={() => {
-						modalState.isDeleteOpen = true;
-					}}
-					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-				>
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					{'Delete'}
+					{'Stop'}
 				</Button>
-			</div>
+			{:else}
+				<div class="flex items-center gap-2">
+					<Button
+						onclick={handleStart}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+						{'Start'}
+					</Button>
+
+					<Button
+						onclick={() => {
+							modalState.isDeleteOpen = true;
+						}}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+						{'Delete'}
+					</Button>
+				</div>
+			{/if}
 		{/if}
 
 		<div class="ml-auto flex h-full items-center">

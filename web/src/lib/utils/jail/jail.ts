@@ -61,11 +61,6 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 
 	if (modal.network.switch.toLowerCase() !== 'none') {
 		if (modal.advanced.jailType === 'linux') {
-			if (modal.network.inheritIPv4 === true || modal.network.inheritIPv6 === true) {
-				toast.error('Linux jails cannot inherit networks', toastConfig);
-				return false;
-			}
-
 			if (modal.network.ipv4 !== 0 || modal.network.ipv6 !== 0) {
 				toast.error('Linux jails cannot have static IPs assigned', toastConfig);
 				return false;
@@ -75,12 +70,12 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 				toast.error('Linux jails cannot use DHCP or SLAAC', toastConfig);
 				return false;
 			}
-		} else if (modal.advanced.jailType === 'freebsd') {
-			if (modal.network.switch.toLowerCase() === 'inherit') {
-				if (modal.network.inheritIPv4 === false && modal.network.inheritIPv6 === false) {
-					toast.error('Either IPv4 or IPv6 must be inherited', toastConfig);
-					return false;
-				}
+		}
+
+		if (modal.network.switch.toLowerCase() === 'inherit') {
+			if (modal.network.inheritIPv4 === false && modal.network.inheritIPv6 === false) {
+				toast.error('Either IPv4 or IPv6 must be inherited', toastConfig);
+				return false;
 			}
 		}
 	}

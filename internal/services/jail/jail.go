@@ -296,10 +296,6 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 	}
 
 	if data.Type == jailModels.JailTypeLinux {
-		if strings.ToLower(data.SwitchName) == "inherit" {
-			return fmt.Errorf("linux_jails_cannot_inherit_network")
-		}
-
 		if dhcp || slaac {
 			return fmt.Errorf("linux_jails_cannot_use_dhcp_or_slaac")
 		}
@@ -623,20 +619,18 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 	}
 
-	if data.Type == jailModels.JailTypeFreeBSD {
-		var inheritLines strings.Builder
+	var inheritLines strings.Builder
 
-		if data.InheritIPv4 {
-			inheritLines.WriteString(fmt.Sprintf("\tip4=\"inherit\";\n"))
-		}
+	if data.InheritIPv4 {
+		inheritLines.WriteString(fmt.Sprintf("\tip4=\"inherit\";\n"))
+	}
 
-		if data.InheritIPv6 {
-			inheritLines.WriteString(fmt.Sprintf("\tip6=\"inherit\";\n"))
-		}
+	if data.InheritIPv6 {
+		inheritLines.WriteString(fmt.Sprintf("\tip6=\"inherit\";\n"))
+	}
 
-		if inheritLines.Len() > 0 {
-			cfg += fmt.Sprintf("\n%s\n", inheritLines.String())
-		}
+	if inheritLines.Len() > 0 {
+		cfg += fmt.Sprintf("\n%s\n", inheritLines.String())
 	}
 
 	for _, hook := range data.JailHooks {
@@ -645,7 +639,9 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 
 		add := func(buf *string) {
+			*buf += "### Start User-Managed Hook ###\n"
 			*buf += hook.Script + "\n"
+			*buf += "### End User-Managed Hook ###\n"
 		}
 
 		switch hook.Phase {

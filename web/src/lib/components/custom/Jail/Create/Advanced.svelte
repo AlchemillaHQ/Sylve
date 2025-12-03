@@ -154,10 +154,10 @@
 				'allow.mount.linsysfs'
 			];
 
-			execScripts['start'].script = '#!/bin/sh\n\n/bin/true';
-			execScripts['stop'].script = '#!/bin/sh\n\n/bin/true';
-			execScripts['start'].enabled = true;
-			execScripts['stop'].enabled = true;
+			execScripts['start'].script = '';
+			execScripts['stop'].script = '';
+			execScripts['start'].enabled = false;
+			execScripts['stop'].enabled = false;
 		}
 	}
 

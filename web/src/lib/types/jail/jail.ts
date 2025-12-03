@@ -80,7 +80,8 @@ export const JailSchema = SimpleJailSchema.extend({
 	memory: z.number().int(),
 	updatedAt: z.string(),
 	startedAt: z.string().nullable(),
-	stoppedAt: z.string().nullable()
+	stoppedAt: z.string().nullable(),
+	type: z.enum(['freebsd', 'linux'])
 });
 
 export const JailStateSchema = z.object({
