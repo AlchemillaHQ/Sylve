@@ -8,20 +8,22 @@
 		label: string;
 		checked: boolean;
 		classes: string;
+		disabled?: boolean;
 	}
 
 	let {
 		id = '',
 		label = '',
 		checked = $bindable(false),
-		classes = 'flex items-center gap-2'
+		classes = 'flex items-center gap-2',
+		disabled = false
 	}: Props = $props();
 
 	let nanoId = $state(generateNanoId(label + id));
 </script>
 
 <div class={classes}>
-	<Checkbox id={nanoId} bind:checked aria-labelledby={label} />
+	<Checkbox id={nanoId} bind:checked aria-labelledby={label} {disabled} />
 	<Label
 		id={nanoId}
 		for={nanoId}

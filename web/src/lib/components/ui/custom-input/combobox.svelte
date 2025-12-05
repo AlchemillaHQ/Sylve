@@ -82,7 +82,7 @@
 
 <div class={classes}>
 	{#if label}
-		<Label class="w-full text-sm whitespace-nowrap" for={label.toLowerCase()}>
+		<Label class="w-full whitespace-nowrap text-sm" for={label.toLowerCase()}>
 			{label}
 		</Label>
 	{/if}
@@ -92,7 +92,7 @@
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
-				class="h-full !max-h-40 w-full flex-nowrap justify-between gap-1 overflow-y-auto"
+				class="max-h-40! h-full w-full flex-nowrap justify-between gap-1 overflow-y-auto"
 				{disabled}
 			>
 				<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1 overflow-hidden">
@@ -100,7 +100,7 @@
 						{#each selectedLabels as lbl, i}
 							<p
 								class={multiple
-									? 'bg-secondary/100 = max-w-full rounded px-2 py-0.5 text-left text-sm whitespace-break-spaces'
+									? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
 									: ' rounded px-2 text-sm'}
 								title={lbl}
 							>

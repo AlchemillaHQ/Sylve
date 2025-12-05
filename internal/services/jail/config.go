@@ -95,22 +95,60 @@ func (s *Service) GetHookScriptPath(ctid uint, hookName string) (string, error) 
 }
 
 func (s *Service) RemoveSylveAdditionsFromHook(content string) string {
+	// Remove Sylve network sections first
+	content = s.RemoveSylveNetworkFromHook(content)
+
 	const start = "### Start User-Managed Hook ###"
 	const end = "### End User-Managed Hook ###"
 
+	// Always preserve shebang if it exists
+	lines := strings.Split(content, "\n")
+	shebang := ""
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "#!") {
+		shebang = lines[0] + "\n"
+	}
+
 	si := strings.Index(content, start)
 	if si == -1 {
-		return ""
+		// No user-managed section found, return just shebang
+		if shebang == "" {
+			return "#!/bin/sh\n"
+		}
+		return shebang
 	}
 
 	ei := strings.Index(content[si:], end)
 	if ei == -1 {
-		return content[si:]
+		// No end marker, return shebang + everything from start
+		return shebang + content[si:]
 	}
 
 	ei = si + ei + len(end)
 
-	return content[si:ei]
+	// Return shebang + user-managed section
+	userSection := content[si:ei]
+	if shebang == "" {
+		return "#!/bin/sh\n" + userSection
+	}
+	return shebang + userSection
+}
+
+func (s *Service) ensureShebang(content string) string {
+	// If completely empty, return just shebang
+	if strings.TrimSpace(content) == "" {
+		return "#!/bin/sh\n"
+	}
+
+	// Strip leading blank lines so we can ensure the shebang is line 1
+	trimmed := strings.TrimLeft(content, "\r\n")
+
+	if !strings.HasPrefix(trimmed, "#!") {
+		// Prepend shebang if it's not already there
+		return "#!/bin/sh\n" + trimmed
+	}
+
+	// Already has a shebang at the top after trimming blank lines
+	return trimmed
 }
 
 func (s *Service) GetJailBaseMountPoint(ctid uint) (string, error) {
@@ -126,4 +164,80 @@ func (s *Service) GetJailBaseMountPoint(ctid uint) (string, error) {
 	}
 
 	return matches[1], nil
+}
+
+func (s *Service) AddSylveAdditionsToHook(content string, additions string) string {
+	const start = "### Start User-Managed Hook ###"
+	const end = "### End User-Managed Hook ###"
+
+	// Ensure content has proper shebang
+	content = s.ensureShebang(content)
+
+	si := strings.Index(content, start)
+	if si == -1 {
+		// No existing user-managed section, add it
+		return content + "\n" + start + "\n" + additions + "\n" + end + "\n"
+	}
+
+	ei := strings.Index(content[si:], end)
+	if ei == -1 {
+		// No end marker, add additions and end marker
+		return content + additions + "\n" + end + "\n"
+	}
+
+	ei = si + ei + len(end)
+
+	// Replace existing user-managed section
+	return content[:si] + start + "\n" + additions + "\n" + end + content[ei:]
+}
+
+func (s *Service) AddSylveNetworkToHook(content string, networkContent string) string {
+	const start = "### Start Sylve-Managed Network ###"
+	const end = "### End Sylve-Managed Network ###"
+
+	// Ensure content has proper shebang
+	content = s.ensureShebang(content)
+
+	// Remove existing Sylve network section if it exists
+	content = s.RemoveSylveNetworkFromHook(content)
+
+	// If no network content, just return cleaned content
+	if strings.TrimSpace(networkContent) == "" {
+		return content
+	}
+
+	// Add new network content at the end before any user-managed sections
+	userStart := strings.Index(content, "### Start User-Managed Hook ###")
+	if userStart != -1 {
+		// Insert before user-managed section
+		return content[:userStart] + start + "\n" + networkContent + "\n" + end + "\n\n" + content[userStart:]
+	} else {
+		// Add at the end
+		return content + "\n" + start + "\n" + networkContent + "\n" + end + "\n"
+	}
+}
+
+func (s *Service) RemoveSylveNetworkFromHook(content string) string {
+	const start = "### Start Sylve-Managed Network ###"
+	const end = "### End Sylve-Managed Network ###"
+
+	si := strings.Index(content, start)
+	if si == -1 {
+		return content // No Sylve network section found
+	}
+
+	ei := strings.Index(content[si:], end)
+	if ei == -1 {
+		return content // No end marker found
+	}
+
+	ei = si + ei + len(end)
+
+	// Remove the entire section including trailing newlines
+	result := content[:si] + content[ei:]
+
+	// Clean up any double newlines
+	result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
+
+	return result
 }

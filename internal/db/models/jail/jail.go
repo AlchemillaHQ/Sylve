@@ -24,6 +24,8 @@ type Network struct {
 	ID     uint `gorm:"primaryKey" json:"id"`
 	JailID uint `json:"jid" gorm:"column:jid;index"`
 
+	Name string `json:"name" gorm:"not null;uniqueIndex:idx_jail_network_name"`
+
 	SwitchID   uint   `json:"switchId" gorm:"not null;index"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
 
@@ -42,6 +44,8 @@ type Network struct {
 	IPv6Obj   *networkModels.Object `json:"ipv6Obj" gorm:"foreignKey:IPv6ID"`
 	IPv6GwID  *uint                 `json:"ipv6GwId" gorm:"column:ipv6_gw_id"`
 	IPv6GwObj *networkModels.Object `json:"ipv6GwObj" gorm:"foreignKey:IPv6GwID"`
+
+	DefaultGateway bool `json:"defaultGateway" gorm:"default:false"`
 
 	DHCP  bool `json:"dhcp" gorm:"default:false"`
 	SLAAC bool `json:"slaac" gorm:"default:false"`
@@ -140,9 +144,9 @@ type Jail struct {
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	JailHooks         []JailHooks `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
-	Storages []Storage   `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Networks []Network   `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Stats    []JailStats `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Storages []Storage   `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Networks []Network   `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Stats    []JailStats `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
 	MetadataMeta string `json:"metadataMeta"`
 	MetadataEnv  string `json:"metadataEnv"`

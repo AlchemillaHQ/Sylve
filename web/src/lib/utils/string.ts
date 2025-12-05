@@ -534,3 +534,8 @@ export function escapeHTML(str: string): string {
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;');
 }
+
+export function parseNumberOrZero(value: string): number {
+	const num = Number(value);
+	return isNaN(num) ? 0 : num;
+}

@@ -18,36 +18,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
-
-func (s *Service) DisinheritNetwork(ctId uint) error {
-	var jail jailModels.Jail
-
-	if err := s.DB.Preload("Networks").
-		Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
-		return err
-	}
-
-	jail.InheritIPv4 = false
-	jail.InheritIPv6 = false
-
-	return s.SyncNetwork(ctId, jail, true)
-}
-
-func (s *Service) InheritNetwork(ctId uint, ipv4 bool, ipv6 bool) error {
-	var jail jailModels.Jail
-
-	if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
-		return err
-	}
-
-	jail.InheritIPv4 = ipv4
-	jail.InheritIPv6 = ipv6
-
-	return s.SyncNetwork(ctId, jail, true)
-}
 
 func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 	jail, err := s.GetJailByCTID(ctId)
@@ -65,6 +39,11 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 	}
 
 	preStartPath, err := s.GetHookScriptPath(ctId, "pre-start")
+	if err != nil {
+		return err
+	}
+
+	startPath, err := s.GetHookScriptPath(ctId, "start")
 	if err != nil {
 		return err
 	}
@@ -105,7 +84,9 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 
 			rcLines := strings.Split(string(rcConf), "\n")
 			for i := 0; i < len(rcLines); i++ {
-				if strings.HasPrefix(rcLines[i], "ifconfig") {
+				if strings.HasPrefix(rcLines[i], "ifconfig") ||
+					strings.HasPrefix(rcLines[i], "ipv6") ||
+					strings.HasPrefix(rcLines[i], "defaultrouter") {
 					rcLines = append(rcLines[:i], rcLines[i+1:]...)
 					i--
 				}
@@ -122,16 +103,63 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 		return err
 	}
 
-	cleanedCfg := s.RemoveSylveAdditionsFromHook(string(preStartCfg))
+	startCfg, err := os.ReadFile(startPath)
 	if err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(preStartPath, []byte(cleanedCfg), 0755); err != nil {
+	cleanedPrestartCfg := s.RemoveSylveAdditionsFromHook(string(preStartCfg))
+	if err != nil {
+		return err
+	}
+
+	cleanedStartCfg := s.RemoveSylveAdditionsFromHook(string(startCfg))
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(preStartPath, []byte(cleanedPrestartCfg), 0755); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(startPath, []byte(cleanedStartCfg), 0755); err != nil {
 		return err
 	}
 
 	if inheriting {
+		// Clean up existing epair interfaces if any networks exist
+		if len(jail.Networks) > 0 {
+			ctidHash := utils.HashIntToNLetters(int(ctId), 5)
+
+			jail.InheritIPv4 = ipv4
+			jail.InheritIPv6 = ipv6
+			if err := s.DB.Save(&jail).Error; err != nil {
+				return err
+			}
+
+			for _, network := range jail.Networks {
+				if network.SwitchID > 0 {
+					epairName := fmt.Sprintf("%s_%s", ctidHash, fmt.Sprintf("net%d", network.ID))
+					logger.L.Debug().Msgf("SetInheritance: deleting epair %s", epairName)
+					if err := s.NetworkService.DeleteEpair(epairName); err != nil {
+						logger.L.Warn().Msgf("Warning: failed to delete epair %s: %v", epairName, err)
+					}
+				}
+			}
+
+			result := s.DB.Where("jid = ?", jail.ID).Delete(&jailModels.Network{})
+			if result.Error != nil {
+				return fmt.Errorf("failed to delete network entries: %w", result.Error)
+			}
+		} else {
+			// No networks to clean up, just update jail flags
+			jail.InheritIPv4 = ipv4
+			jail.InheritIPv6 = ipv6
+			if err := s.DB.Save(&jail).Error; err != nil {
+				return err
+			}
+		}
+
 		var toAppend strings.Builder
 		if ipv4 {
 			toAppend.WriteString("\tip4=inherit;\n")
@@ -148,27 +176,78 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 		if err := s.SaveJailConfig(ctId, newCfg); err != nil {
 			return err
 		}
-	}
+	} else {
+		// Disinheriting - no networks should exist since they were deleted when inheriting
+		jail.InheritIPv4 = ipv4
+		jail.InheritIPv6 = ipv6
+		if err := s.DB.Save(&jail).Error; err != nil {
+			return err
+		}
 
-	jail.InheritIPv4 = ipv4
-	jail.InheritIPv6 = ipv6
+		// Since we deleted all networks during inherit, set to disable mode
+		toAppend := "\tip4=disable;\n\tip6=disable;\n"
+		newCfg, err := s.AppendToConfig(ctId, strings.Join(lines, "\n"), toAppend)
+		if err != nil {
+			return err
+		}
 
-	if err := s.DB.Save(&jail).Error; err != nil {
-		return err
+		if err := s.SaveJailConfig(ctId, newCfg); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func (s *Service) AddNetwork(ctId uint,
-	switchName string,
-	macId uint,
-	ip4 uint,
-	ip4gw uint,
-	ip6 uint,
-	ip6gw uint,
-	dhcp bool,
-	slaac bool) error {
+func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) error {
+	macId := uint(0)
+	ip4 := uint(0)
+	ip4gw := uint(0)
+	ip6 := uint(0)
+	ip6gw := uint(0)
+	dhcp := false
+	slaac := false
+	defaultGateway := false
+
+	if req.IP4 != nil {
+		ip4 = *req.IP4
+	}
+
+	if req.IP4GW != nil {
+		ip4gw = *req.IP4GW
+	}
+
+	if req.IP6 != nil {
+		ip6 = *req.IP6
+	}
+
+	if req.IP6GW != nil {
+		ip6gw = *req.IP6GW
+	}
+
+	if req.DHCP != nil {
+		dhcp = *req.DHCP
+	}
+
+	if req.SLAAC != nil {
+		slaac = *req.SLAAC
+	}
+
+	if req.MacID != nil {
+		macId = *req.MacID
+	}
+
+	if req.DefaultGateway != nil {
+		defaultGateway = *req.DefaultGateway
+	}
+
+	if dhcp && slaac && defaultGateway {
+		return fmt.Errorf("cannot_set_dhcp_slaac_and_default_gateway_together")
+	}
+
+	ctId := req.CTID
+	switchName := req.SwitchName
+
 	var jail jailModels.Jail
 	var network jailModels.Network
 
@@ -176,32 +255,18 @@ func (s *Service) AddNetwork(ctId uint,
 		return err
 	}
 
+	if jail.Type == jailModels.JailTypeLinux {
+		if ip4 != 0 || ip4gw != 0 || ip6 != 0 || ip6gw != 0 {
+			return fmt.Errorf("cannot_set_ip_when_linux_jail")
+		}
+
+		if dhcp || slaac {
+			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
+		}
+	}
+
 	if jail.InheritIPv4 || jail.InheritIPv6 {
 		return fmt.Errorf("cannot_add_network_when_inheriting_network")
-	}
-
-	existing := false
-
-	for _, network := range jail.Networks {
-		if err := network.AfterFind(s.DB); err != nil {
-			return err
-		}
-
-		if network.StandardSwitch != nil {
-			if network.StandardSwitch.Name == switchName {
-				existing = true
-			}
-		}
-
-		if network.ManualSwitch != nil {
-			if network.ManualSwitch.Name == switchName {
-				existing = true
-			}
-		}
-	}
-
-	if existing {
-		return fmt.Errorf("network_with_same_switch_already_exists")
 	}
 
 	switchId := uint(0)
@@ -230,22 +295,20 @@ func (s *Service) AddNetwork(ctId uint,
 	network.SwitchType = switchType
 
 	if !dhcp {
-		if ip4 == 0 || ip4gw == 0 {
-			return fmt.Errorf("ip4_and_ip4gw_must_be_specified_when_dhcp_is_disabled")
-		}
+		if ip4 != 0 && ip4gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
 
-		_, err := s.NetworkService.GetObjectEntryByID(ip4)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_ip4_object: %w", err)
-		}
+			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
+			}
 
-		_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
+			network.IPv4ID = &ip4
+			network.IPv4GwID = &ip4gw
 		}
-
-		network.IPv4ID = &ip4
-		network.IPv4GwID = &ip4gw
 	} else {
 		network.DHCP = true
 	}
@@ -322,21 +385,26 @@ func (s *Service) AddNetwork(ctId uint,
 		network.MacID = &macId
 	}
 
+	network.Name = req.Name
 	network.JailID = jail.ID
 	err := s.DB.Create(&network).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_create_network: %w", err)
 	}
 
-	jail.Networks = append(jail.Networks, network)
-
-	err = s.NetworkService.SyncEpairs()
-
+	err = s.NetworkService.SyncEpairs(false)
 	if err != nil {
 		return fmt.Errorf("failed_to_sync_epairs: %w", err)
 	}
 
-	return s.SyncNetwork(ctId, jail, true)
+	// Reload jail with new network
+	if err := s.DB.Preload("Networks").
+		Where("ct_id = ?", ctId).
+		First(&jail).Error; err != nil {
+		return err
+	}
+
+	return s.SyncNetwork(ctId, jail)
 }
 
 func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
@@ -346,79 +414,98 @@ func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
 		return fmt.Errorf("failed_to_find_network: %w", err)
 	}
 
-	epair := fmt.Sprintf("%s_%d", utils.HashIntToNLetters(int(ctId), 5), network.SwitchID)
+	epair := fmt.Sprintf("%s_%s", utils.HashIntToNLetters(int(ctId), 5), fmt.Sprintf("net%d", network.ID))
 	err = s.NetworkService.DeleteEpair(epair)
 	if err != nil {
 		return err
 	}
 
-	var jailNetwork jailModels.Network
-	err = s.DB.Where("id = ?", networkId).Delete(&jailNetwork).Error
-
+	err = s.DB.Where("id = ?", networkId).Delete(&network).Error
 	if err != nil {
 		return err
 	}
 
+	// Reload jail after deletion and sync
 	var jail jailModels.Jail
-
-	err = s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jail).Error
-	if err != nil {
+	if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
 		return err
 	}
 
-	return s.SyncNetwork(ctId, jail, true)
+	return s.SyncNetwork(ctId, jail)
 }
 
-func (s *Service) GetNetworkCleanedConfig(ctId uint) (string, error) {
+func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
+	mountPoint, err := s.GetJailBaseMountPoint(ctId)
+	if err != nil {
+		return err
+	}
+
+	// Clean up jail config from any existing network settings
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	lines := strings.Split(cfg, "\n")
 	for i := 0; i < len(lines); i++ {
-		if strings.Contains(lines[i], "ip4=") ||
-			strings.Contains(lines[i], "ip6=") ||
-			strings.Contains(lines[i], "vnet;") ||
+		if strings.Contains(lines[i], "vnet;") ||
 			strings.Contains(lines[i], "vnet.interface") ||
-			strings.Contains(lines[i], "ifconfig") ||
-			strings.Contains(lines[i], "route add default") ||
-			strings.Contains(lines[i], "sysrc ipv6") ||
-			strings.Contains(lines[i], "dhclient") {
+			strings.Contains(lines[i], "ip4=") ||
+			strings.Contains(lines[i], "ip6=") {
 			lines = append(lines[:i], lines[i+1:]...)
 			i--
 		}
 	}
 
-	cfg = strings.Join(lines, "\n")
+	// Clean up rc.conf if it's a FreeBSD jail
+	if jail.Type == jailModels.JailTypeFreeBSD {
+		rcConfPath := filepath.Join(mountPoint, "etc", "rc.conf")
+		if _, statErr := os.Stat(rcConfPath); statErr == nil {
+			rcConf, err := os.ReadFile(rcConfPath)
+			if err != nil {
+				return err
+			}
 
-	return cfg, nil
-}
+			rcLines := strings.Split(string(rcConf), "\n")
+			for i := 0; i < len(rcLines); i++ {
+				if strings.HasPrefix(rcLines[i], "ifconfig") ||
+					strings.HasPrefix(rcLines[i], "ipv6") ||
+					strings.HasPrefix(rcLines[i], "defaultrouter") ||
+					strings.HasPrefix(rcLines[i], "# Sylve Network Configuration") {
+					rcLines = append(rcLines[:i], rcLines[i+1:]...)
+					i--
+				}
+			}
 
-func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error {
-	if save {
-		if err := s.DB.Save(&jail).Error; err != nil {
+			if err := os.WriteFile(rcConfPath, []byte(strings.Join(rcLines, "\n")), 0644); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Clean up hook scripts
+	hooks := []string{"pre-start", "start", "post-start"}
+	for _, hookName := range hooks {
+		hookPath, err := s.GetHookScriptPath(ctId, hookName)
+		if err != nil {
+			continue // Hook file might not exist, that's ok
+		}
+
+		hookContent, err := os.ReadFile(hookPath)
+		if err != nil {
+			continue
+		}
+
+		cleanedContent := s.RemoveSylveAdditionsFromHook(string(hookContent))
+		if err := os.WriteFile(hookPath, []byte(cleanedContent), 0755); err != nil {
 			return err
 		}
 	}
 
-	cfg, err := s.GetNetworkCleanedConfig(ctId)
-	if err != nil {
-		return err
-	}
-
 	var newCfg string
 
-	// Moving from VNET to Inherited
+	// Handle inheritance mode
 	if jail.InheritIPv4 || jail.InheritIPv6 {
-		if jail.Networks != nil && len(jail.Networks) > 0 {
-			for _, network := range jail.Networks {
-				if err := s.DeleteNetwork(ctId, network.ID); err != nil {
-					return err
-				}
-			}
-		}
-
 		var toAppend strings.Builder
 		if jail.InheritIPv4 {
 			toAppend.WriteString("\tip4=inherit;\n")
@@ -427,7 +514,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 			toAppend.WriteString("\tip6=inherit;\n")
 		}
 
-		newCfg, err = s.AppendToConfig(ctId, cfg, toAppend.String())
+		newCfg, err = s.AppendToConfig(ctId, strings.Join(lines, "\n"), toAppend.String())
 		if err != nil {
 			return err
 		}
@@ -437,35 +524,35 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 			ctidHash := utils.HashIntToNLetters(int(ctId), 5)
 
 			// Ensure epairs exist
-			if err := s.NetworkService.SyncEpairs(); err != nil {
+			if err := s.NetworkService.SyncEpairs(false); err != nil {
 				return err
 			}
 
-			var b strings.Builder
+			// Build jail config additions
+			var jailCfgBuilder strings.Builder
+			jailCfgBuilder.WriteString("\tvnet;\n")
 
-			// vnet declaration once
-			b.WriteString("\tvnet;\n")
-
-			// vnet.interface per NIC
+			// Add vnet.interface entries
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {
 					continue
 				}
-				b.WriteString(fmt.Sprintf("\tvnet.interface += \"%s_%db\";\n", ctidHash, n.SwitchID))
+				jailCfgBuilder.WriteString(fmt.Sprintf("\tvnet.interface += \"%s_%sb\";\n", ctidHash, fmt.Sprintf("net%d", n.ID)))
 			}
 
-			// Defaults only once
-			setV4Default := false
-			setV6Default := false
+			// Build pre-start hook script content
+			var preStartBuilder strings.Builder
 
-			// Track if *any* NIC configured IPv6 (SLAAC or static)
+			// Build rc.conf content for network configuration
+			var rcConfLines []string
+
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {
 					continue
 				}
-				networkId := n.SwitchID
+				networkId := fmt.Sprintf("net%d", n.ID)
 
-				// --- MAC + Bridge membership ---
+				// MAC and bridge setup in pre-start
 				if n.MacID != nil && *n.MacID > 0 {
 					mac, err := s.NetworkService.GetObjectEntryByID(*n.MacID)
 					if err != nil {
@@ -476,23 +563,24 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 						return fmt.Errorf("failed to get previous mac: %w", err)
 					}
 
-					b.WriteString(fmt.Sprintf("\texec.prestart += \"ifconfig %s_%da ether %s up\";\n", ctidHash, networkId, prevMAC))
-					b.WriteString(fmt.Sprintf("\texec.prestart += \"ifconfig %s_%db ether %s up\";\n", ctidHash, networkId, mac))
+					preStartBuilder.WriteString(fmt.Sprintf("# Setup Network Interface %s_%sb\n", ctidHash, networkId))
+					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s_%sa ether %s up\n", ctidHash, networkId, prevMAC))
+					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s_%sb ether %s up\n", ctidHash, networkId, mac))
+					preStartBuilder.WriteString("\n")
 
 					bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
 					if err != nil {
 						return fmt.Errorf("failed to get bridge name: %w", err)
 					}
-					b.WriteString(fmt.Sprintf(
-						"\texec.prestart += \"if ! ifconfig %s | grep -qw %s_%da; then ifconfig %s addm %s_%da; fi\";\n",
-						bridgeName, ctidHash, networkId, bridgeName, ctidHash, networkId,
-					))
+					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s_%sa; then\n", bridgeName, ctidHash, networkId))
+					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s_%sa 2>&1 || true\n", bridgeName, ctidHash, networkId))
+					preStartBuilder.WriteString("fi\n")
+					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s_%sb\n\n", ctidHash, networkId))
 				}
 
-				// --- IPv4 (independent of IPv6) ---
+				// IPv4 configuration
 				if n.DHCP {
-					b.WriteString(fmt.Sprintf("\texec.start += \"dhclient %s_%db\";\n", ctidHash, networkId))
-					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db=\\\"DHCP\\\"\";\n", ctidHash, networkId))
+					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"SYNCDHCP\"", ctidHash, networkId))
 				} else if n.IPv4ID != nil && *n.IPv4ID > 0 && n.IPv4GwID != nil && *n.IPv4GwID > 0 {
 					ipv4, err := s.NetworkService.GetObjectEntryByID(*n.IPv4ID)
 					if err != nil {
@@ -507,18 +595,16 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 						return fmt.Errorf("failed to split ipv4 address and mask: %w", err)
 					}
 
-					b.WriteString(fmt.Sprintf("\texec.start += \"ifconfig %s_%db inet %s netmask %s\";\n", ctidHash, networkId, ip, mask))
-					if !setV4Default {
-						b.WriteString(fmt.Sprintf("\texec.start += \"route add default %s\";\n", ipv4Gw))
-						setV4Default = true
+					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"inet %s netmask %s\"", ctidHash, networkId, ip, mask))
+
+					if n.DefaultGateway {
+						rcConfLines = append(rcConfLines, fmt.Sprintf("defaultrouter=\"%s\"", ipv4Gw))
 					}
-					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db=\\\"inet %s netmask %s\\\"\";\n", ctidHash, networkId, ip, mask))
 				}
 
-				// --- IPv6 (independent of IPv4) ---
+				// IPv6 configuration
 				if n.SLAAC {
-					b.WriteString(fmt.Sprintf("\texec.start += \"ifconfig %s_%db inet6 accept_rtadv up\";\n", ctidHash, networkId))
-					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db_ipv6=\\\"inet6 accept_rtadv\\\"\";\n", ctidHash, networkId))
+					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 accept_rtadv\"", ctidHash, networkId))
 				} else if n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0 {
 					ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
 					if err != nil {
@@ -529,24 +615,61 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 						return fmt.Errorf("failed to get ipv6 gateway: %w", err)
 					}
 
-					b.WriteString(fmt.Sprintf("\texec.start += \"ifconfig %s_%db inet6 %s\";\n", ctidHash, networkId, ipv6))
-					if !setV6Default {
-						b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ipv6_defaultrouter=\\\"%s\\\"\";\n", ipv6Gw))
-						setV6Default = true
+					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 %s\"", ctidHash, networkId, ipv6))
+					if n.DefaultGateway {
+						rcConfLines = append(rcConfLines, fmt.Sprintf("ipv6_defaultrouter=\"%s\"", ipv6Gw))
 					}
-					b.WriteString(fmt.Sprintf("\texec.start += \"sysrc ifconfig_%s_%db_ipv6=\\\"inet6 %s\\\"\";\n", ctidHash, networkId, ipv6))
 				}
 			}
 
-			newCfg, err = s.AppendToConfig(ctId, cfg, b.String())
+			// Write network configuration to rc.conf
+			if len(rcConfLines) > 0 && jail.Type == jailModels.JailTypeFreeBSD {
+				rcConfPath := filepath.Join(mountPoint, "etc", "rc.conf")
+
+				// Read current rc.conf content (already cleaned above)
+				currentRcConf, err := os.ReadFile(rcConfPath)
+				if err != nil {
+					return err
+				}
+
+				// Append new network configuration
+				rcConfContent := string(currentRcConf)
+				if !strings.HasSuffix(rcConfContent, "\n") {
+					rcConfContent += "\n"
+				}
+				rcConfContent += "# Sylve Network Configuration\n"
+				rcConfContent += strings.Join(rcConfLines, "\n") + "\n"
+
+				if err := os.WriteFile(rcConfPath, []byte(rcConfContent), 0644); err != nil {
+					return err
+				}
+			}
+
+			// Update hook files with network configuration
+			preStartPath, err := s.GetHookScriptPath(ctId, "pre-start")
+			if err != nil {
+				return err
+			}
+
+			currentPreStartContent, err := os.ReadFile(preStartPath)
+			if err != nil {
+				return err
+			}
+
+			newPreStartContent := s.AddSylveNetworkToHook(string(currentPreStartContent), preStartBuilder.String())
+			if err := os.WriteFile(preStartPath, []byte(newPreStartContent), 0755); err != nil {
+				return err
+			}
+
+			// Add jail config
+			newCfg, err = s.AppendToConfig(ctId, strings.Join(lines, "\n"), jailCfgBuilder.String())
 			if err != nil {
 				return err
 			}
 		} else {
-			// No networks configured: disable both stacks explicitly
+			// No networks configured: disable both stacks
 			toAppend := "\tip4=disable;\n\tip6=disable;\n"
-			var err error
-			newCfg, err = s.AppendToConfig(ctId, cfg, toAppend)
+			newCfg, err = s.AppendToConfig(ctId, strings.Join(lines, "\n"), toAppend)
 			if err != nil {
 				return err
 			}
@@ -555,32 +678,6 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail, save bool) error 
 
 	if err := s.SaveJailConfig(ctId, newCfg); err != nil {
 		return err
-	}
-
-	// If inherited, scrub rc.conf of per-if ifconfig/ipv6* lines
-	mountPoint, err := s.GetJailBaseMountPoint(ctId)
-	if err != nil {
-		return err
-	}
-
-	rcConfPath := filepath.Join(mountPoint, "etc", "rc.conf")
-	if _, statErr := os.Stat(rcConfPath); statErr == nil {
-		if jail.InheritIPv4 || jail.InheritIPv6 {
-			rcConf, err := os.ReadFile(rcConfPath)
-			if err != nil {
-				return err
-			}
-			lines := strings.Split(string(rcConf), "\n")
-			for i := 0; i < len(lines); i++ {
-				if strings.HasPrefix(lines[i], "ifconfig") || strings.HasPrefix(lines[i], "ipv6") {
-					lines = append(lines[:i], lines[i+1:]...)
-					i--
-				}
-			}
-			if err := os.WriteFile(rcConfPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil
@@ -617,7 +714,7 @@ func (s *Service) WatchNetworkObjectChanges() error {
 			continue
 		}
 
-		err := s.SyncNetwork(uint(jail.CTID), jail, false)
+		err := s.SyncNetwork(uint(jail.CTID), jail)
 
 		if err != nil {
 			logger.L.Warn().Msgf("Failed to sync network for jail id=%d err=%v\n", jailID, err)

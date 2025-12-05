@@ -150,7 +150,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface)
 		logger.L.Error().Msgf("error ensuring dnsmasq is running: %v", err)
 	}
 
-	if err := s.Network.SyncEpairs(); err != nil {
+	if err := s.Network.SyncEpairs(false); err != nil {
 		return fmt.Errorf("error syncing epairs %v", err)
 	}
 

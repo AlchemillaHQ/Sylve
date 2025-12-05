@@ -75,7 +75,7 @@
 
 	$effect(() => {
 		if (!base && enableFstabInput) {
-			toast.warning('Please select a base/rootfs before adding FStab entries', {
+			toast.warning('Select a base/rootfs to add FStab entries', {
 				position: 'bottom-center'
 			});
 			enableFstabInput = false;

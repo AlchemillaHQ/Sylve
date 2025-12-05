@@ -87,6 +87,20 @@ type State struct {
 	Memory int64   `json:"memory"`
 }
 
+type AddJailNetworkRequest struct {
+	CTID           uint   `json:"ctId" binding:"required"`
+	Name           string `json:"name" binding:"required"`
+	SwitchName     string `json:"switchName" binding:"required"`
+	MacID          *uint  `json:"macId"`
+	IP4            *uint  `json:"ip4"`
+	IP4GW          *uint  `json:"ip4gw"`
+	IP6            *uint  `json:"ip6"`
+	IP6GW          *uint  `json:"ip6gw"`
+	DHCP           *bool  `json:"dhcp"`
+	SLAAC          *bool  `json:"slaac"`
+	DefaultGateway *bool  `json:"defaultGateway"`
+}
+
 type JailServiceInterface interface {
 	StoreJailUsage() error
 	PruneOrphanedJailStats([]uint) error

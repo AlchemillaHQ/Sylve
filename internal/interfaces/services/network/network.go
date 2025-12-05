@@ -45,6 +45,6 @@ type NetworkServiceInterface interface {
 	GetObjectEntryByID(id uint) (string, error)
 	GetBridgeNameByIDType(id uint, swType string) (string, error)
 	CreateEpair(name string) error
-	SyncEpairs() error
+	SyncEpairs(forceStart bool) error
 	DeleteEpair(name string) error
 }

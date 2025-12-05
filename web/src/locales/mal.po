@@ -418,6 +418,8 @@ msgstr ""
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -549,6 +551,8 @@ msgstr ""
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -626,6 +630,7 @@ msgstr ""
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -638,6 +643,7 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -920,6 +926,7 @@ msgstr ""
 msgid "View"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -965,6 +972,7 @@ msgid "Bulk Delete"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1014,6 +1022,7 @@ msgstr ""
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1623,6 +1632,7 @@ msgstr ""
 msgid "Share name already exists"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Name is required"
@@ -1736,6 +1746,7 @@ msgid "Description"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -2204,6 +2215,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4"
@@ -2214,11 +2226,13 @@ msgid "Select IPv4"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Gateway"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr ""
@@ -2233,6 +2247,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6"
@@ -2243,11 +2258,13 @@ msgid "Select IPv6"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Gateway"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr ""
@@ -2809,6 +2826,7 @@ msgstr ""
 msgid "Select PCI Devices"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
 msgstr ""
@@ -2825,16 +2843,20 @@ msgstr ""
 msgid "VM attached to switch"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "New Network"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Switch"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select Switch"
@@ -3646,17 +3668,20 @@ msgstr ""
 #~ msgid "IPv6 Gateway is required when IPv6 network is selected"
 #~ msgstr ""
 
-#~ msgid "Failed to add network"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Failed to add network"
+msgstr ""
 
 #~ msgid "Network added"
 #~ msgstr ""
 
-#~ msgid "Failed to delete network"
-#~ msgstr ""
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Failed to delete network"
+msgstr ""
 
-#~ msgid "Network deleted"
-#~ msgstr ""
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Network deleted"
+msgstr ""
 
 #~ msgid "No available switches to add"
 #~ msgstr ""
@@ -3690,11 +3715,14 @@ msgstr ""
 msgid "Disinherit"
 msgstr ""
 
-#~ msgid "Select MAC Address"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select MAC Address"
+msgstr ""
 
-#~ msgid "This will detach the jail from the switch <b>{0}</b>"
-#~ msgstr ""
+#. placeholder {0}: activeRow.switch
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "This will detach the jail from the switch <b>{0}</b>"
+msgstr ""
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Static"
@@ -5736,4 +5764,43 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Network inherited"
+msgstr ""
+
+#~ msgid "Network form fields would be implemented here."
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Primary Network"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "IPv4 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select IPv4 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "IPv6 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select IPv6 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Default Gateway"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Default gateway already exists"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Network added successfully"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Network name already exists"
 msgstr ""

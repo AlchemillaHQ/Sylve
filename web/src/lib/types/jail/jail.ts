@@ -55,6 +55,7 @@ export const SimpleJailSchema = z.object({
 export const NetworkSchema = z.object({
 	id: z.number().int(),
 	jid: z.number().int(),
+	name: z.string(),
 	switchId: z.number().int(),
 	switchType: z.enum(['standard', 'manual']),
 	macId: z.number().int().nullable(),
@@ -64,7 +65,8 @@ export const NetworkSchema = z.object({
 	ipv6Id: z.number().int().nullable(),
 	ipv6GwId: z.number().int().nullable(),
 	dhcp: z.boolean().nullable().default(false),
-	slaac: z.boolean().nullable().default(false)
+	slaac: z.boolean().nullable().default(false),
+	defaultGateway: z.boolean().default(false)
 });
 
 export const JailSchema = SimpleJailSchema.extend({
@@ -144,6 +146,7 @@ export interface ExecPhaseState {
 
 export type SimpleJail = z.infer<typeof SimpleJailSchema>;
 export type Jail = z.infer<typeof JailSchema>;
+export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;

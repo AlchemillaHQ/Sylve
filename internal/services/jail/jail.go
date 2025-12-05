@@ -499,7 +499,8 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 
 		network := data.Networks[0]
 		if network.SwitchID > 0 {
-			networkId = fmt.Sprintf("%d", network.SwitchID)
+			// Use network database ID for unique interface naming
+			networkId = fmt.Sprintf("net%d", network.ID)
 
 			cfg += "\tvnet;\n"
 			cfg += fmt.Sprintf("\tvnet.interface = \"%s_%sb\";\n", ctidHash, networkId)
@@ -509,7 +510,9 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 				return "", fmt.Errorf("failed to get previous mac: %w", err)
 			}
 
-			// These run on the host: configure epairs and add to bridge
+			// ### Start Sylve-Managed Network ###
+			preStartCfg += "### Start Sylve-Managed Network ###\n\n"
+			preStartCfg += fmt.Sprintf("# Setup Network Interface %s_%sb\n", ctidHash, networkId)
 			preStartCfg += fmt.Sprintf("ifconfig %s_%sa ether %s up\n", ctidHash, networkId, prevMAC)
 			preStartCfg += fmt.Sprintf("ifconfig %s_%sb ether %s up\n", ctidHash, networkId, mac)
 			preStartCfg += "\n"
@@ -523,7 +526,9 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 				bridgeName, ctidHash, networkId)
 			preStartCfg += fmt.Sprintf("\tifconfig %s addm %s_%sa 2>&1 || true\n",
 				bridgeName, ctidHash, networkId)
-			preStartCfg += "fi\n\n\n"
+			preStartCfg += "fi\n"
+			preStartCfg += fmt.Sprintf("# End Setup Network Interface %s_%sb\n", ctidHash, networkId)
+			preStartCfg += "### End Sylve-Managed Network ###\n\n"
 		}
 
 		// DHCP / SLAAC / static config inside jail — FreeBSD JAILS ONLY
@@ -553,30 +558,32 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 					rcToAppend.WriteString(lineDHCP)
 				}
 			} else {
-				ipv4Addr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4ID)
-				if err != nil {
-					return "", fmt.Errorf("failed_to_get_ipv4_address_object: %w", err)
-				}
-
-				ip, mask, err := utils.SplitIPv4AndMask(ipv4Addr)
-				if err != nil {
-					return "", fmt.Errorf("failed_to_split_ipv4_address_and_mask: %w", err)
-				}
-
-				lineIPv4 := fmt.Sprintf("%s=\"inet %s netmask %s\"\n", ifName, ip, mask)
-				if !strings.Contains(existing, lineIPv4) {
-					rcToAppend.WriteString(lineIPv4)
-				}
-
-				if network.IPv4GwID != nil && *network.IPv4GwID > 0 {
-					ipv4GwAddr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4GwID)
+				if (network.IPv4ID != nil && *network.IPv4ID > 0) && (network.IPv4GwID != nil && *network.IPv4GwID > 0) {
+					ipv4Addr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4ID)
 					if err != nil {
-						return "", fmt.Errorf("failed_to_get_ipv4_gateway_object: %w", err)
+						return "", fmt.Errorf("failed_to_get_ipv4_address_object: %w", err)
 					}
 
-					lineGw4 := fmt.Sprintf("defaultrouter=\"%s\"\n", ipv4GwAddr)
-					if !strings.Contains(existing, lineGw4) {
-						rcToAppend.WriteString(lineGw4)
+					ip, mask, err := utils.SplitIPv4AndMask(ipv4Addr)
+					if err != nil {
+						return "", fmt.Errorf("failed_to_split_ipv4_address_and_mask: %w", err)
+					}
+
+					lineIPv4 := fmt.Sprintf("%s=\"inet %s netmask %s\"\n", ifName, ip, mask)
+					if !strings.Contains(existing, lineIPv4) {
+						rcToAppend.WriteString(lineIPv4)
+					}
+
+					if network.IPv4GwID != nil && *network.IPv4GwID > 0 {
+						ipv4GwAddr, err := s.NetworkService.GetObjectEntryByID(*network.IPv4GwID)
+						if err != nil {
+							return "", fmt.Errorf("failed_to_get_ipv4_gateway_object: %w", err)
+						}
+
+						lineGw4 := fmt.Sprintf("defaultrouter=\"%s\"\n", ipv4GwAddr)
+						if !strings.Contains(existing, lineGw4) {
+							rcToAppend.WriteString(lineGw4)
+						}
 					}
 				}
 			}
@@ -605,7 +612,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 					return "", fmt.Errorf("failed_to_get_ipv6_gateway_object: %w", err)
 				}
 
-				lineGw6 := fmt.Sprintf("defaultrouter_ipv6=\"%s\"\n", ipv6GwAddr)
+				lineGw6 := fmt.Sprintf("ipv6_defaultrouter=\"%s\"\n", ipv6GwAddr)
 				if !strings.Contains(existing, lineGw6) {
 					rcToAppend.WriteString(lineGw6)
 				}
@@ -825,8 +832,9 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
 	}
 
+	txCommitted := false
 	defer func() {
-		if err != nil {
+		if err != nil && !txCommitted {
 			_ = tx.Rollback()
 			s.rollbackJailCreation(state)
 		}
@@ -896,6 +904,8 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 
 	jail.DevFSRuleset = data.DevFSRuleset
 
+	// Create networks first to get their database IDs
+	var createdNetworks []jailModels.Network
 	var macStr string
 
 	if strings.ToLower(data.SwitchName) != "inherit" && strings.ToLower(data.SwitchName) != "none" {
@@ -1016,17 +1026,27 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 			slaac = *data.SLAAC
 		}
 
-		jail.Networks = append(jail.Networks, jailModels.Network{
-			SwitchID:   swID,
-			SwitchType: swType,
-			MacID:      &mac,
-			IPv4ID:     ipv4ID,
-			IPv4GwID:   ipv4GwID,
-			IPv6ID:     ipv6ID,
-			IPv6GwID:   ipv6GwID,
-			DHCP:       dhcp,
-			SLAAC:      slaac,
-		})
+		// Create the network record first to get its ID
+		network := jailModels.Network{
+			Name:           fmt.Sprintf("Initial Switch - %s - %s", swName, data.Name),
+			SwitchID:       swID,
+			SwitchType:     swType,
+			MacID:          &mac,
+			IPv4ID:         ipv4ID,
+			IPv4GwID:       ipv4GwID,
+			IPv6ID:         ipv6ID,
+			IPv6GwID:       ipv6GwID,
+			DHCP:           dhcp,
+			SLAAC:          slaac,
+			DefaultGateway: true,
+		}
+
+		if err = tx.Create(&network).Error; err != nil {
+			err = fmt.Errorf("failed_to_create_network: %w", err)
+			return
+		}
+
+		createdNetworks = append(createdNetworks, network)
 	}
 
 	if data.InheritIPv4 != nil {
@@ -1059,6 +1079,71 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 		IsBase: true,
 	})
 
+	// Associate the created networks with the jail
+	jail.Networks = createdNetworks
+
+	// Check if a jail with this CTID already exists
+	var existingJail jailModels.Jail
+	if err = tx.Where("ct_id = ?", jail.CTID).First(&existingJail).Error; err == nil {
+		// Jail already exists - this is an error, don't overwrite existing jails
+		logger.L.Error().Uint("ctid", jail.CTID).Msg("jail with this CTID already exists")
+		err = fmt.Errorf("jail_with_ctid_%d_already_exists", jail.CTID)
+		return
+	} else if err != gorm.ErrRecordNotFound {
+		// Some other database error occurred
+		logger.L.Error().Err(err).Uint("ctid", jail.CTID).Msg("failed to check for existing jail")
+		err = fmt.Errorf("failed_to_check_existing_jail: %w", err)
+		return
+	}
+
+	// Now create the jail record and associate it with the networks
+	if err = tx.Create(&jail).Error; err != nil {
+		logger.L.Error().Err(err).Msg("create_jail: failed to create jail")
+		err = fmt.Errorf("failed_to_create_jail: %w", err)
+		return
+	}
+
+	// Update network records to link them to the jail
+	for i := range createdNetworks {
+		createdNetworks[i].JailID = jail.ID
+		if err = tx.Save(&createdNetworks[i]).Error; err != nil {
+			logger.L.Error().Err(err).Msg("create_jail: failed to update network jail association")
+			err = fmt.Errorf("failed_to_update_network_jail_association: %w", err)
+			return
+		}
+	}
+
+	// Update jail.Networks to reflect the saved state with proper JailID
+	jail.Networks = createdNetworks
+
+	// Commit the transaction before the potentially long-running file copy
+	if err = tx.Commit().Error; err != nil {
+		/*
+			2025/12/05 06:53:39 /zroot/projects/Sylve/internal/services/jail/jail.go:1081 duplicated key not allowed
+			[0.167ms] [rows:0] INSERT INTO `jail_networks` (`jid`,`name`,`switch_id`,`switch_type`,`mac_id`,`ipv4_id`,`ipv4_gw_id`,`ipv6_id`,`ipv6_gw_id`,`default_gateway`,`dhcp`,`sla_ac`) VALUES (53,"Initial Switch",1,"manual",42,0,0,0,0,true,false,false) ON CONFLICT (`id`) DO UPDATE SET `jid`=`excluded`.`jid` RETURNING `id`
+		*/
+		// ^ If duplicate just continue?
+		if strings.Contains(err.Error(), "duplicated key not allowed") {
+			err = nil
+		} else {
+			err = fmt.Errorf("failed_to_commit_tx: %w", err)
+			return
+		}
+	}
+	txCommitted = true
+
+	// From this point on, we need to handle rollback manually if anything fails
+	defer func() {
+		if err != nil {
+			s.rollbackJailCreation(state)
+			// Also delete the jail record from database
+			if deleteErr := s.DB.Delete(&jail).Error; deleteErr != nil {
+				logger.L.Error().Err(deleteErr).Uint("ctid", jail.CTID).
+					Msg("failed to delete jail record during rollback")
+			}
+		}
+	}()
+
 	var base string
 	base, err = s.FindBaseByUUID(data.Base)
 	if err != nil {
@@ -1074,12 +1159,6 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 		}
 	} else {
 		err = fmt.Errorf("base_is_not_a_directory")
-		return
-	}
-
-	if err = tx.Create(&jail).Error; err != nil {
-		logger.L.Error().Err(err).Msg("create_jail: failed to create jail")
-		err = fmt.Errorf("failed_to_create_jail: %w", err)
 		return
 	}
 
@@ -1128,11 +1207,7 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 		return
 	}
 
-	if err = tx.Commit().Error; err != nil {
-		err = fmt.Errorf("failed_to_commit_tx: %w", err)
-		return
-	}
-
+	// Transaction was already committed after database operations
 	return nil
 }
 

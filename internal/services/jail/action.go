@@ -50,7 +50,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	switch action {
 	case "start":
-		err := s.NetworkService.SyncEpairs()
+		err := s.NetworkService.SyncEpairs(true)
 		if err != nil {
 			return fmt.Errorf("failed to sync epairs: %w", err)
 		}

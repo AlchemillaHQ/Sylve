@@ -103,24 +103,9 @@ export async function getStats(ctId: number, limit: number): Promise<JailStat[]>
 	return await apiRequest(`/jail/stats/${ctId}/${limit}`, z.array(JailStatSchema), 'GET');
 }
 
-export async function inheritHostNetwork(
-	ctId: number,
-	ipv4: boolean,
-	ipv6: boolean
-): Promise<APIResponse> {
-	return await apiRequest('/jail/network/inheritance', APIResponseSchema, 'POST', {
-		ctId,
-		ipv4,
-		ipv6
-	});
-}
-
-export async function disinheritHostNetwork(ctId: number): Promise<APIResponse> {
-	return await apiRequest(`/jail/network/disinherit/${ctId}`, APIResponseSchema, 'DELETE');
-}
-
 export async function addNetwork(
 	ctId: number,
+	name: string,
 	switchName: string,
 	macId: number,
 	ip4: number,
@@ -128,10 +113,12 @@ export async function addNetwork(
 	ip6: number,
 	ip6gw: number,
 	dhcp: boolean,
-	slaac: boolean
+	slaac: boolean,
+	defaultGateway: boolean
 ): Promise<APIResponse> {
 	return await apiRequest('/jail/network', APIResponseSchema, 'POST', {
 		ctId,
+		name,
 		switchName,
 		macId,
 		ip4,
@@ -139,7 +126,8 @@ export async function addNetwork(
 		ip6,
 		ip6gw,
 		dhcp,
-		slaac
+		slaac,
+		defaultGateway
 	});
 }
 

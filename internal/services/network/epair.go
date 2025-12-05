@@ -16,7 +16,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	utils "github.com/alchemillahq/sylve/pkg/utils"
 
-	iface "github.com/alchemillahq/sylve/pkg/network/iface"
+	"github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
 func (s *Service) CreateEpair(name string) error {
@@ -73,7 +73,7 @@ func (s *Service) DeleteEpair(name string) error {
 	return nil
 }
 
-func (s *Service) SyncEpairs() error {
+func (s *Service) SyncEpairs(forceStart bool) error {
 	var jails []jailModels.Jail
 	if err := s.DB.Preload("Networks").Find(&jails).Error; err != nil {
 		return fmt.Errorf("failed to find jails: %w", err)
@@ -84,11 +84,24 @@ func (s *Service) SyncEpairs() error {
 		return fmt.Errorf("failed to list interfaces: %w", err)
 	}
 
+	runningJails := make(map[uint]bool)
+	output, err := utils.RunCommand("jls", "--libxo", "json")
+	if err != nil {
+		logger.L.Warn().Msgf("Failed to get running jails list: %v", err)
+	} else {
+		jlsOutput := string(output)
+		for _, j := range jails {
+			jailPath := fmt.Sprintf("/sylve/jails/%d", j.CTID)
+			runningJails[j.CTID] = strings.Contains(jlsOutput, jailPath)
+		}
+	}
+
 	for _, j := range jails {
 		hash := utils.HashIntToNLetters(int(j.CTID), 5)
+		isRunning := runningJails[j.CTID]
 
 		for _, network := range j.Networks {
-			networkId := fmt.Sprintf("%d", network.SwitchID)
+			networkId := fmt.Sprintf("net%d", network.ID)
 			base := hash + "_" + networkId
 
 			epairA := base + "a"
@@ -104,38 +117,52 @@ func (s *Service) SyncEpairs() error {
 				}
 			}
 
-			isRunning := j.StartedAt != nil && (j.StoppedAt == nil || j.StartedAt.After(*j.StoppedAt))
-			if isRunning {
-				if hasA {
-					continue
-				}
+			shouldCreateEpairs := isRunning || forceStart
 
-				// A is missing while jail is running; log and skip, don't auto-destruct/recreate.
-				logger.L.Warn().Msgf("jail %d is running but epair %s is missing on host; not recreating automatically", j.CTID, epairA)
+			if !shouldCreateEpairs {
+				if hasA {
+					logger.L.Debug().Msgf("Cleaning up epair %s for non-running jail %d", epairA, j.CTID)
+					_, _ = utils.RunCommand("ifconfig", epairA, "destroy")
+				}
+				if hasB {
+					logger.L.Debug().Msgf("Cleaning up epair %s for non-running jail %d", epairB, j.CTID)
+					_, _ = utils.RunCommand("ifconfig", epairB, "destroy")
+				}
 				continue
 			}
 
-			// Jail is stopped: now it is safe to "repair" things.
+			if isRunning {
+				// For running jails, only check if 'a' side exists (b side is in jail namespace)
+				if hasA {
+					continue // Epair exists and jail is running, don't touch it
+				}
+				// Missing epair for running jail - this shouldn't happen normally
+				logger.L.Warn().Msgf("Running jail %d missing epair %s - not recreating to avoid disruption", j.CTID, epairA)
+				continue
+			}
 
-			// Both ends present? Good.
+			// Jail not running but force flag is set - ensure complete epair pair exists
 			if hasA && hasB {
 				continue
 			}
 
-			// Exactly one side present (half-broken) → destroy whatever exists.
+			// Clean up partial epairs for non-running jails
 			if hasA {
+				logger.L.Debug().Msgf("Destroying partial epair %s for non-running jail %d", epairA, j.CTID)
 				_, _ = utils.RunCommand("ifconfig", epairA, "destroy")
 			}
 			if hasB {
+				logger.L.Debug().Msgf("Destroying partial epair %s for non-running jail %d", epairB, j.CTID)
 				_, _ = utils.RunCommand("ifconfig", epairB, "destroy")
 			}
 
-			// Now create a fresh, clean pair.
+			logger.L.Debug().Msgf("Creating epair %s for jail %d", base, j.CTID)
 			if err := s.CreateEpair(base); err != nil {
 				return fmt.Errorf("failed to create epair for jail %d network %d: %w",
-					j.CTID, network.SwitchID, err)
+					j.CTID, network.ID, err)
 			}
 
+			// Refresh interface list after creating epairs, to avoid stale data
 			ifaces, _ = iface.List()
 		}
 	}

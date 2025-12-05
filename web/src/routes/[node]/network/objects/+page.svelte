@@ -8,7 +8,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -17,20 +17,18 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const results = createQuery(() => ({
-		queryKey: ['networkObjects'],
-		queryFn: async () => {
-			return await getNetworkObjects();
+	let objects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const result = await getNetworkObjects();
+			updateCache(key, result);
+			return result;
 		},
-		keepPreviousData: true,
-		initialData: data.objects,
-		onSuccess: (data: NetworkObject[]) => {
-			updateCache('networkObjects', data);
+		{
+			initialValue: data.objects
 		}
-	}));
+	);
 
-	let objects = $derived(results.data || []);
 	let modals = $state({
 		create: {
 			open: false
@@ -106,7 +104,7 @@
 
 	const tableData: { rows: Row[]; columns: Column[] } = $derived({
 		columns,
-		rows: objects.map((object) => {
+		rows: objects.current.map((object) => {
 			return {
 				id: object.id,
 				name: object.name,
@@ -186,10 +184,10 @@
 {#if modals.create.open}
 	<CreateOrEdit
 		bind:open={modals.create.open}
-		networkObjects={objects}
+		networkObjects={objects.current}
 		edit={false}
 		afterChange={() => {
-			results.refetch();
+			objects.refetch();
 		}}
 	/>
 {/if}
@@ -197,11 +195,11 @@
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		networkObjects={objects}
+		networkObjects={objects.current}
 		edit={true}
 		id={Number(modals.edit.id)}
 		afterChange={() => {
-			results.refetch();
+			objects.refetch();
 		}}
 	/>
 {/if}
@@ -213,7 +211,7 @@
 		onConfirm: async () => {
 			let active = $state.snapshot(activeRow);
 			const result = await deleteNetworkObject(modals.delete.id);
-			queryClient.refetchQueries('networkObjects');
+			objects.refetch();
 			if (isAPIResponse(result) && result.status === 'success') {
 				toast.success(`Object ${active?.name} deleted`, {
 					position: 'bottom-center'
