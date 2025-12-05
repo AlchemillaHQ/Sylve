@@ -10,6 +10,9 @@ package network
 
 import (
 	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -18,6 +21,8 @@ import (
 
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 )
+
+var epairRe = regexp.MustCompile(`^([a-z0-9]{5})_net([0-9]+)(a|b)$`)
 
 func (s *Service) CreateEpair(name string) error {
 	output, err := utils.RunCommand("ifconfig", "epair", "create")
@@ -73,7 +78,7 @@ func (s *Service) DeleteEpair(name string) error {
 	return nil
 }
 
-func (s *Service) SyncEpairs(forceStart bool) error {
+func (s *Service) SyncEpairs(_ bool) error {
 	var jails []jailModels.Jail
 	if err := s.DB.Preload("Networks").Find(&jails).Error; err != nil {
 		return fmt.Errorf("failed to find jails: %w", err)
@@ -84,76 +89,31 @@ func (s *Service) SyncEpairs(forceStart bool) error {
 		return fmt.Errorf("failed to list interfaces: %w", err)
 	}
 
-	runningJails := make(map[uint]bool)
-	output, err := utils.RunCommand("jls", "--libxo", "json")
-	if err != nil {
-		logger.L.Warn().Msgf("Failed to get running jails list: %v", err)
-	} else {
-		jlsOutput := string(output)
-		for _, j := range jails {
-			jailPath := fmt.Sprintf("/sylve/jails/%d", j.CTID)
-			runningJails[j.CTID] = strings.Contains(jlsOutput, jailPath)
+	ifaceExists := func(name string) bool {
+		for _, ifc := range ifaces {
+			if ifc.Name == name {
+				return true
+			}
 		}
+		return false
 	}
+
+	existingIds := []uint{}
 
 	for _, j := range jails {
 		hash := utils.HashIntToNLetters(int(j.CTID), 5)
-		isRunning := runningJails[j.CTID]
 
 		for _, network := range j.Networks {
+			existingIds = append(existingIds, network.ID)
+
 			networkId := fmt.Sprintf("net%d", network.ID)
 			base := hash + "_" + networkId
 
 			epairA := base + "a"
-			epairB := base + "b"
-
-			hasA, hasB := false, false
-			for _, ifc := range ifaces {
-				switch ifc.Name {
-				case epairA:
-					hasA = true
-				case epairB:
-					hasB = true
-				}
-			}
-
-			shouldCreateEpairs := isRunning || forceStart
-
-			if !shouldCreateEpairs {
-				if hasA {
-					logger.L.Debug().Msgf("Cleaning up epair %s for non-running jail %d", epairA, j.CTID)
-					_, _ = utils.RunCommand("ifconfig", epairA, "destroy")
-				}
-				if hasB {
-					logger.L.Debug().Msgf("Cleaning up epair %s for non-running jail %d", epairB, j.CTID)
-					_, _ = utils.RunCommand("ifconfig", epairB, "destroy")
-				}
+			// epairB := base + "b" // we don't actually need to check B; CreateEpair will create both
+			// If A side exists, assume the pair is already there/in use and do nothing
+			if ifaceExists(epairA) {
 				continue
-			}
-
-			if isRunning {
-				// For running jails, only check if 'a' side exists (b side is in jail namespace)
-				if hasA {
-					continue // Epair exists and jail is running, don't touch it
-				}
-				// Missing epair for running jail - this shouldn't happen normally
-				logger.L.Warn().Msgf("Running jail %d missing epair %s - not recreating to avoid disruption", j.CTID, epairA)
-				continue
-			}
-
-			// Jail not running but force flag is set - ensure complete epair pair exists
-			if hasA && hasB {
-				continue
-			}
-
-			// Clean up partial epairs for non-running jails
-			if hasA {
-				logger.L.Debug().Msgf("Destroying partial epair %s for non-running jail %d", epairA, j.CTID)
-				_, _ = utils.RunCommand("ifconfig", epairA, "destroy")
-			}
-			if hasB {
-				logger.L.Debug().Msgf("Destroying partial epair %s for non-running jail %d", epairB, j.CTID)
-				_, _ = utils.RunCommand("ifconfig", epairB, "destroy")
 			}
 
 			logger.L.Debug().Msgf("Creating epair %s for jail %d", base, j.CTID)
@@ -162,10 +122,40 @@ func (s *Service) SyncEpairs(forceStart bool) error {
 					j.CTID, network.ID, err)
 			}
 
-			// Refresh interface list after creating epairs, to avoid stale data
+			// refresh list after creating, so ifaceExists sees new stuff
 			ifaces, _ = iface.List()
 		}
 	}
+
+	for _, ifc := range ifaces {
+		// aaadx_net64b regex match <anystring>_net<number><a||b>
+		m := epairRe.FindStringSubmatch(ifc.Name)
+		if m == nil {
+			continue
+		}
+
+		hash := m[1]
+		netID := m[2]
+		netIDNum, err := strconv.Atoi(netID)
+		if err != nil {
+			continue
+		}
+
+		suffix := m[3]
+
+		base := fmt.Sprintf("%s_net%s", hash, netID)
+		_ = base
+		_ = suffix
+
+		if !slices.Contains(existingIds, uint(netIDNum)) {
+			logger.L.Debug().Msgf("Deleting unused epair %s", ifc.Name)
+			// if err := s.DeleteEpair(base); err != nil {
+			// 	return fmt.Errorf("failed to delete unused epair %s: %w", ifc.Name, err)
+			// }
+		}
+	}
+
+	ifaces, _ = iface.List()
 
 	return nil
 }

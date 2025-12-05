@@ -683,6 +683,234 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 	return nil
 }
 
+func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) error {
+	macId := uint(0)
+	ip4 := uint(0)
+	ip4gw := uint(0)
+	ip6 := uint(0)
+	ip6gw := uint(0)
+	dhcp := false
+	slaac := false
+	defaultGateway := false
+
+	if req.IP4 != nil {
+		ip4 = *req.IP4
+	}
+
+	if req.IP4GW != nil {
+		ip4gw = *req.IP4GW
+	}
+
+	if req.IP6 != nil {
+		ip6 = *req.IP6
+	}
+
+	if req.IP6GW != nil {
+		ip6gw = *req.IP6GW
+	}
+
+	if req.DHCP != nil {
+		dhcp = *req.DHCP
+	}
+
+	if req.SLAAC != nil {
+		slaac = *req.SLAAC
+	}
+
+	if req.MacID != nil {
+		macId = *req.MacID
+	}
+
+	if req.DefaultGateway != nil {
+		defaultGateway = *req.DefaultGateway
+	}
+
+	if dhcp && slaac && defaultGateway {
+		return fmt.Errorf("cannot_set_dhcp_slaac_and_default_gateway_together")
+	}
+
+	switchName := req.SwitchName
+
+	// Find the network to edit
+	var network jailModels.Network
+	if err := s.DB.First(&network, "id = ?", req.NetworkID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_network: %w", err)
+	}
+
+	// Find the jail this network belongs to
+	var jail jailModels.Jail
+	if err := s.DB.Preload("Networks").Where("id = ?", network.JailID).First(&jail).Error; err != nil {
+		return fmt.Errorf("failed_to_find_jail: %w", err)
+	}
+
+	if jail.Type == jailModels.JailTypeLinux {
+		if ip4 != 0 || ip4gw != 0 || ip6 != 0 || ip6gw != 0 {
+			return fmt.Errorf("cannot_set_ip_when_linux_jail")
+		}
+
+		if dhcp || slaac {
+			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
+		}
+	}
+
+	if jail.InheritIPv4 || jail.InheritIPv6 {
+		return fmt.Errorf("cannot_edit_network_when_inheriting_network")
+	}
+
+	// Find switch information
+	switchId := uint(0)
+	switchType := ""
+	dbSwName := ""
+
+	var stdSwitch networkModels.StandardSwitch
+	if err := s.DB.Where("name = ?", switchName).First(&stdSwitch).Error; err == nil {
+		switchId = stdSwitch.ID
+		switchType = "standard"
+		dbSwName = stdSwitch.Name
+	} else {
+		var manualSwitch networkModels.ManualSwitch
+		if err := s.DB.Where("name = ?", switchName).First(&manualSwitch).Error; err == nil {
+			switchId = manualSwitch.ID
+			switchType = "manual"
+			dbSwName = manualSwitch.Name
+		}
+	}
+
+	if switchType == "" || switchId == 0 {
+		return fmt.Errorf("switch_not_found")
+	}
+
+	// Check if switching to a different switch - need to handle epair cleanup/recreation
+	switchChanged := network.SwitchID != switchId || network.SwitchType != switchType
+
+	// Update network properties
+	network.Name = req.Name
+	network.SwitchID = switchId
+	network.SwitchType = switchType
+
+	// Reset IP configurations
+	network.IPv4ID = nil
+	network.IPv4GwID = nil
+	network.IPv6ID = nil
+	network.IPv6GwID = nil
+	network.DHCP = false
+	network.SLAAC = false
+	network.DefaultGateway = defaultGateway
+
+	// Set IPv4 configuration
+	if !dhcp {
+		if ip4 != 0 && ip4gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip4)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
+
+			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip4gw_object: %w", err)
+			}
+
+			network.IPv4ID = &ip4
+			network.IPv4GwID = &ip4gw
+		}
+	} else {
+		network.DHCP = true
+	}
+
+	// Set IPv6 configuration
+	if !slaac {
+		if ip6 != 0 && ip6gw != 0 {
+			_, err := s.NetworkService.GetObjectEntryByID(ip6)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
+			}
+
+			_, err = s.NetworkService.GetObjectEntryByID(ip6gw)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_ip6gw_object: %w", err)
+			}
+
+			network.IPv6ID = &ip6
+			network.IPv6GwID = &ip6gw
+		}
+	} else {
+		network.SLAAC = true
+	}
+
+	// Handle MAC address
+	if macId == 0 {
+		// Generate new MAC if not provided
+		macAddress := utils.GenerateRandomMAC()
+		base := fmt.Sprintf("%s-%s", jail.Name, dbSwName)
+		name := base
+
+		for i := 0; ; i++ {
+			if i > 0 {
+				name = fmt.Sprintf("%s-%d", base, i)
+			}
+
+			var exists int64
+			if err := s.DB.
+				Model(&networkModels.Object{}).
+				Where("name = ?", name).
+				Limit(1).
+				Count(&exists).Error; err != nil {
+				return fmt.Errorf("failed_to_check_mac_object_exists: %w", err)
+			}
+
+			if exists == 0 {
+				break
+			}
+		}
+
+		macObj := networkModels.Object{
+			Name: name,
+			Type: "Mac",
+		}
+
+		if err := s.DB.Create(&macObj).Error; err != nil {
+			return fmt.Errorf("failed_to_create_mac_object: %w", err)
+		}
+
+		macEntry := networkModels.ObjectEntry{
+			ObjectID: macObj.ID,
+			Value:    macAddress,
+		}
+
+		if err := s.DB.Create(&macEntry).Error; err != nil {
+			return fmt.Errorf("failed_to_create_mac_entry: %w", err)
+		}
+
+		network.MacID = &macObj.ID
+	} else {
+		_, err := s.NetworkService.GetObjectEntryByID(macId)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_mac_object: %w", err)
+		}
+
+		network.MacID = &macId
+	}
+
+	// Save the updated network
+	if err := s.DB.Save(&network).Error; err != nil {
+		return fmt.Errorf("failed_to_update_network: %w", err)
+	}
+
+	// If switch changed, sync epairs to handle interface changes
+	if switchChanged {
+		if err := s.NetworkService.SyncEpairs(false); err != nil {
+			return fmt.Errorf("failed_to_sync_epairs: %w", err)
+		}
+	}
+
+	// Reload jail with updated network and sync configuration
+	if err := s.DB.Preload("Networks").Where("ct_id = ?", jail.CTID).First(&jail).Error; err != nil {
+		return fmt.Errorf("failed_to_reload_jail: %w", err)
+	}
+
+	return s.SyncNetwork(jail.CTID, jail)
+}
+
 func (s *Service) WatchNetworkObjectChanges() error {
 	var triggers []models.Triggers
 	if err := s.DB.

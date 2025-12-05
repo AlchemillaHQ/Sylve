@@ -136,4 +136,5 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
+	maragu.dev/goqite v0.3.1 // indirect
 )

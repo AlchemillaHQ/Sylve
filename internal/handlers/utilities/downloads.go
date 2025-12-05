@@ -25,14 +25,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type DownloadFileRequest struct {
-	URL                 string                        `json:"url" binding:"required"`
-	Filename            *string                       `json:"filename"`
-	IgnoreTLS           *bool                         `json:"ignoreTLS"`
-	AutomaticExtraction *bool                         `json:"automaticExtraction"`
-	DownloadType        utilitiesModels.DownloadUType `json:"downloadType"`
-}
-
 type BulkDeleteDownloadRequest struct {
 	IDs []int `json:"ids" binding:"required"`
 }
@@ -117,7 +109,7 @@ func ListDownloadsByUType(utilitiesService *utilities.Service) gin.HandlerFunc {
 // @Router /utilities/downloads [post]
 func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request DownloadFileRequest
+		var request utilitiesServiceInterfaces.DownloadFileRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -128,28 +120,7 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 			return
 		}
 
-		var fileName string
-		if request.Filename != nil && *request.Filename != "" {
-			fileName = *request.Filename
-		} else {
-			fileName = ""
-		}
-
-		var insecureOkay bool
-		if request.IgnoreTLS != nil && *request.IgnoreTLS {
-			insecureOkay = true
-		} else {
-			insecureOkay = false
-		}
-
-		var automaticExtraction bool
-		if request.AutomaticExtraction != nil && *request.AutomaticExtraction {
-			automaticExtraction = true
-		} else {
-			automaticExtraction = false
-		}
-
-		if err := utilitiesService.DownloadFile(request.URL, fileName, insecureOkay, automaticExtraction, request.DownloadType); err != nil {
+		if err := utilitiesService.DownloadFile(request); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_download_file",

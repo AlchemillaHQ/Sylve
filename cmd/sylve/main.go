@@ -50,6 +50,13 @@ func main() {
 
 	d := db.SetupDatabase(cfg, false)
 
+	if err := db.SetupQueue(cfg, false, logger.L); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed to setup queue")
+	}
+
+	qCtx, qStop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer qStop()
+
 	fsm := clusterModels.NewFSMDispatcher(d)
 	clusterModels.RegisterDefaultHandlers(fsm)
 
@@ -66,6 +73,10 @@ func main() {
 	smbS := serviceRegistry.SambaService
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
+
+	uS.RegisterJobs()
+
+	go db.StartQueue(qCtx)
 
 	err := sS.Initialize(aS.(*auth.Service))
 

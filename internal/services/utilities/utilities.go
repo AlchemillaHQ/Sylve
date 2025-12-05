@@ -9,10 +9,14 @@
 package utilities
 
 import (
+	"context"
 	"crypto/tls"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/db"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 
@@ -67,4 +71,41 @@ func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServic
 		httpResponses: make(map[string]*grab.Response),
 		inflight:      make(map[uint]struct{}),
 	}
+}
+
+func defaultOutName(src string, ext string) string {
+	base := filepath.Base(src)
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+
+	if ext == "" {
+		return base
+	}
+
+	return base
+}
+
+func (s *Service) RegisterJobs() {
+	db.QueueRegisterJSON("utils-download-start", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadStartPayload) error {
+		if err := s.StartDownload(&payload.ID); err != nil {
+			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("StartDownload failed")
+		}
+
+		return nil
+	})
+
+	db.QueueRegisterNoPayload("utils-download-sync", func(ctx context.Context) error {
+		if err := s.SyncDownloadProgress(); err != nil {
+			logger.L.Error().Err(err).Msg("SyncDownloadProgress failed")
+		}
+
+		return nil
+	})
+
+	db.QueueRegisterJSON("utils-download-postproc", func(ctx context.Context, payload utilitiesServiceInterfaces.DownloadPostProcPayload) error {
+		if err := s.StartPostProcess(&payload.ID); err != nil {
+			logger.L.Error().Uint("download_id", payload.ID).Err(err).Msg("PostProcessDownload failed")
+		}
+
+		return nil
+	})
 }

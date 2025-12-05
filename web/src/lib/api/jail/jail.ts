@@ -148,7 +148,9 @@ export async function setNetworkInheritance(
 	ipv4: boolean,
 	ipv6: boolean
 ): Promise<APIResponse> {
-	return await apiRequest(`/jail/network/inheritance/${ctId}`, APIResponseSchema, 'PUT', {
+	let s = ipv4 === false && ipv6 === false ? 'disinheritance' : 'inheritance';
+
+	return await apiRequest(`/jail/network/${s}/${ctId}`, APIResponseSchema, 'PUT', {
 		ipv4,
 		ipv6
 	});

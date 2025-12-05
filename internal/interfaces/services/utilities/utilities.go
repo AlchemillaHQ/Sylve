@@ -10,18 +10,37 @@ package utilitiesServiceInterfaces
 
 import utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 
+type DownloadFileRequest struct {
+	URL                    string                        `json:"url" binding:"required"`
+	Filename               *string                       `json:"filename"`
+	IgnoreTLS              *bool                         `json:"ignoreTLS"`
+	AutomaticExtraction    *bool                         `json:"automaticExtraction"`
+	AutomaticRawConversion *bool                         `json:"automaticRawConversion"`
+	DownloadType           utilitiesModels.DownloadUType `json:"downloadType"`
+}
+
 type UTypeGroupedDownload struct {
 	UUID  string                        `json:"uuid"`
 	Label string                        `json:"label"`
 	UType utilitiesModels.DownloadUType `json:"uType"`
 }
 
+type DownloadStartPayload struct {
+	ID uint `json:"id"`
+}
+
+type DownloadPostProcPayload struct {
+	ID uint `json:"id"`
+}
+
 type UtilitiesServiceInterface interface {
-	DownloadFile(url string, optFilename string, insecureOkay bool, automaticExtraction bool, downloadType utilitiesModels.DownloadUType) error
+	DownloadFile(req DownloadFileRequest) error
 	ListDownloads() ([]utilitiesModels.Downloads, error)
 	GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.Downloads, *utilitiesModels.DownloadedFile, error)
 	SyncDownloadProgress() error
 	DeleteDownload(id int) error
+
+	RegisterJobs()
 
 	StartWOLServer() error
 }

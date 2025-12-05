@@ -233,7 +233,7 @@
 			/>
 		</div>
 
-		{#if jail.type === 'freebsd'}
+		{#if jail.type === 'freebsd' || jail.type === 'linux'}
 			<div class="grid grid-cols-2 gap-4">
 				<CustomComboBox
 					bind:open={comboBoxes.ipv4.open}

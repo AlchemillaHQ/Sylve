@@ -571,3 +571,5 @@ gorm.io/gorm v1.31.1 h1:7CA8FTFz/gRfgqgpeKIBcervUn3xSyPUmr6B2WXJ7kg=
 gorm.io/gorm v1.31.1/go.mod h1:XyQVbO2k6YkOis7C2437jSit3SsDK72s7n7rsSHd+Gs=
 lukechampine.com/blake3 v1.4.1 h1:I3Smz7gso8w4/TunLKec6K2fn+kyKtDxr/xcQEN84Wg=
 lukechampine.com/blake3 v1.4.1/go.mod h1:QFosUxmjB8mnrWFSNwKmvxHpfY72bmD2tQ0kBMM3kwo=
+maragu.dev/goqite v0.3.1 h1:eXNJXR2fdkhjqo8cnOIYdlvMBYfg/gaso62bgsjfQFo=
+maragu.dev/goqite v0.3.1/go.mod h1:FAd18BCg87G/nV6bVIdGiHTvFBngdLFU8h50XS0m2E4=

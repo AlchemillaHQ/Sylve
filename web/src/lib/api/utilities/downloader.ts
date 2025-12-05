@@ -20,13 +20,15 @@ export async function startDownload(
 	downloadType: 'base-rootfs' | 'uncategorized',
 	filename?: string,
 	ignoreTLS?: boolean,
-	automaticExtraction?: boolean
+	automaticExtraction?: boolean,
+	automaticRawConversion?: boolean
 ): Promise<APIResponse> {
 	return await apiRequest('/utilities/downloads', APIResponseSchema, 'POST', {
 		url,
 		filename,
 		ignoreTLS,
 		automaticExtraction,
+		automaticRawConversion,
 		downloadType
 	});
 }

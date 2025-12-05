@@ -168,17 +168,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface)
 
 	go func() {
 		for {
-			err := s.Utilities.SyncDownloadProgress()
-			if err != nil {
-				logger.L.Fatal().Msgf("Failed to sync progress for downloads: %v", err)
-			}
-
-			time.Sleep(5 * time.Second)
-		}
-	}()
-
-	go func() {
-		for {
 			if err := s.Libvirt.StoreVMUsage(); err != nil {
 				logger.L.Error().Msgf("Failed to store VM usage: %v", err)
 			}

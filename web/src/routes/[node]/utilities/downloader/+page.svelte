@@ -58,6 +58,13 @@
 		}
 	});
 
+	$effect(() => {
+		if (reload) {
+			downloads.refetch();
+			reload = false;
+		}
+	});
+
 	useInterval(1000, {
 		callback: () => {
 			const incomplete = (downloads.current as Download[]).some(
@@ -79,12 +86,12 @@
 		name: '',
 		ignoreTLS: false,
 		automaticExtraction: false,
+		automaticRawConversion: false,
 		loading: false,
 		downloadType: 'uncategorized' as 'base-rootfs' | 'uncategorized'
 	};
 
 	let modalState = $state(options);
-
 	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -125,7 +132,7 @@
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
 			if (row.progress === '-') {
-				const parent = downloads.find((d) => d.uuid === row.parentUUID);
+				const parent = downloads.current.find((d) => d.uuid === row.parentUUID);
 				return parent ? parent.progress === 100 : false;
 			} else if (row.progress === 100) {
 				return true;
@@ -171,7 +178,8 @@
 			modalState.downloadType,
 			modalState.name || undefined,
 			modalState.ignoreTLS,
-			modalState.automaticExtraction
+			modalState.automaticExtraction,
+			modalState.automaticRawConversion
 		);
 
 		if (result) {
@@ -392,6 +400,12 @@
 						<CustomCheckbox
 							label="Extract Automatically"
 							bind:checked={modalState.automaticExtraction}
+							classes="flex items-center gap-2"
+						/>
+
+						<CustomCheckbox
+							label="Auto-convert to RAW"
+							bind:checked={modalState.automaticRawConversion}
 							classes="flex items-center gap-2"
 						/>
 					</div>

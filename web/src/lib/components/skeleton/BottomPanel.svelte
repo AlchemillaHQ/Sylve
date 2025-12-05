@@ -76,7 +76,11 @@
 		'/api/vm': 'VM',
 		'/api/network/manual-switch': 'Manual Switch',
 		'/api/zfs/pools': 'ZFS Pool',
-		'/api/disk/create-partitions': 'Disk - Create Partitions'
+		'/api/disk/create-partitions': 'Disk - Create Partitions',
+		'/api/jail/network/inheritance': 'Jail - Network Inherit',
+		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
+		'/api/jail/network': 'Jail Network',
+		'/api/jail': 'Jail - Create'
 	});
 
 	let records = $derived.by(() => {

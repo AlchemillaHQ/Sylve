@@ -5,11 +5,15 @@
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
 	import adze from 'adze';
-	import { resource, useResizeObserver, PersistedState } from 'runed';
+	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { fade } from 'svelte/transition';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import ColorPicker from 'svelte-awesome-color-picker';
+	import { swatches } from '$lib/utils/terminal';
 
 	interface Data {
 		jail: Jail;
@@ -25,6 +29,46 @@
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
+	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
+		background: '#282c34',
+		foreground: '#FFFFFF',
+		fontSize: 14
+	});
+
+	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
+	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
+	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+
+	const applyFontSize = useDebounce(() => {
+		if (!terminal) return;
+		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
+		terminal.options.fontSize = theme.current.fontSize;
+		resizeTerminal(lastWidth, lastHeight);
+	}, 200);
+
+	const applyThemeDebounced = useDebounce(() => {
+		if (!terminal) return;
+
+		if (
+			theme.current.background === bgThemeBindable &&
+			theme.current.foreground === fgThemeBindable
+		) {
+			return;
+		}
+
+		theme.current.background = bgThemeBindable;
+		theme.current.foreground = fgThemeBindable;
+
+		terminal.options.theme = {
+			background: theme.current.background,
+			foreground: theme.current.foreground
+		};
+
+		disconnect();
+		reconnect();
+	}, 300);
+
+	let openSettings = $state(false);
 
 	const jail = resource(
 		() => `jail-${data.jail.ctId}`,
@@ -125,12 +169,12 @@
 		if (destroyed) return;
 
 		terminal = new GhosttyTerminal({
-			cursorBlink: true,
+			cursorBlink: false,
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-			fontSize: 14,
+			fontSize: theme.current.fontSize || 14,
 			theme: {
-				background: '#282c34',
-				foreground: '#FFFFFF'
+				background: theme.current.background,
+				foreground: theme.current.foreground
 			}
 		});
 
@@ -219,6 +263,17 @@
 					</div>
 				</Button>
 			{/if}
+
+			<Button
+				variant="outline"
+				size="sm"
+				class="ml-auto h-6"
+				onclick={() => {
+					openSettings = true;
+				}}
+			>
+				<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
+			</Button>
 		</div>
 
 		{#if cState.current}
@@ -235,7 +290,7 @@
 		{/if}
 
 		<div
-			class="terminal-wrapper h-full w-full"
+			class="terminal-wrapper hidden h-full w-full bg-black"
 			class:hidden={cState.current}
 			tabindex="0"
 			style="outline: none;"
@@ -243,3 +298,41 @@
 		/>
 	</div>
 {/if}
+
+<Dialog.Root bind:open={openSettings}>
+	<Dialog.Content class="min-w-[180px]">
+		<Dialog.Header class="p-0">
+			<Dialog.Title class="flex items-center justify-between text-left">
+				Console settings - {jail.current?.name}
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="grid grid-cols-1">
+			<CustomValueInput
+				placeholder="14"
+				label="Font Size"
+				type="number"
+				bind:value={fontSizeBindable}
+				classes="flex-1 space-y-1"
+				onChange={() => {
+					applyFontSize();
+				}}
+			/>
+		</div>
+
+		<div class="grid grid-cols-2">
+			<ColorPicker
+				bind:hex={bgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Background"
+			/>
+			<ColorPicker
+				bind:hex={fgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Foreground"
+			/>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

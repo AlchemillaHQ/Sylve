@@ -494,6 +494,7 @@ msgstr "Minimize"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -615,6 +616,7 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -1041,6 +1043,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
@@ -2218,6 +2221,7 @@ msgstr "IPv4 Network"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4"
@@ -2250,6 +2254,7 @@ msgstr "IPv6 Network"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6"
@@ -5838,3 +5843,58 @@ msgstr "Network added successfully"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Network name already exists"
 msgstr "Network name already exists"
+
+#~ msgid "Jail - Network Inheritance"
+#~ msgstr "Jail - Network Inheritance"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Network Inherit"
+msgstr "Jail - Network Inherit"
+
+#~ msgid "Jail - Network - Inherit"
+#~ msgstr "Jail - Network - Inherit"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Network Disinherit"
+msgstr "Jail - Network Disinherit"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Network"
+msgstr "Jail Network"
+
+#~ msgid "Create - Jail"
+#~ msgstr "Create - Jail"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Create"
+msgstr "Jail - Create"
+
+#~ msgid "Convert RAW to QCOW2 Automatically"
+#~ msgstr "Convert RAW to QCOW2 Automatically"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Auto-convert to RAW"
+msgstr "Auto-convert to RAW"
+
+#~ msgid "Reload Page"
+#~ msgstr "Reload Page"
+
+#~ msgid "LOADER"
+#~ msgstr "LOADER"
+
+#. placeholder {0}: jail.current?.name
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Console settings - {0}"
+msgstr "Console settings - {0}"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Font Size"
+msgstr "Font Size"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Background"
+msgstr "Background"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Foreground"
+msgstr "Foreground"

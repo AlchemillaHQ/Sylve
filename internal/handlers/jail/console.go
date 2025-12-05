@@ -79,7 +79,7 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 		ctidHash := utils.HashIntToNLetters(ctidInt, 5)
 		cmdArgs = append(cmdArgs,
 			"jexec", "-l", ctidHash,
-			"login", "-f", "root",
+			"su", "-l", "root",
 		)
 
 		if err := checkSession.Run(); err != nil {
