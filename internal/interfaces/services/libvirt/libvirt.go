@@ -9,34 +9,84 @@
 package libvirtServiceInterfaces
 
 import (
+	"context"
 	"encoding/xml"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/digitalocean/go-libvirt"
 )
 
 type LibvirtServiceInterface interface {
-	CheckVersion() error
+	ModifyCPU(rid uint, req ModifyCPURequest) error
+	ModifyRAM(rid uint, ram int) error
+	ModifyVNC(rid uint, req ModifyVNCRequest) error
+	ModifyPassthrough(rid uint, pciDevices []int) error
+
+	WolTasks()
+
+	NetworkDetach(rid uint, networkId uint) error
+	NetworkAttach(req NetworkAttachRequest) error
+	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
+	FindVmByMac(mac string) (vmModels.VM, error)
+
+	ModifyWakeOnLan(rid uint, enabled bool) error
+	ModifyBootOrder(rid uint, startAtBoot bool, bootOrder int) error
+	ModifyClock(rid uint, timeOffset string) error
+	ModifySerial(rid uint, enabled bool) error
+	ModifyShutdownWaitTime(rid uint, waitTime int) error
+	ModifyCloudInitData(rid uint, data string, metadata string) error
+	ModifyIgnoreUMSRs(rid uint, ignore bool) error
+
+	PruneOrphanedVMStats() error
+	ApplyVMStatsRetention() error
+	StoreVMUsage() error
+	GetVMUsage(vmId int, step db.GFSStep) ([]vmModels.VMStats, error)
+
+	CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error
+	SyncVMDisks(rid uint) error
+	RemoveStorageXML(rid uint, storage vmModels.Storage) error
+	StorageDetach(req StorageDetachRequest) error
+	GetNextBootOrderIndex(vmId int) (int, error)
+	ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error)
+	StorageImport(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
+	StorageNew(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
+	StorageAttach(req StorageAttachRequest, ctx context.Context) error
+	StorageUpdate(req StorageUpdateRequest, ctx context.Context) error
+	CreateStorageParent(rid uint, poolName string, ctx context.Context) error
+
+	FindISOByUUID(uuid string, includeImg bool) (string, error)
+	GetDomainStates() ([]DomainState, error)
+	IsDomainShutOff(rid uint) (bool, error)
+	IsDomainShutOffByID(id uint) (bool, error)
+	CreateVMDirectory(rid uint) (string, error)
+	ResetUEFIVars(rid uint) error
+	ValidateCPUPins(rid uint, pins []CPUPinning, hostLogicalPerSocket int) error
+	GeneratePinArgs(pins []vmModels.VMCPUPinning) []string
+	GetVMConfigDirectory(rid uint) (string, error)
+	CreateCloudInitISO(vm vmModels.VM) error
+	GetCloudInitISOPath(rid uint) (string, error)
+	FlashCloudInitMediaToDisk(vm vmModels.VM) error
+
+	CreateVmXML(vm vmModels.VM, vmPath string) (string, error)
+	CreateLvVm(id int, ctx context.Context) error
+	RemoveLvVm(rid uint) error
+	GetLvDomain(rid uint) (*LvDomain, error)
 	StartTPM() error
+	StopTPM(rid uint) error
+	CheckPCIDevicesInUse(vm vmModels.VM) error
+	LvVMAction(vm vmModels.VM, action string) error
+	SetActionDate(vm vmModels.VM, action string) error
+	GetVMXML(rid uint) (string, error)
+	IsDomainInactive(rid uint) (bool, error)
+	GetDomainState(rid int) (libvirt.DomainState, error)
+
+	CheckVersion() error
 
 	ListStoragePools() ([]StoragePool, error)
 	CreateStoragePool(name string) error
 	DeleteStoragePool(name string) error
 	RescanStoragePools() error
-
-	NetworkDetach(rid uint, networkId uint) error
-	NetworkAttach(rid uint, switchName string, emulation string, macObjId uint) error
-	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
-
-	StoreVMUsage() error
-
-	FindISOByUUID(uuid string, includeImg bool) (string, error)
-
-	GetLvDomain(rid uint) (*LvDomain, error)
-	IsDomainInactive(rid uint) (bool, error)
-
-	FindVmByMac(mac string) (vmModels.VM, error)
-	WolTasks()
 }
 
 type LvDomain struct {

@@ -516,7 +516,7 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 	return nil
 }
 
-func (s *Service) ModifyVNC(rid uint, vncEnabled bool, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
+func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequest) error {
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -533,9 +533,21 @@ func (s *Service) ModifyVNC(rid uint, vncEnabled bool, vncPort int, vncResolutio
 		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	if vm.VNCPort == vncPort &&
-		vm.VNCResolution == vncResolution &&
-		vm.VNCPassword == vncPassword &&
+	vncWait := false
+
+	if req.VNCWait != nil {
+		vncWait = *req.VNCWait
+	}
+
+	vncEnabled := false
+
+	if req.VNCEnabled != nil {
+		vncEnabled = *req.VNCEnabled
+	}
+
+	if vm.VNCPort == req.VNCPort &&
+		vm.VNCResolution == req.VNCResolution &&
+		vm.VNCPassword == req.VNCPassword &&
 		vm.VNCWait == vncWait &&
 		vm.VNCEnabled == vncEnabled {
 		return fmt.Errorf("no_changes_detected: %d", rid)
@@ -555,16 +567,16 @@ func (s *Service) ModifyVNC(rid uint, vncEnabled bool, vncPort int, vncResolutio
 	updatedXML := xml
 
 	vm.VNCEnabled = vncEnabled
-	vm.VNCPort = vncPort
-	vm.VNCResolution = vncResolution
-	vm.VNCPassword = vncPassword
+	vm.VNCPort = req.VNCPort
+	vm.VNCResolution = req.VNCResolution
+	vm.VNCPassword = req.VNCPassword
 	vm.VNCWait = vncWait
 
 	if err := s.DB.Save(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_update_vm_vnc_in_db: %w", err)
 	}
 
-	updatedXML, err = updateVNC(xml, vncPort, vncResolution, vncPassword, vncWait, vncEnabled)
+	updatedXML, err = updateVNC(xml, req.VNCPort, req.VNCResolution, req.VNCPassword, vncWait, vncEnabled)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}

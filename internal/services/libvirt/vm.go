@@ -9,11 +9,13 @@
 package libvirt
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -22,7 +24,6 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/klauspost/cpuid/v2"
 
@@ -227,7 +228,7 @@ func validateCPUPins(
 	return nil
 }
 
-func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) error {
+func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -275,17 +276,21 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 	}
 
 	if data.StorageType != libvirtServiceInterfaces.StorageTypeNone {
-		usable, err := s.System.GetUsablePools()
+		usable, err := s.System.GetUsablePools(ctx)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_usable_pools: %w", err)
 		}
 
-		var pool *zfs.Zpool
+		var pool *gzfs.ZPool
 		for _, p := range usable {
 			if p.Name == data.StoragePool {
 				pool = p
 				break
 			}
+		}
+
+		if pool == nil {
+			return fmt.Errorf("pool_not_found: %s", data.StoragePool)
 		}
 
 		size := uint64(0)
@@ -298,7 +303,7 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest) 
 		}
 
 		if size > pool.Free {
-			return fmt.Errorf("size_greater_than_Available")
+			return fmt.Errorf("storage_size_greater_than_available")
 		}
 	}
 
@@ -506,8 +511,8 @@ func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
 	return vm, err
 }
 
-func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error {
-	if err := s.validateCreate(data); err != nil {
+func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
+	if err := s.validateCreate(data, ctx); err != nil {
 		logger.L.Debug().Err(err).Msg("CreateVM: validation failed")
 		return err
 	}
@@ -727,7 +732,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 		return fmt.Errorf("failed_to_create_vm_with_associations: %w", err)
 	}
 
-	if err := s.CreateLvVm(int(vm.ID)); err != nil {
+	if err := s.CreateLvVm(int(vm.ID), ctx); err != nil {
 		if err := s.DB.Delete(vm).Error; err != nil {
 			logger.L.Debug().Err(err).Msg("create_vm: failed to delete vm after creation failure")
 			return fmt.Errorf("failed_to_delete_vm_after_creation_failure: %w", err)
@@ -754,7 +759,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest) error 
 	return nil
 }
 
-func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, deleteVolumes bool) error {
+func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, deleteVolumes bool, ctx context.Context) error {
 	var vm vmModels.VM
 	if err := s.DB.
 		Preload("Stats").
@@ -778,27 +783,36 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 			continue
 		}
 
-		var datasets *[]zfs.Dataset
-		var cSets []*zfs.Dataset
+		var datasets []*gzfs.Dataset
+		var cSets []*gzfs.Dataset
+
 		var err error
 
 		if storage.Type == vmModels.VMStorageTypeRaw {
 			if deleteRawDisks {
-				cSets, err = zfs.Filesystems(fmt.Sprintf(
-					"%s/sylve/virtual-machines/%d/raw-%d",
-					storage.Dataset.Pool,
-					vm.RID,
-					storage.ID,
-				))
+				cSets, err = s.GZFS.ZFS.ListByType(
+					ctx,
+					gzfs.DatasetTypeFilesystem,
+					false,
+					fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d",
+						storage.Dataset.Pool,
+						vm.RID,
+						storage.ID,
+					),
+				)
 			}
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
 			if deleteVolumes {
-				cSets, err = zfs.Volumes(fmt.Sprintf(
-					"%s/sylve/virtual-machines/%d/zvol-%d",
-					storage.Dataset.Pool,
-					vm.RID,
-					storage.ID,
-				))
+				cSets, err = s.GZFS.ZFS.ListByType(
+					ctx,
+					gzfs.DatasetTypeVolume,
+					false,
+					fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
+						storage.Dataset.Pool,
+						vm.RID,
+						storage.ID,
+					),
+				)
 			}
 		}
 
@@ -808,9 +822,9 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 			}
 		}
 
+		datasets = make([]*gzfs.Dataset, 0, len(cSets))
 		for _, ds := range cSets {
-			datasets = &[]zfs.Dataset{}
-			*datasets = append(*datasets, *ds)
+			datasets = append(datasets, ds)
 		}
 
 		if storage.DatasetID != nil {
@@ -823,9 +837,9 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 			return fmt.Errorf("failed_to_delete_storage: %w", err)
 		}
 
-		if datasets != nil && len(*datasets) > 0 {
-			for _, ds := range *datasets {
-				err := ds.Destroy(zfs.DestroyRecursive)
+		if datasets != nil && len(datasets) > 0 {
+			for _, ds := range datasets {
+				err := ds.Destroy(ctx, true, false)
 				if err != nil {
 					logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy dataset %s", ds.Name)
 				}

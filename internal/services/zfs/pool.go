@@ -9,89 +9,82 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
-func (s *Service) GetTotalIODelayHisorical() ([]infoModels.IODelay, error) {
-	historicalData, err := db.GetHistorical[infoModels.IODelay](s.DB, 128)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return historicalData, nil
-}
-
-func (s *Service) CreatePool(pool zfsServiceInterfaces.Zpool) error {
-	if !zfs.IsValidPoolName(pool.Name) {
+func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.CreateZPoolRequest) error {
+	if !zfs.IsValidPoolName(req.Name) {
 		return fmt.Errorf("invalid_pool_name")
 	}
 
-	_, err := zfs.GetZpool(pool.Name)
-	if err == nil {
-		return fmt.Errorf("pool_name_taken")
+	names, err := s.GZFS.Zpool.GetPoolNames(ctx)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_existing_pools: %v", err)
 	}
 
-	if pool.RaidType != "" {
-		validRaidTypes := map[string]int{
+	for _, existingName := range names {
+		if strings.EqualFold(existingName, req.Name) {
+			return fmt.Errorf("pool_name_taken")
+		}
+	}
+
+	if req.RaidType != "" {
+		validRaidTypes := map[zfsServiceInterfaces.RaidType]int{
 			"mirror": 2,
 			"raidz":  3,
 			"raidz2": 4,
 			"raidz3": 5,
 		}
-		minDevices, ok := validRaidTypes[pool.RaidType]
+
+		minDevices, ok := validRaidTypes[req.RaidType]
 		if !ok {
 			return fmt.Errorf("invalid_raidz_type")
 		}
 
-		for _, vdev := range pool.Vdevs {
+		for _, vdev := range req.Vdevs {
 			if len(vdev.VdevDevices) < minDevices {
-				return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, pool.RaidType, minDevices)
+				return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, req.RaidType, minDevices)
 			}
 		}
 	} else {
-		for _, vdev := range pool.Vdevs {
+		for _, vdev := range req.Vdevs {
 			if len(vdev.VdevDevices) == 0 {
 				return fmt.Errorf("vdev %s has no devices", vdev.Name)
 			}
 		}
 	}
 
-	var args []string
-	if pool.CreateForce {
-		args = append(args, "-f")
-	}
-
 	var vdevArgs []string
-	for _, vdev := range pool.Vdevs {
-		if pool.RaidType != "" {
-			vdevArgs = append(vdevArgs, pool.RaidType)
+	for _, vdev := range req.Vdevs {
+		if req.RaidType != "" {
+			vdevArgs = append(vdevArgs, string(req.RaidType))
 		}
 		vdevArgs = append(vdevArgs, vdev.VdevDevices...)
 	}
+	var args []string
+
 	args = append(args, vdevArgs...)
 
-	if len(pool.Spares) > 0 {
+	if len(req.Spares) > 0 {
 		args = append(args, "spare")
-		args = append(args, pool.Spares...)
+		args = append(args, req.Spares...)
 	}
 
-	_, err = zfs.CreateZpool(pool.Name, pool.Properties, args...)
+	err = s.GZFS.Zpool.Create(ctx, req.Name, req.CreateForce, req.Properties, args...)
 	if err != nil {
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
-	if err := s.Libvirt.CreateStoragePool(pool.Name); err != nil {
+	if err := s.Libvirt.CreateStoragePool(req.Name); err != nil {
 		return fmt.Errorf("libvirt_create_pool_failed: %v", err)
 	}
 
@@ -200,10 +193,787 @@ func (s *Service) EditPool(name string, props map[string]string, spares []string
 	}
 
 	currentSet := make(map[string]string)
-	for _, dev := range pool.Spares {
-		base := filepath.Base(dev.Name)
+	/*
+			loki :: ~ » zpool list -v -j tanky | jq
+		{
+		  "output_version": {
+		    "command": "zpool list",
+		    "vers_major": 0,
+		    "vers_minor": 1
+		  },
+		  "pools": {
+		    "tanky": {
+		      "name": "tanky",
+		      "type": "POOL",
+		      "state": "ONLINE",
+		      "pool_guid": "18149119554419341117",
+		      "txg": "262456",
+		      "spa_version": "5000",
+		      "zpl_version": "5",
+		      "properties": {
+		        "size": {
+		          "value": "14G",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "allocated": {
+		          "value": "8.31G",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "free": {
+		          "value": "5.69G",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "checkpoint": {
+		          "value": "-",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "expandsize": {
+		          "value": "-",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "fragmentation": {
+		          "value": "1%",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "capacity": {
+		          "value": "59%",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "dedupratio": {
+		          "value": "1.00x",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "health": {
+		          "value": "ONLINE",
+		          "source": {
+		            "type": "NONE",
+		            "data": "-"
+		          }
+		        },
+		        "altroot": {
+		          "value": "-",
+		          "source": {
+		            "type": "DEFAULT",
+		            "data": "-"
+		          }
+		        }
+		      },
+		      "vdevs": {
+		        "mirror-0": {
+		          "name": "mirror-0",
+		          "vdev_type": "mirror",
+		          "guid": "16509626027325813777",
+		          "class": "normal",
+		          "state": "ONLINE",
+		          "properties": {
+		            "size": {
+		              "value": "7G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "allocated": {
+		              "value": "4.15G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "free": {
+		              "value": "2.85G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "checkpoint": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "expandsize": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "fragmentation": {
+		              "value": "2%",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "capacity": {
+		              "value": "59.3%",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "dedupratio": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "health": {
+		              "value": "ONLINE",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            }
+		          },
+		          "vdevs": {
+		            "ada0p8": {
+		              "name": "ada0p8",
+		              "vdev_type": "disk",
+		              "guid": "14008906597308561430",
+		              "path": "/dev/ada0p8",
+		              "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p8",
+		              "class": "normal",
+		              "state": "ONLINE",
+		              "properties": {
+		                "size": {
+		                  "value": "8G",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "allocated": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "free": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "checkpoint": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "expandsize": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "fragmentation": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "capacity": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "dedupratio": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "health": {
+		                  "value": "ONLINE",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                }
+		              }
+		            },
+		            "ada0p3": {
+		              "name": "ada0p3",
+		              "vdev_type": "disk",
+		              "guid": "3297683577195417079",
+		              "path": "/dev/ada0p3",
+		              "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p3",
+		              "class": "normal",
+		              "state": "ONLINE",
+		              "properties": {
+		                "size": {
+		                  "value": "7.45G",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "allocated": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "free": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "checkpoint": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "expandsize": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "fragmentation": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "capacity": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "dedupratio": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "health": {
+		                  "value": "ONLINE",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                }
+		              }
+		            }
+		          }
+		        },
+		        "mirror-1": {
+		          "name": "mirror-1",
+		          "vdev_type": "mirror",
+		          "guid": "14166564377107343367",
+		          "class": "normal",
+		          "state": "ONLINE",
+		          "properties": {
+		            "size": {
+		              "value": "7G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "allocated": {
+		              "value": "4.16G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "free": {
+		              "value": "2.84G",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "checkpoint": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "expandsize": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "fragmentation": {
+		              "value": "1%",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "capacity": {
+		              "value": "59.4%",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "dedupratio": {
+		              "value": "-",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            },
+		            "health": {
+		              "value": "ONLINE",
+		              "source": {
+		                "type": "NONE",
+		                "data": "-"
+		              }
+		            }
+		          },
+		          "vdevs": {
+		            "ada0p2": {
+		              "name": "ada0p2",
+		              "vdev_type": "disk",
+		              "guid": "16751901842275378232",
+		              "path": "/dev/ada0p2",
+		              "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p2",
+		              "class": "normal",
+		              "state": "ONLINE",
+		              "properties": {
+		                "size": {
+		                  "value": "7.45G",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "allocated": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "free": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "checkpoint": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "expandsize": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "fragmentation": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "capacity": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "dedupratio": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "health": {
+		                  "value": "ONLINE",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                }
+		              }
+		            },
+		            "ada0p1": {
+		              "name": "ada0p1",
+		              "vdev_type": "disk",
+		              "guid": "10240971621525487756",
+		              "path": "/dev/ada0p1",
+		              "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p1",
+		              "class": "normal",
+		              "state": "ONLINE",
+		              "properties": {
+		                "size": {
+		                  "value": "7.45G",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "allocated": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "free": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "checkpoint": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "expandsize": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "fragmentation": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "capacity": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "dedupratio": {
+		                  "value": "-",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                },
+		                "health": {
+		                  "value": "ONLINE",
+		                  "source": {
+		                    "type": "NONE",
+		                    "data": "-"
+		                  }
+		                }
+		              }
+		            }
+		          }
+		        },
+		        "logs": {
+		          "ada0p5": {
+		            "name": "ada0p5",
+		            "vdev_type": "disk",
+		            "guid": "18444579332753648538",
+		            "path": "/dev/ada0p5",
+		            "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p5",
+		            "class": "log",
+		            "state": "ONLINE",
+		            "properties": {
+		              "size": {
+		                "value": "8G",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "allocated": {
+		                "value": "0",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "free": {
+		                "value": "7.50G",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "checkpoint": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "expandsize": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "fragmentation": {
+		                "value": "0%",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "capacity": {
+		                "value": "0.00%",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "dedupratio": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "health": {
+		                "value": "ONLINE",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              }
+		            }
+		          }
+		        },
+		        "l2cache": {
+		          "ada0p6": {
+		            "name": "ada0p6",
+		            "vdev_type": "disk",
+		            "guid": "6747304902614089988",
+		            "path": "/dev/ada0p6",
+		            "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p6",
+		            "class": "l2cache",
+		            "state": "ONLINE",
+		            "properties": {
+		              "size": {
+		                "value": "8G",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "allocated": {
+		                "value": "316K",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "free": {
+		                "value": "8.00G",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "checkpoint": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "expandsize": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "fragmentation": {
+		                "value": "0%",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "capacity": {
+		                "value": "0.00%",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "dedupratio": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "health": {
+		                "value": "ONLINE",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              }
+		            }
+		          }
+		        },
+		        "spares": {
+		          "ada0p7": {
+		            "name": "ada0p7",
+		            "vdev_type": "disk",
+		            "guid": "4705887614251637164",
+		            "path": "/dev/ada0p7",
+		            "phys_path": "id1,enc@n3061686369656d30/type@0/slot@2/elmdesc@Slot_01/p7",
+		            "class": "spare",
+		            "state": "ONLINE",
+		            "properties": {
+		              "size": {
+		                "value": "8G",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "allocated": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "free": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "checkpoint": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "expandsize": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "fragmentation": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "capacity": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "dedupratio": {
+		                "value": "-",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              },
+		              "health": {
+		                "value": "AVAIL",
+		                "source": {
+		                  "type": "NONE",
+		                  "data": "-"
+		                }
+		              }
+		            }
+		          }
+		        }
+		      }
+		    }
+		  }
+		}
+		loki :: ~ »
+
+	*/
+
+	// for _, dev := range pool.Spares {
+	// 	base := filepath.Base(dev.Name)
+	// 	if _, seen := currentSet[base]; !seen {
+	// 		currentSet[base] = dev.Name
+	// 	}
+	// }
+
+	for _, dev := range pool.Vdevs["spares"].Vdevs {
+		base := filepath.Base(dev.Path)
 		if _, seen := currentSet[base]; !seen {
-			currentSet[base] = dev.Name
+			currentSet[base] = dev.Path
 		}
 	}
 
@@ -279,57 +1049,59 @@ func (s *Service) SyncToLibvirt() error {
 }
 
 func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]zfsServiceInterfaces.PoolStatPoint, int, error) {
-	if intervalMinutes <= 0 {
-		return nil, 0, fmt.Errorf("invalid interval: must be > 0")
-	}
+	// if intervalMinutes <= 0 {
+	// 	return nil, 0, fmt.Errorf("invalid interval: must be > 0")
+	// }
 
-	var records []infoModels.ZPoolHistorical
-	if err := s.DB.
-		Order("created_at ASC").
-		Find(&records).Error; err != nil {
-		return nil, 0, err
-	}
+	// var records []infoModels.ZPoolHistorical
+	// if err := s.DB.
+	// 	Order("created_at ASC").
+	// 	Find(&records).Error; err != nil {
+	// 	return nil, 0, err
+	// }
 
-	count := len(records)
-	intervalMs := int64(intervalMinutes) * 60 * 1000
+	// count := len(records)
+	// intervalMs := int64(intervalMinutes) * 60 * 1000
 
-	buckets := make(map[string]map[int64]zfsServiceInterfaces.PoolStatPoint)
-	for _, rec := range records {
-		bucketTime := (rec.CreatedAt / intervalMs) * intervalMs
-		name := zfs.Zpool(rec.Pools).Name
+	// buckets := make(map[string]map[int64]zfsServiceInterfaces.PoolStatPoint)
+	// for _, rec := range records {
+	// 	bucketTime := (rec.CreatedAt / intervalMs) * intervalMs
+	// 	name := zfs.Zpool(rec.Pools).Name
 
-		if buckets[name] == nil {
-			buckets[name] = make(map[int64]zfsServiceInterfaces.PoolStatPoint)
-		}
+	// 	if buckets[name] == nil {
+	// 		buckets[name] = make(map[int64]zfsServiceInterfaces.PoolStatPoint)
+	// 	}
 
-		if _, seen := buckets[name][bucketTime]; !seen {
-			p := zfs.Zpool(rec.Pools)
-			buckets[name][bucketTime] = zfsServiceInterfaces.PoolStatPoint{
-				Time:       bucketTime,
-				Allocated:  p.Allocated,
-				Free:       p.Free,
-				Size:       p.Size,
-				DedupRatio: p.DedupRatio,
-			}
-		}
-	}
+	// 	if _, seen := buckets[name][bucketTime]; !seen {
+	// 		p := zfs.Zpool(rec.Pools)
+	// 		buckets[name][bucketTime] = zfsServiceInterfaces.PoolStatPoint{
+	// 			Time:       bucketTime,
+	// 			Allocated:  p.Allocated,
+	// 			Free:       p.Free,
+	// 			Size:       p.Size,
+	// 			DedupRatio: p.DedupRatio,
+	// 		}
+	// 	}
+	// }
 
-	result := make(map[string][]zfsServiceInterfaces.PoolStatPoint, len(buckets))
-	for name, mp := range buckets {
-		pts := make([]zfsServiceInterfaces.PoolStatPoint, 0, len(mp))
-		for _, pt := range mp {
-			pts = append(pts, pt)
-		}
-		sort.Slice(pts, func(i, j int) bool {
-			return pts[i].Time < pts[j].Time
-		})
+	// result := make(map[string][]zfsServiceInterfaces.PoolStatPoint, len(buckets))
+	// for name, mp := range buckets {
+	// 	pts := make([]zfsServiceInterfaces.PoolStatPoint, 0, len(mp))
+	// 	for _, pt := range mp {
+	// 		pts = append(pts, pt)
+	// 	}
+	// 	sort.Slice(pts, func(i, j int) bool {
+	// 		return pts[i].Time < pts[j].Time
+	// 	})
 
-		if limit > 0 && len(pts) > limit {
-			pts = pts[len(pts)-limit:]
-		}
+	// 	if limit > 0 && len(pts) > limit {
+	// 		pts = pts[len(pts)-limit:]
+	// 	}
 
-		result[name] = pts
-	}
+	// 	result[name] = pts
+	// }
 
-	return result, count, nil
+	// return result, count, nil
+
+	return nil, 0, fmt.Errorf("zpool_historical_stats_not_implemented")
 }

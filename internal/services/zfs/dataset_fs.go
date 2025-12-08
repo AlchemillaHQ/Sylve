@@ -9,17 +9,18 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
-	"github.com/alchemillahq/sylve/pkg/zfs"
+	"github.com/alchemillahq/gzfs"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-func (s *Service) CreateFilesystem(name string, props map[string]string) error {
+func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -39,67 +40,59 @@ func (s *Service) CreateFilesystem(name string, props map[string]string) error {
 	name = fmt.Sprintf("%s/%s", parent, name)
 	delete(props, "parent")
 
-	_, err := zfs.CreateFilesystem(name, props)
+	dataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, name, props)
 
 	if err != nil {
 		return err
 	}
 
-	datasets, err := zfs.Datasets(name)
-	if err != nil {
-		return err
+	if dataset == nil {
+		return fmt.Errorf("failed_to_create_filesystem")
 	}
 
-	for _, dataset := range datasets {
-		if dataset.Name == name {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("failed to create filesystem %s", name)
+	return nil
 }
 
-func (s *Service) EditFilesystem(guid string, props map[string]string) error {
+func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := zfs.Datasets("")
+	datasets, err := s.GZFS.ZFS.ListByType(
+		ctx,
+		gzfs.DatasetTypeFilesystem,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
 	for _, dataset := range datasets {
 		if dataset.GUID == guid {
-			return zfs.EditFilesystem(dataset.Name, props)
+			return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
 		}
 	}
 
 	return fmt.Errorf("filesystem with guid %s not found", guid)
 }
 
-func (s *Service) DeleteFilesystem(guid string) error {
+func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	filesystems, err := zfs.Filesystems("")
+	filesystems, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, true, "")
 	if err != nil {
 		return err
 	}
 
-	var foundFS *zfs.Dataset
+	var foundFS *gzfs.Dataset
 
 	for _, filesystem := range filesystems {
-		fguid, err := filesystem.GetProperty("guid")
-		if err != nil {
-			return err
+		if filesystem.GUID == guid {
+			foundFS = filesystem
+			break
 		}
-
-		if fguid != guid {
-			continue
-		}
-
-		foundFS = filesystem
-		break
 	}
 
 	if foundFS == nil {
@@ -124,12 +117,14 @@ func (s *Service) DeleteFilesystem(guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
-	keylocation, err := foundFS.GetProperty("keylocation")
+	keylocationProp, err := foundFS.GetProperty(ctx, "keylocation")
 	if err != nil {
 		return err
 	}
 
-	if err := foundFS.Destroy(zfs.DestroyRecursive); err != nil {
+	keylocation := keylocationProp.Value
+
+	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}
 
@@ -137,7 +132,7 @@ func (s *Service) DeleteFilesystem(guid string) error {
 		keylocation = keylocation[7:]
 		if _, err := os.Stat(keylocation); err == nil {
 			if err := os.Remove(keylocation); err != nil {
-				return err
+				logger.L.Error().Err(err).Msgf("failed to remove keylocation file: %s", keylocation)
 			}
 		} else {
 			logger.L.Warn().Msgf("keylocation file not found: %s", keylocation)

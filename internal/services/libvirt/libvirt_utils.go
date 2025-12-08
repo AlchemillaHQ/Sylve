@@ -241,6 +241,18 @@ func (s *Service) IsDomainShutOff(rid uint) (bool, error) {
 	return false, nil
 }
 
+func (s *Service) IsDomainShutOffByID(id uint) (bool, error) {
+	var rid uint
+	if err := s.DB.Model(&vmModels.VM{}).
+		Where("id = ?", id).
+		Select("rid").
+		Scan(&rid).Error; err != nil {
+		return false, fmt.Errorf("failed_to_get_vm_rid: %w", err)
+	}
+
+	return s.IsDomainShutOff(rid)
+}
+
 func (s *Service) CreateVMDirectory(rid uint) (string, error) {
 	vmDir, err := config.GetVMsPath()
 

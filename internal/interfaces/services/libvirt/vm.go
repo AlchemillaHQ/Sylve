@@ -73,3 +73,18 @@ type ModifyCPURequest struct {
 
 	CPUPinning []CPUPinning `json:"cpuPinning"`
 }
+
+type ModifyVNCRequest struct {
+	VNCEnabled    *bool  `json:"vncEnabled"`
+	VNCPort       int    `json:"vncPort" binding:"required"`
+	VNCResolution string `json:"vncResolution" binding:"required"`
+	VNCPassword   string `json:"vncPassword" binding:"required"`
+	VNCWait       *bool  `json:"vncWait"`
+}
+
+type NetworkAttachRequest struct {
+	RID        uint   `json:"rid" binding:"required"`
+	SwitchName string `json:"switchName" binding:"required"`
+	Emulation  string `json:"emulation" binding:"required"`
+	MacId      *uint  `json:"macId"`
+}

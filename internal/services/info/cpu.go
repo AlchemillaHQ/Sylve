@@ -74,8 +74,7 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 }
 
 func (s *Service) GetCPUUsageHistorical() ([]infoModels.CPU, error) {
-	historicalData, err := db.GetHistorical[infoModels.CPU](s.DB, 128)
-
+	historicalData, err := db.GetAll[infoModels.CPU](s.DB)
 	if err != nil {
 		return nil, err
 	}

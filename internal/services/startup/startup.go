@@ -110,7 +110,7 @@ func (s *Service) PreFlightChecklist() error {
 	return nil
 }
 
-func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface) error {
+func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context) error {
 	if err := s.PreFlightChecklist(); err != nil {
 		return fmt.Errorf("Pre-flight check failed: %w", err)
 	}
@@ -125,7 +125,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface)
 		return err
 	}
 
-	if err := s.ZFS.SyncLibvirtPools(); err != nil {
+	if err := s.ZFS.SyncLibvirtPools(ctx); err != nil {
 		return err
 	}
 

@@ -219,7 +219,8 @@ func CreateVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := libvirtService.CreateVM(req)
+		ctx := c.Request.Context()
+		err := libvirtService.CreateVM(req, ctx)
 
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_create: " + err.Error()})
@@ -338,7 +339,8 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = libvirtService.RemoveVM(uint(vmInt), deleteMacs, deleteRawDisks, deleteVolumes)
+		ctx := c.Request.Context()
+		err = libvirtService.RemoveVM(uint(vmInt), deleteMacs, deleteRawDisks, deleteVolumes, ctx)
 
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{

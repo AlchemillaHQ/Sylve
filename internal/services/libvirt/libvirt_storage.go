@@ -9,6 +9,7 @@
 package libvirt
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -16,21 +17,22 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
+
 	"github.com/beevik/etree"
 )
 
-func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
-	usable, err := s.System.GetUsablePools()
+func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error {
+	usable, err := s.System.GetUsablePools(ctx)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
 	}
 
-	var target *zfs.Zpool
+	var target *gzfs.ZPool
 
 	for _, pool := range usable {
 		if pool.Name == storage.Pool {
@@ -39,21 +41,31 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 		}
 	}
 
-	if target.Free < uint64(storage.Size) {
-		return fmt.Errorf("insufficient_space_in_pool: %s", storage.Pool)
-	}
-
 	if target == nil {
 		return fmt.Errorf("pool_not_found: %s", storage.Pool)
 	}
 
-	var datasets []*zfs.Dataset
+	if target.Free < uint64(storage.Size) {
+		return fmt.Errorf("insufficient_space_in_pool: %s", storage.Pool)
+	}
+
+	var datasets []*gzfs.Dataset
 
 	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			datasets, err = zfs.Filesystems(fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID))
+			datasets, err = s.GZFS.ZFS.ListByType(
+				ctx,
+				gzfs.DatasetTypeFilesystem,
+				false,
+				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
+			)
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
-			datasets, err = zfs.Volumes(fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID))
+			datasets, err = s.GZFS.ZFS.ListByType(
+				ctx,
+				gzfs.DatasetTypeVolume,
+				false,
+				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),
+			)
 		}
 
 		if err != nil {
@@ -63,7 +75,8 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 		}
 	}
 
-	var dataset *zfs.Dataset
+	// var dataset *zfs.Dataset
+	var dataset *gzfs.Dataset
 
 	if len(datasets) == 0 {
 		var recordSize string
@@ -88,14 +101,16 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 		}
 
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			dataset, err = zfs.CreateFilesystem(
+			dataset, err = s.GZFS.ZFS.CreateFilesystem(
+				ctx,
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
 				utils.MergeMaps(props, map[string]string{
 					"recordsize": recordSize,
 				}),
 			)
 		} else if storage.Type == vmModels.VMStorageTypeZVol {
-			dataset, err = zfs.CreateVolume(
+			dataset, err = s.GZFS.ZFS.CreateVolume(
+				ctx,
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),
 				uint64(storage.Size),
 				utils.MergeMaps(props, map[string]string{
@@ -120,7 +135,7 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 		}
 
 		if err := utils.CreateOrTruncateFile(imagePath, storage.Size); err != nil {
-			_ = dataset.Destroy(zfs.DestroyRecursive)
+			_ = dataset.Destroy(ctx, true, false)
 			return fmt.Errorf("failed_to_create_or_truncate_image_file: %w", err)
 		}
 	}
@@ -132,14 +147,14 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage) error {
 	}
 
 	if err := s.DB.Create(&storageDataset).Error; err != nil {
-		_ = dataset.Destroy(zfs.DestroyRecursive)
+		_ = dataset.Destroy(ctx, true, false)
 		return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
 	}
 
 	storage.DatasetID = &storageDataset.ID
 
 	if err := s.DB.Save(&storage).Error; err != nil {
-		_ = dataset.Destroy(zfs.DestroyRecursive)
+		_ = dataset.Destroy(ctx, true, false)
 		return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 	}
 
@@ -472,7 +487,7 @@ func (s *Service) ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error) 
 	return count == 0, nil
 }
 
-func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM) error {
+func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
 	var storage vmModels.Storage
 
 	storage.Name = req.Name
@@ -509,7 +524,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 
@@ -529,12 +544,18 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			return fmt.Errorf("failed_to_copy_raw_file_to_dataset: %w", err)
 		}
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL {
-		datasets, err := zfs.Volumes(req.Pool)
+		datasets, err := s.GZFS.ZFS.ListByType(
+			ctx,
+			gzfs.DatasetTypeVolume,
+			false,
+			fmt.Sprintf("%s/sylve/virtual-machines/%d", req.Pool, vm.RID),
+		)
+
 		if err != nil {
 			return fmt.Errorf("failed_to_get_zvols_in_pool: %w", err)
 		}
 
-		var found *zfs.Dataset
+		var found *gzfs.Dataset
 		for _, ds := range datasets {
 			if ds.GUID == req.Dataset {
 				found = ds
@@ -554,8 +575,24 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			}
 		}
 
+		var volSize int64
+		volSizeProp, ok := found.Properties["volsize"]
+		if ok {
+			volSize, err = strconv.ParseInt(volSizeProp.Value, 10, 64)
+			if err != nil {
+				return fmt.Errorf("failed_to_parse_volsize: %w", err)
+			}
+		} else {
+			return fmt.Errorf("volsize_property_not_found_in_zvol_dataset")
+		}
+
+		if volSize <= 0 {
+			return fmt.Errorf("invalid_volsize: %d", volSize)
+		}
+
+		storage.Size = volSize
 		storage.Type = vmModels.VMStorageTypeZVol
-		storage.Size = int64(found.Volsize)
+
 		if err := s.DB.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
@@ -567,7 +604,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				storage.ID,
 			)
 
-			dataset, err := found.Rename(targetDatasetPath, true, true, false)
+			dataset, err := found.Rename(ctx, targetDatasetPath, false)
 			if err != nil || dataset == nil {
 				_ = s.DB.Delete(&storage).Error
 				return fmt.Errorf("failed_to_rename_zvol_dataset: %w", err)
@@ -589,12 +626,12 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 			}
 		} else {
-			if err := s.CreateVMDisk(vm.RID, storage); err != nil {
+			if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
 				return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 			}
 
 			snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.RID, storage.ID)
-			snapshot, err := found.Snapshot(snapshotName, false)
+			snapshot, err := found.Snapshot(ctx, snapshotName, false)
 			if err != nil {
 				return fmt.Errorf("failed_to_create_snapshot_of_imported_zvol: %w", err)
 			}
@@ -605,7 +642,13 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				storage.ID,
 			)
 
-			targetDatasets, err := zfs.Volumes(targetDatasetPath)
+			targetDatasets, err := s.GZFS.ZFS.ListByType(
+				ctx,
+				gzfs.DatasetTypeVolume,
+				false,
+				targetDatasetPath,
+			)
+
 			if err != nil {
 				return fmt.Errorf("failed_to_get_target_zvols: %w", err)
 			}
@@ -615,12 +658,12 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			}
 
 			targetDataset := targetDatasets[0]
-			err = snapshot.SendSnapshotToDataset(targetDataset, true)
+			_, err = snapshot.SendToDataset(ctx, targetDataset.Name, true)
 			if err != nil {
 				return fmt.Errorf("failed_to_send_snapshot_to_dataset: %w", err)
 			}
 
-			if err := snapshot.Destroy(zfs.DestroyRecursive); err != nil {
+			if err := snapshot.Destroy(ctx, true, false); err != nil {
 				logger.L.Warn().Err(err).Msg("failed_to_destroy_import_snapshot")
 			}
 		}
@@ -647,7 +690,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 	return s.SyncVMDisks(vm.RID)
 }
 
-func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM) error {
+func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
 	var storage vmModels.Storage
 
 	storage.Name = req.Name
@@ -664,7 +707,7 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 
@@ -690,7 +733,7 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage); err != nil {
+		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
 	}
@@ -698,7 +741,7 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 	return s.SyncVMDisks(vm.RID)
 }
 
-func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest) error {
+func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
 	if req.Name == "" ||
 		strings.TrimSpace(req.Name) == "" ||
 		len(req.Name) == 0 ||
@@ -741,7 +784,7 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 	}
 
 	if req.StorageType != libvirtServiceInterfaces.StorageTypeDiskImage {
-		err = s.CreateStorageParent(vm.RID, req.Pool)
+		err = s.CreateStorageParent(vm.RID, req.Pool, ctx)
 		if err != nil {
 			return fmt.Errorf("failed_to_create_storage_parent: %w", err)
 		}
@@ -750,15 +793,15 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 	req.BootOrder = &bootOrder
 
 	if req.AttachType == libvirtServiceInterfaces.StorageAttachTypeImport {
-		return s.StorageImport(req, vm)
+		return s.StorageImport(req, vm, ctx)
 	} else if req.AttachType == libvirtServiceInterfaces.StorageAttachTypeNew {
-		return s.StorageNew(req, vm)
+		return s.StorageNew(req, vm, ctx)
 	}
 
 	return fmt.Errorf("invalid_storage_attach_type: %s", req.AttachType)
 }
 
-func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest) error {
+func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error {
 	if strings.TrimSpace(req.Name) == "" || len(req.Name) > 128 {
 		return fmt.Errorf("invalid_storage_name")
 	}
@@ -808,7 +851,7 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		growBy := req.Size - current.Size
 
 		if current.Pool != "" && growBy > 0 {
-			pool, err := zfs.GetZpool(current.Pool)
+			pool, err := s.GZFS.Zpool.Get(ctx, current.Pool)
 			if err != nil || pool == nil {
 				return err
 			}
@@ -832,7 +875,7 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 			}
 
 		case vmModels.VMStorageTypeZVol:
-			dsList, err := zfs.Volumes(current.Dataset.Name)
+			dsList, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false, current.Dataset.Name)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_zvol_dataset: %w", err)
 			}
@@ -842,7 +885,22 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 			}
 
 			ds := dsList[0]
-			if err := ds.SetProperty("volsize", fmt.Sprintf("%d", req.Size)); err != nil {
+			var volSize uint64
+
+			volSizeProp, ok := ds.Properties["volsize"]
+			if ok {
+				volSize = gzfs.ParseSize(volSizeProp.Value)
+			}
+
+			volSize = gzfs.ParseSize(volSizeProp.Value)
+			newSize := uint64(req.Size)
+
+			if newSize < volSize {
+				return fmt.Errorf("new_size_must_be_greater_than_or_equal_to_current_volsize")
+			}
+
+			err = ds.SetProperties(ctx, "volsize", fmt.Sprintf("%d", newSize))
+			if err != nil {
 				return fmt.Errorf("failed_to_set_zvol_volsize: %w", err)
 			}
 
@@ -869,13 +927,13 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 	return nil
 }
 
-func (s *Service) CreateStorageParent(rid uint, poolName string) error {
-	pools, err := s.System.GetUsablePools()
+func (s *Service) CreateStorageParent(rid uint, poolName string, ctx context.Context) error {
+	pools, err := s.System.GetUsablePools(ctx)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
 	}
 
-	var created []*zfs.Dataset
+	var created []*gzfs.Dataset
 
 	for _, pool := range pools {
 		if poolName != "" && pool.Name != poolName {
@@ -883,7 +941,12 @@ func (s *Service) CreateStorageParent(rid uint, poolName string) error {
 		}
 
 		target := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool.Name, rid)
-		datasets, _ := zfs.Filesystems(target)
+		datasets, _ := s.GZFS.ZFS.ListByType(
+			ctx,
+			gzfs.DatasetTypeFilesystem,
+			false,
+			target,
+		)
 
 		if len(datasets) > 0 {
 			continue
@@ -896,10 +959,10 @@ func (s *Service) CreateStorageParent(rid uint, poolName string) error {
 			"secondarycache": "all",
 		}
 
-		ds, err := zfs.CreateFilesystem(target, props)
+		ds, err := s.GZFS.ZFS.CreateFilesystem(ctx, target, props)
 		if err != nil {
 			for _, createdDS := range created {
-				_ = createdDS.Destroy(zfs.DestroyRecursive)
+				_ = createdDS.Destroy(ctx, true, false)
 			}
 
 			return fmt.Errorf("failed_to_create_%s: %w", target, err)

@@ -81,7 +81,9 @@ func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.StorageAttach(req); err != nil {
+		ctx := c.Request.Context()
+
+		if err := libvirtService.StorageAttach(req, ctx); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -123,7 +125,9 @@ func StorageUpdate(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.StorageUpdate(req); err != nil {
+		ctx := c.Request.Context()
+
+		if err := libvirtService.StorageUpdate(req, ctx); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

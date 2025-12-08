@@ -213,23 +213,16 @@ func (s *Service) GetDiskDevices() ([]diskServiceInterfaces.Disk, error) {
 
 		if len(disk.Partitions) == 0 {
 			found := false
-			pools, err := zfs.ListZpools()
+			devPath := "/dev/" + d.Name
 
+			pools, err := zfs.ListZpools()
 			if err == nil {
 				for _, pool := range pools {
 					for _, vdev := range pool.Vdevs {
-						if vdev.Name == "/dev/"+d.Name {
+						if zfs.VdevContainsDisk(vdev, devPath) {
 							disk.Usage = "ZFS"
 							found = true
 							break
-						}
-
-						for _, device := range vdev.VdevDevices {
-							if device.Name == "/dev/"+d.Name {
-								disk.Usage = "ZFS"
-								found = true
-								break
-							}
 						}
 					}
 					if found {

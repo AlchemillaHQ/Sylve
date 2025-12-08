@@ -12,7 +12,7 @@ import (
 	"context"
 	"time"
 
-	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"github.com/alchemillahq/gzfs"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/pkg/zfs"
 )
@@ -24,14 +24,30 @@ type RetentionSnapInfo struct {
 }
 
 type ZfsServiceInterface interface {
-	GetTotalIODelayHisorical() ([]infoModels.IODelay, error)
+	StoreStats()
+	RemoveNonExistentPools()
+	Cron()
+
+	CreateFilesystem(ctx context.Context, name string, props map[string]string) error
+	EditFilesystem(ctx context.Context, guid string, props map[string]string) error
+	DeleteFilesystem(ctx context.Context, guid string) error
+
+	CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error
+	EditVolume(ctx context.Context, name string, props map[string]string) error
+	DeleteVolume(ctx context.Context, guid string) error
+	FlashVolume(ctx context.Context, guid string, uuid string) error
+
+	GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, error)
+	GetDatasetByGUID(guid string) (*gzfs.Dataset, error)
+	GetSnapshotByGUID(guid string) (*gzfs.Dataset, error)
+	GetFsOrVolByGUID(guid string) (*gzfs.Dataset, error)
+	BulkDeleteDataset(ctx context.Context, guids []string) error
+	IsDatasetInUse(guid string, failEarly bool) bool
+
 	GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]PoolStatPoint, int, error)
 
 	CreatePool(Zpool) error
 	DeletePool(poolName string) error
-
-	GetDatasets(t string) ([]*zfs.Dataset, error)
-	BulkDeleteDataset(guids []string) error
 
 	CreateSnapshot(guid string, name string, recursive bool) error
 	RollbackSnapshot(guid string, destroyMoreRecent bool) error
@@ -42,11 +58,5 @@ type ZfsServiceInterface interface {
 	DeletePeriodicSnapshot(guid string) error
 	StartSnapshotScheduler(ctx context.Context)
 
-	CreateFilesystem(name string, props map[string]string) error
-	DeleteFilesystem(guid string) error
-
-	SyncLibvirtPools() error
-
-	StoreStats(interval int)
-	Cron()
+	SyncLibvirtPools(ctx context.Context) error
 }

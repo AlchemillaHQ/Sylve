@@ -1,5 +1,7 @@
 <!-- <span class="icon-[mdi--palette]"></span>
 <span class="icon-[meteor-icons--language]"></span>
+<span class="icon-[bi--ethernet]"></span>
+<span class="icon-[mdi--ethernet]"></span>
 <span class="icon-[material-symbols--menu-rounded]"></span>
 <span class="icon-[garden--terminal-cli-stroke-16]"></span>
 <span class="icon-[material-symbols--monitor-outline-rounded]"></span>
@@ -195,7 +197,6 @@
 <span class="icon-[fa7-solid--hexagon-nodes]"></span> 
 <span class="icon-[oui--ml-create-population-job]"></span>
 <span class="icon-[mdi--magnet]"></span>
-<span class="icon-[mdi--internet]"></span>
 <span class="icon-[mdi--file]"></span>
 <span class="icon-[eos-icons--three-dots-loading]"></span>
 <span class="icon-[line-md--downloading-loop]"></span>
@@ -204,4 +205,7 @@
 <span class="icon-[tdesign--cd-filled]"></span>
 <span class="icon-[material-symbols--terminal]"></span>
 <span class="icon-[mdi--infinity]"></span>
+<span class="icon-[temaki--water-tap]"></span>
+<span class="icon-[raphael--ethernet]"></span>
+<span class="icon-[mdi--internet]"></span>
 -->

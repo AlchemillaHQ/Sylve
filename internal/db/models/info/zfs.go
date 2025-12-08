@@ -8,34 +8,13 @@
 
 package infoModels
 
-import (
-	"database/sql/driver"
-	"encoding/json"
-	"fmt"
-
-	"github.com/alchemillahq/sylve/pkg/zfs"
-)
-
-type ZpoolJSON zfs.Zpool
-
-func (z ZpoolJSON) Value() (driver.Value, error) {
-	return json.Marshal(z)
-}
-
-func (z *ZpoolJSON) Scan(value interface{}) error {
-	bytes, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("failed to scan ZpoolJSON: expected []byte, got %T", value)
-	}
-	return json.Unmarshal(bytes, z)
-}
-
-func (ZpoolJSON) GormDataType() string {
-	return "text"
-}
-
 type ZPoolHistorical struct {
-	ID        int64     `json:"id" gorm:"primaryKey"`
-	Pools     ZpoolJSON `json:"pools" gorm:"type:text"`
-	CreatedAt int64     `json:"created_at" gorm:"autoCreateTime:milli"`
+	ID            int64   `json:"id" gorm:"primaryKey"`
+	Name          string  `json:"name" gorm:"index"`
+	Allocated     uint64  `json:"allocated"`
+	Size          uint64  `json:"size"`
+	Free          uint64  `json:"free"`
+	Fragmentation float64 `json:"fragmentation"`
+	DedupRatio    float64 `json:"dedupRatio"`
+	CreatedAt     int64   `json:"createdAt" gorm:"autoCreateTime"`
 }

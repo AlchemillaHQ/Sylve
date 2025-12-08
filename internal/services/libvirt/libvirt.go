@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/alchemillahq/gzfs"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -31,9 +32,11 @@ type Service struct {
 
 	actionMutex sync.Mutex
 	crudMutex   sync.Mutex
+
+	GZFS *gzfs.Client
 }
 
-func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface) libvirtServiceInterfaces.LibvirtServiceInterface {
+func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
 	uri, _ := url.Parse("bhyve:///system")
 	l, err := libvirt.ConnectToURI(uri)
 	if err != nil {
@@ -52,6 +55,7 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 		DB:     db,
 		System: system,
 		Conn:   l,
+		GZFS:   gzfs,
 	}
 }
 

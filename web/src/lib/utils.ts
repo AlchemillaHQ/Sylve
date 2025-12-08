@@ -80,6 +80,10 @@ export function getObjectSchemaDefaults<Schema extends z.ZodObject>(schema: Sche
 	);
 }
 
+export function cssVar(name: string): string {
+	return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type WithoutChild<T> = T extends { child?: any } ? Omit<T, 'child'> : T;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

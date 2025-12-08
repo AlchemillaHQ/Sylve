@@ -84,7 +84,8 @@ func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		t := c.Query("type")
 
-		datasets, err := zfsService.GetDatasets(t)
+		ctx := c.Request.Context()
+		datasets, err := zfsService.GetDatasets(ctx, t)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -515,7 +516,8 @@ func CreateFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.CreateFilesystem(request.Name, request.Properties)
+		ctx := c.Request.Context()
+		err := zfsService.CreateFilesystem(ctx, request.Name, request.Properties)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -560,7 +562,8 @@ func EditFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.EditFilesystem(request.GUID, request.Properties)
+		ctx := c.Request.Context()
+		err := zfsService.EditFilesystem(ctx, request.GUID, request.Properties)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -594,7 +597,9 @@ func EditFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 func DeleteFilesystem(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		guid := c.Param("guid")
-		err := zfsService.DeleteFilesystem(guid)
+
+		ctx := c.Request.Context()
+		err := zfsService.DeleteFilesystem(ctx, guid)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -639,7 +644,8 @@ func CreateVolume(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.CreateVolume(request.Name, request.Parent, request.Properties)
+		ctx := c.Request.Context()
+		err := zfsService.CreateVolume(ctx, request.Name, request.Parent, request.Properties)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -684,7 +690,8 @@ func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.EditVolume(request.Name, request.Properties)
+		ctx := c.Request.Context()
+		err := zfsService.EditVolume(ctx, request.Name, request.Properties)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -718,7 +725,8 @@ func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 func DeleteVolume(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		guid := c.Param("guid")
-		err := zfsService.DeleteVolume(guid)
+		ctx := c.Request.Context()
+		err := zfsService.DeleteVolume(ctx, guid)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -763,7 +771,8 @@ func BulkDeleteDataset(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.BulkDeleteDataset(guids.GUIDs)
+		ctx := c.Request.Context()
+		err := zfsService.BulkDeleteDataset(ctx, guids.GUIDs)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -810,7 +819,8 @@ func FlashVolume(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.FlashVolume(request.GUID, request.UUID)
+		ctx := c.Request.Context()
+		err := zfsService.FlashVolume(ctx, request.GUID, request.UUID)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

@@ -35,14 +35,6 @@ type ModifyRAMRequest struct {
 	RAM int `json:"ram" binding:"required"`
 }
 
-type ModifyVNCRequest struct {
-	VNCEnabled    *bool  `json:"vncEnabled" binding:"required"`
-	VNCPort       int    `json:"vncPort" binding:"required"`
-	VNCResolution string `json:"vncResolution" binding:"required"`
-	VNCPassword   string `json:"vncPassword" binding:"required"`
-	VNCWait       *bool  `json:"vncWait" binding:"required"`
-}
-
 type ModifyPassthroughRequest struct {
 	PCIDevices []int `json:"pciDevices" binding:"required"`
 }
@@ -158,7 +150,7 @@ func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Router /hardware/vnc/:rid [put]
 func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req ModifyVNCRequest
+		var req libvirtServiceInterfaces.ModifyVNCRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -191,24 +183,7 @@ func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vncWait := false
-
-		if req.VNCWait != nil {
-			vncWait = *req.VNCWait
-		}
-
-		vncEnabled := false
-
-		if req.VNCEnabled != nil {
-			vncEnabled = *req.VNCEnabled
-		}
-
-		if err := libvirtService.ModifyVNC(uint(ridInt),
-			vncEnabled,
-			req.VNCPort,
-			req.VNCResolution,
-			req.VNCPassword,
-			vncWait); err != nil {
+		if err := libvirtService.ModifyVNC(uint(ridInt), req); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

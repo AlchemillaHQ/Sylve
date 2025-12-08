@@ -58,8 +58,7 @@ func (s *Service) GetSwapInfo() (infoServiceInterfaces.SwapInfo, error) {
 }
 
 func (s *Service) GetRAMUsageHistorical() ([]infoModels.RAM, error) {
-	historicalData, err := db.GetHistorical[infoModels.RAM](s.DB, 128)
-
+	historicalData, err := db.GetAll[infoModels.RAM](s.DB)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +67,7 @@ func (s *Service) GetRAMUsageHistorical() ([]infoModels.RAM, error) {
 }
 
 func (s *Service) GetSwapUsageHistorical() ([]infoModels.Swap, error) {
-	historicalData, err := db.GetHistorical[infoModels.Swap](s.DB, 128)
-
+	historicalData, err := db.GetAll[infoModels.Swap](s.DB)
 	if err != nil {
 		return nil, err
 	}

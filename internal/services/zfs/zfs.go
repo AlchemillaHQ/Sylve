@@ -9,15 +9,16 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 
 	"gorm.io/gorm"
 )
@@ -26,20 +27,22 @@ var _ zfsServiceInterfaces.ZfsServiceInterface = (*Service)(nil)
 
 type Service struct {
 	DB        *gorm.DB
+	GZFS      *gzfs.Client
 	Libvirt   libvirtServiceInterfaces.LibvirtServiceInterface
 	syncMutex *sync.Mutex
 }
 
-func NewZfsService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) zfsServiceInterfaces.ZfsServiceInterface {
+func NewZfsService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
 	return &Service{
 		DB:        db,
+		GZFS:      gzfsClient,
 		Libvirt:   libvirt,
 		syncMutex: &sync.Mutex{},
 	}
 }
 
-func (s *Service) SyncLibvirtPools() error {
-	zfsPools, err := zfs.ListZpools()
+func (s *Service) SyncLibvirtPools(ctx context.Context) error {
+	zfsPools, err := s.GZFS.Zpool.List(ctx)
 
 	if err != nil {
 		return err
@@ -72,30 +75,29 @@ func (s *Service) SyncLibvirtPools() error {
 	return nil
 }
 
-func (s *Service) PoolFromDataset(dataset string) (string, error) {
-	if dataset == "" {
-		return "", fmt.Errorf("dataset cannot be empty")
+func (s *Service) PoolFromDataset(ctx context.Context, name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("dataset_name_cannot_be_empty")
 	}
 
-	parts := strings.SplitN(dataset, "/", 2)
-
-	if len(parts) == 1 {
-		return parts[0], nil
+	dataset, err := s.GZFS.ZFS.Get(ctx, name, false)
+	if err != nil {
+		return "", fmt.Errorf("error_getting_dataset_%s: %w", name, err)
 	}
 
-	return parts[0], nil
+	return dataset.Pool, nil
 }
 
-func (s *Service) GetUsablePools() ([]*zfs.Zpool, error) {
+func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	var basicSettings models.BasicSettings
-	var pools []*zfs.Zpool
+	var pools []*gzfs.ZPool
 
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return pools, err
 	}
 
 	for _, name := range basicSettings.Pools {
-		pool, err := zfs.GetZpool(name)
+		pool, err := s.GZFS.Zpool.Get(ctx, strings.TrimSpace(name))
 		if err != nil {
 			return pools, err
 		}
@@ -104,19 +106,4 @@ func (s *Service) GetUsablePools() ([]*zfs.Zpool, error) {
 	}
 
 	return pools, nil
-}
-
-func (s *Service) GetValidPool(identifier string) (*zfs.Zpool, error) {
-	usable, err := s.GetUsablePools()
-	if err != nil {
-		return nil, fmt.Errorf("error_fetching_usable_pools: %w", err)
-	}
-
-	for _, pool := range usable {
-		if pool.Name == identifier || pool.GUID == identifier {
-			return pool, nil
-		}
-	}
-
-	return nil, nil
 }

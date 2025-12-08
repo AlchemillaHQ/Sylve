@@ -70,29 +70,86 @@ export const ZpoolSpareSchema = z.object({
 	health: z.string()
 });
 
-export const ZpoolPropertySchema = z.object({
-	property: z.string(),
-	value: z.string(),
-	source: z.string()
+// export const ZpoolPropertySchema = z.object({
+// 	property: z.string(),
+// 	value: z.string(),
+// 	source: z.string()
+// });
+
+/* 
+type Zpool struct {
+	z *zfs `json:"-"`
+
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	State      string `json:"state"`
+	PoolGUID   string `json:"pool_guid"`
+	TXG        string `json:"txg"`
+	SPAVersion string `json:"spa_version"`
+	ZPLVersion string `json:"zpl_version"`
+
+	Properties map[string]ZpoolPropertyJSON `json:"properties"`
+	Vdevs      map[string]*ZpoolVdevJSON    `json:"vdevs"`
+}
+*/
+
+/* 
+type ZpoolPropertySource struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
+type ZpoolPropertyJSON struct {
+	Value  string              `json:"value"`
+	Source ZpoolPropertySource `json:"source"`
+}
+
+type ZpoolVdevJSON struct {
+	Name     string `json:"name"`
+	VdevType string `json:"vdev_type"`
+	GUID     string `json:"guid"`
+	Path     string `json:"path,omitempty"`
+	Class    string `json:"class"`
+	State    string `json:"state"`
+
+	Properties map[string]ZpoolPropertyJSON `json:"properties"`
+	Vdevs      map[string]*ZpoolVdevJSON    `json:"vdevs,omitempty"`
+}
+*/
+
+export const ZpoolPropertySourceSchema = z.object({
+	type: z.string(),
+	data: z.string()
 });
 
+export const ZpoolPropertySchema = z.object({
+	value: z.string(),
+	source: ZpoolPropertySourceSchema
+});
+
+export const ZpoolVdevSchema: z.ZodType<any> = z.lazy(() =>
+	z.object({
+		name: z.string(),
+		vdevType: z.string(),
+		guid: z.string(),
+		path: z.string().optional(),
+		class: z.string(),
+		state: z.string(),
+		properties: z.record(z.string(), ZpoolPropertySchema),
+		vdevs: z.record(z.string(), ZpoolVdevSchema).optional()
+	})
+);
+
 export const ZpoolSchema = z.object({
-	id: z.string(),
 	name: z.string(),
-	guid: z.string(),
-	health: z.string(),
-	allocated: z.number(),
-	size: z.number(),
-	free: z.number(),
-	readOnly: z.boolean(),
-	freeing: z.number(),
-	leaked: z.number(),
-	dedupRatio: z.number(),
-	vdevs: z.array(VdevSchema),
-	properties: z.array(ZpoolPropertySchema).optional().default([]),
-	status: ZpoolStatusSchema,
-	spares: z.array(ZpoolSpareSchema).optional().default([]),
-	cache: z.array(ZpoolSpareSchema).optional().default([])
+	type: z.string(),
+	state: z.string(),
+	pool_guid: z.string(),
+	TXG: z.string(),
+	spa_version: z.string(),
+	zpl_version: z.string(),
+	properties: z.record(z.string(), ZpoolPropertySchema),
+	vdevs: z.record(z.string(), ZpoolVdevSchema)
 });
 
 export const CreateVdevSchema = z.object({

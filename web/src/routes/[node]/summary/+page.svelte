@@ -6,6 +6,7 @@
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
 	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -261,6 +262,13 @@
 	let cpuUsageRef: Chart | null = $state(null);
 	let memoryUsageRef: Chart | null = $state(null);
 	let networkUsageRef: Chart | null = $state(null);
+
+	let cpuUsageData = $derived.by(() => {
+		return cpuInfoHistorical.current.map((data) => ({
+			date: new Date(data.createdAt).getTime(),
+			value: data.usage.toFixed(2)
+		}));
+	});
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -365,12 +373,39 @@
 					</Card.Content>
 				</Card.Root>
 
-				<AreaChart
+				<!-- <AreaChart
 					title="CPU / RAM Usage"
 					elements={[chartElements[1], chartElements[0], chartElements[2]]}
 					icon="icon-[solar--cpu-bold]"
 					chart={cpuUsageRef}
 					percentage={true}
+
+                    				<LineBrush
+					title="CPU Usage"
+					percentage={true}
+					containerContentHeight="h-64"
+					dataSets={[
+						{
+							name: 'CPU Usage',
+							color: 'one',
+							points: stats.current.map((data) => ({
+								date: new Date(data.createdAt).getTime(),
+								value: Number(data.cpuUsage)
+							}))
+						}
+					]}
+				/>
+				/> -->
+
+				<LineBrush
+					title="CPU Usage"
+					percentage={true}
+					points={cpuInfoHistorical.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.usage)
+					}))}
+					color="one"
+					containerContentHeight="h-64"
 				/>
 
 				<AreaChart

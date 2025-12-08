@@ -1,26 +1,28 @@
 package system
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
-	"github.com/alchemillahq/sylve/pkg/zfs"
+
 	"gorm.io/gorm"
 )
 
-func (s *Service) GetUsablePools() ([]*zfs.Zpool, error) {
+func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	var basicSettings models.BasicSettings
-	var pools []*zfs.Zpool
+	var pools []*gzfs.ZPool
 
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return pools, err
 	}
 
 	for _, name := range basicSettings.Pools {
-		pool, err := zfs.GetZpool(name)
+		pool, err := s.GZFS.Zpool.Get(ctx, name)
 		if err != nil {
 			return pools, err
 		}
@@ -31,22 +33,7 @@ func (s *Service) GetUsablePools() ([]*zfs.Zpool, error) {
 	return pools, nil
 }
 
-func (s *Service) GetValidPool(identifier string) (*zfs.Zpool, error) {
-	usable, err := s.GetUsablePools()
-	if err != nil {
-		return nil, fmt.Errorf("error_fetching_usable_pools: %w", err)
-	}
-
-	for _, pool := range usable {
-		if pool.Name == identifier || pool.GUID == identifier {
-			return pool, nil
-		}
-	}
-
-	return nil, nil
-}
-
-func (s *Service) Initialize(req systemServiceInterfaces.InitializeRequest) []error {
+func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.InitializeRequest) []error {
 	var basicSettings models.BasicSettings
 	err := s.DB.First(&basicSettings).Error
 
@@ -70,7 +57,7 @@ func (s *Service) Initialize(req systemServiceInterfaces.InitializeRequest) []er
 	}
 
 	for _, poolName := range req.Pools {
-		pool, err := zfs.GetZpool(poolName)
+		pool, err := s.GZFS.Zpool.Get(ctx, poolName)
 		if err != nil {
 			return []error{fmt.Errorf("invalid_pool_%s: %w", poolName, err)}
 		}
@@ -82,7 +69,8 @@ func (s *Service) Initialize(req systemServiceInterfaces.InitializeRequest) []er
 		toCreate := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
 		for _, dataset := range toCreate {
 			fullDatasetName := fmt.Sprintf("%s/%s", pool.Name, dataset)
-			sets, err := zfs.Datasets(fullDatasetName)
+			// sets, err := zfs.Datasets(fullDatasetName)
+			sets, err := s.GZFS.ZFS.List(ctx, false, fullDatasetName)
 			if err != nil {
 				if !strings.Contains(err.Error(), "dataset does not exist") {
 					return []error{fmt.Errorf("error_checking_dataset_%s: %w", fullDatasetName, err)}
@@ -91,14 +79,14 @@ func (s *Service) Initialize(req systemServiceInterfaces.InitializeRequest) []er
 
 			exists := len(sets) > 0
 			props := map[string]string{}
-			var newSets []*zfs.Dataset
 
+			var newSets []*gzfs.Dataset
 			if !exists {
-				created, err := zfs.CreateFilesystem(fullDatasetName, props)
+				created, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, props)
 				if err != nil {
 					if len(newSets) > 0 {
 						for _, ds := range newSets {
-							ds.Destroy(zfs.DestroyRecursive)
+							ds.Destroy(ctx, true, false)
 						}
 					}
 					return []error{fmt.Errorf("error_creating_dataset_%s: %w", fullDatasetName, err)}

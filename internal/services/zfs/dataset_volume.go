@@ -9,27 +9,34 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
-func (s *Service) CreateVolume(name string, parent string, props map[string]string) error {
+func (s *Service) CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	defer s.Libvirt.RescanStoragePools()
 
-	datasets, err := zfs.Datasets("")
+	datasets, err := s.GZFS.ZFS.ListByType(
+		ctx,
+		gzfs.DatasetTypeVolume,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
 	for _, dataset := range datasets {
-		if dataset.Name == fmt.Sprintf("%s/%s", parent, name) && dataset.Type == "volume" {
-			return fmt.Errorf("volume with name %s already exists", name)
+		if dataset.Name == fmt.Sprintf("%s/%s", parent, name) {
+			return fmt.Errorf("volume_already_exists")
 		}
 	}
 
@@ -40,32 +47,49 @@ func (s *Service) CreateVolume(name string, parent string, props map[string]stri
 	}
 
 	pSize := utils.HumanFormatToSize(props["size"])
+	zvol, err := s.GZFS.ZFS.CreateVolume(ctx, name, pSize, props)
 
-	_, err = zfs.CreateVolume(name, pSize, props)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if zvol == nil {
+		return fmt.Errorf("failed_to_create_volume")
+	}
+
+	if zvol.Name == "" {
+		return fmt.Errorf("failed_to_create_volume")
+	}
+
+	return nil
 }
 
-func (s *Service) EditVolume(name string, props map[string]string) error {
+func (s *Service) EditVolume(ctx context.Context, name string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	defer s.Libvirt.RescanStoragePools()
 
-	datasets, err := zfs.Datasets(name)
+	datasets, err := s.GZFS.ZFS.ListByType(
+		ctx,
+		gzfs.DatasetTypeVolume,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
 	for _, dataset := range datasets {
 		if dataset.Name == name && dataset.Type == "volume" {
-			return zfs.EditVolume(name, props)
+			return s.GZFS.ZFS.EditVolume(ctx, name, props)
 		}
 	}
 
-	return fmt.Errorf("volume with name %s not found", name)
+	return fmt.Errorf("volume_with_name_%s_not_found", name)
 }
 
-func (s *Service) DeleteVolume(guid string) error {
+func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	defer s.Libvirt.RescanStoragePools()
@@ -82,85 +106,92 @@ func (s *Service) DeleteVolume(guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
-	volumes, err := zfs.Volumes("")
+	volumes, err := s.GZFS.ZFS.ListByType(
+		ctx,
+		gzfs.DatasetTypeVolume,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
 	for _, volume := range volumes {
-		g, err := volume.GetProperty("guid")
-		if err != nil {
-			return err
-		}
-
-		if g == guid {
-			err := volume.Destroy(zfs.DestroyRecursive)
-			if err != nil {
+		if volume.GUID == guid {
+			if err := volume.Destroy(ctx, true, false); err != nil {
 				return err
 			}
 			return nil
 		}
 	}
 
-	return fmt.Errorf("volume with guid %s not found", guid)
+	return fmt.Errorf("volume_with_guid_%s_not_found", guid)
 }
 
-func (s *Service) FlashVolume(guid string, uuid string) error {
+func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := zfs.Volumes("")
+	datasets, err := s.GZFS.ZFS.ListByType(
+		ctx,
+		gzfs.DatasetTypeVolume,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
-	for _, dataset := range datasets {
-		properties, err := dataset.GetAllProperties()
-		if err != nil {
-			return err
+	var volume *gzfs.Dataset
+
+	for _, volume := range datasets {
+		if volume.GUID == guid {
+			volume = volume
+			break
+		}
+	}
+
+	if volume != nil {
+		if s.IsDatasetInUse(guid, false) {
+			return fmt.Errorf("dataset_in_use_by_vm")
 		}
 
-		for _, v := range properties {
-			if v == guid {
-				if s.IsDatasetInUse(guid, false) {
-					return fmt.Errorf("dataset_in_use_by_vm")
-				}
+		volsizeProp, err := volume.GetProperty(ctx, "volsize")
+		if err != nil {
+			return fmt.Errorf("failed_to_get_volume_size_property: %w", err)
+		}
 
-				if _, ok := properties["volsize"]; !ok {
-					return fmt.Errorf("invalid_dataset")
-				}
+		pSize := utils.StringToUint64(volsizeProp.Value)
 
-				pSize := utils.HumanFormatToSize(properties["volsize"])
-
-				if pSize > 0 {
-					file, err := s.Libvirt.FindISOByUUID(uuid, true)
-					if file == "" || err != nil {
-						return fmt.Errorf("iso_not_found")
-					}
-
-					fileInfo, err := os.Stat(file)
-					if err != nil {
-						return fmt.Errorf("failed_to_get_iso_file_info: %w", err)
-					}
-
-					if fileInfo.Size() > 0 && pSize >= uint64(fileInfo.Size()) {
-						if _, err := os.Stat(fmt.Sprintf("/dev/zvol/%s", dataset.Name)); err != nil {
-							return fmt.Errorf("zvol_not_found: %w", err)
-						} else {
-							output, err := utils.RunCommand("dd", "if="+file, "of=/dev/zvol/"+dataset.Name, "bs=4M")
-							if err != nil {
-								return fmt.Errorf("failed_to_flash_volume: %w, output: %s", err, output)
-							}
-
-							return nil
-						}
-					} else {
-						return fmt.Errorf("iso_size_exceeds_volume_size")
-					}
-				} else {
-					return fmt.Errorf("invalid_volume_size")
-				}
+		if pSize > 0 {
+			file, err := s.Libvirt.FindISOByUUID(uuid, true)
+			if file == "" || err != nil {
+				return fmt.Errorf("iso_not_found")
 			}
+
+			fileInfo, err := os.Stat(file)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_iso_file_info: %w", err)
+			}
+
+			if fileInfo.Size() > 0 && pSize >= uint64(fileInfo.Size()) {
+				if _, err := os.Stat(fmt.Sprintf("/dev/zvol/%s", volume.Name)); err != nil {
+					return fmt.Errorf("zvol_not_found: %w", err)
+				} else {
+					output, err := utils.RunCommand("dd", "if="+file, "of=/dev/zvol/"+volume.Name, "bs=4M")
+					if err != nil {
+						return fmt.Errorf("failed_to_flash_volume: %w, output: %s", err, output)
+					}
+
+					return nil
+				}
+			} else {
+				return fmt.Errorf("iso_size_exceeds_volume_size")
+			}
+		} else {
+			return fmt.Errorf("invalid_volume_size")
 		}
 	}
 

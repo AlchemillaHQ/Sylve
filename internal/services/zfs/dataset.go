@@ -9,29 +9,45 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
-func (s *Service) GetDatasets(t string) ([]*zfs.Dataset, error) {
+func (s *Service) GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, error) {
 	var (
-		datasets []*zfs.Dataset
+		datasets []*gzfs.Dataset
 		err      error
 	)
 
 	switch t {
 	case "", "all":
-		datasets, err = zfs.Datasets("")
+		datasets, err = s.GZFS.ZFS.List(ctx, true)
 	case "filesystem":
-		datasets, err = zfs.Filesystems("")
+		datasets, err = s.GZFS.ZFS.ListByType(
+			ctx,
+			gzfs.DatasetTypeFilesystem,
+			true,
+			"",
+		)
 	case "snapshot":
-		datasets, err = zfs.Snapshots("")
+		datasets, err = s.GZFS.ZFS.ListByType(
+			ctx,
+			gzfs.DatasetTypeSnapshot,
+			true,
+			"",
+		)
 	case "volume":
-		datasets, err = zfs.Volumes("")
+		datasets, err = s.GZFS.ZFS.ListByType(
+			ctx,
+			gzfs.DatasetTypeVolume,
+			true,
+			"",
+		)
 	default:
 		return nil, fmt.Errorf("unknown dataset type %q", t)
 	}
@@ -40,7 +56,7 @@ func (s *Service) GetDatasets(t string) ([]*zfs.Dataset, error) {
 		return nil, err
 	}
 
-	pools, err := s.GetUsablePools()
+	pools, err := s.GetUsablePools(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -50,15 +66,14 @@ func (s *Service) GetDatasets(t string) ([]*zfs.Dataset, error) {
 		usablePools[pool.Name] = struct{}{}
 	}
 
-	filtered := make([]*zfs.Dataset, 0, len(datasets))
+	filtered := make([]*gzfs.Dataset, 0, len(datasets))
 	for _, dataset := range datasets {
-		dPool, err := s.PoolFromDataset(dataset.Name)
-		if err != nil {
-			logger.L.Err(err).Msgf("failed to get pool from dataset %s", dataset.Name)
+		if dataset.Pool == "" {
+			logger.L.Warn().Msgf("dataset %s has no pool associated!!", dataset.Name)
 			continue
 		}
 
-		if _, ok := usablePools[dPool]; !ok {
+		if _, ok := usablePools[dataset.Pool]; !ok {
 			continue
 		}
 
@@ -68,8 +83,12 @@ func (s *Service) GetDatasets(t string) ([]*zfs.Dataset, error) {
 	return filtered, nil
 }
 
-func (s *Service) GetDatasetByGUID(guid string) (*zfs.Dataset, error) {
-	datasets, err := zfs.Datasets("")
+func (s *Service) GetDatasetByGUID(guid string) (*gzfs.Dataset, error) {
+	datasets, err := s.GZFS.ZFS.List(
+		context.Background(),
+		true,
+	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +102,14 @@ func (s *Service) GetDatasetByGUID(guid string) (*zfs.Dataset, error) {
 	return nil, fmt.Errorf("dataset with guid %s not found", guid)
 }
 
-func (s *Service) GetSnapshotByGUID(guid string) (*zfs.Dataset, error) {
-	datasets, err := zfs.Snapshots("")
+func (s *Service) GetSnapshotByGUID(guid string) (*gzfs.Dataset, error) {
+	datasets, err := s.GZFS.ZFS.ListByType(
+		context.Background(),
+		gzfs.DatasetTypeSnapshot,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -98,33 +123,45 @@ func (s *Service) GetSnapshotByGUID(guid string) (*zfs.Dataset, error) {
 	return nil, fmt.Errorf("snapshot with guid %s not found", guid)
 }
 
-func (s *Service) GetFsOrVolByGUID(guid string) (*zfs.Dataset, error) {
-	filesystems, err := zfs.Filesystems("")
+func (s *Service) GetFsOrVolByGUID(guid string) (*gzfs.Dataset, error) {
+	vols, err := s.GZFS.ZFS.ListByType(
+		context.Background(),
+		gzfs.DatasetTypeVolume,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
-	for _, fs := range filesystems {
-		if fs.GUID == guid {
-			return fs, nil
+	for _, dataset := range vols {
+		if dataset.GUID == guid {
+			return dataset, nil
 		}
 	}
 
-	volumes, err := zfs.Volumes("")
+	fs, err := s.GZFS.ZFS.ListByType(
+		context.Background(),
+		gzfs.DatasetTypeFilesystem,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
-	for _, vol := range volumes {
-		if vol.GUID == guid {
-			return vol, nil
+	for _, dataset := range fs {
+		if dataset.GUID == guid {
+			return dataset, nil
 		}
 	}
 
 	return nil, fmt.Errorf("filesystem or volume with guid %s not found", guid)
 }
 
-func (s *Service) BulkDeleteDataset(guids []string) error {
+func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	defer s.Libvirt.RescanStoragePools()
@@ -140,12 +177,17 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 		return fmt.Errorf("datasets_in_use_by_vm")
 	}
 
-	datasets, err := zfs.Datasets("")
+	datasets, err := s.GZFS.ZFS.List(
+		ctx,
+		true,
+		"",
+	)
+
 	if err != nil {
 		return err
 	}
 
-	available := make(map[string]*zfs.Dataset)
+	available := make(map[string]*gzfs.Dataset)
 	for _, ds := range datasets {
 		available[ds.GUID] = ds
 	}
@@ -165,8 +207,8 @@ func (s *Service) BulkDeleteDataset(guids []string) error {
 	}
 
 	for _, guid := range guids {
-		if err := available[guid].Destroy(zfs.DestroyRecursive); err != nil {
-			return fmt.Errorf("failed to delete dataset with guid %s: %w", guid, err)
+		if err := available[guid].Destroy(ctx, true, false); err != nil {
+			return fmt.Errorf("failed_to_delete_dataset_with_guid_%s:_%w", guid, err)
 		}
 	}
 

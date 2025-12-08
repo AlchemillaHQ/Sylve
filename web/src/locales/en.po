@@ -675,6 +675,8 @@ msgstr "Name"
 msgid "Size"
 msgstr "Size"
 
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
 msgstr "Usage"
@@ -1065,6 +1067,7 @@ msgstr "Failed to delete notes"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
@@ -1121,9 +1124,10 @@ msgstr "Boot Mode"
 msgid "Sylve Version"
 msgstr "Sylve Version"
 
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
 msgstr "Memory Usage"
 
@@ -2859,6 +2863,7 @@ msgstr "New Network"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Switch"
 msgstr "Switch"
@@ -5228,9 +5233,8 @@ msgstr "Cannot replace with smaller device"
 #~ msgid "CPU/RAM Usage"
 #~ msgstr "CPU/RAM Usage"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "CPU / RAM Usage"
-msgstr "CPU / RAM Usage"
+#~ msgid "CPU / RAM Usage"
+#~ msgstr "CPU / RAM Usage"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
@@ -5898,3 +5902,44 @@ msgstr "Background"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Foreground"
 msgstr "Foreground"
+
+#~ msgid "ECharts Example"
+#~ msgstr "ECharts Example"
+
+#~ msgid "Mon"
+#~ msgstr "Mon"
+
+#~ msgid "Tue"
+#~ msgstr "Tue"
+
+#~ msgid "Wed"
+#~ msgstr "Wed"
+
+#~ msgid "Thu"
+#~ msgstr "Thu"
+
+#~ msgid "Fri"
+#~ msgstr "Fri"
+
+#~ msgid "Sat"
+#~ msgstr "Sat"
+
+#~ msgid "Sun"
+#~ msgstr "Sun"
+
+#~ msgid "EChart Example"
+#~ msgstr "EChart Example"
+
+#~ msgid "This is an example of ECharts integration in Svelte."
+#~ msgstr "This is an example of ECharts integration in Svelte."
+
+#~ msgid "Usage over time"
+#~ msgstr "Usage over time"
+
+#~ msgid "Usage chart with brushable time range."
+#~ msgstr "Usage chart with brushable time range."
+
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
+msgid "Save As Image"
+msgstr "Save As Image"

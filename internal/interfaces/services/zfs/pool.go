@@ -8,14 +8,24 @@
 
 package zfsServiceInterfaces
 
+type RaidType string
+
+const (
+	RaidTypeStripe RaidType = "stripe"
+	RaidTypeMirror RaidType = "mirror"
+	RaidTypeRaidZ  RaidType = "raidz"
+	RaidTypeRaidZ2 RaidType = "raidz2"
+	RaidTypeRaidZ3 RaidType = "raidz3"
+)
+
 type Vdev struct {
 	Name        string   `json:"name"`
 	VdevDevices []string `json:"devices"`
 }
 
-type Zpool struct {
+type CreateZPoolRequest struct {
 	Name        string            `json:"name" binding:"required,alphanum,min=1,max=24"`
-	RaidType    string            `json:"raidType" binding:"omitempty,oneof= mirror raidz raidz2 raidz3"`
+	RaidType    RaidType          `json:"raidType" binding:"required`
 	Vdevs       []Vdev            `json:"vdevs"`
 	Properties  map[string]string `json:"properties"`
 	CreateForce bool              `json:"createForce"`

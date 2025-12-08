@@ -31,7 +31,9 @@ func Initialize(sS *system.Service) gin.HandlerFunc {
 			return
 		}
 
-		errs := sS.Initialize(req)
+		ctx := c.Request.Context()
+		errs := sS.Initialize(ctx, req)
+
 		if len(errs) > 0 {
 			var errMessages []string
 			for _, err := range errs {

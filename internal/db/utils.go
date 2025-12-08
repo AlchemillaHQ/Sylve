@@ -30,6 +30,19 @@ func GetHistorical[T any](db *gorm.DB, limit int) ([]T, error) {
 	return records, nil
 }
 
+func GetAll[T any](db *gorm.DB) ([]T, error) {
+	var records []T
+
+	err := db.
+		Order("created_at ASC").
+		Find(&records).Error
+
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 func StoreAndTrimRecords[T any](db *gorm.DB, model *T, limit int) {
 	db.Create(model)
 

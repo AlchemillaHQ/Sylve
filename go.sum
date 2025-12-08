@@ -6,6 +6,14 @@ github.com/DataDog/zstd v1.5.2/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwS
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
 github.com/Sereal/Sereal/Go/sereal v0.0.0-20231009093132-b9187f1a92c6/go.mod h1:JwrycNnC8+sZPDyzM3MQ86LvaGzSpfxg885KOOwFRW4=
+github.com/alchemillahq/gzfs v0.0.0-20251208184201-a4917cf2566f h1:o34uFpzF7wyELRCQiQZoyfNy8VZGjZqdbeEyprToywI=
+github.com/alchemillahq/gzfs v0.0.0-20251208184201-a4917cf2566f/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/alchemillahq/gzfs v0.0.0-20251208213505-234d4ffa3877 h1:XSzliE4ms69Dd9v6oA55inIV41DQ6RX4iNNInGUUgfM=
+github.com/alchemillahq/gzfs v0.0.0-20251208213505-234d4ffa3877/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/alchemillahq/gzfs v0.0.0-20251208215402-93d7462d7ab5 h1:h/IBCvXJ0F3D62CjOg5u3sOz0pKwnbawi4iNiI2l2bk=
+github.com/alchemillahq/gzfs v0.0.0-20251208215402-93d7462d7ab5/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/alchemillahq/gzfs v0.0.0-20251208225115-c76d3e50fa85 h1:MBU9OTZl8S8/tyFgk4XH6t4qvB/cgWf5cW8MA5ZriN0=
+github.com/alchemillahq/gzfs v0.0.0-20251208225115-c76d3e50fa85/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=

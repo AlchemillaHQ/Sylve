@@ -78,7 +78,10 @@ func main() {
 
 	go db.StartQueue(qCtx)
 
-	err := sS.Initialize(aS.(*auth.Service))
+	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer initCancel()
+
+	err := sS.Initialize(aS.(*auth.Service), initContext)
 
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")

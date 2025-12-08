@@ -9,6 +9,7 @@
 package zfsHandlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,7 +17,6 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 
 	"github.com/alchemillahq/sylve/internal/db"
-	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/system"
@@ -54,58 +54,6 @@ type PoolEditRequest struct {
 	Spares     []string          `json:"spares,omitempty"`
 }
 
-// @Summary Get Average IO Delay
-// @Description Get the average IO delay of all pools
-// @Tags ZFS
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[AvgIODelayResponse] "Success"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /zfs/pool/avg-io-delay [get]
-func AvgIODelay(zfsService *zfs.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		info := zfsUtils.GetTotalIODelay()
-		c.JSON(http.StatusOK, internal.APIResponse[AvgIODelayResponse]{
-			Status:  "success",
-			Message: "avg_io_delay",
-			Error:   "",
-			Data:    AvgIODelayResponse{Delay: info},
-		})
-	}
-}
-
-// @Summary Get Average IO Delay Historical
-// @Description Get the historical IO delays of all pools
-// @Tags ZFS
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[[]infoModels.IODelay] "Success"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /zfs/pool/io-delay/historical [get]
-func AvgIODelayHistorical(zfsService *zfs.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		info, err := zfsService.GetTotalIODelayHisorical()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[[]infoModels.IODelay]{
-			Status:  "success",
-			Message: "avg_io_delay_historical",
-			Error:   "",
-			Data:    info,
-		})
-	}
-}
-
 // @Summary Get Pools
 // @Description Get all ZFS pools
 // @Tags ZFS
@@ -121,10 +69,12 @@ func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.Handle
 		var err error
 
 		all := c.Query("all")
+		ctx := c.Request.Context()
+
 		if all == "true" {
-			pools, err = zfsUtils.ListZpools()
+			pools, err = systemService.GZFS.Zpool.List(ctx)
 		} else {
-			pools, err = systemService.GetUsablePools()
+			pools, err = systemService.GetUsablePools(ctx)
 		}
 
 		if err != nil {
@@ -157,12 +107,16 @@ func GetPools(zfsService *zfs.Service, systemService *system.Service) gin.Handle
 // @Router /zfs/pools/disk-usage [get]
 func GetDisksUsage(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		fmt.Println(1)
+
 		poolDisksUsageResponse := PoolDisksUsageResponse{
 			Usage: 0,
+			Total: 0,
 		}
 
 		pools, err := zfsUtils.ListZpools()
 		if err != nil {
+			fmt.Println("Error listing zpools:", err)
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -172,13 +126,51 @@ func GetDisksUsage(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
+		fmt.Println(2)
+
 		var totalSize uint64
 		var totalUsed uint64
 
 		for _, pool := range pools {
-			totalSize += pool.Size
-			totalUsed += pool.Allocated
+			hasErr := false
+			fmt.Println(2.1)
+			sizeProp, err := pool.GetProperty("size")
+			fmt.Println("After GetProperty size")
+			if err != nil {
+				fmt.Println("Error getting size property:", err)
+				hasErr = true
+			}
+
+			fmt.Println(2.2)
+
+			fmt.Println("sizeProp", sizeProp, err)
+
+			usedProp, err := pool.GetProperty("alloc")
+			if err != nil {
+				fmt.Println("Error getting used property:", err)
+				hasErr = true
+			}
+			// sizeProp := pool.Properties["size"]
+			// usedProp := pool.Properties["alloc"]
+
+			if hasErr {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "internal_server_error",
+					Error:   "failed_to_get_pool_size_or_used_property",
+					Data:    &poolDisksUsageResponse,
+				})
+				return
+			}
+
+			size := zfsUtils.ParseSize(sizeProp.Value)
+			used := zfsUtils.ParseSize(usedProp.Value)
+
+			totalSize += size
+			totalUsed += used
 		}
+
+		fmt.Println(3)
 
 		var usage float64
 		if totalSize > 0 {
@@ -210,7 +202,7 @@ func GetDisksUsage(zfsService *zfs.Service) gin.HandlerFunc {
 // @Router /zfs/pools [post]
 func CreatePool(infoService *info.Service, zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request zfsServiceInterfaces.Zpool
+		var request zfsServiceInterfaces.CreateZPoolRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",

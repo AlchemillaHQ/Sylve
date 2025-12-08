@@ -29,6 +29,7 @@ func (s *Service) CheckVirtualization() error {
 		"u-boot-bhyve-arm64",
 		"jansson",
 		"swtpm",
+		"qemu-tools",
 	}
 
 	for _, p := range requiredPackages {

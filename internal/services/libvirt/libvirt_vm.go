@@ -9,6 +9,7 @@
 package libvirt
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -343,7 +344,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	return string(out), nil
 }
 
-func (s *Service) CreateLvVm(id int) error {
+func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
@@ -362,13 +363,13 @@ func (s *Service) CreateLvVm(id int) error {
 		return err
 	}
 
-	err = s.CreateStorageParent(vm.RID, "")
+	err = s.CreateStorageParent(vm.RID, "", ctx)
 
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
 			if storage.Type == vmModels.VMStorageTypeRaw ||
 				storage.Type == vmModels.VMStorageTypeZVol {
-				err = s.CreateVMDisk(vm.RID, storage)
+				err = s.CreateVMDisk(vm.RID, storage, ctx)
 
 				if err != nil {
 					return err

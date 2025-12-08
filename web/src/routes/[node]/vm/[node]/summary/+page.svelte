@@ -30,6 +30,8 @@
 	import type { GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LayerBrush from '$lib/components/custom/Charts/LayerBrush.svelte';
+	import EChart from '$lib/components/custom/Charts/EChartSample.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush.svelte';
 
 	interface Data {
 		rid: number;
@@ -64,8 +66,8 @@
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
-			const result = await getStats(Number(data.vm.rid), gfsStep);
-			const key = `vm-stats-${data.vm.rid}`;
+			const result = await getStats(Number(data.vm.id), gfsStep);
+			const key = `vm-stats-${data.vm.id}`;
 			updateCache(key, result);
 			return result;
 		},
@@ -438,30 +440,15 @@
 			</div>
 
 			<div class="space-y-4 px-4 pb-4">
-				<LayerBrush
-					color="chart-1"
+				<LineBrush
+					title="CPU Usage"
 					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt),
-						value: Number(data.memoryUsage)
-					}))}
-					maxY={100}
-					label="Memory Usage"
-					showPoints={false}
-					type="percentage"
-					{gfsStep}
-				/>
-
-				<LayerBrush
-					color="chart-2"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt),
+						date: new Date(data.createdAt).getTime(),
 						value: Number(data.cpuUsage)
 					}))}
-					maxY={100}
-					label="CPU Usage"
-					showPoints={false}
-					type="percentage"
-					{gfsStep}
+					percentage={true}
+					color="one"
+					containerContentHeight="h-64"
 				/>
 			</div>
 		</ScrollArea>
