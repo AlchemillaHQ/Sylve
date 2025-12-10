@@ -8,10 +8,14 @@
 
 package sambaServiceInterfaces
 
-import sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+import (
+	"context"
+
+	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+)
 
 type SambaServiceInterface interface {
-	WriteConfig(reload bool) error
+	WriteConfig(ctx context.Context, reload bool) error
 	ParseAuditLogs() error
 }
 

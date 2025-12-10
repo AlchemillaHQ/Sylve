@@ -51,7 +51,14 @@ func (r ReflectRow) GetID() uint {
 		return 0
 	}
 
-	return uint(idField.Uint())
+	switch idField.Kind() {
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return uint(idField.Uint())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return uint(idField.Int())
+	default:
+		return 0
+	}
 }
 
 func (r ReflectRow) GetCreatedAt() time.Time {

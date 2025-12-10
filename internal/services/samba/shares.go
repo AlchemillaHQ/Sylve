@@ -9,12 +9,12 @@
 package samba
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
 func (s *Service) GetShares() ([]sambaModels.SambaShare, error) {
@@ -26,6 +26,7 @@ func (s *Service) GetShares() ([]sambaModels.SambaShare, error) {
 }
 
 func (s *Service) CreateShare(
+	ctx context.Context,
 	name string,
 	dataset string,
 	readOnlyGroups []string,
@@ -42,18 +43,9 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("cannot_create_read_only_share_with_read_only_groups")
 	}
 
-	datasets, err := zfs.Filesystems("")
+	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
 	if err != nil {
-		return fmt.Errorf("failed_to_fetch_datasets: %v", err)
-	}
-
-	var fDataset *zfs.Dataset
-
-	for _, ds := range datasets {
-		if ds.GUID == dataset {
-			fDataset = ds
-			break
-		}
+		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
 	}
 
 	if fDataset == nil {
@@ -110,10 +102,11 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("failed_to_create_share: %w", err)
 	}
 
-	return s.WriteConfig(true)
+	return s.WriteConfig(ctx, true)
 }
 
 func (s *Service) UpdateShare(
+	ctx context.Context,
 	id uint,
 	name string,
 	dataset string,
@@ -157,18 +150,9 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("cannot_create_read_only_share_with_read_only_groups")
 	}
 
-	datasets, err := zfs.Filesystems("")
+	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
 	if err != nil {
-		return fmt.Errorf("failed_to_fetch_datasets: %v", err)
-	}
-
-	var fDataset *zfs.Dataset
-
-	for _, ds := range datasets {
-		if ds.GUID == dataset {
-			fDataset = ds
-			break
-		}
+		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
 	}
 
 	if fDataset == nil {
@@ -250,10 +234,10 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return s.WriteConfig(true)
+	return s.WriteConfig(ctx, true)
 }
 
-func (s *Service) DeleteShare(id uint) error {
+func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 	var share sambaModels.SambaShare
 	if err := s.DB.Where("id = ?", id).First(&share).Error; err != nil {
 		return fmt.Errorf("share_not_found: %w", err)
@@ -263,5 +247,5 @@ func (s *Service) DeleteShare(id uint) error {
 		return fmt.Errorf("failed_to_delete_share: %w", err)
 	}
 
-	return s.WriteConfig(true)
+	return s.WriteConfig(ctx, true)
 }

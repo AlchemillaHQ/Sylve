@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -24,7 +26,6 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 	cpuid "github.com/klauspost/cpuid/v2"
 
 	"gorm.io/gorm"
@@ -38,6 +39,7 @@ type Service struct {
 	DB             *gorm.DB
 	NetworkService networkServiceInterfaces.NetworkServiceInterface
 	System         systemServiceInterfaces.SystemServiceInterface
+	GZFS           *gzfs.Client
 
 	crudMutex sync.Mutex
 }
@@ -45,11 +47,13 @@ type Service struct {
 func NewJailService(
 	db *gorm.DB,
 	networkService networkServiceInterfaces.NetworkServiceInterface,
-	systemService systemServiceInterfaces.SystemServiceInterface) jailServiceInterfaces.JailServiceInterface {
+	systemService systemServiceInterfaces.SystemServiceInterface,
+	gzfs *gzfs.Client) jailServiceInterfaces.JailServiceInterface {
 	return &Service{
 		DB:             db,
 		NetworkService: networkService,
 		System:         systemService,
+		GZFS:           gzfs,
 	}
 }
 
@@ -137,7 +141,7 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 	return list, nil
 }
 
-func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) error {
+func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error {
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -158,7 +162,7 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 		return fmt.Errorf("invalid_jail_type")
 	}
 
-	pools, err := s.System.GetUsablePools()
+	pools, err := s.System.GetUsablePools(ctx)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
 	}
@@ -188,14 +192,14 @@ func (s *Service) ValidateCreate(data jailServiceInterfaces.CreateJailRequest) e
 		return fmt.Errorf("download_uuid_required")
 	}
 
-	existingDatasets, err := zfs.Datasets(fmt.Sprintf("%s/sylve/jails/%d", foundPool, *data.CTID))
+	existingDataset, err := s.GZFS.ZFS.Get(ctx, fmt.Sprintf("%s/sylve/jails/%d", foundPool, *data.CTID), false)
 	if err != nil {
 		if !strings.Contains(err.Error(), "dataset does not exist") {
 			return fmt.Errorf("failed_to_get_existing_datasets: %w", err)
 		}
 	}
 
-	if len(existingDatasets) > 0 {
+	if existingDataset != nil {
 		return fmt.Errorf("jail_base_fs_with_ctid_already_exists")
 	}
 
@@ -785,7 +789,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	return cfg, nil
 }
 
-func (s *Service) rollbackJailCreation(state *jailServiceInterfaces.JailCreationState) {
+func (s *Service) rollbackJailCreation(ctx context.Context, state *jailServiceInterfaces.JailCreationState) {
 	if state == nil {
 		return
 	}
@@ -798,14 +802,16 @@ func (s *Service) rollbackJailCreation(state *jailServiceInterfaces.JailCreation
 	}
 
 	if state.DatasetName != "" {
-		dataset, err := zfs.Datasets(state.DatasetName)
+		ds, err := s.GZFS.ZFS.Get(ctx, state.DatasetName, false)
 		if err != nil {
 			logger.L.Error().Err(err).Str("dataset", state.DatasetName).
-				Msg("rollback_jail_creation: failed to list datasets")
-		}
-
-		if len(dataset) == 1 {
-			dataset[0].Destroy(zfs.DestroyRecursive)
+				Msg("rollback_jail_creation: failed to get dataset")
+		} else if ds != nil {
+			err := ds.Destroy(ctx, true, false)
+			if err != nil {
+				logger.L.Error().Err(err).Str("dataset", state.DatasetName).
+					Msg("rollback_jail_creation: failed to destroy dataset")
+			}
 		}
 	}
 
@@ -817,8 +823,8 @@ func (s *Service) rollbackJailCreation(state *jailServiceInterfaces.JailCreation
 	}
 }
 
-func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err error) {
-	if err = s.ValidateCreate(data); err != nil {
+func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) (err error) {
+	if err = s.ValidateCreate(ctx, data); err != nil {
 		logger.L.Debug().Err(err).Msg("create_jail: validation failed")
 		return err
 	}
@@ -836,7 +842,7 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 	defer func() {
 		if err != nil && !txCommitted {
 			_ = tx.Rollback()
-			s.rollbackJailCreation(state)
+			s.rollbackJailCreation(ctx, state)
 		}
 	}()
 
@@ -1057,15 +1063,16 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 		jail.InheritIPv6 = *data.InheritIPv6
 	}
 
-	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, *data.CTID) // pool dataset name
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", data.Pool, *data.CTID) // actual mount path
+	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, *data.CTID)
+	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", data.Pool, *data.CTID)
 
-	var dataset *zfs.Dataset
-	dataset, err = zfs.CreateFilesystem(datasetName, map[string]string{})
+	var dataset *gzfs.Dataset
+	dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, datasetName, map[string]string{})
 	if err != nil || dataset == nil {
 		if err == nil {
 			err = fmt.Errorf("nil_dataset_returned")
 		}
+
 		err = fmt.Errorf("failed_to_create_jail_dataset: %w", err)
 		return
 	}
@@ -1135,7 +1142,7 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 	// From this point on, we need to handle rollback manually if anything fails
 	defer func() {
 		if err != nil {
-			s.rollbackJailCreation(state)
+			s.rollbackJailCreation(ctx, state)
 			// Also delete the jail record from database
 			if deleteErr := s.DB.Delete(&jail).Error; deleteErr != nil {
 				logger.L.Error().Err(deleteErr).Uint("ctid", jail.CTID).
@@ -1211,7 +1218,7 @@ func (s *Service) CreateJail(data jailServiceInterfaces.CreateJailRequest) (err 
 	return nil
 }
 
-func (s *Service) DeleteJail(ctId uint, deleteMacs bool, deleteRootFS bool) error {
+func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error {
 	if ctId == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
@@ -1284,16 +1291,17 @@ func (s *Service) DeleteJail(ctId uint, deleteMacs bool, deleteRootFS bool) erro
 		if jail.Storages != nil && len(jail.Storages) > 0 {
 			for _, storage := range jail.Storages {
 				if storage.IsBase {
-					datasets, err := zfs.Datasets(fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId))
+					dataset, err := s.GZFS.ZFS.Get(ctx, fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId), true)
 					if err != nil {
-						return fmt.Errorf("failed_to_get_datasets_for_storage: %w", err)
-
+						return fmt.Errorf("failed_to_get_dataset_for_storage: %w", err)
 					}
 
-					if len(datasets) == 1 {
-						if err := datasets[0].Destroy(zfs.DestroyRecursive); err != nil {
-							return fmt.Errorf("failed_to_destroy_storage_dataset: %w", err)
-						}
+					if dataset == nil {
+						continue
+					}
+
+					if err := dataset.Destroy(ctx, false, false); err != nil {
+						return fmt.Errorf("failed_to_destroy_storage_dataset: %w", err)
 					}
 				}
 			}

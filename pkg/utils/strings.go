@@ -866,3 +866,35 @@ func HashPasswordSHA512(password string) (string, error) {
 
 	return strings.TrimSpace(output), nil
 }
+
+func IsValidZFSPoolName(name string) bool {
+	reserved := []string{"log", "mirror", "raidz", "raidz1", "raidz2", "raidz3", "spare"}
+
+	if name == "" {
+		return false
+	}
+
+	for _, r := range reserved {
+		if strings.HasPrefix(name, r) {
+			return false
+		}
+	}
+
+	if !regexp.MustCompile(`^[a-zA-Z]`).MatchString(name) {
+		return false
+	}
+
+	if !regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`).MatchString(name) {
+		return false
+	}
+
+	if strings.Contains(name, "%") {
+		return false
+	}
+
+	if regexp.MustCompile(`^c[0-9]`).MatchString(name) {
+		return false
+	}
+
+	return true
+}

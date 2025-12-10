@@ -12,11 +12,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
-	zfsUtils "github.com/alchemillahq/sylve/pkg/zfs"
 
 	"github.com/gin-gonic/gin"
 )
@@ -64,10 +64,10 @@ type FlashVolumeRequest struct {
 }
 
 type DatasetListResponse struct {
-	Status  string              `json:"status"`
-	Message string              `json:"message"`
-	Error   string              `json:"error"`
-	Data    []*zfsUtils.Dataset `json:"data"`
+	Status  string          `json:"status"`
+	Message string          `json:"message"`
+	Error   string          `json:"error"`
+	Data    []*gzfs.Dataset `json:"data"`
 }
 
 // @Summary Get all ZFS datasets
@@ -97,7 +97,7 @@ func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[[]*zfsUtils.Dataset]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]*gzfs.Dataset]{
 			Status:  "success",
 			Message: "datasets",
 			Error:   "",
@@ -128,7 +128,8 @@ func DeleteSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			r = true
 		}
 
-		err := zfsService.DeleteSnapshot(guid, r)
+		ctx := c.Request.Context()
+		err := zfsService.DeleteSnapshot(ctx, guid, r)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -174,7 +175,8 @@ func CreateSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.CreateSnapshot(request.GUID, request.Name, request.Recursive)
+		ctx := c.Request.Context()
+		err := zfsService.CreateSnapshot(ctx, request.GUID, request.Name, request.Recursive)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -219,7 +221,8 @@ func RollbackSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := zfsService.RollbackSnapshot(request.GUID, request.DestroyMoreRecent)
+		ctx := c.Request.Context()
+		err := zfsService.RollbackSnapshot(ctx, request.GUID, request.DestroyMoreRecent)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -378,7 +381,8 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = zfsService.AddPeriodicSnapshot(request)
+		ctx := c.Request.Context()
+		err = zfsService.AddPeriodicSnapshot(ctx, request)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

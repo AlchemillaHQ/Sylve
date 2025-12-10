@@ -47,9 +47,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error connecting to database: %v", err)
 	}
 
-	db = db.Session(&gorm.Session{
-		PrepareStmt: true,
-	})
+	// db = db.Session(&gorm.Session{
+	// 	PrepareStmt: true,
+	// })
 
 	db.Exec("PRAGMA foreign_keys = OFF")
 	db.Exec("PRAGMA journal_mode = WAL")

@@ -70,53 +70,6 @@ export const ZpoolSpareSchema = z.object({
 	health: z.string()
 });
 
-// export const ZpoolPropertySchema = z.object({
-// 	property: z.string(),
-// 	value: z.string(),
-// 	source: z.string()
-// });
-
-/* 
-type Zpool struct {
-	z *zfs `json:"-"`
-
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	State      string `json:"state"`
-	PoolGUID   string `json:"pool_guid"`
-	TXG        string `json:"txg"`
-	SPAVersion string `json:"spa_version"`
-	ZPLVersion string `json:"zpl_version"`
-
-	Properties map[string]ZpoolPropertyJSON `json:"properties"`
-	Vdevs      map[string]*ZpoolVdevJSON    `json:"vdevs"`
-}
-*/
-
-/* 
-type ZpoolPropertySource struct {
-	Type string `json:"type"`
-	Data string `json:"data"`
-}
-
-type ZpoolPropertyJSON struct {
-	Value  string              `json:"value"`
-	Source ZpoolPropertySource `json:"source"`
-}
-
-type ZpoolVdevJSON struct {
-	Name     string `json:"name"`
-	VdevType string `json:"vdev_type"`
-	GUID     string `json:"guid"`
-	Path     string `json:"path,omitempty"`
-	Class    string `json:"class"`
-	State    string `json:"state"`
-
-	Properties map[string]ZpoolPropertyJSON `json:"properties"`
-	Vdevs      map[string]*ZpoolVdevJSON    `json:"vdevs,omitempty"`
-}
-*/
-
 export const ZpoolPropertySourceSchema = z.object({
 	type: z.string(),
 	data: z.string()
@@ -127,16 +80,63 @@ export const ZpoolPropertySchema = z.object({
 	source: ZpoolPropertySourceSchema
 });
 
+/* 
+type ZPoolVDEV struct {
+	Name     string `json:"name"`
+	VdevType string `json:"vdev_type"`
+	GUID     string `json:"guid"`
+	Path     string `json:"path"`
+	PhysPath string `json:"phys_path"`
+	Class    string `json:"class"`
+	State    string `json:"state"`
+
+	Size          uint64  `json:"size"`
+	Free          uint64  `json:"free"`
+	Alloc         uint64  `json:"allocated"`
+	Fragmentation float64 `json:"fragmentation"`
+
+	Properties map[string]ZFSProperty `json:"properties"`
+	Vdevs      map[string]*ZPoolVDEV  `json:"vdevs"`
+}
+
+type ZPool struct {
+	z *zpool `json:"-"`
+
+	Name       string     `json:"name"`
+	Type       string     `json:"type"`
+	State      ZPoolState `json:"state"`
+	PoolGUID   string     `json:"pool_guid"`
+	TXG        string     `json:"txg"`
+	SPAVersion string     `json:"spa_version"`
+	ZPLVersion string     `json:"zpl_version"`
+
+	Size          uint64  `json:"size"`
+	Free          uint64  `json:"free"`
+	Alloc         uint64  `json:"allocated"`
+	Fragmentation float64 `json:"fragmentation"`
+	DedupRatio    float64 `json:"dedup_ratio"`
+
+	Properties map[string]ZFSProperty `json:"properties"`
+	Vdevs      map[string]*ZPoolVDEV  `json:"vdevs"`
+}
+*/
 export const ZpoolVdevSchema: z.ZodType<any> = z.lazy(() =>
 	z.object({
 		name: z.string(),
-		vdevType: z.string(),
+		vdev_type: z.string(), // see next point
 		guid: z.string(),
 		path: z.string().optional(),
+		phys_path: z.string().optional().nullable(),
 		class: z.string(),
 		state: z.string(),
-		properties: z.record(z.string(), ZpoolPropertySchema),
-		vdevs: z.record(z.string(), ZpoolVdevSchema).optional()
+
+		size: z.number(),
+		free: z.number(),
+		allocated: z.number(),
+		fragmentation: z.number().optional(),
+
+		properties: z.record(z.string(), ZpoolPropertySchema).nullable().optional(),
+		vdevs: z.record(z.string(), ZpoolVdevSchema).nullable().optional()
 	})
 );
 
@@ -145,7 +145,7 @@ export const ZpoolSchema = z.object({
 	type: z.string(),
 	state: z.string(),
 	pool_guid: z.string(),
-	TXG: z.string(),
+	txg: z.string(),
 	spa_version: z.string(),
 	zpl_version: z.string(),
 	properties: z.record(z.string(), ZpoolPropertySchema),

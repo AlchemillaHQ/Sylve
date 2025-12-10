@@ -42,7 +42,7 @@ require (
 require (
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/alchemillahq/gzfs v0.0.0-20251208225115-c76d3e50fa85 // indirect
+	github.com/alchemillahq/gzfs v0.0.0-20251210030908-6783305a2d03 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.14 // indirect

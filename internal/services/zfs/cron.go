@@ -27,6 +27,7 @@ func (s *Service) StoreStats() {
 	for _, pool := range pools {
 		newStat := infoModels.ZPoolHistorical{
 			Name:          pool.Name,
+			GUID:          pool.PoolGUID,
 			Allocated:     pool.Alloc,
 			Size:          pool.Size,
 			Free:          pool.Free,
@@ -93,15 +94,10 @@ func (s *Service) StoreStats() {
 func (s *Service) RemoveNonExistentPools() {
 	ctx := context.Background()
 
-	pools, err := s.GZFS.Zpool.List(ctx)
+	existingPools, err := s.GZFS.Zpool.GetPoolNames(ctx)
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to list zpools")
 		return
-	}
-
-	existingPools := make(map[string]struct{}, len(pools))
-	for _, pool := range pools {
-		existingPools[pool.Name] = struct{}{}
 	}
 
 	var storedNames []string
@@ -115,7 +111,14 @@ func (s *Service) RemoveNonExistentPools() {
 
 	var namesToDelete []string
 	for _, name := range storedNames {
-		if _, ok := existingPools[name]; !ok {
+		found := false
+		for _, existing := range existingPools {
+			if name == existing {
+				found = true
+				break
+			}
+		}
+		if !found {
 			namesToDelete = append(namesToDelete, name)
 		}
 	}

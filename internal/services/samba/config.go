@@ -9,15 +9,16 @@
 package samba
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
@@ -30,7 +31,9 @@ func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
 	return settings, nil
 }
 
-func (s *Service) SetGlobalConfig(unixCharset string,
+func (s *Service) SetGlobalConfig(
+	ctx context.Context,
+	unixCharset string,
 	workgroup string,
 	serverString string,
 	interfaces string,
@@ -92,7 +95,7 @@ func (s *Service) SetGlobalConfig(unixCharset string,
 		return fmt.Errorf("failed to update Samba settings: %w", err)
 	}
 
-	return s.WriteConfig(true)
+	return s.WriteConfig(ctx, true)
 }
 
 func (s *Service) GlobalConfig() (string, error) {
@@ -130,32 +133,31 @@ func (s *Service) GlobalConfig() (string, error) {
 	return config, nil
 }
 
-func (s *Service) ShareConfig() (string, error) {
+func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 	shares := []sambaModels.SambaShare{}
 	if err := s.DB.Preload("ReadOnlyGroups").Preload("WriteableGroups").Find(&shares).Error; err != nil {
 		return "", fmt.Errorf("failed to retrieve Samba shares: %w", err)
 	}
 
-	datasets, err := zfs.Filesystems("")
+	var datasets = make(map[string]*gzfs.Dataset)
+	for _, share := range shares {
+		if _, exists := datasets[share.Dataset]; !exists {
+			ds, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+			if err != nil {
+				return "", fmt.Errorf("failed to fetch dataset for share %s: %v", share.Name, err)
+			}
 
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch datasets: %v", err)
+			if ds.Mountpoint == "-" || ds.Mountpoint == "" {
+				return "", fmt.Errorf("dataset %s for share %s is not mounted", ds.Name, share.Name)
+			}
+
+			datasets[share.Dataset] = ds
+		}
 	}
 
 	var config strings.Builder
 	for _, share := range shares {
-		var dataset *zfs.Dataset
-
-		for _, ds := range datasets {
-			if ds.GUID == share.Dataset {
-				dataset = ds
-				break
-			}
-		}
-
-		if dataset == nil {
-			return "", fmt.Errorf("dataset not found for share %s", share.Name)
-		}
+		dataset := datasets[share.Dataset]
 
 		config.WriteString(fmt.Sprintf("[%s]\n", share.Name))
 		config.WriteString(fmt.Sprintf("\tpath = %s\n", dataset.Mountpoint))
@@ -239,7 +241,7 @@ func (s *Service) ShareConfig() (string, error) {
 	return config.String(), nil
 }
 
-func (s *Service) WriteConfig(reload bool) error {
+func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
 		return err
@@ -249,7 +251,7 @@ func (s *Service) WriteConfig(reload bool) error {
 		return fmt.Errorf("global configuration is empty")
 	}
 
-	shareCfg, err := s.ShareConfig()
+	shareCfg, err := s.ShareConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get share configuration: %w", err)
 	}

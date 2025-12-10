@@ -252,7 +252,8 @@ func CreateJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := jailService.CreateJail(req)
+		ctx := c.Request.Context()
+		err := jailService.CreateJail(ctx, req)
 
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
@@ -355,7 +356,8 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = jailService.DeleteJail(uint(ctidInt), deleteMacs, deleteRootFs)
+		ctx := c.Request.Context()
+		err = jailService.DeleteJail(ctx, uint(ctidInt), deleteMacs, deleteRootFs)
 
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{

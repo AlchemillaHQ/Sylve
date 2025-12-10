@@ -9,7 +9,8 @@
 package infoModels
 
 type ZPoolHistorical struct {
-	ID            int64   `json:"id" gorm:"primaryKey"`
+	ID            uint    `json:"id" gorm:"primaryKey"`
+	GUID          string  `json:"guid" gorm:"index"`
 	Name          string  `json:"name" gorm:"index"`
 	Allocated     uint64  `json:"allocated"`
 	Size          uint64  `json:"size"`

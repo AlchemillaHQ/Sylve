@@ -15,100 +15,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm/clause"
 )
-
-func (s *Service) DeleteSnapshot(guid string, recursive bool) error {
-	s.syncMutex.Lock()
-	defer s.syncMutex.Unlock()
-
-	datasets, err := zfs.Snapshots("")
-
-	if err != nil {
-		return err
-	}
-
-	for _, dataset := range datasets {
-		properties, err := dataset.GetAllProperties()
-		if err != nil {
-			return err
-		}
-
-		for _, v := range properties {
-			if v == guid {
-				var err error
-
-				if recursive {
-					err = dataset.Destroy(zfs.DestroyRecursive)
-				} else {
-					err = dataset.Destroy(zfs.DestroyDefault)
-				}
-
-				if err != nil {
-					return err
-				}
-
-				return nil
-			}
-		}
-	}
-
-	return fmt.Errorf("snapshot with guid %s not found", guid)
-}
-
-func (s *Service) CreateSnapshot(guid string, name string, recursive bool) error {
-	s.syncMutex.Lock()
-	defer s.syncMutex.Unlock()
-
-	datasets, err := zfs.Datasets("")
-	if err != nil {
-		return err
-	}
-
-	for _, dataset := range datasets {
-		if dataset.Name == dataset.Name+"@"+name {
-			return fmt.Errorf("snapshot with name %s already exists", name)
-		}
-
-		properties, err := dataset.GetAllProperties()
-		if err != nil {
-			return err
-		}
-
-		for k, v := range properties {
-			if k == "guid" {
-				if v == guid {
-					shot, err := dataset.Snapshot(name, recursive)
-					if err != nil {
-						return err
-					}
-
-					if shot.Name == dataset.Name+"@"+name {
-						return nil
-					}
-				}
-			}
-		}
-	}
-
-	return fmt.Errorf("dataset with guid %s not found", guid)
-}
-
-func (s *Service) GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error) {
-	var snapshots []zfsModels.PeriodicSnapshot
-
-	if err := s.DB.Find(&snapshots).Error; err != nil {
-		return nil, err
-	}
-
-	return snapshots, nil
-}
 
 type retentionType string
 
@@ -122,6 +36,50 @@ type retentionValues struct {
 	KeepLast, MaxAgeDays              int
 	KeepHourly, KeepDaily, KeepWeekly int
 	KeepMonthly, KeepYearly           int
+}
+
+func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+	if err != nil {
+		return err
+	}
+
+	shot, err := dataset.Snapshot(ctx, name, recursive)
+	if err != nil {
+		return err
+	}
+
+	if shot.Name == dataset.Name+"@"+name {
+		return nil
+	}
+
+	return fmt.Errorf("snapshot_creation_failed")
+}
+
+func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive bool) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+
+	if err != nil {
+		return err
+	}
+
+	return dataset.Destroy(ctx, recursive, false)
+}
+
+func (s *Service) GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error) {
+	var snapshots []zfsModels.PeriodicSnapshot
+
+	if err := s.DB.Find(&snapshots).Error; err != nil {
+		return nil, err
+	}
+
+	return snapshots, nil
 }
 
 func validateAndNormalizeRetention(req any, t string) (retentionType, retentionValues, error) {
@@ -194,7 +152,7 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 	return retentionNone, val, nil
 }
 
-func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) error {
+func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest) error {
 	var interval int
 	if req.Interval != nil {
 		interval = *req.Interval
@@ -215,18 +173,9 @@ func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSna
 		return err
 	}
 
-	dataset, err := s.GetFsOrVolByGUID(req.GUID)
+	_, err = s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
 	if err != nil {
-		return err
-	}
-
-	properties, err := dataset.GetAllProperties()
-	if err != nil {
-		return err
-	}
-
-	if guid, ok := properties["guid"]; !ok || guid != req.GUID {
-		return fmt.Errorf("dataset with guid %s not found", req.GUID)
+		return fmt.Errorf("dataset_with_guid_not_found")
 	}
 
 	snapshot := zfsModels.PeriodicSnapshot{
@@ -254,26 +203,17 @@ func (s *Service) AddPeriodicSnapshot(req zfsServiceInterfaces.CreatePeriodicSna
 		seedLocal := utils.ComputeLocalBoundary(interval, time.Now())
 		name := req.Prefix + "-" + seedLocal.Format("2006-01-02-15-04")
 
-		ds, err := s.GetDatasetByGUID(req.GUID)
+		ds, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
 		if err != nil {
 			return err
 		}
+
 		full := ds.Name + "@" + name
+		exists, _ := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeSnapshot, false, full)
 
-		allSnaps, err := zfs.Snapshots("")
-		if err != nil {
-			return err
-		}
-
-		exists := false
-		for _, sn := range allSnaps {
-			if sn.Name == full {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			if err := s.CreateSnapshot(req.GUID, name, recursive); err != nil {
+		if exists == nil || len(exists) == 0 {
+			_, err := ds.Snapshot(ctx, name, recursive)
+			if err != nil {
 				logger.L.Warn().Err(err).Msgf("Failed to create initial snapshot %s", full)
 			} else {
 				logger.L.Debug().Msgf("Initial boundary snapshot created: %s", full)
@@ -406,9 +346,13 @@ func parseSnapshotTime(dsName, prefix, snapName string) (time.Time, bool) {
 func (s *Service) pruneSnapshots(
 	ctx context.Context,
 	job zfsModels.PeriodicSnapshot,
-	datasetName string,
-	allSets []*zfs.Dataset,
 ) {
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
+	if err != nil {
+		logger.L.Debug().Err(err).Msgf("Failed to get dataset for pruning %s", job.GUID)
+		return
+	}
+
 	if job.KeepLast == 0 &&
 		job.MaxAgeDays == 0 &&
 		job.KeepHourly == 0 &&
@@ -422,17 +366,19 @@ func (s *Service) pruneSnapshots(
 	now := time.Now()
 
 	var snaps []zfsServiceInterfaces.RetentionSnapInfo
-	pfx := job.Prefix + "-"
-	prefixWithDataset := datasetName + "@"
 
-	for _, ds := range allSets {
-		if !strings.HasPrefix(ds.Name, prefixWithDataset) {
-			continue
-		}
-		if !strings.Contains(ds.Name, "@"+pfx) {
-			continue
-		}
-		if t, ok := parseSnapshotTime(datasetName, job.Prefix, ds.Name); ok {
+	prefixShots, err := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, dataset.Name, false)
+	if err != nil {
+		logger.L.Debug().Err(err).Msgf("Failed to list snapshots for pruning %s", job.GUID)
+		return
+	}
+
+	if len(prefixShots) == 0 {
+		return
+	}
+
+	for _, ds := range prefixShots {
+		if t, ok := parseSnapshotTime(dataset.Name, job.Prefix, ds.Name); ok {
 			snaps = append(snaps, zfsServiceInterfaces.RetentionSnapInfo{
 				Name:    ds.Name,
 				Dataset: ds,
@@ -441,13 +387,9 @@ func (s *Service) pruneSnapshots(
 		}
 	}
 
-	if len(snaps) == 0 {
-		return
-	}
-
 	sort.Slice(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
 
-	type key = *zfs.Dataset
+	type key = *gzfs.Dataset
 	keepers := make(map[key]struct{})
 	add := func(snap zfsServiceInterfaces.RetentionSnapInfo) {
 		if snap.Dataset != nil {
@@ -527,10 +469,11 @@ func (s *Service) pruneSnapshots(
 			continue
 		}
 
-		if err := sn.Dataset.Destroy(zfs.DestroyDefault); err != nil {
+		if err := sn.Dataset.Destroy(ctx, job.Recursive, false); err != nil {
 			logger.L.Debug().Err(err).Msgf("Failed to prune snapshot %s", sn.Name)
 			continue
 		}
+
 		logger.L.Debug().Msgf("Pruned snapshot %s", sn.Name)
 	}
 }
@@ -618,15 +561,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 
 					// Name with boundary time (predictable, aligned).
 					name := job.Prefix + "-" + boundaryLocal.Format("2006-01-02-15-04")
-
-					// Fetch existing snapshots once (you already do it here).
-					allSets, err := zfs.Snapshots("")
-					if err != nil {
-						logger.L.Debug().Err(err).Msgf("Failed to get snapshots for %s", job.GUID)
-						continue
-					}
-
-					dataset, err := s.GetDatasetByGUID(job.GUID)
+					dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
 					if err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to get dataset for %s", job.GUID)
 						// Remove the job if the dataset vanished.
@@ -638,15 +573,9 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 					}
 
 					full := dataset.Name + "@" + name
-					exists := false
-					for _, v := range allSets {
-						if v.Name == full {
-							exists = true
-							break
-						}
-					}
 
-					if exists {
+					exists, _ := s.GZFS.ZFS.Get(ctx, full, false)
+					if exists != nil {
 						logger.L.Debug().Msgf("Snapshot %s already exists", name)
 						// Still move LastRunAt forward to the boundary we processed.
 						if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
@@ -655,7 +584,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						continue
 					}
 
-					if err := s.CreateSnapshot(job.GUID, name, job.Recursive); err != nil {
+					if _, err := dataset.Snapshot(ctx, name, job.Recursive); err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to create snapshot for %s", job.GUID)
 						continue
 					}
@@ -666,8 +595,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 
 					logger.L.Debug().Msgf("Snapshot %s created", full)
 
-					// Prune using the list we already fetched; names are boundary-aligned now.
-					go s.pruneSnapshots(ctx, job, dataset.Name, allSets)
+					go s.pruneSnapshots(ctx, job)
 				}
 
 			case <-ctx.Done():
@@ -678,31 +606,19 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 	}()
 }
 
-func (s *Service) RollbackSnapshot(guid string, destroyMoreRecent bool) error {
+func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := zfs.Snapshots("")
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 	if err != nil {
 		return err
 	}
 
-	for _, dataset := range datasets {
-		properties, err := dataset.GetAllProperties()
-		if err != nil {
-			return err
-		}
-
-		for _, v := range properties {
-			if v == guid {
-				err := dataset.Rollback(destroyMoreRecent)
-				if err != nil {
-					return err
-				}
-				return nil
-			}
-		}
+	err = dataset.Rollback(ctx, destroyMoreRecent)
+	if err != nil {
+		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
 	}
 
-	return fmt.Errorf("snapshot with guid %s not found", guid)
+	return nil
 }

@@ -158,7 +158,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return fmt.Errorf("failed to sync passthrough devices: %w", err)
 	}
 
-	if err := s.InitSamba(); err != nil {
+	if err := s.InitSamba(ctx); err != nil {
 		return fmt.Errorf("failed to initialize Samba: %w", err)
 	}
 

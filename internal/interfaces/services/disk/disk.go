@@ -8,6 +8,8 @@
 
 package diskServiceInterfaces
 
+import "context"
+
 type Partition struct {
 	UUID  string `json:"uuid"`
 	Name  string `json:"name"`
@@ -153,7 +155,7 @@ type SCSISmartAttributes struct {
 }
 
 type DiskServiceInterface interface {
-	GetDiskDevices() ([]Disk, error)
+	GetDiskDevices(ctx context.Context) ([]Disk, error)
 	GetSmartData(disk DiskInfo) (any, error)
 	GetWearOut(disk any) (float64, error)
 	GetDiskSize(device string) (uint64, error)

@@ -84,7 +84,10 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			bindInterfaces = *req.BindInterfacesOnly
 		}
 
-		err := smbService.SetGlobalConfig(req.UnixCharset,
+		ctx := c.Request.Context()
+		err := smbService.SetGlobalConfig(
+			ctx,
+			req.UnixCharset,
 			req.Workgroup,
 			req.ServerString,
 			req.Interfaces,

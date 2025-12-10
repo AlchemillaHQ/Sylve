@@ -107,3 +107,33 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 
 	return pools, nil
 }
+
+func (s *Service) GetDisksUsage(ctx context.Context) (zfsServiceInterfaces.SimpleZFSDiskUsage, error) {
+	pools, err := s.GetUsablePools(ctx)
+	if err != nil {
+		return zfsServiceInterfaces.SimpleZFSDiskUsage{}, err
+	}
+
+	var totalSize uint64
+	var totalUsed uint64
+
+	for _, pool := range pools {
+		size := pool.Size
+		used := pool.Alloc
+
+		totalSize += size
+		totalUsed += used
+	}
+
+	usage := float64(0)
+	if totalSize > 0 {
+		usage = (float64(totalUsed) / float64(totalSize)) * 100
+	} else {
+		usage = 0
+	}
+
+	return zfsServiceInterfaces.SimpleZFSDiskUsage{
+		Total: float64(totalSize),
+		Usage: usage,
+	}, nil
+}
