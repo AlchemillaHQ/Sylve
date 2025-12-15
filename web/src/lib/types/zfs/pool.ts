@@ -96,6 +96,24 @@ export type ZpoolVdev = {
 	vdevs?: Record<string, ZpoolVdev> | null;
 };
 
+export type ZpoolStatusVDEV = {
+	name?: string;
+	vdev_type?: string;
+	guid?: string;
+	path?: string | null;
+	class?: string;
+	state?: string;
+	alloc_space?: string | number | null;
+	total_space?: string | number | null;
+	def_space?: string | number | null;
+	rep_dev_size?: string | number | null;
+	read_errors?: string | number | null;
+	write_errors?: string | number | null;
+	checksum_errors?: string | number | null;
+	properties?: Record<string, any> | null;
+	vdevs?: Record<string, ZpoolStatusVDEV> | null;
+};
+
 export const ZpoolVdevSchema = z.lazy(() =>
 	z.object({
 		name: z.string(),
@@ -137,7 +155,7 @@ export const ZpoolSchema = z
 		guid: data.pool_guid
 	}));
 
-export const ZPoolStatusVDEVSchema: z.ZodTypeAny = z.lazy(() =>
+export const ZPoolStatusVDEVSchema = z.lazy(() =>
 	z.object({
 		name: z.string().optional(),
 		vdev_type: z.string().optional(),
@@ -153,9 +171,9 @@ export const ZPoolStatusVDEVSchema: z.ZodTypeAny = z.lazy(() =>
 		write_errors: z.union([z.string(), z.number()]).nullable().optional(),
 		checksum_errors: z.union([z.string(), z.number()]).nullable().optional(),
 		properties: z.record(z.string(), z.any()).nullable().optional(),
-		vdevs: z.union([z.record(z.string(), ZPoolStatusVDEVSchema), z.null()]).optional()
+		vdevs: z.record(z.string(), ZPoolStatusVDEVSchema).nullable().optional()
 	})
-);
+) as unknown as z.ZodType<ZpoolStatusVDEV>;
 
 export const ZPoolStatusScanStatsSchema = z.object({
 	function: z.string().optional(),
@@ -265,3 +283,5 @@ export type ScanSentenceResult = {
 	text: string | null;
 	progressPercent: number | null;
 };
+
+export type ZpoolStatusScanStats = z.infer<typeof ZPoolStatusScanStatsSchema>;

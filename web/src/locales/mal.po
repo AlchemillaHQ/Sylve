@@ -3292,6 +3292,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Spares"
 msgstr ""
 
@@ -3480,20 +3481,25 @@ msgstr ""
 msgid "No recent scan activity"
 msgstr ""
 
-#~ msgid "Device Topology"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Device Topology"
+msgstr ""
 
-#~ msgid "Cache"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Cache"
+msgstr ""
 
-#~ msgid "No devices found"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "No devices found"
+msgstr ""
 
-#~ msgid "Error Status"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Error Status"
+msgstr ""
 
-#~ msgid "No known data errors"
-#~ msgstr ""
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "No known data errors"
+msgstr ""
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -5902,3 +5908,30 @@ msgstr ""
 
 #~ msgid "The operation is {0} percent complete."
 #~ msgstr ""
+
+#~ msgid "resilvering"
+#~ msgstr ""
+
+#. placeholder {0}: num(vdev.read_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "R:{0}"
+msgstr ""
+
+#. placeholder {0}: num(vdev.write_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "W:{0}"
+msgstr ""
+
+#. placeholder {0}: num(vdev.checksum_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "C:{0}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Logs"
+msgstr ""
+
+#. placeholder {0}: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Errors detected{0}"
+msgstr ""

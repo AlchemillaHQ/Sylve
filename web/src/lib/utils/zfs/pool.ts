@@ -148,6 +148,11 @@ export function generateTableData(
 
 		if (pool.vdevs && countKeys(pool.vdevs) > 0) {
 			for (const vdev in pool.vdevs) {
+				/* This happens when like a drive in vdev is removed, we don't really need to show it in UI AFAICS..*/
+				if (vdev.startsWith('indirect')) {
+					continue;
+				}
+
 				const current = pool.vdevs[vdev];
 				if (
 					current.vdev_type.toLowerCase() === 'raidz' ||
@@ -487,7 +492,6 @@ type ScanHandler = (stats: ZpoolStatusPool['scan_stats']) => ScanSentenceResult;
 export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSentenceResult {
 	if (!stats || !stats.function) return { title: '', text: null, progressPercent: null };
 
-	// safe number parser
 	const num = (v: string | number | undefined): number => (v === undefined ? 0 : Number(v) || 0);
 	const start = num(stats.start_time);
 	const end = num(stats.end_time);
@@ -500,7 +504,9 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 	const bytesPerScan = num(stats.bytes_per_scan);
 	const issuedBytesPerScan = num(stats.issued_bytes_per_scan);
 
-	const elapsed = Math.max(1, Date.now() / 1000 - start); // seconds
+	const now = Date.now() / 1000;
+	const elapsed =
+		stats.state === 'SCANNING' ? Math.max(1, now - start) : Math.max(1, (end || now) - start);
 	const issuedPerSec = issued > 0 ? issued / elapsed : 0;
 
 	const formatRemaining = (secs: number) => {
@@ -511,11 +517,9 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 		return `${Math.floor(secs)}s remaining`;
 	};
 
-	// helpers for human strings
 	const h = (v: number) => humanFormat(v);
 	const scanRateStr = issuedPerSec > 0 ? `${humanFormat(Math.floor(issuedPerSec))}/s` : null;
 
-	// handlers registry: add new functions here (resilver, trim...) as needed
 	const handlers: Record<string, ScanHandler> = {
 		scrub: (s) => {
 			const progress = toExamine > 0 ? Math.min(100, Math.round((issued / toExamine) * 100)) : null;
@@ -547,6 +551,56 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 
 			const text = `Scrub finished (${epochToLocal(end || start)}). ${h(examined)} / ${h(toExamine)} scanned, ${h(errors)} repaired, took ${durationText}`;
 			return { title: 'Pool Scrub', text, progressPercent: progress ?? 100 };
+		},
+		resilver: (s) => {
+			const progress =
+				toExamine > 0 ? Math.min(100, Math.round((processed / toExamine) * 100)) : null;
+
+			// ---------- SCANNING ----------
+			if (s?.state === 'SCANNING') {
+				const processedPerSec = processed > 0 ? processed / elapsed : 0;
+				let timeRemaining = '';
+
+				if (processedPerSec > 0 && toExamine > processed) {
+					timeRemaining = formatRemaining((toExamine - processed) / processedPerSec);
+				}
+
+				let text =
+					`Resilver in progress since ${epochToLocal(start)}: ` +
+					`${h(processed)} / ${h(toExamine)} resilvered`;
+
+				if (processedPerSec > 0) {
+					text += ` at ${h(Math.floor(processedPerSec))}/s`;
+				}
+
+				if (skipped > 0) text += `, ${h(skipped)} skipped`;
+				if (errors > 0) text += `, ${h(errors)} errors`;
+				if (progress !== null) text += `, ${progress}% done`;
+				if (timeRemaining) text += `, ${timeRemaining}`;
+
+				return { title: 'Pool Resilver', text, progressPercent: progress };
+			}
+
+			// ---------- FINISHED ----------
+			const durationSec = Math.max(0, end - start);
+			const durationText =
+				durationSec >= 3600
+					? `${Math.floor(durationSec / 3600)}h ${Math.floor((durationSec % 3600) / 60)}m`
+					: durationSec >= 60
+						? `${Math.floor(durationSec / 60)}m ${Math.floor(durationSec % 60)}s`
+						: `${Math.floor(durationSec)}s`;
+
+			const text =
+				`Resilver finished (${epochToLocal(end)}). ` +
+				`${h(processed)} / ${h(toExamine)} resilvered` +
+				(skipped ? `, ${h(skipped)} skipped` : '') +
+				`, took ${durationText}`;
+
+			return {
+				title: 'Pool Resilver',
+				text,
+				progressPercent: 100
+			};
 		}
 
 		// placeholder for future handlers:
@@ -555,12 +609,10 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 	};
 
 	const fn = String(stats.function || '').toLowerCase();
-	// pick handler by keyword (startsWith / includes) so "scrub" and "scrub-thing" both map
 	for (const key of Object.keys(handlers)) {
 		if (fn.includes(key)) return handlers[key](stats);
 	}
 
-	// default fallback: return minimal info
 	return {
 		title: stats.function,
 		text: stats.state ? `${stats.function} ${stats.state.toLowerCase()}` : stats.function,
