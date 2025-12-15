@@ -6,8 +6,8 @@ import { cachedFetch } from '$lib/utils/http';
 export async function load() {
 	const cacheDuration = SEVEN_DAYS;
 	const [disks, pools] = await Promise.all([
-		cachedFetch('disks', async () => await listDisks(), cacheDuration),
-		cachedFetch('pools', getPools, cacheDuration)
+		cachedFetch('disk-list', async () => await listDisks(), cacheDuration),
+		cachedFetch('pool-list', async () => await getPools(false), cacheDuration)
 	]);
 
 	return {

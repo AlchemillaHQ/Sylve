@@ -800,7 +800,6 @@ msgid "Manual Switch"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
 msgstr ""
 
@@ -1011,13 +1010,11 @@ msgid "Post Upgrade Summary"
 msgstr ""
 
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
 msgstr ""
 
-#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
 msgstr ""
@@ -1066,7 +1063,6 @@ msgstr ""
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1077,6 +1073,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3295,7 +3292,6 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
-#: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Spares"
 msgstr ""
 
@@ -3460,24 +3456,17 @@ msgstr ""
 msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
 msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Resilvering"
-msgstr ""
+#~ msgid "Resilvering"
+#~ msgstr ""
 
-#. placeholder {0}: device.read
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "READ: {0}"
-msgstr ""
+#~ msgid "READ: {0}"
+#~ msgstr ""
 
-#. placeholder {0}: device.write
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "WRITE: {0}"
-msgstr ""
+#~ msgid "WRITE: {0}"
+#~ msgstr ""
 
-#. placeholder {0}: device.cksum
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "CKSUM: {0}"
-msgstr ""
+#~ msgid "CKSUM: {0}"
+#~ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Pool Status"
@@ -3491,25 +3480,20 @@ msgstr ""
 msgid "No recent scan activity"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Device Topology"
-msgstr ""
+#~ msgid "Device Topology"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Cache"
-msgstr ""
+#~ msgid "Cache"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "No devices found"
-msgstr ""
+#~ msgid "No devices found"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Error Status"
-msgstr ""
+#~ msgid "Error Status"
+#~ msgstr ""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "No known data errors"
-msgstr ""
+#~ msgid "No known data errors"
+#~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -4107,10 +4091,8 @@ msgstr ""
 msgid "Replace Device"
 msgstr ""
 
-#. placeholder {0}: pool?.name
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool {0} deleted"
-msgstr ""
+#~ msgid "Pool {0} deleted"
+#~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Allocated"
@@ -5911,3 +5893,12 @@ msgstr ""
 #: src/lib/components/custom/Charts/EChartSample.svelte
 msgid "Save As Image"
 msgstr ""
+
+#~ msgid "Chart"
+#~ msgstr ""
+
+#~ msgid "Loading chart…"
+#~ msgstr ""
+
+#~ msgid "The operation is {0} percent complete."
+#~ msgstr ""

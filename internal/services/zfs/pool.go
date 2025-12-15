@@ -23,6 +23,20 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error) {
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil {
+		return nil, fmt.Errorf("pool_not_found")
+	}
+
+	status, err := pool.Status(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_get_pool_status: %v", err)
+	}
+
+	return status, nil
+}
+
 func (s *Service) ScrubPool(ctx context.Context, guid string) error {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
 	if err != nil {

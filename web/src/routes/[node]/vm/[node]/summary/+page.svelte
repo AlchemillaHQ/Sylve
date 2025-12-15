@@ -31,7 +31,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LayerBrush from '$lib/components/custom/Charts/LayerBrush.svelte';
 	import EChart from '$lib/components/custom/Charts/EChartSample.svelte';
-	import LineBrush from '$lib/components/custom/Charts/LineBrush.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 
 	interface Data {
 		rid: number;

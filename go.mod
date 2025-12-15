@@ -3,7 +3,7 @@ module github.com/alchemillahq/sylve
 go 1.24.9
 
 require (
-	github.com/alchemillahq/gzfs v0.0.0-20251210030908-6783305a2d03
+	github.com/alchemillahq/gzfs v0.0.0-20251211011723-bf49823ed38b
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/aws/aws-sdk-go-v2 v1.40.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.0

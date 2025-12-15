@@ -801,7 +801,6 @@ msgid "Manual Switch"
 msgstr "मैनुअल स्विच"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
 msgstr "ZFS पूल"
 
@@ -969,13 +968,11 @@ msgid "Post Upgrade Summary"
 msgstr "पोस्ट अपग्रेड सारांश"
 
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
 msgstr "सामग्री"
 
-#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
 msgstr "यह एक नोट है"
@@ -1075,6 +1072,7 @@ msgstr "CPU उपयोग"
 #~ msgstr "I/O विलंब"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3289,7 +3287,6 @@ msgstr "पैनिक"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
-#: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Spares"
 msgstr "स्पेयर"
 
@@ -3454,24 +3451,17 @@ msgstr "\"जेल कंसोल {0} के लिए कनेक्टे�
 msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
 msgstr "\"जेल वर्तमान में बंद है।<0/> कंसोल तक पहुंचने के लिए जेल को चालू करें।\""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Resilvering"
-msgstr "रीसिल्वरिंग"
+#~ msgid "Resilvering"
+#~ msgstr "रीसिल्वरिंग"
 
-#. placeholder {0}: device.read
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "READ: {0}"
-msgstr "पढ़ें: {0}"
+#~ msgid "READ: {0}"
+#~ msgstr "पढ़ें: {0}"
 
-#. placeholder {0}: device.write
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "WRITE: {0}"
-msgstr "लिखें: {0}"
+#~ msgid "WRITE: {0}"
+#~ msgstr "लिखें: {0}"
 
-#. placeholder {0}: device.cksum
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "CKSUM: {0}"
-msgstr "सीकेएसयूएम: {0}"
+#~ msgid "CKSUM: {0}"
+#~ msgstr "सीकेएसयूएम: {0}"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Pool Status"
@@ -3485,25 +3475,20 @@ msgstr "स्कैन गतिविधि"
 msgid "No recent scan activity"
 msgstr "कोई हाल की स्कैन गतिविधि नहीं है"
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Device Topology"
-msgstr "डिवाइस टोपोलॉजी"
+#~ msgid "Device Topology"
+#~ msgstr "डिवाइस टोपोलॉजी"
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Cache"
-msgstr "\"कैश\""
+#~ msgid "Cache"
+#~ msgstr "\"कैश\""
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "No devices found"
-msgstr "कोई उपकरण नहीं मिला"
+#~ msgid "No devices found"
+#~ msgstr "कोई उपकरण नहीं मिला"
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "Error Status"
-msgstr "त्रुटि स्थिति"
+#~ msgid "Error Status"
+#~ msgstr "त्रुटि स्थिति"
 
-#: src/lib/components/custom/ZFS/pools/Status.svelte
-msgid "No known data errors"
-msgstr "कोई ज्ञात डेटा त्रुटियाँ नहीं हैं"
+#~ msgid "No known data errors"
+#~ msgstr "कोई ज्ञात डेटा त्रुटियाँ नहीं हैं"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -4066,10 +4051,8 @@ msgstr "प्रतिस्थापन पहले से ही प्र�
 msgid "Replace Device"
 msgstr "डिवाइस प्रतिस्थापित करें"
 
-#. placeholder {0}: pool?.name
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Pool {0} deleted"
-msgstr "पूल {0} हटाया गया"
+#~ msgid "Pool {0} deleted"
+#~ msgstr "पूल {0} हटाया गया"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Share"
@@ -5915,3 +5898,12 @@ msgstr ""
 #: src/lib/components/custom/Charts/EChartSample.svelte
 msgid "Save As Image"
 msgstr ""
+
+#~ msgid "Chart"
+#~ msgstr ""
+
+#~ msgid "Loading chart…"
+#~ msgstr ""
+
+#~ msgid "The operation is {0} percent complete."
+#~ msgstr ""

@@ -45,6 +45,7 @@ type ZfsServiceInterface interface {
 	BulkDeleteDataset(ctx context.Context, guids []string) error
 	IsDatasetInUse(guid string, failEarly bool) bool
 
+	GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error)
 	ScrubPool(ctx context.Context, guid string) error
 	CreatePool(ctx context.Context, req CreateZPoolRequest) error
 	EditPool(ctx context.Context, name string, props map[string]string, spares []string) error

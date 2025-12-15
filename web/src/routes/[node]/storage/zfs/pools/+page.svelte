@@ -23,58 +23,57 @@
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
-	import { createQueries } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
 
 	interface Data {
 		disks: Disk[];
 		pools: Zpool[];
 	}
 
+	let visible = new IsDocumentVisible();
+
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['diskList'],
-				queryFn: async () => {
-					return await listDisks();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.disks,
-				onSuccess: (data: Disk[]) => {
-					updateCache('disks', data);
-				}
-			},
-			{
-				queryKey: ['poolList'],
-				queryFn: async () => {
-					let pools = await getPools();
-					if (pools.length === 0) {
-						return data.pools;
-					}
-					return pools;
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.pools,
-				onSuccess: (data: Zpool[]) => {
-					updateCache('pools', data);
-				}
+	const pools = resource(
+		() => 'pool-list',
+		async () => {
+			const pools = await getPools(false);
+			updateCache('pool-list', pools);
+			return pools;
+		},
+		{
+			initialValue: data.pools
+		}
+	);
+
+	const disks = resource(
+		() => 'disk-list',
+		async () => {
+			const disks = await listDisks();
+			updateCache('disk-list', disks);
+			return disks;
+		},
+		{
+			initialValue: data.disks
+		}
+	);
+
+	useInterval(1000, {
+		callback: async () => {
+			if (visible.current) {
+				pools.refetch();
+				disks.refetch();
 			}
-		]
-	}));
+		}
+	});
 
-	let disks = $derived(results[0].data as Disk[]);
-	let pools = $derived(results[1].data as Zpool[]);
-
-	let tableData = $derived(generateTableData(pools, disks));
+	let tableData = $derived(generateTableData(pools.current, disks.current));
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let activePool: Zpool | null = $derived(
-		activeRow && isPool(pools, activeRow.name)
-			? pools.find((p) => p.guid === activeRow.guid) || null
+		activeRow && isPool(pools.current, activeRow.name)
+			? pools.current.find((p) => p.pool_guid === activeRow.guid) || null
 			: null
 	);
 
@@ -100,8 +99,8 @@
 	});
 
 	let usable = $derived({
-		disks: zpoolUseableDisks(disks, pools),
-		partitions: zpoolUseablePartitions(disks, pools)
+		disks: zpoolUseableDisks(disks.current, pools.current),
+		partitions: zpoolUseablePartitions(disks.current, pools.current)
 	});
 
 	let query = $state('');
@@ -175,7 +174,7 @@
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
-		{#if isPool(pools, activeRow.name)}
+		{#if isPool(pools.current, activeRow.name)}
 			{#if type === 'pool-status'}
 				<Button
 					onclick={() => {
@@ -194,7 +193,7 @@
 			{/if}
 
 			{#if type === 'pool-scrub'}
-				{#if isPool(pools, activeRow.name)}
+				{#if isPool(pools.current, activeRow.name)}
 					<Button
 						onclick={async () => {
 							const response = await scrubPool(activeRow?.guid);
@@ -264,20 +263,20 @@
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools, activeRow.name)}
+			{#if isReplaceableDevice(pools.current, activeRow.name)}
 				<Button
 					onclick={() => {
-						let pool = getPoolByDevice(pools, activeRow.name);
+						let pool = getPoolByDevice(pools.current, activeRow.name);
 
 						modals.replace.open = true;
 						modals.replace.data = {
-							pool: pool ? pools.find((p) => p.name === pool) || null : null,
+							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
 							old: activeRow.name as string,
 							latest: ''
 						};
 					}}
 					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
 					disabled={replacing}
 					title={replacing ? 'Replace already in progress' : ''}
 				>
@@ -325,10 +324,12 @@
 	/>
 </div>
 
-<Status bind:open={modals.status.open} pool={activePool} />
+{#if activePool}
+	<Status bind:open={modals.status.open} pool={activePool} />
+{/if}
 
 <!-- Delete -->
-<AlertDialog
+<!-- <AlertDialog
 	open={modals.delete.open}
 	names={{
 		parent: 'ZFS Pool',
@@ -348,9 +349,9 @@
 			modals.delete.open = false;
 		}
 	}}
-/>
+/> -->
 
-{#if modals.replace.data.pool}
+<!-- {#if modals.replace.data.pool}
 	<Replace
 		bind:open={modals.replace.open}
 		bind:replacing
@@ -365,4 +366,4 @@
 
 {#if activePool}
 	<Edit bind:open={modals.edit.open} pool={activePool} {usable} {parsePoolActionError} />
-{/if}
+{/if} -->

@@ -9,6 +9,7 @@
 package zfsHandlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,6 +46,45 @@ type PoolEditRequest struct {
 	Name       string            `json:"name"`
 	Properties map[string]string `json:"properties"`
 	Spares     []string          `json:"spares,omitempty"`
+}
+
+// @Summary Get Pool Status
+// @Description Get the status of a ZFS pool
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param guid path string true "Pool GUID"
+// @Success 200 {object} internal.APIResponse[*gzfs.ZPoolStatusPool] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/pools/{guid}/status [get]
+func GetPoolStatus(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		guid := c.Param("guid")
+
+		ctx := c.Request.Context()
+		status, err := zfsService.GetPoolStatus(ctx, guid)
+		if status == nil || err != nil {
+			if err == nil {
+				err = fmt.Errorf("unknown_error")
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*gzfs.ZPoolStatusPool]{
+			Status:  "success",
+			Message: "pool_status",
+			Error:   "",
+			Data:    status,
+		})
+	}
 }
 
 // @Summary Get Pools

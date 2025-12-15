@@ -104,3 +104,8 @@ export function cronToHuman(cron: string): string {
 		return '';
 	}
 }
+
+export function epochToLocal(seconds: number | string): string {
+	const date = fromUnixTime(typeof seconds === 'string' ? parseInt(seconds) : seconds);
+	return format(date, 'yyyy-MM-dd hh:mm a');
+}

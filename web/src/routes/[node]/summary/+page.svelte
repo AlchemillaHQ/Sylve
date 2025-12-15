@@ -6,7 +6,8 @@
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
 	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
-	import LineBrush from '$lib/components/custom/Charts/LineBrush.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
+	import LineBrushMultiple from '$lib/components/custom/Charts/LineBrush/Multiple.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
@@ -340,62 +341,36 @@
 						<Table.Root class="mt-5">
 							<Table.Body>
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">CPU(s)</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">
+									<Table.Cell>CPU(s)</Table.Cell>
+									<Table.Cell>
 										{`${cpuInfo.current.logicalCores} x ${cpuInfo.current.name}`}
 									</Table.Cell>
 								</Table.Row>
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">Operating System</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.current.os}</Table.Cell>
+									<Table.Cell>Operating System</Table.Cell>
+									<Table.Cell>{basicInfo.current.os}</Table.Cell>
 								</Table.Row>
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">Uptime</Table.Cell>
-									<Table.Cell class="p-1.5 px-4"
-										>{formatUptime(basicInfo.current.uptime)}</Table.Cell
-									>
+									<Table.Cell>Uptime</Table.Cell>
+									<Table.Cell>{formatUptime(basicInfo.current.uptime)}</Table.Cell>
 								</Table.Row>
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">Load Average</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.current.loadAverage}</Table.Cell>
+									<Table.Cell>Load Average</Table.Cell>
+									<Table.Cell>{basicInfo.current.loadAverage}</Table.Cell>
 								</Table.Row>
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">Boot Mode</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.current.bootMode}</Table.Cell>
+									<Table.Cell>Boot Mode</Table.Cell>
+									<Table.Cell>{basicInfo.current.bootMode}</Table.Cell>
 								</Table.Row>
 
 								<Table.Row>
-									<Table.Cell class="p-1.5 px-4">Sylve Version</Table.Cell>
-									<Table.Cell class="p-1.5 px-4">{basicInfo.current.sylveVersion}</Table.Cell>
+									<Table.Cell>Sylve Version</Table.Cell>
+									<Table.Cell>{basicInfo.current.sylveVersion}</Table.Cell>
 								</Table.Row>
 							</Table.Body>
 						</Table.Root>
 					</Card.Content>
 				</Card.Root>
-
-				<!-- <AreaChart
-					title="CPU / RAM Usage"
-					elements={[chartElements[1], chartElements[0], chartElements[2]]}
-					icon="icon-[solar--cpu-bold]"
-					chart={cpuUsageRef}
-					percentage={true}
-
-                    				<LineBrush
-					title="CPU Usage"
-					percentage={true}
-					containerContentHeight="h-64"
-					dataSets={[
-						{
-							name: 'CPU Usage',
-							color: 'one',
-							points: stats.current.map((data) => ({
-								date: new Date(data.createdAt).getTime(),
-								value: Number(data.cpuUsage)
-							}))
-						}
-					]}
-				/>
-				/> -->
 
 				<LineBrush
 					title="CPU Usage"
@@ -408,12 +383,31 @@
 					containerContentHeight="h-64"
 				/>
 
-				<AreaChart
+				<LineBrush
+					title="RAM Usage"
+					percentage={true}
+					points={ramInfoHistorical.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.usage)
+					}))}
+					color="two"
+					containerContentHeight="h-64"
+				/>
+
+				<LineBrushMultiple
 					title="Network Usage"
-					elements={[chartElements[3], chartElements[4]]}
-					formatSize={true}
-					icon="icon-[gg--smartphone-ram]"
-					chart={networkUsageRef}
+					percentage={false}
+					data={true}
+					color="one"
+					color2="two"
+					points={networkUsageHistorical.current.map((d) => ({
+						date: new Date(d.createdAt).getTime(),
+						value: Number(d.receivedBytes)
+					}))}
+					points2={networkUsageHistorical.current.map((d) => ({
+						date: new Date(d.createdAt).getTime(),
+						value: Number(d.sentBytes)
+					}))}
 				/>
 			</div>
 		</ScrollArea>

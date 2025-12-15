@@ -18,6 +18,7 @@
 	import { resource } from 'runed';
 	import { storage } from '$lib';
 	import { untrack } from 'svelte';
+	import { TrixEditor } from 'svelte-trix';
 
 	interface Data {
 		notes: Note[];
@@ -331,13 +332,14 @@
 			<ScrollArea orientation="vertical" class="h-full">
 				{#if modalState.isEditMode}
 					<div>
-						<CustomValueInput
+						<!-- <CustomValueInput
 							label={'Content'}
 							placeholder="This is a note"
 							bind:value={modalState.content}
 							classes="flex-1 space-y-1 "
 							type="textarea"
-						/>
+						/> -->
+						<TrixEditor bind:value={modalState.content} />
 					</div>
 				{:else}
 					<div class="mt-2">
@@ -416,4 +418,21 @@
 			}
 		}}
 	></AlertDialog>
+
+	<!-- bg-white! dark:bg-muted! text-muted! dark:text-white! -->
 </div>
+
+<style>
+	@reference "#app.css";
+
+	:global(.svelte-trix-content) {
+		min-height: 200px;
+		max-height: 500px;
+		overflow-y: auto;
+		resize: vertical;
+	}
+
+	:global(.trix-button) {
+		@apply bg-white! dark:bg-muted! text-muted! dark:text-white!;
+	}
+</style>

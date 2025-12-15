@@ -207,4 +207,8 @@
 	});
 </script>
 
-<div bind:this={tableComponent} class="flex-1 cursor-pointer" id={name}></div>
+<div
+	bind:this={tableComponent}
+	class="flex-1 cursor-pointer s-tree-table-container"
+	id={name}
+></div>
