@@ -163,14 +163,31 @@
 				// main filled rectangle between handles
 				fillerColor: colors[color].soft,
 
-				// handles
+				// handles (normal state)
 				handleStyle: {
 					color: colors[color].main,
 					borderColor: colors[color].main
 				},
+
+				// move handle (normal state)
 				moveHandleStyle: {
 					color: colors[color].main,
 					borderColor: colors[color].main
+				},
+
+				// handles (hover/emphasis state)
+				emphasis: {
+					handleStyle: {
+						color: colors[color].main,
+						borderColor: colors[color].main
+					},
+					moveHandleStyle: {
+						color: colors[color].main,
+						borderColor: colors[color].main
+					},
+					handleLabel: {
+						show: false
+					}
 				}
 			}
 		],
