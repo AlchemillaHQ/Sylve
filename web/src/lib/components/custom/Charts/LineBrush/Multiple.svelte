@@ -18,8 +18,8 @@
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
 	import { untrack } from 'svelte';
+	import { c } from '../../../../../locales/.wuchale/main.main.en.compiled';
 
-	// register axis pointer too so trigger:'axis' is safe
 	use([
 		LineChart,
 		GridComponent,
@@ -32,24 +32,24 @@
 		AxisPointerComponent
 	]);
 
+	interface SeriesData {
+		name: string;
+		points: { date: number; value: number }[];
+		color: 'one' | 'two' | 'three' | 'four';
+	}
+
 	interface Props {
 		title: string;
-		points: { date: number; value: number }[]; // primary series
-		points2?: { date: number; value: number }[]; // optional extra series
+		series: SeriesData[];
 		percentage: boolean;
 		data: boolean;
-		color: 'one' | 'two';
-		color2?: 'one' | 'two'; // optional color for second series
 		containerClass?: string;
 		containerContentHeight?: string;
 	}
 
 	let {
 		title,
-		points,
-		points2 = undefined,
-		color,
-		color2 = 'two',
+		series,
 		percentage,
 		data,
 		containerClass = 'p-5',
@@ -59,6 +59,8 @@
 	let chart: EChartsType | undefined = $state(undefined);
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
+	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
+
 	const colors = {
 		grid: {
 			dark: 'rgba(255,255,255,0.12)',
@@ -77,10 +79,37 @@
 			main: 'rgba(47, 131, 230, 1)',
 			soft: 'rgba(47, 131, 230, 0.12)',
 			softStrong: 'rgba(47, 131, 230, 0.28)'
-		}
+		},
+		three: {
+			main: 'rgba(34, 197, 94, 1)',
+			soft: 'rgba(34, 197, 94, 0.12)',
+			softStrong: 'rgba(34, 197, 94, 0.28)'
+		},
+		four: {
+			main: 'rgba(168, 85, 247, 1)',
+			soft: 'rgba(168, 85, 247, 0.12)',
+			softStrong: 'rgba(168, 85, 247, 0.28)'
+		},
+		moveHandle:
+			mode.current === 'dark'
+				? {
+						color: 'rgb(170, 170, 170)',
+						borderColor: 'rgb(170, 170, 170)',
+						soft: 'rgb(200, 200, 200, 0.6)',
+						filler: 'rgb(200, 200, 200, 0.01)'
+					}
+				: {
+						color: 'rgb(0, 0, 0)',
+						borderColor: 'rgb(0, 0, 0)',
+						soft: 'rgb(0, 0, 0, 0.6)',
+						filler: 'rgb(0, 0, 0, 0.01)'
+					}
 	};
 
-	// helper to coerce and filter points safely
+	const primaryColor = $derived(series.length > 0 ? series[0].color : 'one');
+	const seriesColors = $derived(series.map((s) => colors[s.color].main));
+	const gridColor = $derived(mode.current === 'dark' ? colors.grid.dark : colors.grid.light);
+
 	function cleanPoints(src?: { date: any; value: any }[]) {
 		if (!Array.isArray(src)) return [];
 		return src
@@ -88,40 +117,55 @@
 				const ts = Number(p?.date);
 				const v = Number(p?.value);
 				if (!Number.isFinite(ts)) return null;
-				// allow null as value to show gaps; but prefer number
 				return [ts, Number.isFinite(v) ? v : null] as [number, number | null];
 			})
 			.filter(Boolean) as [number, number | null][];
 	}
 
-	// @wc-ignore
-	let options: EChartsOption = $state.raw({
-		title: {
-			text: title,
-			textStyle: {
-				// svelte-ignore state_referenced_locally
-				color: titleColor,
-				fontStyle: 'normal',
-				fontSize: 16,
-				fontWeight: 'bold',
-				fontFamily: 'sans-serif',
-				textBorderType: [5, 10],
-				textBorderDashOffset: 55
-			}
-		},
-		legend: {},
-		tooltip: {
-			trigger: 'axis', // kept as you had it
-			axisPointer: { type: 'line' },
-			formatter: (params) => {
-				let tooltipHtml = `<div class="p-2 rounded">`;
-				const paramArray = Array.isArray(params) ? params : [params];
-				paramArray.forEach((param) => {
-					if (Array.isArray(param.data) && param.data.length >= 2) {
-						const timestamp = param.data[0];
-						const value = param.data[1];
+	// Create a function to generate options based on current state
+	function getOptions(): EChartsOption {
+		return {
+			title: {
+				text: title,
+				textStyle: {
+					color: titleColor,
+					fontStyle: 'normal',
+					fontSize: 16,
+					fontWeight: 'bold',
+					fontFamily: 'sans-serif',
+					textBorderType: [5, 10],
+					textBorderDashOffset: 55
+				}
+			},
+			legend: {
+				show: true,
+				top: 5,
+				textStyle: {
+					color: legendTextColor
+				}
+			},
+			tooltip: {
+				trigger: 'axis',
+				axisPointer: {
+					type: 'line'
+				},
+				formatter: (params) => {
+					let tooltipHtml = `<div class="p-2 rounded">`;
+					const paramArray = Array.isArray(params) ? params : [params];
+
+					if (paramArray.length > 0 && Array.isArray(paramArray[0].data)) {
+						const timestamp = paramArray[0].data[0];
 						if (timestamp !== undefined) {
 							const date = new Date(timestamp as string | number | Date);
+							tooltipHtml += `<div class="font-semibold mb-1">${date.toLocaleString()}</div>`;
+						}
+					}
+
+					paramArray.forEach((param) => {
+						if (Array.isArray(param.data) && param.data.length >= 2) {
+							const value = param.data[1];
+							const seriesName = param.seriesName || 'Unknown';
+
 							let formattedValue = '';
 							if (value !== undefined && value !== null) {
 								if (percentage) {
@@ -133,171 +177,126 @@
 								}
 							}
 
-							tooltipHtml += `
-                                <div class="dark:bg-muted bg-white dark:text-white font-semi">
-                                    ${date.toLocaleString()}: ${formattedValue}
-                                    </div>`;
-						} else {
-							tooltipHtml += `<div class="dark:bg-muted bg-white dark:text-white">Invalid date</div>`;
+							tooltipHtml += `<div class="flex items-center gap-2">
+								<span style="display:inline-block;width:10px;height:10px;background-color:${param.color};border-radius:50%;"></span>
+								<span>${seriesName}: ${formattedValue}</span>
+							</div>`;
 						}
-					} else {
-						tooltipHtml += `<div class="dark:bg-muted bg-white dark:text-white">Invalid data</div>`;
-					}
-				});
-				tooltipHtml += `</div>`;
-				return tooltipHtml;
+					});
+					tooltipHtml += `</div>`;
+					return tooltipHtml;
+				},
+				backgroundColor: colors.tooltip.background,
+				borderColor: colors.tooltip.border,
+				borderWidth: 1
 			},
-			backgroundColor: colors.tooltip.background,
-			borderColor: colors.tooltip.border,
-			borderWidth: 1
-		},
-		grid: {
-			left: 10,
-			right: 10,
-			top: 56,
-			bottom: 56,
-			containLabel: true
-		},
-		xAxis: {
-			type: 'time',
-			lineStyle: {
-				color: mode.current === 'dark' ? colors.grid.dark : colors.grid.light,
-				width: 1
-			}
-		},
-		yAxis: {
-			type: 'value',
-			max: percentage ? 100 : undefined,
-			min: percentage ? 0 : undefined,
-			axisLabel: {
-				formatter: function (value: number) {
-					if (percentage) {
-						return `${value}%`;
-					} else if (data) {
-						return `${humanFormat(value)}`;
+			grid: {
+				left: 10,
+				right: 10,
+				top: 70,
+				bottom: 56,
+				containLabel: true
+			},
+			xAxis: {
+				type: 'time',
+				axisLine: {
+					lineStyle: {
+						color: gridColor,
+						width: 1
 					}
 				}
 			},
-			splitLine: {
-				show: true,
-				lineStyle: {
-					color: mode.current === 'dark' ? colors.grid.dark : colors.grid.light,
-					width: 1
+			yAxis: {
+				type: 'value',
+				max: percentage ? 100 : undefined,
+				min: percentage ? 0 : undefined,
+				axisLabel: {
+					formatter: function (value: number) {
+						if (percentage) {
+							return `${value}%`;
+						} else if (data) {
+							return `${humanFormat(value)}`;
+						}
+						return value.toString();
+					}
+				},
+				splitLine: {
+					show: true,
+					lineStyle: {
+						color: gridColor,
+						width: 1
+					}
 				}
-			}
-		},
-		dataZoom: [
-			{
-				type: 'slider',
-				xAxisIndex: 0,
-				// track
-				backgroundColor: 'rgba(0,0,0,0)',
-				borderColor: 'rgba(0,0,0,0)',
-
-				// mini preview (behind the orange line)
-				dataBackground: {
-					lineStyle: { color: 'rgba(255,255,255,0.15)' },
-					areaStyle: { color: 'rgba(0,0,0,0.35)' }
-				},
-
-				// **selected region**
-				selectedDataBackground: {
-					lineStyle: { color: colors[color].main },
-					areaStyle: { color: colors[color].softStrong }
-				},
-
-				// main filled rectangle between handles
-				fillerColor: colors[color].soft,
-
-				// handles
-				handleStyle: {
-					color: colors[color].main,
-					borderColor: colors[color].main
-				},
-				moveHandleStyle: {
-					color: colors[color].main,
-					borderColor: colors[color].main
+			},
+			dataZoom: [
+				{
+					type: 'slider',
+					xAxisIndex: 0,
+					backgroundColor: 'rgba(0,0,0,0)',
+					borderColor: 'rgba(0,0,0,0)',
+					dataBackground: {
+						lineStyle: { color: 'rgba(255,255,255,0.15)' },
+						areaStyle: { color: 'rgba(0,0,0,0.35)' }
+					},
+					selectedDataBackground: {
+						lineStyle: { color: colors.moveHandle.color },
+						areaStyle: { color: colors.moveHandle.soft }
+					},
+					fillerColor: colors.moveHandle.filler,
+					handleStyle: {
+						color: colors.moveHandle.color,
+						borderColor: colors.moveHandle.color
+					},
+					moveHandleStyle: {
+						color: colors.moveHandle.color,
+						borderColor: colors.moveHandle.color
+					},
+					emphasis: {
+						handleStyle: {
+							color: colors.moveHandle.color,
+							borderColor: colors.moveHandle.color
+						},
+						moveHandleStyle: {
+							color: colors.moveHandle.color,
+							borderColor: colors.moveHandle.color
+						},
+						handleLabel: {
+							show: false
+						}
+					}
 				}
-			}
-		],
-		series: [
-			{
+			],
+			series: series.map((s) => ({
+				name: s.name,
 				type: 'line',
 				showSymbol: false,
 				smooth: true,
-				data: cleanPoints(points)
+				data: cleanPoints(s.points)
+			})),
+			toolbox: {
+				feature: {
+					saveAsImage: {
+						show: true,
+						title: 'Save As Image',
+						backgroundColor: colors.tooltip.background,
+						connectedBackgroundColor: colors.tooltip.background
+					},
+					restore: {}
+				}
 			},
-			...(points2
-				? [
-						{
-							name: 'Series 2',
-							type: 'line',
-							showSymbol: false,
-							smooth: true,
-							data: cleanPoints(points2)
-						}
-					]
-				: [])
-		],
-		toolbox: {
-			feature: {
-				saveAsImage: {
-					show: true,
-					title: 'Save As Image',
-					backgroundColor: colors.tooltip.background,
-					connectedBackgroundColor: colors.tooltip.background
-				},
-				restore: {}
-			}
-		},
-		color: [colors[color].main, colors[color2 ?? 'two'].main]
-	});
+			color: seriesColors
+		};
+	}
 
 	let mouseIn = $state(false);
 
 	$effect(() => {
-		// only update when points exist and not hovering
-		// if (!points || mouseIn) return;
-
-		const mainSeries = {
-			name: undefined,
-			type: 'line',
-			showSymbol: false,
-			smooth: true,
-			data: cleanPoints(points)
-		};
-
-		const secondSeries = points2
-			? {
-					name: undefined,
-					type: 'line',
-					showSymbol: false,
-					smooth: true,
-					data: cleanPoints(points2)
-				}
-			: undefined;
-
-		// build full option so ECharts never sees a series without axis etc.
-		const fullOption: Partial<EChartsOption> = {
-			title: options.title,
-			legend: options.legend,
-			tooltip: options.tooltip,
-			grid: options.grid,
-			xAxis: options.xAxis,
-			yAxis: options.yAxis,
-			dataZoom: options.dataZoom,
-			toolbox: options.toolbox,
-			emphasis: options.emphasis,
-			color: [colors[color].main, colors[color2 ?? 'two'].main],
-			series: secondSeries ? [mainSeries, secondSeries] : [mainSeries]
-		};
+		if (!chart || chart.isDisposed?.()) return;
 
 		untrack(() => {
-			if (!chart || chart.isDisposed?.()) return;
-			// schedule to avoid main-process setOption warnings
 			requestAnimationFrame(() => {
 				if (!chart || chart.isDisposed?.()) return;
-				chart.setOption(fullOption, { notMerge: false, lazyUpdate: true });
+				chart.setOption(getOptions(), { notMerge: false, lazyUpdate: true });
 			});
 		});
 	});
@@ -311,7 +310,7 @@
 			onmouseenter={() => (mouseIn = true)}
 			onmouseleave={() => (mouseIn = false)}
 		>
-			<Chart {init} {options} bind:chart />
+			<Chart {init} options={getOptions()} bind:chart />
 		</div>
 	</Card.Content>
 </Card.Root>

@@ -32,7 +32,7 @@
 		title: string;
 		points: { date: number; value: number }[];
 		percentage: boolean;
-		color: 'one' | 'two';
+		color: 'one' | 'two' | 'three' | 'four';
 		containerClass?: string;
 		containerContentHeight?: string;
 	}
@@ -67,7 +67,31 @@
 			main: 'rgba(47, 131, 230, 1)',
 			soft: 'rgba(47, 131, 230, 0.12)',
 			softStrong: 'rgba(47, 131, 230, 0.28)'
-		}
+		},
+		three: {
+			main: 'rgba(34, 197, 94, 1)',
+			soft: 'rgba(34, 197, 94, 0.12)',
+			softStrong: 'rgba(34, 197, 94, 0.28)'
+		},
+		four: {
+			main: 'rgba(168, 85, 247, 1)',
+			soft: 'rgba(168, 85, 247, 0.12)',
+			softStrong: 'rgba(168, 85, 247, 0.28)'
+		},
+		moveHandle:
+			mode.current === 'dark'
+				? {
+						color: 'rgb(170, 170, 170)',
+						borderColor: 'rgb(170, 170, 170)',
+						soft: 'rgb(200, 200, 200, 0.6)',
+						filler: 'rgb(200, 200, 200, 0.01)'
+					}
+				: {
+						color: 'rgb(0, 0, 0)',
+						borderColor: 'rgb(0, 0, 0)',
+						soft: 'rgb(0, 0, 0, 0.6)',
+						filler: 'rgb(0, 0, 0, 0.01)'
+					}
 	});
 
 	// @wc-ignore
@@ -120,9 +144,11 @@
 		},
 		xAxis: {
 			type: 'time',
-			lineStyle: {
-				color: mode.current === 'dark' ? colors.grid.dark : colors.grid.light,
-				width: 1
+			axisLine: {
+				lineStyle: {
+					color: mode.current === 'dark' ? colors.grid.dark : colors.grid.light,
+					width: 1
+				}
 			}
 		},
 		yAxis: {
@@ -156,34 +182,34 @@
 
 				// **selected region** – this is the bar that was blue
 				selectedDataBackground: {
-					lineStyle: { color: colors[color].main }, // thin top bar color
-					areaStyle: { color: colors[color].softStrong } // darker band under it
+					lineStyle: { color: colors.moveHandle.color },
+					areaStyle: { color: colors.moveHandle.soft }
 				},
 
-				// main filled rectangle between handles
-				fillerColor: colors[color].soft,
+				// filler between handles
+				fillerColor: colors.moveHandle.filler,
 
-				// handles (normal state)
+				// the two handles
 				handleStyle: {
-					color: colors[color].main,
-					borderColor: colors[color].main
+					color: colors.moveHandle.color,
+					borderColor: colors.moveHandle.color
 				},
 
-				// move handle (normal state)
+				// the larger handle when you hover over it
 				moveHandleStyle: {
-					color: colors[color].main,
-					borderColor: colors[color].main
+					color: colors.moveHandle.color,
+					borderColor: colors.moveHandle.color
 				},
 
-				// handles (hover/emphasis state)
+				// on hover
 				emphasis: {
 					handleStyle: {
-						color: colors[color].main,
-						borderColor: colors[color].main
+						color: colors.moveHandle.color,
+						borderColor: colors.moveHandle.color
 					},
 					moveHandleStyle: {
-						color: colors[color].main,
-						borderColor: colors[color].main
+						color: colors.moveHandle.color,
+						borderColor: colors.moveHandle.color
 					},
 					handleLabel: {
 						show: false
