@@ -4216,6 +4216,7 @@ msgstr "Unknown Switch"
 msgid "Unknown MAC"
 msgstr "Unknown MAC"
 
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Unknown"
 msgstr "Unknown"
@@ -5930,6 +5931,7 @@ msgstr "Foreground"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
 msgstr "Save As Image"
 
@@ -5968,3 +5970,26 @@ msgstr "Logs"
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
+
+#~ msgid "Series 1"
+#~ msgstr "Series 1"
+
+#~ msgid "Series 2"
+#~ msgstr "Series 2"
+
+#~ msgid "Received Bytes"
+#~ msgstr "Received Bytes"
+
+#~ msgid "Sent Bytes"
+#~ msgstr "Sent Bytes"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Received"
+msgstr "Received"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Sent"
+msgstr "Sent"
+
+#~ msgid "Sent 3"
+#~ msgstr "Sent 3"

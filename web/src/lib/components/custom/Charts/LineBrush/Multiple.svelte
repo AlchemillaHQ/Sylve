@@ -18,7 +18,6 @@
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
 	import { untrack } from 'svelte';
-	import { c } from '../../../../../locales/.wuchale/main.main.en.compiled';
 
 	use([
 		LineChart,

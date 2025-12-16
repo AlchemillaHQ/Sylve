@@ -4194,6 +4194,7 @@ msgstr "अज्ञात स्विच"
 msgid "Unknown MAC"
 msgstr "अज्ञात MAC"
 
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Unknown"
 msgstr "अज्ञात"
@@ -5902,6 +5903,7 @@ msgstr ""
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
 msgstr ""
 
@@ -5940,3 +5942,27 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr ""
+
+#~ msgid "Series 1"
+#~ msgstr ""
+
+#~ msgid "Series 2"
+#~ msgstr ""
+
+#~ msgid "Received Bytes"
+#~ msgstr ""
+
+#~ msgid "Sent Bytes"
+#~ msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
+msgid "Received"
+msgstr ""
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Sent"
+msgstr ""
+
+#~ msgid "Sent 3"
+#~ msgstr ""

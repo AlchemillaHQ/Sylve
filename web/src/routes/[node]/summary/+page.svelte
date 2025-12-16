@@ -394,7 +394,7 @@
 					containerContentHeight="h-64"
 				/>
 
-				<LineBrushMultiple
+				<!-- <LineBrushMultiple
 					title="Network Usage"
 					percentage={false}
 					data={true}
@@ -408,6 +408,30 @@
 						date: new Date(d.createdAt).getTime(),
 						value: Number(d.sentBytes)
 					}))}
+				/> -->
+
+				<LineBrushMultiple
+					title="Network Usage"
+					percentage={false}
+					data={true}
+					series={[
+						{
+							name: 'Received',
+							color: 'two',
+							points: networkUsageHistorical.current.map((d) => ({
+								date: new Date(d.createdAt).getTime(),
+								value: Number(d.receivedBytes)
+							}))
+						},
+						{
+							name: 'Sent',
+							color: 'one',
+							points: networkUsageHistorical.current.map((d) => ({
+								date: new Date(d.createdAt).getTime(),
+								value: Number(d.sentBytes)
+							}))
+						}
+					]}
 				/>
 			</div>
 		</ScrollArea>
