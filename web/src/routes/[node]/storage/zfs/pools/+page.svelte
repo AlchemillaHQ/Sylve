@@ -24,7 +24,9 @@
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
 	import { toast } from 'svelte-sonner';
-	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
+	import { storage } from '$lib';
+	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
 
 	interface Data {
 		disks: Disk[];
@@ -32,6 +34,7 @@
 	}
 
 	let visible = new IsDocumentVisible();
+	let reload = $state(false);
 
 	let { data }: { data: Data } = $props();
 
@@ -59,14 +62,32 @@
 		}
 	);
 
-	useInterval(1000, {
+	useInterval(2000, {
 		callback: async () => {
-			if (visible.current) {
+			if (visible.current && !storage.idle) {
 				pools.refetch();
+			}
+		}
+	});
+
+	useInterval(5000, {
+		callback: async () => {
+			if (visible.current && !storage.idle) {
 				disks.refetch();
 			}
 		}
 	});
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				pools.refetch();
+				disks.refetch();
+				reload = false;
+			}
+		}
+	);
 
 	let tableData = $derived(generateTableData(pools.current, disks.current));
 	let activeRows: Row[] | null = $state(null);
@@ -126,50 +147,6 @@
 			}
 		}
 	});
-
-	export function parsePoolActionError(error: APIResponse): string {
-		if (error.message && error.message === 'pool_create_failed') {
-			if (error.error) {
-				if (error.error.includes('mirror contains devices of different sizes')) {
-					return 'Pool contains a mirror with devices of different sizes';
-				} else if (error.error.includes('raidz contains devices of different sizes')) {
-					return 'Pool contains a RAIDZ vdev with devices of different sizes';
-				}
-			}
-		}
-
-		if (error.message && error.message === 'pool_delete_failed') {
-			if (error.error) {
-				if (error.error.includes('pool or dataset is busy')) {
-					return 'Pool is busy';
-				}
-
-				if (
-					!Array.isArray(error.error) &&
-					error.error.startsWith('pool ') &&
-					error.error.endsWith('is in use and cannot be deleted')
-				) {
-					return 'Pool is in use by a VM or Jail';
-				}
-			}
-		}
-
-		if (error.message && error.message === 'pool_edit_failed') {
-			if (error.error) {
-				if (
-					!Array.isArray(error.error) &&
-					error.error.startsWith('cannot replace') &&
-					error.error.includes('with smaller device')
-				) {
-					return 'Cannot replace with smaller device';
-				}
-			}
-
-			return 'Pool edit failed';
-		}
-
-		return '';
-	}
 </script>
 
 {#snippet button(type: string)}
@@ -329,7 +306,7 @@
 {/if}
 
 <!-- Delete -->
-<!-- <AlertDialog
+<AlertDialog
 	open={modals.delete.open}
 	names={{
 		parent: 'ZFS Pool',
@@ -340,6 +317,7 @@
 			modals.delete.open = false;
 			let pool = $state.snapshot(activePool);
 			let response = await deletePool(pool?.guid as string);
+			reload = true;
 			handleAPIResponse(response, {
 				success: `Pool ${pool?.name} deleted`,
 				error: parsePoolActionError(response)
@@ -349,7 +327,7 @@
 			modals.delete.open = false;
 		}
 	}}
-/> -->
+/>
 
 <!-- {#if modals.replace.data.pool}
 	<Replace
@@ -361,9 +339,18 @@
 		{usable}
 	/>
 {/if}
+-->
 
-<Create bind:open={modals.create.open} {usable} {disks} {pools} {parsePoolActionError} />
+{#if activePool && modals.edit.open}
+	<Edit bind:open={modals.edit.open} pool={activePool} {usable} bind:reload />
+{/if}
 
-{#if activePool}
-	<Edit bind:open={modals.edit.open} pool={activePool} {usable} {parsePoolActionError} />
-{/if} -->
+{#if modals.create.open}
+	<Create
+		bind:open={modals.create.open}
+		{usable}
+		disks={disks.current}
+		pools={pools.current}
+		bind:reload
+	/>
+{/if}

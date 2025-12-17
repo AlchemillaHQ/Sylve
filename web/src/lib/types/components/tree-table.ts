@@ -17,4 +17,8 @@ export interface Column {
 		| string;
 }
 
+export type TablePreferences = {
+	columnWidths: Record<string, number>;
+} | null;
+
 export type ExpandedRows = Record<number, boolean>;

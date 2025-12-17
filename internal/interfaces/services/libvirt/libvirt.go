@@ -82,11 +82,6 @@ type LibvirtServiceInterface interface {
 	GetDomainState(rid int) (libvirt.DomainState, error)
 
 	CheckVersion() error
-
-	ListStoragePools() ([]StoragePool, error)
-	CreateStoragePool(name string) error
-	DeleteStoragePool(name string) error
-	RescanStoragePools() error
 }
 
 type LvDomain struct {

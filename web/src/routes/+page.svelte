@@ -208,4 +208,6 @@
 <span class="icon-[temaki--water-tap]"></span>
 <span class="icon-[raphael--ethernet]"></span>
 <span class="icon-[mdi--internet]"></span>
+<span class="icon-[mdi--desktop-classic]"></span>
+<span class="icon-[fluent--storage-20-filled]"></span>
 -->

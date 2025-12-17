@@ -246,11 +246,6 @@
 					icon: 'material-symbols--settings',
 					children: [
 						{
-							label: 'PCI Passthrough',
-							icon: 'eos-icons--hardware-circuit',
-							href: `/${node}/settings/device-passthrough`
-						},
-						{
 							label: 'Authentication',
 							icon: 'mdi--shield-key',
 							children: [
@@ -265,6 +260,16 @@
 									href: `/${node}/settings/authentication/groups`
 								}
 							]
+						},
+						{
+							label: 'PCI Passthrough',
+							icon: 'eos-icons--hardware-circuit',
+							href: `/${node}/settings/device-passthrough`
+						},
+						{
+							label: 'System',
+							icon: 'mdi--desktop-classic',
+							href: `/${node}/settings/system`
 						}
 					]
 				}

@@ -60,9 +60,6 @@
 		}
 	});
 
-	$inspect(scanActivity);
-	// $inspect(status.current);
-
 	function num(v?: string | number | null): number {
 		if (v === undefined || v === null) return 0;
 		return typeof v === 'string' ? Number(v) : v;

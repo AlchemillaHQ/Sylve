@@ -18,7 +18,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
-	"github.com/alchemillahq/sylve/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -39,40 +38,6 @@ func NewZfsService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceI
 		Libvirt:   libvirt,
 		syncMutex: &sync.Mutex{},
 	}
-}
-
-func (s *Service) SyncLibvirtPools(ctx context.Context) error {
-	zfsPools, err := s.GZFS.Zpool.List(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	lvPools, err := s.Libvirt.ListStoragePools()
-
-	if err != nil {
-		return err
-	}
-
-	for _, pool := range zfsPools {
-		exists := false
-		for _, lvPool := range lvPools {
-			if pool.Name == lvPool.Source {
-				exists = true
-				break
-			}
-		}
-
-		if !exists {
-			err := s.Libvirt.CreateStoragePool(pool.Name)
-			if err != nil {
-				logger.L.Error().Err(err).Msgf("Failed to create storage pool %s in libvirt", pool.Name)
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func (s *Service) PoolFromDataset(ctx context.Context, name string) (string, error) {

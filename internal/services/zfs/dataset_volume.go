@@ -21,7 +21,6 @@ import (
 func (s *Service) CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-	defer s.Libvirt.RescanStoragePools()
 
 	datasets, err := s.GZFS.ZFS.ListByType(
 		ctx,
@@ -67,7 +66,6 @@ func (s *Service) CreateVolume(ctx context.Context, name string, parent string, 
 func (s *Service) EditVolume(ctx context.Context, name string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-	defer s.Libvirt.RescanStoragePools()
 
 	datasets, err := s.GZFS.ZFS.ListByType(
 		ctx,
@@ -92,7 +90,6 @@ func (s *Service) EditVolume(ctx context.Context, name string, props map[string]
 func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-	defer s.Libvirt.RescanStoragePools()
 
 	var count int64
 	if err := s.DB.Model(&vmModels.Storage{}).

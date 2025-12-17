@@ -125,10 +125,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return err
 	}
 
-	if err := s.ZFS.SyncLibvirtPools(ctx); err != nil {
-		return err
-	}
-
 	if err := s.Libvirt.StartTPM(); err != nil {
 		return err
 	}

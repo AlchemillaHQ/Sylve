@@ -2,7 +2,7 @@
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
 
-	import { IsDocumentVisible } from 'runed';
+	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { goto, preloadData } from '$app/navigation';
 	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
@@ -138,13 +138,21 @@
 	}
 
 	const visible = new IsDocumentVisible();
-	$effect(() => {
-		if (visible.current) {
-			storage.visible = true;
-		} else {
-			storage.visible = false;
+	const idle = new IsIdle({ timeout: 10000 });
+
+	watch(
+		() => visible.current,
+		(current) => {
+			storage.visible = current;
 		}
-	});
+	);
+
+	watch(
+		() => idle.current,
+		(current) => {
+			storage.idle = current;
+		}
+	);
 </script>
 
 <svelte:head>

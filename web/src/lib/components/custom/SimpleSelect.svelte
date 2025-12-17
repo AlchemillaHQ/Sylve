@@ -10,6 +10,7 @@
 		value: string;
 		classes?: { parent?: string; label?: string; trigger?: string };
 		onChange: (value: string) => void;
+		title?: string;
 		disabled?: boolean;
 		single?: boolean;
 	}
@@ -27,7 +28,8 @@
 		},
 		value = $bindable(),
 		onChange,
-		disabled = false
+		disabled = false,
+		title
 	}: Props = $props();
 
 	let sLabel = $derived(
@@ -43,7 +45,7 @@
 	{/if}
 
 	<Select.Root type="single" bind:value onValueChange={() => onChange(value)} {disabled}>
-		<Select.Trigger class={classes.trigger} title={sLabel || placeholder}>
+		<Select.Trigger class={classes.trigger} title={title || sLabel || placeholder}>
 			{#if icon}
 				<span class={icon + ' mt-0.5 h-4 w-4'}></span>
 			{/if}

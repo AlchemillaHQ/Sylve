@@ -20,7 +20,8 @@ export async function apiRequest<T extends z.ZodType>(
 	endpoint: string,
 	schema: T,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
-	body?: unknown
+	body?: unknown,
+	options?: { raw?: boolean }
 ): Promise<z.infer<T>> {
 	function setReloadFlag() {
 		if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
@@ -50,11 +51,15 @@ export async function apiRequest<T extends z.ZodType>(
 		/* Couldn't parse response data into APIResponse so we'll just return the data? */
 		if (!apiResponse.success) {
 			setReloadFlag();
-			return apiResponse.data;
+			if (apiResponse.data) {
+				return getDefaultValue(schema, { status: 'error' });
+			}
+
+			return null as z.infer<T>;
 		}
 
 		/* Caller asked for a raw response */
-		if (schema._def.description === 'APIResponseSchema') {
+		if (options?.raw) {
 			setReloadFlag();
 			return apiResponse.data as z.infer<T>;
 		}

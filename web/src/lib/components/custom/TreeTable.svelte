@@ -1,14 +1,17 @@
 <script lang="ts">
-	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { hasRowsChanged, matchAny } from '$lib/utils/table';
+	import type { Column, Row, TablePreferences } from '$lib/types/components/tree-table';
+	import { hasRowsChanged, matchAny, restoreTreeState } from '$lib/utils/table';
 	import { findRow, getAllRows, pruneEmptyChildren } from '$lib/utils/tree-table';
-	import { onMount, untrack } from 'svelte';
+	import { deepEqual } from 'fast-equals';
+	import { watch, Debounced } from 'runed';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		TabulatorFull as Tabulator,
 		type ColumnDefinition,
 		type RowComponent
 	} from 'tabulator-tables';
+	import { PersistedState } from 'runed';
 
 	let tableComponent: HTMLDivElement | null = null;
 	let table: Tabulator | null = $state(null);
@@ -36,13 +39,10 @@
 		initialSort
 	}: Props = $props();
 
+	const tablePrefs = new PersistedState(`${name}-prefs`, null as TablePreferences);
+
 	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
-	let scrollTop = 0;
-	let scrollLeft = 0;
-	let shouldPreserveScroll = false;
-
-	let aboutToClick = $state(false);
 
 	function updateParentActiveRows() {
 		if (tableInitialized) {
@@ -51,78 +51,70 @@
 	}
 
 	async function replaceDataPreservingScroll(rows: Row[]) {
-		if (!tableInitialized) {
+		var tableEl = table?.element as HTMLElement;
+		var holder = tableEl.querySelector('.tabulator-tableholder') as HTMLElement;
+		if (!holder) {
 			await table?.replaceData(rows);
 			return;
 		}
 
-		if (tableHolder) {
-			scrollTop = tableHolder.scrollTop;
-			scrollLeft = tableHolder.scrollLeft;
-			shouldPreserveScroll = true;
-		}
+		var parent = holder.parentElement as HTMLElement;
+		var prevScrollTop = holder.scrollTop;
+		var prevScrollLeft = holder.scrollLeft;
+		var prevMinHeight = parent.style.minHeight;
 
-		await table?.replaceData(rows);
+		parent.style.minHeight = `${parent.offsetHeight}px`;
+		parent.style.overflowAnchor = 'none';
+
+		table?.replaceData(rows);
+
+		const newHolder = tableEl.querySelector('.tabulator-tableholder') as HTMLElement;
+
+		parent.style.minHeight = prevMinHeight;
+
+		if (newHolder) {
+			newHolder.scrollTop = prevScrollTop;
+			newHolder.scrollLeft = prevScrollLeft;
+		}
 	}
 
-	$effect(() => {
-		if (data.rows) {
-			untrack(async () => {
-				if (data.rows.length === 0) {
-					table?.clearData();
-					return;
-				}
+	watch(
+		() => data.rows,
+		(newRows, oldRows) => {
+			if (newRows.length === 0) {
+				table?.clearData();
+				return;
+			}
 
-				const selectedIds = table?.getSelectedRows().map((row) => row.getData().id) || [];
-				const treeExpands = getAllRows(table?.getRows() || []).map((row) => ({
-					id: row.getData().id,
-					expanded: row.isTreeExpanded()
-				}));
+			if (deepEqual(newRows, oldRows)) {
+				return;
+			}
 
-				if (hasRowsChanged(table, data.rows) && !aboutToClick) {
-					if (tableInitialized) {
-						await replaceDataPreservingScroll(pruneEmptyChildren(data.rows));
-						tableFilter(query || '');
-					}
-				}
+			const selectedIds = table?.getSelectedRows().map((r) => r.getData().id) ?? [];
+			const expandMap = new Map<number, boolean>(
+				getAllRows(table?.getRows() || []).map((r) => [r.getData().id, r.isTreeExpanded()])
+			);
 
-				for (let i = 0; i < selectedIds.length; i++) {
-					const id = selectedIds[i];
-					const row = findRow(table?.getRows() || [], id);
-					if (row) row.select();
-				}
+			if (hasRowsChanged(table, newRows) && tableInitialized) {
+				replaceDataPreservingScroll(pruneEmptyChildren(newRows)).then(() => {
+					tableFilter(query || '');
+				});
+			}
 
-				const rowMap = new Map<number, RowComponent>();
-				const buildRowMap = (rows: RowComponent[]) => {
-					for (const row of rows) {
-						rowMap.set(row.getData().id, row);
-						const children = row.getTreeChildren();
-						if (children.length > 0) {
-							buildRowMap(children);
-						}
-					}
-				};
+			for (const id of selectedIds) {
+				findRow(table?.getRows() || [], id)?.select();
+			}
 
-				buildRowMap(table?.getRows() || []);
-
-				for (let i = 0; i < treeExpands.length; i++) {
-					const treeExpand = treeExpands[i];
-					const row = rowMap.get(treeExpand.id);
-					if (row) {
-						treeExpand.expanded ? row.treeExpand() : row.treeCollapse();
-					}
-				}
-
-				updateParentActiveRows();
-			});
+			restoreTreeState(expandMap, table?.getRows() || []);
+			updateParentActiveRows();
 		}
-	});
+	);
 
 	onMount(() => {
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
 				data: pruneEmptyChildren(data.rows),
-				reactiveData: true,
+				reactiveData: false,
 				columns: data.columns as ColumnDefinition[],
 				layout: 'fitColumns',
 				selectableRows: multipleSelect ? true : 1,
@@ -158,24 +150,15 @@
 				'.tabulator-tableholder'
 			) as HTMLDivElement | null;
 
-			document.querySelector('.tabulator-footer')?.addEventListener('mouseover', () => {
-				aboutToClick = true;
-			});
-
-			document.querySelector('.tabulator-footer')?.addEventListener('mouseout', () => {
-				aboutToClick = false;
-			});
-		});
-
-		table?.on('renderComplete', () => {
-			if (!shouldPreserveScroll || !tableHolder) return;
-			shouldPreserveScroll = false;
-
-			requestAnimationFrame(() => {
-				if (!tableHolder) return;
-				tableHolder.scrollTop = scrollTop;
-				tableHolder.scrollLeft = scrollLeft;
-			});
+			const prefs = tablePrefs.current;
+			if (prefs && prefs.columnWidths) {
+				table?.getColumns().forEach((col) => {
+					const width = prefs.columnWidths[col.getField() as string];
+					if (width) {
+						col.setWidth(width);
+					}
+				});
+			}
 		});
 
 		table?.on('cellClick', (_event: UIEvent, cell) => {
@@ -190,6 +173,16 @@
 				});
 			}
 		});
+
+		table?.on('columnResized', () => {
+			const colWidths: Record<string, number> = {};
+
+			table?.getColumns().forEach((col) => {
+				colWidths[col.getField() as string] = col.getWidth();
+			});
+
+			tablePrefs.current = { columnWidths: colWidths };
+		});
 	});
 
 	function tableFilter(query: string) {
@@ -201,10 +194,14 @@
 			table.setFilter(matchAny, { query });
 		}
 	}
+	const debouncedQuery = new Debounced(() => query, 300);
 
-	$effect(() => {
-		tableFilter(query || '');
-	});
+	watch(
+		() => debouncedQuery.current,
+		(newQuery) => {
+			tableFilter(newQuery || '');
+		}
+	);
 </script>
 
 <div

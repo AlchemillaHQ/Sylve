@@ -245,6 +245,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
 		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
+		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")

@@ -108,7 +108,7 @@
 			children: [
 				{
 					label: node,
-					icon: 'mdi--dns',
+					icon: 'fluent--storage-20-filled',
 					href: `/${node}`,
 					children: children.length > 0 ? children : undefined
 				}

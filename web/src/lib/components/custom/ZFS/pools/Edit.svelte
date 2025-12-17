@@ -2,26 +2,24 @@
 	import { editPool } from '$lib/api/zfs/pool';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import type { APIResponse } from '$lib/types/common';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
-
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
+	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		pool: Zpool;
 		usable: { disks: Disk[]; partitions: Partition[] };
-		parsePoolActionError: (response: APIResponse) => string;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), pool, usable, parsePoolActionError }: Props = $props();
+	let { open = $bindable(), pool, usable, reload = $bindable() }: Props = $props();
 	let spares: string[] = $derived.by(() => {
 		const uD: string[] = usable.disks.map((disk) => disk.device);
 		const uP: string[] = usable.partitions.map((partition) => `/dev/${partition.name}`);
@@ -38,13 +36,13 @@
 	});
 
 	let options = {
-		autoexpand: pool.properties.find((prop) => prop.property === 'autoexpand')?.value || 'off',
-		autotrim: pool.properties.find((prop) => prop.property === 'autotrim')?.value || 'off',
-		delegation: pool.properties.find((prop) => prop.property === 'delegation')?.value || 'off',
-		comment: pool.properties.find((prop) => prop.property === 'comment')?.value || '',
-		failmode: pool.properties.find((prop) => prop.property === 'failmode')?.value || 'wait',
-		spares: pool.spares.map((spare) => spare.name) || ([] as string[]),
-		autoreplace: pool.properties.find((prop) => prop.property === 'autoreplace')?.value || 'off',
+		autoexpand: pool.properties.autoexpand?.value || 'off',
+		autotrim: pool.properties.autotrim?.value || 'off',
+		delegation: pool.properties.delegation?.value || 'off',
+		comment: pool.properties.comment?.value || '',
+		failmode: pool.properties.failmode?.value || 'wait',
+		autoreplace: pool.properties.autoreplace?.value || 'off',
+		spares: Object.keys(pool.spares ?? {}),
 		editing: false
 	};
 
@@ -66,6 +64,8 @@
 			},
 			properties.spares
 		);
+
+		reload = true;
 
 		if (response.error) {
 			toast.error(parsePoolActionError(response), {
@@ -207,18 +207,18 @@
 						</Select.Root>
 					</div>
 
-					{#if properties.spares.length > 0}
-						<SimpleSelect
-							label="Auto Replace"
-							placeholder="Select Auto Replace"
-							options={[
-								{ value: 'on', label: 'Yes' },
-								{ value: 'off', label: 'No' }
-							]}
-							bind:value={properties.autoreplace}
-							onChange={(value) => (properties.autoreplace = value)}
-						/>
-					{/if}
+					<SimpleSelect
+						label="Auto Replace"
+						placeholder="Select Auto Replace"
+						options={[
+							{ value: 'on', label: 'Yes' },
+							{ value: 'off', label: 'No' }
+						]}
+						bind:value={properties.autoreplace}
+						onChange={(value) => (properties.autoreplace = value)}
+						disabled={properties.spares.length === 0}
+						title={properties.spares.length === 0 ? 'Add spares to enable auto replace' : ''}
+					/>
 				{/if}
 			</div>
 		</div>

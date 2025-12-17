@@ -12,11 +12,11 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/pkg/disk"
@@ -117,20 +117,59 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
-	if err := s.Libvirt.CreateStoragePool(req.Name); err != nil {
-		return fmt.Errorf("libvirt_create_pool_failed: %v", err)
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return fmt.Errorf("failed_to_get_basic_settings: %v", err)
 	}
 
-	return s.SyncToLibvirt(ctx)
+	basicSettings.Pools = append(basicSettings.Pools, req.Name)
+
+	if err := s.DB.Save(&basicSettings).Error; err != nil {
+		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
+	}
+
+	return nil
 }
 
 func (s *Service) EditPool(ctx context.Context, name string, props map[string]string, spares []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
+	seen := make(map[string]struct{})
+
+	for i, dev := range spares {
+		dev = filepath.Clean(dev)
+
+		if dev == "" || dev == "." || dev == "/" {
+			return fmt.Errorf("invalid_spare_device %q", dev)
+		}
+
+		if !strings.HasPrefix(dev, "/dev/") {
+			return fmt.Errorf("invalid_spare_device %s: must be under /dev", dev)
+		}
+
+		if _, ok := seen[dev]; ok {
+			return fmt.Errorf("duplicate_spare_device %s", dev)
+		}
+		seen[dev] = struct{}{}
+
+		spares[i] = dev
+	}
+
 	pool, err := s.GZFS.Zpool.Get(ctx, name)
 	if err != nil {
 		return fmt.Errorf("pool_not_found")
+	}
+
+	currentByPath := make(map[string]struct{})
+	currentByBase := make(map[string]string)
+
+	for _, dev := range pool.Spares {
+		if dev == nil || dev.Path == "" {
+			continue
+		}
+		currentByPath[dev.Path] = struct{}{}
+		currentByBase[filepath.Base(dev.Path)] = dev.Path
 	}
 
 	minSize, err := pool.RequiredSpareSize(ctx)
@@ -161,17 +200,11 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 
 	currentSet := make(map[string]string)
 
-	if sparesVdev, ok := pool.Vdevs["spares"]; ok && sparesVdev != nil {
-		for _, dev := range sparesVdev.Vdevs {
-			if dev == nil || dev.Path == "" {
-				continue
-			}
-
-			base := filepath.Base(dev.Path)
-			if _, seen := currentSet[base]; !seen {
-				currentSet[base] = dev.Path
-			}
+	for _, dev := range pool.Spares {
+		if dev == nil || dev.Path == "" {
+			continue
 		}
+		currentSet[filepath.Base(dev.Path)] = dev.Path
 	}
 
 	newSet := make(map[string]struct{})
@@ -179,32 +212,33 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 		newSet[filepath.Base(dev)] = struct{}{}
 	}
 
-	removed := make(map[string]struct{})
 	for base, full := range currentSet {
 		if _, keep := newSet[base]; !keep {
-			if _, done := removed[base]; done {
-				continue
-			}
 			if err := pool.RemoveSpare(ctx, full); err != nil {
 				return fmt.Errorf("failed_to_remove_spare %s: %v", full, err)
 			}
-			removed[base] = struct{}{}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
 	for _, dev := range spares {
+		if _, ok := currentByPath[dev]; ok {
+			continue
+		}
+
 		base := filepath.Base(dev)
-		if _, exists := currentSet[base]; !exists {
-			if err := pool.AddSpare(ctx, dev, false); err != nil {
-				return fmt.Errorf("failed_to_add_spare %s: %v", dev, err)
-			}
+
+		if _, ok := currentByBase[base]; ok {
+			continue
+		}
+
+		if err := pool.AddSpare(ctx, dev, false); err != nil {
+			return fmt.Errorf("failed_to_add_spare %s: %v", dev, err)
 		}
 	}
 
-	return s.SyncToLibvirt(ctx)
+	return nil
 }
 
 func (s *Service) DeletePool(ctx context.Context, guid string) error {
@@ -243,14 +277,25 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 		return fmt.Errorf("failed_to_delete_historical_data: %v", result.Error)
 	}
 
-	if err := s.Libvirt.DeleteStoragePool(pool.Name); err != nil {
-		if !strings.Contains(err.Error(), "failed to lookup storage pool") &&
-			!strings.Contains(err.Error(), "Storage pool not found") {
-			return err
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return fmt.Errorf("failed_to_get_basic_settings: %v", err)
+	}
+
+	updatedPools := []string{}
+	for _, p := range basicSettings.Pools {
+		if p != pool.Name {
+			updatedPools = append(updatedPools, p)
 		}
 	}
 
-	return s.SyncToLibvirt(ctx)
+	basicSettings.Pools = updatedPools
+
+	if err := s.DB.Save(&basicSettings).Error; err != nil {
+		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
+	}
+
+	return nil
 }
 
 func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) error {
@@ -266,45 +311,6 @@ func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) e
 	pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
 	if err != nil {
 		return fmt.Errorf("pool_not_found_after_replace")
-	}
-
-	return nil
-}
-
-func (s *Service) SyncToLibvirt(ctx context.Context) error {
-	defer s.Libvirt.RescanStoragePools()
-
-	sPools, err := s.Libvirt.ListStoragePools()
-	if err != nil {
-		return fmt.Errorf("failed_to_list_libvirt_pools: %v", err)
-	}
-
-	zPools, err := s.GZFS.Zpool.GetPoolNames(ctx)
-	if err != nil {
-		return fmt.Errorf("failed_to_list_zfs_pools: %v", err)
-	}
-
-	existing := make(map[string]struct{}, len(sPools))
-	for _, sp := range sPools {
-		existing[sp.Name] = struct{}{}
-	}
-
-	for _, sp := range sPools {
-		if !slices.Contains(zPools, sp.Name) {
-			if derr := s.Libvirt.DeleteStoragePool(sp.Name); derr != nil {
-				return fmt.Errorf("failed_to_delete_libvirt_pool %s: %v", sp.Name, derr)
-			}
-		}
-	}
-
-	for _, name := range zPools {
-		if _, ok := existing[name]; ok {
-			continue
-		}
-
-		if err := s.Libvirt.CreateStoragePool(name); err != nil {
-			return fmt.Errorf("failed_to_create_libvirt_pool %s: %w", name, err)
-		}
 	}
 
 	return nil

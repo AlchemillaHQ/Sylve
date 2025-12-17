@@ -51,7 +51,6 @@ type ZfsServiceInterface interface {
 	EditPool(ctx context.Context, name string, props map[string]string, spares []string) error
 	DeletePool(ctx context.Context, guid string) error
 	ReplaceDevice(ctx context.Context, guid, old, latest string) error
-	SyncToLibvirt(ctx context.Context) error
 	GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]PoolStatPoint, int, error)
 
 	CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error
@@ -63,7 +62,6 @@ type ZfsServiceInterface interface {
 	StartSnapshotScheduler(ctx context.Context)
 	RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error
 
-	SyncLibvirtPools(ctx context.Context) error
 	PoolFromDataset(ctx context.Context, name string) (string, error)
 	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
 	GetDisksUsage(ctx context.Context) (SimpleZFSDiskUsage, error)

@@ -17,19 +17,19 @@
 	import { raidTypeArr } from '$lib/utils/zfs/pool';
 	import { flip } from 'svelte/animate';
 	import { slide } from 'svelte/transition';
-
 	import { createPool } from '$lib/api/zfs/pool';
-	import type { APIResponse } from '$lib/types/common';
 	import { isValidPoolName } from '$lib/utils/zfs';
 	import humanFormat from 'human-format';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
+
 	interface Props {
 		open: boolean;
 		disks: Disk[];
 		pools: Zpool[];
 		usable: { disks: Disk[]; partitions: Partition[] };
-		parsePoolActionError: (response: APIResponse) => string;
+		reload: boolean;
 	}
 
 	interface VdevContainer {
@@ -38,7 +38,7 @@
 		partitions: Partition[];
 	}
 
-	let { open = $bindable(), disks, pools, usable, parsePoolActionError }: Props = $props();
+	let { open = $bindable(), disks, pools, usable, reload = $bindable() }: Props = $props();
 
 	let options = {
 		name: '',
@@ -452,6 +452,7 @@
 			createForce: properties.force
 		});
 
+		reload = true;
 		properties.creating = false;
 
 		if (response.status === 'error') {
@@ -500,15 +501,16 @@
 				<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
 			{/if}
 
-			<div class="max-w-[48px] truncate text-center text-xs">
+			<div class="max-w-12 truncate text-center text-xs">
 				{disk.device.split('/').pop()}
 			</div>
 
 			<button
-				class="absolute -top-1 -right-1 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+				class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center
+	       rounded-full bg-red-500 text-white hover:bg-red-600"
 				onclick={() => removeFromVdev(id, disk.uuid as string)}
 			>
-				<span class="icon-[mdi--close] h-3 w-3"></span>
+				<span class="icon-[mdi--close] h-3 w-3 block"></span>
 			</button>
 		</div>
 	{/each}
@@ -517,15 +519,16 @@
 		<div animate:flip={{ duration: 300 }} class="relative">
 			<span class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"></span>
 
-			<div class="max-w-[48px] truncate text-center text-xs">
+			<div class="max-w-12 truncate text-center text-xs">
 				{partition.name.split('/').pop()}
 			</div>
 
 			<button
-				class="absolute -top-1 -right-1 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+				class="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white hover:bg-red-600
+	       flex items-center justify-center"
 				onclick={() => removeFromVdev(id, partition.name)}
 			>
-				<span class="icon-[mdi--close] h-3 w-3"></span>
+				<span class="icon-[mdi--close] h-3 w-3 block"></span>
 			</button>
 		</div>
 	{/each}
@@ -536,7 +539,7 @@
 		<Label>{type}</Label>
 		<div class="bg-primary/10 dark:bg-background mt-1 rounded-lg p-4">
 			<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
-				<div class="flex min-h-[80px] items-center justify-center gap-4">
+				<div class="flex min-h-20 items-center justify-center gap-4">
 					{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.uuid)}
 						<div class="text-center" animate:flip={{ duration: 300 }}>
 							<div class="cursor-move" use:draggable={disk.uuid ?? ''}>
@@ -548,7 +551,7 @@
 									<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
 								{/if}
 							</div>
-							<div class="max-w-[64px] truncate text-xs">
+							<div class="max-w-16 truncate text-xs">
 								{disk.device.replaceAll('/dev/', '')}
 							</div>
 							<div class="text-muted-foreground text-xs">
@@ -573,7 +576,7 @@
 		<Label>Partitions</Label>
 		<div class="bg-primary/10 dark:bg-background mt-1 rounded-lg p-4">
 			<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
-				<div class="flex min-h-[80px] items-center justify-center gap-4">
+				<div class="flex min-h-20 items-center justify-center gap-4">
 					{#each usable.partitions.filter((partition) => !properties.vdev.containers
 								.flatMap((vdev) => vdev.partitions)
 								.some((p) => p.name === partition.name)) as partition (partition.name)}
@@ -583,7 +586,7 @@
 									class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"
 								></span>
 							</div>
-							<div class="max-w-[64px] truncate text-xs">
+							<div class="max-w-16 truncate text-xs">
 								{partition.name}
 							</div>
 							<div class="text-muted-foreground text-xs">
@@ -722,7 +725,7 @@
 											{@render vdevErrors(i)}
 
 											<div
-												class={`bg-primary/10 dark:bg-background relative h-28 w-48 flex-shrink-0 overflow-auto rounded-lg p-2 ${getVdevErrors(i) ? 'border border-yellow-700 ' : ''}`}
+												class={`bg-primary/10 dark:bg-background relative h-28 w-48 shrink-0 overflow-auto rounded-lg p-2 ${getVdevErrors(i) ? 'border border-yellow-700 ' : ''}`}
 												use:dropzone={{
 													on_dropzone: (_: unknown, event: DragEvent) => handleDropToVdev(i, event),
 													dragover_class: 'droppable'
@@ -766,7 +769,7 @@
 
 			<Tabs.Content class="mt-3" value="tab-options">
 				<Card.Root class="min-h-[20vh] border-none pb-6">
-					<Card.Content class="flex flex-col gap-4 p-4 !pb-0">
+					<Card.Content class="flex flex-col gap-4 p-4 pb-0!">
 						<div transition:slide class="grid grid-cols-1 gap-4">
 							<div class="flex-1 space-y-1.5">
 								<Label for="comment">Comment</Label>

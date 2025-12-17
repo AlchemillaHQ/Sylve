@@ -86,7 +86,6 @@ func (s *Service) GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, e
 func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-	defer s.Libvirt.RescanStoragePools()
 
 	var count int64
 	if err := s.DB.Model(&vmModels.VMStorageDataset{}).

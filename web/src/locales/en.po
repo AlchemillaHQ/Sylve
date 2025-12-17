@@ -802,6 +802,7 @@ msgid "Manual Switch"
 msgstr "Manual Switch"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
 msgstr "ZFS Pool"
 
@@ -1413,6 +1414,7 @@ msgstr "Cluster Information"
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -1426,6 +1428,7 @@ msgstr "Property"
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -3527,10 +3530,11 @@ msgid "Enable resource limits to edit"
 msgstr "Enable resource limits to edit"
 
 #. placeholder {0}: title
-#. placeholder {0}: activeRow.property
+#. placeholder {0}: property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -4057,15 +4061,15 @@ msgstr "Failed to delete Samba share"
 msgid "Samba share deleted"
 msgstr "Samba share deleted"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool contains a mirror with devices of different sizes"
 msgstr "Pool contains a mirror with devices of different sizes"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool contains a RAIDZ vdev with devices of different sizes"
 msgstr "Pool contains a RAIDZ vdev with devices of different sizes"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool is busy"
 msgstr "Pool is busy"
 
@@ -4075,7 +4079,7 @@ msgstr "Pool is busy"
 #~ msgid "Spare device is too small"
 #~ msgstr "Spare device is too small"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool edit failed"
 msgstr "Pool edit failed"
 
@@ -4108,8 +4112,10 @@ msgstr "Replace already in progress"
 msgid "Replace Device"
 msgstr "Replace Device"
 
-#~ msgid "Pool {0} deleted"
-#~ msgstr "Pool {0} deleted"
+#. placeholder {0}: pool?.name
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool {0} deleted"
+msgstr "Pool {0} deleted"
 
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Allocated"
@@ -5212,11 +5218,11 @@ msgstr "{0} {1} Core{2} from {3} Socket{4}"
 msgid "Apply Changes"
 msgstr "Apply Changes"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool is in use by a VM or Jail"
 msgstr "Pool is in use by a VM or Jail"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/lib/utils/zfs/pool.svelte.ts
 msgid "Cannot replace with smaller device"
 msgstr "Cannot replace with smaller device"
 
@@ -5971,18 +5977,6 @@ msgstr "Logs"
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
 
-#~ msgid "Series 1"
-#~ msgstr "Series 1"
-
-#~ msgid "Series 2"
-#~ msgstr "Series 2"
-
-#~ msgid "Received Bytes"
-#~ msgstr "Received Bytes"
-
-#~ msgid "Sent Bytes"
-#~ msgstr "Sent Bytes"
-
 #: src/routes/[node]/summary/+page.svelte
 msgid "Received"
 msgstr "Received"
@@ -5991,5 +5985,51 @@ msgstr "Received"
 msgid "Sent"
 msgstr "Sent"
 
-#~ msgid "Sent 3"
-#~ msgstr "Sent 3"
+#: src/routes/[node]/+layout.svelte
+msgid "System"
+msgstr "System"
+
+#: src/lib/components/custom/Settings/System/ZFSPools.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools"
+msgstr "ZFS Pools"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "At least one ZFS Pool must be selected"
+msgstr "At least one ZFS Pool must be selected"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "No changes made to ZFS Pools"
+msgstr "No changes made to ZFS Pools"
+
+#~ msgid "You cannot remove ZFS Pools that are already initialized"
+#~ msgstr "You cannot remove ZFS Pools that are already initialized"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to update ZFS Pools"
+msgstr "Failed to update ZFS Pools"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated successfully"
+msgstr "ZFS Pools updated successfully"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Enter ZFS Pools"
+msgstr "Enter ZFS Pools"
+
+#: src/lib/components/custom/Settings/System/ZFSPools.svelte
+msgid "Select ZFS Pools"
+msgstr "Select ZFS Pools"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Cannot remove initialized ZFS Pools"
+msgstr "Cannot remove initialized ZFS Pools"
+
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Add spares to enable auto replace"
+msgstr "Add spares to enable auto replace"
