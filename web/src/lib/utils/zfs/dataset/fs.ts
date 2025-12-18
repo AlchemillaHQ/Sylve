@@ -215,7 +215,6 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 	for (const group of grouped) {
 		const nodeMap = new Map<string, Row>();
 
-		/** helper */
 		const getOrCreate = (name: string, type = 'FILESYSTEM'): Row => {
 			let node = nodeMap.get(name);
 			if (!node) {
@@ -234,10 +233,8 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			return node;
 		};
 
-		// pool root
 		const poolNode = getOrCreate(group.name, 'pool');
 
-		// ---------- PASS 1: create all nodes ----------
 		for (const fs of group.filesystems) {
 			const parts = fs.name.split('/');
 			for (let i = 0; i < parts.length; i++) {
@@ -246,7 +243,6 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			}
 		}
 
-		// ---------- PASS 2: apply stats + build tree ----------
 		for (const fs of group.filesystems) {
 			const node = nodeMap.get(fs.name)!;
 

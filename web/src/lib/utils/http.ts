@@ -24,7 +24,7 @@ export async function apiRequest<T extends z.ZodType>(
 	options?: { raw?: boolean }
 ): Promise<z.infer<T>> {
 	function setReloadFlag() {
-		if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+		if (method !== 'GET') {
 			reload.auditLog = true;
 		}
 	}

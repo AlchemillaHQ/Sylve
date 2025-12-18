@@ -88,12 +88,11 @@ export const renderWithIcon = (
 export function sizeFormatter(cell: CellComponent) {
 	try {
 		const sizeOptions = {
-			scale: 'binary' as ScaleLike,
 			unit: 'B',
 			maxDecimals: 1
 		};
 
-		return humanFormat(cell.getValue(), sizeOptions);
+		return humanFormat(Number(cell.getValue()), sizeOptions);
 	} catch (e) {
 		return cell.getValue();
 	}

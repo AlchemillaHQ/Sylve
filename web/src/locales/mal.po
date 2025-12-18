@@ -667,7 +667,6 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
@@ -3524,7 +3523,7 @@ msgstr ""
 
 #. placeholder {0}: title
 #. placeholder {0}: property
-#. placeholder {0}: title
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -4920,9 +4919,8 @@ msgstr ""
 msgid "Invalid volume size"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-msgid "Parent not found"
-msgstr ""
+#~ msgid "Parent not found"
+#~ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Volume size is greater than available space"
@@ -4985,18 +4983,15 @@ msgstr ""
 msgid "Select volume mode"
 msgstr ""
 
-#. placeholder {0}: dataset.volblocksize / 1024
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid "Size must be a multiple of volume block size ({0}K)"
-msgstr ""
+#~ msgid "Size must be a multiple of volume block size ({0}K)"
+#~ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Failed to edit volume"
 msgstr ""
 
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid "Volume edited successfully"
-msgstr ""
+#~ msgid "Volume edited successfully"
+#~ msgstr ""
 
 #. placeholder {0}: dataset.name
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -5999,4 +5994,46 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Parent pool not found"
+msgstr ""
+
+#~ msgid "Event has been created"
+#~ msgstr ""
+
+#~ msgid "Undo"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size must match block size"
+msgstr ""
+
+#~ msgid "Auto resize"
+#~ msgstr ""
+
+#~ msgid "Invalid size format"
+#~ msgstr ""
+
+#~ msgid "Resize to {0}"
+#~ msgstr ""
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume {0} edited"
+msgstr ""
+
+#~ msgid "Size {0}"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume Size"
+msgstr ""
+
+#~ msgid "Volume size is not a multiple of block size"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr ""

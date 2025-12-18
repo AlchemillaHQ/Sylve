@@ -1,50 +1,50 @@
 <script lang="ts">
 	import { getAuditRecords } from '$lib/api/info/audit';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { AuditRecord } from '$lib/types/info/audit';
-	import type { VM } from '$lib/types/vm/vm';
+	import type { SimpleVm } from '$lib/types/vm/vm';
+	import { getCache, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { createQueries, useQueryClient } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 
-	const queryClient = useQueryClient();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['audit-record'],
-				queryFn: async () => {
-					return await getAuditRecords();
-				},
-				refetchInterval: false,
-				keepPreviousData: true,
-				initialData: [] as AuditRecord[]
-			},
-			{
-				queryKey: ['vms-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				refetchInterval: false,
-				keepPreviousData: true,
-				initialData: [] as VM[]
-			}
-		]
-	}));
-
-	$effect(() => {
-		if (reload.auditLog) {
-			queryClient.refetchQueries({
-				queryKey: ['audit-record']
-			});
-			reload.auditLog = false;
+	const auditRecords = resource(
+		() => 'audit-record',
+		async (key, prevKey, { signal }) => {
+			const results = await getAuditRecords();
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: getCache('audit-record') || ([] as AuditRecord[])
 		}
-	});
+	);
 
-	let data = $derived(results[0].data as AuditRecord[]);
-	let vms = $derived(results[1].data as VM[]);
+	const simpleVmList = resource(
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
+			const results = await getSimpleVMs();
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: getCache('simple-vm-list') || ([] as SimpleVm[])
+		}
+	);
+
+	watch(
+		() => reload.auditLog,
+		(value) => {
+			if (value) {
+				auditRecords.refetch().then(() => {
+					reload.auditLog = false;
+				});
+			}
+		}
+	);
 
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',
@@ -84,11 +84,12 @@
 	});
 
 	let records = $derived.by(() => {
-		if (!data) return [];
+		if (!auditRecords.current) return [];
 
-		return data.map((record) => {
-			const path = record.action?.path || '';
-			const method = record.action?.method || '';
+		return auditRecords.current.map((record) => {
+			const recordCopy = $state.snapshot(record);
+			const path = recordCopy.action?.path || '';
+			const method = recordCopy.action?.method || '';
 
 			let resolvedAction = method;
 
@@ -103,7 +104,7 @@
 						case 'GET':
 							if (path.includes('vnc')) {
 								const port = path.split('/').pop();
-								const vm = vms.find((vm) => vm.vncPort === Number(port));
+								const vm = simpleVmList.current.find((vm) => vm.vncPort === Number(port));
 
 								resolvedAction = `${label} - ${vm ? vm.name : 'Unknown VM'} (${port})`;
 							} else {
@@ -119,7 +120,7 @@
 							break;
 						case 'DELETE':
 							resolvedAction = `${label} - Delete`;
-							record.action.body = {
+							recordCopy.action.body = {
 								id: record.id
 							};
 							break;
@@ -136,7 +137,7 @@
 			}
 
 			return {
-				...record,
+				...recordCopy,
 				resolvedAction
 			};
 		});
@@ -162,7 +163,7 @@
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div class="flex h-full flex-col overflow-hidden" transition:fade|global={{ duration: 400 }}>
 			<Table.Root class="w-full table-auto border-collapse">
-				<Table.Header class="bg-background sticky top-0 z-[50] ">
+				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row class="dark:hover:bg-background ">
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
 							>Start Time</Table.Head
@@ -185,7 +186,7 @@
 					</Table.Row>
 				</Table.Header>
 
-				<Table.Body class="flex-grow overflow-auto pb-32">
+				<Table.Body class="grow overflow-auto pb-32">
 					{#each records as record, i (i)}
 						<Table.Row>
 							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>

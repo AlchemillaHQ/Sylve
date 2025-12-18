@@ -67,15 +67,16 @@ func (s *Service) ListVMs() ([]vmModels.VM, error) {
 
 func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) {
 	type vmRow struct {
-		ID   uint
-		RID  uint `gorm:"column:rid"`
-		Name string
+		ID      uint
+		RID     uint `gorm:"column:rid"`
+		Name    string
+		VNCPort uint
 	}
 
 	var vms []vmRow
 	if err := s.DB.
 		Model(&vmModels.VM{}).
-		Select("id", "name", "rid").
+		Select("id", "name", "rid", "vnc_port").
 		Find(&vms).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_vms: %w", err)
 	}
@@ -101,10 +102,11 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 		}
 
 		list = append(list, libvirtServiceInterfaces.SimpleList{
-			ID:    vm.ID,
-			RID:   vm.RID,
-			Name:  vm.Name,
-			State: state,
+			ID:      vm.ID,
+			RID:     vm.RID,
+			Name:    vm.Name,
+			VNCPort: vm.VNCPort,
+			State:   state,
 		})
 	}
 

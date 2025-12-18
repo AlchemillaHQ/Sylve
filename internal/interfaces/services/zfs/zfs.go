@@ -27,6 +27,11 @@ type SimpleZFSDiskUsage struct {
 	Usage float64 `json:"usage"`
 }
 
+type EditVolumeRequest struct {
+	GUID       string            `json:"guid" binding:"required"`
+	Properties map[string]string `json:"properties" binding:"required"`
+}
+
 type ZfsServiceInterface interface {
 	StoreStats()
 	RemoveNonExistentPools()
@@ -37,7 +42,7 @@ type ZfsServiceInterface interface {
 	DeleteFilesystem(ctx context.Context, guid string) error
 
 	CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error
-	EditVolume(ctx context.Context, name string, props map[string]string) error
+	EditVolume(ctx context.Context, req EditVolumeRequest) error
 	DeleteVolume(ctx context.Context, guid string) error
 	FlashVolume(ctx context.Context, guid string, uuid string) error
 

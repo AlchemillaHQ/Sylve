@@ -10,6 +10,8 @@ github.com/alchemillahq/gzfs v0.0.0-20251217233336-e892a49f88e6 h1:OTcV/GtnV6zGo
 github.com/alchemillahq/gzfs v0.0.0-20251217233336-e892a49f88e6/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alchemillahq/gzfs v0.0.0-20251218030005-9f4596cce274 h1:kQVswwrU/+AKyCN2YIJx+COBRhr7N6SFcr0BKFSQvKg=
 github.com/alchemillahq/gzfs v0.0.0-20251218030005-9f4596cce274/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/alchemillahq/gzfs v0.0.0-20251218113540-9029f6d14597 h1:OHC2s0XAzn3D1XFJjo2TjsFQTxMGpjr6fWRkYMlP22I=
+github.com/alchemillahq/gzfs v0.0.0-20251218113540-9029f6d14597/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=

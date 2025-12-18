@@ -25,6 +25,7 @@ export const DatasetSchema = z.object({
 			recordsize: zfsProp(),
 			compression: zfsProp(),
 			volsize: zfsProp(),
+			volblocksize: zfsProp(),
 			quota: zfsProp(),
 			written: zfsProp(),
 			logicalused: zfsProp(),
@@ -64,7 +65,7 @@ export const PeriodicSnapshotSchema = z.object({
 
 export const GroupedByPoolSchema = z.object({
 	name: z.string(),
-	pool: ZpoolSchema,
+	pool: z.union([ZpoolSchema, z.string()]),
 	filesystems: z.array(DatasetSchema).default([]),
 	snapshots: z.array(DatasetSchema).default([]),
 	volumes: z.array(DatasetSchema).default([])

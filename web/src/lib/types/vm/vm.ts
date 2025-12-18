@@ -162,6 +162,7 @@ export const SimpleVmSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	rid: z.number().int(),
+	vncPort: z.number(),
 	state: DomainStateSchema
 });
 

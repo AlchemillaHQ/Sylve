@@ -101,3 +101,7 @@ export function isValidDatasetName(name: string): boolean {
 
 	return true;
 }
+
+export function roundUpToBlock(size: number, block: number): number {
+	return Math.ceil(size / block) * block;
+}

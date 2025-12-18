@@ -144,11 +144,11 @@ export async function createVolume(
 }
 
 export async function editVolume(
-	dataset: Dataset,
+	guid: string,
 	properties: Record<string, string>
 ): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/volume', APIResponseSchema, 'PATCH', {
-		name: dataset.name,
+		guid,
 		properties: properties
 	});
 }

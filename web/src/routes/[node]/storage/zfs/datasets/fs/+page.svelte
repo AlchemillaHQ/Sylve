@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { bulkDelete, deleteFileSystem, getDatasets } from '$lib/api/zfs/datasets';
-	import { getPools } from '$lib/api/zfs/pool';
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -9,16 +8,17 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
+	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/fs';
 	import { toast } from 'svelte-sonner';
 	import { resource, IsDocumentVisible } from 'runed';
 	import { untrack } from 'svelte';
+	import type { BasicSettings } from '$lib/types/system/settings';
+	import { getBasicSettings } from '$lib/api/system/settings';
 
 	interface Data {
-		pools: Zpool[];
+		settings: BasicSettings;
 		datasets: Dataset[];
 	}
 
@@ -27,14 +27,14 @@
 	let visible = new IsDocumentVisible();
 
 	const pools = resource(
-		() => 'zfs-pools',
-		async (key, prevKey, { signal }) => {
-			const result = await getPools();
-			updateCache(key, result);
-			return result;
+		() => 'basic-settings',
+		async () => {
+			const settings = await getBasicSettings();
+			updateCache('basic-settings', settings);
+			return settings.pools;
 		},
 		{
-			initialValue: data.pools
+			initialValue: data.settings.pools
 		}
 	);
 
@@ -50,7 +50,7 @@
 		}
 	);
 
-	let grouped = $derived(groupByPool(pools.current, datasets.current));
+	let grouped = $derived(groupByPoolNames(pools.current, datasets.current));
 	let tableData = $derived(generateTableData(grouped));
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -78,17 +78,10 @@
 		if (activeRow) {
 			for (const dataset of grouped) {
 				const filesystems = dataset.filesystems;
-				const snapshots = dataset.snapshots;
 
 				for (const fs of filesystems) {
 					if (fs.name === activeRow.name) {
 						return fs;
-					}
-				}
-
-				for (const snap of snapshots) {
-					if (snap.name === activeRow.name) {
-						return snap;
 					}
 				}
 			}
@@ -103,17 +96,10 @@
 			for (const row of activeRows) {
 				for (const dataset of grouped) {
 					const filesystems = dataset.filesystems;
-					const snapshots = dataset.snapshots;
 
 					for (const fs of filesystems) {
 						if (fs.name === row.name) {
 							datasets.push(fs);
-						}
-					}
-
-					for (const snap of snapshots) {
-						if (snap.name === row.name) {
-							datasets.push(snap);
 						}
 					}
 				}
@@ -202,24 +188,7 @@
 			{#if type === 'bulk-delete'}
 				<Button
 					onclick={async () => {
-						let [snapLen, fsLen] = [0, 0];
-						activeDatasets.forEach((dataset) => {
-							if (dataset.type === GZFSDatasetTypeSchema.enum.SNAPSHOT) {
-								snapLen++;
-							} else if (dataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM) {
-								fsLen++;
-							}
-						});
-
-						let title = '';
-						if (snapLen > 0 && fsLen > 0) {
-							title = `${snapLen} snapshot${snapLen > 1 ? 's' : ''} and ${fsLen} filesystem${fsLen > 1 ? 's' : ''}`;
-						} else if (snapLen > 0) {
-							title = `${snapLen} snapshot${snapLen > 1 ? 's' : ''}`;
-						} else if (fsLen > 0) {
-							title = `${fsLen} filesystem${fsLen > 1 ? 's' : ''}`;
-						}
-
+						let title = `${activeDatasets.length} dataset${activeDatasets.length > 1 ? 's' : ''}`;
 						modals.bulk.delete.open = true;
 						modals.bulk.delete.title = title;
 					}}

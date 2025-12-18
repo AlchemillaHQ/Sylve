@@ -44,11 +44,6 @@ type CreateVolumeRequest struct {
 	Properties map[string]string `json:"properties"`
 }
 
-type EditVolumeRequest struct {
-	Name       string            `json:"name" binding:"required"`
-	Properties map[string]string `json:"properties" binding:"required"`
-}
-
 type RollbackSnapshotRequest struct {
 	GUID              string `json:"guid" binding:"required"`
 	DestroyMoreRecent bool   `json:"destroyMoreRecent"`
@@ -683,7 +678,7 @@ func CreateVolume(zfsService *zfs.Service) gin.HandlerFunc {
 // @Router /zfs/datasets/volume [patch]
 func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request EditVolumeRequest
+		var request zfsServiceInterfaces.EditVolumeRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -695,7 +690,7 @@ func EditVolume(zfsService *zfs.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.EditVolume(ctx, request.Name, request.Properties)
+		err := zfsService.EditVolume(ctx, request)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

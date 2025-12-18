@@ -191,6 +191,16 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 		}
 		return "", fmt.Errorf("iso_or_img_not_found_in_torrent: %s", uuid)
 
+	case "path":
+		pathDir := config.GetDownloadsPath("path")
+		fullPath := filepath.Join(pathDir, download.Name)
+
+		if fileExists(fullPath) && hasAllowedExt(fullPath) {
+			return fullPath, nil
+		}
+
+		return "", fmt.Errorf("iso_or_img_not_found_in_path: %s", fullPath)
+
 	default:
 		return "", fmt.Errorf("unsupported_download_type: %s", download.Type)
 	}

@@ -4,6 +4,7 @@ import type { GroupedByPool } from '$lib/types/zfs/dataset';
 import { generateNumberFromString } from '$lib/utils/numbers';
 import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 import { cleanChildren } from '$lib/utils/tree-table';
+import humanFormat from 'human-format';
 import { toast } from 'svelte-sonner';
 
 export const createVolProps = {
@@ -229,6 +230,11 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			formatter: sizeFormatter
 		},
 		{
+			field: 'used',
+			title: 'Used',
+			formatter: sizeFormatter
+		},
+		{
 			field: 'referenced',
 			title: 'Referenced',
 			formatter: sizeFormatter
@@ -244,7 +250,8 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 		const poolRow: Row = {
 			id: generateNumberFromString(group.name),
 			name: group.name,
-			size: group.pool?.size || 0,
+			size: '-',
+			used: '-',
 			referenced: '-',
 			guid: undefined,
 			children: [],
@@ -256,10 +263,11 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			.map((vol) => ({
 				id: generateNumberFromString(vol.name),
 				name: vol.name,
-				size: vol.volsize,
+				size: vol.properties?.volsize ?? '0',
+				used: vol.used ?? '0',
 				referenced: vol.referenced,
-				guid: vol.properties?.guid,
-				children: [], // no snapshots anymore
+				guid: vol.guid,
+				children: [],
 				type: 'volume'
 			}));
 

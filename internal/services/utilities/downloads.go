@@ -354,6 +354,16 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return fmt.Errorf("failed_to_create_download_record: %w", err)
 		}
 
+		err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+			ID: download.ID,
+		})
+
+		if err != nil {
+			logger.L.Error().Msgf("Failed to enqueue download start job: %v", err)
+			s.DB.Model(&download).Update("status", utilitiesModels.DownloadStatusFailed)
+			return err
+		}
+
 		return nil
 	}
 
@@ -418,17 +428,30 @@ func (s *Service) StartDownload(id *uint) error {
 
 		if err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_copy_failed")
+			download.Status = utilitiesModels.DownloadStatusFailed
+			download.Error = err.Error()
+			s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
+				"status": download.Status,
+				"error":  download.Error,
+			})
 			return fmt.Errorf("file_copy_failed: %w", err)
 		}
 
 		info, err := os.Stat(destPath)
 		if err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_stat_failed")
+			download.Status = utilitiesModels.DownloadStatusFailed
+			download.Error = err.Error()
+			s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
+				"status": download.Status,
+				"error":  download.Error,
+			})
 			return fmt.Errorf("file_stat_failed: %w", err)
 		}
 
 		download.Size = info.Size()
 		download.Progress = 100
+		download.Path = destPath
 
 		needPostProc := download.AutomaticExtraction || download.AutomaticRawConversion
 
@@ -438,7 +461,12 @@ func (s *Service) StartDownload(id *uint) error {
 			download.Status = utilitiesModels.DownloadStatusDone
 		}
 
-		if err := s.DB.Save(download).Error; err != nil {
+		if err := s.DB.Model(download).Select("Status", "Progress", "Size", "Path").Updates(map[string]any{
+			"status":   download.Status,
+			"progress": download.Progress,
+			"size":     download.Size,
+			"path":     download.Path,
+		}).Error; err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("failed_to_update_download_record")
 			return fmt.Errorf("failed_to_update_download_record: %w", err)
 		}
@@ -610,7 +638,7 @@ func (s *Service) SyncDownloadProgress() error {
 		case utilitiesModels.DownloadTypeHTTP:
 			s.syncHTTP(&d)
 		case utilitiesModels.DownloadTypePath:
-			// No-op for local path downloads
+			s.syncPath(&d)
 		default:
 			logger.L.Warn().Msgf("Unknown download type: %s", d.Type)
 		}
@@ -717,6 +745,32 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		download.Status = "failed"
 		s.DB.Model(download).Select("Error", "Status").Updates(download)
 		return
+	}
+}
+
+func (s *Service) syncPath(download *utilitiesModels.Downloads) {
+	if download == nil {
+		logger.L.Error().Msg("syncPath: download is nil")
+		return
+	}
+
+	// Check if this is a stale pending path download that never got processed
+	if download.Status == utilitiesModels.DownloadStatusPending {
+		staleWindow := time.Now().Add(-2 * time.Minute)
+		if download.CreatedAt.Before(staleWindow) {
+			logger.L.Info().Msgf("syncPath: stale pending path download (ID=%d), enqueuing start job", download.ID)
+
+			err := db.EnqueueJSON(context.Background(), "utils-download-start", &utilitiesServiceInterfaces.DownloadStartPayload{
+				ID: download.ID,
+			})
+
+			if err != nil {
+				logger.L.Error().Msgf("syncPath: failed to enqueue start job for download ID=%d: %v", download.ID, err)
+				download.Error = "failed_to_enqueue_start_job"
+				download.Status = utilitiesModels.DownloadStatusFailed
+				s.DB.Model(download).Select("Error", "Status").Updates(download)
+			}
+		}
 	}
 }
 

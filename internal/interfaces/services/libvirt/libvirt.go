@@ -92,10 +92,11 @@ type LvDomain struct {
 }
 
 type SimpleList struct {
-	ID    uint                `json:"id"`
-	RID   uint                `json:"rid"`
-	Name  string              `json:"name"`
-	State libvirt.DomainState `json:"state"`
+	ID      uint                `json:"id"`
+	RID     uint                `json:"rid"`
+	Name    string              `json:"name"`
+	State   libvirt.DomainState `json:"state"`
+	VNCPort uint                `json:"vnc_port"`
 }
 
 type DomainStateReason string

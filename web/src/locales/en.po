@@ -669,7 +669,6 @@ msgstr "Name"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
@@ -3531,7 +3530,7 @@ msgstr "Enable resource limits to edit"
 
 #. placeholder {0}: title
 #. placeholder {0}: property
-#. placeholder {0}: title
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -4931,9 +4930,8 @@ msgstr "Please select a pool"
 msgid "Invalid volume size"
 msgstr "Invalid volume size"
 
-#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-msgid "Parent not found"
-msgstr "Parent not found"
+#~ msgid "Parent not found"
+#~ msgstr "Parent not found"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Volume size is greater than available space"
@@ -4996,18 +4994,15 @@ msgstr "Volume Mode"
 msgid "Select volume mode"
 msgstr "Select volume mode"
 
-#. placeholder {0}: dataset.volblocksize / 1024
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid "Size must be a multiple of volume block size ({0}K)"
-msgstr "Size must be a multiple of volume block size ({0}K)"
+#~ msgid "Size must be a multiple of volume block size ({0}K)"
+#~ msgstr "Size must be a multiple of volume block size ({0}K)"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Failed to edit volume"
 msgstr "Failed to edit volume"
 
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid "Volume edited successfully"
-msgstr "Volume edited successfully"
+#~ msgid "Volume edited successfully"
+#~ msgstr "Volume edited successfully"
 
 #. placeholder {0}: dataset.name
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -6033,3 +6028,45 @@ msgstr "Cannot remove initialized ZFS Pools"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
 msgstr "Add spares to enable auto replace"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Parent pool not found"
+msgstr "Parent pool not found"
+
+#~ msgid "Event has been created"
+#~ msgstr "Event has been created"
+
+#~ msgid "Undo"
+#~ msgstr "Undo"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size must match block size"
+msgstr "Volume size must match block size"
+
+#~ msgid "Auto resize"
+#~ msgstr "Auto resize"
+
+#~ msgid "Invalid size format"
+#~ msgstr "Invalid size format"
+
+#~ msgid "Resize to {0}"
+#~ msgstr "Resize to {0}"
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume {0} edited"
+msgstr "Volume {0} edited"
+
+#~ msgid "Size {0}"
+#~ msgstr "Size {0}"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume Size"
+msgstr "Volume Size"
+
+#~ msgid "Volume size is not a multiple of block size"
+#~ msgstr "Volume size is not a multiple of block size"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"

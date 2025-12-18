@@ -1,7 +1,7 @@
 <script lang="ts">
+	import { getBasicSettings } from '$lib/api/system/settings';
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { bulkDelete, deleteVolume, getDatasets } from '$lib/api/zfs/datasets';
-	import { getPools } from '$lib/api/zfs/pool';
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -10,79 +10,72 @@
 	import FlashFile from '$lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { Download } from '$lib/types/utilities/downloader';
-	import type { Dataset, GroupedByPool } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
+	import { GZFSDatasetTypeSchema, type Dataset, type GroupedByPool } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
+	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
-		pools: Zpool[];
 		datasets: Dataset[];
 		downloads: Download[];
+		settings: BasicSettings;
 	}
 
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsVolumes';
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['pools'],
-				queryFn: async () => {
-					return await getPools();
-				},
-				refetchInterval: false,
-				keepPreviousData: false,
-				initialData: data.pools,
-				onSuccess: (data: Zpool[]) => {
-					updateCache('pools', data);
-				}
-			},
-			{
-				queryKey: ['zfs-datasets'],
-				queryFn: async () => {
-					return await getDatasets();
-				},
-				refetchInterval: false,
-				keepPreviousData: false,
-				initialData: data.datasets,
-				onSuccess: (data: Dataset[]) => {
-					updateCache('zfs-datasets', data);
-				}
-			},
-			{
-				queryKey: ['downloads'],
-				queryFn: async () => {
-					return await getDownloads();
-				},
-				refetchInterval: false,
-				keepPreviousData: true,
-				initialData: data.downloads,
-				onSuccess: (data: Download[]) => {
-					updateCache('downloads', data);
-				}
-			}
-		]
-	}));
+	const datasets = resource(
+		() => 'zfs-volumes',
+		async () => {
+			const datasets = await getDatasets('volume');
+			updateCache('zfs-volumes', datasets);
+			return datasets;
+		},
+		{
+			initialValue: data.datasets
+		}
+	);
+
+	const downloads = resource(
+		() => 'downloads',
+		async () => {
+			const downloads = await getDownloads();
+			updateCache('downloads', downloads);
+			return downloads;
+		},
+		{
+			initialValue: data.downloads
+		}
+	);
+
+	const pools = resource(
+		() => 'basic-settings',
+		async () => {
+			const settings = await getBasicSettings();
+			updateCache('basic-settings', settings);
+			return settings.pools;
+		},
+		{
+			initialValue: data.settings.pools
+		}
+	);
 
 	let reload = $state(false);
 	$effect(() => {
 		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
+			datasets.refetch();
+			downloads.refetch();
+			pools.refetch();
 
 			reload = false;
 		}
 	});
 
-	let pools: Zpool[] = $derived(results[0].data as Zpool[]);
-	let downloads = $derived(results[2].data as Download[]);
-	let grouped: GroupedByPool[] = $derived(groupByPool(results[0].data, results[1].data));
+	let grouped: GroupedByPool[] = $derived(groupByPoolNames(pools.current, datasets.current));
 	let table: {
 		rows: Row[];
 		columns: Column[];
@@ -90,8 +83,8 @@
 
 	let activeRows = $state<Row[] | null>(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
-	let activePool: Zpool | null = $derived.by(() => {
-		const pool = results[0].data?.find((pool) => pool.name === activeRow?.name);
+	let activePool: string | null = $derived.by(() => {
+		const pool = pools.current.find((pool) => pool === activeRow?.name);
 		return pool ?? null;
 	});
 
@@ -124,16 +117,11 @@
 
 	let activeVolume: Dataset | null = $derived.by(() => {
 		if (activePool) return null;
-		const volumes = results[1].data?.filter((volume) => volume.type === 'volume');
-		const volume = volumes?.find((volume) => volume.name.endsWith(activeRow?.name));
+		const volumes = datasets.current.filter(
+			(volume) => volume.type === GZFSDatasetTypeSchema.enum.VOLUME
+		);
+		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name));
 		return volume ?? null;
-	});
-
-	let activeSnapshot: Dataset | null = $derived.by(() => {
-		if (activePool) return null;
-		const snapshots = results[1].data?.filter((snapshot) => snapshot.type === 'snapshot');
-		const snapshot = snapshots?.find((snapshot) => snapshot.name.endsWith(activeRow?.name));
-		return snapshot ?? null;
 	});
 
 	let poolsSelected = $derived.by(() => {
@@ -184,7 +172,7 @@
 
 {#snippet button(type: string)}
 	{#if activeRows && activeRows.length == 1}
-		{#if type === 'flash-file' && activeVolume?.type === 'volume'}
+		{#if type === 'flash-file' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
 			<Button
 				onclick={async () => {
 					if (activeVolume) {
@@ -203,7 +191,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'delete-volume' && activeVolume?.type === 'volume'}
+		{#if type === 'delete-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
 			<Button
 				onclick={() => {
 					if (activeVolume) {
@@ -221,7 +209,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'edit-volume' && activeVolume?.type === 'volume'}
+		{#if type === 'edit-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
 			<Button
 				onclick={() => {
 					if (activeVolume) {
@@ -243,23 +231,7 @@
 			{#if type === 'bulk-delete'}
 				<Button
 					onclick={async () => {
-						let [snapLen, vLen] = [0, 0];
-						activeDatasets.forEach((dataset) => {
-							if (dataset.type === 'snapshot') {
-								snapLen++;
-							} else if (dataset.type === 'volume') {
-								vLen++;
-							}
-						});
-
-						let title = '';
-						if (snapLen > 0 && vLen > 0) {
-							title = `${snapLen} snapshot${snapLen > 1 ? 's' : ''} and ${vLen} volume${vLen > 1 ? 's' : ''}`;
-						} else if (snapLen > 0) {
-							title = `${snapLen} snapshot${snapLen > 1 ? 's' : ''}`;
-						} else if (vLen > 0) {
-							title = `${vLen} volume${vLen > 1 ? 's' : ''}`;
-						}
+						let title = `${activeDatasets.length} dataset${activeDatasets.length > 1 ? 's' : ''}`;
 
 						modals.bulk.delete.open = true;
 						modals.bulk.delete.title = title;
@@ -313,12 +285,17 @@
 </div>
 
 <!-- Flash File to Volume -->
-{#if modals.volume.flash.open && activeVolume && activeVolume.type === 'volume'}
-	<FlashFile bind:open={modals.volume.flash.open} dataset={activeVolume} {downloads} bind:reload />
+{#if modals.volume.flash.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
+	<FlashFile
+		bind:open={modals.volume.flash.open}
+		dataset={activeVolume}
+		downloads={downloads.current}
+		bind:reload
+	/>
 {/if}
 
 <!-- Delete Volume -->
-{#if modals.volume.delete.open && activeVolume && activeVolume.type === 'volume'}
+{#if modals.volume.delete.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
 	<AlertDialogModal
 		bind:open={modals.volume.delete.open}
 		names={{
@@ -387,10 +364,10 @@
 
 <!-- Create Volume -->
 {#if modals.volume.create.open}
-	<CreateVolume bind:open={modals.volume.create.open} {pools} {grouped} bind:reload />
+	<CreateVolume bind:open={modals.volume.create.open} {grouped} bind:reload />
 {/if}
 
 <!-- Edit Volume -->
-{#if modals.volume.edit.open && activeVolume && activeVolume.type === 'volume'}
+{#if modals.volume.edit.open && activeVolume}
 	<EditVolume bind:open={modals.volume.edit.open} dataset={activeVolume} bind:reload />
 {/if}

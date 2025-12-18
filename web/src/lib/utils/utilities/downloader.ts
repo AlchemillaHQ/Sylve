@@ -176,6 +176,8 @@ export function getISOs(
 			for (const file of download.files) {
 				addIfMatch(file.name);
 			}
+		} else if (download.type === 'path') {
+			addIfMatch(download.name);
 		}
 	}
 
