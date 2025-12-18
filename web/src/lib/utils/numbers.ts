@@ -16,7 +16,7 @@ export function floatToNDecimals(value: number | undefined, n: number): number {
 }
 
 export function bytesToHumanReadable(value: number | undefined): string {
-	if (!value) return '0 B';
+	if (!value) return '';
 	return humanFormat(value, { unit: 'B' });
 }
 

@@ -8,7 +8,7 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import type { Row } from '$lib/types/components/tree-table';
+import type { Row, TablePreferences } from '$lib/types/components/tree-table';
 import humanFormat, { type ScaleLike } from 'human-format';
 import { deepEqual } from 'fast-equals';
 import {
@@ -183,3 +183,10 @@ export const restoreTreeState = (expandMap: Map<number, boolean>, rows: RowCompo
 		}
 	}
 };
+
+export function normalizePrefs(prefs: TablePreferences | null): TablePreferences {
+	return {
+		columnWidths: prefs?.columnWidths ?? {},
+		collapsedRows: prefs?.collapsedRows ?? {}
+	};
+}

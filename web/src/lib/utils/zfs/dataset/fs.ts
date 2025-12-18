@@ -190,7 +190,6 @@ export const createFSProps = {
 };
 
 export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; columns: Column[] } {
-	const rows: Row[] = [];
 	const columns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
@@ -211,49 +210,56 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 		{ field: 'type', title: 'Type', visible: false }
 	];
 
+	const rows: Row[] = [];
+
 	for (const group of grouped) {
-		const poolNode: Row = {
-			id: generateNumberFromString(group.name),
-			name: group.name,
-			used: 0,
-			available: 0,
-			referenced: 0,
-			mountpoint: '',
-			children: [],
-			type: 'pool'
+		const nodeMap = new Map<string, Row>();
+
+		/** helper */
+		const getOrCreate = (name: string, type = 'FILESYSTEM'): Row => {
+			let node = nodeMap.get(name);
+			if (!node) {
+				node = {
+					id: generateNumberFromString(name),
+					name,
+					used: 0,
+					available: 0,
+					referenced: 0,
+					mountpoint: '',
+					children: [],
+					type
+				};
+				nodeMap.set(name, node);
+			}
+			return node;
 		};
 
+		// pool root
+		const poolNode = getOrCreate(group.name, 'pool');
+
+		// ---------- PASS 1: create all nodes ----------
 		for (const fs of group.filesystems) {
-			if (fs.name === group.name) {
-				poolNode.used = fs.used;
-				poolNode.available = fs.available;
-				poolNode.referenced = fs.referenced;
-				poolNode.mountpoint = fs.mountpoint || '';
-				continue;
-			}
-
 			const parts = fs.name.split('/');
-			let current = poolNode;
+			for (let i = 0; i < parts.length; i++) {
+				const path = parts.slice(0, i + 1).join('/');
+				getOrCreate(path);
+			}
+		}
 
-			for (let i = 1; i < parts.length; i++) {
-				const pathSoFar = parts.slice(0, i + 1).join('/');
-				let child = current.children!.find((c) => c.name === pathSoFar);
+		// ---------- PASS 2: apply stats + build tree ----------
+		for (const fs of group.filesystems) {
+			const node = nodeMap.get(fs.name)!;
 
-				if (!child) {
-					child = {
-						id: generateNumberFromString(pathSoFar),
-						name: pathSoFar,
-						used: fs.used,
-						available: fs.available,
-						referenced: fs.referenced,
-						mountpoint: fs.mountpoint || '',
-						children: [],
-						type: fs.type
-					};
-					current.children!.push(child);
-				}
+			node.used = fs.used;
+			node.available = fs.available;
+			node.referenced = fs.referenced;
+			node.mountpoint = fs.mountpoint || '';
+			node.type = fs.type;
 
-				current = child;
+			if (fs.name !== group.name) {
+				const parentName = fs.name.substring(0, fs.name.lastIndexOf('/'));
+				const parent = nodeMap.get(parentName);
+				parent?.children!.push(node);
 			}
 		}
 

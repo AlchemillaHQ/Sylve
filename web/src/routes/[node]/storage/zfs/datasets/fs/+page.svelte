@@ -8,7 +8,7 @@
 	import EditFS from '$lib/components/custom/ZFS/datasets/fs/Edit.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
-	import { type Dataset } from '$lib/types/zfs/dataset';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { groupByPool } from '$lib/utils/zfs/dataset/dataset';
@@ -27,7 +27,7 @@
 	let visible = new IsDocumentVisible();
 
 	const pools = resource(
-		() => 'pools',
+		() => 'zfs-pools',
 		async (key, prevKey, { signal }) => {
 			const result = await getPools();
 			updateCache(key, result);
@@ -41,7 +41,7 @@
 	const datasets = resource(
 		() => 'zfs-filesystems',
 		async (key, prevKey, { signal }) => {
-			const result = await getDatasets();
+			const result = await getDatasets('filesystem');
 			updateCache(key, result);
 			return result;
 		},
@@ -58,7 +58,6 @@
 
 	$effect(() => {
 		if (reload) {
-			console.log('Reloading datasets and pools');
 			pools.refetch();
 			datasets.refetch();
 
@@ -162,7 +161,7 @@
 
 {#snippet button(type: string)}
 	{#if activeRows && activeRows.length == 1}
-		{#if type === 'edit-filesystem' && activeDataset?.type === 'filesystem'}
+		{#if type === 'edit-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}
 			<Button
 				onclick={async () => {
 					if (activeDataset) {
@@ -181,7 +180,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'delete-filesystem' && activeDataset?.type === 'filesystem' && activeDataset?.name.includes('/')}
+		{#if type === 'delete-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset?.name.includes('/')}
 			<Button
 				onclick={async () => {
 					if (activeDataset) {
@@ -205,9 +204,9 @@
 					onclick={async () => {
 						let [snapLen, fsLen] = [0, 0];
 						activeDatasets.forEach((dataset) => {
-							if (dataset.type === 'snapshot') {
+							if (dataset.type === GZFSDatasetTypeSchema.enum.SNAPSHOT) {
 								snapLen++;
-							} else if (dataset.type === 'filesystem') {
+							} else if (dataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM) {
 								fsLen++;
 							}
 						});
@@ -230,7 +229,6 @@
 				>
 					<div class="flex items-center">
 						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
 						<span>Delete Datasets</span>
 					</div>
 				</Button>
@@ -271,7 +269,7 @@
 </div>
 
 <!-- Delete FS -->
-{#if modals.fs.delete.open && activeDataset && activeDataset.type === 'filesystem'}
+{#if modals.fs.delete.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}
 	<AlertDialogModal
 		bind:open={modals.fs.delete.open}
 		names={{
@@ -343,6 +341,6 @@
 {/if}
 
 <!-- Edit FS -->
-{#if modals.fs.edit.open && activeDataset && activeDataset.type === 'filesystem'}
+{#if modals.fs.edit.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}
 	<EditFS bind:open={modals.fs.edit.open} dataset={activeDataset} bind:reload />
 {/if}

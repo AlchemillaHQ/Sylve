@@ -2,7 +2,13 @@ import type { APIResponse, PieChartData, SeriesDataWithBaseline } from '$lib/typ
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Disk } from '$lib/types/disk/disk';
 import type { Dataset } from '$lib/types/zfs/dataset';
-import type { ScanSentenceResult, ScanStatsRaw, Zpool, ZpoolStatusPool } from '$lib/types/zfs/pool';
+import type {
+	ScanSentenceResult,
+	ScanStatsRaw,
+	Zpool,
+	ZpoolStatusPool,
+	ZpoolVdev
+} from '$lib/types/zfs/pool';
 import humanFormat from 'human-format';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon, sizeFormatter } from '../table';
@@ -159,7 +165,7 @@ export function generateTableData(
 					current.vdev_type.toLowerCase() === 'mirror'
 				) {
 					const vdevRow: Row = {
-						id: generateNumberFromString(current.name),
+						id: generateNumberFromString(current.name + pool.guid),
 						name: current.name,
 						size: current.size,
 						used: current.allocated,
@@ -171,7 +177,7 @@ export function generateTableData(
 					for (const child in current.vdevs) {
 						const childVdev = current.vdevs[child];
 						vdevRow.children!.push({
-							id: generateNumberFromString(childVdev.name),
+							id: generateNumberFromString(childVdev.name + pool.guid),
 							name: childVdev.name,
 							size: childVdev.size,
 							used: childVdev.allocated,
@@ -184,7 +190,7 @@ export function generateTableData(
 					poolRow.children!.push(vdevRow);
 				} else {
 					poolRow.children!.push({
-						id: generateNumberFromString(current.name),
+						id: generateNumberFromString(current.name + pool.guid),
 						name: current.name,
 						size: current.size,
 						used: current.allocated,
@@ -213,7 +219,7 @@ export function generateTableData(
 			for (const cache in pool.l2cache) {
 				const current = pool.l2cache[cache];
 				l2cacheRow.children!.push({
-					id: generateNumberFromString(current.guid),
+					id: generateNumberFromString(current.guid + pool.guid),
 					name: current.name,
 					size: current.size,
 					used: '-',
@@ -243,7 +249,7 @@ export function generateTableData(
 			for (const log in pool.logs) {
 				const current = pool.logs[log];
 				logsRow.children!.push({
-					id: generateNumberFromString(current.guid),
+					id: generateNumberFromString(current.guid + pool.guid),
 					name: current.name,
 					size: current.size,
 					used: '-',
@@ -273,7 +279,7 @@ export function generateTableData(
 			for (const spare in pool.spares) {
 				const current = pool.spares[spare];
 				sparesRow.children!.push({
-					id: generateNumberFromString(current.guid),
+					id: generateNumberFromString(current.guid + pool.guid),
 					name: current.name,
 					size: current.size,
 					used: '-',
@@ -313,30 +319,47 @@ export function isPool(pools: Zpool[], name: string): boolean {
 	return pools.some((pool) => pool.name === name);
 }
 
+function vdevContains(vdev: ZpoolVdev, name: string): boolean {
+	if (vdev.name === name) return true;
+
+	return Object.values(vdev.vdevs ?? {}).some((child) => vdevContains(child, name));
+}
+
 export function isReplaceableDevice(pools: Zpool[], name: string): boolean {
 	for (const pool of pools) {
-		// if (pool.vdevs.some((vdev) => vdev.name === name)) {
-		// 	return false; // False if we're striped
-		// }
+		if (Object.values(pool.vdevs).some((vdev) => vdev.name === name)) {
+			return false;
+		}
+
+		if (
+			Object.values(pool.vdevs).some((vdev) =>
+				Object.values(vdev.vdevs ?? {}).some((child) => vdevContains(child, name))
+			)
+		) {
+			return true;
+		}
+
+		if (Object.values(pool.logs ?? {}).some((v) => v.name === name)) {
+			return true;
+		}
 	}
 
-	return pools.some((pool) => {
-		// for (const vdev of pool.vdevs) {
-		// 	if (vdev.devices.some((device) => device.name === name)) {
-		// 		return true;
-		// 	}
-		// }
-		return false;
-	});
+	return false;
 }
 
 export function getPoolByDevice(pools: Zpool[], name: string): string {
 	for (const pool of pools) {
-		// for (const vdev of pool.vdevs) {
-		// 	if (vdev.devices.some((device) => device.name === name)) {
-		// 		return pool.name;
-		// 	}
-		// }
+		if (Object.values(pool.vdevs).some((vdev) => vdevContains(vdev, name))) {
+			return pool.name;
+		}
+
+		if (
+			Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.l2cache ?? {}).some((v) => v.name === name)
+		) {
+			return pool.name;
+		}
 	}
 
 	return '';

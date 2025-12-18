@@ -14,10 +14,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/alchemillahq/gzfs"
-
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[string]string) error {
@@ -57,21 +54,18 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := s.GZFS.ZFS.ListByType(
-		ctx,
-		gzfs.DatasetTypeFilesystem,
-		true,
-		"",
-	)
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 
 	if err != nil {
 		return err
 	}
 
-	for _, dataset := range datasets {
-		if dataset.GUID == guid {
-			return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
-		}
+	if mp, ok := props["mountpoint"]; ok && mp == "" {
+		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
+	}
+
+	if dataset != nil {
+		return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
 	}
 
 	return fmt.Errorf("filesystem with guid %s not found", guid)
@@ -81,26 +75,18 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	filesystems, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, true, "")
+	foundFS, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+
 	if err != nil {
 		return err
-	}
-
-	var foundFS *gzfs.Dataset
-
-	for _, filesystem := range filesystems {
-		if filesystem.GUID == guid {
-			foundFS = filesystem
-			break
-		}
 	}
 
 	if foundFS == nil {
 		return fmt.Errorf("filesystem with guid %s not found", guid)
 	}
 
-	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
-	for _, name := range cantDelete {
+	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	for _, name := range noDelete {
 		if strings.HasSuffix(foundFS.Name, name) {
 			return fmt.Errorf("cannot_delete_critical_filesystem")
 		}
@@ -117,26 +103,19 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
-	keylocationProp, err := foundFS.GetProperty(ctx, "keylocation")
-	if err != nil {
-		return err
-	}
+	var keylocation string
 
-	keylocation := keylocationProp.Value
+	if prop, err := foundFS.GetProperty(ctx, "keylocation"); err == nil {
+		keylocation = prop.Value
+	}
 
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}
 
-	if keylocation != "" && keylocation != "none" {
-		keylocation = keylocation[7:]
-		if _, err := os.Stat(keylocation); err == nil {
-			if err := os.Remove(keylocation); err != nil {
-				logger.L.Error().Err(err).Msgf("failed to remove keylocation file: %s", keylocation)
-			}
-		} else {
-			logger.L.Warn().Msgf("keylocation file not found: %s", keylocation)
-		}
+	if keylocation != "" && keylocation != "none" && strings.HasPrefix(keylocation, "file://") {
+		path := strings.TrimPrefix(keylocation, "file://")
+		_ = os.Remove(path)
 	}
 
 	return nil

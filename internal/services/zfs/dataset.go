@@ -15,7 +15,6 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, error) {
@@ -69,7 +68,6 @@ func (s *Service) GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, e
 	filtered := make([]*gzfs.Dataset, 0, len(datasets))
 	for _, dataset := range datasets {
 		if dataset.Pool == "" {
-			logger.L.Warn().Msgf("dataset %s has no pool associated!!", dataset.Name)
 			continue
 		}
 

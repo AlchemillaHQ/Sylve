@@ -69,7 +69,7 @@ export async function createPool(data: CreateZpool) {
 }
 
 export async function replaceDevice(data: ReplaceDevice) {
-	return await apiRequest(`/zfs/pools/${data.guid}/replace-device`, APIResponseSchema, 'POST', {
+	return await apiRequest(`/zfs/pools/${data.guid}/replace-device`, APIResponseSchema, 'PATCH', {
 		...data
 	});
 }

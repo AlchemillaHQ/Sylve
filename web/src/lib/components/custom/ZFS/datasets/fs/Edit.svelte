@@ -19,15 +19,17 @@
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 	let options = {
-		atime: 'on',
-		checksum: dataset.checksum || 'on',
-		compression: dataset.compression || 'on',
-		dedup: dataset.dedup || 'off',
-		quota: dataset.quota ? bytesToHumanReadable(dataset.quota) : '',
-		aclinherit: dataset.aclinherit || 'passthrough',
-		aclmode: dataset.aclmode || 'passthrough',
-		recordsize: dataset.recordsize ? dataset.recordsize.toString() : '131072',
-		mountpoint: dataset.mountpoint || ('' as string | undefined)
+		atime: dataset.properties?.atime || 'on',
+		checksum: dataset.properties?.checksum || 'on',
+		compression: dataset.properties?.compression || 'lz4',
+		dedup: dataset.properties?.dedup || 'off',
+		quota: dataset.properties?.quota
+			? bytesToHumanReadable(parseInt(dataset.properties.quota))
+			: '',
+		aclinherit: dataset.properties?.aclinherit || 'passthrough',
+		aclmode: dataset.properties?.aclmode || 'passthrough',
+		recordsize: dataset.properties?.recordsize || '128K',
+		mountpoint: dataset.properties?.mountpoint || ''
 	};
 
 	let zfsProperties = $state(createFSProps);
@@ -52,7 +54,7 @@
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
 			recordsize: properties.recordsize,
-			mountpoint: properties.mountpoint || undefined
+			mountpoint: properties.mountpoint || ''
 		});
 
 		reload = true;

@@ -17,8 +17,9 @@ export interface Column {
 		| string;
 }
 
-export type TablePreferences = {
+export interface TreeTableState {
 	columnWidths: Record<string, number>;
-} | null;
+	expandedRows: Record<string | number, boolean>;
+}
 
 export type ExpandedRows = Record<number, boolean>;

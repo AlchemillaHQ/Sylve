@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Column, Row, TablePreferences } from '$lib/types/components/tree-table';
-	import { hasRowsChanged, matchAny, restoreTreeState } from '$lib/utils/table';
-	import { findRow, getAllRows, pruneEmptyChildren } from '$lib/utils/tree-table';
+	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
+	import { hasRowsChanged, matchAny } from '$lib/utils/table';
+	import { getAllRows, pruneEmptyChildren } from '$lib/utils/tree-table';
 	import { deepEqual } from 'fast-equals';
 	import { watch, Debounced } from 'runed';
 	import { onMount } from 'svelte';
@@ -39,34 +39,96 @@
 		initialSort
 	}: Props = $props();
 
-	const tablePrefs = new PersistedState(`${name}-prefs`, null as TablePreferences);
+	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
+		columnWidths: {},
+		expandedRows: {}
+	});
 
 	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
+	let restoringState = false;
+	let restoringSelection = false;
+	let scroll = $state([0, 0]);
+	let restoreSelected = $state(false);
+	let selectedIds = $state<Set<string | number>>(new Set());
+
+	function saveExpandedState() {
+		if (!table || restoringState) return;
+
+		const expanded: Record<string | number, boolean> = {};
+		for (const row of getAllRows(table.getRows())) {
+			const rowData = row.getData();
+			if (row.isTreeExpanded()) {
+				expanded[rowData.id] = true;
+			}
+		}
+
+		tableState.current = {
+			...tableState.current,
+			expandedRows: expanded
+		};
+	}
+
+	function restoreExpandedState() {
+		if (!table) return;
+
+		restoringState = true;
+
+		const expandedRows = tableState.current.expandedRows || {};
+
+		for (const row of getAllRows(table.getRows())) {
+			const rowData = row.getData();
+
+			if (expandedRows[rowData.id]) {
+				row.treeExpand();
+			} else {
+				row.treeCollapse();
+			}
+		}
+
+		restoringState = false;
+	}
 
 	function updateParentActiveRows() {
-		if (tableInitialized) {
+		if (tableInitialized && !restoringState && !restoringSelection) {
 			parentActiveRow = table?.getSelectedRows().map((r) => r.getData() as Row) || [];
 		}
 	}
 
+	function selectRowsRecursively(selectedIds: Set<string | number>) {
+		if (!table) return;
+		const allRows = getAllRows(table.getRows());
+
+		for (const row of allRows) {
+			const rowData = row.getData();
+			if (selectedIds.has(rowData.id)) {
+				try {
+					row.select();
+				} catch (e) {
+					console.warn(`Could not select row with id ${rowData.id}:`, e);
+				}
+			}
+		}
+	}
+
 	async function replaceDataPreservingScroll(rows: Row[]) {
-		var tableEl = table?.element as HTMLElement;
-		var holder = tableEl.querySelector('.tabulator-tableholder') as HTMLElement;
+		const tableEl = table?.element as HTMLElement;
+		const holder = tableEl?.querySelector('.tabulator-tableholder') as HTMLElement;
+
 		if (!holder) {
 			await table?.replaceData(rows);
 			return;
 		}
 
-		var parent = holder.parentElement as HTMLElement;
-		var prevScrollTop = holder.scrollTop;
-		var prevScrollLeft = holder.scrollLeft;
-		var prevMinHeight = parent.style.minHeight;
+		const parent = holder.parentElement as HTMLElement;
+		const prevScrollTop = holder.scrollTop;
+		const prevScrollLeft = holder.scrollLeft;
+		const prevMinHeight = parent.style.minHeight;
 
 		parent.style.minHeight = `${parent.offsetHeight}px`;
 		parent.style.overflowAnchor = 'none';
 
-		table?.replaceData(rows);
+		await table?.replaceData(rows);
 
 		const newHolder = tableEl.querySelector('.tabulator-tableholder') as HTMLElement;
 
@@ -90,23 +152,31 @@
 				return;
 			}
 
-			const selectedIds = table?.getSelectedRows().map((r) => r.getData().id) ?? [];
-			const expandMap = new Map<number, boolean>(
-				getAllRows(table?.getRows() || []).map((r) => [r.getData().id, r.isTreeExpanded()])
-			);
+			selectedIds = new Set(table?.getSelectedRows().map((r) => r.getData().id) ?? []);
 
 			if (hasRowsChanged(table, newRows) && tableInitialized) {
-				replaceDataPreservingScroll(pruneEmptyChildren(newRows)).then(() => {
+				replaceDataPreservingScroll(pruneEmptyChildren(newRows)).then(async () => {
+					restoringSelection = true;
+
 					tableFilter(query || '');
+					restoreExpandedState();
+
+					restoreSelected = true;
 				});
 			}
+		}
+	);
 
-			for (const id of selectedIds) {
-				findRow(table?.getRows() || [], id)?.select();
+	watch(
+		() => restoreSelected,
+		(value) => {
+			if (value) {
+				selectRowsRecursively(selectedIds);
+				restoringSelection = false;
+				updateParentActiveRows();
+				restoreSelected = false;
+				selectedIds = new Set();
 			}
-
-			restoreTreeState(expandMap, table?.getRows() || []);
-			updateParentActiveRows();
 		}
 	);
 
@@ -121,7 +191,7 @@
 				dataTreeChildIndent: 16,
 				dataTree: true,
 				dataTreeChildField: 'children',
-				dataTreeStartExpanded: true,
+				dataTreeStartExpanded: false,
 				persistenceID: name,
 				paginationMode: 'local',
 				persistence: {
@@ -150,14 +220,30 @@
 				'.tabulator-tableholder'
 			) as HTMLDivElement | null;
 
-			const prefs = tablePrefs.current;
-			if (prefs && prefs.columnWidths) {
-				table?.getColumns().forEach((col) => {
-					const width = prefs.columnWidths[col.getField() as string];
-					if (width) {
-						col.setWidth(width);
-					}
-				});
+			const widths = tableState.current.columnWidths || {};
+			table?.getColumns().forEach((col) => {
+				const width = widths[col.getField() as string];
+				if (width) {
+					col.setWidth(width);
+				}
+			});
+
+			restoreExpandedState();
+		});
+
+		table?.on('scrollVertical', (top) => {
+			scroll = [top, scroll[1]];
+		});
+
+		table?.on('scrollHorizontal', (left) => {
+			scroll = [scroll[0], left];
+		});
+
+		table?.on('renderComplete', () => {
+			const container = tableComponent?.querySelector('.tabulator-tableholder') as HTMLDivElement;
+			if (container) {
+				container.scrollTop = scroll[0];
+				container.scrollLeft = scroll[1];
 			}
 		});
 
@@ -181,7 +267,18 @@
 				colWidths[col.getField() as string] = col.getWidth();
 			});
 
-			tablePrefs.current = { columnWidths: colWidths };
+			tableState.current = {
+				...tableState.current,
+				columnWidths: colWidths
+			};
+		});
+
+		table?.on('dataTreeRowCollapsed', () => {
+			saveExpandedState();
+		});
+
+		table?.on('dataTreeRowExpanded', () => {
+			saveExpandedState();
 		});
 	});
 
@@ -194,6 +291,7 @@
 			table.setFilter(matchAny, { query });
 		}
 	}
+
 	const debouncedQuery = new Debounced(() => query, 300);
 
 	watch(

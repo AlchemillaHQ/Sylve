@@ -10,7 +10,6 @@
 	import Replace from '$lib/components/custom/ZFS/pools/Replace.svelte';
 	import Status from '$lib/components/custom/ZFS/pools/Status.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Disk } from '$lib/types/disk/disk';
 	import type { Zpool } from '$lib/types/zfs/pool';
@@ -90,13 +89,18 @@
 	);
 
 	let tableData = $derived(generateTableData(pools.current, disks.current));
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
-	let activePool: Zpool | null = $derived(
-		activeRow && isPool(pools.current, activeRow.name)
-			? pools.current.find((p) => p.pool_guid === activeRow.guid) || null
-			: null
+	let activeRows = $state<Row[] | null>(null);
+	let activeRow: Row | null = $derived(
+		activeRows && Array.isArray(activeRows) && activeRows.length > 0 ? (activeRows[0] as Row) : null
 	);
+
+	let activePool: Zpool | null = $derived.by(() => {
+		if (activeRow && isPool(pools.current, activeRow.name)) {
+			return pools.current.find((p) => p.pool_guid === activeRow.guid) || null;
+		} else {
+			return null;
+		}
+	});
 
 	let replacing = $derived.by(() => {
 		if (tableData.rows.length > 0) {
@@ -244,7 +248,6 @@
 				<Button
 					onclick={() => {
 						let pool = getPoolByDevice(pools.current, activeRow.name);
-
 						modals.replace.open = true;
 						modals.replace.data = {
 							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
@@ -252,8 +255,9 @@
 							latest: ''
 						};
 					}}
+					variant="outline"
 					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black disabled:hover:bg-neutral-600 dark:text-white"
+					class="h-6.5"
 					disabled={replacing}
 					title={replacing ? 'Replace already in progress' : ''}
 				>
@@ -329,7 +333,7 @@
 	}}
 />
 
-<!-- {#if modals.replace.data.pool}
+{#if modals.replace.data.pool}
 	<Replace
 		bind:open={modals.replace.open}
 		bind:replacing
@@ -339,7 +343,6 @@
 		{usable}
 	/>
 {/if}
--->
 
 {#if activePool && modals.edit.open}
 	<Edit bind:open={modals.edit.open} pool={activePool} {usable} bind:reload />

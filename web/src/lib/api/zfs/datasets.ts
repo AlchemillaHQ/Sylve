@@ -8,7 +8,9 @@ import {
 
 import { apiRequest } from '$lib/utils/http';
 
-export async function getDatasets(type: string = 'all'): Promise<Dataset[]> {
+export async function getDatasets(
+	type: 'all' | 'filesystem' | 'snapshot' | 'volume' = 'all'
+): Promise<Dataset[]> {
 	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
 }
 
