@@ -183,7 +183,7 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		return err
 	}
 
-	_, err = s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
+	ds, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
 	if err != nil {
 		return fmt.Errorf("dataset_with_guid_not_found")
 	}
@@ -194,6 +194,7 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		Recursive: recursive,
 		Interval:  interval,
 		CronExpr:  cronExpr,
+		Pool:      ds.Pool,
 
 		KeepLast:   rvals.KeepLast,
 		MaxAgeDays: rvals.MaxAgeDays,

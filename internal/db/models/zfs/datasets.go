@@ -17,6 +17,7 @@ type PeriodicSnapshot struct {
 	Prefix    string `gorm:"uniqueIndex:uniq_guid_interval_prefix,priority:3" json:"prefix"`
 	Recursive bool   `json:"recursive"`
 	CronExpr  string `json:"cronExpr"`
+	Pool      string `json:"pool"`
 
 	/* Simple Retention */
 	KeepLast   int `json:"keepLast" gorm:"default:0"`   // e.g., keep last 5 snapshots

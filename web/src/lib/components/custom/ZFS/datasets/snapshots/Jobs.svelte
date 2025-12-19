@@ -1,31 +1,39 @@
 <script lang="ts">
-	import { deletePeriodicSnapshot } from '$lib/api/zfs/datasets';
+	import { deletePeriodicSnapshot, getDatasets } from '$lib/api/zfs/datasets';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table';
-	import type { Dataset, PeriodicSnapshot } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
+	import {
+		GZFSDatasetTypeSchema,
+		type Dataset,
+		type PeriodicSnapshot
+	} from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman, dateToAgo } from '$lib/utils/time';
 	import { getDatasetByGUID } from '$lib/utils/zfs/dataset/dataset';
 	import { toast } from 'svelte-sonner';
 	import Retention from './Retention.svelte';
+	import { resource } from 'runed';
 
 	interface Data {
 		open: boolean;
-		pools: Zpool[];
-		datasets: Dataset[];
 		periodicSnapshots: PeriodicSnapshot[];
 		reload: boolean;
 	}
 
-	let {
-		open = $bindable(),
-		pools,
-		datasets,
-		periodicSnapshots,
-		reload = $bindable()
-	}: Data = $props();
+	let { open = $bindable(), periodicSnapshots, reload = $bindable() }: Data = $props();
+
+	let datasets = resource(
+		() => 'zfs-fs-vol-datasets',
+		async (key, prevKey, { signal }) => {
+			const fs = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
+			const vol = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
+			return [...fs, ...vol];
+		},
+		{
+			initialValue: []
+		}
+	);
 
 	let shadowDeleted: number[] = $state([]);
 
@@ -35,7 +43,7 @@
 	}
 
 	function getDatasetName(guid: string) {
-		const dataset = getDatasetByGUID(datasets, guid);
+		const dataset = getDatasetByGUID(datasets.current, guid);
 		if (dataset) {
 			return dataset.name;
 		}
@@ -118,16 +126,16 @@
 			</Dialog.Close>
 		</div>
 
-		<div class="max-h-[300px] overflow-y-auto px-4" id="table-body">
+		<div class="max-h-75 overflow-y-auto px-4" id="table-body">
 			<Table.Root>
 				<Table.Header class="bg-background sticky top-0 z-10">
 					<Table.Row>
-						<Table.Head class="w-[10px]">ID</Table.Head>
-						<Table.Head class="w-[200px]">Dataset</Table.Head>
-						<Table.Head class="w-[200px]">Prefix</Table.Head>
-						<Table.Head class="w-[200px]">Interval</Table.Head>
-						<Table.Head class="w-[200px]">Last Run</Table.Head>
-						<Table.Head class="w-[200px]"></Table.Head>
+						<Table.Head class="w-2.5">ID</Table.Head>
+						<Table.Head class="w-50">Dataset</Table.Head>
+						<Table.Head class="w-50">Prefix</Table.Head>
+						<Table.Head class="w-50">Interval</Table.Head>
+						<Table.Head class="w-50">Last Run</Table.Head>
+						<Table.Head class="w-50"></Table.Head>
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>

@@ -954,7 +954,6 @@ msgstr "बल्क डिलीट"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -5079,8 +5078,9 @@ msgstr "डेटा सेट्स हटाने में विफल"
 #~ msgid "Delete Snapshots"
 #~ msgstr "स्नैपशॉट हटाएं"
 
-#~ msgid "View Periodics"
-#~ msgstr "पीरियडिक्स देखें"
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "View Periodics"
+msgstr "पीरियडिक्स देखें"
 
 #~ msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
 #~ msgstr "क्या आप सुनिश्चित हैं कि आप {0} स्नैपशॉट{1} को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।"
@@ -6174,3 +6174,31 @@ msgid "Delete Snapshot"
 msgid_plural "Delete # Snapshots"
 msgstr[0] ""
 msgstr[1] ""
+
+#~ msgid "Open"
+#~ msgstr ""
+
+#~ msgid "My Account"
+#~ msgstr ""
+
+#~ msgid "Profile"
+#~ msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Billing"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Team"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Subscription"
+msgstr ""
+
+#~ msgid "New Snapshot"
+#~ msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Single"
+msgstr ""

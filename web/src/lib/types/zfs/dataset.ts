@@ -50,6 +50,7 @@ export const PeriodicSnapshotSchema = z.object({
 	recursive: z.boolean(),
 	interval: z.number(),
 	cronExpr: z.string(),
+	pool: z.string(),
 
 	keepLast: z.number().optional(),
 	maxAgeDays: z.number().optional(),

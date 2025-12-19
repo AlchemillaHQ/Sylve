@@ -11,7 +11,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { deepEqual } from 'fast-equals';
-	import { current } from 'immer';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -210,9 +209,6 @@
 			}
 
 			reload = true;
-
-			console.log(response);
-
 			if (response?.error) {
 				handleAPIError(response);
 				toast.error('Failed to create snapshot', {

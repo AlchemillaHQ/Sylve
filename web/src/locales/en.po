@@ -998,7 +998,6 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -5103,8 +5102,9 @@ msgstr "Failed to delete datasets"
 #~ msgid "Delete Snapshots"
 #~ msgstr "Delete Snapshots"
 
-#~ msgid "View Periodics"
-#~ msgstr "View Periodics"
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "View Periodics"
+msgstr "View Periodics"
 
 #~ msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
 #~ msgstr "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
@@ -6202,3 +6202,27 @@ msgid "Delete Snapshot"
 msgid_plural "Delete # Snapshots"
 msgstr[0] "Delete Snapshot"
 msgstr[1] "Delete # Snapshots"
+
+#~ msgid "Open"
+#~ msgstr "Open"
+
+#~ msgid "My Account"
+#~ msgstr "My Account"
+
+#~ msgid "Profile"
+#~ msgstr "Profile"
+
+#~ msgid "Billing"
+#~ msgstr "Billing"
+
+#~ msgid "Team"
+#~ msgstr "Team"
+
+#~ msgid "Subscription"
+#~ msgstr "Subscription"
+
+#~ msgid "New Snapshot"
+#~ msgstr "New Snapshot"
+
+#~ msgid "Single"
+#~ msgstr "Single"

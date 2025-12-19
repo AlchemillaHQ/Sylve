@@ -9,6 +9,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { BasicSettings } from '$lib/types/system/settings';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import {
 		GZFSDatasetTypeSchema,
 		type Dataset,
@@ -52,6 +53,7 @@
 		}
 	);
 
+	let pools = $derived(basicSettings.current.pools || []);
 	let reload = $state(false);
 
 	watch(
@@ -139,7 +141,8 @@
 				open: false
 			},
 			periodics: {
-				open: false
+				open: false,
+				pool: ''
 			}
 		}
 	});
@@ -152,6 +155,12 @@
 			}
 		}
 	);
+
+	let activePeriodics = $derived.by(() => {
+		return modals.snapshot.periodics.open && modals.snapshot.periodics.pool
+			? periodicSnapshots.current.filter((p) => p.pool === modals.snapshot.periodics.pool)
+			: [];
+	});
 </script>
 
 {#snippet button(type: string)}
@@ -193,20 +202,35 @@
 		</Button>
 	{/if}
 
-	<!-- {#if type === 'view-periodics' && activePool && activePeriodics && activePeriodics.length > 0}
-		<Button
-			onclick={() => {
-				modals.snapshot.periodics.open = true;
-			}}
-			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:pointer-events-auto! disabled:hover:bg-neutral-600 dark:text-white"
-		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--clock-time-four] mr-1 h-4 w-4"></span>
-				<span>View Periodics</span>
-			</div>
-		</Button>
-	{/if} -->
+	{#if type === 'view-periodics' && periodicSnapshots.current.length > 0}
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger>
+				<Button size="sm" class="h-6 mt-0.5" variant="outline">
+					<div class="flex items-center">
+						<span class="icon-[mdi--clock] h-4 w-4"></span>
+					</div>
+				</Button>
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content>
+				<DropdownMenu.Group>
+					<DropdownMenu.Label>View Periodics</DropdownMenu.Label>
+					<DropdownMenu.Separator />
+					{#each pools as pool}
+						{#if periodicSnapshots.current.find((p) => p.pool === pool)}
+							<DropdownMenu.Item
+								onclick={() => {
+									modals.snapshot.periodics.open = true;
+									modals.snapshot.periodics.pool = pool;
+								}}
+							>
+								{pool}
+							</DropdownMenu.Item>
+						{/if}
+					{/each}
+				</DropdownMenu.Group>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
@@ -227,9 +251,9 @@
 		</Button>
 
 		{@render button('delete-snapshot')}
-		{@render button('view-periodics')}
 
 		<div class="ml-auto">
+			{@render button('view-periodics')}
 			{@render button('reload')}
 		</div>
 	</div>
@@ -259,12 +283,10 @@
 	/>
 {/if}
 
-<!-- {#if modals.snapshot.periodics.open && activePeriodics && activePeriodics.length > 0}
+{#if modals.snapshot.periodics.open && activePeriodics && activePeriodics.length > 0}
 	<Jobs
 		bind:open={modals.snapshot.periodics.open}
-		{pools}
-		{datasets}
 		periodicSnapshots={activePeriodics}
 		bind:reload
 	/>
-{/if} -->
+{/if}
