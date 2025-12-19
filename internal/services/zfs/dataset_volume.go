@@ -61,6 +61,8 @@ func (s *Service) CreateVolume(ctx context.Context, name string, parent string, 
 		return fmt.Errorf("failed_to_create_volume")
 	}
 
+	s.SignalDSChange(zvol.Pool, zvol.Name, "generic-dataset", "create")
+
 	return nil
 }
 
@@ -77,6 +79,8 @@ func (s *Service) EditVolume(ctx context.Context, req zfsServiceInterfaces.EditV
 	if dataset.Type == gzfs.DatasetTypeVolume {
 		return s.GZFS.ZFS.EditVolume(ctx, dataset.Name, req.Properties)
 	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 
 	return fmt.Errorf("volume_with_guid_%s_not_found", req.GUID)
 }
@@ -108,6 +112,8 @@ func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 		}
 		return nil
 	}
+
+	s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "delete")
 
 	return fmt.Errorf("volume_with_guid_%s_not_found", guid)
 }
@@ -162,6 +168,8 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 					if err != nil {
 						return fmt.Errorf("failed_to_flash_volume: %w, output: %s", err, output)
 					}
+
+					s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "flash")
 
 					return nil
 				}

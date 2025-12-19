@@ -41,7 +41,7 @@
 	const datasets = resource(
 		() => 'zfs-filesystems',
 		async (key, prevKey, { signal }) => {
-			const result = await getDatasets('filesystem');
+			const result = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
 			updateCache(key, result);
 			return result;
 		},

@@ -49,6 +49,14 @@ func main() {
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 
 	d := db.SetupDatabase(cfg, false)
+	_ = db.SetupCache(cfg)
+
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			db.RunCacheGC()
+		}
+	}()
 
 	if err := db.SetupQueue(cfg, false, logger.L); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed to setup queue")
@@ -75,7 +83,9 @@ func main() {
 	cS := serviceRegistry.ClusterService
 
 	uS.RegisterJobs()
+	zS.RegisterJobs()
 
+	go sysS.StartDevdParser(qCtx)
 	go db.StartQueue(qCtx)
 
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)

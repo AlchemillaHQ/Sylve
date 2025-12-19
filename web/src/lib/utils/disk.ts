@@ -123,10 +123,6 @@ export function isPartitionInDisk(disks: Disk[], partition: Partition): Disk | n
 export function zpoolUseableDisks(disks: Disk[], pools: Zpool[]): Disk[] {
 	const useable: Disk[] = [];
 	for (const disk of disks) {
-		if (disk.device === 'da0' || disk.device === 'cd0') {
-			continue;
-		}
-
 		if (disk.usage === 'Partitions') {
 			continue;
 		}
@@ -135,6 +131,8 @@ export function zpoolUseableDisks(disks: Disk[], pools: Zpool[]): Disk[] {
 			useable.push(disk);
 		}
 	}
+
+	console.log('Useable disks:', useable);
 
 	return useable;
 }

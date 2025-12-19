@@ -1,15 +1,19 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	DatasetSchema,
+	GZFSDatasetTypeSchema,
+	PaginatedDatasetsResponseSchema,
 	PeriodicSnapshotSchema,
 	type Dataset,
+	type GZFSDatasetType,
+	type PaginatedDatasetsResponse,
 	type PeriodicSnapshot
 } from '$lib/types/zfs/dataset';
 
 import { apiRequest } from '$lib/utils/http';
 
 export async function getDatasets(
-	type: 'all' | 'filesystem' | 'snapshot' | 'volume' = 'all'
+	type: GZFSDatasetType = GZFSDatasetTypeSchema.enum.ALL
 ): Promise<Dataset[]> {
 	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
 }
@@ -164,9 +168,29 @@ export async function bulkDelete(datasets: Dataset[]): Promise<APIResponse> {
 	});
 }
 
+export async function bulkDeleteByNames(datasets: Dataset[]): Promise<APIResponse> {
+	const names = datasets.map((dataset) => dataset.name);
+	return await apiRequest('/zfs/datasets/bulk-delete-by-names', APIResponseSchema, 'POST', {
+		names: names
+	});
+}
+
 export async function flashVolume(guid: string, uuid: string): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/volume/flash', APIResponseSchema, 'POST', {
 		guid: guid,
 		uuid: uuid
 	});
+}
+
+export async function getPaginatedDatasets(
+	page: number,
+	pageSize: number,
+	datasetType: GZFSDatasetType,
+	search: string = ''
+): Promise<PaginatedDatasetsResponse> {
+	return await apiRequest(
+		`/zfs/datasets/paginated?datasetType=${datasetType}&limit=${pageSize}&offset=${(page - 1) * pageSize}&search=${encodeURIComponent(search)}`,
+		PaginatedDatasetsResponseSchema,
+		'GET'
+	);
 }

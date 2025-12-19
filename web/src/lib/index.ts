@@ -9,6 +9,8 @@
  */
 
 import type { Locales } from './types/common';
+import type { KVEntry } from './types/db';
+import Dexie, { type Table } from 'dexie';
 import { createReactiveStorage } from './utils/storage';
 
 type SharedStorage = {
@@ -46,3 +48,21 @@ export const languageArr: { value: Locales; label: string }[] = [
 	{ value: 'mal', label: 'മലയാളം' },
 	{ value: 'hi', label: 'हिन्दी' }
 ];
+
+class SylveDB extends Dexie {
+	kv!: Table<KVEntry, string>;
+	constructor() {
+		super('sylve-db');
+		this.version(1).stores({ kv: '&key, timestamp' });
+	}
+}
+
+let _db: SylveDB | null = null;
+
+export function getDB(): SylveDB {
+	if (!_db) {
+		_db = new SylveDB();
+	}
+
+	return _db;
+}

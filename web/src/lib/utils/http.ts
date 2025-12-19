@@ -12,9 +12,9 @@ import { storage } from '$lib';
 import { api } from '$lib/api/common';
 import { reload } from '$lib/stores/api.svelte';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import type { QueryFunctionContext } from '@tanstack/svelte-query';
 import adze from 'adze';
 import { z } from 'zod/v4';
+import { kvStorage } from '$lib/types/db';
 
 export async function apiRequest<T extends z.ZodType>(
 	endpoint: string,
@@ -97,82 +97,63 @@ function getDefaultValue<T extends z.ZodType>(schema: T, response: APIResponse):
 	return undefined as z.infer<T>;
 }
 
-type CacheEntry<T> = {
-	timestamp: number;
-	data: T;
-};
-
 export async function cachedFetch<T>(
 	key: string,
-	fetchFunction: (queryObj?: QueryFunctionContext) => Promise<T>,
-	duration: number
+	fetchFunction: () => Promise<T>,
+	duration: number,
+	onlyCache?: boolean
 ): Promise<T> {
 	const now = Date.now();
-	const storedEntry = localStorage.getItem(key);
+	const entry = await kvStorage.getItem<T>(key);
 
-	if (storedEntry) {
-		try {
-			const entry: CacheEntry<T> = JSON.parse(storedEntry);
+	if (entry) {
+		const isFresh = now - entry.timestamp < duration;
+		const data = entry.data;
 
-			const isFresh = now - entry.timestamp < duration;
-			const hasData = entry.data !== null && entry.data !== undefined;
-			const looksLikeError =
-				hasData &&
-				typeof entry.data === 'object' &&
-				entry.data !== null &&
-				'status' in (entry.data as any) &&
-				(entry.data as any).status === 'error';
+		const looksLikeError =
+			data &&
+			typeof data === 'object' &&
+			'status' in (data as any) &&
+			(data as any).status === 'error';
 
-			if (isFresh && hasData && !looksLikeError) {
-				return entry.data;
-			}
-		} catch (error) {
-			console.error(`Failed to parse cached data for key "${key}"`, error);
+		if (isFresh && !looksLikeError) {
+			return data;
 		}
 	}
 
+	if (onlyCache) {
+		return null as T;
+	}
+
 	const data = await fetchFunction();
-	const entry: CacheEntry<T> = { timestamp: now, data };
 
-	const looksLikeError =
-		data &&
-		typeof data === 'object' &&
-		'status' in (data as any) &&
-		(data as any).status === 'error';
-
-	if (!looksLikeError) {
-		localStorage.setItem(key, JSON.stringify(entry));
+	if (
+		!data ||
+		typeof data !== 'object' ||
+		!('status' in data) ||
+		(data as any).status !== 'error'
+	) {
+		await kvStorage.setItem(key, data);
 	}
 
 	return data;
 }
 
-export function getCache<T>(key: string): T | null {
-	const storedEntry = localStorage.getItem(key);
-	if (storedEntry) {
-		try {
-			const entry: CacheEntry<T> = JSON.parse(storedEntry);
-			return entry.data;
-		} catch (error) {
-			console.error(`Failed to parse cached data for key "${key}"`, error);
-		}
+export async function getCache<T>(key: string): Promise<T | null> {
+	try {
+		const entry = await kvStorage.getItem<T>(key);
+		return entry?.data ?? null;
+	} catch (error) {
+		console.error(`Failed to read cached data for key "${key}"`, error);
+		return null;
 	}
-	return null;
 }
 
 export async function updateCache<T>(key: string, obj: T): Promise<void> {
-	const now = Date.now();
-	const storedEntry = localStorage.getItem(key);
-
-	if (storedEntry) {
-		try {
-			const entry: CacheEntry<T> = JSON.parse(storedEntry);
-			entry.data = obj;
-			entry.timestamp = now;
-			localStorage.setItem(key, JSON.stringify(entry));
-		} catch (error) {
-			console.error(`Failed to parse cached data for key "${key}"`, error);
-		}
+	try {
+		await kvStorage.setItem(key, obj);
+	} catch (error) {
+		console.error(`Failed to update cached data for key "${key}"`, error);
 	}
 }
 

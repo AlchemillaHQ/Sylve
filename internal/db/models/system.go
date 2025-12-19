@@ -38,3 +38,15 @@ type Triggers struct {
 	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	CompletedAt time.Time `json:"completedAt" gorm:"autoUpdateTime"`
 }
+
+type DevdEvent struct {
+	ID        uint              `json:"id" gorm:"primaryKey"`
+	System    string            `json:"system"`
+	Subsystem string            `json:"subsystem"`
+	Type      string            `json:"type"`
+	Attrs     map[string]string `json:"attrs" gorm:"serializer:json"`
+	Raw       string            `json:"raw"`
+	Processed bool              `json:"processed"`
+	CreatedAt time.Time         `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time         `json:"updatedAt" gorm:"autoUpdateTime"`
+}

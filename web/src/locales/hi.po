@@ -46,6 +46,7 @@ msgstr "हार्डवेयर"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -119,10 +120,12 @@ msgid "Dashboard"
 msgstr "डैशबोर्ड"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Pools"
 msgstr "पूल्स"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Datasets"
 msgstr "डेटासेट्स"
 
@@ -131,10 +134,12 @@ msgid "File Systems"
 msgstr "फ़ाइल सिस्टम्स"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Volumes"
 msgstr "वॉल्यूम्स"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Snapshots"
 msgstr "स्नैपशॉट्स"
 
@@ -512,6 +517,7 @@ msgid "Add new tab"
 msgstr "नया टैब जोड़ें"
 
 #: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr "कोई डेटा उपलब्ध नहीं"
@@ -656,6 +662,7 @@ msgstr "रीसेट"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -741,6 +748,7 @@ msgstr "फ़ाइल एक्सप्लोरर"
 msgid "ZFS Filesystem"
 msgstr "ZFS फ़ाइलसिस्टम"
 
+#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -2136,9 +2144,11 @@ msgstr "बेसिक"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "None"
 msgstr "कोई नहीं"
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Failed to create jail"
 msgstr "जेल बनाने में विफल"
@@ -2175,6 +2185,7 @@ msgid "Resource Limits"
 msgstr "संसाधन सीमाएँ"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Mac"
@@ -2184,6 +2195,7 @@ msgstr "MAC"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Host"
 msgstr "होस्ट"
 
@@ -2463,6 +2475,8 @@ msgstr "क्लाउड-इनिट मेटा डेटा"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
 msgstr "होस्ट(स)"
 
@@ -2471,6 +2485,8 @@ msgstr "होस्ट(स)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Network(s)"
 msgstr "नेटवर्क(स)"
 
@@ -2479,6 +2495,8 @@ msgstr "नेटवर्क(स)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC(स)"
 
@@ -2487,6 +2505,8 @@ msgstr "MAC(स)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "DUID(s)"
 msgstr "DUID(स)"
 
@@ -2881,6 +2901,7 @@ msgstr "डिस्क प्रकार"
 msgid "Select Disk Type"
 msgstr "डिस्क प्रकार चुनें"
 
+#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk"
 msgstr "रॉ डिस्क"
@@ -2893,6 +2914,7 @@ msgstr "इमेज"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Pool"
 msgstr "पूल"
 
@@ -3519,6 +3541,7 @@ msgstr "संसाधन सीमाएँ संपादित करने
 #. placeholder {0}: title
 #. placeholder {0}: property
 #. placeholder {0}: activeRow.property
+#. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -4706,23 +4729,18 @@ msgstr "प्रिफिक्स"
 msgid "Recursive"
 msgstr "रिकर्सिव"
 
-#. placeholder {0}: dataset.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "Deleted snapshot {0}"
-msgstr "स्नैपशॉट {0} हटाया गया"
+#~ msgid "Deleted snapshot {0}"
+#~ msgstr "स्नैपशॉट {0} हटाया गया"
 
-#. placeholder {0}: dataset.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "Failed to delete snapshot {0}"
-msgstr "स्नैपशॉट {0} हटाने में विफल"
+#~ msgid "Failed to delete snapshot {0}"
+#~ msgstr "स्नैपशॉट {0} हटाने में विफल"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Snapshot GUID not found"
 msgstr "स्नैपशॉट GUID नहीं मिला"
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete the snapshot <0/>"
-msgstr "यह स्नैपशॉट <0/> को हटा देगा"
+#~ msgid "This will delete the snapshot <0/>"
+#~ msgstr "यह स्नैपशॉट <0/> को हटा देगा"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -4737,31 +4755,37 @@ msgid "Cron Expression"
 msgstr "क्रोन अभिव्यक्ति"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Minute"
 msgstr "प्रत्येक मिनट"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Hour"
 msgstr "प्रत्येक घंटा"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Day"
 msgstr "प्रत्येक दिन"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Week"
 msgstr "प्रत्येक सप्ताह"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Month"
 msgstr "प्रत्येक माह"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Year"
 msgstr "प्रत्येक वर्ष"
@@ -4782,7 +4806,7 @@ msgstr "कोई डेटा सेट चयनित नहीं है"
 msgid "Failed to create snapshot"
 msgstr "स्नैपशॉट बनाने में विफल"
 
-#. placeholder {0}: pool?.name
+#. placeholder {0}: pool
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Snapshot {0}@{1} created"
@@ -5049,31 +5073,22 @@ msgstr "{0} डेटा सेट्स हटाए गए"
 msgid "Failed to delete datasets"
 msgstr "डेटा सेट्स हटाने में विफल"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Delete Snapshot"
-msgstr "स्नैपशॉट हटाएं"
+#~ msgid "Delete Snapshot"
+#~ msgstr "स्नैपशॉट हटाएं"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Delete Snapshots"
-msgstr "स्नैपशॉट हटाएं"
+#~ msgid "Delete Snapshots"
+#~ msgstr "स्नैपशॉट हटाएं"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "View Periodics"
-msgstr "पीरियडिक्स देखें"
+#~ msgid "View Periodics"
+#~ msgstr "पीरियडिक्स देखें"
 
-#. placeholder {0}: activeDatasets.length
-#. placeholder {1}: activeDatasets.length > 1 ? 's' : ''
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
-msgstr "क्या आप सुनिश्चित हैं कि आप {0} स्नैपशॉट{1} को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।"
+#~ msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
+#~ msgstr "क्या आप सुनिश्चित हैं कि आप {0} स्नैपशॉट{1} को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।"
 
-#. placeholder {0}: activeDatasets.length
-#. placeholder {1}: activeDatasets.length > 1 ? 's' : ''
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Deleted {0} snapshot{1}"
-msgstr "{0} स्नैपशॉट{1} हटाया गया"
+#~ msgid "Deleted {0} snapshot{1}"
+#~ msgstr "{0} स्नैपशॉट{1} हटाया गया"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Failed to delete snapshots"
 msgstr "स्नैपशॉट्स हटाने में विफल"
 
@@ -5625,11 +5640,15 @@ msgstr ""
 #~ msgid "Zoom In"
 #~ msgstr ""
 
-#~ msgid "Terminal WebSocket connected for tab {0}"
-#~ msgstr ""
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket connected for tab {0}"
+msgstr ""
 
-#~ msgid "Terminal WebSocket disconnected for tab {0}"
-#~ msgstr ""
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket disconnected for tab {0}"
+msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -6042,3 +6061,116 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr ""
+
+#: src/lib/components/custom/Terminal.svelte
+msgid "Failed to connect to terminal WebSocket"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Unknown VM"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Started"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Bad Request"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Error"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv4 gateway or address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv6 gateway or address"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Block devices managed by ZFS"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Disk images that can be used with any filesystem"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No Storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No storage will be allocated for this virtual machine"
+msgstr ""
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.latest
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replacing {0} with {1}"
+msgstr ""
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.name
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Device replacement started for {0} in {1}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Error replacing device"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshot"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Filesystems"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Used"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Referenced"
+msgstr ""
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Deleted {0} snapshots"
+msgstr ""
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete {0} snapshots"
+msgstr ""
+
+#~ msgid "This will delete snapshot:"
+#~ msgstr ""
+
+#. placeholder {0}: datasets[0].name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete snapshot {0}"
+msgstr ""
+
+#~ msgid "Reload"
+#~ msgstr ""
+
+#~ msgid "Snapshot"
+#~ msgid_plural "# Snapshots"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#~ msgid "Delete Snapshot"
+#~ msgid_plural "Delete Snapshots"
+#~ msgstr[0] ""
+#~ msgstr[1] ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Delete Snapshot"
+msgid_plural "Delete # Snapshots"
+msgstr[0] ""
+msgstr[1] ""

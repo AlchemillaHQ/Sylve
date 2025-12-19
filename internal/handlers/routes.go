@@ -151,6 +151,8 @@ func RegisterRoutes(r *gin.Engine,
 		datasets := zfs.Group("/datasets")
 		{
 			datasets.GET("", zfsHandlers.GetDatasets(zfsService))
+			datasets.GET("/paginated", zfsHandlers.GetPaginatedDatasets(zfsService))
+
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
 			datasets.POST("/snapshot/rollback", zfsHandlers.RollbackSnapshot(zfsService))
 			datasets.DELETE("/snapshot/:guid", zfsHandlers.DeleteSnapshot(zfsService))
@@ -171,6 +173,7 @@ func RegisterRoutes(r *gin.Engine,
 			datasets.DELETE("/volume/:guid", zfsHandlers.DeleteVolume(zfsService))
 
 			datasets.POST("/bulk-delete", zfsHandlers.BulkDeleteDataset(zfsService))
+			datasets.POST("/bulk-delete-by-names", zfsHandlers.BulkDeleteDatasetsByName(zfsService))
 		}
 	}
 

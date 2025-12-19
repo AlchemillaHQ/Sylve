@@ -36,6 +36,7 @@ type ZfsServiceInterface interface {
 	StoreStats()
 	RemoveNonExistentPools()
 	Cron()
+	RegisterJobs()
 
 	CreateFilesystem(ctx context.Context, name string, props map[string]string) error
 	EditFilesystem(ctx context.Context, guid string, props map[string]string) error
@@ -46,7 +47,7 @@ type ZfsServiceInterface interface {
 	DeleteVolume(ctx context.Context, guid string) error
 	FlashVolume(ctx context.Context, guid string, uuid string) error
 
-	GetDatasets(ctx context.Context, t string) ([]*gzfs.Dataset, error)
+	GetDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error)
 	BulkDeleteDataset(ctx context.Context, guids []string) error
 	IsDatasetInUse(guid string, failEarly bool) bool
 

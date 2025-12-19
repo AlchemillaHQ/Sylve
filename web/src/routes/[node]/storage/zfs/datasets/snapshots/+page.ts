@@ -1,19 +1,17 @@
-import { getDatasets, getPeriodicSnapshots } from '$lib/api/zfs/datasets';
-import { getPools } from '$lib/api/zfs/pool';
+import { getBasicSettings } from '$lib/api/system/settings';
+import { getPeriodicSnapshots } from '$lib/api/zfs/datasets';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
 	const cacheDuration = SEVEN_DAYS;
-	const [datasets, pools, periodicSnapshots] = await Promise.all([
-		cachedFetch('zfs-datasets', async () => await getDatasets(), cacheDuration),
-		cachedFetch('pools', getPools, cacheDuration),
-		cachedFetch('periodic-snapshots', async () => await getPeriodicSnapshots(), cacheDuration)
+	const [basicSettings, periodicSnapshots] = await Promise.all([
+		cachedFetch('basic-settings', () => getBasicSettings(), cacheDuration),
+		cachedFetch('zfs-periodic-snapshots', async () => await getPeriodicSnapshots(), cacheDuration)
 	]);
 
 	return {
-		pools: pools,
-		periodicSnapshots: periodicSnapshots,
-		datasets: datasets
+		basicSettings: basicSettings,
+		periodicSnapshots: periodicSnapshots
 	};
 }

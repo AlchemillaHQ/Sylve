@@ -46,6 +46,7 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -119,10 +120,12 @@ msgid "Dashboard"
 msgstr "Dashboard"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Pools"
 msgstr "Pools"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Datasets"
 msgstr "Datasets"
 
@@ -131,10 +134,12 @@ msgid "File Systems"
 msgstr "File Systems"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Volumes"
 msgstr "Volumes"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Snapshots"
 msgstr "Snapshots"
 
@@ -513,6 +518,7 @@ msgid "Add new tab"
 msgstr "Add new tab"
 
 #: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr "No data available"
@@ -657,6 +663,7 @@ msgstr "Reset"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -742,6 +749,7 @@ msgstr "File Explorer"
 msgid "ZFS Filesystem"
 msgstr "ZFS Filesystem"
 
+#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -2138,9 +2146,11 @@ msgstr "Basic"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "None"
 msgstr "None"
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Failed to create jail"
 msgstr "Failed to create jail"
@@ -2177,6 +2187,7 @@ msgid "Resource Limits"
 msgstr "Resource Limits"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Mac"
@@ -2186,6 +2197,7 @@ msgstr "Mac"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Host"
 msgstr "Host"
 
@@ -2395,6 +2407,8 @@ msgstr "Expand Hosts"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
 msgstr "Host(s)"
 
@@ -2403,6 +2417,8 @@ msgstr "Host(s)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Network(s)"
 msgstr "Network(s)"
 
@@ -2411,6 +2427,8 @@ msgstr "Network(s)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC(s)"
 
@@ -2419,6 +2437,8 @@ msgstr "MAC(s)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "DUID(s)"
 msgstr "DUID(s)"
 
@@ -2972,6 +2992,7 @@ msgstr "Disk Type"
 msgid "Select Disk Type"
 msgstr "Select Disk Type"
 
+#: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk"
 msgstr "Raw Disk"
@@ -2984,6 +3005,7 @@ msgstr "Image"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Pool"
 msgstr "Pool"
 
@@ -3531,6 +3553,7 @@ msgstr "Enable resource limits to edit"
 #. placeholder {0}: title
 #. placeholder {0}: property
 #. placeholder {0}: activeRow.property
+#. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -4730,23 +4753,18 @@ msgstr "File System {0} edited"
 msgid "<0/> Edit Filesystem - {0}"
 msgstr "<0/> Edit Filesystem - {0}"
 
-#. placeholder {0}: dataset.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "Deleted snapshot {0}"
-msgstr "Deleted snapshot {0}"
+#~ msgid "Deleted snapshot {0}"
+#~ msgstr "Deleted snapshot {0}"
 
-#. placeholder {0}: dataset.name
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "Failed to delete snapshot {0}"
-msgstr "Failed to delete snapshot {0}"
+#~ msgid "Failed to delete snapshot {0}"
+#~ msgstr "Failed to delete snapshot {0}"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Snapshot GUID not found"
 msgstr "Snapshot GUID not found"
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
-msgid "This will delete the snapshot <0/>"
-msgstr "This will delete the snapshot <0/>"
+#~ msgid "This will delete the snapshot <0/>"
+#~ msgstr "This will delete the snapshot <0/>"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -4761,31 +4779,37 @@ msgid "Cron Expression"
 msgstr "Cron Expression"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Minute"
 msgstr "Every Minute"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Hour"
 msgstr "Every Hour"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Day"
 msgstr "Every Day"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Week"
 msgstr "Every Week"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Month"
 msgstr "Every Month"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Year"
 msgstr "Every Year"
@@ -4806,7 +4830,7 @@ msgstr "No dataset selected"
 msgid "Failed to create snapshot"
 msgstr "Failed to create snapshot"
 
-#. placeholder {0}: pool?.name
+#. placeholder {0}: pool
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Snapshot {0}@{1} created"
@@ -5073,31 +5097,22 @@ msgstr "Deleted {0} datasets"
 msgid "Failed to delete datasets"
 msgstr "Failed to delete datasets"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Delete Snapshot"
-msgstr "Delete Snapshot"
+#~ msgid "Delete Snapshot"
+#~ msgstr "Delete Snapshot"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Delete Snapshots"
-msgstr "Delete Snapshots"
+#~ msgid "Delete Snapshots"
+#~ msgstr "Delete Snapshots"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "View Periodics"
-msgstr "View Periodics"
+#~ msgid "View Periodics"
+#~ msgstr "View Periodics"
 
-#. placeholder {0}: activeDatasets.length
-#. placeholder {1}: activeDatasets.length > 1 ? 's' : ''
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
-msgstr "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
+#~ msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
+#~ msgstr "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
 
-#. placeholder {0}: activeDatasets.length
-#. placeholder {1}: activeDatasets.length > 1 ? 's' : ''
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-msgid "Deleted {0} snapshot{1}"
-msgstr "Deleted {0} snapshot{1}"
+#~ msgid "Deleted {0} snapshot{1}"
+#~ msgstr "Deleted {0} snapshot{1}"
 
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Failed to delete snapshots"
 msgstr "Failed to delete snapshots"
 
@@ -5647,11 +5662,15 @@ msgstr "Monaco, Menlo, \"Courier New\", monospace"
 #~ msgid "Zoom In"
 #~ msgstr "Zoom In"
 
-#~ msgid "Terminal WebSocket connected for tab {0}"
-#~ msgstr "Terminal WebSocket connected for tab {0}"
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket connected for tab {0}"
+msgstr "Terminal WebSocket connected for tab {0}"
 
-#~ msgid "Terminal WebSocket disconnected for tab {0}"
-#~ msgstr "Terminal WebSocket disconnected for tab {0}"
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket disconnected for tab {0}"
+msgstr "Terminal WebSocket disconnected for tab {0}"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -6070,3 +6089,116 @@ msgstr "Volume Size"
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+
+#: src/lib/components/custom/Terminal.svelte
+msgid "Failed to connect to terminal WebSocket"
+msgstr "Failed to connect to terminal WebSocket"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Unknown VM"
+msgstr "Unknown VM"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Started"
+msgstr "Started"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Bad Request"
+msgstr "Bad Request"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Error"
+msgstr "Error"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv4 gateway or address"
+msgstr "Invalid IPv4 gateway or address"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv6 gateway or address"
+msgstr "Invalid IPv6 gateway or address"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Block devices managed by ZFS"
+msgstr "Block devices managed by ZFS"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Disk images that can be used with any filesystem"
+msgstr "Disk images that can be used with any filesystem"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No Storage"
+msgstr "No Storage"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No storage will be allocated for this virtual machine"
+msgstr "No storage will be allocated for this virtual machine"
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.latest
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replacing {0} with {1}"
+msgstr "Replacing {0} with {1}"
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.name
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Device replacement started for {0} in {1}"
+msgstr "Device replacement started for {0} in {1}"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Error replacing device"
+msgstr "Error replacing device"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshot"
+msgstr "Failed to delete periodic snapshot"
+
+#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+msgid "Filesystems"
+msgstr "Filesystems"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Used"
+msgstr "Used"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Referenced"
+msgstr "Referenced"
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Deleted {0} snapshots"
+msgstr "Deleted {0} snapshots"
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete {0} snapshots"
+msgstr "This will delete {0} snapshots"
+
+#~ msgid "This will delete snapshot:"
+#~ msgstr "This will delete snapshot:"
+
+#. placeholder {0}: datasets[0].name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete snapshot {0}"
+msgstr "This will delete snapshot {0}"
+
+#~ msgid "Reload"
+#~ msgstr "Reload"
+
+#~ msgid "Snapshot"
+#~ msgid_plural "# Snapshots"
+#~ msgstr[0] "Snapshot"
+#~ msgstr[1] "# Snapshots"
+
+#~ msgid "Delete Snapshot"
+#~ msgid_plural "Delete Snapshots"
+#~ msgstr[0] "Delete Snapshot"
+#~ msgstr[1] "Delete Snapshots"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Delete Snapshot"
+msgid_plural "Delete # Snapshots"
+msgstr[0] "Delete Snapshot"
+msgstr[1] "Delete # Snapshots"

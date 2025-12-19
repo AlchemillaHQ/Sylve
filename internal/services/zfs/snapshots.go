@@ -56,6 +56,8 @@ func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, 
 		return nil
 	}
 
+	s.SignalDSChange(shot.Pool, shot.Name, "snapshot", "create")
+
 	return fmt.Errorf("snapshot_creation_failed")
 }
 
@@ -69,7 +71,15 @@ func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive boo
 		return err
 	}
 
-	return dataset.Destroy(ctx, recursive, false)
+	err = dataset.Destroy(ctx, recursive, false)
+
+	if err != nil {
+		return err
+	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "create")
+
+	return nil
 }
 
 func (s *Service) GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error) {
@@ -212,12 +222,14 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		exists, _ := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeSnapshot, false, full)
 
 		if exists == nil || len(exists) == 0 {
-			_, err := ds.Snapshot(ctx, name, recursive)
+			isnap, err := ds.Snapshot(ctx, name, recursive)
 			if err != nil {
 				logger.L.Warn().Err(err).Msgf("Failed to create initial snapshot %s", full)
 			} else {
 				logger.L.Debug().Msgf("Initial boundary snapshot created: %s", full)
 			}
+
+			s.SignalDSChange(isnap.Pool, isnap.Name, "snapshot", "create")
 		}
 
 		if err := s.DB.Model(&snapshot).Update("LastRunAt", seedLocal.UTC()).Error; err != nil {
@@ -476,6 +488,10 @@ func (s *Service) pruneSnapshots(
 
 		logger.L.Debug().Msgf("Pruned snapshot %s", sn.Name)
 	}
+
+	if len(snaps) > 0 {
+		s.SignalDSChange(dataset.Pool, "", "snapshot", "prune")
+	}
 }
 
 func (s *Service) StartSnapshotScheduler(ctx context.Context) {
@@ -584,9 +600,11 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						continue
 					}
 
-					if _, err := dataset.Snapshot(ctx, name, job.Recursive); err != nil {
+					if snap, err := dataset.Snapshot(ctx, name, job.Recursive); err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to create snapshot for %s", job.GUID)
 						continue
+					} else {
+						s.SignalDSChange(snap.Pool, snap.Name, "snapshot", "create")
 					}
 
 					if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
@@ -619,6 +637,8 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMore
 	if err != nil {
 		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
 	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "rollback")
 
 	return nil
 }

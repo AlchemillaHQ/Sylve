@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,6 +23,16 @@ import (
 	"github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+func (s *Service) IsPoolAllowed(pool string) bool {
+	var basicSettings models.BasicSettings
+
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return false
+	}
+
+	return slices.Contains(basicSettings.Pools, pool)
+}
 
 func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error) {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
@@ -294,6 +305,9 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 	if err := s.DB.Save(&basicSettings).Error; err != nil {
 		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
 	}
+
+	s.SignalDSChange(pool.Name, "", "snapshot", "delete")
+	s.SignalDSChange(pool.Name, "", "generic-dataset", "delete")
 
 	return nil
 }

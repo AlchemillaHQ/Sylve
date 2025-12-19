@@ -8,6 +8,8 @@
 
 package zfsServiceInterfaces
 
+import "github.com/alchemillahq/gzfs"
+
 // type zDataset struct {
 // 	Dataset zfs.Dataset
 // }
@@ -66,4 +68,28 @@ type ModifyPeriodicSnapshotRetentionRequest struct {
 	KeepWeekly  *int `json:"keepWeekly"`
 	KeepMonthly *int `json:"keepMonthly"`
 	KeepYearly  *int `json:"keepYearly"`
+}
+
+type PaginatedSnapshotsResponse struct {
+	LastPage int             `json:"last_page"`
+	Data     []*gzfs.Dataset `json:"data"`
+}
+
+type SortParam struct {
+	Field string `form:"field"`
+	Dir   string `form:"dir"`
+}
+
+type PaginatedDatasetsRequest struct {
+	DatasetType gzfs.DatasetType `form:"datasetType" binding:"required"`
+	Page        int              `form:"page"`
+	Size        int              `form:"size"`
+	Search      string           `form:"search"`
+
+	Sort []SortParam `form:"-"`
+}
+
+type PaginatedDatasetsResponse struct {
+	LastPage int             `json:"last_page"`
+	Data     []*gzfs.Dataset `json:"data"`
 }

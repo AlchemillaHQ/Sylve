@@ -47,6 +47,8 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[s
 		return fmt.Errorf("failed_to_create_filesystem")
 	}
 
+	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "create")
+
 	return nil
 }
 
@@ -67,6 +69,8 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	if dataset != nil {
 		return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
 	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 
 	return fmt.Errorf("filesystem with guid %s not found", guid)
 }
@@ -117,6 +121,8 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		path := strings.TrimPrefix(keylocation, "file://")
 		_ = os.Remove(path)
 	}
+
+	s.SignalDSChange(foundFS.Pool, foundFS.Name, "generic-dataset", "edit")
 
 	return nil
 }

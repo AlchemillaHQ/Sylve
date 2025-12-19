@@ -17,9 +17,6 @@
 			const results = await getAuditRecords();
 			updateCache(key, results);
 			return results;
-		},
-		{
-			initialValue: getCache('audit-record') || ([] as AuditRecord[])
 		}
 	);
 
@@ -29,9 +26,6 @@
 			const results = await getSimpleVMs();
 			updateCache(key, results);
 			return results;
-		},
-		{
-			initialValue: getCache('simple-vm-list') || ([] as SimpleVm[])
 		}
 	);
 

@@ -598,7 +598,7 @@
 					{#if usable.partitions.length === 0 || usable.partitions.filter((partition) => !properties.vdev.containers
 									.flatMap((vdev) => vdev.partitions)
 									.some((p) => p.name === partition.name)).length === 0}
-						<div class="flex h-16 w-full items-center justify-center text-neutral-400">
+						<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
 							No available partitions
 						</div>
 					{/if}

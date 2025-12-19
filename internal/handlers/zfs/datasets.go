@@ -53,6 +53,10 @@ type BulkDeleteRequest struct {
 	GUIDs []string `json:"guids" binding:"required"`
 }
 
+type BulkDeleteByNameRequest struct {
+	Names []string `json:"names" binding:"required"`
+}
+
 type FlashVolumeRequest struct {
 	GUID string `json:"guid" binding:"required"`
 	UUID string `json:"uuid" binding:"required"`
@@ -77,7 +81,29 @@ type DatasetListResponse struct {
 // @Router /zfs/datasets [get]
 func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		t := c.Query("type")
+		qt := c.Query("type")
+
+		var t gzfs.DatasetType
+
+		if qt == "" {
+			t = gzfs.DatasetTypeAll
+		} else if qt == string(gzfs.DatasetTypeSnapshot) {
+			t = gzfs.DatasetTypeSnapshot
+		} else if qt == string(gzfs.DatasetTypeFilesystem) {
+			t = gzfs.DatasetTypeFilesystem
+		} else if qt == string(gzfs.DatasetTypeVolume) {
+			t = gzfs.DatasetTypeVolume
+		} else if qt == string(gzfs.DatasetTypeAll) {
+			t = gzfs.DatasetTypeAll
+		} else {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_dataset_type",
+				Error:   "type must be one of: ALL, SNAPSHOT, FILESYSTEM, VOLUME",
+				Data:    nil,
+			})
+			return
+		}
 
 		ctx := c.Request.Context()
 		datasets, err := zfsService.GetDatasets(ctx, t)
@@ -398,20 +424,6 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 	}
 }
 
-/*
-type ModifyPeriodicSnapshotRetentionRequest struct {
-	ID int `json:"id" binding:"required"`
-
-	KeepLast   *int `json:"keepLast"`
-	MaxAgeDays *int `json:"maxAgeDays"`
-
-	KeepHourly  *int `json:"keepHourly"`
-	KeepDaily   *int `json:"keepDaily"`
-	KeepWeekly  *int `json:"keepWeekly"`
-	KeepMonthly *int `json:"keepMonthly"`
-	KeepYearly  *int `json:"keepYearly"`
-}
-*/
 // @Summary Modify retention of a periodic ZFS snapshot job
 // @Description Modify retention of a periodic ZFS snapshot job
 // @Tags ZFS
@@ -792,7 +804,52 @@ func BulkDeleteDataset(zfsService *zfs.Service) gin.HandlerFunc {
 	}
 }
 
-// flash volume handler
+// @Summary Bulk Delete Datasets By Name
+// @Description Bulk delete ZFS datasets by their names
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body zfsServiceInterfaces.BulkDeleteDatasetsByNameRequest true "Bulk Delete Datasets By Name Request"
+// @Success 200 {object} internal.APIResponse[any] "OK"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/datasets/bulk-delete-by-name [post]
+func BulkDeleteDatasetsByName(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request BulkDeleteByNameRequest
+
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx := c.Request.Context()
+		err := zfsService.BulkDeleteDatasetByNames(ctx, request.Names)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "deleted_datasets",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Flash a ZFS volume
 // @Description Flash a ZFS volume with a UUID pointing to a disk iso/img
 // @Tags ZFS
@@ -836,6 +893,103 @@ func FlashVolume(zfsService *zfs.Service) gin.HandlerFunc {
 			Message: "flashed_volume",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+// @Summary Get all ZFS Datasets with Pagination
+// @Description Get all ZFS Datasets with Pagination
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body zfsServiceInterfaces.PaginatedDatasetsRequest true "Paginated Datasets Request"
+// @Success 200 {object} zfsServiceInterfaces.PaginatedDatasetsResponse "OK"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/datasets/paginated [get]
+func GetPaginatedDatasets(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request zfsServiceInterfaces.PaginatedDatasetsRequest
+		if err := c.ShouldBindQuery(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		field := c.Query("sort[0][field]")
+		dir := c.Query("sort[0][dir]")
+
+		if field != "" {
+			request.Sort = []zfsServiceInterfaces.SortParam{
+				{Field: field, Dir: dir},
+			}
+		}
+
+		var allowedSortFields = map[string]struct{}{
+			"name":       {},
+			"used":       {},
+			"referenced": {},
+		}
+
+		if len(request.Sort) > 0 {
+			s := request.Sort[0]
+
+			if _, ok := allowedSortFields[s.Field]; !ok {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_sort_field",
+					Error:   "sort field must be one of: name, used, referenced",
+					Data:    nil,
+				})
+				return
+			}
+
+			if s.Dir != "asc" && s.Dir != "desc" {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_sort_dir",
+					Error:   "sort dir must be asc or desc",
+					Data:    nil,
+				})
+				return
+			}
+		}
+
+		switch request.DatasetType {
+		case gzfs.DatasetTypeSnapshot, gzfs.DatasetTypeFilesystem, gzfs.DatasetTypeVolume, gzfs.DatasetTypeAll:
+		default:
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_dataset_type",
+				Error:   "datasetType must be one of: ALL, SNAPSHOT, FILESYSTEM, VOLUME",
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx := c.Request.Context()
+		response, err := zfsService.GetPaginatedDatasets(ctx, &request)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[zfsServiceInterfaces.PaginatedDatasetsResponse]{
+			Status:  "success",
+			Message: "paginated_datasets",
+			Error:   "",
+			Data:    *response,
 		})
 	}
 }

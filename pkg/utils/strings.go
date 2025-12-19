@@ -318,14 +318,6 @@ func JoinStrings(slice []string, sep string) string {
 	return sb.String()
 }
 
-func MapKeys(m map[string]struct{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 func IsValidVMName(name string) bool {
 	regex := regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
 	return regex.MatchString(name)

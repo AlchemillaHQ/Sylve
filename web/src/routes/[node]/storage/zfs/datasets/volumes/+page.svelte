@@ -31,7 +31,7 @@
 	const datasets = resource(
 		() => 'zfs-volumes',
 		async () => {
-			const datasets = await getDatasets('volume');
+			const datasets = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
 			updateCache('zfs-volumes', datasets);
 			return datasets;
 		},

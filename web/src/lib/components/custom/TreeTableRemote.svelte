@@ -1,13 +1,17 @@
 <script lang="ts">
-	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { hasRowsChanged, matchAny } from '$lib/utils/table';
-	import { findRow, getAllRows, pruneEmptyChildren } from '$lib/utils/tree-table';
+	import { storage } from '$lib';
+	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
+	import { sha256 } from '$lib/utils/string';
+	import { findRow, getAllRows } from '$lib/utils/tree-table';
+	import { watch, Debounced } from 'runed';
 	import { onMount, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import {
 		TabulatorFull as Tabulator,
 		type ColumnDefinition,
 		type RowComponent
 	} from 'tabulator-tables';
+	import { PersistedState } from 'runed';
 
 	let tableComponent: HTMLDivElement | null = null;
 	let table: Tabulator | null = $state(null);
@@ -22,6 +26,10 @@
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
+		extraParams?: Record<string, string | number>;
+		customPlaceholder?: string;
+		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
+		reload: boolean;
 	}
 
 	let {
@@ -30,12 +38,22 @@
 		parentActiveRow = $bindable([]),
 		query = $bindable(),
 		multipleSelect = true,
-		ajaxURL
+		ajaxURL,
+		extraParams = {},
+		customPlaceholder = 'No data available',
+		initialSort,
+		reload = $bindable()
 	}: Props = $props();
 
+	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
+		columnWidths: {},
+		expandedRows: {}
+	});
+
+	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let scroll = $state([0, 0]);
-	let aboutToClick = $state(false);
+	let hash = $state('');
 
 	function updateParentActiveRows() {
 		if (tableInitialized) {
@@ -59,12 +77,6 @@
 					expanded: row.isTreeExpanded()
 				}));
 
-				if (hasRowsChanged(table, data.rows) && !aboutToClick) {
-					if (tableInitialized) {
-						await table?.replaceData(pruneEmptyChildren(data.rows));
-					}
-				}
-
 				selectedIds.forEach((id) => {
 					const row = findRow(table?.getRows() || [], id);
 					if (row) row.select();
@@ -82,12 +94,18 @@
 		}
 	});
 
-	onMount(() => {
+	onMount(async () => {
+		hash = await sha256(storage.token || '', 1);
+
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
 				ajaxResponse: function (url, params, response) {
 					return response.data;
+				},
+				ajaxParams: {
+					hash,
+					...extraParams
 				},
 				reactiveData: true,
 				columns: data.columns as ColumnDefinition[],
@@ -104,11 +122,13 @@
 					page: true,
 					filter: true
 				},
-				placeholder: 'No data available',
+				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
 				paginationSize: 25,
 				paginationCounter: 'pages',
-				sortMode: 'remote'
+				sortMode: 'remote',
+				filterMode: 'remote',
+				initialSort: initialSort ? initialSort : []
 			});
 		}
 
@@ -121,13 +141,17 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
+			tableHolder = tableComponent?.querySelector(
+				'.tabulator-tableholder'
+			) as HTMLDivElement | null;
 
-			document.querySelector('.tabulator-footer')?.addEventListener('mouseover', () => {
-				aboutToClick = true;
-			});
-
-			document.querySelector('.tabulator-footer')?.addEventListener('mouseout', () => {
-				aboutToClick = false;
+			// Restore column widths from saved state
+			const widths = tableState.current.columnWidths || {};
+			table?.getColumns().forEach((col) => {
+				const width = widths[col.getField() as string];
+				if (width) {
+					col.setWidth(width);
+				}
 			});
 		});
 
@@ -140,27 +164,72 @@
 		});
 
 		table?.on('renderComplete', () => {
-			const container = document.querySelector('.tabulator-tableholder') as HTMLDivElement;
+			const container = tableComponent?.querySelector('.tabulator-tableholder') as HTMLDivElement;
 			if (container) {
 				container.scrollTop = scroll[0];
 				container.scrollLeft = scroll[1];
 			}
 		});
-	});
 
-	function tableFilter(query: string) {
-		if (table && tableInitialized) {
-			if (query === '') {
-				table.clearFilter(true);
-				return;
+		table?.on('cellClick', (_event: UIEvent, cell) => {
+			const value = cell.getValue();
+			const column = cell.getColumn();
+
+			if ((column.getDefinition() as any).copyOnClick && value) {
+				navigator.clipboard.writeText(value.toString());
+				toast.success(`Copied ${value.toString()} to clipboard`, {
+					duration: 2000,
+					position: 'bottom-center'
+				});
 			}
-			table.setFilter(matchAny, { query });
-		}
-	}
+		});
 
-	$effect(() => {
-		tableFilter(query || '');
+		table?.on('columnResized', () => {
+			const colWidths: Record<string, number> = {};
+
+			table?.getColumns().forEach((col) => {
+				colWidths[col.getField() as string] = col.getWidth();
+			});
+
+			tableState.current = {
+				...tableState.current,
+				columnWidths: colWidths
+			};
+		});
 	});
+
+	const debouncedQuery = new Debounced(() => query, 300);
+
+	watch(
+		() => debouncedQuery.current,
+		(newQuery) => {
+			if (table && tableInitialized) {
+				table.setData(ajaxURL!, {
+					hash,
+					...extraParams,
+					search: newQuery || ''
+				});
+			}
+		}
+	);
+
+	watch(
+		() => reload,
+		(newReload) => {
+			if (newReload && table && tableInitialized) {
+				table.setData(ajaxURL!, {
+					hash,
+					...extraParams,
+					search: query || ''
+				});
+				reload = false;
+			}
+		}
+	);
 </script>
 
-<div bind:this={tableComponent} class="flex-1 cursor-pointer" id={name}></div>
+<div
+	bind:this={tableComponent}
+	class="flex-1 cursor-pointer s-tree-table-container"
+	id={name}
+></div>

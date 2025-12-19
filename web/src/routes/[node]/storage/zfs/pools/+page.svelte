@@ -123,10 +123,14 @@
 		}
 	});
 
-	let usable = $derived({
-		disks: zpoolUseableDisks(disks.current, pools.current),
-		partitions: zpoolUseablePartitions(disks.current, pools.current)
+	let usable = $derived.by(() => {
+		return {
+			disks: zpoolUseableDisks(disks.current, pools.current),
+			partitions: zpoolUseablePartitions(disks.current, pools.current)
+		};
 	});
+
+	$inspect(usable);
 
 	let query = $state('');
 	let modals = $state({

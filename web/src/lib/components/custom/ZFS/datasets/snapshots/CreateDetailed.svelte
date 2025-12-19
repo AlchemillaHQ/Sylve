@@ -1,35 +1,56 @@
 <script lang="ts">
-	import { createPeriodicSnapshot, createSnapshot } from '$lib/api/zfs/datasets';
+	import { getBasicSettings } from '$lib/api/system/settings';
+	import { createPeriodicSnapshot, createSnapshot, getDatasets } from '$lib/api/zfs/datasets';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Dataset } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
+	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
+	import { deepEqual } from 'fast-equals';
+	import { current } from 'immer';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
-		pools: Zpool[];
-		datasets: Dataset[];
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), pools, datasets, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), reload = $bindable() }: Props = $props();
 
-	let options = {
+	let pools = resource(
+		() => 'zfs-pool-names',
+		async (key, prevKey, { signal }) => {
+			const results = await getBasicSettings();
+			return results.pools;
+		},
+		{
+			initialValue: []
+		}
+	);
+
+	let datasets = resource(
+		() => 'zfs-fs-vol-datasets',
+		async (key, prevKey, { signal }) => {
+			const fs = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
+			const vol = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
+			return [...fs, ...vol];
+		},
+		{
+			initialValue: []
+		}
+	);
+
+	let options = $derived({
 		name: '',
 		pool: {
 			open: false,
 			value: '',
-			data: pools.map((pool) => ({
-				label: pool.name,
-				value: pool.name
-			}))
+			data: [] as { label: string; value: string }[]
 		},
 		datasets: {
 			open: false,
@@ -83,24 +104,27 @@
 			}
 		},
 		recursive: false
-	};
+	});
 
 	let properties = $state(options);
 
-	$effect(() => {
-		if (properties.pool.value) {
-			const sets = datasets
-				.filter((dataset) => dataset.name.startsWith(properties.pool.value))
-				.map((dataset) => ({
-					label: dataset.name,
-					value: dataset.name
-				}));
+	watch(
+		() => properties.pool.value,
+		(value) => {
+			if (value) {
+				const sets = datasets.current
+					.filter((dataset) => dataset.pool === value)
+					.map((dataset) => ({
+						label: dataset.name,
+						value: dataset.name
+					}));
 
-			if (JSON.stringify(sets) !== JSON.stringify(properties.datasets.data)) {
-				properties.datasets.data = sets;
+				if (deepEqual(sets, properties.datasets.data) === false) {
+					properties.datasets.data = sets;
+				}
 			}
 		}
-	});
+	);
 
 	async function create() {
 		if (properties.name.trim() === '') {
@@ -124,8 +148,8 @@
 			return;
 		}
 
-		const dataset = datasets.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = pools.find((pool) => pool.name === properties.pool.value);
+		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
+		const pool = pools.current.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
@@ -196,7 +220,7 @@
 				});
 				return;
 			} else {
-				toast.success(`Snapshot ${pool?.name}@${properties.name} created`, {
+				toast.success(`Snapshot ${pool}@${properties.name} created`, {
 					position: 'bottom-center'
 				});
 
@@ -258,7 +282,10 @@
 				bind:open={properties.pool.open}
 				label="Pool"
 				bind:value={properties.pool.value}
-				data={properties.pool.data}
+				data={pools.current.map((name) => ({
+					label: name,
+					value: name
+				}))}
 				classes="flex-1 space-y-1"
 				placeholder="Select a pool"
 				width="w-full"
