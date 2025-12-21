@@ -33,7 +33,7 @@ type SylveConfig struct {
 	DataPath      string          `json:"dataPath"`
 	TLS           TLSConfig       `json:"tlsConfig"`
 	Raft          Raft            `json:"raft"`
-	HttpOnly      bool            `json:"httpOnly"`
+	HttpOnly      bool            `json:"httpOnly,omitempty"`
 }
 
 type APIResponse[T any] struct {
