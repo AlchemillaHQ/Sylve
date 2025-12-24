@@ -59,6 +59,7 @@ Running Sylve is pretty easy, but `sylve` depends on some packages that you can 
 | samba419       | 4.19.9_9     | No       | No       | SMB file sharing service                         |
 | jansson        | 2.14.1       | No       | No       | JSON library for C                               |
 | swtpm          | 0.10.1       | No       | No       | TPM emulator for VMs                             |
+| qemu-tools     |              | No       | No       |                                                  |
 
 We also need to enable some services in order to run Sylve, you can drop these into `/etc/rc.conf` if you don't have it already:
 
@@ -91,7 +92,7 @@ kern.racct.enable=1
 Install required packages.
 
 ```sh
-pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm 
+pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm qemu-tools
 ```
 
 Clone the repo and build Sylve.
