@@ -130,8 +130,6 @@
 		};
 	});
 
-	$inspect(usable);
-
 	let query = $state('');
 	let modals = $state({
 		create: {
@@ -248,7 +246,7 @@
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools.current, activeRow.name)}
+			{#if isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
 				<Button
 					onclick={() => {
 						let pool = getPoolByDevice(pools.current, activeRow.name);

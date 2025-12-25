@@ -75,6 +75,7 @@
 		"@wuchale/vite-plugin": "^0.15.3",
 		"adze": "^2.2.4",
 		"axios": "^1.11.0",
+		"carta-md": "^4.11.1",
 		"chart.js": "^4.5.0",
 		"chartjs-adapter-date-fns": "^3.0.0",
 		"chartjs-plugin-zoom": "^2.2.0",

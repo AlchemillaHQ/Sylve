@@ -7,6 +7,8 @@
 	import { toast } from 'svelte-sonner';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Progress from '$lib/components/ui/progress/progress.svelte';
+	import { watch } from 'runed';
+	import { plural } from '$lib/utils';
 
 	interface Props {
 		open: boolean;
@@ -32,7 +34,7 @@
 
 	let {
 		open = $bindable(),
-		cpuInfo = $bindable(),
+		cpuInfo,
 		vm,
 		vms,
 		pinnedCPUs = $bindable(),
@@ -47,16 +49,15 @@
 	let selectedCores = $state<Set<string>>(new Set());
 	let step = $state<'socket' | 'cores'>('socket');
 	let allSelections = $state<Map<number, number[]>>(new Map());
-
 	let sockets = $state<SocketData[]>([]);
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
-
 	let initial = $state<boolean>(false);
 
 	let initialPinnedCount = $derived.by(() => {
 		if (pinnedCPUs && pinnedCPUs.length > 0) {
 			return pinnedCPUs.reduce((total, pin) => total + pin.cores.length, 0);
 		}
+
 		if (vm?.cpuPinning && vm.cpuPinning.length > 0) {
 			return vm.cpuPinning.reduce((total, pin) => total + pin.hostCpu.length, 0);
 		}
@@ -66,20 +67,26 @@
 	let lastConfirmedPinnedCount = $state<number>(initialPinnedCount);
 	let hasPinnedOverride = $state<boolean>(false);
 
-	$effect(() => {
-		if (!hasPinnedOverride) {
-			lastConfirmedPinnedCount = initialPinnedCount;
+	watch(
+		() => hasPinnedOverride,
+		(newHasPinnedOverride) => {
+			if (!newHasPinnedOverride) {
+				lastConfirmedPinnedCount = initialPinnedCount;
+			}
 		}
-	});
+	);
 
 	let currentVmId = $state<number | null>(vm?.id ?? null);
-	$effect(() => {
-		const id = vm?.id ?? null;
-		if (id !== currentVmId) {
-			currentVmId = id;
-			hasPinnedOverride = false;
+
+	watch(
+		() => vm?.id ?? null,
+		(newVmId) => {
+			if (newVmId !== currentVmId) {
+				currentVmId = newVmId;
+				hasPinnedOverride = false;
+			}
 		}
-	});
+	);
 
 	let displayPinnedCount = $derived.by(() =>
 		hasPinnedOverride ? lastConfirmedPinnedCount : initialPinnedCount
@@ -157,10 +164,12 @@
 				};
 			});
 
+			console.log(cpuInfo);
+
 			return {
 				id: socketIndex,
-				name: 'Socket ' + socketIndex,
-				model: cpuInfo.model,
+				name: cpuInfo.name,
+				model: `Socket ${socketIndex}`,
 				cores
 			};
 		});
@@ -228,7 +237,6 @@
 
 		const socketId = parseInt(selectedSocket);
 		const coreIds = Array.from(selectedCores).map((coreId) => parseInt(coreId.split('-core-')[1]));
-
 		const newSelections = new Map(allSelections);
 
 		if (coreIds.length > 0) {
@@ -340,7 +348,7 @@
 									: 'bg-green-500'}
 
 						<Card.Root
-							class="hover:bg-accent/50 w-[300px] cursor-pointer transition-colors {hasSelection ||
+							class="hover:bg-accent/50 w-75 cursor-pointer transition-colors {hasSelection ||
 							inUseCount > 0
 								? 'ring-2 ring-yellow-500'
 								: ''}"
@@ -353,8 +361,8 @@
 											<span class="icon-[iconoir--cpu] text-primary h-6 w-6"></span>
 										</div>
 										<div>
-											<h3 class="font-medium">{socket.name}</h3>
-											<p class="text-muted-foreground text-sm">
+											<h3 class="font-medium text-sm">{socket.name}</h3>
+											<p class="text-muted-foreground text-xs">
 												{socket.model}
 											</p>
 										</div>
@@ -403,12 +411,9 @@
 				</div>
 
 				<div class="space-y-3">
-					<p class="text-muted-foreground">
-						Select cores from {selectedSocketData.name} ({availableCores.length} selectable):
-					</p>
-					<div class="flex flex-col gap-1 text-sm">
-						<p>Selected: {selectedCores.size} core{selectedCores.size !== 1 ? 's' : ''}</p>
-						<p>Limit: {coreSelectionLimit} core{coreSelectionLimit !== 1 ? 's' : ''}</p>
+					<div class="flex flex-row gap-1 text-sm">
+						<p>Selected: {selectedCores.size},</p>
+						<p>Limit: {coreSelectionLimit}</p>
 					</div>
 				</div>
 
@@ -501,10 +506,11 @@
 					)}
 					<Button onclick={handleConfirm}>
 						{vm ? 'Update ' : 'Apply '}
-						{totalCores} Core{totalCores !== 1 ? 's' : ''} from {allSelections.size} Socket{allSelections.size !==
-						1
-							? 's'
-							: ''}
+						{totalCores}{' '}
+						{plural(totalCores, ['Core', 'Core #'])}
+						{' from '}
+						{allSelections.size}{' '}
+						{plural(allSelections.size, ['Socket', 'Socket #'])}
 					</Button>
 				{:else if pinnedCPUs.length > 0 || (vm?.cpuPinning && vm.cpuPinning.length > 0)}
 					<Button onclick={handleConfirm} variant="destructive">Clear All Pinning</Button>

@@ -152,13 +152,23 @@
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
-			const retentionType = properties.retention.value;
+			let retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
 			let minutes: number = 0;
 			let cron: string = '';
 
-			if (intervalType === 'none') {
+			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
+				retentionType === 'none';
+
+				toast.success(`Snapshot ${pool}@${properties.name} created`, {
+					position: 'bottom-center'
+				});
+
+				reload = true;
+				properties = options;
+				open = false;
+				return;
 			} else if (intervalType === 'minutes') {
 				minutes = parseInt(properties.interval.values.interval.value) || 0;
 			} else if (intervalType === 'cronExpr') {
@@ -340,7 +350,7 @@
 					{/if}
 				</div>
 
-				{#if properties.interval.value !== 'none'}
+				{#if properties.interval.value !== 'none' && properties.interval.value !== ''}
 					<CustomComboBox
 						bind:open={properties.retention.open}
 						label="Retention"

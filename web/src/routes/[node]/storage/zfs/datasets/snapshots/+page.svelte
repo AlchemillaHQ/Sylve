@@ -59,11 +59,20 @@
 	watch(
 		() => reload,
 		(value) => {
-			if (value) {
-				basicSettings.refetch();
-				periodicSnapshots.refetch();
+			if (!value) return;
+
+			const MAX_RETRIES = 3;
+			const DELAY = 500;
+
+			(async () => {
+				for (let i = 0; i < MAX_RETRIES && reload; i++) {
+					await basicSettings.refetch();
+					await periodicSnapshots.refetch();
+					await new Promise((r) => setTimeout(r, DELAY));
+				}
+
 				reload = false;
-			}
+			})();
 		}
 	);
 
@@ -137,9 +146,6 @@
 			delete: {
 				open: false
 			},
-			bulkDelete: {
-				open: false
-			},
 			periodics: {
 				open: false,
 				pool: ''
@@ -167,14 +173,7 @@
 	{#if type === 'delete-snapshot' && activeRows && activeRows.length >= 1}
 		<Button
 			onclick={() => {
-				console.log('activeRows', activeRows);
-				if (activeRows?.length === 1) {
-					modals.snapshot.delete.open = true;
-					modals.snapshot.bulkDelete.open = false;
-				} else {
-					modals.snapshot.bulkDelete.open = true;
-					modals.snapshot.delete.open = false;
-				}
+				modals.snapshot.delete.open = true;
 			}}
 			size="sm"
 			variant="outline"

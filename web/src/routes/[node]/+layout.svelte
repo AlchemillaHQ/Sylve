@@ -9,6 +9,7 @@
 	import { triggers } from '$lib/utils/keyboard-shortcuts';
 	import { shortcut, type ShortcutTrigger } from '@svelte-put/shortcut';
 	let openCategories: { [key: string]: boolean } = $state({});
+	import { Debounced } from 'runed';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -298,6 +299,14 @@
 			}
 		}
 	});
+
+	let resizeKey = $state(0);
+
+	function handleResize() {
+		resizeKey++;
+	}
+
+	const debouncedResize = new Debounced(() => resizeKey, 150);
 </script>
 
 <svelte:window
@@ -327,6 +336,7 @@
 		class="h-full w-full"
 		id="main-pane-auto"
 		autoSaveId="main-pane-auto-save"
+		onLayoutChange={handleResize}
 	>
 		<Resizable.Pane defaultSize={15}>
 			<div class="h-full px-1.5">
@@ -345,9 +355,11 @@
 		</Resizable.Pane>
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
-			<div class="h-full overflow-auto">
-				{@render children?.()}
-			</div>
+			{#key debouncedResize.current}
+				<div class="h-full w-full overflow-auto">
+					{@render children?.()}
+				</div>
+			{/key}
 		</Resizable.Pane>
 	</Resizable.PaneGroup>
 </div>

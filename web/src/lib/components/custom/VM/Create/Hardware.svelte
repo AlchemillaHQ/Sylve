@@ -7,13 +7,11 @@
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
-	import { getCache } from '$lib/utils/http';
+	import { updateCache } from '$lib/utils/http';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import humanFormat from 'human-format';
-	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
-	import Button from '$lib/components/ui/button/button.svelte';
-	import { onMount } from 'svelte';
+	import { resource } from 'runed';
 
 	interface Props {
 		sockets: number;
@@ -64,32 +62,19 @@
 	);
 
 	let selectedPptIds = $state<string[]>([]);
-	let cpuInfo: CPUInfo | null = $state(getCache('cpu-info') || null);
+	let cpuInfo = resource(
+		() => 'cpu-info-current',
+		async () => {
+			const result = await getCPUInfo('current');
+			updateCache('cpu-info-current', result);
+			return result as CPUInfo;
+		}
+	);
 
 	function toggle(id: string, on: boolean) {
 		selectedPptIds = on ? [...selectedPptIds, id] : selectedPptIds.filter((x) => x !== id);
 		passthroughIds = selectedPptIds.map((x) => parseInt(x));
 	}
-
-	let pinnedCores = $derived.by(() => {
-		const cores: number[] = [];
-		pinnedCPUs.forEach((pin) => {
-			pin.cores.forEach((core) => {
-				cores.push(core);
-			});
-		});
-		return cores;
-	});
-
-	onMount(async () => {
-		if (!cpuInfo) {
-			try {
-				cpuInfo = (await getCPUInfo('current')) as CPUInfo;
-			} catch (error) {
-				toast.error('Failed to load CPU information.');
-			}
-		}
-	});
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -120,10 +105,10 @@
 
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div>
-				{#if cpuInfo}
+				{#if cpuInfo.current}
 					<CPUSelector
 						bind:open={isPinningOpen}
-						bind:cpuInfo
+						cpuInfo={cpuInfo.current}
 						bind:pinnedCPUs
 						{vms}
 						{coreSelectionLimit}

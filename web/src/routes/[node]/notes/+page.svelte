@@ -18,7 +18,9 @@
 	import { resource } from 'runed';
 	import { storage } from '$lib';
 	import { untrack } from 'svelte';
-	import { TrixEditor } from 'svelte-trix';
+	import { fade } from 'svelte/transition';
+	import { Carta, MarkdownEditor } from 'carta-md';
+	import 'carta-md/default.css';
 
 	interface Data {
 		notes: Note[];
@@ -174,8 +176,11 @@
 	let tableData = $derived(
 		generateTableData(columns, notes.current && Array.isArray(notes.current) ? notes.current : [])
 	);
+
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
+
+	const carta = new Carta();
 </script>
 
 {#snippet button(type: string)}
@@ -249,7 +254,7 @@
 	{/if}
 {/snippet}
 
-<div class="flex h-full w-full flex-col">
+<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 300 }}>
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
@@ -331,7 +336,7 @@
 
 			<ScrollArea orientation="vertical" class="h-full">
 				{#if modalState.isEditMode}
-					<div>
+					<div class="h-1/2">
 						<!-- <CustomValueInput
 							label={'Content'}
 							placeholder="This is a note"
@@ -339,7 +344,7 @@
 							classes="flex-1 space-y-1 "
 							type="textarea"
 						/> -->
-						<TrixEditor bind:value={modalState.content} />
+						<MarkdownEditor bind:value={modalState.content} {carta} />
 					</div>
 				{:else}
 					<div class="mt-2">
@@ -418,21 +423,17 @@
 			}
 		}}
 	></AlertDialog>
-
-	<!-- bg-white! dark:bg-muted! text-muted! dark:text-white! -->
 </div>
 
 <style>
-	@reference "#app.css";
-
-	:global(.svelte-trix-content) {
-		min-height: 200px;
-		max-height: 500px;
-		overflow-y: auto;
-		resize: vertical;
+	:global(.carta-font-code) {
+		font-family: 'Fira Code', monospace;
+		font-size: 1.1rem;
+		line-height: 1.1rem;
+		letter-spacing: normal;
 	}
 
-	:global(.trix-button) {
-		@apply bg-white! dark:bg-muted! text-muted! dark:text-white!;
+	.carta-editor {
+		height: 10% !important;
 	}
 </style>

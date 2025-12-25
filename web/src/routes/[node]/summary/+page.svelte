@@ -5,7 +5,6 @@
 	import { getNetworkInterfaceInfoHistorical } from '$lib/api/info/network';
 	import { getRAMInfo, getSwapInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
-	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import LineBrushMultiple from '$lib/components/custom/Charts/LineBrush/Multiple.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
@@ -19,7 +18,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
-	import type { Chart } from 'chart.js';
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
@@ -259,17 +257,6 @@
 			}
 		];
 	});
-
-	let cpuUsageRef: Chart | null = $state(null);
-	let memoryUsageRef: Chart | null = $state(null);
-	let networkUsageRef: Chart | null = $state(null);
-
-	let cpuUsageData = $derived.by(() => {
-		return cpuInfoHistorical.current.map((data) => ({
-			date: new Date(data.createdAt).getTime(),
-			value: data.usage.toFixed(2)
-		}));
-	});
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -393,22 +380,6 @@
 					color="two"
 					containerContentHeight="h-64"
 				/>
-
-				<!-- <LineBrushMultiple
-					title="Network Usage"
-					percentage={false}
-					data={true}
-					color="one"
-					color2="two"
-					points={networkUsageHistorical.current.map((d) => ({
-						date: new Date(d.createdAt).getTime(),
-						value: Number(d.receivedBytes)
-					}))}
-					points2={networkUsageHistorical.current.map((d) => ({
-						date: new Date(d.createdAt).getTime(),
-						value: Number(d.sentBytes)
-					}))}
-				/> -->
 
 				<LineBrushMultiple
 					title="Network Usage"

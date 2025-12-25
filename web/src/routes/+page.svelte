@@ -210,4 +210,6 @@
 <span class="icon-[mdi--internet]"></span>
 <span class="icon-[mdi--desktop-classic]"></span>
 <span class="icon-[fluent--storage-20-filled]"></span>
+<span class="icon-[mdi--lock]"></span>
+<span class="icon-[mdi--autorenew]"></span>
 -->

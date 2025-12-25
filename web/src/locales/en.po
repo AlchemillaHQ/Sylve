@@ -707,15 +707,11 @@ msgstr "Add Partition"
 msgid "No space left"
 msgstr "No space left"
 
-#. placeholder {0}: humanFormat(currentPartition)
-#: src/lib/components/disk/CreatePartition.svelte
-msgid "Size: {0}"
-msgstr "Size: {0}"
+#~ msgid "Size: {0}"
+#~ msgstr "Size: {0}"
 
-#. placeholder {0}: humanFormat(remainingSpace)
-#: src/lib/components/disk/CreatePartition.svelte
-msgid "Remaining space: {0}"
-msgstr "Remaining space: {0}"
+#~ msgid "Remaining space: {0}"
+#~ msgstr "Remaining space: {0}"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
@@ -1575,6 +1571,7 @@ msgid "Enter new name"
 msgstr "Enter new name"
 
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Rename"
 msgstr "Rename"
 
@@ -2742,8 +2739,10 @@ msgstr "Installation Media"
 msgid "Select installation media"
 msgstr "Select installation media"
 
-#~ msgid "Socket {0}"
-#~ msgstr "Socket {0}"
+#. placeholder {0}: socketIndex
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket {0}"
+msgstr "Socket {0}"
 
 #. placeholder {0}: coreSelectionLimit
 #. placeholder {0}: coreSelectionLimit
@@ -2752,9 +2751,8 @@ msgstr "Select installation media"
 msgid "You can only select up to {0} cores."
 msgstr "You can only select up to {0} cores."
 
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Socket"
-msgstr "Socket"
+#~ msgid "Socket"
+#~ msgstr "Socket"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> CPU Pinning"
@@ -2787,11 +2785,8 @@ msgstr "<0/> Back to Sockets"
 #~ msgid "Select cores from {0} ({1} available):"
 #~ msgstr "Select cores from {0} ({1} available):"
 
-#. placeholder {0}: selectedCores.size
-#. placeholder {1}: selectedCores.size !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Selected: {0} core{1}"
-msgstr "Selected: {0} core{1}"
+#~ msgid "Selected: {0} core{1}"
+#~ msgstr "Selected: {0} core{1}"
 
 #~ msgid "Maximum selectable cores : {0}"
 #~ msgstr "Maximum selectable cores : {0}"
@@ -4245,6 +4240,7 @@ msgstr "Unknown MAC"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
 msgstr "Unknown"
 
@@ -4831,6 +4827,9 @@ msgstr "Failed to create snapshot"
 
 #. placeholder {0}: pool
 #. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Snapshot {0}@{1} created"
 msgstr "Snapshot {0}@{1} created"
@@ -5199,30 +5198,18 @@ msgstr "Downloader - Create Signed URL"
 msgid "Cloud-Init"
 msgstr "Cloud-Init"
 
-#. placeholder {0}: selectedSocketData.name
-#. placeholder {1}: availableCores.length
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Select cores from {0} ({1} selectable):"
-msgstr "Select cores from {0} ({1} selectable):"
+#~ msgid "Select cores from {0} ({1} selectable):"
+#~ msgstr "Select cores from {0} ({1} selectable):"
 
-#. placeholder {0}: coreSelectionLimit
-#. placeholder {1}: coreSelectionLimit !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "Limit: {0} core{1}"
-msgstr "Limit: {0} core{1}"
+#~ msgid "Limit: {0} core{1}"
+#~ msgstr "Limit: {0} core{1}"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply"
 msgstr "Apply"
 
-#. placeholder {0}: vm ? 'Update ' : 'Apply '
-#. placeholder {1}: totalCores
-#. placeholder {2}: totalCores !== 1 ? 's' : ''
-#. placeholder {3}: allSelections.size
-#. placeholder {4}: allSelections.size !== 1 ? 's' : ''
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "{0} {1} Core{2} from {3} Socket{4}"
-msgstr "{0} {1} Core{2} from {3} Socket{4}"
+#~ msgid "{0} {1} Core{2} from {3} Socket{4}"
+#~ msgstr "{0} {1} Core{2} from {3} Socket{4}"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply Changes"
@@ -6226,3 +6213,99 @@ msgstr[1] "Delete # Snapshots"
 
 #~ msgid "Single"
 #~ msgstr "Single"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create Directory"
+msgstr "Create Directory"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Delete (File/Directory)"
+msgstr "Delete (File/Directory)"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create File"
+msgstr "Create File"
+
+#~ msgid "Interval type required"
+#~ msgstr "Interval type required"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Voter"
+msgstr "Voter"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Non Voter"
+msgstr "Non Voter"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Staging"
+msgstr "Staging"
+
+#~ msgid "Core"
+#~ msgid_plural "Core#"
+#~ msgstr[0] "Core"
+#~ msgstr[1] "Core#"
+
+#~ msgid "Socket"
+#~ msgid_plural "Socket#"
+#~ msgstr[0] "Socket"
+#~ msgstr[1] "Socket#"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket"
+msgid_plural "Socket #"
+msgstr[0] "Socket"
+msgstr[1] "Socket #"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Core"
+msgid_plural "Core #"
+msgstr[0] "Core"
+msgstr[1] "Core #"
+
+#~ msgid "Socke1t"
+#~ msgid_plural "Socke1t #"
+#~ msgstr[0] "Socke1t"
+#~ msgstr[1] "Socke1t #"
+
+#~ msgid "core"
+#~ msgid_plural "core#"
+#~ msgstr[0] "core"
+#~ msgstr[1] "core#"
+
+#~ msgid "Selected: {0}{1} {2}"
+#~ msgstr "Selected: {0}{1} {2}"
+
+#~ msgid "Limit: {0}{1} {2}"
+#~ msgstr "Limit: {0}{1} {2}"
+
+#~ msgid "core"
+#~ msgid_plural "core #"
+#~ msgstr[0] "core"
+#~ msgstr[1] "core #"
+
+#~ msgid "Selected: {0}{1}"
+#~ msgstr "Selected: {0}{1}"
+
+#~ msgid "Limit: {0}{1}"
+#~ msgstr "Limit: {0}{1}"
+
+#. placeholder {0}: selectedCores.size
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Selected: {0},"
+msgstr "Selected: {0},"
+
+#. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Limit: {0}"
+msgstr "Limit: {0}"
+
+#~ msgid "Size: {0},"
+#~ msgstr "Size: {0},"
+
+#~ msgid "Remaining space: {0}, {1}%"
+#~ msgstr "Remaining space: {0}, {1}%"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Remaining space: <0/>"
+msgstr "Remaining space: <0/>"

@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { destroyDisk, destroyPartition, initializeGPT, listDisks } from '$lib/api/disk/disk';
-	import { getPools } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import KvTableModal from '$lib/components/custom/KVTableModal.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -12,7 +11,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { diskSpaceAvailable, generateTableData, parseSMART } from '$lib/utils/disk';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -22,39 +21,33 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['disks'],
-				queryFn: async () => {
-					return await listDisks();
-				},
-				refetchInterval: 2000,
-				keepPreviousData: true,
-				initialData: data.disks,
-				onSuccess: (data: Disk[]) => {
-					updateCache('disks', data);
-				}
-			},
-			{
-				queryKey: ['pools'],
-				queryFn: async () => {
-					return await getPools();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.pools,
-				onSuccess: (data: Zpool[]) => {
-					updateCache('pools', data);
-				}
-			}
-		]
-	}));
+	const disks = resource(
+		() => 'disks',
+		async (key, prevKey, { signal }) => {
+			const result = await listDisks();
+			updateCache('disk-list', result);
+			return result;
+		},
+		{
+			initialValue: data.disks
+		}
+	);
 
-	let disks = $derived(results[0].data as Disk[]);
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				disks.refetch();
+				reload = false;
+			}
+		}
+	);
+
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
-	let { rows, columns } = $derived(generateTableData(disks));
+	let { rows, columns } = $derived(generateTableData(disks.current));
 
 	let wipeModal = $state({
 		open: false,
@@ -78,14 +71,14 @@
 
 	let activeDisk: Disk | null = $derived.by(() => {
 		if (activeRow !== null) {
-			return disks.find((disk) => disk.device === activeRow?.device) || null;
+			return disks.current.find((disk) => disk.device === activeRow?.device) || null;
 		}
 		return null;
 	});
 
 	let activePartition: Partition | null = $derived.by(() => {
 		if (activeRow !== null) {
-			const partition = disks.filter((disk) => {
+			const partition = disks.current.filter((disk) => {
 				return disk.partitions.some((part) => part.name === activeRow?.device);
 			});
 
@@ -127,6 +120,7 @@
 		if (action === 'gpt') {
 			if (activeDisk) {
 				const response = await initializeGPT(activeDisk.device);
+				disks.refetch();
 				if (response.status === 'success') {
 					toast.success(`Disk ${activeDisk.device} initialized with GPT`, {
 						position: 'bottom-center'
@@ -301,6 +295,7 @@
 					? await destroyDisk(`/dev/${activeDisk.device}`)
 					: await destroyPartition(`/dev/${activePartition?.name}`);
 
+				disks.refetch();
 				if (result.status === 'success') {
 					toast.success(message, { position: 'bottom-center' });
 					activeRow = null;
@@ -343,4 +338,5 @@
 		partitionModal.open = false;
 		partitionModal.disk = null;
 	}}
+	bind:reload
 />

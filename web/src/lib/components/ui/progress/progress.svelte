@@ -6,10 +6,14 @@
 		ref = $bindable(null),
 		class: className,
 		max = 100,
-		progressClass = 'bg-blue-600',
 		value,
+		progressClass = 'bg-blue-600',
 		...restProps
-	}: WithoutChildrenOrChild<ProgressPrimitive.RootProps> = $props();
+	}: WithoutChildrenOrChild<
+		ProgressPrimitive.RootProps & {
+			progressClass?: string;
+		}
+	> = $props();
 </script>
 
 <ProgressPrimitive.Root

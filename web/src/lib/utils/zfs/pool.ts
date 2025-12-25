@@ -512,12 +512,20 @@ export function formatValue(
 
 type ScanHandler = (stats: ZpoolStatusPool['scan_stats']) => ScanSentenceResult;
 
+const parseStatsTime = (v: string | number | undefined) => {
+	if (!v) return 0;
+	if (typeof v === 'number') return v;
+	if (/^\d+$/.test(v)) return Number(v); // epoch string
+	const t = Date.parse(v);
+	return isNaN(t) ? 0 : Math.floor(t / 1000);
+};
+
 export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSentenceResult {
 	if (!stats || !stats.function) return { title: '', text: null, progressPercent: null };
 
 	const num = (v: string | number | undefined): number => (v === undefined ? 0 : Number(v) || 0);
-	const start = num(stats.start_time);
-	const end = num(stats.end_time);
+	const start = parseStatsTime(stats.start_time);
+	const end = parseStatsTime(stats.end_time);
 	const examined = num(stats.examined);
 	const toExamine = num(stats.to_examine);
 	const issued = num(stats.issued);
@@ -545,7 +553,8 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 
 	const handlers: Record<string, ScanHandler> = {
 		scrub: (s) => {
-			const progress = toExamine > 0 ? Math.min(100, Math.round((issued / toExamine) * 100)) : null;
+			const progress =
+				toExamine > 0 ? Math.min(100, Math.round((examined / toExamine) * 100)) : null;
 
 			if (s?.state === 'SCANNING') {
 				let timeRemaining = '';

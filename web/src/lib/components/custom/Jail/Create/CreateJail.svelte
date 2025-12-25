@@ -252,7 +252,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
