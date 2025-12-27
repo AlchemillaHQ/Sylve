@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/pkg/pkg"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
@@ -48,5 +50,51 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	}
 
 	basicSettings.Pools = pools
+	return s.DB.Save(&basicSettings).Error
+}
+
+func (s *Service) ToggleDHCPServer(enable bool) error {
+	if enable {
+		if !pkg.IsPackageInstalled("dnsmasq") {
+			return fmt.Errorf("dnsmasq package is not installed")
+		}
+
+		_, err := utils.RunCommand("service", "dnsmasq", "start")
+		return err
+	} else {
+		_, err := utils.RunCommand("service", "dnsmasq", "stop")
+		return err
+	}
+}
+
+func (s *Service) ServiceToggle(service models.AvailableService) error {
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return err
+	}
+
+	serviceSet := make(map[models.AvailableService]bool)
+	for _, srv := range basicSettings.Services {
+		serviceSet[srv] = true
+	}
+
+	enabled := !serviceSet[service]
+	serviceSet[service] = enabled
+	if !enabled {
+		delete(serviceSet, service)
+	}
+
+	switch service {
+	case models.DHCPServer:
+		if err := s.ToggleDHCPServer(enabled); err != nil {
+			return err
+		}
+	}
+
+	basicSettings.Services = basicSettings.Services[:0]
+	for srv := range serviceSet {
+		basicSettings.Services = append(basicSettings.Services, srv)
+	}
+
 	return s.DB.Save(&basicSettings).Error
 }

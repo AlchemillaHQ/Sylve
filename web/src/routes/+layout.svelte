@@ -17,13 +17,15 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount } from 'svelte';
 	import '../locales/main.loader.svelte.js';
-	import Initialize from '$lib/components/custom/Initialize.svelte';
+	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
 	import { sleep } from '$lib/utils';
 	import '../app.css';
 	import { storage } from '$lib';
 	import { loadLocale } from 'wuchale/load-utils';
 	import type { Locales } from '$lib/types/common.js';
 	import { page } from '$app/state';
+	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
+	import { getBasicSettings } from '$lib/api/system/settings.js';
 
 	const queryClient = new QueryClient({
 		defaultOptions: {
@@ -35,6 +37,8 @@
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
+	let rebooted = $state<boolean>(false);
+
 	let loading = $state({
 		throbber: false,
 		login: false,
@@ -54,24 +58,33 @@
 			loading.initialization = true;
 			loading.throbber = true;
 
+			let [isInit, isRebooted] = [false, false];
+
 			try {
-				initialized = await isInitialized();
+				[isInit, isRebooted] = await isInitialized();
+				initialized = isInit;
+				rebooted = isRebooted;
 			} catch (error) {
 				initialized = false;
+				rebooted = false;
 			}
 
 			loading.initialization = false;
 
-			if (initialized && page.url.pathname === '/') {
+			if (initialized && rebooted && page.url.pathname === '/') {
 				await preloadData('/datacenter/summary');
 				await goto('/datacenter/summary', { replaceState: true });
 			}
 
 			await sleep(1500);
 			loading.throbber = false;
+
+			const basicSettings = await getBasicSettings();
+			storage.enabledServices = basicSettings.services;
 		} else {
 			storage.token = '';
 			initialized = null;
+			rebooted = false;
 		}
 	});
 
@@ -92,15 +105,19 @@
 				loading.initialization = true;
 
 				try {
-					initialized = await isInitialized();
+					[initialized, rebooted] = await isInitialized();
 				} catch (error) {
 					console.error('Initialization check error:', error);
 					initialized = false;
+					rebooted = false;
 				}
 
 				await goto('/');
 
 				loading.initialization = false;
+
+				const basicSettings = await getBasicSettings();
+				storage.enabledServices = basicSettings.services;
 
 				let target = toLoginPath;
 
@@ -169,10 +186,16 @@
 	<QueryClientProvider client={queryClient}>
 		{#if initialized === null}
 			<Throbber />
-		{:else if initialized === false}
-			<div transition:fade|global={{ duration: 400 }}>
-				<Initialize bind:initialized />
-			</div>
+		{:else if initialized === false || rebooted === false}
+			{#if !initialized}
+				<div transition:fade|global={{ duration: 400 }}>
+					<Initialize bind:initialized />
+				</div>
+			{:else if !rebooted}
+				<div transition:fade|global={{ duration: 400 }}>
+					<Reboot />
+				</div>
+			{/if}
 		{:else}
 			<div transition:fade|global={{ duration: 400 }}>
 				<Shell>

@@ -97,6 +97,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
 		basic.POST("/initialize", basicHandlers.Initialize(systemService))
+		basic.PUT("/system/reboot", basicHandlers.RebootSystem(systemService))
 	}
 
 	info := api.Group("/info")
@@ -249,6 +250,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
+		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")

@@ -136,6 +136,7 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 	basicSettings.Pools = req.Pools
 	basicSettings.Services = req.Services
 	basicSettings.Initialized = true
+	basicSettings.Restarted = false
 
 	if err := s.DB.Create(&basicSettings).Error; err != nil {
 		return []error{fmt.Errorf("failed_to_create_basic_settings: %w", err)}

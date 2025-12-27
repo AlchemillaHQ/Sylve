@@ -3,10 +3,10 @@ package models
 type AvailableService string
 
 const (
-	Virtualization AvailableService = "virtualization"
-	Jails          AvailableService = "jails"
 	DHCPServer     AvailableService = "dhcp-server"
+	Jails          AvailableService = "jails"
 	SambaServer    AvailableService = "samba-server"
+	Virtualization AvailableService = "virtualization"
 	WoLServer      AvailableService = "wol-server"
 )
 
@@ -15,4 +15,5 @@ type BasicSettings struct {
 	Pools       []string           `json:"pools" gorm:"serializer:json;type:json"`
 	Services    []AvailableService `json:"services" gorm:"serializer:json;type:json"`
 	Initialized bool               `json:"initialized"`
+	Restarted   bool               `json:"restarted"`
 }

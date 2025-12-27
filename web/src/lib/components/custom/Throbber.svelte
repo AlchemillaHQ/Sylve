@@ -1,10 +1,16 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 
 	let darkMode = $state(false);
 	onMount(() => {
 		darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
 	});
+
+	interface Props {
+		showText?: boolean;
+	}
+
+	let { showText = $bindable(true) }: Props = $props();
 </script>
 
 <div class="flex h-screen flex-col items-center justify-center gap-3 overflow-hidden">
@@ -95,11 +101,13 @@
 	</svg>
 
 	<!-- @wc-ignore -->
-	<p
-		class="animate-blurFadePerfect ml-3 flex w-full justify-center text-center font-medium tracking-[.45em] opacity-0"
-	>
-		SYLVE
-	</p>
+	{#if showText}
+		<p
+			class="animate-blurFadePerfect ml-3 flex w-full justify-center text-center font-medium tracking-[.45em] opacity-0"
+		>
+			SYLVE
+		</p>
+	{/if}
 </div>
 
 <style>

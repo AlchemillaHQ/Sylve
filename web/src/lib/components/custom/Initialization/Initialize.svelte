@@ -11,6 +11,7 @@
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { resource } from 'runed';
+	import type { AvailableService } from '$lib/types/system/settings';
 	interface Props {
 		initialized: boolean;
 	}
@@ -51,12 +52,12 @@
 
 	async function startInit() {
 		const pools = properties.pools.combobox.values;
-		const services = [];
+		const services = [] as AvailableService[];
 		if (properties.services.virtualization) services.push('virtualization');
 		if (properties.services.jails) services.push('jails');
-		if (properties.services.sambaServer) services.push('sambaServer');
-		if (properties.services.dhcpServer) services.push('dhcpServer');
-		if (properties.services.wolServer) services.push('wolServer');
+		if (properties.services.sambaServer) services.push('samba-server');
+		if (properties.services.dhcpServer) services.push('dhcp-server');
+		if (properties.services.wolServer) services.push('wol-server');
 
 		const errors = await initialize(pools, services);
 		if (errors.length === 0) {
@@ -86,9 +87,9 @@
 					<Dialog.Title class="flex-1 text-center">
 						<div class="flex items-center justify-center space-x-2">
 							{#if mode.current === 'dark'}
-								<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
+								<img src="/logo/white.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
 							{:else}
-								<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-[100px]" />
+								<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto max-w-25" />
 							{/if}
 							<p class="font-normal tracking-[.45em]">SYLVE</p>
 						</div>

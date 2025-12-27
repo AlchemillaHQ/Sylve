@@ -229,6 +229,9 @@ msgstr "Color Theme"
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/custom/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 #: src/lib/components/custom/Login.svelte
@@ -236,6 +239,8 @@ msgstr "Color Theme"
 msgid "Sylve Logo"
 msgstr "Sylve Logo"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "SYLVE"
 msgstr "SYLVE"
@@ -269,46 +274,65 @@ msgstr "Toggle user menu"
 msgid "⌘⇧Q"
 msgstr "⌘⇧Q"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Sylve initialized"
 msgstr "Sylve initialized"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "ZFS Storage Pools"
 msgstr "ZFS Storage Pools"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Select Pools"
 msgstr "Select Pools"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Services"
 msgstr "Services"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Virtualization"
 msgstr "Virtualization"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Jails"
 msgstr "Jails"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 msgid "Samba Server"
 msgstr "Samba Server"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 msgid "DHCP Server"
 msgstr "DHCP Server"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "WOL Server"
 msgstr "WOL Server"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "We've hit the following errors during initialization"
 msgstr "We've hit the following errors during initialization"
 
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Initialize"
 msgstr "Initialize"
@@ -994,6 +1018,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -3066,12 +3091,18 @@ msgid "VNC"
 msgstr "VNC"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Enabled"
 msgstr "Enabled"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Disabled"
@@ -3545,7 +3576,7 @@ msgid "Enable resource limits to edit"
 msgstr "Enable resource limits to edit"
 
 #. placeholder {0}: title
-#. placeholder {0}: property
+#. placeholder {0}: activeRow?.property
 #. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
@@ -5996,7 +6027,6 @@ msgstr "System"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
-#: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools"
 msgstr "ZFS Pools"
 
@@ -6309,3 +6339,313 @@ msgstr "Limit: {0}"
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
 msgstr "Remaining space: <0/>"
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Check to enable"
+msgstr "Check to enable"
+
+#~ msgid "Enable DHCP Server"
+#~ msgstr "Enable DHCP Server"
+
+#~ msgid "Are you sure you want to toggle the DHCP Server service?"
+#~ msgstr "Are you sure you want to toggle the DHCP Server service?"
+
+#~ msgid "Failed to update DHCP Server setting"
+#~ msgstr "Failed to update DHCP Server setting"
+
+#~ msgid "DHCP Server setting updated successfully"
+#~ msgstr "DHCP Server setting updated successfully"
+
+#~ msgid "You are about to {0} the DHCP Server service."
+#~ msgstr "You are about to {0} the DHCP Server service."
+
+#~ msgid "You are about to {0} the DHCP Server service, this may affect network configurations"
+#~ msgstr "You are about to {0} the DHCP Server service, this may affect network configurations"
+
+#~ msgid "You are about to {0} the DHCP Server, this may affect network configurations"
+#~ msgstr "You are about to {0} the DHCP Server, this may affect network configurations"
+
+#. placeholder {0}: activeRow?.property
+#. placeholder {0}: activeRow?.property
+#. placeholder {0}: activeRow?.property
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Toggle {0}"
+msgstr "Toggle {0}"
+
+#. placeholder {0}: modals.dhcpServer.enabled ? 'enabled' : 'disabled'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "DHCP Server {0}"
+msgstr "DHCP Server {0}"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle DHCP Server"
+msgstr "Failed to toggle DHCP Server"
+
+#~ msgid "You need to reboot the system after initialization"
+#~ msgstr "You need to reboot the system after initialization"
+
+#~ msgid "Sylve Initialized Successfully"
+#~ msgstr "Sylve Initialized Successfully"
+
+#~ msgid ""
+#~ "To complete setup, please <0>reboot your system</0>. Sylve will be\n"
+#~ "fully operational after restart."
+#~ msgstr ""
+#~ "To complete setup, please <0>reboot your system</0>. Sylve will be\n"
+#~ "fully operational after restart."
+
+#~ msgid "⚠️ Reboot required"
+#~ msgstr "⚠️ Reboot required"
+
+#~ msgid "Initialization Complete"
+#~ msgstr "Initialization Complete"
+
+#~ msgid "Sylve has been successfully initialized. Please <0>reboot your system</0> to finish setup."
+#~ msgstr "Sylve has been successfully initialized. Please <0>reboot your system</0> to finish setup."
+
+#~ msgid "Sylve has been successfully initialized. Please reboot your system to finish setup."
+#~ msgstr "Sylve has been successfully initialized. Please reboot your system to finish setup."
+
+#~ msgid "Reboot functionality would be implemented here"
+#~ msgstr "Reboot functionality would be implemented here"
+
+#~ msgid "Setup completed - remember to reboot when convenient"
+#~ msgstr "Setup completed - remember to reboot when convenient"
+
+#~ msgid "Sylve has been successfully initialized and configured. A system reboot is required to complete the setup and apply all changes."
+#~ msgstr "Sylve has been successfully initialized and configured. A system reboot is required to complete the setup and apply all changes."
+
+#~ msgid "Services configured"
+#~ msgstr "Services configured"
+
+#~ msgid "Storage pools initialized"
+#~ msgstr "Storage pools initialized"
+
+#~ msgid "System ready for use"
+#~ msgstr "System ready for use"
+
+#~ msgid "Reboot Now"
+#~ msgstr "Reboot Now"
+
+#~ msgid "Reboot Later"
+#~ msgstr "Reboot Later"
+
+#~ msgid "After rebooting, you can access Sylve through your web browser at the same address. All your settings and configurations have been saved."
+#~ msgstr "After rebooting, you can access Sylve through your web browser at the same address. All your settings and configurations have been saved."
+
+#~ msgid ""
+#~ "Sylve has been successfully initialized and configured. A system reboot is required to\n"
+#~ "complete the setup and apply all changes."
+#~ msgstr ""
+#~ "Sylve has been successfully initialized and configured. A system reboot is required to\n"
+#~ "complete the setup and apply all changes."
+
+#~ msgid ""
+#~ "After rebooting, you can access Sylve through your web browser at the same address. All your\n"
+#~ "settings and configurations have been saved."
+#~ msgstr ""
+#~ "After rebooting, you can access Sylve through your web browser at the same address. All your\n"
+#~ "settings and configurations have been saved."
+
+#~ msgid "Remember to reboot when convenient"
+#~ msgstr "Remember to reboot when convenient"
+
+#~ msgid "ZFS pools initialized"
+#~ msgstr "ZFS pools initialized"
+
+#~ msgid "After rebooting, you can access Sylve through your web browser at the same address."
+#~ msgstr "After rebooting, you can access Sylve through your web browser at the same address."
+
+#~ msgid ""
+#~ "Sylve has been initialized and configured. A system reboot is required to complete the setup\n"
+#~ "and apply all changes."
+#~ msgstr ""
+#~ "Sylve has been initialized and configured. A system reboot is required to complete the setup\n"
+#~ "and apply all changes."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Setup Complete"
+msgstr "Setup Complete"
+
+#~ msgid "System initialization has finished successfully. A restart is required to apply configuration changes."
+#~ msgstr "System initialization has finished successfully. A restart is required to apply configuration changes."
+
+#~ msgid "All services configured and ready"
+#~ msgstr "All services configured and ready"
+
+#~ msgid "Restart System"
+#~ msgstr "Restart System"
+
+#~ msgid "The web interface will be available at the same address after restart"
+#~ msgstr "The web interface will be available at the same address after restart"
+
+#~ msgid ""
+#~ "System initialization has finished successfully. A restart is required to apply\n"
+#~ "configuration changes."
+#~ msgstr ""
+#~ "System initialization has finished successfully. A restart is required to apply\n"
+#~ "configuration changes."
+
+#~ msgid "System restart required to complete installation"
+#~ msgstr "System restart required to complete installation"
+
+#~ msgid "Restart Now"
+#~ msgstr "Restart Now"
+
+#~ msgid "System restart required to apply changes"
+#~ msgstr "System restart required to apply changes"
+
+#~ msgid "Ready to Complete"
+#~ msgstr "Ready to Complete"
+
+#~ msgid "Please restart to finish setup"
+#~ msgstr "Please restart to finish setup"
+
+#~ msgid "<0/> Restart System"
+#~ msgstr "<0/> Restart System"
+
+#~ msgid "<0/> FreeBSD Management Platform"
+#~ msgstr "<0/> FreeBSD Management Platform"
+
+#~ msgid "Installation Complete"
+#~ msgstr "Installation Complete"
+
+#~ msgid "Your Sylve server is ready. Restart the system to begin using your new FreeBSD management platform."
+#~ msgstr "Your Sylve server is ready. Restart the system to begin using your new FreeBSD management platform."
+
+#~ msgid "<0/> Restart Server"
+#~ msgstr "<0/> Restart Server"
+
+#~ msgid "After restart, access the interface at this same URL"
+#~ msgstr "After restart, access the interface at this same URL"
+
+#~ msgid ""
+#~ "Your Sylve server is ready. Restart the system to begin using your new FreeBSD management\n"
+#~ "platform."
+#~ msgstr ""
+#~ "Your Sylve server is ready. Restart the system to begin using your new FreeBSD management\n"
+#~ "platform."
+
+#~ msgid "System needs to restart to apply changes"
+#~ msgstr "System needs to restart to apply changes"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Restart"
+msgstr "<0/> Restart"
+
+#~ msgid "Initialized"
+#~ msgstr "Initialized"
+
+#~ msgid "System is restarting..."
+#~ msgstr "System is restarting..."
+
+#~ msgid "Failed to restart system: {0}"
+#~ msgstr "Failed to restart system: {0}"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Restarting..."
+msgstr "<0/> Restarting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is restarting…"
+msgstr "System is restarting…"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is back online"
+msgstr "System is back online"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System did not come back online in time"
+msgstr "System did not come back online in time"
+
+#~ msgid "Preparing reboot…"
+#~ msgstr "Preparing reboot…"
+
+#~ msgid "Failed to prepare reboot"
+#~ msgstr "Failed to prepare reboot"
+
+#~ msgid "Test123"
+#~ msgstr "Test123"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "We need to restart the system to apply changes"
+msgstr "We need to restart the system to apply changes"
+
+#~ msgid "You are about to {0} the WOL Server"
+#~ msgstr "You are about to {0} the WOL Server"
+
+#. placeholder {0}: modals.wolServer.enabled ? 'enabled' : 'disabled'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "WOL Server {0}"
+msgstr "WOL Server {0}"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle WOL Server"
+msgstr "Failed to toggle WOL Server"
+
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "WoL Server"
+msgstr "WoL Server"
+
+#~ msgid "You are about to {0} the WoL Server, you might have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr "You are about to {0} the WoL Server, you might have to restart Sylve and or the host system for changes to take effect"
+
+#~ msgid "You are about to {0} the DHCP Server, this may affect network configurations, you might have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr "You are about to {0} the DHCP Server, this may affect network configurations, you might have to restart Sylve and or the host system for changes to take effect"
+
+#. placeholder {0}: modals.dhcpServer.enabled ? 'disable' : 'enable'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "You are about to {0} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect"
+msgstr "You are about to {0} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect"
+
+#. placeholder {0}: modals.wolServer.enabled ? 'disable' : 'enable'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "You are about to {0} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect"
+msgstr "You are about to {0} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect"
+
+#: src/routes/+error.svelte
+msgid "Not Found"
+msgstr "Not Found"
+
+#~ msgid "Page not found"
+#~ msgstr "Page not found"
+
+#~ msgid "The page you’re looking for doesn’t exist or may have been moved."
+#~ msgstr "The page you’re looking for doesn’t exist or may have been moved."
+
+#~ msgid "Go back home"
+#~ msgstr "Go back home"
+
+#~ msgid "The page you're looking for doesn't exist or may have been moved."
+#~ msgstr "The page you're looking for doesn't exist or may have been moved."
+
+#~ msgid "404 - Page Not Found"
+#~ msgstr "404 - Page Not Found"
+
+#~ msgid "Sorry, we couldn't find the page you were looking for.<0/> It may have been moved, deleted, or you may have mistyped the address."
+#~ msgstr "Sorry, we couldn't find the page you were looking for.<0/> It may have been moved, deleted, or you may have mistyped the address."
+
+#~ msgid "<0/> Back to Home"
+#~ msgstr "<0/> Back to Home"
+
+#~ msgid "Centered text"
+#~ msgstr "Centered text"
+
+#. placeholder {0}: modals.sambaServer.enabled ? 'disable' : 'enable'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "You are about to {0} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect"
+msgstr "You are about to {0} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect"
+
+#. placeholder {0}: modals.sambaServer.enabled ? 'enabled' : 'disabled'
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Samba Server {0}"
+msgstr "Samba Server {0}"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle Samba Server"
+msgstr "Failed to toggle Samba Server"

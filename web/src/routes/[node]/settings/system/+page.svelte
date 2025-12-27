@@ -9,13 +9,13 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { IsDocumentVisible, resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
+	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
 	import { sameElements } from '$lib/utils/arr';
 	import { toast } from 'svelte-sonner';
-	import { getBasicSettings, updateUsablePools } from '$lib/api/system/settings';
+	import { getBasicSettings, toggleService, updateUsablePools } from '$lib/api/system/settings';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 
 	interface Data {
 		pools: Zpool[];
@@ -25,6 +25,7 @@
 	let { data }: { data: Data } = $props();
 
 	const visible = new IsDocumentVisible();
+
 	const pools = resource(
 		() => 'zfs-pools-full',
 		async (key, prevKey, { signal }) => {
@@ -37,14 +38,11 @@
 		}
 	);
 
-	let poolOptions = $derived.by(() => {
-		return pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
-	});
-
 	const basicSettings = resource(
 		() => 'system-basic-settings',
 		async (key, prevKey, { signal }) => {
 			const results = await getBasicSettings();
+			storage.enabledServices = results.services;
 			updateCache(key, results);
 			return results;
 		},
@@ -53,26 +51,34 @@
 		}
 	);
 
+	let poolOptions = $derived.by(() => {
+		return pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
+	});
+
+	function refetch() {
+		pools.refetch();
+		basicSettings.refetch();
+	}
+
 	useInterval(3000, {
 		callback: async () => {
 			if (visible.current && !storage.idle) {
-				pools.refetch();
-				basicSettings.refetch();
+				refetch();
 			}
 		}
 	});
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			untrack(() => {
-				pools.refetch();
-				basicSettings.refetch();
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				refetch();
 				reload = false;
-			});
+			}
 		}
-	});
+	);
 
 	let query: string = $state('');
 	let tableData = $derived.by(() => {
@@ -100,9 +106,24 @@
 
 		const rows: Row[] = [
 			{
-				id: generateNanoId(`${JSON.stringify(basicSettings.current.pools)}`),
+				id: generateNanoId(basicSettings.current.pools.join('-')),
 				property: 'ZFS Pools',
 				value: basicSettings.current.pools
+			},
+			{
+				id: generateNanoId('dhcp-server'),
+				property: 'DHCP Server',
+				value: basicSettings.current.services.includes('dhcp-server') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('wol-server'),
+				property: 'WoL Server',
+				value: basicSettings.current.services.includes('wol-server') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('samba-server'),
+				property: 'Samba Server',
+				value: basicSettings.current.services.includes('samba-server') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -116,15 +137,27 @@
 		zfsPools: {
 			open: false,
 			values: basicSettings.current.pools.join(',')
+		},
+		dhcpServer: {
+			open: false,
+			enabled: basicSettings.current.services.includes('dhcp-server')
+		},
+		wolServer: {
+			open: false,
+			enabled: basicSettings.current.services.includes('wol-server')
+		},
+		sambaServer: {
+			open: false,
+			enabled: basicSettings.current.services.includes('samba-server')
 		}
 	});
 
-	async function save() {
-		const toastOpts = {
-			duration: 5000,
-			position: 'bottom-center' as const
-		};
+	const toastOpts = {
+		duration: 5000,
+		position: 'bottom-center' as const
+	};
 
+	async function saveZFSPools() {
 		if (modals.zfsPools.open) {
 			const newPools = modals.zfsPools.values
 				.split(',')
@@ -162,32 +195,47 @@
 	}
 </script>
 
-{#snippet button(property: 'ZFS Pools')}
+{#snippet buttons()}
 	{#if activeRows?.length === 1}
-		{#if property === 'ZFS Pools'}
-			<Button
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-				onclick={() => {
-					if (property === 'ZFS Pools') {
-						modals.zfsPools.open = true;
-					}
-				}}
-			>
-				<div class="flex items-center">
+		<Button
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			onclick={() => {
+				if (activeRow?.property === 'ZFS Pools') {
+					modals.zfsPools.open = true;
+				} else if (activeRow?.property === 'DHCP Server') {
+					modals.dhcpServer.open = true;
+				} else if (activeRow?.property === 'WoL Server') {
+					modals.wolServer.open = true;
+				} else if (activeRow?.property === 'Samba Server') {
+					modals.sambaServer.open = true;
+				}
+			}}
+		>
+			<div class="flex items-center">
+				{#if activeRow?.property == 'ZFS Pools'}
 					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit {property}</span>
-				</div>
-			</Button>
-		{/if}
+					<span>Edit {activeRow?.property}</span>
+				{:else if activeRow?.property == 'DHCP Server'}
+					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+					<span>Toggle {activeRow?.property}</span>
+				{:else if activeRow?.property == 'WoL Server'}
+					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+					<span>Toggle {activeRow?.property}</span>
+				{:else if activeRow?.property == 'Samba Server'}
+					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+					<span>Toggle {activeRow?.property}</span>
+				{/if}
+			</div>
+		</Button>
 	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		{@render button('ZFS Pools')}
+		{@render buttons()}
 	</div>
 
 	<TreeTable
@@ -206,7 +254,89 @@
 	placeholder="Enter ZFS Pools"
 	bind:value={modals.zfsPools.values}
 	onSave={() => {
-		save();
+		saveZFSPools();
 	}}
 	options={poolOptions}
+/>
+
+<AlertDialog
+	bind:open={modals.dhcpServer.open}
+	names={{ parent: 'DHCP Server', element: '' }}
+	customTitle={`You are about to ${
+		modals.dhcpServer.enabled ? 'disable' : 'enable'
+	} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect`}
+	actions={{
+		onConfirm: async () => {
+			const toggled = await toggleService('dhcp-server');
+			reload = true;
+
+			if (toggled.status === 'success') {
+				modals.dhcpServer.enabled = !modals.dhcpServer.enabled;
+				toast.success(
+					`DHCP Server ${modals.dhcpServer.enabled ? 'enabled' : 'disabled'}`,
+					toastOpts
+				);
+				modals.dhcpServer.open = false;
+			} else {
+				handleAPIError(toggled);
+				toast.error('Failed to toggle DHCP Server', toastOpts);
+			}
+		},
+		onCancel: () => {
+			modals.dhcpServer.open = false;
+		}
+	}}
+/>
+
+<AlertDialog
+	bind:open={modals.wolServer.open}
+	names={{ parent: 'WoL Server', element: '' }}
+	customTitle={`You are about to ${modals.wolServer.enabled ? 'disable' : 'enable'} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect`}
+	actions={{
+		onConfirm: async () => {
+			const toggled = await toggleService('wol-server');
+			reload = true;
+
+			if (toggled.status === 'success') {
+				modals.wolServer.enabled = !modals.wolServer.enabled;
+				toast.success(`WOL Server ${modals.wolServer.enabled ? 'enabled' : 'disabled'}`, toastOpts);
+				modals.wolServer.open = false;
+			} else {
+				handleAPIError(toggled);
+				toast.error('Failed to toggle WOL Server', toastOpts);
+			}
+		},
+		onCancel: () => {
+			modals.wolServer.open = false;
+		}
+	}}
+/>
+
+<AlertDialog
+	bind:open={modals.sambaServer.open}
+	names={{ parent: 'Samba Server', element: '' }}
+	customTitle={`You are about to ${
+		modals.sambaServer.enabled ? 'disable' : 'enable'
+	} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect`}
+	actions={{
+		onConfirm: async () => {
+			const toggled = await toggleService('samba-server');
+			reload = true;
+
+			if (toggled.status === 'success') {
+				modals.sambaServer.enabled = !modals.sambaServer.enabled;
+				toast.success(
+					`Samba Server ${modals.sambaServer.enabled ? 'enabled' : 'disabled'}`,
+					toastOpts
+				);
+				modals.sambaServer.open = false;
+			} else {
+				handleAPIError(toggled);
+				toast.error('Failed to toggle Samba Server', toastOpts);
+			}
+		},
+		onCancel: () => {
+			modals.sambaServer.open = false;
+		}
+	}}
 />

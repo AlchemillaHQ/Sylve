@@ -12,6 +12,7 @@ import type { Locales } from './types/common';
 import type { KVEntry } from './types/db';
 import Dexie, { type Table } from 'dexie';
 import { createReactiveStorage } from './utils/storage';
+import type { AvailableService } from './types/system/settings';
 
 type SharedStorage = {
 	token: string | null;
@@ -23,6 +24,7 @@ type SharedStorage = {
 	fileExplorerCurrentPath: string | null;
 	visible: boolean | null;
 	idle: boolean | null;
+	enabledServices: AvailableService[] | null;
 };
 
 export const storage = createReactiveStorage<SharedStorage>(
@@ -35,7 +37,8 @@ export const storage = createReactiveStorage<SharedStorage>(
 		['clusterToken', { storage: 'local' }],
 		['fileExplorerCurrentPath', { storage: 'local' }],
 		['visible', { storage: 'local' }],
-		['idle', { storage: 'local' }]
+		['idle', { storage: 'local' }],
+		['enabledServices', { storage: 'local' }]
 	],
 	{
 		prefix: 'sylve:',

@@ -82,3 +82,64 @@ func AddUsablePools(systemService *system.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Toggle Service
+// @Description Enable or disable a specific service in the system settings
+// @Tags System
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param service body internal.ToggleServiceRequest true "Service Toggle Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /system/basic-settings/toggle-service/:service [put]
+func ToggleService(systemService *system.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		serviceParam := c.Param("service")
+		if serviceParam == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "missing_service",
+				Error:   "service_param_required",
+				Data:    nil,
+			})
+			return
+		}
+
+		service := models.AvailableService(serviceParam)
+
+		switch service {
+		case models.DHCPServer,
+			models.Jails,
+			models.SambaServer,
+			models.Virtualization,
+			models.WoLServer:
+		default:
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_service",
+				Error:   "unsupported_service",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := systemService.ServiceToggle(service); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "toggle_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "service_toggled",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}

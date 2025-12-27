@@ -13,10 +13,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/rcconf"
@@ -53,19 +55,18 @@ func (s *Service) InitFirewall() error {
 }
 
 func (s *Service) FreeBSDCheck() error {
-	minMajor := uint64(14)
-	minMinor := uint64(3)
+	minMajor := uint64(15)
+	minMinor := uint64(0)
 
-	output, err := utils.RunCommand("uname", "-r")
-	output = strings.TrimSpace(output)
-
+	rel, err := sysctl.GetString("kern.osrelease")
 	if err != nil {
-		return fmt.Errorf("failed to run uname command: %w", err)
+		return fmt.Errorf("failed to get kern.osrelease: %w", err)
 	}
 
-	parts := strings.Split(output, "-")
+	rel = strings.TrimSpace(rel)
+	parts := strings.Split(rel, "-")
 	if len(parts) < 1 {
-		return fmt.Errorf("unexpected output from uname command: %s", output)
+		return fmt.Errorf("unexpected format of kern.osrelease: %s", rel)
 	}
 
 	versionParts := strings.Split(parts[0], ".")
@@ -77,20 +78,49 @@ func (s *Service) FreeBSDCheck() error {
 	minorVersion := utils.StringToUint64(versionParts[1])
 
 	if majorVersion < minMajor || (majorVersion == minMajor && minorVersion < minMinor) {
-		return fmt.Errorf("unsupported FreeBSD version: %s, minimum required is %d.%d", output, minMajor, minMinor)
+		return fmt.Errorf("unsupported FreeBSD version: %s, minimum required is %d.%d", rel, minMajor, minMinor)
 	}
+
+	logger.L.Info().Msgf("FreeBSD version %s detected", rel)
 
 	return nil
 }
 
-func (s *Service) CheckPackageDependencies() error {
+func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) error {
 	requiredPackages := []string{
-		"libvirt",
-		"bhyve-firmware",
 		"smartmontools",
 		"tmux",
-		"jansson",
-		"swtpm",
+	}
+
+	if basicSettings.Services != nil {
+		if slices.Contains(basicSettings.Services, models.Virtualization) {
+			requiredPackages = append(requiredPackages, "libvirt", "bhyve-firmware", "jansson", "swtpm")
+		}
+
+		if slices.Contains(basicSettings.Services, models.DHCPServer) {
+			requiredPackages = append(requiredPackages, "dnsmasq")
+		}
+
+		if slices.Contains(basicSettings.Services, models.SambaServer) {
+			output, err := utils.RunCommand("pkg", "info")
+			if err != nil {
+				return fmt.Errorf("failed to run pkg info: %w", err)
+			}
+
+			lines := strings.Split(output, "\n")
+			sambaInstalled := false
+
+			for _, line := range lines {
+				if strings.HasPrefix(line, "samba4") {
+					sambaInstalled = true
+					break
+				}
+			}
+
+			if !sambaInstalled {
+				requiredPackages = append(requiredPackages, "samba4XX")
+			}
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -121,21 +151,26 @@ func (s *Service) CheckPackageDependencies() error {
 	return nil
 }
 
-func (s *Service) CheckServiceDependencies() error {
+func (s *Service) CheckServiceDependencies(basicSettings models.BasicSettings) error {
 	const rcConfPath = "/etc/rc.conf"
 
-	enabledServices := []string{
-		"zfs_enable",
-		"libvirtd_enable",
-		"dnsmasq_enable",
-		"rpcbind_enable",
-		"samba_server_enable",
+	enabledServices := []string{"zfs_enable"}
+
+	serviceMap := map[string]string{
+		"virtualization": "libvirtd_enable",
+		"dhcp-server":    "dnsmasq_enable",
+		"samba-server":   "samba_server_enable",
+	}
+
+	for _, svc := range basicSettings.Services {
+		if rc, ok := serviceMap[string(svc)]; ok {
+			enabledServices = append(enabledServices, rc)
+		}
 	}
 
 	serviceNames := map[string]string{
 		"libvirtd_enable":     "libvirtd",
 		"dnsmasq_enable":      "dnsmasq",
-		"rpcbind_enable":      "rpcbind",
 		"samba_server_enable": "samba_server",
 	}
 
@@ -289,7 +324,7 @@ func (s *Service) EnableLinux() error {
 	return nil
 }
 
-func (s *Service) CheckKernelModules() error {
+func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	requiredModules := []string{
 		"vmm",
 		"nmdm",
@@ -300,21 +335,35 @@ func (s *Service) CheckKernelModules() error {
 		"nullfs",
 	}
 
+	if slices.Contains(basicSettings.Services, models.Virtualization) {
+		requiredModules = append(requiredModules, "vmm", "nmdm")
+	}
+
+	if slices.Contains(basicSettings.Services, models.Jails) {
+		requiredModules = append(requiredModules, "if_epair", "nullfs")
+	}
+
 	for _, module := range requiredModules {
 		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
 	}
 
-	err := s.EnableLinux()
-	if err != nil {
-		return fmt.Errorf("Failed to enable Linux ABI: %w", err)
+	if slices.Contains(basicSettings.Services, models.Jails) {
+		err := s.EnableLinux()
+		if err != nil {
+			return fmt.Errorf("Failed to enable Linux ABI: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (s *Service) CheckSyslogConfig() error {
+func (s *Service) CheckSambaSyslogConfig(basicSettings models.BasicSettings) error {
+	if !slices.Contains(basicSettings.Services, models.SambaServer) {
+		return nil
+	}
+
 	const syslogConfPath = "/etc/syslog.conf"
 	const sylveLine = "LOCAL7.* /var/log/samba4/audit.log"
 

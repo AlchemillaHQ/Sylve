@@ -4,14 +4,16 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import { isBoolean } from '$lib/utils/string';
 
 	interface Props {
 		open: boolean;
 		title: string;
 		icon?: string;
-		type: 'text' | 'number' | 'select' | 'combobox';
+		type: 'text' | 'number' | 'select' | 'combobox' | 'checkbox';
 		placeholder?: string;
-		value: string;
+		value: string | boolean;
 		options?: {
 			label: string;
 			value: string;
@@ -32,7 +34,7 @@
 
 	let comboBox = $state({
 		open: false,
-		value: value?.split(',').map((v) => v.trim()),
+		value: !isBoolean(value) ? value?.split(',').map((v) => v.trim()) : [],
 		data: options.map((o) => ({ value: o.value, label: o.label })),
 		onValueChange: (val: string | string[]) => {
 			if (Array.isArray(val)) {
@@ -107,6 +109,12 @@
 				multiple={comboBox.multiple}
 				width="w-full"
 			/>
+		{/if}
+
+		{#if type === 'checkbox'}
+			<div class="mt-4">
+				<CustomCheckbox label={placeholder || 'Check to enable'} bind:checked={value} />
+			</div>
 		{/if}
 
 		<Dialog.Footer class="flex justify-end">

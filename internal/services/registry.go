@@ -125,14 +125,12 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 
 	authService := NewService[auth.Service](db)
 	systemService := NewService[system.Service](db, gzfs)
-	infoService := NewService[info.Service](db, gzfs)
 	libvirtService := NewService[libvirt.Service](db, systemService, gzfs)
-
+	networkService := NewService[network.Service](db, libvirtService)
+	infoService := NewService[info.Service](db, gzfs)
 	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
-
 	utilitiesService := NewService[utilities.Service](db)
 	sambaService := NewService[samba.Service](db, zfsService, gzfs)
-	networkService := NewService[network.Service](db, libvirtService)
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
 	clusterService := NewService[cluster.Service](db, authService)
 

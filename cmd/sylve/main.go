@@ -109,8 +109,6 @@ func main() {
 	}
 
 	go aS.ClearExpiredJWTTokens()
-	go uS.StartWOLServer()
-	go lvS.WolTasks()
 
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard
@@ -152,14 +150,27 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler: r,
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-		logger.L.Info().Msgf("Server started on %s:%d", cfg.IP, cfg.Port)
+		logger.L.Info().Msgf("HTTPS server started on %s:%d", cfg.IP, cfg.Port)
 		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			logger.L.Fatal().Err(err).Msg("Failed to start server")
+			logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		logger.L.Info().Msgf("HTTP server started on %s:%d", cfg.IP, cfg.HTTPPort)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.L.Fatal().Err(err).Msg("Failed to start HTTP server")
 		}
 	}()
 
@@ -167,15 +178,18 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 
-	logger.L.Info().Msg("Shutting down server gracefully...")
+	logger.L.Info().Msg("Shutting down servers gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		logger.L.Error().Err(err).Msg("Server forced to shutdown")
+		logger.L.Error().Err(err).Msg("HTTPS server forced to shutdown")
+	}
+	if err := httpServer.Shutdown(ctx); err != nil {
+		logger.L.Error().Err(err).Msg("HTTP server forced to shutdown")
 	}
 
 	wg.Wait()
-	logger.L.Info().Msg("Server exited properly")
+	logger.L.Info().Msg("Servers exited properly")
 }

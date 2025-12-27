@@ -153,6 +153,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error applying database fixups: %v", err)
 	}
 
+	db.Model(&models.BasicSettings{}).
+		Where("id = ? AND (SELECT COUNT(*) FROM basic_settings) = 1", 1).
+		Update("restarted", true)
+
 	return db
 }
 

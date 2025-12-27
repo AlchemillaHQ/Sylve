@@ -48,6 +48,7 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 			Data: gin.H{
 				"hostname":    h,
 				"initialized": b.Initialized,
+				"restarted":   b.Restarted,
 			},
 		})
 	}

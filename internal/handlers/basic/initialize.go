@@ -88,3 +88,34 @@ func GetBasicSettings(sS *system.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Initiate System Reboot
+// @Description Initiate a system reboot
+// @Tags Health
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /basic/reboot [post]
+func RebootSystem(sS *system.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		err := sS.RebootSystem()
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_reboot_system",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "system_reboot_initiated",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
