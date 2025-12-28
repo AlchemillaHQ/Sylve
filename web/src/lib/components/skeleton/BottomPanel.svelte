@@ -4,9 +4,7 @@
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { AuditRecord } from '$lib/types/info/audit';
-	import type { SimpleVm } from '$lib/types/vm/vm';
-	import { getCache, updateCache } from '$lib/utils/http';
+	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -98,7 +96,7 @@
 						case 'GET':
 							if (path.includes('vnc')) {
 								const port = path.split('/').pop();
-								const vm = simpleVmList.current.find((vm) => vm.vncPort === Number(port));
+								const vm = simpleVmList.current?.find((vm) => vm.vncPort === Number(port));
 
 								resolvedAction = `${label} - ${vm ? vm.name : 'Unknown VM'} (${port})`;
 							} else {

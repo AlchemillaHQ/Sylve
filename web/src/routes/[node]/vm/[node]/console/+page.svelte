@@ -3,19 +3,11 @@
 	import { storage } from '$lib';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
-	import {
-		Xterm,
-		XtermAddon,
-		type FitAddon,
-		type ITerminalInitOnlyOptions,
-		type ITerminalOptions,
-		type Terminal
-	} from '@battlefieldduck/xterm-svelte';
+	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
-	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, useInterval, watch } from 'runed';
 	import { mode } from 'mode-watcher';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
@@ -57,21 +49,22 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
-			if (storage.visible) {
+			if (!storage.idle) {
 				vm.refetch();
 				domain.refetch();
 			}
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
 				vm.refetch();
 				domain.refetch();
-			});
+			}
 		}
-	});
+	);
 
 	const wssAuth = $state({
 		hash: data.hash,
@@ -128,28 +121,39 @@
 				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'vnc');
 				startVncLoading();
 				serialConnected = false;
+				// Disconnect serial when switching to VNC
+				if (ws) {
+					sendKill();
+					ws.close();
+					ws = null;
+				}
+				terminal?.dispose?.();
+				terminal = null;
 			} else if (consoleType === 'serial' && vm.current.serial) {
 				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
+				// Auto-connect serial when switching to it
+				tick().then(() => {
+					serialConnect();
+				});
 			}
 		}
 	});
 
-	let terminal = $state<Terminal>();
-	let fitAddon: FitAddon | null = null;
-	let ws: WebSocket | null = null;
-	let serialLoading = $state(false);
+	let terminal = $state<GhosttyTerminal | null>(null);
 	let serialEl: HTMLDivElement | null = null;
 	let ro: ResizeObserver | null = null;
+	let lastWidth = 0;
+	let lastHeight = 0;
 
-	const termOptions: ITerminalOptions & ITerminalInitOnlyOptions = {
-		cursorBlink: true
-	};
+	let ws: WebSocket | null = null;
+	let serialLoading = $state(false);
 
 	function isOpen(w: WebSocket | null): boolean {
 		return !!w && w.readyState === WebSocket.OPEN;
 	}
 
 	let serialConnected = $state(false);
+	let destroyed = $state(false);
 
 	function sendKill(sessionId?: string) {
 		if (!isOpen(ws)) return;
@@ -161,113 +165,106 @@
 		} catch {}
 	}
 
-	async function fitSoon() {
-		await tick();
-		await new Promise(requestAnimationFrame);
-		await new Promise(requestAnimationFrame);
-		fitAddon?.fit();
-		if (ws && isOpen(ws)) {
-			const dims = fitAddon?.proposeDimensions();
-			ws.send(
-				new TextEncoder().encode('\x01' + JSON.stringify({ rows: dims?.rows, cols: dims?.cols }))
-			);
-		}
+	function resizeTerminal(width: number, height: number) {
+		if (!terminal) return;
+
+		const root = terminal.element as HTMLElement | undefined;
+		if (!root) return;
+
+		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
+		if (!canvas) return;
+
+		const cols = terminal.cols || 80;
+		const rows = terminal.rows || 24;
+
+		const cellWidth = canvas.clientWidth / cols || 8;
+		const cellHeight = canvas.clientHeight / rows || 16;
+
+		const newCols = Math.max(2, Math.floor(width / cellWidth));
+		const newRows = Math.max(2, Math.floor(height / cellHeight));
+
+		terminal.resize(newCols, newRows);
+		ws?.send(new TextEncoder().encode('\x01' + JSON.stringify({ cols: newCols, rows: newRows })));
 	}
 
 	async function serialConnect() {
-		if (!vm.current.serial) return;
+		if (!vm.current.serial || !serialEl) return;
 
 		serialLoading = true;
 
-		const headerProto = toHex(
-			JSON.stringify({
-				hostname: storage.hostname || '',
-				token: storage.clusterToken || ''
-			})
-		);
+		await initGhostty();
+		if (destroyed) return;
+
+		terminal?.dispose?.();
+		terminal = new GhosttyTerminal({
+			cursorBlink: true,
+			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+			fontSize: 14
+		});
+
+		terminal.open(serialEl);
 
 		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}`;
-
-		if (ws) {
-			try {
-				ws.close();
-			} catch {}
-			ws = null;
-		}
-
-		ws = new WebSocket(url, [headerProto]);
+		ws = new WebSocket(url, [
+			toHex(
+				JSON.stringify({
+					hostname: storage.hostname || '',
+					token: storage.clusterToken || ''
+				})
+			)
+		]);
 		ws.binaryType = 'arraybuffer';
 
-		ws.onopen = async () => {
+		ws.onopen = () => {
 			serialConnected = true;
-
-			const Fit = new (await XtermAddon.FitAddon()).FitAddon();
-			fitAddon = Fit;
-			terminal?.loadAddon(Fit);
-
-			fitAddon?.fit();
-			const dims = fitAddon?.proposeDimensions();
-			ws?.send(
-				new TextEncoder().encode('\x01' + JSON.stringify({ rows: dims?.rows, cols: dims?.cols }))
-			);
-
 			serialLoading = false;
 
-			fitSoon();
+			const rect = serialEl!.getBoundingClientRect();
+			lastWidth = rect.width;
+			lastHeight = rect.height;
+			resizeTerminal(rect.width, rect.height);
 
-			if (ro) {
-				ro.disconnect();
-				ro = null;
-			}
-			if (serialEl) {
-				ro = new ResizeObserver(() => {
-					fitAddon?.fit();
-					if (ws) {
-						const d = fitAddon?.proposeDimensions();
-						ws.send(
-							new TextEncoder().encode('\x01' + JSON.stringify({ rows: d?.rows, cols: d?.cols }))
-						);
-					}
-				});
-				ro.observe(serialEl);
-			}
+			ro?.disconnect();
+			ro = new ResizeObserver((entries) => {
+				const { width, height } = entries[0].contentRect;
+				lastWidth = width;
+				lastHeight = height;
+				resizeTerminal(width, height);
+			});
+			ro.observe(serialEl!);
 		};
 
 		ws.onmessage = (e) => {
 			if (e.data instanceof ArrayBuffer) {
 				terminal?.write(new Uint8Array(e.data));
+			} else {
+				terminal?.write(e.data as string);
 			}
 		};
 
-		ws.onclose = () => {
+		terminal.onData((data: string) => {
+			ws?.send(new TextEncoder().encode('\x00' + data));
+		});
+
+		ws.onclose = ws.onerror = () => {
 			serialLoading = false;
 			serialConnected = false;
 		};
-
-		ws.onerror = () => {
-			serialLoading = false;
-			serialConnected = false;
-		};
 	}
 
-	function onTermLoad() {
-		serialConnect().then(fitSoon);
-	}
-
-	function onTermData(data: string) {
-		ws?.send(new TextEncoder().encode('\x00' + data));
-	}
+	onMount(() => {
+		if (consoleType === 'serial' && vm.current.serial) {
+			tick().then(() => {
+				serialConnect();
+			});
+		}
+	});
 
 	onDestroy(() => {
-		try {
-			ws?.close();
-		} catch {}
-		ws = null;
-		if (ro) {
-			ro.disconnect();
-			ro = null;
-		}
-		fitAddon = null;
+		destroyed = true;
+		ws?.close();
+		terminal?.dispose?.();
+		ro?.disconnect();
 	});
 </script>
 
@@ -304,6 +301,11 @@
 					onclick={() => {
 						if (serialConnected) {
 							sendKill();
+							ws?.close();
+							ws = null;
+							terminal?.dispose?.();
+							terminal = null;
+							serialConnected = false;
 						} else {
 							serialConnect();
 						}
@@ -336,14 +338,14 @@
 				{/if}
 			</div>
 		{:else if consoleType === 'serial' && vm.current.serial}
-			<div bind:this={serialEl} class="relative flex min-h-0 flex-1 flex-col">
-				<Xterm
-					bind:terminal
-					options={termOptions}
-					onLoad={onTermLoad}
-					onData={onTermData}
-					class="h-full w-full"
+			<div class="relative flex min-h-0 flex-1 flex-col">
+				<div
+					bind:this={serialEl}
+					class="h-full w-full bg-black"
+					tabindex="0"
+					style="outline: none;"
 				/>
+
 				{#if serialLoading}
 					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
 						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>

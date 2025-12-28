@@ -5649,6 +5649,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr ""
 
@@ -6054,8 +6055,10 @@ msgstr ""
 #~ msgid "Auto resize"
 #~ msgstr ""
 
-#~ msgid "Invalid size format"
-#~ msgstr ""
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid size format"
+msgstr ""
 
 #~ msgid "Resize to {0}"
 #~ msgstr ""
@@ -6608,4 +6611,8 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to toggle Samba Server"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "Invalid RAM value"
 msgstr ""

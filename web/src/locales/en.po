@@ -5671,6 +5671,7 @@ msgstr "{0} Logs"
 #~ msgstr "Minimal Working Demo of a Resize-Aware Terminal"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, \"Courier New\", monospace"
 
@@ -6082,8 +6083,10 @@ msgstr "Volume size must match block size"
 #~ msgid "Auto resize"
 #~ msgstr "Auto resize"
 
-#~ msgid "Invalid size format"
-#~ msgstr "Invalid size format"
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid size format"
+msgstr "Invalid size format"
 
 #~ msgid "Resize to {0}"
 #~ msgstr "Resize to {0}"
@@ -6649,3 +6652,7 @@ msgstr "Samba Server {0}"
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to toggle Samba Server"
 msgstr "Failed to toggle Samba Server"
+
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "Invalid RAM value"
+msgstr "Invalid RAM value"

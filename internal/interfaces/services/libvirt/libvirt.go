@@ -96,7 +96,7 @@ type SimpleList struct {
 	RID     uint                `json:"rid"`
 	Name    string              `json:"name"`
 	State   libvirt.DomainState `json:"state"`
-	VNCPort uint                `json:"vnc_port"`
+	VNCPort uint                `json:"vncPort"`
 }
 
 type DomainStateReason string

@@ -8,8 +8,7 @@
 	import { DomainState, type SimpleVm } from '$lib/types/vm/vm';
 	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
 	import { storage } from '$lib';
-	import { resource } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, watch } from 'runed';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
@@ -60,14 +59,15 @@
 		}
 	);
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
 				simpleVMs.refetch();
 				simpleJails.refetch();
-			});
+			}
 		}
-	});
+	);
 
 	let children = $derived(
 		[
@@ -116,20 +116,25 @@
 		}
 	]);
 
-	$effect(() => {
-		if (reload.leftPanel) {
-			console.log('LeftPanel reload triggered');
-			simpleVMs.refetch();
-			simpleJails.refetch();
-			reload.leftPanel = false;
+	watch(
+		() => reload.leftPanel,
+		(value) => {
+			if (value) {
+				simpleVMs.refetch();
+				simpleJails.refetch();
+				reload.leftPanel = false;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (tree && tree.length > 0) {
-			initializeOpenCategories(tree);
+	watch(
+		() => tree.length,
+		(length) => {
+			if (length > 0) {
+				initializeOpenCategories(tree);
+			}
 		}
-	});
+	);
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">
