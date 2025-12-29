@@ -149,3 +149,50 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 
 	return nil
 }
+
+func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	if jail.AdditionalOptions != "" {
+		cfg = strings.Replace(
+			cfg,
+			"\n### These are user-defined additional options ###\n\n"+jail.AdditionalOptions+"\n",
+			"",
+			1,
+		)
+	}
+
+	if options != "" {
+		block := fmt.Sprintf(
+			"\n### These are user-defined additional options ###\n\n%s\n",
+			strings.TrimSpace(options),
+		)
+
+		cfg, err = s.AppendToConfig(ctId, cfg, block)
+		if err != nil {
+			return fmt.Errorf("failed_to_append_additional_options: %w", err)
+		}
+	}
+
+	if err := s.SaveJailConfig(ctId, cfg); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	if err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Update("additional_options", options).
+		Error; err != nil {
+		return fmt.Errorf("failed_to_update_additional_options_in_db: %w", err)
+	}
+
+	return nil
+}

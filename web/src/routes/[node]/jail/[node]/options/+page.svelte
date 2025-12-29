@@ -83,6 +83,14 @@
 					? jail.current.devfsRuleset.split('\n')[0] +
 						(jail.current.devfsRuleset.includes('\n') ? '…' : '')
 					: '—'
+			},
+			{
+				id: generateNanoId('additionalOptions'),
+				property: 'Additional Options',
+				value: jail?.current.additionalOptions
+					? jail.current.additionalOptions.split('\n')[0] +
+						(jail.current.additionalOptions.includes('\n') ? '…' : '')
+					: '—'
 			}
 		]
 	});
@@ -94,7 +102,8 @@
 	let properties = $state({
 		startOrder: { open: false },
 		fstab: { open: false },
-		devfsRules: { open: false }
+		devfsRules: { open: false },
+		additionalOptions: { open: false }
 	});
 
 	let reload = $state(false);
@@ -108,7 +117,7 @@
 	);
 </script>
 
-{#snippet button(type: 'startOrder' | 'fstab' | 'devfsRules', title: string)}
+{#snippet button(type: 'startOrder' | 'fstab' | 'devfsRules' | 'additionalOptions', title: string)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -133,6 +142,8 @@
 				{@render button('fstab', 'FSTab Entries')}
 			{:else if activeRow.property === 'DevFS Ruleset'}
 				{@render button('devfsRules', 'DevFS Ruleset')}
+			{:else if activeRow.property === 'Additional Options'}
+				{@render button('additionalOptions', 'Additional Options')}
 			{/if}
 		</div>
 	{/if}
@@ -161,6 +172,15 @@
 		bind:open={properties.devfsRules.open}
 		jail={jail.current}
 		type="devfsRules"
+		bind:reload
+	/>
+{/if}
+
+{#if properties.additionalOptions.open && jail.current}
+	<TextEdit
+		bind:open={properties.additionalOptions.open}
+		jail={jail.current}
+		type="additionalOptions"
 		bind:reload
 	/>
 {/if}

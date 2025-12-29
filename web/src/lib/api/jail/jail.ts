@@ -178,3 +178,12 @@ export async function modifyDevFSRules(ctId: number, devFSRules: string): Promis
 		devFSRules
 	});
 }
+
+export async function modifyAdditionalOptions(
+	ctId: number,
+	additionalOptions: string
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/additional-options/${ctId}`, APIResponseSchema, 'PUT', {
+		additionalOptions
+	});
+}

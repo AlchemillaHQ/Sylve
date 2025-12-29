@@ -85,7 +85,8 @@ export const JailSchema = SimpleJailSchema.extend({
 	stoppedAt: z.string().nullable(),
 	type: z.enum(['freebsd', 'linux']),
 	fstab: z.string(),
-	devfsRuleset: z.string()
+	devfsRuleset: z.string(),
+	additionalOptions: z.string()
 });
 
 export const JailStateSchema = z.object({

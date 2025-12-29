@@ -20,6 +20,10 @@ type ModifyDevFSRulesRequest struct {
 	DevFSRules *string `json:"devFSRules"`
 }
 
+type ModifyAdditionalOptionsRequest struct {
+	AdditionalOptions *string `json:"additionalOptions"`
+}
+
 // @Summary Modify Boot Order of a Jail
 // @Description Modify the Boot Order configuration of a jail
 // @Tags Jail
@@ -196,6 +200,65 @@ func ModifyDevFSRules(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "devfs_rules_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Additional Options of a Jail
+// @Description Modify the Additional Options configuration of a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyAdditionalOptionsRequest true "Modify Additional Options Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/additional-options/:rid [put]
+func ModifyAdditionalOptions(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyAdditionalOptionsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		additionalOptions := ""
+		if req.AdditionalOptions != nil {
+			additionalOptions = *req.AdditionalOptions
+		}
+
+		if err := jailService.ModifyAdditionalOptions(rid, additionalOptions); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "additional_options_modified",
 			Data:    nil,
 			Error:   "",
 		})

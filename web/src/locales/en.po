@@ -5440,6 +5440,10 @@ msgid "FStab Entries"
 msgstr "FStab Entries"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Additional Options"
 msgstr "Additional Options"
 
@@ -6731,3 +6735,7 @@ msgstr "DevFS Ruleset"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage the devfs ruleset for this jail"
 msgstr "Manage the devfs ruleset for this jail"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage additional options for this jail"
+msgstr "Manage additional options for this jail"

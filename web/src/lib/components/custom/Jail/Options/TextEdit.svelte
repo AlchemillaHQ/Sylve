@@ -3,13 +3,13 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { modifyDevFSRules, modifyFstab } from '$lib/api/jail/jail';
+	import { modifyAdditionalOptions, modifyDevFSRules, modifyFstab } from '$lib/api/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
-		type: 'fstab' | 'devfsRules';
+		type: 'fstab' | 'devfsRules' | 'additionalOptions';
 		jail: Jail;
 		reload: boolean;
 	}
@@ -29,6 +29,13 @@
 			description: 'Manage the devfs ruleset for this jail',
 			initial: jail.devfsRuleset || '',
 			saveFn: modifyDevFSRules
+		},
+		additionalOptions: {
+			icon: 'icon-[material-symbols--settings-outline]',
+			title: 'Additional Options',
+			description: 'Manage additional options for this jail',
+			initial: jail.additionalOptions || '',
+			saveFn: modifyAdditionalOptions
 		}
 	};
 
