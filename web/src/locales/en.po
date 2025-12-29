@@ -3165,7 +3165,11 @@ msgstr "User Data"
 msgid "Cloud Init Data"
 msgstr "Cloud Init Data"
 
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Metadata"
 msgstr "Metadata"
 
@@ -6745,3 +6749,15 @@ msgstr "Manage additional options for this jail"
 
 #~ msgid "Discord"
 #~ msgstr "Discord"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta and Env key-value pairs"
+msgstr "Meta and Env key-value pairs"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta (Key=Value per line)"
+msgstr "Meta (Key=Value per line)"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "ENV (Key=Value per line)"
+msgstr "ENV (Key=Value per line)"

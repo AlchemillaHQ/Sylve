@@ -344,6 +344,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
 		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
 		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
+		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
 	}
 
 	utilities := api.Group("/utilities")

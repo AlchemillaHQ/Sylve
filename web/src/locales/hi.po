@@ -3159,7 +3159,11 @@ msgstr "उपयोगकर्ता डेटा"
 msgid "Cloud Init Data"
 msgstr "क्लाउड इनिट डेटा"
 
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Metadata"
 msgstr "मेटाडेटा"
 
@@ -6705,3 +6709,15 @@ msgstr ""
 
 #~ msgid "Discord"
 #~ msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta and Env key-value pairs"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta (Key=Value per line)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "ENV (Key=Value per line)"
+msgstr ""

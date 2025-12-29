@@ -31,18 +31,6 @@
 		}
 	);
 
-	const jState = resource(
-		() => `jail-${data.ctId}-state`,
-		async (key, prevKey, { signal }) => {
-			const jail = await getJailById(data.ctId, 'ctid');
-			updateCache(key, jail);
-			return jail;
-		},
-		{
-			initialValue: data.jail
-		}
-	);
-
 	let table = $derived({
 		columns: [
 			{ title: 'Property', field: 'property' },
@@ -91,6 +79,22 @@
 					? jail.current.additionalOptions.split('\n')[0] +
 						(jail.current.additionalOptions.includes('\n') ? '…' : '')
 					: '—'
+			},
+			{
+				id: generateNanoId('metadata'),
+				property: 'Metadata',
+				value: (() => {
+					const meta = jail?.current.metadataMeta;
+					const env = jail?.current.metadataEnv;
+
+					if (!meta && !env) return '—';
+
+					const preview = (v: string) => v.split('\n')[0] + (v.includes('\n') ? '…' : '');
+
+					return [meta && `meta: ${preview(meta)}`, env && `env: ${preview(env)}`]
+						.filter(Boolean)
+						.join(' | ');
+				})()
 			}
 		]
 	});
@@ -103,7 +107,8 @@
 		startOrder: { open: false },
 		fstab: { open: false },
 		devfsRules: { open: false },
-		additionalOptions: { open: false }
+		additionalOptions: { open: false },
+		metadata: { open: false }
 	});
 
 	let reload = $state(false);
@@ -117,7 +122,10 @@
 	);
 </script>
 
-{#snippet button(type: 'startOrder' | 'fstab' | 'devfsRules' | 'additionalOptions', title: string)}
+{#snippet button(
+	type: 'startOrder' | 'fstab' | 'devfsRules' | 'additionalOptions' | 'metadata',
+	title: string
+)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -144,6 +152,8 @@
 				{@render button('devfsRules', 'DevFS Ruleset')}
 			{:else if activeRow.property === 'Additional Options'}
 				{@render button('additionalOptions', 'Additional Options')}
+			{:else if activeRow.property === 'Metadata'}
+				{@render button('metadata', 'Metadata')}
 			{/if}
 		</div>
 	{/if}
@@ -183,4 +193,8 @@
 		type="additionalOptions"
 		bind:reload
 	/>
+{/if}
+
+{#if properties.metadata.open && jail.current}
+	<TextEdit bind:open={properties.metadata.open} jail={jail.current} type="metadata" bind:reload />
 {/if}

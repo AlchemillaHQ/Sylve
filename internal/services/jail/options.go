@@ -196,3 +196,66 @@ func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
 
 	return nil
 }
+
+func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	lines := utils.SplitLines(cfg)
+	newLines := make([]string, 0, len(lines))
+
+	var metaFound, envFound bool
+
+	for _, line := range lines {
+		switch {
+		case strings.Contains(line, "meta ="):
+			if meta != "" {
+				newLines = append(newLines, fmt.Sprintf(`	meta = "%s";`, strings.TrimSpace(meta)))
+				metaFound = true
+			}
+			continue
+		case strings.Contains(line, "env ="):
+			if env != "" {
+				newLines = append(newLines, fmt.Sprintf(`	env = "%s";`, strings.TrimSpace(env)))
+				envFound = true
+			}
+			continue
+		default:
+			newLines = append(newLines, line)
+		}
+	}
+
+	cfg = strings.Join(newLines, "\n")
+
+	if meta != "" && !metaFound {
+		cfg, err = s.AppendToConfig(ctId, cfg, fmt.Sprintf(`	meta = "%s";`, strings.TrimSpace(meta)))
+		if err != nil {
+			return fmt.Errorf("failed_to_append_meta: %w", err)
+		}
+	}
+
+	if env != "" && !envFound {
+		cfg, err = s.AppendToConfig(ctId, cfg, fmt.Sprintf(`	env = "%s";`, strings.TrimSpace(env)))
+		if err != nil {
+			return fmt.Errorf("failed_to_append_env: %w", err)
+		}
+	}
+
+	if err := s.SaveJailConfig(ctId, cfg); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	if err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Updates(map[string]interface{}{
+			"metadata_meta": meta,
+			"metadata_env":  env,
+		}).Error; err != nil {
+		return fmt.Errorf("failed_to_update_metadata_in_db: %w", err)
+	}
+
+	return nil
+}

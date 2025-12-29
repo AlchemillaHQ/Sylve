@@ -187,3 +187,14 @@ export async function modifyAdditionalOptions(
 		additionalOptions
 	});
 }
+
+export async function modifyMetadata(
+	ctId: number,
+	metadata: string,
+	env: string
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/metadata/${ctId}`, APIResponseSchema, 'PUT', {
+		metadata,
+		env
+	});
+}
