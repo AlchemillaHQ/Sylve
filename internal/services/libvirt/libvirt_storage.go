@@ -52,14 +52,15 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 	var datasets []*gzfs.Dataset
 
 	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
-		if storage.Type == vmModels.VMStorageTypeRaw {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
 			datasets, err = s.GZFS.ZFS.ListByType(
 				ctx,
 				gzfs.DatasetTypeFilesystem,
 				false,
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
 			)
-		} else if storage.Type == vmModels.VMStorageTypeZVol {
+		case vmModels.VMStorageTypeZVol:
 			datasets, err = s.GZFS.ZFS.ListByType(
 				ctx,
 				gzfs.DatasetTypeVolume,
@@ -285,22 +286,24 @@ func (s *Service) SyncVMDisks(rid uint) error {
 		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_create_cloud_init_iso")
 	}
 
-	cloudInitISOPath, err := s.GetCloudInitISOPath(vm.RID)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("vm: sync_vm_disks: failed_to_get_cloud_init_iso_path")
-	} else if cloudInitISOPath != "" {
-		for currentIndex < 30 && used[currentIndex] {
-			currentIndex++
+	if vm.CloudInitData != "" {
+		cloudInitISOPath, err := s.GetCloudInitISOPath(vm.RID)
+		if err != nil {
+			logger.L.Warn().Err(err).Msg("vm: sync_vm_disks: failed_to_get_cloud_init_iso_path")
+		} else if cloudInitISOPath != "" {
+			for currentIndex < 30 && used[currentIndex] {
+				currentIndex++
+			}
+
+			if currentIndex >= 30 {
+				return fmt.Errorf("no_free_indices_available_for_cloud_init_iso")
+			}
+
+			used[currentIndex] = true
+
+			argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s,ro", currentIndex, cloudInitISOPath)
+			argValues = append(argValues, argValue)
 		}
-
-		if currentIndex >= 30 {
-			return fmt.Errorf("no_free_indices_available_for_cloud_init_iso")
-		}
-
-		used[currentIndex] = true
-
-		argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s,ro", currentIndex, cloudInitISOPath)
-		argValues = append(argValues, argValue)
 	}
 
 	for _, val := range argValues {
@@ -547,8 +550,8 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		datasets, err := s.GZFS.ZFS.ListByType(
 			ctx,
 			gzfs.DatasetTypeVolume,
-			false,
-			fmt.Sprintf("%s/sylve/virtual-machines/%d", req.Pool, vm.RID),
+			true,
+			req.Pool,
 		)
 
 		if err != nil {
@@ -568,11 +571,9 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		}
 
 		var sourcePool string
-		if found != nil {
-			parts := strings.SplitN(found.Name, "/", 2)
-			if len(parts) > 0 {
-				sourcePool = parts[0]
-			}
+		parts := strings.SplitN(found.Name, "/", 2)
+		if len(parts) > 0 {
+			sourcePool = parts[0]
 		}
 
 		var volSize int64

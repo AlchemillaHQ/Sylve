@@ -11,19 +11,20 @@
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
-	import type { Dataset } from '$lib/types/zfs/dataset';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
-	import { resource, useInterval } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import { storage } from '$lib/index';
 
 	interface Data {
 		vms: VM[];
 		domain: VMDomain;
-		datasets: Dataset[];
+		filesystems: Dataset[];
+		volumes: Dataset[];
 		pools: Zpool[];
 		downloads: Download[];
 		rid: string;
@@ -71,15 +72,21 @@
 	);
 
 	const datasets = resource(
-		() => 'dataset-list',
+		() => 'zfs-filesystems-volumes',
 		async (key) => {
-			const result = await getDatasets();
+			const results = await Promise.all([
+				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
+				getDatasets(GZFSDatasetTypeSchema.enum.VOLUME)
+			]);
+
+			const result = [...results[0], ...results[1]];
 			updateCache(key, result);
+
 			return result;
 		},
 		{
 			lazy: true,
-			initialValue: data.datasets
+			initialValue: [...data.filesystems, ...data.volumes]
 		}
 	);
 
@@ -96,27 +103,13 @@
 		}
 	);
 
-	useInterval(() => 1000, {
-		callback: () => {
-			if (storage.visible) {
-				vms.refetch();
-				domain.refetch();
-				pools.refetch();
-				datasets.refetch();
-				downloads.refetch();
-			}
-		}
-	});
-
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
-				vms.refetch();
-				domain.refetch();
-				pools.refetch();
-				datasets.refetch();
-				downloads.refetch();
-			});
+	watch([() => storage.visible, () => reload], ([visible], [reload]) => {
+		if (visible || reload) {
+			vms.refetch();
+			domain.refetch();
+			pools.refetch();
+			datasets.refetch();
+			downloads.refetch();
 		}
 	});
 
@@ -144,6 +137,7 @@
 	};
 
 	let properties = $state(options);
+	let reload = $state(false);
 </script>
 
 {#snippet button(type: string)}
@@ -223,6 +217,7 @@
 	actions={{
 		onConfirm: async () => {
 			let response = await storageDetach(Number(data.rid), properties.detach.id as number);
+			reload = true;
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach storage', {
@@ -254,6 +249,7 @@
 		vms={vms.current}
 		pools={pools.current}
 		tableData={null}
+		bind:reload
 	/>
 {/if}
 
@@ -267,15 +263,6 @@
 		vms={vms.current}
 		pools={pools.current}
 		{tableData}
+		bind:reload
 	/>
 {/if}
-
-<!-- <Storage
-	bind:open={properties.edit.open}
-    storage={}
-	datasets={datasets.current}
-	downloads={downloads.current}
-	{vm}
-	vms={vms.current}
-	pools={pools.current}
-/> -->

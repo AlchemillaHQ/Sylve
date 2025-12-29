@@ -173,46 +173,42 @@ func (s *Service) BulkDeleteDataset(ctx context.Context, guids []string) error {
 
 func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {
 	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).Where("dataset = ?", guid).
-		Count(&count).Error; err != nil {
+
+	if err := s.DB.
+		Model(&vmModels.Storage{}).
+		Joins("JOIN vm_storage_datasets d ON d.id = vm_storages.dataset_id").
+		Where("d.guid = ?", guid).
+		Count(&count).Error; err != nil || count == 0 {
 		return false
 	}
 
-	if count > 0 {
-		if failEarly {
-			return true
-		}
-
-		var storage vmModels.Storage
-
-		if err := s.DB.Model(&vmModels.Storage{}).Where("dataset = ?", guid).
-			First(&storage).Error; err != nil {
-			return false
-		}
-
-		if storage.VMID > 0 {
-			var vm vmModels.VM
-			if err := s.DB.Model(&vmModels.VM{}).Where("id = ?", storage.VMID).
-				First(&vm).Error; err != nil {
-				return false
-			}
-
-			domain, err := s.Libvirt.GetLvDomain(vm.RID)
-			if err != nil {
-				return false
-			}
-
-			if domain != nil {
-				if domain.Status == "Running" || domain.Status == "Paused" {
-					return true
-				} else {
-					return false
-				}
-			}
-		}
+	if failEarly {
+		return true
 	}
 
-	return false
+	var storage vmModels.Storage
+	if err := s.DB.
+		Joins("JOIN vm_storage_datasets d ON d.id = vm_storages.dataset_id").
+		Where("d.guid = ?", guid).
+		First(&storage).Error; err != nil {
+		return false
+	}
+
+	if storage.VMID == 0 {
+		return false
+	}
+
+	var vm vmModels.VM
+	if err := s.DB.First(&vm, storage.VMID).Error; err != nil {
+		return false
+	}
+
+	domain, err := s.Libvirt.GetLvDomain(vm.RID)
+	if err != nil || domain == nil {
+		return false
+	}
+
+	return domain.Status == "Running" || domain.Status == "Paused"
 }
 
 func (s *Service) RefreshDatasets(

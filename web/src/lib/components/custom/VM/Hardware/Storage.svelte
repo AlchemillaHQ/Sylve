@@ -7,7 +7,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM } from '$lib/types/vm/vm';
-	import type { Dataset } from '$lib/types/zfs/dataset';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
 	import humanFormat from 'human-format';
@@ -27,6 +27,7 @@
 		pools: Zpool[];
 		storageId: number | null;
 		tableData: { rows: Row[]; columns: Column[] } | null;
+		reload: boolean;
 	}
 
 	let {
@@ -37,7 +38,8 @@
 		vms,
 		pools,
 		storageId,
-		tableData
+		tableData,
+		reload = $bindable()
 	}: Props = $props();
 	let storages = $derived.by(() => vm.storages || []);
 
@@ -209,6 +211,8 @@
 				Number(properties.bootOrder)
 			);
 
+			reload = true;
+
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to import disk', {
@@ -244,6 +248,8 @@
 				properties.pool,
 				Number(properties.bootOrder)
 			);
+
+			reload = true;
 
 			if (response.error) {
 				handleAPIError(response);
@@ -308,6 +314,8 @@
 			editProperties.emulation,
 			Number(editProperties.bootOrder)
 		);
+
+		reload = true;
 
 		if (response.error) {
 			handleAPIError(response);
@@ -447,7 +455,8 @@
 							data={datasets
 								.filter((dataset) => {
 									return (
-										dataset.type === 'volume' && !usedDatasets.some((used) => used === dataset.guid)
+										dataset.type === GZFSDatasetTypeSchema.enum.VOLUME &&
+										!usedDatasets.some((used) => used === dataset.guid)
 									);
 								})
 								.map((dataset) => ({

@@ -809,9 +809,11 @@ msgid "ZFS Snapshot"
 msgstr "ZFS स्नैपशॉट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Start"
 msgstr "VM - प्रारंभ करें"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Stop"
 msgstr "VM - रोकें"
