@@ -43,6 +43,14 @@ func DeleteFile(path string) error {
 	return nil
 }
 
+func DeleteFileIfExists(path string) error {
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
@@ -536,4 +544,95 @@ func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
 
 func FlashImageToDisk(source, dest string) error {
 	return FlashImageToDiskCtx(context.Background(), source, dest)
+}
+
+func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+
+	defer os.Remove(tmp)
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func AtomicAppendFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+
+	var existing []byte
+	if b, err := os.ReadFile(path); err == nil {
+		existing = b
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+
+	defer os.Remove(tmp)
+
+	if _, err := f.Write(existing); err != nil {
+		f.Close()
+		return err
+	}
+
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		if _, err := f.Write([]byte("\n")); err != nil {
+			f.Close()
+			return err
+		}
+	}
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+
+	return nil
 }

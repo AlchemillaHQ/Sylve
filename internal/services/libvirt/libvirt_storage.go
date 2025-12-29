@@ -792,9 +792,10 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 
 	req.BootOrder = &bootOrder
 
-	if req.AttachType == libvirtServiceInterfaces.StorageAttachTypeImport {
+	switch req.AttachType {
+	case libvirtServiceInterfaces.StorageAttachTypeImport:
 		return s.StorageImport(req, vm, ctx)
-	} else if req.AttachType == libvirtServiceInterfaces.StorageAttachTypeNew {
+	case libvirtServiceInterfaces.StorageAttachTypeNew:
 		return s.StorageNew(req, vm, ctx)
 	}
 

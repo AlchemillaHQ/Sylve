@@ -32,9 +32,9 @@
 	>
 		<div class="flex items-center space-x-2">
 			{#if mode.current === 'dark'}
-				<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+				<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
 			{:else}
-				<img src="/logo/black.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+				<img src="/logo/black.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
 			{/if}
 			<!-- @wc-ignore -->
 			<p class="font-normal tracking-[.45em]">SYLVE</p>
@@ -51,7 +51,7 @@
 			<!-- mobile view -->
 			<nav class="flex flex-col text-lg font-medium">
 				<div class="mt-4 flex items-center space-x-2">
-					<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+					<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
 					<!-- @wc-ignore -->
 					<p class="font-normal tracking-[.45em]">SYLVE</p>
 				</div>
@@ -78,47 +78,51 @@
 				{/if}
 			</Button>
 
-			<Button
-				class="relative h-6"
-				size="sm"
-				onclick={() => {
-					properties.createVM.open = true;
-					properties.createVM.minimize = false;
-				}}
-			>
-				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
-					<span>Create VM</span>
-				</div>
+			{#if storage.enabledServices?.includes('virtualization')}
+				<Button
+					class="relative h-6"
+					size="sm"
+					onclick={() => {
+						properties.createVM.open = true;
+						properties.createVM.minimize = false;
+					}}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
+						<span>Create VM</span>
+					</div>
 
-				{#if properties.createVM.minimize}
-					<span
-						class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
-						title="VM creation form minimized"
-					></span>
-				{/if}
-			</Button>
+					{#if properties.createVM.minimize}
+						<span
+							class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+							title="VM creation form minimized"
+						></span>
+					{/if}
+				</Button>
+			{/if}
 
-			<Button
-				class="relative h-6"
-				size="sm"
-				onclick={() => {
-					properties.createJail.open = true;
-					properties.createJail.minimize = false;
-				}}
-			>
-				<div class="flex items-center gap-2">
-					<span class="icon-[hugeicons--prison] h-4 w-4"></span>
-					<span>Create Jail</span>
-				</div>
+			{#if storage.enabledServices?.includes('jails')}
+				<Button
+					class="relative h-6"
+					size="sm"
+					onclick={() => {
+						properties.createJail.open = true;
+						properties.createJail.minimize = false;
+					}}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[hugeicons--prison] h-4 w-4"></span>
+						<span>Create Jail</span>
+					</div>
 
-				{#if properties.createJail.minimize}
-					<span
-						class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
-						title="Jail creation form minimized"
-					></span>
-				{/if}
-			</Button>
+					{#if properties.createJail.minimize}
+						<span
+							class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+							title="Jail creation form minimized"
+						></span>
+					{/if}
+				</Button>
+			{/if}
 
 			{#if properties.createVM.open || properties.createVM.minimize}
 				<CreateVM

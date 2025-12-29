@@ -56,6 +56,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr ""
 
@@ -294,17 +295,24 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 msgid "Virtualization"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 msgid "Jails"
 msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
-#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -451,6 +459,10 @@ msgstr ""
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -584,6 +596,10 @@ msgstr ""
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1053,6 +1069,8 @@ msgstr ""
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -1438,6 +1456,7 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -1451,6 +1470,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/LayerBrush.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3092,12 +3112,16 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Enabled"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3197,20 +3221,25 @@ msgstr ""
 msgid "Shutdown Wait Time"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Start Order"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Failed to modify start order"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Modified start order"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Start at Boot"
 msgstr ""
@@ -3267,6 +3296,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -3287,6 +3318,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -3568,11 +3601,12 @@ msgid "Enable resource limits to edit"
 msgstr ""
 
 #. placeholder {0}: title
-#. placeholder {0}: activeRow?.property
+#. placeholder {0}: title
 #. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -4235,6 +4269,9 @@ msgstr ""
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -5864,9 +5901,8 @@ msgstr ""
 #~ msgid "Create - Jail"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail - Create"
-msgstr ""
+#~ msgid "Jail - Create"
+#~ msgstr ""
 
 #~ msgid "Convert RAW to QCOW2 Automatically"
 #~ msgstr ""
@@ -6335,22 +6371,15 @@ msgstr ""
 #~ msgstr ""
 
 #. placeholder {0}: activeRow?.property
-#. placeholder {0}: activeRow?.property
-#. placeholder {0}: activeRow?.property
-#: src/routes/[node]/settings/system/+page.svelte
-#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Toggle {0}"
 msgstr ""
 
-#. placeholder {0}: modals.dhcpServer.enabled ? 'enabled' : 'disabled'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "DHCP Server {0}"
-msgstr ""
+#~ msgid "DHCP Server {0}"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Failed to toggle DHCP Server"
-msgstr ""
+#~ msgid "Failed to toggle DHCP Server"
+#~ msgstr ""
 
 #~ msgid "You need to reboot the system after initialization"
 #~ msgstr ""
@@ -6533,16 +6562,12 @@ msgstr ""
 #~ msgid "You are about to {0} the WOL Server"
 #~ msgstr ""
 
-#. placeholder {0}: modals.wolServer.enabled ? 'enabled' : 'disabled'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "WOL Server {0}"
-msgstr ""
+#~ msgid "WOL Server {0}"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Failed to toggle WOL Server"
-msgstr ""
+#~ msgid "Failed to toggle WOL Server"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -6555,15 +6580,11 @@ msgstr ""
 #~ msgid "You are about to {0} the DHCP Server, this may affect network configurations, you might have to restart Sylve and or the host system for changes to take effect"
 #~ msgstr ""
 
-#. placeholder {0}: modals.dhcpServer.enabled ? 'disable' : 'enable'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "You are about to {0} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect"
-msgstr ""
+#~ msgid "You are about to {0} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr ""
 
-#. placeholder {0}: modals.wolServer.enabled ? 'disable' : 'enable'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "You are about to {0} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect"
-msgstr ""
+#~ msgid "You are about to {0} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr ""
 
 #: src/routes/+error.svelte
 msgid "Not Found"
@@ -6593,20 +6614,74 @@ msgstr ""
 #~ msgid "Centered text"
 #~ msgstr ""
 
-#. placeholder {0}: modals.sambaServer.enabled ? 'disable' : 'enable'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "You are about to {0} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect"
-msgstr ""
+#~ msgid "You are about to {0} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr ""
 
-#. placeholder {0}: modals.sambaServer.enabled ? 'enabled' : 'disabled'
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Samba Server {0}"
-msgstr ""
+#~ msgid "Samba Server {0}"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Failed to toggle Samba Server"
-msgstr ""
+#~ msgid "Failed to toggle Samba Server"
+#~ msgstr ""
 
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 msgid "Invalid RAM value"
+msgstr ""
+
+#~ msgid "You are about to {0} Virtualization, you will have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr ""
+
+#~ msgid "Virtualization {0}"
+#~ msgstr ""
+
+#~ msgid "Failed to toggle Virtualization"
+#~ msgstr ""
+
+#. placeholder {0}: enabled ? 'disable' : 'enable'
+#. placeholder {1}: displayName
+#. placeholder {2}: networkWarning
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
+msgstr ""
+
+#. placeholder {0}: serviceName
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "FSTab Entries"
+msgstr ""
+
+#~ msgid "Fstab Entries"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the fstab entries for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Failed to save changes"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Changes saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "DevFS Ruleset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the devfs ruleset for this jail"
 msgstr ""

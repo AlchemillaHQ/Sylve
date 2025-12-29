@@ -306,7 +306,7 @@
 							modalState.isDeleteOpen = true;
 						}}
 						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
 						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 						{'Delete'}

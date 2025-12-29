@@ -5,7 +5,7 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { type BasicSettings } from '$lib/types/system/settings';
+	import { type AvailableService, type BasicSettings } from '$lib/types/system/settings';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
@@ -124,6 +124,16 @@
 				id: generateNanoId('samba-server'),
 				property: 'Samba Server',
 				value: basicSettings.current.services.includes('samba-server') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('virtualization'),
+				property: 'Virtualization',
+				value: basicSettings.current.services.includes('virtualization') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('jails'),
+				property: 'Jails',
+				value: basicSettings.current.services.includes('jails') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -149,6 +159,14 @@
 		sambaServer: {
 			open: false,
 			enabled: basicSettings.current.services.includes('samba-server')
+		},
+		virtualization: {
+			open: false,
+			enabled: basicSettings.current.services.includes('virtualization')
+		},
+		jails: {
+			open: false,
+			enabled: basicSettings.current.services.includes('jails')
 		}
 	});
 
@@ -195,6 +213,11 @@
 	}
 </script>
 
+{#snippet toggleButton(icon: string, label: string)}
+	<span class="{icon} mr-1 h-4 w-4"></span>
+	<span>{label}</span>
+{/snippet}
+
 {#snippet buttons()}
 	{#if activeRows?.length === 1}
 		<Button
@@ -210,26 +233,60 @@
 					modals.wolServer.open = true;
 				} else if (activeRow?.property === 'Samba Server') {
 					modals.sambaServer.open = true;
+				} else if (activeRow?.property === 'Virtualization') {
+					modals.virtualization.open = true;
+				} else if (activeRow?.property === 'Jails') {
+					modals.jails.open = true;
 				}
 			}}
 		>
 			<div class="flex items-center">
-				{#if activeRow?.property == 'ZFS Pools'}
-					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit {activeRow?.property}</span>
-				{:else if activeRow?.property == 'DHCP Server'}
-					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
-					<span>Toggle {activeRow?.property}</span>
-				{:else if activeRow?.property == 'WoL Server'}
-					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
-					<span>Toggle {activeRow?.property}</span>
-				{:else if activeRow?.property == 'Samba Server'}
-					<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
-					<span>Toggle {activeRow?.property}</span>
+				{#if activeRow?.property === 'ZFS Pools'}
+					{@render toggleButton('icon-[mdi--pencil]', `Edit ${activeRow.property}`)}
+				{:else}
+					{@render toggleButton('icon-[ri--toggle-line]', `Toggle ${activeRow?.property}`)}
 				{/if}
 			</div>
 		</Button>
 	{/if}
+{/snippet}
+
+{#snippet serviceToggleDialog(
+	serviceName: string,
+	serviceKey: 'dhcpServer' | 'wolServer' | 'sambaServer' | 'virtualization' | 'jails',
+	enabled: boolean
+)}
+	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
+	{@const hasNetworkWarning = serviceName === 'DHCP Server'}
+	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
+	{@const networkWarning = hasNetworkWarning ? 'this may affect network configurations, ' : ''}
+
+	<AlertDialog
+		bind:open={modals[serviceKey].open}
+		names={{ parent: serviceName, element: '' }}
+		customTitle={`You are about to ${enabled ? 'disable' : 'enable'} ${displayName}, ${networkWarning}you will have to restart Sylve and or the host system for changes to take effect`}
+		actions={{
+			onConfirm: async () => {
+				const toggled = await toggleService(serviceKey as AvailableService);
+				reload = true;
+
+				if (toggled.status === 'success') {
+					modals[serviceKey].enabled = !modals[serviceKey].enabled;
+					toast.success(
+						`${serviceName} ${modals[serviceKey].enabled ? 'enabled' : 'disabled'}`,
+						toastOpts
+					);
+					modals[serviceKey].open = false;
+				} else {
+					handleAPIError(toggled);
+					toast.error(`Failed to toggle ${serviceName}`, toastOpts);
+				}
+			},
+			onCancel: () => {
+				modals[serviceKey].open = false;
+			}
+		}}
+	/>
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
@@ -259,84 +316,8 @@
 	options={poolOptions}
 />
 
-<AlertDialog
-	bind:open={modals.dhcpServer.open}
-	names={{ parent: 'DHCP Server', element: '' }}
-	customTitle={`You are about to ${
-		modals.dhcpServer.enabled ? 'disable' : 'enable'
-	} the DHCP Server, this may affect network configurations, you will have to restart Sylve and or the host system for changes to take effect`}
-	actions={{
-		onConfirm: async () => {
-			const toggled = await toggleService('dhcp-server');
-			reload = true;
-
-			if (toggled.status === 'success') {
-				modals.dhcpServer.enabled = !modals.dhcpServer.enabled;
-				toast.success(
-					`DHCP Server ${modals.dhcpServer.enabled ? 'enabled' : 'disabled'}`,
-					toastOpts
-				);
-				modals.dhcpServer.open = false;
-			} else {
-				handleAPIError(toggled);
-				toast.error('Failed to toggle DHCP Server', toastOpts);
-			}
-		},
-		onCancel: () => {
-			modals.dhcpServer.open = false;
-		}
-	}}
-/>
-
-<AlertDialog
-	bind:open={modals.wolServer.open}
-	names={{ parent: 'WoL Server', element: '' }}
-	customTitle={`You are about to ${modals.wolServer.enabled ? 'disable' : 'enable'} the WoL Server, you will have to restart Sylve and or the host system for changes to take effect`}
-	actions={{
-		onConfirm: async () => {
-			const toggled = await toggleService('wol-server');
-			reload = true;
-
-			if (toggled.status === 'success') {
-				modals.wolServer.enabled = !modals.wolServer.enabled;
-				toast.success(`WOL Server ${modals.wolServer.enabled ? 'enabled' : 'disabled'}`, toastOpts);
-				modals.wolServer.open = false;
-			} else {
-				handleAPIError(toggled);
-				toast.error('Failed to toggle WOL Server', toastOpts);
-			}
-		},
-		onCancel: () => {
-			modals.wolServer.open = false;
-		}
-	}}
-/>
-
-<AlertDialog
-	bind:open={modals.sambaServer.open}
-	names={{ parent: 'Samba Server', element: '' }}
-	customTitle={`You are about to ${
-		modals.sambaServer.enabled ? 'disable' : 'enable'
-	} the Samba Server, you will have to restart Sylve and or the host system for changes to take effect`}
-	actions={{
-		onConfirm: async () => {
-			const toggled = await toggleService('samba-server');
-			reload = true;
-
-			if (toggled.status === 'success') {
-				modals.sambaServer.enabled = !modals.sambaServer.enabled;
-				toast.success(
-					`Samba Server ${modals.sambaServer.enabled ? 'enabled' : 'disabled'}`,
-					toastOpts
-				);
-				modals.sambaServer.open = false;
-			} else {
-				handleAPIError(toggled);
-				toast.error('Failed to toggle Samba Server', toastOpts);
-			}
-		},
-		onCancel: () => {
-			modals.sambaServer.open = false;
-		}
-	}}
-/>
+{@render serviceToggleDialog('DHCP Server', 'dhcpServer', modals.dhcpServer.enabled)}
+{@render serviceToggleDialog('WoL Server', 'wolServer', modals.wolServer.enabled)}
+{@render serviceToggleDialog('Samba Server', 'sambaServer', modals.sambaServer.enabled)}
+{@render serviceToggleDialog('Virtualization', 'virtualization', modals.virtualization.enabled)}
+{@render serviceToggleDialog('Jails', 'jails', modals.jails.enabled)}

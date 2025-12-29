@@ -72,7 +72,7 @@
 		'/api/jail/network/inheritance': 'Jail - Network Inherit',
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
-		'/api/jail': 'Jail - Create'
+		'/api/jail': 'Jail'
 	});
 
 	let records = $derived.by(() => {

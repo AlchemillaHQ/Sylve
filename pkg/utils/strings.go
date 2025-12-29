@@ -890,3 +890,7 @@ func IsValidZFSPoolName(name string) bool {
 
 	return true
 }
+
+func SplitLines(s string) []string {
+	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+}

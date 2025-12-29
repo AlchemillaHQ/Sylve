@@ -397,7 +397,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 		}
 		defer f.Close()
 
-		rule := fmt.Sprintf("\n[devfsrules_jails_sylve_%d]\n", ctid)
+		rule := fmt.Sprintf("\n[devfsrules_jails_sylve_%d=%d]\n", ctid, ctid)
 		rule += data.DevFSRuleset + "\n"
 		if _, err := f.WriteString(rule); err != nil {
 			return "", fmt.Errorf("failed_to_write_devfs_rules: %w", err)

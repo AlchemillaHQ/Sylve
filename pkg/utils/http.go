@@ -345,3 +345,12 @@ func HTTPGetJSONRead(url string, headers map[string]string) ([]byte, int, error)
 	}
 	return data, resp.StatusCode, nil
 }
+
+func ParamUint(c *gin.Context, name string) (uint, error) {
+	param := c.Param(name)
+	value, err := strconv.ParseUint(param, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s parameter: %w", name, err)
+	}
+	return uint(value), nil
+}

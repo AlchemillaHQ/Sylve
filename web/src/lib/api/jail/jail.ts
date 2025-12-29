@@ -155,3 +155,26 @@ export async function setNetworkInheritance(
 		ipv6
 	});
 }
+
+export async function modifyBootOrder(
+	ctId: number,
+	startAtBoot: boolean,
+	bootOrder: number
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/boot-order/${ctId}`, APIResponseSchema, 'PUT', {
+		startAtBoot,
+		bootOrder
+	});
+}
+
+export async function modifyFstab(ctId: number, fstab: string): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/fstab/${ctId}`, APIResponseSchema, 'PUT', {
+		fstab
+	});
+}
+
+export async function modifyDevFSRules(ctId: number, devFSRules: string): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/devfs-rules/${ctId}`, APIResponseSchema, 'PUT', {
+		devFSRules
+	});
+}

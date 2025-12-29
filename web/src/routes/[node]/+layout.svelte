@@ -67,7 +67,8 @@
 					icon: 'ix--hardware-cabinet',
 					href: `/${node}/jail/${jailName}/hardware`
 				},
-				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` }
+				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` },
+				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
 		}
 

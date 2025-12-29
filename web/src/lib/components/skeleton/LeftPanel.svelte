@@ -10,6 +10,7 @@
 	import { storage } from '$lib';
 	import { resource, watch } from 'runed';
 	import type { SimpleJail } from '$lib/types/jail/jail';
+	import { sameElements } from '$lib/utils/arr';
 
 	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
 	let node = $derived(storage.hostname || 'default-node');
@@ -38,6 +39,10 @@
 	const simpleVMs = resource(
 		() => 'simple-vm-list',
 		async (key, prevKey, { signal }) => {
+			if (!storage.enabledServices?.includes('virtualization')) {
+				return [];
+			}
+
 			const result = await getSimpleVMs();
 			updateCache(key, result);
 			return result;
@@ -50,6 +55,10 @@
 	const simpleJails = resource(
 		() => 'simple-jail-list',
 		async (key, prevKey, { signal }) => {
+			if (!storage.enabledServices?.includes('jails')) {
+				return [];
+			}
+
 			const result = await getSimpleJails();
 			updateCache(key, result);
 			return result;
@@ -66,6 +75,18 @@
 				simpleVMs.refetch();
 				simpleJails.refetch();
 			}
+		}
+	);
+
+	watch(
+		() => storage.enabledServices,
+		(enabledServices, prevEnabledServices) => {
+			if (sameElements(enabledServices || [], prevEnabledServices || [])) {
+				return;
+			}
+
+			simpleVMs.refetch();
+			simpleJails.refetch();
 		}
 	);
 

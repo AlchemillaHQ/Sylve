@@ -339,6 +339,10 @@ func RegisterRoutes(r *gin.Engine,
 
 		jail.POST("/network", jailHandlers.AddNetwork(jailService))
 		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
+
+		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
+		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
 	}
 
 	utilities := api.Group("/utilities")

@@ -15,6 +15,7 @@
 	import { toast } from 'svelte-sonner';
 	import { addNetwork } from '$lib/api/jail/jail';
 	import { parseNumberOrZero } from '$lib/utils/string';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -85,22 +86,32 @@
 		comboBoxes.ipv6Gw.value = '';
 	}
 
-	$effect(() => {
-		if (properties.dhcp) {
-			comboBoxes.ipv4.value = '';
-			comboBoxes.ipv4Gw.value = '';
-			properties.ipv4 = '';
-			properties.ipv4gw = '';
+	watch(
+		() => properties.dhcp,
+		(dhcp) => {
+			if (dhcp) {
+				comboBoxes.ipv4.value = '';
+				comboBoxes.ipv4Gw.value = '';
+				properties.ipv4 = '';
+				properties.ipv4gw = '';
+			}
 		}
+	);
 
-		if (properties.slaac) {
-			comboBoxes.ipv6.value = '';
-			comboBoxes.ipv6Gw.value = '';
-			properties.ipv6 = '';
-			properties.ipv6gw = '';
+	watch(
+		() => properties.slaac,
+		(slaac) => {
+			if (slaac) {
+				comboBoxes.ipv6.value = '';
+				comboBoxes.ipv6Gw.value = '';
+				properties.ipv6 = '';
+				properties.ipv6gw = '';
+			}
 		}
+	);
 
-		if (properties.dhcp && properties.slaac) {
+	watch([() => properties.dhcp, () => properties.slaac], ([dhcp, slaac]) => {
+		if (dhcp && slaac) {
 			properties.defaultGateway = false;
 		}
 	});
@@ -158,7 +169,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="min-w-[600px]">
+	<Dialog.Content class="min-w-150">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
@@ -284,28 +295,30 @@
 				/>
 			</div>
 
-			<div class="mt-2 flex items-center space-x-4">
-				<CustomCheckbox
-					bind:checked={properties.dhcp}
-					label="DHCP"
-					classes="flex items-center gap-2"
-				/>
-
-				<CustomCheckbox
-					bind:checked={properties.slaac}
-					label="SLAAC"
-					classes="flex items-center gap-2"
-				/>
-
-				{#if !(properties.dhcp && properties.slaac)}
+			{#if jail.type === 'freebsd'}
+				<div class="mt-2 flex items-center space-x-4">
 					<CustomCheckbox
-						bind:checked={properties.defaultGateway}
-						label="Default Gateway"
+						bind:checked={properties.dhcp}
+						label="DHCP"
 						classes="flex items-center gap-2"
-						disabled={hasDefaultGateway}
 					/>
-				{/if}
-			</div>
+
+					<CustomCheckbox
+						bind:checked={properties.slaac}
+						label="SLAAC"
+						classes="flex items-center gap-2"
+					/>
+
+					{#if !(properties.dhcp && properties.slaac)}
+						<CustomCheckbox
+							bind:checked={properties.defaultGateway}
+							label="Default Gateway"
+							classes="flex items-center gap-2"
+							disabled={hasDefaultGateway}
+						/>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 
 		<Dialog.Footer class="flex justify-end">
