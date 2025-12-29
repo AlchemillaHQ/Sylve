@@ -6,16 +6,6 @@ github.com/DataDog/zstd v1.5.2/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwS
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
 github.com/Sereal/Sereal/Go/sereal v0.0.0-20231009093132-b9187f1a92c6/go.mod h1:JwrycNnC8+sZPDyzM3MQ86LvaGzSpfxg885KOOwFRW4=
-github.com/alchemillahq/gzfs v0.0.0-20251217233336-e892a49f88e6 h1:OTcV/GtnV6zGoY17eI4k/9PqAR5t1XpFgYRYNTUqOE0=
-github.com/alchemillahq/gzfs v0.0.0-20251217233336-e892a49f88e6/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
-github.com/alchemillahq/gzfs v0.0.0-20251218030005-9f4596cce274 h1:kQVswwrU/+AKyCN2YIJx+COBRhr7N6SFcr0BKFSQvKg=
-github.com/alchemillahq/gzfs v0.0.0-20251218030005-9f4596cce274/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
-github.com/alchemillahq/gzfs v0.0.0-20251218113540-9029f6d14597 h1:OHC2s0XAzn3D1XFJjo2TjsFQTxMGpjr6fWRkYMlP22I=
-github.com/alchemillahq/gzfs v0.0.0-20251218113540-9029f6d14597/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
-github.com/alchemillahq/gzfs v0.0.0-20251218194316-ddee2f07682e h1:F+9bRxqDwOdm/hpfvdnxegUZ3UHMuNEJsueOs2xUXnc=
-github.com/alchemillahq/gzfs v0.0.0-20251218194316-ddee2f07682e/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
-github.com/alchemillahq/gzfs v0.0.0-20251218194929-4e343e3f90ee h1:ygR6Buru9qpdWB+q9mduXMZF41VPQ9ETkEqEqNmfhdM=
-github.com/alchemillahq/gzfs v0.0.0-20251218194929-4e343e3f90ee/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alchemillahq/gzfs v0.0.0-20251218224237-bdd6e3de62bd h1:chLOzZ38FdNTlcQAVgZ3ApJ5Ey9J1Y7HHsy3PhQK9BE=
 github.com/alchemillahq/gzfs v0.0.0-20251218224237-bdd6e3de62bd/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
@@ -88,8 +78,6 @@ github.com/cenkalti/log v1.0.0/go.mod h1:Kbz0XnbnTBtcJN8yeRuPW/9SNtP1tx5SwjU+357
 github.com/cenkalti/rain/v2 v2.2.2 h1:bNCrmbDZTj/1DsQQV/Oxc5lIr2Mf95mBx+6wgTboCmk=
 github.com/cenkalti/rain/v2 v2.2.2/go.mod h1:uWznFz9DcQAj8iOxgmgFBpdq+cKlTmQZ5kkVMDb1X70=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/cespare/xxhash/v2 v2.1.2 h1:YRXhKfTDauu4ajMg1TPgFO5jnlC2HCbmLXMcTG5cbYE=
-github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/chihaya/chihaya v1.0.1-0.20230615203145-2f794401e44a h1:gzoeXLDj2vvcAbzCrRmcLWqYru8Lwj+2yjw7XntIbl0=
@@ -111,6 +99,8 @@ github.com/dgraph-io/badger/v4 v4.9.0/go.mod h1:5/MEx97uzdPUHR4KtkNt8asfI2T4JiEi
 github.com/dgraph-io/ristretto/v2 v2.2.0 h1:bkY3XzJcXoMuELV8F+vS8kzNgicwQFAaGINAEJdWGOM=
 github.com/dgraph-io/ristretto/v2 v2.2.0/go.mod h1:RZrm63UmcBAaYWC1DotLYBmTvgkrs0+XhBd7Npn7/zI=
 github.com/dgryski/go-ddmin v0.0.0-20210904190556-96a6d69f1034/go.mod h1:zz4KxBkcXUWKjIcrc+uphJ1gPh/t18ymGm3PmQ+VGTk=
+github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da h1:aIftn67I1fkbMa512G+w+Pxci9hJPB8oMnkcP3iZF38=
+github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da/go.mod h1:SqUrOPUnsFjfmXRMNPybcSiG0BgUW2AuFH8PAnS2iTw=
 github.com/digitalocean/go-libvirt v0.0.0-20251117222411-bae19ce5cb72 h1:W8ClOhm9e84fffYdGb15JAwWrc7OrhdZXXJs5QMFxo8=
 github.com/digitalocean/go-libvirt v0.0.0-20251117222411-bae19ce5cb72/go.mod h1:Ig7PbdDk86d2GpI9ZbmyPMvplbjIK13b5jpRd1qur+w=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
