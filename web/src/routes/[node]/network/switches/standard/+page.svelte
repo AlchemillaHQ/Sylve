@@ -20,7 +20,7 @@
 	import { generateTableData } from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
 	import { isValidSwitchName } from '$lib/utils/string';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -31,54 +31,42 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['network-interfaces'],
-				queryFn: async () => {
-					return await getInterfaces();
-				},
-				keepPreviousData: true,
-				initialData: data.interfaces,
-				onSuccess: (data: Iface[]) => {
-					updateCache('network-interfaces', data);
-				}
-			},
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: data.switches,
-				onSuccess: (data: SwitchList) => {
-					updateCache('network-switches', data);
-				}
-			},
-			{
-				queryKey: ['network-objects'],
-				queryFn: async () => {
-					return await getNetworkObjects();
-				},
-				keepPreviousData: true,
-				initialData: data.objects,
-				onSuccess: (data: NetworkObject[]) => {
-					updateCache('network-objects', data);
-				}
-			}
-		]
-	}));
+	const networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.interfaces }
+	);
 
-	const interfaces = $derived(results[0].data);
-	const switches = $derived(results[1].data);
-	const networkObjects = $derived(results[2].data);
+	const switches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
+	const networkObjects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const res = await getNetworkObjects();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.objects }
+	);
 
 	let query: string = $state('');
 	let useablePorts = $derived.by(() => {
 		let available: string[] = [];
 
-		if (interfaces) {
-			for (const iface of interfaces) {
+		if (networkInterfaces.current) {
+			for (const iface of networkInterfaces.current) {
 				available.push(iface.name);
 			}
 		}
@@ -153,11 +141,19 @@
 		}
 	});
 
-	function reloadData() {
-		results.forEach((result) => {
-			result.refetch();
-		});
-	}
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				networkInterfaces.refetch();
+				switches.refetch();
+				networkObjects.refetch();
+				reload = false;
+			}
+		}
+	);
 
 	async function confirmAction() {
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
@@ -199,7 +195,7 @@
 				!activeModal.dhcp &&
 				activeModal.defaultRoute
 			) {
-				const existingSwitch = switches?.standard?.find(
+				const existingSwitch = switches.current?.standard?.find(
 					(sw) =>
 						sw.defaultRoute && !(confirmModals.active === 'editSwitch' && sw.id === activeRow?.id)
 				);
@@ -234,7 +230,7 @@
 					activeModal.defaultRoute
 				);
 
-				reloadData();
+				reload = true;
 
 				if (isAPIResponse(created) && created.status === 'success') {
 					toast.success(`Switch ${confirmModals.newSwitch.name} created`, {
@@ -267,7 +263,7 @@
 					activeModal.defaultRoute
 				);
 
-				reloadData();
+				reload = true;
 
 				if (isAPIResponse(edited) && edited.status === 'success') {
 					toast.success(`Switch ${confirmModals.editSwitch.name} updated`, {
@@ -284,7 +280,7 @@
 		}
 	}
 
-	let tableData = $derived(generateTableData(switches));
+	let tableData = $derived(generateTableData(switches.current));
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
@@ -548,7 +544,7 @@
 					bind:open={comboBoxes.ipv4.open}
 					label={'IPv4 Network'}
 					bind:value={comboBoxes.ipv4.value}
-					data={generateNetworkOptions(networkObjects, 'IPv4')}
+					data={generateNetworkOptions(networkObjects.current, 'IPv4')}
 					classes="flex-1 space-y-1"
 					placeholder="Select IPv4 Network"
 					width="w-3/4"
@@ -560,7 +556,7 @@
 					bind:open={comboBoxes.ipv4Gw.open}
 					label={'IPv4 Gateway'}
 					bind:value={comboBoxes.ipv4Gw.value}
-					data={generateIPOptions(networkObjects, 'IPv4')}
+					data={generateIPOptions(networkObjects.current, 'IPv4')}
 					classes="flex-1 space-y-1"
 					placeholder="Select IPv4 Gateway"
 					width="w-3/4"
@@ -574,7 +570,7 @@
 					bind:open={comboBoxes.ipv6.open}
 					label={'IPv6 Network'}
 					bind:value={comboBoxes.ipv6.value}
-					data={generateNetworkOptions(networkObjects, 'IPv6')}
+					data={generateNetworkOptions(networkObjects.current, 'IPv6')}
 					classes="flex-1 space-y-1"
 					placeholder="Select IPv6 Network"
 					width="w-3/4"
@@ -589,7 +585,7 @@
 					bind:open={comboBoxes.ipv6Gw.open}
 					label={'IPv6 Gateway'}
 					bind:value={comboBoxes.ipv6Gw.value}
-					data={generateIPOptions(networkObjects, 'IPv6')}
+					data={generateIPOptions(networkObjects.current, 'IPv6')}
 					classes="flex-1 space-y-1"
 					placeholder="Select IPv6 Gateway"
 					width="w-3/4"
@@ -682,7 +678,7 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteSwitch(confirmModals.deleteSwitch.id);
-			reloadData();
+			reload = true;
 			if (isAPIResponse(result) && result.status === 'success') {
 				toast.success(`Switch ${confirmModals.deleteSwitch.name} deleted`, {
 					position: 'bottom-center'

@@ -12,7 +12,7 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -23,58 +23,49 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['network-interfaces'],
-				queryFn: async () => {
-					return await getInterfaces();
-				},
-				keepPreviousData: true,
-				initialData: data.interfaces,
-				onSuccess: (data: Iface[]) => {
-					updateCache('network-interfaces', data);
-				}
-			},
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: data.switches,
-				onSuccess: (data: SwitchList) => {
-					updateCache('network-switches', data);
-				}
-			},
-			{
-				queryKey: ['dhcp-config'],
-				queryFn: async () => {
-					return await getDHCPConfig();
-				},
-				keepPreviousData: true,
-				initialData: data.dhcpConfig,
-				onSuccess: (data: DHCPConfig) => {
-					updateCache('dhcp-config', data);
-				}
-			}
-		]
-	}));
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.interfaces }
+	);
 
-	let networkInterfaces = $derived(results[0].data as Iface[]);
-	let networkSwitches = $derived(results[1].data as SwitchList);
-	let dhcpConfig = $derived(results[2].data as DHCPConfig);
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
+	let dhcpConfig = resource(
+		() => 'dhcp-config',
+		async (key, prevKey, { signal }) => {
+			const res = await getDHCPConfig();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpConfig }
+	);
+
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				networkInterfaces.refetch();
+				networkSwitches.refetch();
+				dhcpConfig.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let query = $state('');
 	let tableData = $derived.by(() => {
@@ -122,24 +113,24 @@
 			{
 				id: generateNanoId('id'),
 				property: 'Domain',
-				value: dhcpConfig.domain
+				value: dhcpConfig.current.domain
 			},
 			{
 				id: generateNanoId('expandHosts'),
 				property: 'Expand Hosts',
-				value: dhcpConfig.expandHosts ? 'Yes' : 'No'
+				value: dhcpConfig.current.expandHosts ? 'Yes' : 'No'
 			},
 			{
 				id: generateNanoId('dnsServers'),
 				property: 'DNS Servers',
-				value: dhcpConfig.dnsServers
+				value: dhcpConfig.current.dnsServers
 			},
 			{
 				id: generateNanoId('switches'),
 				property: 'Switches',
 				value: {
-					standard: dhcpConfig.standardSwitches,
-					manual: dhcpConfig.manualSwitches
+					standard: dhcpConfig.current.standardSwitches,
+					manual: dhcpConfig.current.manualSwitches
 				}
 			}
 		];
@@ -173,4 +164,10 @@
 	/>
 </div>
 
-<Config bind:open={modalOpen} bind:reload {networkInterfaces} {networkSwitches} {dhcpConfig} />
+<Config
+	bind:open={modalOpen}
+	bind:reload
+	networkInterfaces={networkInterfaces.current}
+	networkSwitches={networkSwitches.current}
+	dhcpConfig={dhcpConfig.current}
+/>

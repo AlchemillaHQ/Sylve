@@ -1,27 +1,19 @@
 <script lang="ts">
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getJails, newJail } from '$lib/api/jail/jail';
+	import { getSimpleJails, newJail } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getDownloads } from '$lib/api/utilities/downloader';
-	import { getVMs } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { CreateData, Jail } from '$lib/types/jail/jail';
-	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
-	import type { Download } from '$lib/types/utilities/downloader';
-	import type { VM } from '$lib/types/vm/vm';
-	import type { Dataset } from '$lib/types/zfs/dataset';
+	import type { CreateData } from '$lib/types/jail/jail';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextId } from '$lib/utils/vm/vm';
-	import { createQueries } from '@tanstack/svelte-query';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
@@ -44,73 +36,59 @@
 		{ value: 'advanced', label: 'Advanced' }
 	];
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['zfs-datasets'],
-				queryFn: async () => {
-					return await getDatasets();
-				},
-				keepPreviousData: true,
-				initialData: [] as Dataset[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['downloads'],
-				queryFn: async () => {
-					return await getDownloads();
-				},
-				keepPreviousData: true,
-				initialData: [] as Download[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: {} as SwitchList,
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				keepPreviousData: true,
-				initialData: [] as VM[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['network-objects'],
-				queryFn: async () => {
-					return await getNetworkObjects();
-				},
-				keepPreviousData: true,
-				initialData: [] as NetworkObject[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['jail-list'],
-				queryFn: async () => {
-					return await getJails();
-				},
-				keepPreviousData: true,
-				initialData: [] as Jail[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['cluster-nodes'],
-				queryFn: async () => {
-					return await getNodes();
-				},
-				keepPreviousData: true,
-				initialData: [] as ClusterNode[],
-				refetchOnMount: 'always'
-			}
-		]
-	}));
+	let downloads = resource(
+		() => 'downloads',
+		async (key, prevKey, { signal }) => {
+			const downloads = await getDownloads();
+			updateCache(key, downloads);
+			return downloads;
+		}
+	);
+
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const switches = await getSwitches();
+			updateCache(key, switches);
+			return switches;
+		}
+	);
+
+	let networkObjects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const objects = await getNetworkObjects();
+			updateCache(key, objects);
+			return objects;
+		}
+	);
+
+	let vms = resource(
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
+			const vms = await getSimpleVMs();
+			updateCache(key, vms);
+			return vms;
+		}
+	);
+
+	let jails = resource(
+		() => 'simple-jail-list',
+		async (key, prevKey, { signal }) => {
+			const jails = await getSimpleJails();
+			updateCache(key, jails);
+			return jails;
+		}
+	);
+
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const nodes = await getNodes();
+			updateCache(key, nodes);
+			return nodes;
+		}
+	);
 
 	let pools = resource(
 		() => 'pool-list',
@@ -123,22 +101,23 @@
 
 	let refetch = $state(false);
 
-	$effect(() => {
-		if (refetch) {
-			results.forEach((result) => {
-				result.refetch();
-			});
+	watch(
+		() => refetch,
+		(value) => {
+			if (value) {
+				downloads.refetch();
+				networkSwitches.refetch();
+				networkObjects.refetch();
+				vms.refetch();
+				jails.refetch();
+				nodes.refetch();
+				pools.refetch();
 
-			refetch = false;
+				refetch = false;
+			}
 		}
-	});
+	);
 
-	let downloads = $derived(results[1].data as Download[]);
-	let networkSwitches: SwitchList = $derived(results[2].data as SwitchList);
-	let networkObjects = $derived(results[4].data as NetworkObject[]);
-	let vms: VM[] = $derived(results[3].data as VM[]);
-	let jails: Jail[] = $derived(results[5].data as Jail[]);
-	let nodes: ClusterNode[] = $derived(results[6].data as ClusterNode[]);
 	let creating: boolean = $state(false);
 
 	let options = {
@@ -192,12 +171,22 @@
 		}
 	};
 
-	let nextId = $derived(getNextId(vms, jails));
+	let nextId = $derived.by(() => {
+		if (vms.current && jails.current) {
+			return getNextId(vms.current, jails.current);
+		}
+
+		return 137;
+	});
+
 	let modal: CreateData = $state(options);
 
-	$effect(() => {
-		modal.id = nextId;
-	});
+	watch(
+		() => nextId,
+		(id) => {
+			modal.id = id;
+		}
+	);
 
 	function resetModal() {
 		modal = options;
@@ -303,7 +292,7 @@
 				{#each tabs as { value, label }}
 					<Tabs.Content {value}>
 						<div>
-							{#if value === 'basic'}
+							{#if value === 'basic' && nodes.current}
 								<Basic
 									bind:name={modal.name}
 									bind:id={modal.id}
@@ -311,19 +300,18 @@
 									bind:description={modal.description}
 									bind:refetch
 									bind:node={modal.node}
-									{nodes}
+									nodes={nodes.current}
 								/>
-							{:else if value === 'storage' && pools.current}
+							{:else if value === 'storage' && pools.current && downloads.current && jails.current}
 								<Storage
-									{downloads}
-									{jails}
+									downloads={downloads.current}
 									pools={pools.current}
 									ctId={modal.id}
 									bind:pool={modal.storage.pool}
 									bind:base={modal.storage.base}
 									bind:fstab={modal.storage.fstab}
 								/>
-							{:else if value === 'network'}
+							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
 								<Network
 									bind:switch={modal.network.switch}
 									bind:mac={modal.network.mac}
@@ -335,8 +323,8 @@
 									bind:ipv6Gateway={modal.network.ipv6Gateway}
 									bind:dhcp={modal.network.dhcp}
 									bind:slaac={modal.network.slaac}
-									switches={networkSwitches}
-									{networkObjects}
+									switches={networkSwitches.current}
+									networkObjects={networkObjects.current}
 								/>
 							{:else if value === 'hardware'}
 								<Hardware

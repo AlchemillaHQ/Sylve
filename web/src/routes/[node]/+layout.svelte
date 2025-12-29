@@ -128,11 +128,12 @@
 						label: 'ZFS',
 						icon: 'file-icons--openzfs',
 						children: [
-							{
-								label: 'Dashboard',
-								icon: 'mdi--monitor-dashboard',
-								href: `/${node}/storage/zfs/dashboard`
-							},
+							// Turned off dashboard for now
+							// {
+							// 	label: 'Dashboard',
+							// 	icon: 'mdi--monitor-dashboard',
+							// 	href: `/${node}/storage/zfs/dashboard`
+							// },
 							{ label: 'Pools', icon: 'bi--hdd-stack-fill', href: `/${node}/storage/zfs/pools` },
 							{
 								label: 'Datasets',
@@ -272,7 +273,7 @@
 		<Button
 			size="sm"
 			class="h-6"
-			onclick={() => (window.location.href = 'https://github.com/AlchemillaHQ/Sylve')}
+			onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
 		>
 			<div class="flex items-center">
 				<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>

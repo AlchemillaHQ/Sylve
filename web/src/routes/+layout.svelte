@@ -13,7 +13,6 @@
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { ModeWatcher } from 'mode-watcher';
 	import { onMount } from 'svelte';
 	import '../locales/main.loader.svelte.js';
@@ -26,14 +25,6 @@
 	import { page } from '$app/state';
 	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings.js';
-
-	const queryClient = new QueryClient({
-		defaultOptions: {
-			queries: {
-				enabled: browser
-			}
-		}
-	});
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -183,27 +174,25 @@
 {#if loading.throbber}
 	<Throbber />
 {:else if storage.hostname && storage.token && !loading.throbber && !loading.login}
-	<QueryClientProvider client={queryClient}>
-		{#if initialized === null}
-			<Throbber />
-		{:else if initialized === false || rebooted === false}
-			{#if !initialized}
-				<div transition:fade|global={{ duration: 400 }}>
-					<Initialize bind:initialized />
-				</div>
-			{:else if !rebooted}
-				<div transition:fade|global={{ duration: 400 }}>
-					<Reboot />
-				</div>
-			{/if}
-		{:else}
+	{#if initialized === null}
+		<Throbber />
+	{:else if initialized === false || rebooted === false}
+		{#if !initialized}
 			<div transition:fade|global={{ duration: 400 }}>
-				<Shell>
-					{@render children()}
-				</Shell>
+				<Initialize bind:initialized />
+			</div>
+		{:else if !rebooted}
+			<div transition:fade|global={{ duration: 400 }}>
+				<Reboot />
 			</div>
 		{/if}
-	</QueryClientProvider>
+	{:else}
+		<div transition:fade|global={{ duration: 400 }}>
+			<Shell>
+				{@render children()}
+			</Shell>
+		</div>
+	{/if}
 {:else}
 	<div transition:fade|global={{ duration: 400 }}>
 		<Login onLogin={handleLogin} loading={loading.login} />

@@ -13,7 +13,8 @@
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import { createQuery } from '@tanstack/svelte-query';
+	import Icon from '@iconify/svelte';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -22,19 +23,28 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const results = createQuery(() => ({
-		queryKey: ['cluster-notes'],
-		queryFn: async () => {
+	let notes = resource(
+		() => 'cluster-notes',
+		async () => {
 			return (await getNotes()) as Note[];
 		},
-		refetchInterval: 1000,
-		keepPreviousData: true,
-		initialData: data.notes,
-		refetchOnMount: 'always'
-	}));
+		{
+			initialValue: data.notes
+		}
+	);
 
-	let notes: Note[] = $derived(results.data as Note[]);
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				notes.refetch();
+				reload = false;
+			}
+		}
+	);
+
 	let modalState = $state({
 		title: '',
 		content: '',
@@ -81,7 +91,7 @@
 			// }
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
-			results.refetch();
+			reload = true;
 			if (response.status === 'success') {
 				toast.success('Note created', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -97,7 +107,7 @@
 	}
 
 	function viewNote(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
+		const note = notes.current.find((note) => note.id === id);
 		if (note) {
 			modalState.title = note.title;
 			modalState.content = note.content;
@@ -107,7 +117,7 @@
 	}
 
 	function handleDelete(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
+		const note = notes.current.find((note) => note.id === id);
 		if (note) {
 			modalState.title = note.title;
 			modalState.content = note.content;
@@ -117,7 +127,7 @@
 	}
 
 	function handleBulkDelete(ids: number[]) {
-		const notesToDelete = notes.filter((note) => ids.includes(note.id));
+		const notesToDelete = notes.current.filter((note) => ids.includes(note.id));
 		if (notesToDelete.length > 0) {
 			modalState.title = `${notesToDelete.length} notes`;
 			modalState.isBulkDeleteOpen = true;
@@ -153,7 +163,7 @@
 		}
 	]);
 
-	let tableData = $derived(generateTableData(columns, notes));
+	let tableData = $derived(generateTableData(columns, notes.current));
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
 </script>
@@ -168,8 +178,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
-
+					<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
 					<span>View</span>
 				</div>
 			</Button>
@@ -183,7 +192,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -192,7 +201,7 @@
 		{#if type === 'edit-note'}
 			<Button
 				onclick={() => {
-					const note = notes.find((note) => activeRow && note.id === activeRow[0]?.id);
+					const note = notes.current.find((note) => activeRow && note.id === activeRow[0]?.id);
 					handleNote(note, true);
 				}}
 				size="sm"
@@ -200,7 +209,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
+					<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -219,7 +228,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
+					<Icon icon="material-symbols:delete-sweep" class="mr-1 h-4 w-4" />
 					<span>Bulk Delete</span>
 				</div>
 			</Button>
@@ -233,7 +242,7 @@
 
 		<Button onclick={() => handleNote()} size="sm" class="h-6  ">
 			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
 				<span>New</span>
 			</div>
 		</Button>
@@ -249,8 +258,7 @@
 			<Dialog.Header class="">
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<span class={`icon-[${modalState.isEditMode ? 'mdi:note-edit' : 'mdi:note'}] h-5 w-5`}
-						></span>
+						<Icon icon={modalState.isEditMode ? 'mdi:note-edit' : 'mdi:note'} class="h-5 w-5" />
 						<span>
 							{#if modalState.isEditMode}
 								{#if selectedId}
@@ -276,8 +284,7 @@
 								modalState.content = '';
 							}}
 						>
-							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-
+							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -291,8 +298,7 @@
 								modalState.content = '';
 							}}
 						>
-							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
-							></span>
+							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>
@@ -354,8 +360,7 @@
 			onConfirm: async () => {
 				const id = activeRow ? activeRow[0]?.id : null;
 				const result = await deleteNote(id as number);
-
-				results.refetch();
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Note deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);
@@ -381,7 +386,7 @@
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
 				const result = await deleteNote(ids[0]);
-				results.refetch();
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Notes deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);

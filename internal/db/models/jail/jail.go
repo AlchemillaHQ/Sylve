@@ -80,6 +80,14 @@ type JailStats struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 }
 
+func (j JailStats) GetID() uint {
+	return j.ID
+}
+
+func (j JailStats) GetCreatedAt() time.Time {
+	return j.CreatedAt
+}
+
 type Storage struct {
 	ID     uint   `gorm:"primaryKey" json:"id"`
 	JailID uint   `json:"jid" gorm:"column:jid;index"`

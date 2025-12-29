@@ -39,7 +39,7 @@ func TestGetInt64(t *testing.T) {
 	// vm.swap_idle_enabled does NOT exist on macOS
 	switch runtime.GOOS {
 	case "freebsd":
-		key = "vm.swap_idle_enabled"
+		key = "vm.kmem_zmax"
 	case "darwin":
 		key = "kern.maxfiles"
 	}

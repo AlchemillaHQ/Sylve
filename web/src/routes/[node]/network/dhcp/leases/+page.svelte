@@ -8,7 +8,6 @@
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { createQueries } from '@tanstack/svelte-query';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -19,6 +18,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { toast } from 'svelte-sonner';
+	import { resource, watch } from 'runed';
 
 	interface Data {
 		interfaces: Iface[];
@@ -31,94 +31,82 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['network-interfaces'],
-				queryFn: async () => {
-					return await getInterfaces();
-				},
-				keepPreviousData: true,
-				initialData: data.interfaces,
-				onSuccess: (data: Iface[]) => {
-					updateCache('network-interfaces', data);
-				}
-			},
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: data.switches,
-				onSuccess: (data: SwitchList) => {
-					updateCache('network-switches', data);
-				}
-			},
-			{
-				queryKey: ['dhcp-config'],
-				queryFn: async () => {
-					return await getDHCPConfig();
-				},
-				keepPreviousData: true,
-				initialData: data.dhcpConfig,
-				onSuccess: (data: DHCPConfig) => {
-					updateCache('dhcp-config', data);
-				}
-			},
-			{
-				queryKey: ['dhcp-ranges'],
-				queryFn: async () => {
-					return await getDHCPRanges();
-				},
-				keepPreviousData: true,
-				initialData: data.dhcpRanges,
-				onSuccess: (data: DHCPRange[]) => {
-					updateCache('dhcp-ranges', data);
-				}
-			},
-			{
-				queryKey: ['dhcp-leases'],
-				queryFn: async () => {
-					return await getLeases();
-				},
-				keepPreviousData: true,
-				initialData: data.dhcpLeases,
-				onSuccess: (data: Leases) => {
-					updateCache('dhcp-leases', data);
-				}
-			},
-			{
-				queryKey: ['network-objects'],
-				queryFn: async () => {
-					return await getNetworkObjects();
-				},
-				keepPreviousData: true,
-				initialData: data.networkObjects,
-				onSuccess: (data: NetworkObject[]) => {
-					updateCache('network-objects', data);
-				}
-			}
-		]
-	}));
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.interfaces }
+	);
 
-	let networkInterfaces = $derived(results[0].data as Iface[]);
-	let networkSwitches = $derived(results[1].data as SwitchList);
-	let dhcpConfig = $derived(results[2].data as DHCPConfig);
-	let dhcpRanges = $derived(results[3].data as DHCPRange[]);
-	let dhcpLeases = $derived(results[4].data as Leases);
-	let networkObjects = $derived(results[5].data as NetworkObject[]);
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
+	let dhcpConfig = resource(
+		() => 'dhcp-config',
+		async (key, prevKey, { signal }) => {
+			const res = await getDHCPConfig();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpConfig }
+	);
+
+	let dhcpRanges = resource(
+		() => 'dhcp-ranges',
+		async (key, prevKey, { signal }) => {
+			const res = await getDHCPRanges();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpRanges }
+	);
+
+	let dhcpLeases = resource(
+		() => 'dhcp-leases',
+		async (key, prevKey, { signal }) => {
+			const res = await getLeases();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpLeases }
+	);
+
+	let networkObjects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const res = await getNetworkObjects();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.networkObjects }
+	);
+
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				networkInterfaces.refetch();
+				networkSwitches.refetch();
+				dhcpConfig.refetch();
+				dhcpRanges.refetch();
+				dhcpLeases.refetch();
+				networkObjects.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let modals = $state({
 		create: {
@@ -204,7 +192,7 @@
 		];
 		const rows: Row[] = [];
 
-		for (const entry of dhcpLeases.db) {
+		for (const entry of dhcpLeases.current.db) {
 			const range = `${entry.dhcpRange?.startIp} - ${entry.dhcpRange?.endIp}`;
 			const sw = entry.dhcpRange?.standardSwitchId
 				? entry.dhcpRange?.standardSwitch?.name
@@ -229,8 +217,8 @@
 			});
 		}
 
-		for (const entry of dhcpLeases.file) {
-			const found = dhcpLeases.db.find((e) => {
+		for (const entry of dhcpLeases.current.file) {
+			const found = dhcpLeases.current.db.find((e) => {
 				const ips = e.ipObject?.entries ? e.ipObject?.entries.map((i) => i.value) : [];
 				return e.hostname === entry.hostname && ips.includes(entry.ip);
 			});
@@ -327,13 +315,13 @@
 
 {#if modals.create.open}
 	<CreateOrEdit
-		{networkInterfaces}
-		{networkSwitches}
-		{dhcpConfig}
-		{dhcpRanges}
-		{dhcpLeases}
+		networkInterfaces={networkInterfaces.current}
+		networkSwitches={networkSwitches.current}
+		dhcpConfig={dhcpConfig.current}
+		dhcpRanges={dhcpRanges.current}
+		dhcpLeases={dhcpLeases.current}
 		bind:reload
-		{networkObjects}
+		networkObjects={networkObjects.current}
 		bind:open={modals.create.open}
 		selectedLease={null}
 	/>
@@ -341,13 +329,13 @@
 
 {#if modals.edit.open}
 	<CreateOrEdit
-		{networkInterfaces}
-		{networkSwitches}
-		{dhcpConfig}
-		{dhcpRanges}
-		{dhcpLeases}
+		networkInterfaces={networkInterfaces.current}
+		networkSwitches={networkSwitches.current}
+		dhcpConfig={dhcpConfig.current}
+		dhcpRanges={dhcpRanges.current}
+		dhcpLeases={dhcpLeases.current}
 		bind:reload
-		{networkObjects}
+		networkObjects={networkObjects.current}
 		bind:open={modals.edit.open}
 		selectedLease={modals.edit.id}
 	/>

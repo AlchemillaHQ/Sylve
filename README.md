@@ -44,7 +44,7 @@ These only apply to the development version of Sylve, the production version wil
 
 # Runtime Requirements
 
-Sylve is designed to run on FreeBSD 14.3 or later, and it is recommended to use the latest version of FreeBSD for the best experience.
+Sylve is designed to run on FreeBSD 15.0 or later, and it is recommended to use the latest version of FreeBSD for the best experience.
 
 ## Dependencies
 
@@ -54,11 +54,11 @@ Running Sylve is pretty easy, but `sylve` depends on some packages that you can 
 | -------------- | ------------ | -------- | -------- | ------------------------------------------------ |
 | smartmontools  | 7.4_2        | No       | No       | Disk health monitoring                           |
 | tmux           | 3.2          | No       | No       | Terminal multiplexer, used for the (web) console |
-| libvirt        | 11.1.0       | No       | No       | Virtualization API, used for Bhyve               |
-| bhyve-firmware | 1.0_2        | No       | No       | Collection of Firmware for bhyve                 |
-| samba419       | 4.19.9_9     | No       | No       | SMB file sharing service                         |
-| jansson        | 2.14.1       | No       | No       | JSON library for C                               |
-| swtpm          | 0.10.1       | No       | No       | TPM emulator for VMs                             |
+| libvirt        | 11.7.0       | No       | Yes      | Virtualization API, used for Bhyve               |
+| bhyve-firmware | 1.0_2        | No       | Yes      | Collection of Firmware for bhyve                 |
+| samba4XX       | 4.XX         | No       | Yes      | SMB file sharing service                         |
+| swtpm          | 0.10.1       | No       | Yes      | TPM emulator for VMs                             |
+| jansson        | 2.14.1       | No       | No       | C library for JSON parsing                       |
 
 We also need to enable some services in order to run Sylve, you can drop these into `/etc/rc.conf` if you don't have it already:
 
@@ -66,15 +66,12 @@ We also need to enable some services in order to run Sylve, you can drop these i
 sysrc ntpd_enable="YES" # Optional
 sysrc ntpd_sync_on_start="YES" # Optional
 sysrc zfs_enable="YES"
-sysrc libvirtd_enable="YES"
-sysrc dnsmasq_enable="YES"
-sysrc rpcbind_enable="YES"
-sysrc nfs_server_enable="YES"
-sysrc mountd_enable="YES"
-sysrc samba_server_enable="YES"
+sysrc libvirtd_enable="YES" # Optional
+sysrc dnsmasq_enable="YES" # Optional
+sysrc samba_server_enable="YES" # Optional
 ```
 
-Enabling `rctl` is required. Do this by adding the following line to `/boot/loader.conf`:
+Enabling `rctl` is required if you're using Jails with Sylve. Do this by adding the following line to `/boot/loader.conf`:
 
 ```sh
 kern.racct.enable=1
@@ -91,7 +88,7 @@ kern.racct.enable=1
 Install required packages.
 
 ```sh
-pkg install git node20 npm-node20 go tmux libvirt bhyve-firmware smartmontools tmux samba419 jansson swtpm 
+pkg install git node22 npm-node22 go tmux libvirt bhyve-firmware smartmontools tmux samba422 jansson swtpm
 ```
 
 Clone the repo and build Sylve.
@@ -110,12 +107,13 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 ./sylve
 ```
 
-> In order to download an ISO go to:
-> Datacenter > Your Host > Utilities > Downloader > + NEW
+# Notes
 
-> [!IMPORTANT]
-> Bhyve does not support boot orders, so you cannot add installation media after creating the VM.
-> So make sure to add an installation media when creating a new VM.
+1. Bhyve doesn't support bootorders yet
+
+Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download 
+
+2. ARM64 support is still pending for Libvirt so the support is not there yet, for everything else it should just work out of the box.
 
 # Contributing
 

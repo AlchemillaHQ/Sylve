@@ -12,6 +12,8 @@ export async function load({ params }) {
 		cachedFetch(`vm-stats-${rid}`, async () => getStats(Number(rid), 'hourly'), cacheDuration)
 	]);
 
+	console.log('VM Summary Load:', { rid, vm, domain, stats });
+
 	return {
 		rid: Number(rid),
 		vm: vm,

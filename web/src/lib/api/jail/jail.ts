@@ -99,8 +99,8 @@ export async function getJailLogs(id: number): Promise<JailLogs> {
 	return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET');
 }
 
-export async function getStats(ctId: number, limit: number): Promise<JailStat[]> {
-	return await apiRequest(`/jail/stats/${ctId}/${limit}`, z.array(JailStatSchema), 'GET');
+export async function getStats(ctId: number, step: string): Promise<JailStat[]> {
+	return await apiRequest(`/jail/stats/${ctId}/${step}`, z.array(JailStatSchema), 'GET');
 }
 
 export async function addNetwork(

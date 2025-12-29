@@ -25,12 +25,9 @@
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
-	import { resource, useInterval, Debounced, IsDocumentVisible } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
 	import type { GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-	import LayerBrush from '$lib/components/custom/Charts/LayerBrush.svelte';
-	import EChart from '$lib/components/custom/Charts/EChartSample.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 
 	interface Data {
@@ -50,7 +47,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ lazy: true, initialValue: data.vm }
+		{ initialValue: data.vm }
 	);
 
 	const domain = resource(
@@ -60,7 +57,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ lazy: true, initialValue: data.domain }
+		{ initialValue: data.domain }
 	);
 
 	const stats = resource(
@@ -71,7 +68,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ lazy: true, initialValue: data.stats }
+		{ initialValue: data.stats }
 	);
 
 	const visible = new IsDocumentVisible();
@@ -86,15 +83,16 @@
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
 				vm.refetch();
 				domain.refetch();
 				stats.refetch();
-			});
+			}
 		}
-	});
+	);
 
 	let recentStat = $derived(
 		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
@@ -448,6 +446,17 @@
 					}))}
 					percentage={true}
 					color="one"
+					containerContentHeight="h-64"
+				/>
+
+				<LineBrush
+					title="Memory Usage"
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.memoryUsage)
+					}))}
+					percentage={true}
+					color="two"
 					containerContentHeight="h-64"
 				/>
 			</div>

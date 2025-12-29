@@ -13,9 +13,9 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { createQuery } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource } from 'runed';
 
 	interface Data {
 		cluster: ClusterDetails;
@@ -23,34 +23,33 @@
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
-	const results = createQuery(() => ({
-		queryKey: ['cluster-info'],
-		queryFn: async () => {
-			return await getDetails();
+
+	const datacenter = resource(
+		() => 'cluster-info',
+		async (key, prevKey, { signal }) => {
+			const res = await getDetails();
+			updateCache('cluster-info', res);
+			return res;
 		},
-		keepPreviousData: true,
-		initialData: data.cluster,
-		refetchOnMount: 'always',
-		onSuccess: (data: ClusterDetails) => {
-			updateCache('cluster-info', data);
-		}
-	}));
+		{ initialValue: data.cluster }
+	);
 
 	$effect(() => {
 		if (reload) {
-			results.refetch();
+			datacenter.refetch();
 			reload = false;
 		}
 	});
 
-	let dataCenter = $derived(results.data);
-	let canReset = $derived(dataCenter?.cluster.enabled === true);
+	let canReset = $derived(datacenter.current.cluster.enabled === true);
 	let canCreate = $derived(
-		dataCenter?.cluster.raftBootstrap === null && dataCenter?.cluster.enabled === false
+		datacenter.current.cluster.raftBootstrap === null &&
+			datacenter.current.cluster.enabled === false
 	);
 
 	let canJoin = $derived(
-		dataCenter?.cluster.raftBootstrap !== true && dataCenter?.cluster.enabled === false
+		datacenter.current.cluster.raftBootstrap !== true &&
+			datacenter.current.cluster.enabled === false
 	);
 
 	let modals = $state({
@@ -117,8 +116,8 @@
 			}
 		];
 
-		if (dataCenter?.nodes) {
-			for (const node of dataCenter.nodes) {
+		if (datacenter.current.nodes) {
+			for (const node of datacenter.current.nodes) {
 				rows.push({
 					id: node.id,
 					leader: node.isLeader,
@@ -199,7 +198,7 @@
 </div>
 
 <Create bind:open={modals.create.open} bind:reload />
-<JoinInformation bind:open={modals.view.open} cluster={dataCenter} />
+<JoinInformation bind:open={modals.view.open} cluster={datacenter.current} />
 <Join bind:open={modals.join.open} bind:reload />
 
 <AlertDialog

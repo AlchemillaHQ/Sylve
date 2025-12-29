@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -165,7 +166,7 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 }
 
 // @Summary Get Jail Statistics
-// @Description Retrieve statistics for a specific jail
+// @Description Retrieve statistics for a jail by CTID and GFS step
 // @Tags Jail
 // @Accept json
 // @Produce json
@@ -173,26 +174,23 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[[]jailModels.JailStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /jail/stats/:ctId/:limit [get]
+// @Router /jail/stats/:ctid/:step [get]
 func GetJailStats(jailService *jail.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctId := c.Param("ctId")
-		limit := c.Param("limit")
-		if ctId == "" || limit == "" {
+		ctId, _ := utils.ParamUint(c, "ctId")
+		step := c.Param("step")
+
+		if ctId == 0 || step == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "ctId and limit are required",
+				Error:   "ctid and step are required",
 			})
 			return
 		}
 
-		stats, err := jailService.GetJailUsage(
-			uint(utils.StringToUint64(ctId)),
-			int(utils.StringToUint64(limit)),
-		)
-
+		stats, err := jailService.GetJailUsage(ctId, db.GFSStep(step))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

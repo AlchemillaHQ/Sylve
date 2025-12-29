@@ -327,7 +327,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
-		jail.GET("/stats/:ctId/:limit", jailHandlers.GetJailStats(jailService))
+		jail.GET("/stats/:ctId/:step", jailHandlers.GetJailStats(jailService))
 		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
 
 		jail.POST("", jailHandlers.CreateJail(jailService))
@@ -406,17 +406,6 @@ func RegisterRoutes(r *gin.Engine,
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
-	}
-
-	clusterStorages := cluster.Group("/storage")
-	{
-		clusterStorages.GET("", clusterHandlers.Storages(clusterService))
-
-		clusterStorages.POST("/s3", clusterHandlers.CreateS3Storage(clusterService))
-		clusterStorages.DELETE("/s3/:id", clusterHandlers.DeleteS3Storage(clusterService))
-
-		clusterStorages.POST("/directory", clusterHandlers.CreateDirStorage(clusterService))
-		clusterStorages.DELETE("/directory/:id", clusterHandlers.DeleteDirStorage(clusterService))
 	}
 
 	vnc := api.Group("/vnc")

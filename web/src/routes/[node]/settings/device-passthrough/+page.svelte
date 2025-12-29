@@ -8,7 +8,7 @@
 	import { type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
 	import { updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/system/pci';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -17,47 +17,44 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['pci-devices'],
-				queryFn: async () => {
-					return await getPCIDevices();
-				},
-				keepPreviousData: true,
-				initialData: data.pciDevices,
-				onSuccess: (data: PCIDevice[]) => {
-					updateCache('pci-devices', data);
-				}
-			},
-			{
-				queryKey: ['ppt-devices'],
-				queryFn: async () => {
-					return await getPPTDevices();
-				},
-				keepPreviousData: true,
-				initialData: data.pptDevices,
-				onSuccess: (data: PPTDevice[]) => {
-					updateCache('ppt-devices', data);
-				}
-			}
-		]
-	}));
+	let pptDevices = resource(
+		() => 'ppt-devices',
+		async () => {
+			const result = await getPPTDevices();
+			updateCache('ppt-devices', result);
+			return result;
+		},
+		{
+			initialValue: data.pptDevices
+		}
+	);
+
+	let pciDevices = resource(
+		() => 'pci-devices',
+		async () => {
+			const result = await getPCIDevices();
+			updateCache('pci-devices', result);
+			return result;
+		},
+		{
+			initialValue: data.pciDevices
+		}
+	);
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-			reload = false;
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				pciDevices.refetch();
+				pptDevices.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
-	let pciDevices: PCIDevice[] = $derived(results[0].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived(results[1].data as PPTDevice[]);
-	let tableData = $derived(generateTableData(pciDevices, pptDevices));
+	let tableData = $derived(generateTableData(pciDevices.current, pptDevices.current));
 	let tableName: string = 'device-passthrough-tt';
 	let query: string = $state('');
 	let activeRow: Row[] | null = $state(null);
@@ -181,7 +178,12 @@
 					});
 				} else {
 					let message = '';
-					if (result.error?.endsWith('in_use_by_vm')) {
+					if (
+						typeof result.error === 'string'
+							? result.error.endsWith('in_use_by_vm')
+							: Array.isArray(result.error) &&
+								result.error.some((e) => typeof e === 'string' && e.endsWith('in_use_by_vm'))
+					) {
 						message = 'Device is in use by a VM, failed to remove';
 					} else {
 						message = 'Failed to remove device from passthrough';

@@ -13,7 +13,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -23,39 +23,29 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['users'],
-				queryFn: async () => {
-					return (await listUsers()) as User[];
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.users,
-				onSuccess: (data: User[]) => {
-					updateCache('users', data);
-				}
-			},
-			{
-				queryKey: ['groups'],
-				queryFn: async () => {
-					return (await listGroups()) as Group[];
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.groups,
-				onSuccess: (data: Group[]) => {
-					updateCache('groups', data);
-				}
-			}
-		]
-	}));
 
-	let users = $derived(results[0].data as User[]);
-	let groups = $derived(results[1].data as Group[]);
+	const users = resource(
+		() => 'users',
+		async (key, prevKey, { signal }) => {
+			const res = await listUsers();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.users }
+	);
+
+	let groups = resource(
+		() => 'groups',
+		async (key, prevKey, { signal }) => {
+			const res = await listGroups();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.groups }
+	);
+
 	let usersOptions = $derived.by(() => {
-		return users.map((user) => ({
+		return users.current.map((user) => ({
 			label: user.username,
 			value: user.username
 		}));
@@ -86,13 +76,25 @@
 	};
 
 	let properties = $state(options);
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				groups.refetch();
+				users.refetch();
+				reload = false;
+			}
+		}
+	);
 
 	async function onCreate() {
 		let error = '';
 
 		if (!properties.create.name.trim() || properties.create.users.value.length === 0) {
 			error = 'Name and users are required';
-		} else if (groups.some((g) => g.name === properties.create.name.trim())) {
+		} else if (groups.current.some((g) => g.name === properties.create.name.trim())) {
 			error = 'Group name already exists';
 		}
 
@@ -107,6 +109,8 @@
 			properties.create.name.trim(),
 			properties.create.users.value
 		);
+
+		reload = true;
 
 		if (response.error) {
 			handleAPIError(response);
@@ -137,6 +141,8 @@
 			properties.addUsers.combobox.value,
 			activeRow ? activeRow.name : ''
 		);
+
+		reload = true;
 
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -198,7 +204,7 @@
 		};
 	}
 
-	let tableData = $derived(generateTableData(users, groups));
+	let tableData = $derived(generateTableData(users.current, groups.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -277,7 +283,7 @@
 {#if properties.create.open}
 	<Dialog.Root bind:open={properties.create.open}>
 		<Dialog.Content
-			class="sm:max-w-[425px]"
+			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
@@ -350,7 +356,7 @@
 {#if properties.addUsers.open}
 	<Dialog.Root bind:open={properties.addUsers.open}>
 		<Dialog.Content
-			class="sm:max-w-[425px]"
+			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
@@ -419,6 +425,7 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteGroup(properties.delete.id);
+			reload = true;
 			if (result.status === 'error') {
 				handleAPIError(result);
 				toast.error('Failed to delete group', {

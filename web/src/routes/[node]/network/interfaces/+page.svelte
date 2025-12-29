@@ -9,7 +9,6 @@
 	import { updateCache } from '$lib/utils/http';
 	import { generateTableData, getCleanIfaceData } from '$lib/utils/network/iface';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { createQueries } from '@tanstack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import type { NetworkObject } from '$lib/types/network/object';
@@ -18,6 +17,7 @@
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
 	import { getVMs } from '$lib/api/vm/vm';
+	import { resource } from 'runed';
 
 	interface Data {
 		interfaces: Iface[];
@@ -28,58 +28,35 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['networkInterfaces'],
-				queryFn: async () => {
-					return await getInterfaces();
-				},
-				refetchInterval: 1000,
-				keepPreviousData: true,
-				initialData: data.interfaces,
-				onSuccess: (data: Iface[]) => {
-					updateCache('networkInterfaces', data);
-				}
-			},
-			{
-				queryKey: ['networkObjects'],
-				queryFn: async () => {
-					return await getNetworkObjects();
-				},
-				keepPreviousData: true,
-				initialData: data.objects,
-				onSuccess: (data: NetworkObject[]) => {
-					updateCache('networkObjects', data);
-				}
-			},
-			{
-				queryKey: ['jail-list'],
-				queryFn: async () => {
-					return await getJails();
-				},
-				initialData: data.jails,
-				keepPreviousData: true,
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['vm-list'],
-				queryFn: async () => {
-					return await getVMs();
-				},
-				refetchInterval: 1000,
-				initialData: data.vms,
-				keepPreviousData: true,
-				refetchOnMount: 'always',
-				onSuccess: (data: VM[]) => {
-					updateCache('vm-list', data);
-				}
-			}
-		]
-	}));
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.interfaces }
+	);
 
-	let jails = $derived(results[2].data as Jail[]);
-	let vms = $derived(results[3].data as VM[]);
+	let jails = resource(
+		() => 'jail-list',
+		async (key, prevKey, { signal }) => {
+			const res = await getJails();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.jails }
+	);
+
+	let vms = resource(
+		() => 'vm-list',
+		async (key, prevKey, { signal }) => {
+			const res = await getVMs();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.vms }
+	);
 
 	let columns: Column[] = $derived([
 		{
@@ -105,7 +82,7 @@
 				}
 
 				if (data.isEpair) {
-					const jail = jails.find((jail) =>
+					const jail = jails.current.find((jail) =>
 						jail?.networks?.some((net) =>
 							net?.macObj?.entries?.some(
 								(entry) =>
@@ -120,7 +97,7 @@
 				}
 
 				if (data.isTap) {
-					const vm = vms.find((vm) =>
+					const vm = vms.current.find((vm) =>
 						vm?.networks?.some((net) =>
 							net?.macObj?.entries?.some(
 								(entry) =>
@@ -201,7 +178,7 @@
 		}
 	]);
 
-	let tableData = $derived(generateTableData(columns, results[0].data as Iface[]));
+	let tableData = $derived(generateTableData(columns, networkInterfaces.current));
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
 	let viewModal = $state({
@@ -219,7 +196,7 @@
 	});
 
 	function viewInterface(iface: string) {
-		const ifaceData = results[0].data?.find((i: Iface) => i.name === iface);
+		const ifaceData = networkInterfaces.current.find((i: Iface) => i.name === iface);
 		if (ifaceData) {
 			viewModal.KV = getCleanIfaceData(ifaceData);
 			viewModal.title = `Details - ${ifaceData.name}`;

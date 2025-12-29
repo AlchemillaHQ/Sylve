@@ -106,14 +106,16 @@ export async function cachedFetch<T>(
 	const now = Date.now();
 	const entry = await kvStorage.getItem<T>(key);
 
-	if (entry) {
+	console.log('cachedFetch:', { key, entry, now, duration });
+
+	if (entry && entry.data !== null) {
 		const isFresh = now - entry.timestamp < duration;
 		const data = entry.data;
 
 		const looksLikeError =
-			data &&
 			typeof data === 'object' &&
-			'status' in (data as any) &&
+			data !== null &&
+			'status' in data &&
 			(data as any).status === 'error';
 
 		if (isFresh && !looksLikeError) {

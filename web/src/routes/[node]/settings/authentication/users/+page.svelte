@@ -9,7 +9,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -60,29 +60,31 @@
 		return { rows, columns };
 	}
 
-	const results = createQuery(() => ({
-		queryKey: ['users'],
-		queryFn: async () => {
-			return (await listUsers()) as User[];
+	const users = resource(
+		() => 'users',
+		async (key, prevKey, { signal }) => {
+			const results = await listUsers();
+			updateCache('users', results);
+			return results;
 		},
-		keepPreviousData: true,
-		initialData: data.users,
-		onSuccess: (data: User[]) => {
-			updateCache('users', data);
+		{
+			initialValue: data.users
 		}
-	}));
+	);
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			results.refetch();
-			reload = false;
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				users.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
-	let users: User[] = $derived(results.data as User[]);
-	let tableData = $derived(generateTableData(users));
+	let tableData = $derived(generateTableData(users.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -103,7 +105,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="h-6.5 pointer-events-auto!"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
 			>
@@ -122,7 +124,7 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="h-6.5 pointer-events-auto!"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
 			>
@@ -160,15 +162,15 @@
 </div>
 
 {#if modals.create.open}
-	<CreateOrEdit bind:open={modals.create.open} {users} bind:reload />
+	<CreateOrEdit bind:open={modals.create.open} users={users.current} bind:reload />
 {/if}
 
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		{users}
+		users={users.current}
 		edit={true}
-		user={activeRow ? (users.find((u) => u.id === activeRow.id) as User) : undefined}
+		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
 		bind:reload
 	/>
 {/if}

@@ -15,9 +15,12 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	cpuid "github.com/klauspost/cpuid/v2"
@@ -170,6 +173,79 @@ func (s *Service) IsJailActive(ctId uint) (bool, error) {
 	return false, nil
 }
 
+func (s *Service) PruneOrphanedJailStats() error {
+	if err := s.DB.
+		Where(
+			"jid NOT IN (?)",
+			s.DB.
+				Model(&jailModels.Jail{}).
+				Select("id"),
+		).
+		Delete(&jailModels.JailStats{}).
+		Error; err != nil {
+		return fmt.Errorf("failed to prune orphaned JailStats: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) ApplyJailStatsRetention() error {
+	var jailIDs []uint
+	if err := s.DB.
+		Model(&jailModels.JailStats{}).
+		Select("DISTINCT jid").
+		Pluck("jid", &jailIDs).Error; err != nil {
+		return fmt.Errorf("failed_to_get_jail_ids_for_retention: %w", err)
+	}
+
+	now := time.Now()
+
+	for _, jailID := range jailIDs {
+		var stats []jailModels.JailStats
+		if err := s.DB.
+			Where("jid = ?", jailID).
+			Order("created_at ASC").
+			Find(&stats).Error; err != nil {
+			return fmt.Errorf("failed_to_get_jail_stats_for_retention: %w", err)
+		}
+
+		if len(stats) == 0 {
+			continue
+		}
+
+		// Check if jail is active
+		var jail jailModels.Jail
+		if err := s.DB.Where("id = ?", jailID).First(&jail).Error; err != nil {
+			logger.L.Error().Err(err).Uint("jail_id", jailID).Msg("failed_to_get_jail_for_retention")
+			continue
+		}
+
+		isActive, err := s.IsJailActive(jail.CTID)
+		if err != nil {
+			logger.L.Error().Err(err).Uint("jail_id", jailID).Msg("failed_to_check_if_jail_is_active_for_retention")
+			continue
+		}
+
+		if isActive {
+			_, deleteIDs := db.ApplyGFS(now, stats)
+			if len(deleteIDs) == 0 {
+				continue
+			}
+
+			if err := s.DB.
+				Where("id IN ?", deleteIDs).
+				Delete(&jailModels.JailStats{}).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_old_jail_stats: %w", err)
+			}
+		}
+	}
+
+	if err := s.PruneOrphanedJailStats(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Service) StoreJailUsage() error {
 	if !s.crudMutex.TryLock() {
 		return nil
@@ -182,10 +258,8 @@ func (s *Service) StoreJailUsage() error {
 		return fmt.Errorf("failed_to_load_jails: %w", err)
 	}
 
-	jDBIDs := make([]uint, 0, len(jails))
-
 	if len(jails) == 0 {
-		return s.PruneOrphanedJailStats(jDBIDs)
+		return s.ApplyJailStatsRetention()
 	}
 
 	states, err := s.GetStates()
@@ -233,8 +307,11 @@ func (s *Service) StoreJailUsage() error {
 			memPct = math.Round((float64(live.MemBytesUsed)/float64(sysRAM))*10000.0) / 100.0
 		}
 
+		cpuPct = math.Max(0, math.Min(100, cpuPct))
+		memPct = math.Max(0, math.Min(100, memPct))
+
 		stat := &jailModels.JailStats{
-			JailID:      (j.ID),
+			JailID:      j.ID,
 			CPUUsage:    cpuPct,
 			MemoryUsage: memPct,
 		}
@@ -244,58 +321,10 @@ func (s *Service) StoreJailUsage() error {
 		}
 	}
 
-	for _, j := range jails {
-		jDBIDs = append(jDBIDs, j.ID)
-	}
-
-	for _, dbID := range jDBIDs {
-		var stats []jailModels.JailStats
-		if err := s.DB.
-			Where("jid = ?", dbID).
-			Order("id DESC").
-			Limit(256).
-			Find(&stats).Error; err != nil {
-			return fmt.Errorf("failed_to_get_jail_stats: %w", err)
-		}
-
-		if len(stats) < 256 {
-			continue
-		}
-
-		cutoff := stats[len(stats)-1].ID
-		if err := s.DB.
-			Where("jid = ? AND id < ?", dbID, cutoff).
-			Delete(&jailModels.JailStats{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_old_jail_stats: %w", err)
-		}
-	}
-
-	if err := s.PruneOrphanedJailStats(jDBIDs); err != nil {
-		return err
-	}
-
-	return nil
+	return s.ApplyJailStatsRetention()
 }
 
-func (s *Service) PruneOrphanedJailStats(validJailIds []uint) error {
-	if len(validJailIds) == 0 {
-		return s.DB.Where("1 = 1").Delete(&jailModels.JailStats{}).Error
-	}
-
-	valid := make([]int, len(validJailIds))
-	for i, id := range validJailIds {
-		valid[i] = int(id)
-	}
-
-	if err := s.DB.
-		Where("jid NOT IN ?", valid).
-		Delete(&jailModels.JailStats{}).Error; err != nil {
-		return fmt.Errorf("failed_to_prune_orphaned_jail_stats: %w", err)
-	}
-	return nil
-}
-
-func (s *Service) GetJailUsage(ctId uint, limit int) ([]jailModels.JailStats, error) {
+func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailStats, error) {
 	var jailId uint
 	if err := s.DB.Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
@@ -308,15 +337,18 @@ func (s *Service) GetJailUsage(ctId uint, limit int) ([]jailModels.JailStats, er
 		return nil, fmt.Errorf("jail_not_found")
 	}
 
-	var jailStats []jailModels.JailStats
-	sub := s.DB.
-		Model(&jailModels.JailStats{}).
-		Where("jid = ?", jailId).
-		Order("id DESC").
-		Limit(limit)
+	window, err := step.Window()
+	if err != nil {
+		return nil, err
+	}
 
-	if err := s.DB.Table("(?) as sub", sub).
-		Order("id ASC").
+	now := time.Now()
+	from := now.Add(-window)
+
+	var jailStats []jailModels.JailStats
+	if err := s.DB.
+		Where("jid = ? AND created_at >= ?", jailId, from).
+		Order("created_at ASC").
 		Find(&jailStats).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_jail_usage: %w", err)
 	}

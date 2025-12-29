@@ -1,5 +1,5 @@
 import type { Jail, SimpleJail } from '$lib/types/jail/jail';
-import type { CreateData, VM } from '$lib/types/vm/vm';
+import type { CreateData, SimpleVm, VM } from '$lib/types/vm/vm';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
@@ -128,7 +128,7 @@ export function isValidCreateData(
 	return true;
 }
 
-export function getNextId(vms: VM[], jails: Jail[] | SimpleJail[]): number {
+export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]): number {
 	const usedIds = [...vms.map((vm) => vm.rid), ...jails.map((jail) => jail.ctId)];
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;

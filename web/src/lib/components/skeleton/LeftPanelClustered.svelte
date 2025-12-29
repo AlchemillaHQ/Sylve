@@ -9,9 +9,9 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-	import { createQueries } from '@tanstack/svelte-query';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 	import { DomainState } from '$lib/types/vm/vm';
+	import { resource, useInterval, watch } from 'runed';
 
 	let openIds = $state(new Set<string>(['datacenter']));
 
@@ -22,29 +22,25 @@
 		saveOpenIds(openIds);
 	};
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['cluster-resources'],
-				queryFn: async () => await getClusterResources(),
-				keepPreviousData: true,
-				refetchInterval: 30000,
-				initialData: [] as NodeResource[],
-				refetchOnMount: 'always'
-			},
-			{
-				queryKey: ['cluster-nodes'],
-				queryFn: async () => await getNodes(),
-				keepPreviousData: true,
-				refetchInterval: 30000,
-				initialData: [] as ClusterNode[],
-				refetchOnMount: 'always'
-			}
-		]
-	}));
+	const cluster = resource(
+		() => 'cluster-resources',
+		async () => {
+			return await getClusterResources();
+		},
+		{
+			initialValue: [] as NodeResource[]
+		}
+	);
 
-	const clusterRes = $derived((results[0]?.data as NodeResource[]) ?? []);
-	const nodes = $derived((results[1]?.data as ClusterNode[]) ?? []);
+	const nodes = resource(
+		() => 'cluster-nodes',
+		async () => {
+			return await getNodes();
+		},
+		{
+			initialValue: [] as ClusterNode[]
+		}
+	);
 
 	const tree = $derived([
 		{
@@ -52,7 +48,7 @@
 			label: 'Data Center',
 			icon: 'ant-design--cluster-outlined',
 			href: '/datacenter',
-			children: clusterRes.map((n) => {
+			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
 					...(n.jails ?? []).map((j) => ({
@@ -75,7 +71,7 @@
 					}))
 				].sort((a, b) => a.sortId - b.sortId);
 
-				const found = nodes.find((node) => node.nodeUUID === n.nodeUUID);
+				const found = nodes.current.find((node) => node.nodeUUID === n.nodeUUID);
 				const isActive = found && found.status === 'online';
 
 				return {
@@ -102,11 +98,20 @@
 		}
 	});
 
-	$effect(() => {
-		if (reload.leftPanel) {
-			results[0].refetch();
-			results[1].refetch();
-			reload.leftPanel = false;
+	watch(
+		() => reload.leftPanel,
+		(value) => {
+			if (value) {
+				cluster.refetch();
+				nodes.refetch();
+				reload.leftPanel = false;
+			}
+		}
+	);
+
+	useInterval(30000, {
+		callback: () => {
+			reload.leftPanel = true;
 		}
 	});
 </script>

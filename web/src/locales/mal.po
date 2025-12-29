@@ -32,7 +32,6 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr ""
 
@@ -116,9 +115,8 @@ msgstr ""
 msgid "Disks"
 msgstr ""
 
-#: src/routes/[node]/+layout.svelte
-msgid "Dashboard"
-msgstr ""
+#~ msgid "Dashboard"
+#~ msgstr ""
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
@@ -1054,11 +1052,13 @@ msgid "Post Upgrade Summary"
 msgstr ""
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
 msgstr ""
 
+#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
 msgstr ""
@@ -1105,8 +1105,6 @@ msgstr ""
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1169,7 +1167,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
 msgstr ""
 
@@ -5377,22 +5375,27 @@ msgstr ""
 #~ msgid "Manage ({0} lpinned)"
 #~ msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Hourly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Daily"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Weekly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Monthly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Yearly"
 msgstr ""
@@ -6693,3 +6696,6 @@ msgstr ""
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage additional options for this jail"
 msgstr ""
+
+#~ msgid "Discord"
+#~ msgstr ""

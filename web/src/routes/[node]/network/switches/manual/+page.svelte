@@ -11,7 +11,7 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/network/switch/manual';
-	import { createQueries } from '@tanstack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -21,43 +21,35 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['network-interfaces'],
-				queryFn: async () => {
-					return await getInterfaces();
-				},
-				keepPreviousData: true,
-				initialData: data.interfaces,
-				onSuccess: (data: Iface[]) => {
-					updateCache('network-interfaces', data);
-				}
-			},
-			{
-				queryKey: ['network-switches'],
-				queryFn: async () => {
-					return await getSwitches();
-				},
-				keepPreviousData: true,
-				initialData: data.switches,
-				onSuccess: (data: SwitchList) => {
-					updateCache('network-switches', data);
-				}
-			}
-		]
-	}));
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.interfaces }
+	);
 
-	const interfaces = $derived(results[0].data);
-	const switches = $derived(results[1].data);
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
 	const usable = $derived.by(() => {
 		const result: string[] = [];
-		const ifaces = interfaces ? interfaces.filter((iface) => iface.groups?.includes('bridge')) : [];
+		const ifaces = networkInterfaces.current
+			? networkInterfaces.current.filter((iface) => iface.groups?.includes('bridge'))
+			: [];
 		if (!ifaces.length) return [];
 
-		const standard = switches ? switches['standard'] || [] : [];
-		const manual = switches ? switches['manual'] || [] : [];
-
+		const standard = networkSwitches.current ? networkSwitches.current['standard'] || [] : [];
+		const manual = networkSwitches.current ? networkSwitches.current['manual'] || [] : [];
 		for (const iface of ifaces) {
 			const usedInStandard = standard.some((sw) => sw.bridgeName === iface.name);
 			const usedInManual = manual.some((sw) => sw.bridge === iface.name);
@@ -70,24 +62,22 @@
 		return result;
 	});
 
-	let tableData = $derived(generateTableData(switches));
+	let tableData = $derived(generateTableData(networkSwitches.current));
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query: string = $state('');
 
-	function reloadData() {
-		results.forEach((result) => {
-			result.refetch();
-		});
-	}
-
 	let reload = $state(false);
-	$effect(() => {
-		if (reload) {
-			reloadData();
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				networkInterfaces.refetch();
+				networkSwitches.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let modals = $state({
 		newSwitch: {
@@ -159,7 +149,7 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteManualSwitch(modals.deleteSwitch.id);
-			reloadData();
+			reload = true;
 			if (isAPIResponse(result) && result.status === 'success') {
 				toast.success(`Switch ${modals.deleteSwitch.name} deleted`, {
 					position: 'bottom-center'

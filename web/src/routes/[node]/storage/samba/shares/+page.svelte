@@ -10,11 +10,10 @@
 	import type { Group } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { SambaShare } from '$lib/types/samba/shares';
-	import type { Dataset } from '$lib/types/zfs/dataset';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { createQueries } from '@tanstack/svelte-query';
-	import { untrack } from 'svelte';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -26,61 +25,56 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = createQueries(() => ({
-		queries: [
-			{
-				queryKey: ['zfs-datasets'],
-				queryFn: async () => {
-					return await getDatasets();
-				},
-				keepPreviousData: false,
-				initialData: data.datasets,
-				onSuccess: (data: Dataset[]) => {
-					updateCache('zfs-datasets', data);
-				}
-			},
-			{
-				queryKey: ['samba-shares'],
-				queryFn: async () => {
-					return await getSambaShares();
-				},
-				keepPreviousData: false,
-				initialData: data.shares,
-				onSuccess: (data: SambaShare[]) => {
-					updateCache('samba-shares', data);
-				}
-			},
-			{
-				queryKey: ['groups'],
-				queryFn: async () => {
-					return (await listGroups()) as Group[];
-				},
-				keepPreviousData: true,
-				initialData: data.groups,
-				onSuccess: (data: Group[]) => {
-					updateCache('groups', data);
-				}
-			}
-		]
-	}));
+	let datasets = resource(
+		() => 'zfs-filesystems',
+		async () => {
+			const result = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
+			updateCache('zfs-filesystems', result);
+			return result;
+		},
+		{
+			initialValue: data.datasets
+		}
+	);
+
+	let shares = resource(
+		() => 'samba-shares',
+		async () => {
+			const result = await getSambaShares();
+			updateCache('samba-shares', result);
+			return result;
+		},
+		{
+			initialValue: data.shares
+		}
+	);
+
+	let groups = resource(
+		() => 'groups',
+		async () => {
+			const result = await listGroups();
+			updateCache('groups', result);
+			return result;
+		},
+		{
+			initialValue: data.groups
+		}
+	);
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			results.forEach((result) => {
-				result.refetch();
-			});
-
-			untrack(() => {
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				datasets.refetch();
+				shares.refetch();
+				groups.refetch();
 				reload = false;
-			});
+			}
 		}
-	});
+	);
 
-	let datasets: Dataset[] = $derived(results[0].data as Dataset[]);
-	let shares: SambaShare[] = $derived(results[1].data as SambaShare[]);
-	let groups: Group[] = $derived(results[2].data as Group[]);
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
@@ -174,7 +168,7 @@
 		};
 	}
 
-	let tableData = $derived(generateTableData(shares, datasets, groups));
+	let tableData = $derived(generateTableData(shares.current, datasets.current, groups.current));
 </script>
 
 {#snippet button(type: string)}
@@ -184,7 +178,7 @@
 				onclick={() => {
 					properties.edit.open = true;
 					properties.edit.share =
-						shares.find((share) => share.id === Number(activeRow?.id)) || null;
+						shares.current.find((share) => share.id === Number(activeRow?.id)) || null;
 				}}
 				size="sm"
 				variant="outline"
@@ -249,15 +243,21 @@
 </div>
 
 {#if properties.create.open}
-	<Share bind:open={properties.create.open} {shares} {datasets} {groups} bind:reload />
+	<Share
+		bind:open={properties.create.open}
+		shares={shares.current}
+		datasets={datasets.current}
+		groups={groups.current}
+		bind:reload
+	/>
 {/if}
 
 {#if properties.edit.open}
 	<Share
 		bind:open={properties.edit.open}
-		{shares}
-		{datasets}
-		{groups}
+		shares={shares.current}
+		datasets={datasets.current}
+		groups={groups.current}
 		share={properties.edit.share}
 		edit={properties.edit.open}
 		bind:reload

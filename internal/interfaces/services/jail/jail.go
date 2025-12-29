@@ -117,6 +117,6 @@ type EditJailNetworkRequest struct {
 
 type JailServiceInterface interface {
 	StoreJailUsage() error
-	PruneOrphanedJailStats([]uint) error
+	PruneOrphanedJailStats() error
 	WatchNetworkObjectChanges() error
 }

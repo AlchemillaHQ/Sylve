@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -13,7 +12,6 @@
 		jailAction,
 		updateDescription
 	} from '$lib/api/jail/jail';
-	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -29,12 +27,14 @@
 	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
-	import { cleanStats } from '$lib/utils/jail/stats';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
-	import { resource, useInterval, IsDocumentVisible, Debounced } from 'runed';
+	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
 	import { untrack } from 'svelte';
+	import type { GFSStep } from '$lib/types/common';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 
 	interface Data {
 		ctId: number;
@@ -48,6 +48,7 @@
 	let visible = new IsDocumentVisible();
 	let { data }: { data: Data } = $props();
 	let ctId = data.ctId;
+	let gfsStep = $state<GFSStep>('hourly');
 
 	let modalState = $state({
 		isDeleteOpen: false,
@@ -98,16 +99,15 @@
 		}
 	);
 
-	const jailStats = resource(
-		() => `jail-stats-${ctId}`,
-		async (key, prevKey, { signal }) => {
-			const result = await getStats(Number(ctId), 128);
+	const stats = resource(
+		[() => gfsStep],
+		async ([gfsStep]) => {
+			const result = await getStats(Number(data.jail.ctId), gfsStep);
+			const key = `jail-stats-${gfsStep}-${data.jail.ctId}`;
 			updateCache(key, result);
 			return result;
 		},
-		{
-			initialValue: data.stats
-		}
+		{ initialValue: data.stats }
 	);
 
 	const cpuInfo = resource(
@@ -146,42 +146,25 @@
 			if (visible.current) {
 				jail.refetch();
 				jState.refetch();
-				jailStats.refetch();
+				stats.refetch();
 			}
 		}
 	});
 
-	$effect(() => {
-		if (visible.current) {
-			untrack(() => {
+	watch(
+		() => visible.current,
+		(isVisible) => {
+			if (isVisible) {
 				jail.refetch();
 				jState.refetch();
-				jailStats.refetch();
-			});
+				stats.refetch();
+			}
 		}
-	});
+	);
 
 	let showLogs = $state(false);
 	let logicalCores = $derived(cpuInfo.current?.logicalCores ?? 0);
 	let totalRAM = $derived(ramInfo.current?.total ?? 0);
-	let cpuHistoricalData = $derived.by(() => {
-		return {
-			field: 'cpuUsage',
-			label: 'CPU Usage',
-			color: 'chart-1',
-			data: cleanStats(jailStats.current, jail.current).cpu.slice(-12)
-		};
-	});
-
-	let memoryHistoricalData = $derived.by(() => {
-		return {
-			field: 'memoryUsage',
-			label: 'Memory Usage',
-			color: 'chart-2',
-			data: cleanStats(jailStats.current, jail.current).memory.slice(-12)
-		};
-	});
-
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let lastDesc = $state('');
@@ -315,17 +298,37 @@
 			{/if}
 		{/if}
 
-		<div class="ml-auto flex h-full items-center">
-			<Button
-				size="sm"
-				onclick={() => (showLogs = true)}
-				class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
-			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
-					<span>View Logs</span>
-				</div>
-			</Button>
+		<div class="ml-auto flex h-full items-center gap-2">
+			{#if logs.current.logs.length > 0}
+				<Button
+					size="sm"
+					onclick={() => {
+						showLogs = true;
+					}}
+					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+				>
+					<div class="flex items-center">
+						<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
+						<span>View Logs</span>
+					</div>
+				</Button>
+			{/if}
+
+			<SimpleSelect
+				options={[
+					{ label: 'Hourly', value: 'hourly' },
+					{ label: 'Daily', value: 'daily' },
+					{ label: 'Weekly', value: 'weekly' },
+					{ label: 'Monthly', value: 'monthly' },
+					{ label: 'Yearly', value: 'yearly' }
+				]}
+				bind:value={gfsStep}
+				onChange={() => {
+					stats.refetch();
+				}}
+				classes={{ trigger: 'h-6!' }}
+				icon="icon-[mdi--calendar]"
+			/>
 		</div>
 	</div>
 
@@ -420,25 +423,31 @@
 			</div>
 
 			<div class="space-y-4 p-3">
-				<AreaChart title="CPU Usage" elements={[cpuHistoricalData]} percentage={true} />
-				<AreaChart title="Memory Usage" elements={[memoryHistoricalData]} percentage={true} />
+				<LineBrush
+					title="CPU Usage"
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.cpuUsage)
+					}))}
+					percentage={true}
+					color="one"
+					containerContentHeight="h-64"
+				/>
+
+				<LineBrush
+					title="Memory Usage"
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.memoryUsage)
+					}))}
+					percentage={true}
+					color="two"
+					containerContentHeight="h-64"
+				/>
 			</div>
 		</ScrollArea>
 	</div>
 </div>
-
-<!-- <AlertDialog
-	open={modalState.isDeleteOpen}
-	customTitle={`This will delete Jail ${jail.name} (${jail.ctId})`}
-	actions={{
-		onConfirm: async () => {
-			handleDelete();
-		},
-		onCancel: () => {
-			modalState.isDeleteOpen = false;
-		}
-	}}
-></AlertDialog> -->
 
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
 	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">

@@ -118,7 +118,7 @@ func validateValues(oType string, values []string) error {
 			}
 
 			if !utils.IsValidPort(vInt) {
-				return fmt.Errorf("invalid port value: %s", value)
+				return fmt.Errorf("invalid port value: %d", vInt)
 			}
 		}
 
@@ -172,11 +172,11 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		}
 
 		if err := s.DB.Find(&jailNetworks).Error; err != nil {
-			return true, fmt.Errorf("failed to find jail networks: %w", id, err)
+			return true, fmt.Errorf("failed to find jail networks: %d %w", id, err)
 		}
 
 		if err := s.DB.Preload("IPObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
+			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, sw := range switches {
@@ -252,7 +252,7 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		}
 
 		if err := s.DB.Preload("MACObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
+			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, dl := range dhcpLeases {
@@ -290,7 +290,7 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 	if object.Type == "DUID" {
 		var dhcpLeases []networkModels.DHCPStaticLease
 		if err := s.DB.Preload("DUIDObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %w", id, err)
+			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, dl := range dhcpLeases {
@@ -465,7 +465,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if err := s.DB.Preload("MACObject.Entries").Where("mac_object_id = ?", id).Find(&dhcpLeases).Error; err != nil {
-				return fmt.Errorf("failed to find DHCP leases: %w", id, err)
+				return fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 			}
 
 			var vm vmModels.VM
@@ -691,7 +691,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			var dhcpLeases []networkModels.DHCPStaticLease
 			if err := s.DB.Preload("IPObject.Entries").Where("ip_object_id = ?", id).Find(&dhcpLeases).Error; err != nil {
-				return fmt.Errorf("failed to find DHCP leases: %w", id, err)
+				return fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 			}
 
 			/* Object was used in DHCP leases, but now we're changing it to something else, we can't do that */

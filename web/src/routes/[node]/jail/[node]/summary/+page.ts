@@ -11,7 +11,7 @@ export async function load({ params }) {
 	const [jail, state, stats, ramInfo, cpuInfo] = await Promise.all([
 		cachedFetch(`jail-${ctId}`, async () => getJailById(ctId, 'ctid'), cacheDuration),
 		cachedFetch(`jail-${ctId}-state`, async () => getJailStateById(ctId), cacheDuration),
-		cachedFetch(`jail-${ctId}-stats`, async () => getStats(ctId, 128), cacheDuration),
+		cachedFetch(`jail-${ctId}-stats`, async () => getStats(ctId, 'hourly'), cacheDuration),
 		cachedFetch('system-ram-info', async () => getRAMInfo('current'), cacheDuration),
 		cachedFetch('system-cpu-info', async () => getCPUInfo('current'), cacheDuration)
 	]);

@@ -32,7 +32,6 @@ msgstr "कंसोल"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr "भंडारण"
 
@@ -116,9 +115,8 @@ msgstr "एक्सप्लोरर"
 msgid "Disks"
 msgstr "डिस्क्स"
 
-#: src/routes/[node]/+layout.svelte
-msgid "Dashboard"
-msgstr "डैशबोर्ड"
+#~ msgid "Dashboard"
+#~ msgstr "डैशबोर्ड"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
@@ -1012,11 +1010,13 @@ msgid "Post Upgrade Summary"
 msgstr "पोस्ट अपग्रेड सारांश"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
 msgstr "सामग्री"
 
+#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
 msgstr "यह एक नोट है"
@@ -1105,8 +1105,6 @@ msgstr "क्लस्टर रीसेट के बाद लॉगिन �
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1169,7 +1167,7 @@ msgstr "Sylve संस्करण"
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
 msgstr "मेमोरी उपयोग"
 
@@ -5383,22 +5381,27 @@ msgstr ""
 #~ msgid "Manage ({0} lpinned)"
 #~ msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Hourly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Daily"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Weekly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Monthly"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Yearly"
 msgstr ""
@@ -6699,3 +6702,6 @@ msgstr ""
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage additional options for this jail"
 msgstr ""
+
+#~ msgid "Discord"
+#~ msgstr ""

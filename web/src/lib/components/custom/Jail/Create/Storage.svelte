@@ -17,7 +17,6 @@
 		pool: string;
 		downloads: Download[];
 		base: string;
-		jails: Jail[];
 		fstab: string;
 	}
 

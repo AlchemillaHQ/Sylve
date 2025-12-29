@@ -1,14 +1,10 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
-	IODelayHistoricalSchema,
-	IODelaySchema,
 	PoolsDiskUsageSchema,
 	PoolStatPointsResponseSchema,
 	ZpoolSchema,
 	ZPoolStatusPoolSchema,
 	type CreateZpool,
-	type IODelay,
-	type IODelayHistorical,
 	type PoolsDiskUsage,
 	type PoolStatPointsResponse,
 	type ReplaceDevice,
@@ -16,24 +12,6 @@ import {
 	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@tanstack/svelte-query';
-
-export async function getIODelay(
-	queryObj: QueryFunctionContext | undefined
-): Promise<IODelay | IODelayHistorical> {
-	if (queryObj) {
-		if (queryObj.queryKey.includes('ioDelayHistorical')) {
-			const data = await apiRequest(
-				'/zfs/pool/io-delay/historical',
-				IODelayHistoricalSchema,
-				'GET'
-			);
-			return IODelayHistoricalSchema.parse(data);
-		}
-	}
-
-	return await apiRequest('/zfs/pool/io-delay', IODelaySchema, 'GET');
-}
 
 export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
 	return await apiRequest(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
