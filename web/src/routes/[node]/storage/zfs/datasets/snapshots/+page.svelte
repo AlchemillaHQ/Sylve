@@ -16,10 +16,11 @@
 		type PeriodicSnapshot
 	} from '$lib/types/zfs/dataset';
 	import { updateCache } from '$lib/utils/http';
-	import { resource, watch } from 'runed';
+	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 	import { plural } from '$lib/utils';
+	import { storage } from '$lib';
 
 	interface Data {
 		basicSettings: BasicSettings;
@@ -27,6 +28,7 @@
 		snapshots: Dataset[];
 	}
 
+	let visible = new IsDocumentVisible();
 	let { data }: { data: Data } = $props();
 
 	const basicSettings = resource(
@@ -52,6 +54,14 @@
 			initialValue: data.periodicSnapshots
 		}
 	);
+
+	useInterval(1000, {
+		callback: async () => {
+			if (visible.current && !storage.idle) {
+				periodicSnapshots.refetch();
+			}
+		}
+	});
 
 	let pools = $derived(basicSettings.current.pools || []);
 	let reload = $state(false);
