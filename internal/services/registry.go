@@ -33,6 +33,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
+	"github.com/alchemillahq/gzfs"
 	"gorm.io/gorm"
 )
 
@@ -56,7 +57,19 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *auth.Service:
 		return auth.NewAuthService(db)
 	case *system.Service:
-		return system.NewSystemService(db)
+		return system.NewSystemService(db, dependencies[0].(*gzfs.Client))
+	case *info.Service:
+		return info.NewInfoService(db, dependencies[0].(*gzfs.Client))
+	case *libvirt.Service:
+		return libvirt.NewLibvirtService(db,
+			dependencies[0].(systemServiceInterfaces.SystemServiceInterface),
+			dependencies[1].(*gzfs.Client),
+		)
+	case *zfs.Service:
+		return zfs.NewZfsService(db,
+			dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface),
+			dependencies[1].(*gzfs.Client),
+		)
 	case *startup.Service:
 		infoService := dependencies[0].(infoServiceInterfaces.InfoServiceInterface)
 		zfsService := dependencies[1].(zfsServiceInterfaces.ZfsServiceInterface)
@@ -78,24 +91,24 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 			sambaService,
 			jailService,
 			clusterService)
-	case *info.Service:
-		return info.NewInfoService(db)
-	case *zfs.Service:
-		return zfs.NewZfsService(db, dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface))
 	case *disk.Service:
-		return disk.NewDiskService(db, dependencies[0].(zfsServiceInterfaces.ZfsServiceInterface))
+		zfsService := dependencies[0].(zfsServiceInterfaces.ZfsServiceInterface)
+		gzfs := dependencies[1].(*gzfs.Client)
+
+		return disk.NewDiskService(db, zfsService, gzfs)
 	case *network.Service:
 		return network.NewNetworkService(db, dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface))
-	case *libvirt.Service:
-		return libvirt.NewLibvirtService(db)
 	case *utilities.Service:
 		return utilities.NewUtilitiesService(db)
 	case *samba.Service:
 		zfsService := dependencies[0].(zfsServiceInterfaces.ZfsServiceInterface)
-		return samba.NewSambaService(db, zfsService)
+		gzfs := dependencies[1].(*gzfs.Client)
+		return samba.NewSambaService(db, zfsService, gzfs)
 	case *jail.Service:
 		networkService := dependencies[0].(networkServiceInterfaces.NetworkServiceInterface)
-		return jail.NewJailService(db, networkService)
+		systemService := dependencies[1].(systemServiceInterfaces.SystemServiceInterface)
+		gzfs := dependencies[2].(*gzfs.Client)
+		return jail.NewJailService(db, networkService, systemService, gzfs)
 	case *cluster.Service:
 		authService := dependencies[0].(serviceInterfaces.AuthServiceInterface)
 		return cluster.NewClusterService(db, authService)
@@ -105,23 +118,30 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 }
 
 func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
+	gzfs := gzfs.NewClient(gzfs.Options{
+		Sudo:               false,
+		ZDBCacheTTLSeconds: 0,
+	})
+
 	authService := NewService[auth.Service](db)
-	infoService := NewService[info.Service](db)
-	libvirtService := NewService[libvirt.Service](db)
-	zfsService := NewService[zfs.Service](db, libvirtService)
-	utilitiesService := NewService[utilities.Service](db)
-	systemService := NewService[system.Service](db)
-	sambaService := NewService[samba.Service](db, zfsService)
+	systemService := NewService[system.Service](db, gzfs)
+	libvirtService := NewService[libvirt.Service](db, systemService, gzfs)
 	networkService := NewService[network.Service](db, libvirtService)
-	jailService := NewService[jail.Service](db, networkService)
+	infoService := NewService[info.Service](db, gzfs)
+	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
+	utilitiesService := NewService[utilities.Service](db)
+	sambaService := NewService[samba.Service](db, zfsService, gzfs)
+	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
 	clusterService := NewService[cluster.Service](db, authService)
+
+	diskService := NewService[disk.Service](db, zfsService, gzfs)
 
 	return &ServiceRegistry{
 		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),
 		StartupService:   NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService, clusterService).(*startup.Service),
 		InfoService:      infoService.(infoServiceInterfaces.InfoServiceInterface),
 		ZfsService:       zfsService.(*zfs.Service),
-		DiskService:      NewService[disk.Service](db, zfsService).(*disk.Service),
+		DiskService:      diskService.(*disk.Service),
 		NetworkService:   NewService[network.Service](db, libvirtService).(*network.Service),
 		LibvirtService:   libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
 		UtilitiesService: utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),

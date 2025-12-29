@@ -107,7 +107,9 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			readOnly = *request.ReadOnly
 		}
 
+		ctx := c.Request.Context()
 		if err := smbService.CreateShare(
+			ctx,
 			request.Name,
 			request.Dataset,
 			request.ReadOnlyGroups,
@@ -170,7 +172,9 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			readOnly = *request.ReadOnly
 		}
 
+		ctx := c.Request.Context()
 		if err := smbService.UpdateShare(
+			ctx,
 			request.ID,
 			request.Name,
 			request.Dataset,
@@ -224,7 +228,8 @@ func DeleteShare(smbService *samba.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := smbService.DeleteShare(uint(idInt)); err != nil {
+		ctx := c.Request.Context()
+		if err := smbService.DeleteShare(ctx, uint(idInt)); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_delete_share",

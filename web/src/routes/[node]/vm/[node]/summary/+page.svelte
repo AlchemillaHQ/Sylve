@@ -1,19 +1,14 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-
 	import { goto } from '$app/navigation';
-	import AreaChart from '$lib/components/custom/Charts/Area.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
-
 	import {
 		actionVm,
 		deleteVM,
 		getStats,
+		getVmById,
 		getVMDomain,
-		getVMs,
 		updateDescription
 	} from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
@@ -22,74 +17,98 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { hostname } from '$lib/stores/basic';
-	import type { VM, VMDomain, VMStat } from '$lib/types/vm/vm';
-	import { sleep } from '$lib/utils';
+	import { VMStatSchema, type VM, type VMDomain, type VMStat } from '$lib/types/vm/vm';
+	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
+	import { storage } from '$lib';
+	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
+	import type { GFSStep } from '$lib/types/common';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 
 	interface Data {
-		vms: VM[];
+		rid: number;
+		vm: VM;
 		domain: VMDomain;
 		stats: VMStat[];
 	}
 
 	let { data }: { data: Data } = $props();
-	const vmId = page.url.pathname.split('/')[3];
+	let gfsStep = $state<GFSStep>('hourly');
 
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
+	const vm = resource(
+		() => 'vm-' + data.vm.rid,
+		async (key) => {
+			const result = await getVmById(Number(data.vm.rid), 'rid');
+			updateCache(key, result);
+			return result;
 		},
-		{
-			queryKey: [`vm-domain-${vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(vmId);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (data: VMDomain) => {
-				updateCache(`vm-domain-${vmId}`, data);
-			}
+		{ initialValue: data.vm }
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.vm.rid}`,
+		async (key) => {
+			const result = await getVMDomain(data.vm.rid);
+			updateCache(key, result);
+			return result;
 		},
-		{
-			queryKey: [`vm-stats-${vmId}`],
-			queryFn: async () => {
-				return await getStats(Number(vmId), 128);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.stats,
-			onSuccess: (data: VMStat[]) => {
-				updateCache(`vm-stats-${vmId}`, data);
+		{ initialValue: data.domain }
+	);
+
+	const stats = resource(
+		[() => gfsStep],
+		async ([gfsStep]) => {
+			const result = await getStats(Number(data.vm.id), gfsStep);
+			const key = `vm-stats-${data.vm.id}`;
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: data.stats }
+	);
+
+	const visible = new IsDocumentVisible();
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (visible.current) {
+				vm.refetch();
+				domain.refetch();
+				stats.refetch();
 			}
 		}
-	]);
+	});
 
-	let domain: VMDomain = $derived($results[1].data as VMDomain);
-	let vm: VM = $derived(
-		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				vm.refetch();
+				domain.refetch();
+				stats.refetch();
+			}
+		}
 	);
-	let stats: VMStat[] = $derived($results[2].data as VMStat[]);
-	let recentStat = $derived(stats[stats.length - 1] || ({} as VMStat));
 
-	let vmDescription = $derived.by(() => {
-		return vm.description || '';
+	let recentStat = $derived(
+		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
+	);
+
+	let vmDescription = $state(vm.current.description || '');
+	let debouncedDesc = new Debounced(() => vmDescription, 500);
+	let lastDesc = $state('');
+
+	$effect(() => {
+		const value = debouncedDesc.current;
+
+		if (value !== undefined && value !== null && value !== lastDesc) {
+			updateDescription(vm.current.rid, value);
+			lastDesc = value;
+		}
 	});
 
 	let modalState = $state({
@@ -110,11 +129,11 @@
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being deleted`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
 
 		await sleep(1000);
 		const result = await deleteVM(
-			vm.id,
+			vm.current.rid,
 			modalState.deleteMACs,
 			modalState.deleteRAWDisks,
 			modalState.deleteVolumes
@@ -128,7 +147,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			goto(`/${$hostname}/summary`);
+			goto(`/${storage.hostname}/summary`);
 			toast.success('VM deleted', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -139,10 +158,10 @@
 	async function handleStart() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Starting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being started.`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being started.`;
 		modalState.loading.iconColor = 'text-green-500';
 
-		const result = await actionVm(vm.id, 'start');
+		const result = await actionVm(vm.current.rid, 'start');
 
 		reload.leftPanel = true;
 
@@ -165,10 +184,10 @@
 	async function handleStop() {
 		modalState.loading.open = true;
 		modalState.loading.title = 'Stopping Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.name} (${vm.vmId})</b> is being stopped`;
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being stopped`;
 		modalState.loading.iconColor = 'text-red-500';
 
-		const result = await actionVm(vm.id, 'stop');
+		const result = await actionVm(vm.current.rid, 'stop');
 
 		reload.leftPanel = true;
 
@@ -188,95 +207,145 @@
 		}
 	}
 
+	async function handleShutdown() {
+		modalState.loading.open = true;
+		modalState.loading.title = 'Shutting Down Virtual Machine';
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being shut down`;
+		modalState.loading.iconColor = 'text-yellow-500';
+
+		const result = await actionVm(vm.current.rid, 'shutdown');
+		reload.leftPanel = true;
+
+		if (result.status === 'error') {
+			modalState.loading.open = false;
+			toast.error('Error shutting down VM', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else if (result.status === 'success') {
+			await sleep(1000);
+			modalState.loading.open = false;
+			toast.success('VM shut down', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+	}
+
+	async function handleReboot() {
+		modalState.loading.open = true;
+		modalState.loading.title = 'Rebooting Virtual Machine';
+		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being rebooted`;
+		modalState.loading.iconColor = 'text-blue-500';
+
+		const result = await actionVm(vm.current.rid, 'reboot');
+		reload.leftPanel = true;
+
+		if (result.status === 'error') {
+			modalState.loading.open = false;
+			toast.error('Error rebooting VM', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else if (result.status === 'success') {
+			await sleep(1000);
+			modalState.loading.open = false;
+			toast.success('VM rebooted', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+	}
+
 	let udTime = $derived.by(() => {
-		if (domain.status === 'Running') {
-			if (vm.startedAt) {
-				return `Started ${dateToAgo(vm.startedAt)}`;
+		if (domain.current.status === 'Running') {
+			if (vm.current.startedAt) {
+				return `Started ${dateToAgo(vm.current.startedAt)}`;
 			}
-		} else if (domain.status === 'Stopped' || domain.status === 'Shutoff') {
-			if (vm.stoppedAt) {
-				return `Stopped ${dateToAgo(vm.stoppedAt)}`;
+		} else if (domain.current.status === 'Stopped' || domain.current.status === 'Shutoff') {
+			if (vm.current.stoppedAt) {
+				return `Stopped ${dateToAgo(vm.current.stoppedAt)}`;
 			}
 		}
 		return '';
 	});
-
-	let cpuHistoricalData = $derived.by(() => {
-		return {
-			field: 'cpuUsage',
-			label: 'CPU Usage',
-			color: 'chart-1',
-			data: stats
-				.map((data) => ({
-					date: new Date(data.createdAt),
-					value: Math.floor(data.cpuUsage)
-				}))
-				.slice(-12)
-		};
-	});
-
-	let memoryUsageData = $derived.by(() => {
-		return {
-			field: 'memoryUsage',
-			label: 'Memory Usage',
-			color: 'chart-2',
-			data: stats
-				.map((data) => ({
-					date: new Date(data.createdAt),
-					value: Math.floor(data.memoryUsage)
-				}))
-				.slice(-12)
-		};
-	});
-
-	$effect(() => {
-		if (vmDescription) {
-			updateDescription(vm.id, vmDescription);
-		}
-	});
-
-	let cpuUsageRef: Chart | null = $state(null);
-	let memoryUsageRef: Chart | null = $state(null);
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && domain.id == -1 && domain.status !== 'Running'}
+	{#if type === 'start' && domain.current.id == -1 && domain.current.status !== 'Running'}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<Icon icon="mdi:play" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 			{'Start'}
 		</Button>
 
 		<Button
 			onclick={() => {
 				modalState.isDeleteOpen = true;
-				modalState.title = `${vm.name} (${vm.vmId})`;
+				modalState.title = `${vm.current.name} (${vm.current.rid})`;
 			}}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 			{'Delete'}
 		</Button>
-	{:else if type === 'stop' && domain.id !== -1 && domain.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && domain.current.id !== -1 && domain.current.status === 'Running'}
 		<Button
-			onclick={() => handleStop()}
+			onclick={() =>
+				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
 			size="sm"
-			class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
-			<Icon icon="mdi:stop" class="mr-1 h-4 w-4" />
-			{'Stop'}
+			{#if type === 'stop'}
+				<div class="flex items-center">
+					<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
+					<span>Stop</span>
+				</div>
+			{:else if type === 'shutdown'}
+				<div class="flex items-center">
+					<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
+					<span>Shutdown</span>
+				</div>
+			{:else if type === 'reboot'}
+				<div class="flex items-center">
+					<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
+					<span>Reboot</span>
+				</div>
+			{/if}
 		</Button>
 	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border p-4">
+	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{@render button('start')}
+		{@render button('reboot')}
+		{@render button('shutdown')}
 		{@render button('stop')}
+
+		<!-- Towards the right we should have another button -->
+		<div class="ml-auto flex h-full items-center">
+			<SimpleSelect
+				options={[
+					{ label: 'Hourly', value: 'hourly' },
+					{ label: 'Daily', value: 'daily' },
+					{ label: 'Weekly', value: 'weekly' },
+					{ label: 'Monthly', value: 'monthly' },
+					{ label: 'Yearly', value: 'yearly' }
+				]}
+				bind:value={gfsStep}
+				onChange={() => {
+					stats.refetch();
+				}}
+				classes={{ trigger: 'h-6!' }}
+				icon="icon-[mdi--calendar]"
+			/>
+		</div>
 	</div>
 
 	<div class="min-h-0 flex-1">
@@ -285,36 +354,37 @@
 				<Card.Root class="w-full gap-0 p-4">
 					<Card.Header class="p-0">
 						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-							{`${vm.name} ${udTime ? `(${udTime})` : ''}`}
+							{`${vm.current.name} ${udTime ? `(${udTime})` : ''}`}
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="mt-3 p-0">
 						<div class="flex items-start">
 							<div class="flex items-center">
-								<Icon icon="fluent:status-12-filled" class="mr-1 h-5 w-5" />
+								<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
 								{'Status'}
 							</div>
 							<div class="ml-auto">
-								{domain.status}
+								{domain.current.status}
 							</div>
 						</div>
 
 						<div class="mt-2">
 							<div class="flex w-full justify-between pb-1">
 								<p class="inline-flex items-center">
-									<Icon icon="solar:cpu-bold" class="mr-1 h-5 w-5" />
+									<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
+
 									{'CPU Usage'}
 								</p>
 								<p class="ml-auto">
-									{#if domain.status === 'Running'}
-										{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.cpuCores * vm.cpuThreads * vm.cpuSockets} vCPU(s)`}
+									{#if domain.current.status === 'Running'}
+										{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 									{:else}
-										{`0% of ${vm.cpuCores * vm.cpuThreads * vm.cpuSockets} vCPU(s)`}
+										{`0% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 									{/if}
 								</p>
 							</div>
 
-							{#if domain.status === 'Running'}
+							{#if domain.current.status === 'Running'}
 								<Progress value={recentStat.cpuUsage || 0} max={100} class="ml-auto h-2" />
 							{:else}
 								<Progress value={0} max={100} class="ml-auto h-2" />
@@ -324,21 +394,22 @@
 						<div class="mt-2">
 							<div class="flex w-full justify-between pb-1">
 								<p class="inline-flex items-center">
-									<Icon icon="ph:memory" class="mr-1 h-5 w-5" />
+									<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
+
 									{'RAM Usage'}
 								</p>
 								<p class="ml-auto">
 									{#if vm}
-										{#if domain.status === 'Running'}
-											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${humanFormat(vm.ram || 0)}`}
+										{#if domain.current.status === 'Running'}
+											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${humanFormat(vm.current.ram || 0)}`}
 										{:else}
-											{`0% of ${humanFormat(vm.ram || 0)}`}
+											{`0% of ${humanFormat(vm.current.ram || 0)}`}
 										{/if}
 									{/if}
 								</p>
 							</div>
 
-							{#if domain.status === 'Running'}
+							{#if domain.current.status === 'Running'}
 								<Progress value={recentStat.memoryUsage || 0} max={100} class="ml-auto h-2" />
 							{:else}
 								<Progress value={0} max={100} class="ml-auto h-2" />
@@ -366,18 +437,27 @@
 				</Card.Root>
 			</div>
 
-			<div class="space-y-4 p-3">
-				<AreaChart
+			<div class="space-y-4 px-4 pb-4">
+				<LineBrush
 					title="CPU Usage"
-					elements={[cpuHistoricalData]}
-					chart={cpuUsageRef}
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.cpuUsage)
+					}))}
 					percentage={true}
+					color="one"
+					containerContentHeight="h-64"
 				/>
-				<AreaChart
+
+				<LineBrush
 					title="Memory Usage"
-					elements={[memoryUsageData]}
-					chart={memoryUsageRef}
+					points={stats.current.map((data) => ({
+						date: new Date(data.createdAt).getTime(),
+						value: Number(data.memoryUsage)
+					}))}
 					percentage={true}
+					color="two"
+					containerContentHeight="h-64"
 				/>
 			</div>
 		</ScrollArea>

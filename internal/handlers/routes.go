@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/assets"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
+	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
@@ -86,9 +87,17 @@ func RegisterRoutes(r *gin.Engine,
 	health := api.Group("/health")
 	health.Use(middleware.EnsureAuthenticated(authService))
 	{
-		health.GET("/basic", BasicHealthCheckHandler)
-		health.POST("/basic", BasicHealthCheckHandler)
+		health.GET("/basic", BasicHealthCheckHandler(systemService))
+		health.POST("/basic", BasicHealthCheckHandler(systemService))
 		health.GET("/http", HTTPHealthCheckHandler)
+	}
+
+	basic := api.Group("/basic")
+	basic.Use(middleware.EnsureAuthenticated(authService))
+	{
+		basic.GET("/settings", basicHandlers.GetBasicSettings(systemService))
+		basic.POST("/initialize", basicHandlers.Initialize(systemService))
+		basic.PUT("/system/reboot", basicHandlers.RebootSystem(systemService))
 	}
 
 	info := api.Group("/info")
@@ -128,23 +137,23 @@ func RegisterRoutes(r *gin.Engine,
 	zfs.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		zfs.GET("/pool/stats/:interval/:limit", zfsHandlers.PoolStats(zfsService))
-		zfs.GET("/pool/io-delay", zfsHandlers.AvgIODelay(zfsService))
-		zfs.GET("/pool/io-delay/historical", zfsHandlers.AvgIODelayHistorical(zfsService))
-
 		pools := zfs.Group("/pools")
 		{
-			pools.GET("", zfsHandlers.GetPools(zfsService))
+			pools.GET("", zfsHandlers.GetPools(zfsService, systemService))
 			pools.GET("/disks-usage", zfsHandlers.GetDisksUsage(zfsService))
 			pools.POST("", zfsHandlers.CreatePool(infoService, zfsService))
 			pools.PATCH("", zfsHandlers.EditPool(infoService, zfsService))
+			pools.GET("/:guid/status", zfsHandlers.GetPoolStatus(zfsService))
 			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
 			pools.DELETE("/:guid", zfsHandlers.DeletePool(infoService, zfsService))
-			pools.POST("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
+			pools.PATCH("/:guid/replace-device", zfsHandlers.ReplaceDevice(infoService, zfsService))
 		}
 
 		datasets := zfs.Group("/datasets")
 		{
 			datasets.GET("", zfsHandlers.GetDatasets(zfsService))
+			datasets.GET("/paginated", zfsHandlers.GetPaginatedDatasets(zfsService))
+
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
 			datasets.POST("/snapshot/rollback", zfsHandlers.RollbackSnapshot(zfsService))
 			datasets.DELETE("/snapshot/:guid", zfsHandlers.DeleteSnapshot(zfsService))
@@ -165,6 +174,7 @@ func RegisterRoutes(r *gin.Engine,
 			datasets.DELETE("/volume/:guid", zfsHandlers.DeleteVolume(zfsService))
 
 			datasets.POST("/bulk-delete", zfsHandlers.BulkDeleteDataset(zfsService))
+			datasets.POST("/bulk-delete-by-names", zfsHandlers.BulkDeleteDatasetsByName(zfsService))
 		}
 	}
 
@@ -239,6 +249,8 @@ func RegisterRoutes(r *gin.Engine,
 		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
 		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
+		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
+		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")
@@ -267,30 +279,35 @@ func RegisterRoutes(r *gin.Engine,
 	vm.Use(middleware.EnsureAuthenticated(authService))
 	vm.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
-		vm.POST("/:action/:id", vmHandlers.VMActionHandler(libvirtService))
+		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(libvirtService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
 		vm.DELETE("/:id", vmHandlers.RemoveVM(libvirtService))
-		vm.GET("/domain/:id", vmHandlers.GetLvDomain(libvirtService))
-		vm.GET("/stats/:vmId/:limit", vmHandlers.GetVMStats(libvirtService))
+		vm.GET("/domain/:rid", vmHandlers.GetLvDomain(libvirtService))
+		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
 		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
 
 		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))
 		vm.POST("/storage/attach", vmHandlers.StorageAttach(libvirtService))
+		vm.PUT("/storage/update", vmHandlers.StorageUpdate(libvirtService))
 
 		vm.POST("/network/detach", vmHandlers.NetworkDetach(libvirtService))
 		vm.POST("/network/attach", vmHandlers.NetworkAttach(libvirtService))
 
-		vm.PUT("/hardware/cpu/:vmid", vmHandlers.ModifyCPU(libvirtService))
-		vm.PUT("/hardware/ram/:vmid", vmHandlers.ModifyRAM(libvirtService))
-		vm.PUT("/hardware/vnc/:vmid", vmHandlers.ModifyVNC(libvirtService))
-		vm.PUT("/hardware/ppt/:vmid", vmHandlers.ModifyPassthroughDevices(libvirtService))
+		vm.PUT("/hardware/cpu/:rid", vmHandlers.ModifyCPU(libvirtService))
+		vm.PUT("/hardware/ram/:rid", vmHandlers.ModifyRAM(libvirtService))
+		vm.PUT("/hardware/vnc/:rid", vmHandlers.ModifyVNC(libvirtService))
+		vm.PUT("/hardware/ppt/:rid", vmHandlers.ModifyPassthroughDevices(libvirtService))
 
-		vm.PUT("/options/wol/:vmid", vmHandlers.ModifyWakeOnLan(libvirtService))
-		vm.PUT("/options/boot-order/:vmid", vmHandlers.ModifyBootOrder(libvirtService))
-		vm.PUT("/options/clock/:vmid", vmHandlers.ModifyClock(libvirtService))
-		vm.PUT("/options/serial-console/:vmid", vmHandlers.ModifySerialConsole(libvirtService))
+		vm.PUT("/options/wol/:rid", vmHandlers.ModifyWakeOnLan(libvirtService))
+		vm.PUT("/options/boot-order/:rid", vmHandlers.ModifyBootOrder(libvirtService))
+		vm.PUT("/options/clock/:rid", vmHandlers.ModifyClock(libvirtService))
+		vm.PUT("/options/serial-console/:rid", vmHandlers.ModifySerialConsole(libvirtService))
+		vm.PUT("/options/shutdown-wait-time/:rid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
+		vm.PUT("/options/cloud-init/:rid", vmHandlers.ModifyCloudInitData(libvirtService))
+		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
 
 		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}
@@ -302,24 +319,32 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/state", jailHandlers.ListJailStates(jailService))
+		jail.GET("/state/:id", jailHandlers.GetJailState(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
+		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
-		jail.GET("/stats/:ctId/:limit", jailHandlers.GetJailStats(jailService))
+		jail.GET("/stats/:ctId/:step", jailHandlers.GetJailStats(jailService))
 		jail.PUT("/resource-limits/:ctId", jailHandlers.UpdateResourceLimits(jailService))
 
 		jail.POST("", jailHandlers.CreateJail(jailService))
 		jail.DELETE("/:ctid", jailHandlers.DeleteJail(jailService))
 
-		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket)
-		jail.POST("/network/inheritance", jailHandlers.InheritJailNetwork(jailService))
-		jail.DELETE("/network/disinherit/:ctId", jailHandlers.DisinheritJailNetwork(jailService))
+		jail.GET("/console", jailHandlers.HandleJailTerminalWebsocket(jailService))
+		jail.PUT("/network/inheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
+		jail.PUT("/network/disinheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
 
 		jail.POST("/network", jailHandlers.AddNetwork(jailService))
 		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
+
+		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
+		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
+		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
+		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
 	}
 
 	utilities := api.Group("/utilities")
@@ -329,6 +354,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		utilities.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
+		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
 		utilities.GET("/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
@@ -381,17 +407,6 @@ func RegisterRoutes(r *gin.Engine,
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
-	}
-
-	clusterStorages := cluster.Group("/storage")
-	{
-		clusterStorages.GET("", clusterHandlers.Storages(clusterService))
-
-		clusterStorages.POST("/s3", clusterHandlers.CreateS3Storage(clusterService))
-		clusterStorages.DELETE("/s3/:id", clusterHandlers.DeleteS3Storage(clusterService))
-
-		clusterStorages.POST("/directory", clusterHandlers.CreateDirStorage(clusterService))
-		clusterStorages.DELETE("/directory/:id", clusterHandlers.DeleteDirStorage(clusterService))
 	}
 
 	vnc := api.Group("/vnc")

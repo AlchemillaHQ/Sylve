@@ -1,150 +1,135 @@
 <script lang="ts">
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getJails, newJail } from '$lib/api/jail/jail';
+	import { getSimpleJails, newJail } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getDownloads } from '$lib/api/utilities/downloader';
-	import { getVMs } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { CreateData, Jail } from '$lib/types/jail/jail';
-	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
-	import type { Download } from '$lib/types/utilities/downloader';
-	import type { VM } from '$lib/types/vm/vm';
-	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import type { CreateData } from '$lib/types/jail/jail';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextId } from '$lib/utils/vm/vm';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
+	import Advanced from './Advanced.svelte';
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
+	import { getPools } from '$lib/api/zfs/pool';
 
 	interface Props {
 		open: boolean;
+		minimize: boolean;
 	}
 
-	let { open = $bindable() }: Props = $props();
+	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 	const tabs = [
 		{ value: 'basic', label: 'Basic' },
 		{ value: 'storage', label: 'Storage' },
 		{ value: 'network', label: 'Network' },
-		{ value: 'hardware', label: 'Hardware & Advanced' }
+		{ value: 'hardware', label: 'Hardware' },
+		{ value: 'advanced', label: 'Advanced' }
 	];
 
-	let queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'zfs-datasets',
-			queryFn: async () => {
-				return await getDatasets();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'downloads',
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-switches',
-
-			queryFn: async () => {
-				return await getSwitches();
-			},
-			keepPreviousData: true,
-			initialData: {} as SwitchList,
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'vm-list',
-			queryFn: async () => {
-				return await getVMs();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'network-objects',
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'jail-list',
-			queryFn: async () => {
-				return await getJails();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
-		},
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => {
-				return await getNodes();
-			},
-			keepPreviousData: true,
-			initialData: [],
-			refetchOnMount: 'always'
+	let downloads = resource(
+		() => 'downloads',
+		async (key, prevKey, { signal }) => {
+			const downloads = await getDownloads();
+			updateCache(key, downloads);
+			return downloads;
 		}
-	]);
+	);
+
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const switches = await getSwitches();
+			updateCache(key, switches);
+			return switches;
+		}
+	);
+
+	let networkObjects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const objects = await getNetworkObjects();
+			updateCache(key, objects);
+			return objects;
+		}
+	);
+
+	let vms = resource(
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
+			const vms = await getSimpleVMs();
+			updateCache(key, vms);
+			return vms;
+		}
+	);
+
+	let jails = resource(
+		() => 'simple-jail-list',
+		async (key, prevKey, { signal }) => {
+			const jails = await getSimpleJails();
+			updateCache(key, jails);
+			return jails;
+		}
+	);
+
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const nodes = await getNodes();
+			updateCache(key, nodes);
+			return nodes;
+		}
+	);
+
+	let pools = resource(
+		() => 'pool-list',
+		async (key, prevKey, { signal }) => {
+			const pools = await getPools();
+			updateCache(key, pools);
+			return pools;
+		}
+	);
 
 	let refetch = $state(false);
 
-	$effect(() => {
-		if (refetch) {
-			queryClient.refetchQueries('zfs-datasets');
-			queryClient.refetchQueries('downloads');
-			queryClient.refetchQueries('network-switches');
-			queryClient.refetchQueries('vm-list');
-			queryClient.refetchQueries('network-objects');
-			queryClient.refetchQueries('jail-list');
-			queryClient.refetchQueries('cluster-nodes');
+	watch(
+		() => refetch,
+		(value) => {
+			if (value) {
+				downloads.refetch();
+				networkSwitches.refetch();
+				networkObjects.refetch();
+				vms.refetch();
+				jails.refetch();
+				nodes.refetch();
+				pools.refetch();
 
-			refetch = false;
+				refetch = false;
+			}
 		}
-	});
-
-	let datasets: Dataset[] = $derived($results[0].data as Dataset[]);
-	let downloads = $derived($results[1].data as Download[]);
-	let networkSwitches: SwitchList = $derived($results[2].data as SwitchList);
-	let networkObjects = $derived($results[4].data as NetworkObject[]);
-	let vms: VM[] = $derived($results[3].data as VM[]);
-	let jails: Jail[] = $derived($results[5].data as Jail[]);
-	let nodes: ClusterNode[] = $derived($results[6].data as ClusterNode[]);
-	let creating: boolean = $state(false);
-
-	let filesystems: Dataset[] = $derived(
-		datasets.filter((dataset) => dataset.type === 'filesystem')
 	);
+
+	let creating: boolean = $state(false);
 
 	let options = {
 		name: '',
+		hostname: '',
 		id: 0,
 		node: '',
 		description: '',
 		storage: {
-			dataset: '',
-			base: ''
+			pool: '',
+			base: '',
+			fstab: ''
 		},
 		network: {
 			switch: 'None',
@@ -163,16 +148,45 @@
 			ram: 0,
 			startAtBoot: false,
 			resourceLimits: true,
-			bootOrder: 0
+			bootOrder: 0,
+			devfsRuleset: ''
+		},
+		advanced: {
+			jailType: 'freebsd' as 'linux' | 'freebsd',
+			additionalOptions: '',
+			cleanEnvironment: true,
+			execScripts: {
+				prestart: { enabled: false, script: '' },
+				start: { enabled: false, script: '' },
+				poststart: { enabled: false, script: '' },
+				prestop: { enabled: false, script: '' },
+				stop: { enabled: false, script: '' },
+				poststop: { enabled: false, script: '' }
+			},
+			allowedOptions: [] as string[],
+			metadata: {
+				env: '',
+				meta: ''
+			}
 		}
 	};
 
-	let nextId = $derived(getNextId(vms, jails));
+	let nextId = $derived.by(() => {
+		if (vms.current && jails.current) {
+			return getNextId(vms.current, jails.current);
+		}
+
+		return 137;
+	});
+
 	let modal: CreateData = $state(options);
 
-	$effect(() => {
-		modal.id = nextId;
-	});
+	watch(
+		() => nextId,
+		(id) => {
+			modal.id = id;
+		}
+	);
 
 	function resetModal() {
 		modal = options;
@@ -186,7 +200,7 @@
 			data.hardware.ram = 0;
 		}
 
-		if (!(await isValidCreateData(data, filesystems))) {
+		if (!(await isValidCreateData(data))) {
 			return;
 		} else {
 			creating = true;
@@ -227,18 +241,31 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[64vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="hugeicons:prison" class="h-5 w-5 " />
+					<span class="icon-[hugeicons--prison] h-5 w-5"></span>
 					<span>Create Jail</span>
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title={'Reset'}>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
+					</Button>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						onclick={() => {
+							minimize = true;
+							open = false;
+						}}
+						title={'Minimize'}
+					>
+						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">{'Minimize'}</span>
 					</Button>
 					<Button
 						size="sm"
@@ -247,7 +274,7 @@
 						onclick={() => (open = false)}
 						title={'Close'}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -256,7 +283,7 @@
 
 		<div class="mt-6 flex-1 overflow-y-auto">
 			<Tabs.Root value="basic" class="w-full overflow-hidden">
-				<Tabs.List class="grid w-full grid-cols-4 p-0 ">
+				<Tabs.List class="grid w-full grid-cols-5 p-0">
 					{#each tabs as { value, label }}
 						<Tabs.Trigger class="border-b" {value}>{label}</Tabs.Trigger>
 					{/each}
@@ -265,24 +292,26 @@
 				{#each tabs as { value, label }}
 					<Tabs.Content {value}>
 						<div>
-							{#if value === 'basic'}
+							{#if value === 'basic' && nodes.current}
 								<Basic
 									bind:name={modal.name}
 									bind:id={modal.id}
+									bind:hostname={modal.hostname}
 									bind:description={modal.description}
 									bind:refetch
 									bind:node={modal.node}
-									{nodes}
+									nodes={nodes.current}
 								/>
-							{:else if value === 'storage'}
+							{:else if value === 'storage' && pools.current && downloads.current && jails.current}
 								<Storage
-									{filesystems}
-									{downloads}
-									{jails}
-									bind:dataset={modal.storage.dataset}
+									downloads={downloads.current}
+									pools={pools.current}
+									ctId={modal.id}
+									bind:pool={modal.storage.pool}
 									bind:base={modal.storage.base}
+									bind:fstab={modal.storage.fstab}
 								/>
-							{:else if value === 'network'}
+							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
 								<Network
 									bind:switch={modal.network.switch}
 									bind:mac={modal.network.mac}
@@ -294,8 +323,8 @@
 									bind:ipv6Gateway={modal.network.ipv6Gateway}
 									bind:dhcp={modal.network.dhcp}
 									bind:slaac={modal.network.slaac}
-									switches={networkSwitches}
-									{networkObjects}
+									switches={networkSwitches.current}
+									networkObjects={networkObjects.current}
 								/>
 							{:else if value === 'hardware'}
 								<Hardware
@@ -304,6 +333,16 @@
 									bind:startAtBoot={modal.hardware.startAtBoot}
 									bind:bootOrder={modal.hardware.bootOrder}
 									bind:resourceLimits={modal.hardware.resourceLimits}
+									bind:devfsRuleset={modal.hardware.devfsRuleset}
+								/>
+							{:else if value === 'advanced'}
+								<Advanced
+									bind:jailType={modal.advanced.jailType}
+									bind:additionalOptions={modal.advanced.additionalOptions}
+									bind:cleanEnvironment={modal.advanced.cleanEnvironment}
+									bind:execScripts={modal.advanced.execScripts}
+									bind:allowedOptions={modal.advanced.allowedOptions}
+									bind:metadata={modal.advanced.metadata}
 								/>
 							{/if}
 						</div>
@@ -317,7 +356,7 @@
 				<Button size="sm" type="button" class="h-8" onclick={() => create()} disabled={creating}>
 					<!-- Create Jail -->
 					{#if creating}
-						<Icon icon="mdi:loading" class="h-4 w-4 animate-spin" />
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						Create Jail
 					{/if}

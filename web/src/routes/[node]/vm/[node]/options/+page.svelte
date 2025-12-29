@@ -1,7 +1,10 @@
 <script lang="ts">
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVmById } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
+	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
+	import IgnoreUMSR from '$lib/components/custom/VM/Options/IgnoreUMSR.svelte';
+	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -9,45 +12,49 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
+	import { storage } from '$lib';
 
 	interface Data {
 		vm: VM;
-		vms: VM[];
 		domain: VMDomain;
 	}
 
 	let { data }: { data: Data } = $props();
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'vm-list',
-			queryFn: async () => {
-				return await getVMs();
-			},
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
-		}
-	]);
 
+	const vm = resource(
+		() => `vm-${data.vm.rid}`,
+		async (key) => {
+			const result = await getVmById(data.vm.rid, 'rid');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.vm
+		}
+	);
+
+	// let vm: VM | null = $derived(results.data);
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			queryClient.refetchQueries('vm-list');
-			reload = false;
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vm.refetch();
+			}
 		}
 	});
 
-	let vms: VM[] = $derived($results[0].data ? $results[0].data : data.vms);
-	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
-	);
+	$effect(() => {
+		if (storage.visible || reload) {
+			untrack(() => {
+				vm.refetch();
+			});
+		}
+	});
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -77,17 +84,35 @@
 			{
 				id: generateNanoId('startOrder'),
 				property: 'Start At Boot / Start Order',
-				value: `${vm?.startAtBoot ? 'Yes' : 'No'} / ${vm?.startOrder}`
+				value: `${vm?.current.startAtBoot ? 'Yes' : 'No'} / ${vm?.current.startOrder || 0}`
 			},
 			{
 				id: generateNanoId('wol'),
 				property: 'Wake on LAN',
-				value: vm?.wol
+				value: vm?.current.wol || false
 			},
 			{
 				id: generateNanoId('timeOffset'),
 				property: 'Clock Offset',
-				value: vm ? (vm.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
+				value: vm ? (vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
+			},
+			{
+				id: generateNanoId('shutdownWaitTime'),
+				property: 'Shutdown Wait Time',
+				value: vm ? `${vm.current.shutdownWaitTime} seconds` : 'N/A'
+			},
+			{
+				id: generateNanoId('cloudInit'),
+				property: 'Cloud Init',
+				value:
+					vm && (vm.current.cloudInitData || vm.current.cloudInitMetaData)
+						? 'Configured'
+						: 'Not Configured'
+			},
+			{
+				id: generateNanoId('ignoreUMSRs'),
+				property: 'Ignore Unimplemented MSRs Accesses',
+				value: vm ? (vm.current.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
 			}
 		]
 	});
@@ -95,11 +120,17 @@
 	let properties = $state({
 		startOrder: { open: false },
 		wol: { open: false },
-		timeOffset: { open: false }
+		timeOffset: { open: false },
+		shutdownWaitTime: { open: false },
+		cloudInit: { open: false },
+		ignoreUMSR: { open: false }
 	});
 </script>
 
-{#snippet button(type: 'startOrder' | 'wol' | 'timeOffset', title: string)}
+{#snippet button(
+	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit' | 'ignoreUMSR',
+	title: string
+)}
 	<Button
 		onclick={() => {
 			properties[type].open = true;
@@ -113,7 +144,7 @@
 		disabled={data.domain.status ? data.domain.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
-			<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			<span>Edit {title}</span>
 		</div>
 	</Button>
@@ -128,6 +159,12 @@
 				{@render button('wol', 'Wake on LAN')}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
+			{:else if activeRow.property === 'Shutdown Wait Time'}
+				{@render button('shutdownWaitTime', 'Shutdown Wait Time')}
+			{:else if activeRow.property === 'Cloud Init'}
+				{@render button('cloudInit', 'Cloud Init')}
+			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
+				{@render button('ignoreUMSR', 'Ignore Unimplemented MSRs Accesses')}
 			{/if}
 		</div>
 	{/if}
@@ -144,13 +181,25 @@
 </div>
 
 {#if properties.wol.open && vm}
-	<WoL bind:open={properties.wol.open} {vm} bind:reload />
+	<WoL bind:open={properties.wol.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.startOrder.open && vm}
-	<StartOrder bind:open={properties.startOrder.open} {vm} bind:reload />
+	<StartOrder bind:open={properties.startOrder.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.timeOffset.open && vm}
-	<Clock bind:open={properties.timeOffset.open} {vm} bind:reload />
+	<Clock bind:open={properties.timeOffset.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.shutdownWaitTime.open && vm}
+	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.cloudInit.open && vm}
+	<CloudInit bind:open={properties.cloudInit.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.ignoreUMSR.open && vm}
+	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} vm={vm.current} bind:reload />
 {/if}

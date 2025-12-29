@@ -5,8 +5,10 @@
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
+	import { fade } from 'svelte/transition';
+	import { resource, useInterval } from 'runed';
+	import { storage } from '$lib';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -14,20 +16,24 @@
 
 	let { children }: Props = $props();
 
-	const results = useQueries([
-		{
-			queryKey: 'cluster-details',
-			queryFn: async () => {
-				return await getDetails();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			refetchOnMount: 'always'
-		}
-	]);
+	const clusterDetails = resource(
+		[],
+		async () => {
+			return await getDetails();
+		},
+		{}
+	);
 
-	let details = $derived($results[0].data);
-	let clustered = $derived(details?.cluster.enabled || false);
+	useInterval(() => 2000, {
+		callback: () => {
+			if (storage.visible) {
+				clusterDetails.refetch();
+			}
+		}
+	});
+
+	let details = $derived(clusterDetails.current);
+	let clustered = $derived(details?.cluster?.enabled || false);
 </script>
 
 <div class="flex min-h-screen w-full flex-col">
@@ -46,13 +52,14 @@
 						autoSaveId="child-left-pane-auto-save"
 					>
 						<Resizable.Pane defaultSize={12} class="border-l">
-							{#if clustered}
-								<LeftPanelClustered />
-							{:else}
-								<LeftPanel />
-							{/if}
+							<div transition:fade|global={{ duration: 400 }}>
+								{#if clustered}
+									<LeftPanelClustered />
+								{:else}
+									<LeftPanel />
+								{/if}
+							</div>
 						</Resizable.Pane>
-
 						<Resizable.Handle withHandle />
 
 						<Resizable.Pane class="border-r">

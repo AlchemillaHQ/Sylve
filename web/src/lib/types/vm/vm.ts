@@ -1,6 +1,11 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
 
+export interface CPUPin {
+	socket: number;
+	cores: number[];
+}
+
 export interface CreateData {
 	name: string;
 	node: string;
@@ -8,7 +13,7 @@ export interface CreateData {
 	description: string;
 	storage: {
 		type: string;
-		guid: string;
+		pool: string;
 		size: number;
 		emulation: string;
 		iso: string;
@@ -24,7 +29,8 @@ export interface CreateData {
 		threads: number;
 		memory: number;
 		passthroughIds: number[];
-		pinnedCPUs: number[];
+		pinnedCPUs: CPUPin[];
+		isPinningOpen: boolean;
 	};
 	advanced: {
 		serial: boolean;
@@ -36,19 +42,38 @@ export interface CreateData {
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
+		cloudInit: {
+			enabled: boolean;
+			data: string;
+			metadata: string;
+		};
+		ignoreUmsrs: boolean;
 	};
 }
 
+export type VMStorageType = 'raw' | 'zvol' | 'image';
+export type VMStorageEmulationType = 'virtio-blk' | 'ahci-hd' | 'ahci-cd' | 'nvme';
+
+export const VMStorageDatasetSchema = z.object({
+	id: z.number().int(),
+	pool: z.string(),
+	name: z.string(),
+	guid: z.string()
+});
+
 export const VMStorageSchema = z.object({
 	id: z.number().int(),
-	type: z.string(),
-	dataset: z.string(),
-	size: z.number().int(),
-	emulation: z.string(),
-	detached: z.boolean().optional(),
 	vmId: z.number().int().optional(),
-	bootOrder: z.number().int().optional(),
-	name: z.string().optional()
+	name: z.string().optional(),
+	type: z.enum(['raw', 'zvol', 'image']),
+	uuid: z.string().optional(),
+	datasetId: z.number().int().nullable(),
+	dataset: VMStorageDatasetSchema.nullable(),
+	size: z.number().int(),
+	emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
+	recordSize: z.number().int().optional(),
+	volBlockSize: z.number().int().optional(),
+	bootOrder: z.number().int().optional()
 });
 
 export const VMNetworkSchema = z.object({
@@ -62,11 +87,31 @@ export const VMNetworkSchema = z.object({
 	vmId: z.number().int().optional()
 });
 
+export const VMCPUPinningSchema = z.object({
+	id: z.number().int(),
+	vmId: z.number().int(),
+	hostSocket: z.number().int(),
+	hostCpu: z.array(z.number().int())
+});
+
+export enum DomainState {
+	DomainNostate = 0,
+	DomainRunning = 1,
+	DomainBlocked = 2,
+	DomainPaused = 3,
+	DomainShutdown = 4,
+	DomainShutoff = 5,
+	DomainCrashed = 6,
+	DomainPmsuspended = 7
+}
+
+export const DomainStateSchema = z.enum(DomainState);
+
 export const VMSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: z.string(),
-	vmId: z.number().int(),
+	rid: z.number().int(),
 	cpuSockets: z.number().int(),
 	cpuCores: z.number().int(),
 	cpuThreads: z.number().int(),
@@ -81,13 +126,15 @@ export const VMSchema = z.object({
 	startOrder: z.number().int(),
 	wol: z.boolean(),
 	timeOffset: z.enum(['utc', 'localtime']),
-
-	state: z.enum(['ACTIVE', 'INACTIVE']),
-
+	state: DomainStateSchema,
 	storages: z.array(VMStorageSchema),
 	networks: z.array(VMNetworkSchema),
 	pciDevices: z.union([z.array(z.number().int()), z.null()]),
-	cpuPinning: z.union([z.array(z.number().int()), z.null()]),
+	cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
+	shutdownWaitTime: z.number().int(),
+	cloudInitData: z.string().nullable(),
+	cloudInitMetaData: z.string().nullable(),
+	ignoreUMSR: z.boolean(),
 
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -97,11 +144,11 @@ export const VMSchema = z.object({
 });
 
 export const VMStatSchema = z.object({
-	vmId: z.number().int(),
-	cpuUsage: z.number(),
-	memoryUsage: z.number(),
-	memoryUsed: z.number(),
-	createdAt: z.string()
+	vmId: z.number().int().default(0),
+	cpuUsage: z.number().default(0),
+	memoryUsage: z.number().default(0),
+	memoryUsed: z.number().default(0),
+	createdAt: z.string().default(new Date(0).toISOString())
 });
 
 export const VMDomainSchema = z.object({
@@ -114,8 +161,9 @@ export const VMDomainSchema = z.object({
 export const SimpleVmSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
-	vmId: z.number().int(),
-	state: z.string()
+	rid: z.number().int(),
+	vncPort: z.number(),
+	state: DomainStateSchema
 });
 
 export type VM = z.infer<typeof VMSchema>;

@@ -10,7 +10,7 @@ package info
 
 import (
 	"encoding/json"
-	"fmt"
+	"sort"
 	"time"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -43,46 +43,111 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 }
 
 func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
-	type _niRow struct {
-		CreatedAtStr  string `gorm:"column:created_at"`
-		ReceivedBytes int64  `gorm:"column:received_bytes"`
-		SentBytes     int64  `gorm:"column:sent_bytes"`
+	type row struct {
+		Name          string
+		CreatedAt     time.Time
+		ReceivedBytes int64
+		SentBytes     int64
 	}
 
-	var rows []_niRow
+	var rows []row
 	if err := s.DB.
 		Model(&infoModels.NetworkInterface{}).
-		Select(
-			"strftime('%Y-%m-%d %H:%M:%S', created_at) AS created_at, " +
-				"SUM(received_bytes)                         AS received_bytes, " +
-				"SUM(sent_bytes)                             AS sent_bytes",
-		).
-		Group("strftime('%Y-%m-%d %H:%M:%S', created_at)").
-		Order("strftime('%Y-%m-%d %H:%M:%S', created_at) ASC").
+		Select("name, created_at, received_bytes, sent_bytes").
+		Order("name, created_at ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	var prev *_niRow
-	deltas := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(rows)-1)
-	for _, cur := range rows {
-		if prev != nil {
-			ts, err := time.Parse("2006-01-02 15:04:05", cur.CreatedAtStr)
-			if err != nil {
-				return nil, fmt.Errorf("parsing timestamp %q: %w", cur.CreatedAtStr, err)
-			}
-
-			deltas = append(deltas, infoServiceInterfaces.HistoricalNetworkInterface{
-				CreatedAt:     ts,
-				ReceivedBytes: cur.ReceivedBytes - prev.ReceivedBytes,
-				SentBytes:     cur.SentBytes - prev.SentBytes,
-			})
-		}
-		prev = &cur
-	}
-
-	if len(deltas) == 0 {
+	if len(rows) == 0 {
 		return nil, nil
 	}
-	return deltas, nil
+
+	const sampleInterval = 10 * time.Second
+	const maxGap = 4 * sampleInterval
+
+	type prevSample struct {
+		CreatedAt     time.Time
+		ReceivedBytes int64
+		SentBytes     int64
+	}
+
+	prevByName := make(map[string]prevSample, 8)
+
+	// Bucket by Unix second, summed across all interfaces.
+	buckets := make(map[int64]*infoServiceInterfaces.HistoricalNetworkInterface)
+
+	for _, cur := range rows {
+		prev, ok := prevByName[cur.Name]
+		if ok {
+			dt := cur.CreatedAt.Sub(prev.CreatedAt)
+
+			if dt <= 0 {
+				prevByName[cur.Name] = prevSample{
+					CreatedAt:     cur.CreatedAt,
+					ReceivedBytes: cur.ReceivedBytes,
+					SentBytes:     cur.SentBytes,
+				}
+				continue
+			}
+
+			if dt > maxGap {
+				prevByName[cur.Name] = prevSample{
+					CreatedAt:     cur.CreatedAt,
+					ReceivedBytes: cur.ReceivedBytes,
+					SentBytes:     cur.SentBytes,
+				}
+				continue
+			}
+
+			recvDelta := cur.ReceivedBytes - prev.ReceivedBytes
+			sentDelta := cur.SentBytes - prev.SentBytes
+
+			// Counter reset / wrap
+			if recvDelta < 0 {
+				recvDelta = 0
+			}
+			if sentDelta < 0 {
+				sentDelta = 0
+			}
+
+			if recvDelta > 0 || sentDelta > 0 {
+				sec := cur.CreatedAt.Unix() // one bucket per second
+
+				b, ok := buckets[sec]
+				if !ok {
+					b = &infoServiceInterfaces.HistoricalNetworkInterface{
+						CreatedAt: time.Unix(sec, 0).In(cur.CreatedAt.Location()),
+					}
+					buckets[sec] = b
+				}
+
+				// SUM bytes across all NICs for this second
+				b.ReceivedBytes += recvDelta
+				b.SentBytes += sentDelta
+			}
+		}
+
+		prevByName[cur.Name] = prevSample{
+			CreatedAt:     cur.CreatedAt,
+			ReceivedBytes: cur.ReceivedBytes,
+			SentBytes:     cur.SentBytes,
+		}
+	}
+
+	if len(buckets) == 0 {
+		return nil, nil
+	}
+
+	// map -> sorted slice
+	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(buckets))
+	for _, v := range buckets {
+		result = append(result, *v)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+
+	return result, nil
 }

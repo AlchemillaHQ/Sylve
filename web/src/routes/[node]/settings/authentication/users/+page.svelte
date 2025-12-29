@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
-	import { handleAPIResponse } from '$lib/api/common';
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -10,8 +9,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -62,32 +60,31 @@
 		return { rows, columns };
 	}
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
+	const users = resource(
+		() => 'users',
+		async (key, prevKey, { signal }) => {
+			const results = await listUsers();
+			updateCache('users', results);
+			return results;
+		},
 		{
-			queryKey: 'users',
-			queryFn: async () => {
-				return (await listUsers()) as User[];
-			},
-			keepPreviousData: true,
-			initialData: data.users,
-			onSuccess: (data: User[]) => {
-				updateCache('users', data);
-			}
+			initialValue: data.users
 		}
-	]);
+	);
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			queryClient.refetchQueries('users');
-			reload = false;
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				users.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
-	let users: User[] = $derived($results[0].data as User[]);
-	let tableData = $derived(generateTableData(users));
+	let tableData = $derived(generateTableData(users.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -108,12 +105,13 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="h-6.5 pointer-events-auto!"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot delete admin user' : ''}
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -126,12 +124,12 @@
 				}}
 				size="sm"
 				variant="outline"
-				class="h-6.5 !pointer-events-auto"
+				class="h-6.5 pointer-events-auto!"
 				disabled={!activeRow || activeRow.name === 'admin'}
 				title={activeRow && activeRow.name === 'admin' ? 'Cannot edit admin user' : ''}
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -145,7 +143,7 @@
 
 		<Button onclick={() => (modals.create.open = !modals.create.open)} size="sm" class="h-6">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -164,15 +162,15 @@
 </div>
 
 {#if modals.create.open}
-	<CreateOrEdit bind:open={modals.create.open} {users} bind:reload />
+	<CreateOrEdit bind:open={modals.create.open} users={users.current} bind:reload />
 {/if}
 
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		{users}
+		users={users.current}
 		edit={true}
-		user={activeRow ? (users.find((u) => u.id === activeRow.id) as User) : undefined}
+		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
 		bind:reload
 	/>
 {/if}

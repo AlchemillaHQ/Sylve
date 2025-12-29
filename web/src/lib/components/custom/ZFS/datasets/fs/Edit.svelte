@@ -9,7 +9,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { bytesToHumanReadable, isValidSize, parseQuotaToZFSBytes } from '$lib/utils/numbers';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -20,14 +19,17 @@
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 	let options = {
-		atime: 'on',
-		checksum: dataset.checksum || 'on',
-		compression: dataset.compression || 'on',
-		dedup: dataset.dedup || 'off',
-		quota: dataset.quota ? bytesToHumanReadable(dataset.quota) : '',
-		aclinherit: dataset.aclinherit || 'passthrough',
-		aclmode: dataset.aclmode || 'passthrough',
-		recordsize: dataset.recordsize ? dataset.recordsize.toString() : '131072'
+		atime: dataset.properties?.atime || 'on',
+		checksum: dataset.properties?.checksum || 'on',
+		compression: dataset.properties?.compression || 'lz4',
+		dedup: dataset.properties?.dedup || 'off',
+		quota: dataset.properties?.quota
+			? bytesToHumanReadable(parseInt(dataset.properties.quota))
+			: '',
+		aclinherit: dataset.properties?.aclinherit || 'passthrough',
+		aclmode: dataset.properties?.aclmode || 'passthrough',
+		recordsize: dataset.properties?.recordsize || '128K',
+		mountpoint: dataset.properties?.mountpoint || ''
 	};
 
 	let zfsProperties = $state(createFSProps);
@@ -51,7 +53,8 @@
 			quota: parseQuotaToZFSBytes(properties.quota),
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
-			recordsize: properties.recordsize
+			recordsize: properties.recordsize,
+			mountpoint: properties.mountpoint || ''
 		});
 
 		reload = true;
@@ -90,7 +93,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:files" class="h-5 w-5" />Edit Filesystem - {dataset.name}
+					<span class="icon-[material-symbols--files] h-5 w-5"></span>
+					Edit Filesystem - {dataset.name}
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button
@@ -102,7 +106,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -115,7 +119,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -182,14 +186,25 @@
 					bind:value={properties.aclmode}
 					onChange={(value) => (properties.aclmode = value)}
 				/>
-  
+
 				<SimpleSelect
-					label="Recordsize"
-					placeholder="Select Recordsize"
+					label="Record Size"
+					placeholder="Select Record Size"
 					options={zfsProperties.recordsize}
 					bind:value={properties.recordsize}
 					onChange={(value) => (properties.recordsize = value)}
 				/>
+
+				<div class="space-y-1.5">
+					<Label for="mountpoint" class="w-24 whitespace-nowrap text-sm">Custom Mount Point</Label>
+					<Input
+						type="text"
+						id="mountpoint"
+						placeholder="/custom/mountpoint"
+						autocomplete="off"
+						bind:value={properties.mountpoint}
+					/>
+				</div>
 			</div>
 		</div>
 

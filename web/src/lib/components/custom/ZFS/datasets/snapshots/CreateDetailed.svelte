@@ -1,36 +1,55 @@
 <script lang="ts">
-	import { createPeriodicSnapshot, createSnapshot } from '$lib/api/zfs/datasets';
+	import { getBasicSettings } from '$lib/api/system/settings';
+	import { createPeriodicSnapshot, createSnapshot, getDatasets } from '$lib/api/zfs/datasets';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { APIResponse } from '$lib/types/common';
-	import type { Dataset } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
+	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
+	import { deepEqual } from 'fast-equals';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
-		pools: Zpool[];
-		datasets: Dataset[];
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), pools, datasets, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), reload = $bindable() }: Props = $props();
 
-	let options = {
+	let pools = resource(
+		() => 'zfs-pool-names',
+		async (key, prevKey, { signal }) => {
+			const results = await getBasicSettings();
+			return results.pools;
+		},
+		{
+			initialValue: []
+		}
+	);
+
+	let datasets = resource(
+		() => 'zfs-fs-vol-datasets',
+		async (key, prevKey, { signal }) => {
+			const fs = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
+			const vol = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
+			return [...fs, ...vol];
+		},
+		{
+			initialValue: []
+		}
+	);
+
+	let options = $derived({
 		name: '',
 		pool: {
 			open: false,
 			value: '',
-			data: pools.map((pool) => ({
-				label: pool.name,
-				value: pool.name
-			}))
+			data: [] as { label: string; value: string }[]
 		},
 		datasets: {
 			open: false,
@@ -84,24 +103,27 @@
 			}
 		},
 		recursive: false
-	};
+	});
 
 	let properties = $state(options);
 
-	$effect(() => {
-		if (properties.pool.value) {
-			const sets = datasets
-				.filter((dataset) => dataset.name.startsWith(properties.pool.value))
-				.map((dataset) => ({
-					label: dataset.name,
-					value: dataset.name
-				}));
+	watch(
+		() => properties.pool.value,
+		(value) => {
+			if (value) {
+				const sets = datasets.current
+					.filter((dataset) => dataset.pool === value)
+					.map((dataset) => ({
+						label: dataset.name,
+						value: dataset.name
+					}));
 
-			if (JSON.stringify(sets) !== JSON.stringify(properties.datasets.data)) {
-				properties.datasets.data = sets;
+				if (deepEqual(sets, properties.datasets.data) === false) {
+					properties.datasets.data = sets;
+				}
 			}
 		}
-	});
+	);
 
 	async function create() {
 		if (properties.name.trim() === '') {
@@ -125,18 +147,28 @@
 			return;
 		}
 
-		const dataset = datasets.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = pools.find((pool) => pool.name === properties.pool.value);
+		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
+		const pool = pools.current.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
-			const retentionType = properties.retention.value;
+			let retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
 			let minutes: number = 0;
 			let cron: string = '';
 
-			if (intervalType === 'none') {
+			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
+				retentionType === 'none';
+
+				toast.success(`Snapshot ${pool}@${properties.name} created`, {
+					position: 'bottom-center'
+				});
+
+				reload = true;
+				properties = options;
+				open = false;
+				return;
 			} else if (intervalType === 'minutes') {
 				minutes = parseInt(properties.interval.values.interval.value) || 0;
 			} else if (intervalType === 'cronExpr') {
@@ -171,25 +203,22 @@
 					);
 				}
 			} else {
-                response = await createPeriodicSnapshot(
-                    dataset,
-                    properties.name,
-                    properties.recursive,
-                    minutes,
-                    cron,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                );
-            }
+				response = await createPeriodicSnapshot(
+					dataset,
+					properties.name,
+					properties.recursive,
+					minutes,
+					cron,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null
+				);
+			}
 
 			reload = true;
-
-            console.log(response);
-
 			if (response?.error) {
 				handleAPIError(response);
 				toast.error('Failed to create snapshot', {
@@ -197,7 +226,7 @@
 				});
 				return;
 			} else {
-				toast.success(`Snapshot ${pool?.name}@${properties.name} created`, {
+				toast.success(`Snapshot ${pool}@${properties.name} created`, {
 					position: 'bottom-center'
 				});
 
@@ -213,7 +242,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between">
 				<div class="flex items-center">
-					<Icon icon="carbon:ibm-cloud-vpc-block-storage-snapshots" class="mr-2 h-6 w-6" />
+					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-2 h-6 w-6"></span>
+
 					<span>Create Snapshot</span>
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -226,7 +256,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -239,7 +269,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -258,7 +288,10 @@
 				bind:open={properties.pool.open}
 				label="Pool"
 				bind:value={properties.pool.value}
-				data={properties.pool.data}
+				data={pools.current.map((name) => ({
+					label: name,
+					value: name
+				}))}
 				classes="flex-1 space-y-1"
 				placeholder="Select a pool"
 				width="w-full"
@@ -317,7 +350,7 @@
 					{/if}
 				</div>
 
-				{#if properties.interval.value !== 'none'}
+				{#if properties.interval.value !== 'none' && properties.interval.value !== ''}
 					<CustomComboBox
 						bind:open={properties.retention.open}
 						label="Retention"

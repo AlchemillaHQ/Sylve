@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { store } from '$lib/stores/auth';
 	import { sha256 } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import type { FilePond as FilePondType } from 'filepond';
+	import { registerPlugin } from 'filepond';
 	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
 	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 	import { onMount } from 'svelte';
-	import FilePond, { registerPlugin } from 'svelte-filepond';
-
+	import { storage } from '$lib';
+	import FilePond from '../FilePond.svelte';
 	interface Props {
 		isOpen: boolean;
 		onClose: () => void;
@@ -34,7 +33,7 @@
 	let hash = $state('');
 
 	onMount(async () => {
-		hash = await sha256($store, 1);
+		hash = await sha256(storage.token || '', 1);
 	});
 
 	function handleInit() {
@@ -83,12 +82,12 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:upload" class="h-6 w-6" />
+					<span class="icon-[material-symbols--upload] h-6 w-6"></span>
 					Upload File
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button size="sm" variant="link" class="h-4" title="Close" onclick={onClose}>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

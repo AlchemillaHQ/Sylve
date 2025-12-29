@@ -160,6 +160,21 @@ export function isValidAbsPath(loc: string): boolean {
 	return loc.length > 0 && loc.startsWith('/');
 }
 
+export function isValidRawDisk(path: string): boolean {
+	if (path.endsWith('.img') || path.endsWith('.raw')) {
+		return true;
+	}
+
+	return false;
+}
+
+export function getPathParent(path: string): string {
+	if (typeof path !== 'string' || !path.trim()) return '';
+	const parts = path.split('/').filter(Boolean);
+	parts.pop();
+	return '/' + parts.join('/');
+}
+
 export function isValidVMName(name: string): boolean {
 	const regex = /^[a-zA-Z0-9-_]+$/;
 	return regex.test(name);
@@ -518,4 +533,9 @@ export function escapeHTML(str: string): string {
 		.replace(/'/g, '&#39;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;');
+}
+
+export function parseNumberOrZero(value: string): number {
+	const num = Number(value);
+	return isNaN(num) ? 0 : num;
 }

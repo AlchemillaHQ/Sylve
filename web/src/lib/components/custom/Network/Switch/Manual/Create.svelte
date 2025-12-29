@@ -6,7 +6,6 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -60,7 +59,8 @@
 			<Dialog.Header>
 				<Dialog.Title>
 					<div class="flex items-center">
-						<Icon icon="streamline-sharp:router-wifi-network-solid" class="mr-2 h-6 w-6" />
+						<span class="icon-[streamline-sharp--router-wifi-network-solid] mr-2 h-6 w-6"></span>
+
 						<span class="text-lg font-semibold">Create Manual Switch</span>
 					</div>
 				</Dialog.Title>
@@ -74,11 +74,11 @@
 					title={'Reset'}
 					onclick={() => (properties = options)}
 				>
-					<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">{'Reset'}</span>
 				</Button>
 				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
-					<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">{'Close'}</span>
 				</Button>
 			</div>

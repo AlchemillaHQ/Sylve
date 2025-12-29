@@ -12,41 +12,63 @@ import (
 	"context"
 	"time"
 
-	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"github.com/alchemillahq/gzfs"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 )
 
 type RetentionSnapInfo struct {
 	Name    string
-	Dataset *zfs.Dataset
+	Dataset *gzfs.Dataset
 	Time    time.Time
 }
 
+type SimpleZFSDiskUsage struct {
+	Total float64 `json:"total"`
+	Usage float64 `json:"usage"`
+}
+
+type EditVolumeRequest struct {
+	GUID       string            `json:"guid" binding:"required"`
+	Properties map[string]string `json:"properties" binding:"required"`
+}
+
 type ZfsServiceInterface interface {
-	GetTotalIODelayHisorical() ([]infoModels.IODelay, error)
+	StoreStats()
+	RemoveNonExistentPools()
+	Cron()
+	RegisterJobs()
+
+	CreateFilesystem(ctx context.Context, name string, props map[string]string) error
+	EditFilesystem(ctx context.Context, guid string, props map[string]string) error
+	DeleteFilesystem(ctx context.Context, guid string) error
+
+	CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error
+	EditVolume(ctx context.Context, req EditVolumeRequest) error
+	DeleteVolume(ctx context.Context, guid string) error
+	FlashVolume(ctx context.Context, guid string, uuid string) error
+
+	GetDatasets(ctx context.Context, t gzfs.DatasetType) ([]*gzfs.Dataset, error)
+	BulkDeleteDataset(ctx context.Context, guids []string) error
+	IsDatasetInUse(guid string, failEarly bool) bool
+
+	GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error)
+	ScrubPool(ctx context.Context, guid string) error
+	CreatePool(ctx context.Context, req CreateZPoolRequest) error
+	EditPool(ctx context.Context, name string, props map[string]string, spares []string) error
+	DeletePool(ctx context.Context, guid string) error
+	ReplaceDevice(ctx context.Context, guid, old, latest string) error
 	GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]PoolStatPoint, int, error)
 
-	CreatePool(Zpool) error
-	DeletePool(poolName string) error
-
-	GetDatasets(t string) ([]*Dataset, error)
-	BulkDeleteDataset(guids []string) error
-
-	CreateSnapshot(guid string, name string, recursive bool) error
-	RollbackSnapshot(guid string, destroyMoreRecent bool) error
-	DeleteSnapshot(guid string, recursive bool) error
-
+	CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error
+	DeleteSnapshot(ctx context.Context, guid string, recursive bool) error
 	GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error)
-	AddPeriodicSnapshot(CreatePeriodicSnapshotJobRequest) error
+	AddPeriodicSnapshot(ctx context.Context, req CreatePeriodicSnapshotJobRequest) error
+	ModifyPeriodicSnapshotRetention(req ModifyPeriodicSnapshotRetentionRequest) error
 	DeletePeriodicSnapshot(guid string) error
 	StartSnapshotScheduler(ctx context.Context)
+	RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error
 
-	CreateFilesystem(name string, props map[string]string) error
-	DeleteFilesystem(guid string) error
-
-	SyncLibvirtPools() error
-
-	StoreStats(interval int)
-	Cron()
+	PoolFromDataset(ctx context.Context, name string) (string, error)
+	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
+	GetDisksUsage(ctx context.Context) (SimpleZFSDiskUsage, error)
 }

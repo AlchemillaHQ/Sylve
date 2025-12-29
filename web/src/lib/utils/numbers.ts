@@ -15,9 +15,9 @@ export function floatToNDecimals(value: number | undefined, n: number): number {
 	return parseFloat(value.toFixed(n));
 }
 
-export function bytesToHumanReadable(value: number | undefined): string {
-	if (!value) return '0 B';
-	return humanFormat(value, { unit: 'B' });
+export function bytesToHumanReadable(value: number | undefined, highPrecision?: boolean): string {
+	if (!value) return '';
+	return humanFormat(value, { unit: 'B', decimals: highPrecision ? 10 : undefined });
 }
 
 export function parseQuotaToZFSBytes(input: string): string {

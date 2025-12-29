@@ -14,7 +14,7 @@ export const APIResponseSchema = z
 	.object({
 		status: z.string(),
 		message: z.string().optional(),
-		error: z.string().optional(),
+		error: z.union([z.string(), z.array(z.string())]).optional(),
 		data: z.unknown().optional()
 	})
 	.describe('APIResponseSchema');
@@ -48,4 +48,5 @@ export interface SeriesDataWithBaseline {
 }
 
 export type APIResponse = z.infer<typeof APIResponseSchema>;
-export type Locales = 'en' | 'mal' | 'cn_simplified';
+export type Locales = 'en' | 'mal' | 'hi';
+export type GFSStep = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';

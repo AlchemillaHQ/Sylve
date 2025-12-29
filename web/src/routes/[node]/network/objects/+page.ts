@@ -4,7 +4,7 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
 	const [objects] = await Promise.all([
-		cachedFetch('networkObjects', async () => await getNetworkObjects(), SEVEN_DAYS)
+		cachedFetch('network-objects', async () => await getNetworkObjects(), SEVEN_DAYS)
 	]);
 
 	return {

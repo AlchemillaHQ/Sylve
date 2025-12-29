@@ -18,11 +18,13 @@ import { z } from 'zod/v4';
 export async function newJail(data: CreateData): Promise<APIResponse> {
 	return await apiRequest('/jail', APIResponseSchema, 'POST', {
 		name: data.name,
+		hostname: data.hostname,
 		node: data.node,
 		ctId: parseInt(data.id.toString(), 10),
 		description: data.description,
-		dataset: data.storage.dataset,
+		pool: data.storage.pool,
 		base: data.storage.base,
+		fstab: data.storage.fstab,
 		switchName: data.network.switch,
 		dhcp: data.network.dhcp,
 		slaac: data.network.slaac,
@@ -37,7 +39,16 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
 		cores: parseInt(data.hardware.cpuCores.toString(), 10),
 		memory: parseInt(data.hardware.ram.toString(), 10),
 		startAtBoot: data.hardware.startAtBoot,
-		startOrder: data.hardware.bootOrder
+		startOrder: data.hardware.bootOrder,
+		devfsRuleset: data.hardware.devfsRuleset,
+		jailType: data.advanced.jailType,
+		additionalOptions: data.advanced.additionalOptions,
+		allowedOptions: data.advanced.allowedOptions,
+		hooks: data.advanced.execScripts,
+		cleanEnvironment: data.advanced.cleanEnvironment,
+		type: data.advanced.jailType,
+		metadataMeta: data.advanced.metadata.meta,
+		metadataEnv: data.advanced.metadata.env
 	});
 }
 
@@ -47,6 +58,10 @@ export async function getSimpleJails(): Promise<SimpleJail[]> {
 
 export async function getJails(): Promise<Jail[]> {
 	return await apiRequest('/jail', z.array(JailSchema), 'GET');
+}
+
+export async function getJailById(id: number, type: 'ctid' | 'id'): Promise<Jail> {
+	return await apiRequest(`/jail/${id}?type=${type}`, JailSchema, 'GET');
 }
 
 export async function deleteJail(
@@ -65,6 +80,10 @@ export async function getJailStates(): Promise<JailState[]> {
 	return await apiRequest('/jail/state', z.array(JailStateSchema), 'GET');
 }
 
+export async function getJailStateById(ctId: number): Promise<JailState> {
+	return await apiRequest(`/jail/state/${ctId}`, JailStateSchema, 'GET');
+}
+
 export async function jailAction(ctId: number, action: string): Promise<APIResponse> {
 	return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST');
 }
@@ -76,32 +95,17 @@ export async function updateDescription(id: number, description: string): Promis
 	});
 }
 
-export async function getJailLogs(id: number, start: boolean): Promise<JailLogs> {
-	return await apiRequest(`/jail/${id}/logs?start=${start}`, JailLogsSchema, 'GET');
+export async function getJailLogs(id: number): Promise<JailLogs> {
+	return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET');
 }
 
-export async function getStats(ctId: number, limit: number): Promise<JailStat[]> {
-	return await apiRequest(`/jail/stats/${ctId}/${limit}`, z.array(JailStatSchema), 'GET');
-}
-
-export async function inheritHostNetwork(
-	ctId: number,
-	ipv4: boolean,
-	ipv6: boolean
-): Promise<APIResponse> {
-	return await apiRequest('/jail/network/inheritance', APIResponseSchema, 'POST', {
-		ctId,
-		ipv4,
-		ipv6
-	});
-}
-
-export async function disinheritHostNetwork(ctId: number): Promise<APIResponse> {
-	return await apiRequest(`/jail/network/disinherit/${ctId}`, APIResponseSchema, 'DELETE');
+export async function getStats(ctId: number, step: string): Promise<JailStat[]> {
+	return await apiRequest(`/jail/stats/${ctId}/${step}`, z.array(JailStatSchema), 'GET');
 }
 
 export async function addNetwork(
 	ctId: number,
+	name: string,
 	switchName: string,
 	macId: number,
 	ip4: number,
@@ -109,10 +113,12 @@ export async function addNetwork(
 	ip6: number,
 	ip6gw: number,
 	dhcp: boolean,
-	slaac: boolean
+	slaac: boolean,
+	defaultGateway: boolean
 ): Promise<APIResponse> {
 	return await apiRequest('/jail/network', APIResponseSchema, 'POST', {
 		ctId,
+		name,
 		switchName,
 		macId,
 		ip4,
@@ -120,7 +126,8 @@ export async function addNetwork(
 		ip6,
 		ip6gw,
 		dhcp,
-		slaac
+		slaac,
+		defaultGateway
 	});
 }
 
@@ -134,4 +141,60 @@ export async function updateResourceLimits(ctId: number, enabled: boolean): Prom
 		APIResponseSchema,
 		'PUT'
 	);
+}
+
+export async function setNetworkInheritance(
+	ctId: number,
+	ipv4: boolean,
+	ipv6: boolean
+): Promise<APIResponse> {
+	let s = ipv4 === false && ipv6 === false ? 'disinheritance' : 'inheritance';
+
+	return await apiRequest(`/jail/network/${s}/${ctId}`, APIResponseSchema, 'PUT', {
+		ipv4,
+		ipv6
+	});
+}
+
+export async function modifyBootOrder(
+	ctId: number,
+	startAtBoot: boolean,
+	bootOrder: number
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/boot-order/${ctId}`, APIResponseSchema, 'PUT', {
+		startAtBoot,
+		bootOrder
+	});
+}
+
+export async function modifyFstab(ctId: number, fstab: string): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/fstab/${ctId}`, APIResponseSchema, 'PUT', {
+		fstab
+	});
+}
+
+export async function modifyDevFSRules(ctId: number, devFSRules: string): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/devfs-rules/${ctId}`, APIResponseSchema, 'PUT', {
+		devFSRules
+	});
+}
+
+export async function modifyAdditionalOptions(
+	ctId: number,
+	additionalOptions: string
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/additional-options/${ctId}`, APIResponseSchema, 'PUT', {
+		additionalOptions
+	});
+}
+
+export async function modifyMetadata(
+	ctId: number,
+	metadata: string,
+	env: string
+): Promise<APIResponse> {
+	return await apiRequest(`/jail/options/metadata/${ctId}`, APIResponseSchema, 'PUT', {
+		metadata,
+		env
+	});
 }

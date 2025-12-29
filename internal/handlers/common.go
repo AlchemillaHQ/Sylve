@@ -56,10 +56,12 @@ var insecureTransport = &http.Transport{
 func newReverseProxy(target *url.URL, tr http.RoundTripper, preserveHost bool) *httputil.ReverseProxy {
 	p := httputil.NewSingleHostReverseProxy(target)
 	p.Transport = tr
+	p.FlushInterval = 50 * time.Millisecond
 
 	orig := p.Director
 	p.Director = func(r *http.Request) {
 		orig(r)
+
 		if r.Header.Get("X-Forwarded-Proto") == "" {
 			if target.Scheme != "" {
 				r.Header.Set("X-Forwarded-Proto", target.Scheme)
@@ -71,10 +73,16 @@ func newReverseProxy(target *url.URL, tr http.RoundTripper, preserveHost bool) *
 			r.Header.Set("X-Forwarded-Host", r.Host)
 		}
 		if preserveHost {
-			xfh := r.Header.Get("X-Forwarded-Host")
-			if xfh != "" {
+			if xfh := r.Header.Get("X-Forwarded-Host"); xfh != "" {
 				r.Host = xfh
 			}
+		}
+
+		if up := r.Header.Get("Upgrade"); up != "" {
+			r.Header.Set("Upgrade", up)
+		}
+		if conn := r.Header.Get("Connection"); conn != "" {
+			r.Header.Set("Connection", conn)
 		}
 	}
 
@@ -83,6 +91,7 @@ func newReverseProxy(target *url.URL, tr http.RoundTripper, preserveHost bool) *
 			http.Error(w, err.Error(), http.StatusBadGateway)
 		}
 	}
+
 	return p
 }
 

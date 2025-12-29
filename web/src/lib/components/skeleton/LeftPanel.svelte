@@ -1,62 +1,111 @@
 <script lang="ts">
 	import { getSimpleJails } from '$lib/api/jail/jail';
-	import { getSimpleVMs, getVMs } from '$lib/api/vm/vm';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
+	import { updateCache } from '$lib/utils/http';
 	import { default as TreeView } from '$lib/components/custom/TreeView.svelte';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { hostname } from '$lib/stores/basic';
+	import { DomainState, type SimpleVm } from '$lib/types/vm/vm';
+	import { loadOpenCategories, saveOpenCategories } from '$lib/left-panel';
+	import { storage } from '$lib';
+	import { resource, watch } from 'runed';
 	import type { SimpleJail } from '$lib/types/jail/jail';
-	import type { SimpleVm, VM } from '$lib/types/vm/vm';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { sameElements } from '$lib/utils/arr';
 
-	let openCategories: { [key: string]: boolean } = $state({});
-	let node = $hostname;
+	let openCategories: { [key: string]: boolean } = $state(loadOpenCategories());
+	let node = $derived(storage.hostname || 'default-node');
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
+		saveOpenCategories(openCategories);
 	};
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'simple-vms-list',
-			queryFn: async () => {
-				return await getSimpleVMs();
-			},
-			keepPreviousData: true,
-			initialData: [] as SimpleVm[],
-			refetchOnMount: 'always'
+	function initializeOpenCategories(treeItems: any[]) {
+		let hasChanges = false;
+		treeItems.forEach((item) => {
+			if (openCategories[item.label] === undefined) {
+				openCategories[item.label] = true;
+				hasChanges = true;
+			}
+			if (item.children) {
+				initializeOpenCategories(item.children);
+			}
+		});
+		if (hasChanges) {
+			saveOpenCategories(openCategories);
+		}
+	}
+
+	const simpleVMs = resource(
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
+			if (!storage.enabledServices?.includes('virtualization')) {
+				return [];
+			}
+
+			const result = await getSimpleVMs();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: 'simple-jails-list',
-			queryFn: async () => {
-				return await getSimpleJails();
-			},
-			keepPreviousData: true,
-			initialData: [] as SimpleJail[],
-			refetchOnMount: 'always'
+			initialValue: [] as SimpleVm[]
 		}
-	]);
+	);
 
-	const simpleVMs = $derived($results[0].data || []);
-	const simpleJails = $derived($results[1].data || []);
+	const simpleJails = resource(
+		() => 'simple-jail-list',
+		async (key, prevKey, { signal }) => {
+			if (!storage.enabledServices?.includes('jails')) {
+				return [];
+			}
+
+			const result = await getSimpleJails();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: [] as SimpleJail[]
+		}
+	);
+
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				simpleVMs.refetch();
+				simpleJails.refetch();
+			}
+		}
+	);
+
+	watch(
+		() => storage.enabledServices,
+		(enabledServices, prevEnabledServices) => {
+			if (sameElements(enabledServices || [], prevEnabledServices || [])) {
+				return;
+			}
+
+			simpleVMs.refetch();
+			simpleJails.refetch();
+		}
+	);
 
 	let children = $derived(
 		[
-			...simpleVMs.map((vm) => ({
-				id: vm.vmId,
-				label: `${vm.name} (${vm.vmId})`,
-				icon: 'material-symbols:monitor-outline',
-				href: `/${node}/vm/${vm.vmId}`,
-				state: vm.state === 'ACTIVE' ? 'active' : 'inactive'
-			})),
-			...simpleJails.map((jail) => ({
+			...(simpleVMs.current.map((vm) => ({
+				id: vm.rid,
+				label: `${vm.name} (${vm.rid})`,
+				icon: 'material-symbols--monitor-outline',
+				href: `/${node}/vm/${vm.rid}`,
+				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
+			})) || []),
+			...(simpleJails.current.map((jail) => ({
 				id: jail.ctId,
 				label: `${jail.name} (${jail.ctId})`,
-				icon: 'hugeicons:prison',
+				icon: 'hugeicons--prison',
 				href: `/${node}/jail/${jail.ctId}`,
 				state: jail.state === 'ACTIVE' ? 'active' : 'inactive'
-			}))
+			})) || [])
 		].sort((a, b) => a.id - b.id)
 	) as {
 		id: number;
@@ -75,12 +124,12 @@
 	const tree = $derived([
 		{
 			label: 'Data Center',
-			icon: 'fa-solid:server',
+			icon: 'fa-solid--server',
 			href: '/datacenter',
 			children: [
 				{
 					label: node,
-					icon: 'mdi:dns',
+					icon: 'fluent--storage-20-filled',
 					href: `/${node}`,
 					children: children.length > 0 ? children : undefined
 				}
@@ -88,14 +137,25 @@
 		}
 	]);
 
-	$effect(() => {
-		if (reload.leftPanel) {
-			queryClient.refetchQueries('simple-vms-list');
-			queryClient.refetchQueries('simple-jails-list');
-
-			reload.leftPanel = false;
+	watch(
+		() => reload.leftPanel,
+		(value) => {
+			if (value) {
+				simpleVMs.refetch();
+				simpleJails.refetch();
+				reload.leftPanel = false;
+			}
 		}
-	});
+	);
+
+	watch(
+		() => tree.length,
+		(length) => {
+			if (length > 0) {
+				initializeOpenCategories(tree);
+			}
+		}
+	);
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">
@@ -103,7 +163,7 @@
 		<ul>
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item}
-					<TreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
+					<TreeView {item} onToggle={toggleCategory} {openCategories} />
 				{/each}
 			</ScrollArea>
 		</ul>

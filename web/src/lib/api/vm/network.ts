@@ -1,21 +1,21 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
 
-export async function detachNetwork(vmId: number, switchId: number): Promise<APIResponse> {
+export async function detachNetwork(rid: number, switchId: number): Promise<APIResponse> {
 	return await apiRequest(`/vm/network/detach`, APIResponseSchema, 'POST', {
-		vmId,
+		rid,
 		networkId: switchId
 	});
 }
 
 export async function attachNetwork(
-	vmId: number,
+	rid: number,
 	switchName: string,
 	emulation: string,
 	macId: number
 ): Promise<APIResponse> {
 	return await apiRequest(`/vm/network/attach`, APIResponseSchema, 'POST', {
-		vmId,
+		rid,
 		switchName,
 		emulation,
 		macId

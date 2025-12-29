@@ -22,14 +22,13 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 
 	var download utilitiesModels.Downloads
 	if err := s.DB.
-		Preload("Files").
 		Where("uuid = ?", uuid).
 		First(&download).Error; err != nil {
 		return "", fmt.Errorf("failed_to_find_download: %w", err)
 	}
 
-	if download.UType != "fbsd-base" {
-		return "", fmt.Errorf("download_is_not_fbsd_base: %s", uuid)
+	if download.UType != utilitiesModels.DownloadUTypeBase {
+		return "", fmt.Errorf("download_is_not_base_or_rootfs: %s", uuid)
 	}
 
 	return download.ExtractedPath, nil

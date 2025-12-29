@@ -172,62 +172,6 @@ func (s *Service) backfillPreClusterState() error {
 		}
 	}
 
-	{
-		var s3cfgs []clusterModels.ClusterS3Config
-		if err := s.DB.Order("id ASC").Find(&s3cfgs).Error; err != nil {
-			return fmt.Errorf("scan_existing_s3cfgs: %w", err)
-		}
-
-		for _, c := range s3cfgs {
-			payloadStruct := struct {
-				ID        uint   `json:"id"`
-				Name      string `json:"name"`
-				Endpoint  string `json:"endpoint"`
-				Region    string `json:"region"`
-				Bucket    string `json:"bucket"`
-				AccessKey string `json:"accessKey"`
-				SecretKey string `json:"secretKey"`
-			}{
-				ID:        c.ID,
-				Name:      c.Name,
-				Endpoint:  c.Endpoint,
-				Region:    c.Region,
-				Bucket:    c.Bucket,
-				AccessKey: c.AccessKey,
-				SecretKey: c.SecretKey,
-			}
-
-			data, _ := json.Marshal(payloadStruct)
-			cmd := clusterModels.Command{Type: "s3Configs", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
-				return fmt.Errorf("apply_synth_create_s3cfg id=%d: %w", c.ID, err)
-			}
-		}
-	}
-
-	{
-		var dircfgs []clusterModels.ClusterDirectoryConfig
-		if err := s.DB.Order("id ASC").Find(&dircfgs).Error; err != nil {
-			return fmt.Errorf("scan_existing_dircfgs: %w", err)
-		}
-
-		for _, c := range dircfgs {
-			payloadStruct := struct {
-				ID   uint   `json:"id"`
-				Path string `json:"path"`
-			}{
-				ID:   c.ID,
-				Path: c.Path,
-			}
-
-			data, _ := json.Marshal(payloadStruct)
-			cmd := clusterModels.Command{Type: "directoryConfigs", Action: "create", Data: data}
-			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
-				return fmt.Errorf("apply_synth_create_dircfg id=%d: %w", c.ID, err)
-			}
-		}
-	}
-
 	if err := s.Raft.Barrier(10 * time.Second).Error(); err != nil {
 		return fmt.Errorf("barrier_after_backfill: %w", err)
 	}

@@ -1,126 +1,338 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { getJails, getJailStates } from '$lib/api/jail/jail';
-	import { clusterStore, currentHostname, store } from '$lib/stores/auth';
+	import { storage } from '$lib';
+	import { getJailById, getJailStateById } from '$lib/api/jail/jail';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
-	import { sha256, toBase64, toHex } from '$lib/utils/string';
-	import {
-		Xterm,
-		XtermAddon,
-		type FitAddon,
-		type ITerminalInitOnlyOptions,
-		type ITerminalOptions,
-		type Terminal
-	} from '@battlefieldduck/xterm-svelte';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { sha256, toHex } from '$lib/utils/string';
 	import adze from 'adze';
-	import { get } from 'svelte/store';
+	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
+	import { onMount } from 'svelte';
+	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import { fade } from 'svelte/transition';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import ColorPicker from 'svelte-awesome-color-picker';
+	import { swatches } from '$lib/utils/terminal';
 
 	interface Data {
-		jails: Jail[];
-		jailStates: JailState[];
+		jail: Jail;
+		state: JailState;
+		ctId: number;
 	}
 
-	let terminal = $state<Terminal>();
-	let ws: WebSocket;
-	let fitAddon: FitAddon;
-	let options: ITerminalOptions & ITerminalInitOnlyOptions = {
-		cursorBlink: true
-	};
-
 	let { data }: { data: Data } = $props();
-	const ctId = page.url.pathname.split('/')[3];
 
-	const results = useQueries([
-		{
-			queryKey: ['jail-list'],
-			queryFn: async () => {
-				return await getJails();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jails,
-			onSuccess: (data: Jail[]) => {
-				updateCache('jail-list', data);
-			}
-		},
-		{
-			queryKey: ['jail-states'],
-			queryFn: async () => {
-				return await getJailStates();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.jailStates,
-			onSuccess: (data: JailState[]) => {
-				updateCache('jail-states', data);
-			}
+	let terminal = $state<GhosttyTerminal | null>(null);
+	let ws = $state<WebSocket | null>(null);
+	let terminalContainer = $state<HTMLElement | null>(null);
+	let lastWidth = 0;
+	let lastHeight = 0;
+	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
+	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
+		background: '#282c34',
+		foreground: '#FFFFFF',
+		fontSize: 14
+	});
+
+	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
+	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
+	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+
+	const applyFontSize = useDebounce(() => {
+		if (!terminal) return;
+		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
+		terminal.options.fontSize = theme.current.fontSize;
+		resizeTerminal(lastWidth, lastHeight);
+	}, 200);
+
+	const applyThemeDebounced = useDebounce(() => {
+		if (!terminal) return;
+
+		if (
+			theme.current.background === bgThemeBindable &&
+			theme.current.foreground === fgThemeBindable
+		) {
+			return;
 		}
-	]);
 
-	let jail: Jail = $derived(
-		($results[0].data as Jail[]).find((jail: Jail) => jail.ctId === parseInt(ctId)) || ({} as Jail)
-	);
+		theme.current.background = bgThemeBindable;
+		theme.current.foreground = fgThemeBindable;
 
-	let jState: JailState = $derived(
-		($results[1].data as JailState[]).find((state: JailState) => state.ctId === parseInt(ctId)) ||
-			({} as JailState)
-	);
-
-	async function onLoad() {
-		if (!jail || !jail.ctId) return;
-		terminal?.clear();
-		terminal?.reset();
-
-		const fit = new (await XtermAddon.FitAddon()).FitAddon();
-		terminal?.loadAddon(fit);
-		fit.fit();
-
-		const hash = await sha256($store, 1);
-		const wssAuth = {
-			hostname: get(currentHostname),
-			token: $clusterStore
+		terminal.options.theme = {
+			background: theme.current.background,
+			foreground: theme.current.foreground
 		};
 
-		ws = new WebSocket(`/api/jail/console?ctid=${jail.ctId}&hash=${hash}`, [
+		disconnect();
+		reconnect();
+	}, 300);
+
+	let openSettings = $state(false);
+
+	const jail = resource(
+		() => `jail-${data.jail.ctId}`,
+		async () => {
+			const jail = await getJailById(data.jail.ctId, 'ctid');
+			updateCache(`jail-${data.jail.ctId}`, jail);
+			return jail;
+		},
+		{
+			initialValue: data.jail
+		}
+	);
+
+	const jState = resource(
+		() => `jail-${data.state.ctId}-state`,
+		async () => {
+			const state = await getJailStateById(data.state.ctId);
+			updateCache(`jail-${data.state.ctId}-state`, state);
+			return state;
+		},
+		{
+			initialValue: data.state
+		}
+	);
+
+	function sendSize(cols: number, rows: number) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
+	}
+
+	function disconnect() {
+		cState.current = true;
+
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			const payload = JSON.stringify({ kill: '' });
+			const data = new TextEncoder().encode('\x02' + payload);
+
+			ws.send(data);
+			ws.close();
+		}
+
+		terminal?.dispose?.();
+		terminal = null;
+		ws = null;
+	}
+
+	function reconnect() {
+		cState.current = false;
+		setup();
+	}
+
+	function resizeTerminal(width: number, height: number) {
+		if (!terminal) return;
+
+		const root = terminal.element as HTMLElement | undefined;
+		if (!root) return;
+
+		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
+		if (!canvas) return;
+
+		const currentCols = terminal.cols || 80;
+		const currentRows = terminal.rows || 24;
+
+		const cellWidth = canvas.clientWidth / currentCols || 8;
+		const cellHeight = canvas.clientHeight / currentRows || 16;
+		if (!cellWidth || !cellHeight) return;
+
+		const cols = Math.max(2, Math.floor(width / cellWidth));
+		const rows = Math.max(2, Math.floor(height / cellHeight));
+		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
+
+		terminal.resize(cols, rows);
+		sendSize(cols, rows);
+	}
+
+	useResizeObserver(
+		() => terminalContainer,
+		(entries) => {
+			const entry = entries[0];
+			if (!entry) return;
+			const { width, height } = entry.contentRect;
+			lastWidth = width;
+			lastHeight = height;
+			resizeTerminal(width, height);
+		}
+	);
+
+	let destroyed = $state(false);
+
+	const setup = async () => {
+		cState.current = false;
+
+		if (!jail.current || !jail.current.ctId) return;
+		if (jState.current && jState.current.state === 'INACTIVE') return;
+		if (!terminalContainer) return;
+
+		await initGhostty();
+		if (destroyed) return;
+
+		terminal = new GhosttyTerminal({
+			cursorBlink: false,
+			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+			fontSize: theme.current.fontSize || 14,
+			theme: {
+				background: theme.current.background,
+				foreground: theme.current.foreground
+			}
+		});
+
+		terminal.open(terminalContainer);
+
+		const hash = await sha256(storage.token || '', 1);
+		const wssAuth = {
+			hostname: storage.hostname,
+			token: storage.clusterToken
+		};
+
+		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`, [
 			toHex(JSON.stringify(wssAuth))
 		]);
-
 		ws.binaryType = 'arraybuffer';
-		ws.onopen = () => {
-			adze.info(`Jail console connected for jail ${jail.ctId}`);
-			const dims = fit.proposeDimensions();
-			ws.send(
-				new TextEncoder().encode('\x01' + JSON.stringify({ rows: dims?.rows, cols: dims?.cols }))
-			);
 
-			fitAddon = fit;
+		ws.onopen = () => {
+			adze.info(`Jail console connected for jail ${data.ctId}`);
+			if (lastWidth && lastHeight) {
+				resizeTerminal(lastWidth, lastHeight);
+			} else if (terminalContainer) {
+				const rect = terminalContainer.getBoundingClientRect();
+				resizeTerminal(rect.width, rect.height);
+			}
 		};
 
 		ws.onmessage = (e) => {
 			if (e.data instanceof ArrayBuffer) {
 				terminal?.write(new Uint8Array(e.data));
+			} else {
+				terminal?.write(e.data as string);
 			}
 		};
-	}
 
-	function onData(data: string) {
-		ws?.send(new TextEncoder().encode('\x00' + data));
-	}
+		terminal.onData((data: string) => {
+			ws?.send(new TextEncoder().encode('\x00' + data));
+		});
+	};
+
+	onMount(() => {
+		if (!cState.current) {
+			setup();
+		}
+
+		return () => {
+			destroyed = true;
+			ws?.close();
+			terminal?.dispose?.();
+		};
+	});
 </script>
 
-{#if jState && jState?.state === 'INACTIVE'}
+{#if jState.current && jState.current.state === 'INACTIVE'}
 	<div
-		class="text-primary dark:text-secondary flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
+		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
-		<Icon icon="mdi:server-off" class="dark:text-secondary text-primary h-14 w-14" />
+		<span class="icon-[mdi--server-off] h-14 w-14"></span>
 		<div class="max-w-md">
 			The Jail is currently powered off.<br />
 			Start the Jail to access its console.
 		</div>
 	</div>
 {:else}
-	<Xterm bind:terminal {options} {onLoad} {onData} class="h-full w-full" />
+	<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
+		<div class="flex h-10 w-full items-center gap-2 border p-4">
+			{#if ws?.OPEN === 1}
+				<Button
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+					onclick={disconnect}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--close-circle-outline] h-4 w-4"></span>
+						<span>Disconnect</span>
+					</div>
+				</Button>
+			{:else}
+				<Button
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					onclick={reconnect}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--refresh] h-4 w-4"></span>
+						<span>Reconnect</span>
+					</div>
+				</Button>
+			{/if}
+
+			<Button
+				variant="outline"
+				size="sm"
+				class="ml-auto h-6"
+				onclick={() => {
+					openSettings = true;
+				}}
+			>
+				<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
+			</Button>
+		</div>
+
+		{#if cState.current}
+			<div
+				class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center"
+			>
+				<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
+
+				<div class="max-w-md">
+					The console has been disconnected.<br />
+					Click the "Reconnect" button to re-establish the connection.
+				</div>
+			</div>
+		{/if}
+
+		<div
+			class="terminal-wrapper hidden h-full w-full bg-black"
+			class:hidden={cState.current}
+			tabindex="0"
+			style="outline: none;"
+			bind:this={terminalContainer}
+		/>
+	</div>
 {/if}
+
+<Dialog.Root bind:open={openSettings}>
+	<Dialog.Content class="min-w-[180px]">
+		<Dialog.Header class="p-0">
+			<Dialog.Title class="flex items-center justify-between text-left">
+				Console settings - {jail.current?.name}
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="grid grid-cols-1">
+			<CustomValueInput
+				placeholder="14"
+				label="Font Size"
+				type="number"
+				bind:value={fontSizeBindable}
+				classes="flex-1 space-y-1"
+				onChange={() => {
+					applyFontSize();
+				}}
+			/>
+		</div>
+
+		<div class="grid grid-cols-2">
+			<ColorPicker
+				bind:hex={bgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Background"
+			/>
+			<ColorPicker
+				bind:hex={fgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Foreground"
+			/>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

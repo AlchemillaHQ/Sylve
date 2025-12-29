@@ -67,11 +67,11 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				const error = cell.getRow().getData().error;
-                const status = cell.getRow().getData().status;
+				const status = cell.getRow().getData().status;
 
-                if (status === "processing") {
-                    return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
-                }
+				if (status === 'processing') {
+					return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
+				}
 
 				if (error) {
 					if (error.includes('failed to verify certificate')) {
@@ -115,7 +115,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			type: download.type,
 			progress: download.progress,
 			error: download.error,
-            status: download.status,
+			status: download.status,
 			children: []
 		};
 
@@ -129,7 +129,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 				children: [],
 				progress: '-',
 				parentUUID: download.uuid,
-                status: '-'
+				status: '-'
 			};
 
 			row.children?.push(childRow);
@@ -154,7 +154,10 @@ export function getISOs(
 		if (download.progress !== 100) continue;
 
 		const addIfMatch = (name: string) => {
-			if (name.endsWith('.iso') || (includeImg && name.endsWith('.img'))) {
+			if (
+				name.endsWith('.iso') ||
+				(includeImg && (name.endsWith('.img') || name.endsWith('.raw')))
+			) {
 				options.push({ label: name, value: download.uuid });
 			}
 		};
@@ -162,17 +165,19 @@ export function getISOs(
 		if (download.type === 'http') {
 			addIfMatch(download.name);
 			if (download.extractedPath) {
-                if (download.extractedPath.includes("/")) {
-                    const parts = download.extractedPath.split("/");
-                    addIfMatch(parts[parts.length - 1]);
-                } else {
-                    addIfMatch(download.extractedPath);
-                }
-            }
+				if (download.extractedPath.includes('/')) {
+					const parts = download.extractedPath.split('/');
+					addIfMatch(parts[parts.length - 1]);
+				} else {
+					addIfMatch(download.extractedPath);
+				}
+			}
 		} else if (download.type === 'torrent' && Array.isArray(download.files)) {
 			for (const file of download.files) {
-                addIfMatch(file.name);
+				addIfMatch(file.name);
 			}
+		} else if (download.type === 'path') {
+			addIfMatch(download.name);
 		}
 	}
 

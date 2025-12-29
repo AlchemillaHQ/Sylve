@@ -1,7 +1,7 @@
 <script lang="ts">
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { currentHostname } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Props {
@@ -37,7 +37,7 @@
 
 	$effect(() => {
 		if (node) {
-			currentHostname.set(node);
+			storage.hostname = node;
 			refetch = true;
 		}
 	});

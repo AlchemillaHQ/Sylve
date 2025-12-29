@@ -75,10 +75,8 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 // ClusterSnapshot represents the state that will be snapshotted/restored
 type ClusterSnapshot struct {
-	Notes            []ClusterNote            `json:"notes"`
-	Options          []ClusterOption          `json:"options"`
-	S3Configs        []ClusterS3Config        `json:"s3Configs"`
-	DirectoryConfigs []ClusterDirectoryConfig `json:"directoryConfigs"`
+	Notes   []ClusterNote   `json:"notes"`
+	Options []ClusterOption `json:"options"`
 	// We can add more tables here as needed
 }
 
@@ -90,12 +88,6 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		return nil, err
 	}
 	if err := f.DB.Find(&snap.Options).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Find(&snap.S3Configs).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Find(&snap.DirectoryConfigs).Error; err != nil {
 		return nil, err
 	}
 	return &snap, nil
@@ -118,8 +110,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		sets := []restoreSet{
 			{"cluster_notes", snap.Notes, 500},
 			{"cluster_options", snap.Options, 100},
-			{"cluster_s3_configs", snap.S3Configs, 100},
-			{"cluster_directory_configs", snap.DirectoryConfigs, 100},
 			// We can add more tables here as needed
 		}
 
@@ -176,76 +166,6 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			if len(payload.IDs) > 0 {
 				return db.Delete(&ClusterNote{}, payload.IDs).Error
-			}
-			return nil
-		default:
-			return nil
-		}
-	})
-
-	fsm.Register("s3Configs", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		var s3Config ClusterS3Config
-		switch action {
-		case "create":
-			if err := json.Unmarshal(raw, &s3Config); err != nil {
-				return err
-			}
-			return upsertS3Cfg(db, &s3Config)
-		case "update":
-			if err := json.Unmarshal(raw, &s3Config); err != nil {
-				return err
-			}
-			return db.Model(&ClusterS3Config{}).
-				Where("id = ?", s3Config.ID).
-				Updates(s3Config).Error
-		case "delete":
-			var payload struct{ ID int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return db.Delete(&ClusterS3Config{}, payload.ID).Error
-		case "bulk_delete":
-			var payload struct{ IDs []int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if len(payload.IDs) > 0 {
-				return db.Delete(&ClusterS3Config{}, payload.IDs).Error
-			}
-			return nil
-		default:
-			return nil
-		}
-	})
-
-	fsm.Register("directoryConfigs", func(db *gorm.DB, action string, raw json.RawMessage) error {
-		var dirConfig ClusterDirectoryConfig
-		switch action {
-		case "create":
-			if err := json.Unmarshal(raw, &dirConfig); err != nil {
-				return err
-			}
-			return upsertDirCfg(db, &dirConfig)
-		case "update":
-			if err := json.Unmarshal(raw, &dirConfig); err != nil {
-				return err
-			}
-			return db.Model(&ClusterDirectoryConfig{}).
-				Where("id = ?", dirConfig.ID).
-				Updates(dirConfig).Error
-		case "delete":
-			var payload struct{ ID int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			return db.Delete(&ClusterDirectoryConfig{}, payload.ID).Error
-		case "bulk_delete":
-			var payload struct{ IDs []int }
-			if err := json.Unmarshal(raw, &payload); err != nil {
-				return err
-			}
-			if len(payload.IDs) > 0 {
-				return db.Delete(&ClusterDirectoryConfig{}, payload.IDs).Error
 			}
 			return nil
 		default:

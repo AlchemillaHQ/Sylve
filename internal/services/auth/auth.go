@@ -399,3 +399,16 @@ func (s *Service) IsValidClusterKey(clusterKey string) bool {
 	s.DB.Model(&clusterModels.Cluster{}).Where("key = ?", clusterKey).Count(&count)
 	return count > 0
 }
+
+func (s *Service) GetBasicSettings() (models.BasicSettings, error) {
+	var settings models.BasicSettings
+	if err := s.DB.First(&settings).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return settings, fmt.Errorf("basic_settings_not_found")
+		}
+
+		return settings, fmt.Errorf("failed_to_fetch_basic_settings: %v", err)
+	}
+
+	return settings, nil
+}

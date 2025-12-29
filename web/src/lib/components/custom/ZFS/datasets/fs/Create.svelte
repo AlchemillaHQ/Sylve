@@ -7,13 +7,11 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { Dataset, GroupedByPool } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidSize } from '$lib/utils/numbers';
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
-	import Icon from '@iconify/svelte';
 	import type { ParsedInfo, ScaleLike } from 'human-format';
 	import humanFormat from 'human-format';
 	import { untrack } from 'svelte';
@@ -38,6 +36,12 @@
 			}
 		}
 
+		options.sort((a, b) => {
+			const aSize = a.label.length;
+			const bSize = b.label.length;
+			return aSize - bSize;
+		});
+
 		return options;
 	});
 
@@ -56,7 +60,8 @@
 		quota: '',
 		aclinherit: 'passthrough',
 		aclmode: 'passthrough',
-		recordsize: '131072'
+		recordsize: '131072',
+		mountpoint: '' as string | undefined
 	};
 
 	let zfsProperties = $state(createFSProps);
@@ -135,7 +140,8 @@
 			quota: properties.quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
-			recordsize: properties.recordsize
+			recordsize: properties.recordsize,
+			mountpoint: properties.mountpoint || undefined
 		});
 
 		reload = true;
@@ -165,7 +171,9 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:files" class="h-5 w-5" />Create Filesystem
+					<span class="icon-[material-symbols--files] h-5 w-5"></span>
+
+					Create Filesystem
 				</div>
 
 				<div class="flex items-center gap-0.5">
@@ -178,7 +186,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -191,7 +199,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -281,13 +289,12 @@
 									properties.encryptionKey = generatePassword();
 								}}
 							>
-								<Icon
-									icon="fad:random-2dice"
-									class="h-6 w-6"
+								<span
+									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
 										properties.encryptionKey = generatePassword();
 									}}
-								/>
+								></span>
 							</Button>
 						</div>
 					</div>
@@ -322,12 +329,23 @@
 				/>
 
 				<SimpleSelect
-					label="Recordsize"
-					placeholder="Select Recordsize"
+					label="Record Size"
+					placeholder="Select Record Size"
 					options={zfsProperties.recordsize}
 					bind:value={properties.recordsize}
 					onChange={(value) => (properties.recordsize = value)}
 				/>
+
+				<div class="space-y-1.5">
+					<Label for="mountpoint" class="w-24 whitespace-nowrap text-sm">Custom Mount Point</Label>
+					<Input
+						type="text"
+						id="mountpoint"
+						placeholder="/custom/mountpoint"
+						autocomplete="off"
+						bind:value={properties.mountpoint}
+					/>
+				</div>
 			</div>
 		</div>
 

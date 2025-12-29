@@ -2,7 +2,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Icon from '@iconify/svelte';
 
 	interface Props {
 		isOpen: boolean;
@@ -31,17 +30,17 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="bi:hdd-stack-fill" class="h-5 w-5" />
+					<span class="icon-[bi--hdd-stack-fill] h-5 w-5"></span>
 					Create {isFolder ? 'Folder' : 'File'}
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button onclick={onReset} size="sm" variant="link" class="h-4" title="Reset">
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 
 					<Button size="sm" variant="link" class="h-4" title="Close" onclick={onClose}>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

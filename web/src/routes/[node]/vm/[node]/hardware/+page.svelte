@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -11,16 +12,16 @@
 	import type { Row } from '$lib/components/ui/table';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { VM, VMDomain } from '$lib/types/vm/vm';
+	import type { CPUPin, VM, VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 
 	interface Data {
-		vmId: number;
+		rid: number;
 		vms: VM[];
 		vm: VM;
 		ram: RAMInfo;
@@ -30,64 +31,84 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
+
+	const vms = resource(
+		() => 'vm-list',
+		async (key) => {
+			const result = await getVMs();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['pciDevices'],
-			queryFn: async () => {
-				return (await getPCIDevices()) as PCIDevice[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pciDevices,
-			onSuccess: (data: PCIDevice[]) => {
-				updateCache('pciDevices', data);
-			}
+			lazy: true,
+			initialValue: data.vms
+		}
+	);
+
+	const pciDevices = resource(
+		() => 'pciDevices',
+		async (key) => {
+			const result = (await getPCIDevices()) as PCIDevice[];
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['pptDevices'],
-			queryFn: async () => {
-				return (await getPPTDevices()) as PPTDevice[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pptDevices,
-			onSuccess: (data: PPTDevice[]) => {
-				updateCache('pptDevices', data);
-			}
+			lazy: true,
+			initialValue: data.pciDevices
+		}
+	);
+
+	const pptDevices = resource(
+		() => 'pptDevices',
+		async (key) => {
+			const result = (await getPPTDevices()) as PPTDevice[];
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: [`vmDomain-${data.vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(data.vmId);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (updated: VMDomain) => {
-				updateCache(`vmDomain-${data.vmId}`, updated);
+			lazy: true,
+			initialValue: data.pptDevices
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.rid}`,
+		async (key) => {
+			const result = await getVMDomain(Number(data.rid));
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vms.refetch();
+				pciDevices.refetch();
+				pptDevices.refetch();
+				domain.refetch();
 			}
 		}
-	]);
+	});
 
-	let vms: VM[] = $derived($results[0].data ? $results[0].data : data.vms);
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vms.refetch();
+				pciDevices.refetch();
+				pptDevices.refetch();
+				domain.refetch();
+			});
+		}
+	});
+
 	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.find((v: VM) => v.vmId === data.vm.vmId) ?? null) : null
+		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null
 	);
-	let pciDevices: PCIDevice[] = $derived($results[1].data as PCIDevice[]);
-	let pptDevices: PPTDevice[] = $derived($results[2].data as PPTDevice[]);
-	let domain = $derived($results[3].data as VMDomain);
 
 	let options = {
 		cpu: {
@@ -96,7 +117,8 @@
 			threads: data.vm.cpuThreads,
 			pinning: data.vm.cpuPinning,
 			vCPUs: data.vm.cpuSockets * data.vm.cpuCores * data.vm.cpuThreads,
-			open: false
+			open: false,
+			pinnedCPUs: [] as CPUPin[]
 		},
 		ram: {
 			value: data.vm.ram,
@@ -150,7 +172,7 @@
 					if (row.getData().property === 'PCI Devices') {
 						if (!Array.isArray(value) || value.length === 0) return '-';
 
-						const selected = pptDevices.filter((d) => value.includes(d.id));
+						const selected = pptDevices.current.filter((d) => value.includes(d.id));
 						const labels: string[] = [];
 
 						for (const dev of selected) {
@@ -159,7 +181,7 @@
 							const deviceC = Number(deviceStr);
 							const functionC = Number(functionStr);
 
-							for (const pci of pciDevices) {
+							for (const pci of pciDevices.current) {
 								if (pci.bus === bus && pci.device === deviceC && pci['function'] === functionC) {
 									labels.push(`${pci.names.vendor} ${pci.names.device}`);
 								}
@@ -217,11 +239,13 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={domain.status === 'Shutoff' ? '' : `${title} can only be edited when the VM is shut off`}
-		disabled={domain.status ? domain.status !== 'Shutoff' : false}
+		title={domain.current.status === 'Shutoff'
+			? ''
+			: `${title} can only be edited when the VM is shut off`}
+		disabled={domain.current.status ? domain.current.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
-			<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			<span>Edit {title}</span>
 		</div>
 	</Button>
@@ -268,15 +292,25 @@
 {/if}
 
 {#if properties.cpu.open}
-	<CPU bind:open={properties.cpu.open} {vm} {vms} />
+	<CPU
+		bind:open={properties.cpu.open}
+		{vm}
+		vms={vms.current}
+		bind:pinnedCPUs={properties.cpu.pinnedCPUs}
+	/>
 {/if}
 
 {#if properties.vnc.open}
-	<VNC bind:open={properties.vnc.open} {vm} {vms} />
+	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} />
 {/if}
 
 {#if properties.pciDevices.open}
-	<PCIDevices bind:open={properties.pciDevices.open} {vm} {pciDevices} {pptDevices} />
+	<PCIDevices
+		bind:open={properties.pciDevices.open}
+		{vm}
+		pciDevices={pciDevices.current}
+		pptDevices={pptDevices.current}
+	/>
 {/if}
 
 {#if properties.serial.open && vm}

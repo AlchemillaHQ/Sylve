@@ -8,8 +8,8 @@
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { bytesToHumanReadable, isValidSize, parseQuotaToZFSBytes } from '$lib/utils/numbers';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
-
-	import Icon from '@iconify/svelte';
+	import humanFormat from 'human-format';
+	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	type props = {
@@ -27,31 +27,43 @@
 		reload?: boolean;
 	}
 
+	function parseBytes(input: string): number {
+		if (!input || input.trim() === '') return 0;
+
+		const parsed = humanFormat.parse(input, { unit: 'B' });
+		return Number.isFinite(parsed) ? parsed : 0;
+	}
+
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 
 	let options = {
-		volsize: dataset.volsize ? bytesToHumanReadable(dataset.volsize) : '',
-		volblocksize: dataset.volblocksize ? dataset.volblocksize.toString() : '16384',
-		checksum: dataset.checksum || 'on',
-		compression: dataset.compression || 'on',
-		dedup: dataset.dedup || 'off',
-		primarycache: dataset.primarycache || 'metadata',
-		volmode: dataset.volmode || 'dev'
+		volsize: dataset.properties?.volsize
+			? bytesToHumanReadable(Number(dataset.properties.volsize), true)
+			: '',
+		volblocksize: dataset.properties?.volblocksize
+			? dataset.properties.volblocksize.toString()
+			: '16384',
+		checksum: dataset.properties?.checksum || 'on',
+		compression: dataset.properties?.compression || 'lz4',
+		dedup: dataset.properties?.dedup || 'off',
+		primarycache: dataset.properties?.primarycache || 'metadata',
+		volmode: dataset.properties?.volmode || 'dev'
 	};
 
 	let properties = $state(options);
 	let zfsProperties = $state(createVolProps);
+	let invalidSizeForBlockSize = $state(false);
 
 	async function edit() {
 		if (!isValidSize(properties.volsize)) {
-			toast.error('Invalid volume size', {
-				position: 'bottom-center'
-			});
+			toast.error('Invalid volume size', { position: 'bottom-center' });
 			return;
 		}
 
-		const response = await editVolume(dataset, {
-			volsize: parseQuotaToZFSBytes(properties.volsize),
+		let volsizeBytes = parseQuotaToZFSBytes(properties.volsize);
+
+		const response = await editVolume(dataset.guid, {
+			volsize: volsizeBytes,
 			checksum: properties.checksum,
 			compression: properties.compression,
 			dedup: properties.dedup,
@@ -63,26 +75,33 @@
 
 		if (response.status === 'error') {
 			if (response.error?.includes(`'volsize' must be a multiple of volume block size`)) {
-				toast.error(
-					`Size must be a multiple of volume block size (${dataset.volblocksize / 1024}K)`,
-					{
-						position: 'bottom-center'
-					}
-				);
-			} else {
-				toast.error('Failed to edit volume', {
+				toast.error('Volume size must match block size', {
 					position: 'bottom-center'
 				});
+				return;
 			}
-		} else {
-			toast.success('Volume edited successfully', {
-				position: 'bottom-center'
-			});
 
-			open = false;
-			properties = options;
+			toast.error('Failed to edit volume', { position: 'bottom-center' });
+			return;
 		}
+
+		toast.success(`Volume ${dataset.name} edited`, {
+			position: 'bottom-center'
+		});
+
+		open = false;
+		properties = options;
 	}
+
+	watch(
+		() => properties.volsize,
+		() => {
+			const blockSize = Number(properties.volblocksize); // bytes
+			const sizeBytes = parseBytes(properties.volsize);
+
+			invalidSizeForBlockSize = sizeBytes % blockSize !== 0;
+		}
+	);
 </script>
 
 {#snippet simpleSelect(
@@ -103,12 +122,14 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-3xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
-					<Icon icon="carbon:volume-block-storage" class="mr-2 h-5 w-5" />Edit Volume - {dataset.name}
+					<span class="icon-[carbon--volume-block-storage] mr-2 h-5 w-5"></span>
+
+					Edit Volume - {dataset.name}
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button
@@ -120,7 +141,8 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -133,7 +155,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -143,7 +165,26 @@
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Size</Label>
+					<Label class="w-24 text-sm whitespace-nowrap">
+						<div class="flex items-center gap-1">
+							<span>Volume Size</span>
+							{#if invalidSizeForBlockSize}
+								<span
+									class="icon-[mdi--alert-circle-outline] h-4 w-4 text-yellow-500"
+									title="Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+									onclick={() => {
+										const blockSize = Number(properties.volblocksize);
+										const sizeBytes = parseBytes(properties.volsize);
+										const oneMB = 1024 * 1024 * 2;
+										const adjustedToNextMB = Math.ceil((sizeBytes + 1) / oneMB) * oneMB;
+										const finalBytes = Math.ceil(adjustedToNextMB / blockSize) * blockSize;
+
+										properties.volsize = humanFormat(finalBytes, { unit: 'B', decimals: 10 });
+									}}
+								></span>
+							{/if}
+						</div>
+					</Label>
 					<Input
 						type="text"
 						class="w-full text-left"

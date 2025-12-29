@@ -1,68 +1,44 @@
 <script lang="ts">
-	import { doesPathHaveBase, getFiles } from '$lib/api/system/file-explorer';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { Download } from '$lib/types/utilities/downloader';
-	import type { Dataset } from '$lib/types/zfs/dataset';
+	import type { Zpool } from '$lib/types/zfs/pool';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import { fstabPlaceholder } from '$lib/utils/placeholders';
+	import { toast } from 'svelte-sonner';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { generateSimpleLinuxFSTab } from '$lib/utils/jail/jail';
+	import { untrack } from 'svelte';
 
 	interface Props {
-		filesystems: Dataset[];
+		ctId: number;
+		pools: Zpool[];
+		pool: string;
 		downloads: Download[];
-		dataset: string;
 		base: string;
-		jails: Jail[];
+		fstab: string;
 	}
 
 	let {
-		filesystems,
+		ctId,
+		pools,
 		downloads,
-		dataset = $bindable(),
+		pool = $bindable(),
 		base = $bindable(),
-		jails
+		fstab = $bindable()
 	}: Props = $props();
 
-	let datasetOptions = $derived.by(() => {
-		const usable = [] as { label: string; value: string }[];
-		const used = jails.map((jail) => jail.dataset);
-
-		for (const filesystem of filesystems) {
-			const mountpoint = filesystem.mountpoint || '';
-			if (mountpoint === '/' || mountpoint === 'none') {
-				continue;
-			}
-
-			if (used.includes(filesystem.guid)) {
-				continue;
-			}
-
-			if (filesystem.name.includes('/') && filesystem.used < 1024 * 1024) {
-				getFiles(mountpoint).then((files) => {
-					if (files.length === 0) {
-						usable.push({ label: filesystem.name, value: filesystem.guid || '' });
-					}
-				});
-				continue;
-			}
-
-			if (mountpoint && filesystem.used > 1024 * 1024 * 256) {
-				doesPathHaveBase(mountpoint)
-					.then((hasBase) => {
-						if (hasBase) {
-							usable.push({ label: filesystem.name, value: filesystem.guid || '' });
-						}
-					})
-					.catch(() => {
-						console.error('Error checking path base for', mountpoint);
-					});
-			}
-		}
-
-		return usable;
+	let poolOptions = $derived.by(() => {
+		return pools.map((pool) => ({
+			label: pool.name,
+			value: pool.name
+		}));
 	});
 
 	let baseOptions = $derived.by(() => {
 		return downloads
-			.filter((download) => download.uType === 'fbsd-base')
+			.filter((download) => download.uType === 'base-rootfs')
 			.map((download) => ({
 				label: download.name,
 				value: download.uuid
@@ -70,7 +46,7 @@
 	});
 
 	let comboBoxes = $state({
-		dataset: {
+		pool: {
 			open: false,
 			options: [] as { label: string; value: string }[]
 		},
@@ -80,44 +56,110 @@
 		}
 	});
 
-	let disableBaseSelection = $state(false);
+	let disableBaseSelection = $derived(pool ? false : true);
+	let enableFstabInput = $state(false);
+	let fstabOpts = $state({
+		value: 'manual',
+		options: [
+			{
+				label: 'Simple Linux',
+				value: 'simple-linux'
+			},
+			{
+				label: 'Manual',
+				value: 'manual'
+			}
+		]
+	});
 
 	$effect(() => {
-		if (dataset) {
-			const mountpoint = filesystems.find((fs) => fs.guid === dataset)?.mountpoint || '';
-			doesPathHaveBase(mountpoint).then((hasBase) => {
-				if (hasBase) {
-					disableBaseSelection = true;
-					base = '';
-				} else {
-					disableBaseSelection = false;
-				}
+		if (!base && enableFstabInput) {
+			toast.warning('Select a base/rootfs to add FStab entries', {
+				position: 'bottom-center'
 			});
+			enableFstabInput = false;
+		}
+	});
+
+	function setFSTab() {
+		if (fstabOpts.value === 'simple-linux') {
+			fstab = generateSimpleLinuxFSTab(ctId, pool);
+		} else {
+			fstab = '';
+		}
+	}
+
+	$effect(() => {
+		if (ctId && fstabOpts.value === 'simple-linux') {
+			untrack(() => {
+				setFSTab();
+			});
+		}
+	});
+
+	$effect(() => {
+		if (fstabOpts.value === 'manual') {
+			fstab = '';
 		}
 	});
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<CustomComboBox
-		bind:open={comboBoxes.dataset.open}
-		label="Filesystem"
-		bind:value={dataset}
-		data={datasetOptions}
-		classes="flex-1 space-y-1"
-		placeholder="Select filesystem"
-		triggerWidth="w-full "
-		width="w-full"
-	></CustomComboBox>
+	<div class="grid grid-cols-2 gap-4">
+		<CustomComboBox
+			bind:open={comboBoxes.pool.open}
+			label="Pool"
+			bind:value={pool}
+			data={poolOptions}
+			classes="flex-1 space-y-1"
+			placeholder="Select ZFS pool"
+			triggerWidth="w-full "
+			width="w-full"
+		></CustomComboBox>
 
-	<CustomComboBox
-		bind:open={comboBoxes.base.open}
-		label="Base"
-		bind:value={base}
-		data={baseOptions}
-		classes="flex-1 space-y-1"
-		placeholder="Select base"
-		triggerWidth="w-full"
-		width="w-full"
-		disabled={disableBaseSelection}
-	></CustomComboBox>
+		<CustomComboBox
+			bind:open={comboBoxes.base.open}
+			label="Base"
+			bind:value={base}
+			data={baseOptions}
+			classes="flex-1 space-y-1"
+			placeholder="Select base"
+			triggerWidth="w-full"
+			width="w-full"
+			disabled={disableBaseSelection}
+		></CustomComboBox>
+	</div>
+	<CustomCheckbox
+		label="FStab Additions"
+		bind:checked={enableFstabInput}
+		classes="flex items-center gap-2"
+	></CustomCheckbox>
+
+	{#if enableFstabInput}
+		<div>
+			<CustomValueInput
+				label="FStab Entries"
+				placeholder={fstabPlaceholder}
+				type="textarea"
+				textAreaClasses="min-h-40 text-xs/6"
+				bind:value={fstab}
+				classes="flex-1 space-y-1 text-xs/6 mb-2"
+			/>
+
+			<Select.Root
+				type="single"
+				bind:value={fstabOpts.value}
+				onValueChange={(val) => ((fstabOpts.value = val), setFSTab())}
+			>
+				<Select.Trigger class="h-8 w-full">
+					{fstabOpts.options.find((opt) => opt.value === fstabOpts.value)?.label ||
+						'Select FStab Option'}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="simple-linux">Simple Linux</Select.Item>
+					<Select.Item value="manual">Manual</Select.Item>
+				</Select.Content>
+			</Select.Root>
+		</div>
+	{/if}
 </div>

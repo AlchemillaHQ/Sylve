@@ -6,4 +6,5 @@
   "window.title": "${rootName}",
   "explorer.compactFolders": false,
   "workbench.startupEditor": "none",
+  "editor.formatOnSave": true
 }

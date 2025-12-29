@@ -4,24 +4,25 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { openTerminal, terminalStore } from '$lib/stores/terminal.svelte';
-	import Icon from '@iconify/svelte';
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
+	import { storage, languageArr } from '$lib';
+	import { loadLocale } from 'wuchale/load-utils';
 
-	let menuData = $state({
+	let options = {
 		createVM: {
-			open: false
+			open: false,
+			minimize: false
 		},
 		createJail: {
-			open: false
+			open: false,
+			minimize: false
 		},
-		menuItems: [
-			{ icon: 'mdi:palette', label: 'Color Theme', shortcut: '⌘⇧T' },
-			{ icon: 'meteor-icons:language', label: 'Language', shortcut: '⌘K' }
-		]
-	});
+		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }]
+	};
 
+	let properties = $state(options);
 	let jwt = $state(getJWTClaims());
 </script>
 
@@ -31,17 +32,18 @@
 	>
 		<div class="flex items-center space-x-2">
 			{#if mode.current === 'dark'}
-				<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+				<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
 			{:else}
-				<img src="/logo/black.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+				<img src="/logo/black.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
 			{/if}
+			<!-- @wc-ignore -->
 			<p class="font-normal tracking-[.45em]">SYLVE</p>
 		</div>
 	</nav>
 	<Sheet.Root>
 		<Sheet.Trigger>
 			<Button variant="outline" size="icon" class="h-7 shrink-0 lg:hidden">
-				<Icon icon="material-symbols:menu-rounded" class="h-5 w-5" />
+				<span class="icon-[material-symbols--menu-rounded] h-6 w-6"></span>
 				<span class="sr-only">Toggle navigation menu</span>
 			</Button>
 		</Sheet.Trigger>
@@ -49,7 +51,8 @@
 			<!-- mobile view -->
 			<nav class="flex flex-col text-lg font-medium">
 				<div class="mt-4 flex items-center space-x-2">
-					<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-[100px]" />
+					<img src="/logo/white.svg" alt="Sylve Logo" class="h-6 w-auto max-w-25" />
+					<!-- @wc-ignore -->
 					<p class="font-normal tracking-[.45em]">SYLVE</p>
 				</div>
 				<p class="mt-4 whitespace-nowrap">Virtual Environment 0.0.1</p>
@@ -62,80 +65,136 @@
 			<Button
 				size="icon"
 				variant="link"
-				class="relative z-[9999] flex  w-auto items-center justify-center "
+				class="z-9999 relative flex  w-auto items-center justify-center "
 				onclick={() => openTerminal()}
 			>
-				<Icon icon="garden:terminal-cli-stroke-16" class="h-6 w-6" />
-				{#if $terminalStore.tabs.length > 0}
+				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
+				{#if terminalStore.tabs?.length > 0}
 					<span
-						class="absolute -right-1 top-0.5 flex h-4 min-w-[8px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+						class="absolute -right-1 top-0.5 flex h-4 min-w-2 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
 					>
-						{$terminalStore.tabs.length}
+						{terminalStore.tabs?.length}
 					</span>
 				{/if}
 			</Button>
 
-			<Button
-				class="h-6"
-				size="sm"
-				onclick={() => (menuData.createVM.open = !menuData.createVM.open)}
-			>
-				<div class="flex items-center gap-2">
-					<Icon icon="material-symbols:monitor-outline-rounded" class="h-4 w-4" />
-					<span>Create VM</span>
-				</div>
-			</Button>
+			{#if storage.enabledServices?.includes('virtualization')}
+				<Button
+					class="relative h-6"
+					size="sm"
+					onclick={() => {
+						properties.createVM.open = true;
+						properties.createVM.minimize = false;
+					}}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[material-symbols--monitor-outline-rounded] h-4 w-4"></span>
+						<span>Create VM</span>
+					</div>
 
-			<Button
-				class="h-6"
-				size="sm"
-				onclick={() => (menuData.createJail.open = !menuData.createJail.open)}
-			>
-				<div class="flex items-center gap-2">
-					<Icon icon="hugeicons:prison" class="h-4 w-4" />
-					<span>Create Jail</span>
-				</div>
-			</Button>
-
-			{#if menuData.createVM.open}
-				<CreateVM bind:open={menuData.createVM.open} />
+					{#if properties.createVM.minimize}
+						<span
+							class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+							title="VM creation form minimized"
+						></span>
+					{/if}
+				</Button>
 			{/if}
 
-			{#if menuData.createJail.open}
-				<CreateJail bind:open={menuData.createJail.open} />
+			{#if storage.enabledServices?.includes('jails')}
+				<Button
+					class="relative h-6"
+					size="sm"
+					onclick={() => {
+						properties.createJail.open = true;
+						properties.createJail.minimize = false;
+					}}
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon-[hugeicons--prison] h-4 w-4"></span>
+						<span>Create Jail</span>
+					</div>
+
+					{#if properties.createJail.minimize}
+						<span
+							class="absolute -right-1 -top-0.5 h-3 w-3 rounded-full border border-white bg-yellow-400"
+							title="Jail creation form minimized"
+						></span>
+					{/if}
+				</Button>
+			{/if}
+
+			{#if properties.createVM.open || properties.createVM.minimize}
+				<CreateVM
+					bind:open={properties.createVM.open}
+					bind:minimize={properties.createVM.minimize}
+				/>
+			{/if}
+
+			{#if properties.createJail.open || properties.createJail.minimize}
+				<CreateJail
+					bind:open={properties.createJail.open}
+					bind:minimize={properties.createJail.minimize}
+				/>
 			{/if}
 		</div>
 		<DropdownMenu.Root>
 			<DropdownMenu.Trigger>
 				<Button variant="outline" size="sm" class="h-6.5">
 					<div class="flex items-center gap-2">
-						<Icon icon="mdi:user" class="h-4 w-4" />
+						<span class="icon-[mdi--user] h-4 w-4"></span>
+
 						<span>{jwt?.custom_claims.username}</span>
-						<Icon icon="famicons:chevron-down" class="h-4 w-4" />
+						<span class="icon-[famicons--chevron-down] h-4 w-4"></span>
 					</div>
 					<span class="sr-only">Toggle user menu</span></Button
 				>
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="w-56">
 				<DropdownMenu.Group>
-					{#each menuData.menuItems as { icon, label, shortcut }}
-						<DropdownMenu.Item
-							class="cursor-pointer"
-							onclick={() => label === 'Color Theme' && toggleMode()}
-						>
-							<Icon {icon} class="mr-2 h-4 w-4" />
+					{#each properties.menuItems as { icon, label, shortcut }}
+						<DropdownMenu.Item class="cursor-pointer" onclick={toggleMode}>
+							<span class="icon-[{icon}] mr-2 h-4 w-4"></span>
+
 							<span>{label}</span>
 							{#if shortcut}
 								<DropdownMenu.Shortcut>{shortcut}</DropdownMenu.Shortcut>
 							{/if}
 						</DropdownMenu.Item>
 					{/each}
+
+					<DropdownMenu.Sub>
+						<DropdownMenu.Root>
+							<DropdownMenu.Trigger
+								class=" hover:bg-accent h-6.5 flex w-full cursor-pointer items-center justify-start px-2.5 py-4 text-left"
+							>
+								<span class="icon-[meteor-icons--language] mr-4 h-4 w-4"></span>
+								Language
+							</DropdownMenu.Trigger>
+							<DropdownMenu.Content class="w-48">
+								<DropdownMenu.Group>
+									{#each languageArr as { value, label }}
+										<DropdownMenu.CheckboxItem
+											class="cursor-pointer"
+											checked={storage.language === value}
+											onclick={() => {
+												storage.language = value;
+												loadLocale(value);
+											}}
+										>
+											{label}
+										</DropdownMenu.CheckboxItem>
+									{/each}
+								</DropdownMenu.Group>
+							</DropdownMenu.Content>
+						</DropdownMenu.Root></DropdownMenu.Sub
+					>
 				</DropdownMenu.Group>
 
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
-					<Icon icon="ic:twotone-logout" class="mr-2 h-4 w-4" />
-					<span>Log out</span>
+					<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
+					<span>Log Out</span>
 					<DropdownMenu.Shortcut>⌘⇧Q</DropdownMenu.Shortcut>
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>

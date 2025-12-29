@@ -2,27 +2,24 @@
 	import { editPool } from '$lib/api/zfs/pool';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import type { APIResponse } from '$lib/types/common';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
-
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
-	import Icon from '@iconify/svelte';
+	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		pool: Zpool;
 		usable: { disks: Disk[]; partitions: Partition[] };
-		parsePoolActionError: (response: APIResponse) => string;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), pool, usable, parsePoolActionError }: Props = $props();
+	let { open = $bindable(), pool, usable, reload = $bindable() }: Props = $props();
 	let spares: string[] = $derived.by(() => {
 		const uD: string[] = usable.disks.map((disk) => disk.device);
 		const uP: string[] = usable.partitions.map((partition) => `/dev/${partition.name}`);
@@ -39,13 +36,13 @@
 	});
 
 	let options = {
-		autoexpand: pool.properties.find((prop) => prop.property === 'autoexpand')?.value || 'off',
-		autotrim: pool.properties.find((prop) => prop.property === 'autotrim')?.value || 'off',
-		delegation: pool.properties.find((prop) => prop.property === 'delegation')?.value || 'off',
-		comment: pool.properties.find((prop) => prop.property === 'comment')?.value || '',
-		failmode: pool.properties.find((prop) => prop.property === 'failmode')?.value || 'wait',
-		spares: pool.spares.map((spare) => spare.name) || ([] as string[]),
-		autoreplace: pool.properties.find((prop) => prop.property === 'autoreplace')?.value || 'off',
+		autoexpand: pool.properties.autoexpand?.value || 'off',
+		autotrim: pool.properties.autotrim?.value || 'off',
+		delegation: pool.properties.delegation?.value || 'off',
+		comment: pool.properties.comment?.value || '',
+		failmode: pool.properties.failmode?.value || 'wait',
+		autoreplace: pool.properties.autoreplace?.value || 'off',
+		spares: Object.keys(pool.spares ?? {}),
 		editing: false
 	};
 
@@ -68,6 +65,8 @@
 			properties.spares
 		);
 
+		reload = true;
+
 		if (response.error) {
 			toast.error(parsePoolActionError(response), {
 				position: 'bottom-center'
@@ -87,7 +86,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-2xl"
+		class="fixed top-1/2 left-1/2 max-h-[90vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-visible overflow-y-auto p-5 transition-all duration-300 ease-in-out lg:max-w-2xl"
 		onInteractOutside={() => {
 			properties = options;
 			open = false;
@@ -96,7 +95,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between gap-2 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:database-edit" class="h-5 w-5" />
+					<span class="icon-[mdi--database-edit] h-5 w-5"></span>
+
 					<span>Edit ZFS Pool - {pool.name}</span>
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -109,7 +109,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -122,7 +122,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -178,7 +178,7 @@
 
 				{#if properties.spares && isRaid}
 					<div class="h-full space-y-1">
-						<Label class="w-24 whitespace-nowrap text-sm">Spares</Label>
+						<Label class="w-24 text-sm whitespace-nowrap">Spares</Label>
 						<Select.Root
 							type="multiple"
 							bind:value={properties.spares}
@@ -207,18 +207,18 @@
 						</Select.Root>
 					</div>
 
-					{#if properties.spares.length > 0}
-						<SimpleSelect
-							label="Auto Replace"
-							placeholder="Select Auto Replace"
-							options={[
-								{ value: 'on', label: 'Yes' },
-								{ value: 'off', label: 'No' }
-							]}
-							bind:value={properties.autoreplace}
-							onChange={(value) => (properties.autoreplace = value)}
-						/>
-					{/if}
+					<SimpleSelect
+						label="Auto Replace"
+						placeholder="Select Auto Replace"
+						options={[
+							{ value: 'on', label: 'Yes' },
+							{ value: 'off', label: 'No' }
+						]}
+						bind:value={properties.autoreplace}
+						onChange={(value) => (properties.autoreplace = value)}
+						disabled={properties.spares.length === 0}
+						title={properties.spares.length === 0 ? 'Add spares to enable auto replace' : ''}
+					/>
 				{/if}
 			</div>
 		</div>
@@ -242,7 +242,7 @@
 					}}
 				>
 					{#if properties.editing}
-						<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 					{:else}
 						Edit
 					{/if}

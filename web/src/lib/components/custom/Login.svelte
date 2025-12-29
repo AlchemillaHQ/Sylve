@@ -7,28 +7,38 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import Icon from '@iconify/svelte';
 	import { mode } from 'mode-watcher';
 	import { onDestroy, onMount } from 'svelte';
+	import { languageArr, storage } from '$lib';
+	import { loadLocale } from 'wuchale/load-utils';
+	import type { Locales } from '$lib/types/common';
 
 	interface Props {
 		onLogin: (
 			username: string,
 			password: string,
 			type: string,
-			language: string,
-			remember: boolean
+			remember: boolean,
+			toLoginPath: string
 		) => void;
 		loading: boolean;
 	}
 
+	let toLoginPath = $derived(page.url.pathname);
 	let { onLogin, loading = $bindable() }: Props = $props();
 
 	let username = $state('');
 	let password = $state('');
+	let language = $derived(storage.language ?? 'en');
 	let authType = $state('sylve');
-	let language = $state('en');
 	let remember = $state(false);
+
+	$effect(() => {
+		if (language) {
+			loadLocale((language || 'en') as Locales);
+			storage.language = language;
+		}
+	});
 
 	$effect(() => {
 		if (page.url.search.includes('loggedOut')) {
@@ -40,7 +50,7 @@
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			try {
-				onLogin(username, password, authType, language, remember);
+				onLogin(username, password, authType, remember, toLoginPath);
 			} catch (error) {
 				console.error('Login error:', error);
 			}
@@ -54,15 +64,6 @@
 	onDestroy(() => {
 		window.removeEventListener('keydown', handleKeydown);
 	});
-
-	let languageArr = [
-		{ value: 'en', label: 'English' },
-		{ value: 'mal', label: 'മലയാളം' },
-		{ value: 'cn_simplified', label: '简体中文' },
-		{ value: 'ar', label: 'العربية' },
-		{ value: 'ru', label: 'Русский' },
-		{ value: 'tu', label: 'Türkçe' }
-	];
 </script>
 
 <div class="fixed inset-0 flex items-center justify-center px-3">
@@ -73,6 +74,7 @@
 			{:else}
 				<img src="/logo/black.svg" alt="Sylve Logo" class="h-8 w-auto" />
 			{/if}
+			<!-- @wc-ignore -->
 			<p class="ml-2 text-xl font-medium tracking-[.45em] text-gray-800 dark:text-white">SYLVE</p>
 		</Card.Header>
 
@@ -129,10 +131,7 @@
 					<Select.Content>
 						<Select.Item value="en">English</Select.Item>
 						<Select.Item value="mal">Malayalam (മലയാളം)</Select.Item>
-						<Select.Item value="cn_simplified">Chinese (简体中文)</Select.Item>
-						<Select.Item value="ar">Arabic (العربية)</Select.Item>
-						<Select.Item value="ru">Russian (Русский)</Select.Item>
-						<Select.Item value="tu">Turkish (Türkçe)</Select.Item>
+						<Select.Item value="hi">Hindi (हिन्दी)</Select.Item>
 					</Select.Content>
 				</Select.Root>
 			</div>
@@ -145,13 +144,13 @@
 			</div>
 			<Button
 				onclick={() => {
-					onLogin(username, password, authType, language, remember);
+					onLogin(username, password, authType, remember, toLoginPath);
 				}}
 				size="sm"
 				class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
 			>
 				{#if loading}
-					<Icon icon="line-md:loading-loop" width="24" height="24" />
+					<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
 				{:else}
 					Login
 				{/if}

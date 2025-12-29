@@ -1,8 +1,7 @@
 import type { APIResponse } from '$lib/types/common';
 import type { Column, Row } from '$lib/types/components/tree-table';
-import type { Dataset, GroupedByPool } from '$lib/types/zfs/dataset';
+import type { GroupedByPool } from '$lib/types/zfs/dataset';
 import { generateNumberFromString } from '$lib/utils/numbers';
-import { capitalizeFirstLetter } from '$lib/utils/string';
 import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 import { cleanChildren } from '$lib/utils/tree-table';
 import { toast } from 'svelte-sonner';
@@ -170,28 +169,27 @@ export const createFSProps = {
 			value: 'restricted'
 		}
 	],
-        recordsize: [
-                {
-                        label: '8K - Postgres',
-                        value: '8192'
-                },
-                {
-                        label: '16K - MySQL',
-                        value: '16384'
-                },
-                {
-                        label: '128K - default',
-                        value: '131072'
-                },
-                {
-                        label: '1M - Large Files',
-                        value: '1048576'
-                }
-       ]
+	recordsize: [
+		{
+			label: '8K - Postgres',
+			value: '8192'
+		},
+		{
+			label: '16K - MySQL',
+			value: '16384'
+		},
+		{
+			label: '128K - default',
+			value: '131072'
+		},
+		{
+			label: '1M - Large Files',
+			value: '1048576'
+		}
+	]
 };
 
 export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; columns: Column[] } {
-	const rows: Row[] = [];
 	const columns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
@@ -206,55 +204,58 @@ export function generateTableData(grouped: GroupedByPool[]): { rows: Row[]; colu
 			}
 		},
 		{ field: 'used', title: 'Used', formatter: sizeFormatter },
-		{ field: 'avail', title: 'Available', formatter: sizeFormatter },
+		{ field: 'available', title: 'Available', formatter: sizeFormatter },
 		{ field: 'referenced', title: 'Referenced', formatter: sizeFormatter },
 		{ field: 'mountpoint', title: 'Mount Point' },
 		{ field: 'type', title: 'Type', visible: false }
 	];
 
+	const rows: Row[] = [];
+
 	for (const group of grouped) {
-		const poolNode: Row = {
-			id: generateNumberFromString(group.name),
-			name: group.name,
-			used: 0,
-			avail: 0,
-			referenced: 0,
-			mountpoint: '',
-			children: [],
-			type: 'pool'
+		const nodeMap = new Map<string, Row>();
+
+		const getOrCreate = (name: string, type = 'FILESYSTEM'): Row => {
+			let node = nodeMap.get(name);
+			if (!node) {
+				node = {
+					id: generateNumberFromString(name),
+					name,
+					used: 0,
+					available: 0,
+					referenced: 0,
+					mountpoint: '',
+					children: [],
+					type
+				};
+				nodeMap.set(name, node);
+			}
+			return node;
 		};
 
+		const poolNode = getOrCreate(group.name, 'pool');
+
 		for (const fs of group.filesystems) {
-			if (fs.name === group.name) {
-				poolNode.used = fs.used;
-				poolNode.avail = fs.avail;
-				poolNode.referenced = fs.referenced;
-				poolNode.mountpoint = fs.mountpoint || '';
-				continue;
-			}
-
 			const parts = fs.name.split('/');
-			let current = poolNode;
+			for (let i = 0; i < parts.length; i++) {
+				const path = parts.slice(0, i + 1).join('/');
+				getOrCreate(path);
+			}
+		}
 
-			for (let i = 1; i < parts.length; i++) {
-				const pathSoFar = parts.slice(0, i + 1).join('/');
-				let child = current.children!.find((c) => c.name === pathSoFar);
+		for (const fs of group.filesystems) {
+			const node = nodeMap.get(fs.name)!;
 
-				if (!child) {
-					child = {
-						id: generateNumberFromString(pathSoFar),
-						name: pathSoFar,
-						used: fs.used,
-						avail: fs.avail,
-						referenced: fs.referenced,
-						mountpoint: fs.mountpoint || '',
-						children: [],
-						type: fs.type
-					};
-					current.children!.push(child);
-				}
+			node.used = fs.used;
+			node.available = fs.available;
+			node.referenced = fs.referenced;
+			node.mountpoint = fs.mountpoint || '';
+			node.type = fs.type;
 
-				current = child;
+			if (fs.name !== group.name) {
+				const parentName = fs.name.substring(0, fs.name.lastIndexOf('/'));
+				const parent = nodeMap.get(parentName);
+				parent?.children!.push(node);
 			}
 		}
 

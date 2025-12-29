@@ -1,13 +1,10 @@
 <script lang="ts">
-	import { modifyBootOrder, modifyClockOffset, modifyWoL } from '$lib/api/vm/vm';
+	import { modifyClockOffset } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -35,7 +32,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyClockOffset(vm.vmId, comboBox.value as 'localtime' | 'utc');
+		const response = await modifyClockOffset(vm.rid, comboBox.value as 'localtime' | 'utc');
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify clock offset', {
@@ -58,7 +55,8 @@
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:clock" class="h-5 w-5" />
+					<span class="icon-[mdi--clock] h-5 w-5"></span>
+
 					<span>Clock Offset</span>
 				</div>
 
@@ -72,7 +70,7 @@
 							comboBox.value = vm.timeOffset === 'utc' ? 'utc' : 'localtime';
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -85,7 +83,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

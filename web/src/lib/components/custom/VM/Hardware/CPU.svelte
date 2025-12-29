@@ -3,23 +3,22 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { CPUInfo } from '$lib/types/info/cpu';
-	import type { VM } from '$lib/types/vm/vm';
+	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { getCache, handleAPIError } from '$lib/utils/http';
 
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
+	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
 		open: boolean;
 		vm: VM | null;
 		vms: VM[];
+		pinnedCPUs: CPUPin[];
 	}
 
 	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
-	let { open = $bindable(), vm, vms }: Props = $props();
+	let { open = $bindable(), vm, vms, pinnedCPUs = $bindable() }: Props = $props();
 	let options = {
 		cpu: {
 			sockets: vm?.cpuSockets || 1,
@@ -34,35 +33,17 @@
 		return vms.filter((v) => v.id !== vm?.id).flatMap((v) => v.cpuPinning || []);
 	});
 
+	let isPinningOpen = $state(false);
+
+	let coreSelectionLimit = $derived.by(
+		() => properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads
+	);
+
 	let allPinnedIndices = $derived.by(() => {
 		return [...otherVmPinnedIndices, ...properties.cpu.pinning];
 	});
 
 	let vCPUs = $derived(properties.cpu.sockets * properties.cpu.cores * properties.cpu.threads);
-
-	function pinCPU(index: number) {
-		if (properties.cpu.pinning.includes(index)) {
-			properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-		} else {
-			if (properties.cpu.pinning.length >= vCPUs) {
-				toast.info(`You can only pin up to ${vCPUs} vCPU${vCPUs > 1 ? 's' : ''}`, {
-					position: 'bottom-center'
-				});
-				return;
-			}
-			properties.cpu.pinning = [...properties.cpu.pinning, index];
-		}
-	}
-
-	function unpinCPU(index: number) {
-		if (properties.cpu.pinning.includes(index)) {
-			properties.cpu.pinning = properties.cpu.pinning.filter((cpu) => cpu !== index);
-		} else {
-			toast.info(`CPU ${index} is not pinned by this VM`, {
-				position: 'bottom-center'
-			});
-		}
-	}
 
 	$effect(() => {
 		if (properties.cpu.pinning.length > vCPUs) {
@@ -82,7 +63,7 @@
 	async function modify() {
 		if (vm) {
 			const response = await modifyCPU(
-				vm.vmId,
+				vm.rid,
 				parseInt(properties.cpu.sockets.toString(), 10),
 				parseInt(properties.cpu.cores.toString(), 10),
 				parseInt(properties.cpu.threads.toString(), 10),
@@ -113,7 +94,8 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="solar:cpu-bold" class="h-5 w-5" />
+					<span class="icon-[solar--cpu-bold] h-5 w-5"></span>
+
 					<span>CPU</span>
 				</div>
 
@@ -127,7 +109,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -140,7 +122,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -173,32 +155,19 @@
 			/>
 		</div>
 
-		<div>
-			{#if cpuInfo}
-				<Label class="mb-4 flex justify-center">CPU Pinning</Label>
-				<ScrollArea orientation="vertical" class="h-full w-full max-w-full">
-					<div
-						class="grid grid-cols-6 justify-items-center gap-1 text-xs sm:grid-cols-8 md:grid-cols-10"
-					>
-						{#each Array(cpuInfo.logicalCores).fill(0) as _, index (index)}
-							{#if otherVmPinnedIndices.includes(index)}
-								<Icon
-									icon="iconoir:cpu"
-									class="h-5 w-5 cursor-pointer text-red-600"
-									onclick={() => unpinCPU(index)}
-								/>
-							{:else}
-								<Icon
-									icon="iconoir:cpu"
-									class={`h-5 w-5 cursor-pointer
-                                ${properties.cpu.pinning.includes(index) ? 'text-yellow-600' : 'text-green-400'}`}
-									onclick={() => pinCPU(index)}
-								/>
-							{/if}
-						{/each}
-					</div>
-				</ScrollArea>
-			{/if}
+		<div class="grid grid-cols-1 md:grid-cols-2">
+			<div>
+				{#if cpuInfo}
+					<CPUSelector
+						bind:open={isPinningOpen}
+						bind:cpuInfo
+						bind:pinnedCPUs
+						{vm}
+						{vms}
+						{coreSelectionLimit}
+					/>
+				{/if}
+			</div>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">

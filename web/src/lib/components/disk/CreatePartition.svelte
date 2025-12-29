@@ -6,8 +6,8 @@
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import * as Table from '$lib/components/ui/table';
 	import type { Disk } from '$lib/types/disk/disk';
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
+	import { watch } from 'runed';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { slide } from 'svelte/transition';
@@ -16,13 +16,14 @@
 		open: boolean;
 		disk: Disk | null;
 		onCancel: () => void;
+		reload?: boolean;
 	}
 
-	let { open, disk, onCancel }: Data = $props();
+	let { open, disk, onCancel, reload = $bindable() }: Data = $props();
 
 	let newPartitions: { name: string; size: number }[] = $state([]);
 	let currentPartitionInput = $state('0 B');
-	let currentPartition = $derived.by(() => {
+	let currentTextPartition = $derived.by(() => {
 		try {
 			const parsed = humanFormat.parse.raw(currentPartitionInput);
 			return parsed.factor * parsed.value;
@@ -30,6 +31,8 @@
 			return 0;
 		}
 	});
+
+	let currentPartitionSlider = $state(0);
 
 	function removePartition(index: number) {
 		const removedPartition = newPartitions.splice(index, 1)[0];
@@ -48,6 +51,10 @@
 				message = `Error creating ${sizes.length > 1 ? 'partitions' : 'partition'}`;
 			}
 
+			if (reload !== undefined) {
+				reload = true;
+			}
+
 			toast.success(message, {
 				position: 'bottom-center'
 			});
@@ -58,13 +65,18 @@
 	}
 
 	async function addPartition() {
-		if (currentPartition > 0) {
+		if (currentTextPartition > 0) {
+			if (remainingSpace - currentTextPartition < 0) {
+				currentTextPartition = remainingSpace;
+			}
+
 			newPartitions.push({
 				name: `New Partition ${newPartitions.length + 1}`,
-				size: currentPartition
+				size: currentTextPartition
 			});
-			remainingSpace -= currentPartition;
-			currentPartition = 0;
+			remainingSpace -= currentTextPartition;
+
+			currentTextPartition = 0;
 			currentPartitionInput = '0B';
 
 			await tick();
@@ -82,7 +94,7 @@
 	function close() {
 		newPartitions = [];
 		remainingSpace = 0;
-		currentPartition = 0;
+		currentTextPartition = 0;
 		onCancel();
 	}
 
@@ -103,15 +115,36 @@
 	}
 
 	let remainingSpace = $derived.by(() => (disk ? calculateRemainingSpace(disk) : 0));
+	let remainingSpacePercentage = $derived.by(() => {
+		if (!disk) return 0;
+		return (remainingSpace / disk.size) * 100;
+	});
+
+	watch(
+		() => currentTextPartition,
+		(value) => {
+			try {
+				const percentage = (value / remainingSpace) * 100;
+				currentPartitionSlider = isNaN(percentage) ? 0 : percentage;
+			} catch (e) {
+				currentPartitionSlider = 0;
+			}
+		}
+	);
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-5 lg:max-w-3xl"
+		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-5 lg:max-w-3xl"
 	>
 		<div class="flex items-center justify-between">
 			<Dialog.Header class="p-0">
-				<Dialog.Title>Create Partitions</Dialog.Title>
+				<Dialog.Title>
+					<span class="flex items-center gap-2">
+						<span class="icon icon-[ant-design--partition-outlined] h-6 w-6"></span>
+						<span>Create Partitions</span>
+					</span>
+				</Dialog.Title>
 				<Dialog.Description></Dialog.Description>
 			</Dialog.Header>
 
@@ -124,11 +157,11 @@
 					onclick={() => {
 						newPartitions = [];
 						remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
-						currentPartition = 0;
+						currentTextPartition = 0;
 						currentPartitionInput = '';
 					}}
 				>
-					<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">Reset</span>
 				</Button>
 				<Button
@@ -138,20 +171,20 @@
 					title={'Close'}
 					onclick={() => close()}
 				>
-					<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">Close</span>
 				</Button>
 			</div>
 		</div>
 
-		<div class="max-h-[300px] overflow-y-auto" id="table-body">
+		<div class="max-h-75 overflow-y-auto" id="table-body">
 			<Table.Root>
 				<Table.Header class="bg-background sticky top-0 z-10">
 					<Table.Row>
-						<Table.Head class="w-[200px]">Name</Table.Head>
-						<Table.Head class="w-[150px] text-right">Size</Table.Head>
-						<Table.Head class="w-[150px] text-right">Usage</Table.Head>
-						<Table.Head class="w-[100px] text-right">Actions</Table.Head>
+						<Table.Head class="w-50">Name</Table.Head>
+						<Table.Head class="w-37.5 text-right">Size</Table.Head>
+						<Table.Head class="w-37.5 text-right">Usage</Table.Head>
+						<Table.Head class="w-25 text-right">Actions</Table.Head>
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
@@ -176,7 +209,7 @@
 								<Table.Cell class="text-right">-</Table.Cell>
 								<Table.Cell class="text-right">
 									<Button variant="ghost" class="h-8" onclick={() => removePartition(index)}>
-										<Icon icon="gg:trash" class="h-4 w-4" />
+										<span class="icon-[gg--trash] h-4 w-4"></span>
 									</Button>
 								</Table.Cell>
 							</Table.Row>
@@ -195,21 +228,19 @@
 		</div>
 
 		<div class="space-y-2 border-t pt-4">
-			<div class="flex items-center gap-6">
+			<div class="flex items-center gap-4">
 				<div class="flex-1">
 					{#if remainingSpace > 0}
-						<!-- <Slider
+						<Slider
 							type="single"
-							bind:value={currentPartition}
-							max={remainingSpace}
-							step={0.1}
+							bind:value={currentPartitionSlider}
+							max={100}
+							step={0.01}
 							onValueCommit={(value: number) => {
-								currentPartition = value <= 0 ? 0 : value;
-								currentPartitionInput = humanFormat(currentPartition);
-
-								console.log('Slider value committed:', value);
+								currentTextPartition = (remainingSpace * value) / 100;
+								currentPartitionInput = humanFormat(currentTextPartition);
 							}}
-						/> -->
+						></Slider>
 					{/if}
 				</div>
 
@@ -225,7 +256,7 @@
 					<Button
 						class="h-8 whitespace-nowrap"
 						onclick={addPartition}
-						disabled={currentPartition <= 0}
+						disabled={currentTextPartition <= 0}
 					>
 						{#if remainingSpace > 0}
 							Add Partition
@@ -236,13 +267,12 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col items-end gap-2">
-				<p class="text-muted-foreground text-sm">
-					Size: {humanFormat(currentPartition)}
-				</p>
-				<p class="text-muted-foreground text-sm">
-					Remaining space: {humanFormat(remainingSpace)}
-				</p>
+			<div class="flex justify-end">
+				<div class="flex flex-nowrap items-center gap-1 whitespace-nowrap">
+					<p class="text-muted-foreground text-sm">
+						Remaining space: <span class="font-semibold">{humanFormat(remainingSpace)}</span>
+					</p>
+				</div>
 			</div>
 		</div>
 		{#if newPartitions.length > 0}

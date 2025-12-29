@@ -27,6 +27,7 @@ type SylveConfig struct {
 	ProxyToVite   bool            `json:"proxyToVite"`
 	IP            string          `json:"ip"`
 	Port          int             `json:"port"`
+	HTTPPort      int             `json:"httpPort"`
 	LogLevel      int8            `json:"logLevel"`
 	WANInterfaces []string        `json:"wanInterfaces"`
 	Admin         BaseConfigAdmin `json:"admin"`
@@ -41,3 +42,5 @@ type APIResponse[T any] struct {
 	Data    T      `json:"data"`
 	Error   string `json:"error"`
 }
+
+const MinimumVMStorageSize = 1024 * 1024 * 128

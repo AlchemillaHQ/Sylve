@@ -2,108 +2,136 @@
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
 
-	import { goto } from '$app/navigation';
-	import { isClusterTokenValid, isTokenValid, login } from '$lib/api/auth';
+	import { IsDocumentVisible, IsIdle, watch } from 'runed';
+	import { fade } from 'svelte/transition';
+	import { goto, preloadData } from '$app/navigation';
+	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
+	import { browser } from '$app/environment';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
-	import { store as token } from '$lib/stores/auth';
-	import { hostname, language } from '$lib/stores/basic';
 	import '$lib/utils/i18n';
-	import { preloadIcons } from '$lib/utils/icons';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { QueryClient, QueryClientProvider } from '@sveltestack/svelte-query';
 	import { ModeWatcher } from 'mode-watcher';
-	import { onMount, tick } from 'svelte';
-	import { loadLocale } from 'wuchale/run-client';
-
-	import type { Locales } from '$lib/types/common';
+	import { onMount } from 'svelte';
+	import '../locales/main.loader.svelte.js';
+	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
 	import { sleep } from '$lib/utils';
 	import '../app.css';
+	import { storage } from '$lib';
+	import { loadLocale } from 'wuchale/load-utils';
+	import type { Locales } from '$lib/types/common.js';
+	import { page } from '$app/state';
+	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
+	import { getBasicSettings } from '$lib/api/system/settings.js';
 
-	$effect.pre(() => {
-		loadLocale($language as Locales);
-	});
-
-	const queryClient = new QueryClient();
 	let { children } = $props();
-	let isLoggedIn = $state(false);
-	let loading = $state({
-		throbber: true,
-		login: false
-	});
+	let initialized = $state<boolean | null>(null);
+	let rebooted = $state<boolean>(false);
 
-	$effect(() => {
-		if (isLoggedIn && $hostname) {
-			const path = window.location.pathname;
-			if (path === '/') {
-				goto('/datacenter/summary', { replaceState: true });
-			}
-		}
+	let loading = $state({
+		throbber: false,
+		login: false,
+		initialization: false
 	});
 
 	onMount(async () => {
+		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
-		const faviconEl = document.getElementById('favicon');
-		if (faviconEl) {
-			const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-			if (darkMode) {
-				faviconEl.setAttribute('href', '/logo/white.svg');
-			} else {
-				faviconEl.setAttribute('href', '/logo/black.svg');
-			}
-		}
 
-		if ($token) {
+		const [validToken, validClusterToken] = await Promise.all([
+			isTokenValid(),
+			isClusterTokenValid()
+		]);
+
+		if (validToken && validClusterToken) {
+			loading.initialization = true;
+			loading.throbber = true;
+
+			let [isInit, isRebooted] = [false, false];
+
 			try {
-				if ((await isTokenValid()) && (await isClusterTokenValid())) {
-					isLoggedIn = true;
-				} else {
-					$token = '';
-				}
+				[isInit, isRebooted] = await isInitialized();
+				initialized = isInit;
+				rebooted = isRebooted;
 			} catch (error) {
-				console.error('Token validation error:', error);
-				$token = '';
+				initialized = false;
+				rebooted = false;
 			}
-		}
 
-		await preloadIcons();
-		await sleep(1000);
-		loading.throbber = false;
-		await tick();
+			loading.initialization = false;
+
+			if (initialized && rebooted && page.url.pathname === '/') {
+				await preloadData('/datacenter/summary');
+				await goto('/datacenter/summary', { replaceState: true });
+			}
+
+			await sleep(1500);
+			loading.throbber = false;
+
+			const basicSettings = await getBasicSettings();
+			storage.enabledServices = basicSettings.services;
+		} else {
+			storage.token = '';
+			initialized = null;
+			rebooted = false;
+		}
 	});
 
 	async function handleLogin(
 		username: string,
 		password: string,
 		type: string,
-		language: string,
-		remember: boolean
+		remember: boolean,
+		toLoginPath: string = ''
 	) {
 		let isError = false;
 		loading.login = true;
 
-		await sleep(500);
-
 		try {
-			loadLocale(language as Locales);
-			if (await login(username, password, type, remember, language)) {
-				isLoggedIn = true;
+			if (await login(username, password, type, remember)) {
 				loading.login = false;
-				const path = window.location.pathname;
+				loading.throbber = true;
+				loading.initialization = true;
 
-				if (path === '/') {
-					await goto('/datacenter/summary', { replaceState: true });
+				try {
+					[initialized, rebooted] = await isInitialized();
+				} catch (error) {
+					console.error('Initialization check error:', error);
+					initialized = false;
+					rebooted = false;
 				}
+
+				await goto('/');
+
+				loading.initialization = false;
+
+				const basicSettings = await getBasicSettings();
+				storage.enabledServices = basicSettings.services;
+
+				let target = toLoginPath;
+
+				if (!target) {
+					target = page.url.pathname;
+				}
+
+				if (target === '/') {
+					target = '/datacenter/summary';
+				}
+
+				await preloadData(target);
+				await goto(target, { replaceState: true });
+
+				await sleep(1500);
+				loading.throbber = false;
+				return;
 			} else {
 				isError = true;
-				isLoggedIn = false;
 				loading.login = false;
 			}
 		} catch (error) {
 			isError = true;
-			isLoggedIn = false;
 			loading.login = false;
 		} finally {
 			if (!isError) {
@@ -112,9 +140,27 @@
 		}
 
 		loading.login = false;
+		await sleep(1500);
 		loading.throbber = false;
 		return;
 	}
+
+	const visible = new IsDocumentVisible();
+	const idle = new IsIdle({ timeout: 10000 });
+
+	watch(
+		() => visible.current,
+		(current) => {
+			storage.visible = current;
+		}
+	);
+
+	watch(
+		() => idle.current,
+		(current) => {
+			storage.idle = current;
+		}
+	);
 </script>
 
 <svelte:head>
@@ -127,12 +173,28 @@
 
 {#if loading.throbber}
 	<Throbber />
-{:else if isLoggedIn && $hostname}
-	<QueryClientProvider client={queryClient}>
-		<Shell>
-			{@render children()}
-		</Shell>
-	</QueryClientProvider>
+{:else if storage.hostname && storage.token && !loading.throbber && !loading.login}
+	{#if initialized === null}
+		<Throbber />
+	{:else if initialized === false || rebooted === false}
+		{#if !initialized}
+			<div transition:fade|global={{ duration: 400 }}>
+				<Initialize bind:initialized />
+			</div>
+		{:else if !rebooted}
+			<div transition:fade|global={{ duration: 400 }}>
+				<Reboot />
+			</div>
+		{/if}
+	{:else}
+		<div transition:fade|global={{ duration: 400 }}>
+			<Shell>
+				{@render children()}
+			</Shell>
+		</div>
+	{/if}
 {:else}
-	<Login onLogin={handleLogin} loading={loading.login} />
+	<div transition:fade|global={{ duration: 400 }}>
+		<Login onLogin={handleLogin} loading={loading.login} />
+	</div>
 {/if}

@@ -31,6 +31,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 )
 
 const Base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -105,6 +106,15 @@ func GenerateRandomString(length int) string {
 func StringInSlice(a string, list []string) bool {
 	for _, b := range list {
 		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
+func PartialStringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if strings.Contains(a, b) {
 			return true
 		}
 	}
@@ -308,17 +318,15 @@ func JoinStrings(slice []string, sep string) string {
 	return sb.String()
 }
 
-func MapKeys(m map[string]struct{}) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 func IsValidVMName(name string) bool {
 	regex := regexp.MustCompile(`^[a-zA-Z0-9-_]+$`)
 	return regex.MatchString(name)
+}
+
+func IsValidHostname(name string) bool {
+	v := validator.New()
+	err := v.Var(name, "hostname_rfc1123")
+	return err == nil
 }
 
 func IsValidMACAddress(mac string) bool {
@@ -806,4 +814,83 @@ func RemoveStringFromSlice(slice []string, str string) []string {
 		}
 	}
 	return result
+}
+
+func IntToString(input int) string {
+	return strconv.Itoa(input)
+}
+
+func KeepUniqueIntSlice(slice []int) []int {
+	seen := make(map[int]struct{}, len(slice))
+	out := make([]int, 0, len(slice))
+
+	for _, v := range slice {
+		if _, exists := seen[v]; !exists {
+			seen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
+func MergeMaps(maps ...map[string]string) map[string]string {
+	merged := make(map[string]string)
+	for _, m := range maps {
+		for k, v := range m {
+			merged[k] = v
+		}
+	}
+	return merged
+}
+
+func IsValidYAML(data string) bool {
+	var out interface{}
+	err := yaml.Unmarshal([]byte(data), &out)
+	return err == nil
+}
+
+func HashPasswordSHA512(password string) (string, error) {
+	output, err := RunCommand("openssl", "passwd", "-6", password)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(output), nil
+}
+
+func IsValidZFSPoolName(name string) bool {
+	reserved := []string{"log", "mirror", "raidz", "raidz1", "raidz2", "raidz3", "spare"}
+
+	if name == "" {
+		return false
+	}
+
+	for _, r := range reserved {
+		if strings.HasPrefix(name, r) {
+			return false
+		}
+	}
+
+	if !regexp.MustCompile(`^[a-zA-Z]`).MatchString(name) {
+		return false
+	}
+
+	if !regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`).MatchString(name) {
+		return false
+	}
+
+	if strings.Contains(name, "%") {
+		return false
+	}
+
+	if regexp.MustCompile(`^c[0-9]`).MatchString(name) {
+		return false
+	}
+
+	return true
+}
+
+func SplitLines(s string) []string {
+	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }

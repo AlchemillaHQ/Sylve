@@ -10,6 +10,7 @@ package infoServiceInterfaces
 
 type CPUInfo struct {
 	Name           string   `json:"name"`
+	Sockets        int16    `json:"sockets"`
 	PhysicalCores  int16    `json:"physicalCores"`
 	ThreadsPerCore int16    `json:"threadsPerCore"`
 	LogicalCores   int16    `json:"logicalCores"`

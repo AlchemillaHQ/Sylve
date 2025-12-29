@@ -41,7 +41,8 @@ type DiskPartitionRequest struct {
 // @Router /disk/list [get]
 func List(diskService *disk.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		disks, err := diskService.GetDiskDevices()
+		ctx := c.Request.Context()
+		disks, err := diskService.GetDiskDevices(ctx)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

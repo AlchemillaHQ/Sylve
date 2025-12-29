@@ -10,21 +10,15 @@ package libvirtHandlers
 
 import (
 	"github.com/alchemillahq/sylve/internal"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 
 	"github.com/gin-gonic/gin"
 )
 
 type NetworkDetachRequest struct {
-	VMID      int `json:"vmId" binding:"required"`
-	NetworkId int `json:"networkId" binding:"required"`
-}
-
-type NetworkAttachRequest struct {
-	VMID       int    `json:"vmId" binding:"required"`
-	SwitchName string `json:"switchName" binding:"required"`
-	Emulation  string `json:"emulation" binding:"required"`
-	MacId      *uint  `json:"macId"`
+	RID       uint `json:"rid" binding:"required"`
+	NetworkId uint `json:"networkId" binding:"required"`
 }
 
 // @Summary Detach Network from a Virtual Machine
@@ -50,7 +44,7 @@ func NetworkDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.NetworkDetach(req.VMID, req.NetworkId); err != nil {
+		if err := libvirtService.NetworkDetach(req.RID, req.NetworkId); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -62,7 +56,7 @@ func NetworkDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "storage_detached",
+			Message: "network_detached",
 			Data:    nil,
 			Error:   "",
 		})
@@ -81,7 +75,7 @@ func NetworkDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Router /network/attach [post]
 func NetworkAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req NetworkAttachRequest
+		var req libvirtServiceInterfaces.NetworkAttachRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -92,12 +86,7 @@ func NetworkAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		macId := uint(0)
-		if req.MacId != nil {
-			macId = *req.MacId
-		}
-
-		if err := libvirtService.NetworkAttach(req.VMID, req.SwitchName, req.Emulation, macId); err != nil {
+		if err := libvirtService.NetworkAttach(req); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

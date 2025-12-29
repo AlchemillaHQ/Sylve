@@ -5,7 +5,6 @@
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { onMount } from 'svelte';
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import {
 		generateIPOptions,
@@ -175,7 +174,7 @@
 	name: string,
 	type: 'standard' | 'manual' | 'inherit' | 'none' = 'standard'
 )}
-	{@const i = `radio-${id}`}
+	{@const i = `radio-${type}-${id}`}
 	<div class="mb-2 flex items-center space-x-3 rounded-lg border p-4">
 		<RadioGroup.Item value={name} id={i} />
 		<Label for={i} class="flex flex-col items-start gap-2">

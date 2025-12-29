@@ -14,10 +14,11 @@
 	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
+	import { storage } from '$lib';
 
 	interface Data {
 		vms: VM[];
@@ -25,80 +26,102 @@
 		domain: VMDomain;
 		interfaces: Iface[];
 		switches: SwitchList;
-		node: string;
+		rid: string;
 		networkObjects: NetworkObject[];
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
-		{
-			queryKey: ['networkInterfaces'],
-			queryFn: async () => {
-				return await getInterfaces();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('networkInterfaces', data);
-			}
+
+	const interfaces = resource(
+		() => 'networkInterfaces',
+		async (key) => {
+			const result = await getInterfaces();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['networkSwitches'],
-			queryFn: async () => {
-				return await getSwitches();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('networkSwitches', data);
-			}
+			lazy: true,
+			initialValue: data.interfaces
+		}
+	);
+
+	const switches = resource(
+		() => 'networkSwitches',
+		async (key) => {
+			const result = await getSwitches();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['vms'],
-			queryFn: async () => {
-				return getVMs();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vms', data);
-			}
+			lazy: true,
+			initialValue: data.switches
+		}
+	);
+
+	const vms = resource(
+		() => 'vms',
+		async (key) => {
+			const result = await getVMs();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: [`vm-domain-${data.vm.vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(data.vm.vmId);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (uData: VMDomain) => {
-				updateCache(`vm-domain-${data.vm.vmId}`, uData);
-			}
+			lazy: true,
+			initialValue: data.vms
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.vm.rid}`,
+		async (key) => {
+			const result = await getVMDomain(data.vm.rid);
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['networkObjects'],
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.networkObjects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('networkObjects', data);
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	const networkObjects = resource(
+		() => 'networkObjects',
+		async (key) => {
+			const result = await getNetworkObjects();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.networkObjects
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				interfaces.refetch();
+				switches.refetch();
+				vms.refetch();
+				domain.refetch();
+				networkObjects.refetch();
 			}
 		}
-	]);
+	});
 
-	let interfaces = $derived($results[0].data || []);
-	let switches = $derived($results[1].data || {});
-	let vms = $derived($results[2].data || []);
-	let vm = $derived(vms.find((vm) => vm.vmId === Number(data.node)));
-	let domain = $derived(($results[3].data as VMDomain) || {});
-	let networkObjects = $derived($results[4].data || []);
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				interfaces.refetch();
+				switches.refetch();
+				vms.refetch();
+				domain.refetch();
+				networkObjects.refetch();
+			});
+		}
+	});
+
+	let vm = $derived(vms.current.find((vm) => vm.rid === Number(data.rid)));
 
 	function generateTableData() {
 		const rows: Row[] = [];
@@ -126,13 +149,13 @@
 			for (const network of vm.networks) {
 				let sw: StandardSwitch | ManualSwitch | null = null;
 				if (network.switchType === 'standard') {
-					sw = switches.standard?.find((s) => s.id === network.switchId) ?? null;
+					sw = switches.current.standard?.find((s) => s.id === network.switchId) ?? null;
 				} else if (network.switchType === 'manual') {
-					sw = switches.manual?.find((s) => s.id === network.switchId) ?? null;
+					sw = switches.current.manual?.find((s) => s.id === network.switchId) ?? null;
 				}
 
 				if (sw) {
-					const macObj = networkObjects.find((obj) => obj.id === network.macId);
+					const macObj = networkObjects.current.find((obj) => obj.id === network.macId);
 					const mac =
 						macObj && macObj.entries && macObj.entries.length > 0
 							? macObj.entries[0].value
@@ -161,11 +184,11 @@
 	let usable = $derived.by(() => {
 		const used = new Set((vm?.networks ?? []).map((n) => `${n.switchType}-${n.switchId}`));
 		return [
-			...(switches.standard ?? []).map((s) => ({
+			...(switches.current.standard ?? []).map((s) => ({
 				...s,
 				uid: `standard-${s.id}`
 			})),
-			...(switches.manual ?? []).map((s) => ({
+			...(switches.current.manual ?? []).map((s) => ({
 				...s,
 				uid: `manual-${s.id}`
 			}))
@@ -187,7 +210,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if domain && domain.status === 'Shutoff'}
+	{#if domain && domain.current.status === 'Shutoff'}
 		{#if type === 'detach' && activeRows && activeRows.length === 1}
 			<Button
 				onclick={() => {
@@ -202,7 +225,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="gg:remove" class="mr-1 h-4 w-4" />
+					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
+
 					<span>Detach</span>
 				</div>
 			</Button>
@@ -228,11 +252,14 @@
 			}}
 			size="sm"
 			class="h-6"
-			title={domain && domain.status !== 'Shutoff' ? 'VM must be shut off to attach storage' : ''}
-			disabled={domain && domain.status !== 'Shutoff'}
+			title={domain && domain.current.status !== 'Shutoff'
+				? 'VM must be shut off to attach storage'
+				: ''}
+			disabled={domain && domain.current.status !== 'Shutoff'}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>
@@ -256,7 +283,7 @@
 	customTitle={`This will detach the VM <b>${vm?.name}</b> from the switch <b>${properties.detach.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await detachNetwork(vm?.vmId as number, properties.detach.id as number);
+			let response = await detachNetwork(vm?.rid as number, properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach network', {
@@ -278,4 +305,10 @@
 	}}
 />
 
-<Network bind:open={properties.attach.open} {switches} {vms} {networkObjects} vm={vm ?? null} />
+<Network
+	bind:open={properties.attach.open}
+	switches={switches.current}
+	vms={vms.current}
+	networkObjects={networkObjects.current}
+	vm={vm ?? null}
+/>

@@ -907,6 +907,7 @@
 	border-radius: 2px;
 	background: rgba(0, 0, 0, 0.1);
 	overflow: hidden;
+	margin-bottom: 6px;
 }
 
 @media (hover: hover) and (pointer: fine) {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 
 	"github.com/gin-gonic/gin"
@@ -30,23 +31,8 @@ type ModifyHardwareRequest struct {
 	PCIDevices    []int  `json:"pciDevices" binding:"required"`
 }
 
-type ModifyCPURequest struct {
-	CPUSockets int   `json:"cpuSockets" binding:"required"`
-	CPUCores   int   `json:"cpuCores" binding:"required"`
-	CPUThreads int   `json:"cpuThreads" binding:"required"`
-	CPUPinning []int `json:"cpuPinning" binding:"required"`
-}
-
 type ModifyRAMRequest struct {
 	RAM int `json:"ram" binding:"required"`
-}
-
-type ModifyVNCRequest struct {
-	VNCEnabled    *bool  `json:"vncEnabled" binding:"required"`
-	VNCPort       int    `json:"vncPort" binding:"required"`
-	VNCResolution string `json:"vncResolution" binding:"required"`
-	VNCPassword   string `json:"vncPassword" binding:"required"`
-	VNCWait       *bool  `json:"vncWait" binding:"required"`
 }
 
 type ModifyPassthroughRequest struct {
@@ -59,56 +45,20 @@ type ModifyPassthroughRequest struct {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body ModifyCPURequest true "Modify CPU Request"
+// @Param request body libvirtServiceInterfaces.ModifyCPURequest true "Modify CPU Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /hardware/cpu/:vmid [put]
+// @Router /hardware/cpu/:rid [put]
 func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req ModifyCPURequest
+		var req libvirtServiceInterfaces.ModifyCPURequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
 				Error:   "invalid_request: " + err.Error(),
-			})
-			return
-		}
-
-		vmID, exists := c.Params.Get("vmid")
-		if !exists {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "vmid_not_provided",
-			})
-			return
-		}
-
-		vmIdInt, err := strconv.Atoi(vmID)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Data:    nil,
-				Error:   "invalid_vmid_format",
-			})
-			return
-		}
-
-		if err := libvirtService.ModifyCPU(vmIdInt,
-			req.CPUSockets,
-			req.CPUCores,
-			req.CPUThreads,
-			req.CPUPinning); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Data:    nil,
-				Error:   err.Error(),
 			})
 			return
 		}
@@ -132,7 +82,7 @@ func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /hardware/ram/:vmid [put]
+// @Router /hardware/ram/:rid [put]
 func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ModifyRAMRequest
@@ -146,29 +96,29 @@ func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vmID, exists := c.Params.Get("vmid")
+		rid, exists := c.Params.Get("rid")
 		if !exists {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmID)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
 
-		if err := libvirtService.ModifyRAM(vmIdInt, req.RAM); err != nil {
+		if err := libvirtService.ModifyRAM(uint(ridInt), req.RAM); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -197,10 +147,10 @@ func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /hardware/vnc/:vmid [put]
+// @Router /hardware/vnc/:rid [put]
 func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req ModifyVNCRequest
+		var req libvirtServiceInterfaces.ModifyVNCRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
@@ -211,46 +161,29 @@ func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vmID, exists := c.Params.Get("vmid")
+		rid, exists := c.Params.Get("rid")
 		if !exists {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmID)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
 
-		vncWait := false
-
-		if req.VNCWait != nil {
-			vncWait = *req.VNCWait
-		}
-
-		vncEnabled := false
-
-		if req.VNCEnabled != nil {
-			vncEnabled = *req.VNCEnabled
-		}
-
-		if err := libvirtService.ModifyVNC(vmIdInt,
-			vncEnabled,
-			req.VNCPort,
-			req.VNCResolution,
-			req.VNCPassword,
-			vncWait); err != nil {
+		if err := libvirtService.ModifyVNC(uint(ridInt), req); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
@@ -279,7 +212,7 @@ func ModifyVNC(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /hardware/ppt/:vmid [put]
+// @Router /hardware/ppt/:rid [put]
 func ModifyPassthroughDevices(libvirtService *libvirt.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ModifyPassthroughRequest
@@ -293,29 +226,29 @@ func ModifyPassthroughDevices(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		vmID, exists := c.Params.Get("vmid")
+		rid, exists := c.Params.Get("rid")
 		if !exists {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "vmid_not_provided",
+				Error:   "rid_not_provided",
 			})
 			return
 		}
 
-		vmIdInt, err := strconv.Atoi(vmID)
+		ridInt, err := strconv.ParseUint(rid, 10, 0)
 		if err != nil {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "invalid_vmid_format",
+				Error:   "invalid_rid_format",
 			})
 			return
 		}
 
-		if err := libvirtService.ModifyPassthrough(vmIdInt, req.PCIDevices); err != nil {
+		if err := libvirtService.ModifyPassthrough(uint(ridInt), req.PCIDevices); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

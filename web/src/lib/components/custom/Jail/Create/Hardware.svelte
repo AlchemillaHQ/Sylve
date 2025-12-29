@@ -11,6 +11,7 @@
 		startAtBoot: boolean;
 		bootOrder: number;
 		resourceLimits: boolean;
+		devfsRuleset: string;
 	}
 
 	let {
@@ -18,7 +19,8 @@
 		ram = $bindable(),
 		startAtBoot = $bindable(),
 		bootOrder = $bindable(),
-		resourceLimits = $bindable()
+		resourceLimits = $bindable(),
+		devfsRuleset = $bindable()
 	}: Props = $props();
 
 	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
@@ -38,10 +40,12 @@
 			ram = 1024;
 		}
 	});
+
+	let customDevfsRuleset = $state(false);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 		<CustomValueInput
 			label="CPU Cores"
 			placeholder="1"
@@ -68,7 +72,7 @@
 		/>
 	</div>
 
-	<div class="flex flex-row gap-2">
+	<div class="mt-2 flex flex-row gap-2">
 		<CustomCheckbox
 			label="Start On Boot"
 			bind:checked={startAtBoot}
@@ -80,5 +84,22 @@
 			bind:checked={resourceLimits}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Custom Devfs Ruleset"
+			bind:checked={customDevfsRuleset}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
 	</div>
+
+	{#if customDevfsRuleset}
+		<CustomValueInput
+			label="Devfs Ruleset"
+			placeholder="Leave empty for default ruleset"
+			bind:value={devfsRuleset}
+			classes="flex-1 space-y-1.5"
+			disabled={!customDevfsRuleset}
+			type="textarea"
+		/>
+	{/if}
 </div>

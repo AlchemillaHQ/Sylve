@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { storageDetach } from '$lib/api/vm/storage';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
@@ -16,9 +15,10 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
+	import { resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
+	import { storage } from '$lib/index';
 
 	interface Data {
 		vms: VM[];
@@ -26,83 +26,107 @@
 		datasets: Dataset[];
 		pools: Zpool[];
 		downloads: Download[];
+		rid: string;
 	}
 
 	let { data }: { data: Data } = $props();
-	const vmId = page.url.pathname.split('/')[3];
 
-	const results = useQueries([
-		{
-			queryKey: ['vm-list'],
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.vms,
-			onSuccess: (data: VM[]) => {
-				updateCache('vm-list', data);
-			}
+	const vms = resource(
+		() => 'vm-list',
+		async (key) => {
+			const result = await getVMs();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: [`vm-domain-${vmId}`],
-			queryFn: async () => {
-				return await getVMDomain(vmId);
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.domain,
-			onSuccess: (data: VMDomain) => {
-				updateCache(`vm-domain-${vmId}`, data);
-			}
+			lazy: true,
+			initialValue: data.vms
+		}
+	);
+
+	const domain = resource(
+		() => `vm-domain-${data.rid}`,
+		async (key) => {
+			const result = await getVMDomain(Number(data.rid));
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['poolList'],
-			queryFn: async () => {
-				return await getPools();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
-			}
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
+	const pools = resource(
+		() => 'pool-list',
+		async (key) => {
+			const result = await getPools();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['datasetList'],
-			queryFn: async () => {
-				return await getDatasets();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: false,
-			initialData: data.datasets,
-			onSuccess: (data: Dataset[]) => {
-				updateCache('datasets', data);
-			}
+			lazy: true,
+			initialValue: data.pools
+		}
+	);
+
+	const datasets = resource(
+		() => 'dataset-list',
+		async (key) => {
+			const result = await getDatasets();
+			updateCache(key, result);
+			return result;
 		},
 		{
-			queryKey: ['downloads'],
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.downloads,
-			onSuccess: (data: Download[]) => {
-				updateCache('downloads', data);
+			lazy: true,
+			initialValue: data.datasets
+		}
+	);
+
+	const downloads = resource(
+		() => 'download-list',
+		async (key) => {
+			const result = await getDownloads();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.downloads
+		}
+	);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			if (storage.visible) {
+				vms.refetch();
+				domain.refetch();
+				pools.refetch();
+				datasets.refetch();
+				downloads.refetch();
 			}
 		}
-	]);
+	});
+
+	$effect(() => {
+		if (storage.visible) {
+			untrack(() => {
+				vms.refetch();
+				domain.refetch();
+				pools.refetch();
+				datasets.refetch();
+				downloads.refetch();
+			});
+		}
+	});
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let domain: VMDomain = $derived($results[1].data as VMDomain);
-	let vm: VM = $derived(
-		($results[0].data as VM[]).find((vm: VM) => vm.vmId === parseInt(vmId)) || ({} as VM)
+	let vm: VM = $derived.by(
+		() => vms.current.find((vm: VM) => vm.rid === parseInt(data.rid)) || ({} as VM)
 	);
-	let datasets: Dataset[] = $derived($results[3].data as Dataset[]);
-	let downloads: Download[] = $derived($results[4].data as Download[]);
-	let tableData = $derived(generateTableData(vm, datasets, downloads));
+
+	let tableData = $derived(generateTableData(vm, datasets.current, downloads.current));
 
 	let options = {
 		attach: {
@@ -113,8 +137,9 @@
 			id: null as number | null,
 			name: ''
 		},
-		setBootOrder: {
-			open: false
+		edit: {
+			open: false,
+			id: null as number | null
 		}
 	};
 
@@ -122,7 +147,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if domain && domain.status === 'Shutoff'}
+	{#if domain && domain.current.status === 'Shutoff'}
 		{#if type === 'detach' && activeRows && activeRows.length === 1}
 			<Button
 				onclick={() => {
@@ -135,8 +160,25 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="gg:remove" class="mr-1 h-4 w-4" />
+					<span class="icon-[gg--remove] mr-1 h-4 w-4"></span>
 					<span>Detach</span>
+				</div>
+			</Button>
+		{/if}
+
+		{#if type === 'edit' && activeRows && activeRows.length === 1}
+			<Button
+				onclick={() => {
+					properties.edit.open = true;
+					properties.edit.id = activeRows[0].id as number;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+					<span>Edit</span>
 				</div>
 			</Button>
 		{/if}
@@ -151,15 +193,18 @@
 			}}
 			size="sm"
 			class="h-6"
-			title={domain && domain.status !== 'Shutoff' ? 'VM must be shut off to attach storage' : ''}
-			disabled={domain && domain.status !== 'Shutoff'}
+			title={domain && domain.current.status !== 'Shutoff'
+				? 'VM must be shut off to attach storage'
+				: ''}
+			disabled={domain && domain.current.status !== 'Shutoff'}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
 
+		{@render button('edit')}
 		{@render button('detach')}
 	</div>
 
@@ -174,16 +219,17 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the storage ${properties.detach.name} from the VM ${vm.name}`}
+	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await storageDetach(Number(vmId), properties.detach.id as number);
+			let response = await storageDetach(Number(data.rid), properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach storage', {
 					position: 'bottom-center'
 				});
 			} else {
+				activeRows = [];
 				toast.success('Storage detached', {
 					position: 'bottom-center'
 				});
@@ -198,4 +244,38 @@
 	}}
 />
 
-<Storage bind:open={properties.attach.open} {datasets} {downloads} {vm} />
+{#if properties.attach.open}
+	<Storage
+		bind:open={properties.attach.open}
+		storageId={null}
+		datasets={datasets.current}
+		downloads={downloads.current}
+		{vm}
+		vms={vms.current}
+		pools={pools.current}
+		tableData={null}
+	/>
+{/if}
+
+{#if properties.edit.open}
+	<Storage
+		bind:open={properties.edit.open}
+		storageId={properties.edit.id}
+		datasets={datasets.current}
+		downloads={downloads.current}
+		{vm}
+		vms={vms.current}
+		pools={pools.current}
+		{tableData}
+	/>
+{/if}
+
+<!-- <Storage
+	bind:open={properties.edit.open}
+    storage={}
+	datasets={datasets.current}
+	downloads={downloads.current}
+	{vm}
+	vms={vms.current}
+	pools={pools.current}
+/> -->

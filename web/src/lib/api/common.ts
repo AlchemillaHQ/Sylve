@@ -10,12 +10,11 @@
 
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { clusterStore, currentHostname, store as token } from '$lib/stores/auth';
+import { storage } from '$lib';
 import type { APIResponse } from '$lib/types/common';
 import adze from 'adze';
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 import { toast } from 'svelte-sonner';
-import { get } from 'svelte/store';
 
 export let ENDPOINT: string;
 export let API_ENDPOINT: string;
@@ -35,29 +34,29 @@ export const api: AxiosInstance = axios.create({
 api.interceptors.request.use(
 	(config: InternalAxiosRequestConfig) => {
 		if (browser) {
-			if (get(token)) {
-				config.headers['Authorization'] = `Bearer ${get(token)}`;
+			if (storage.token) {
+				config.headers['Authorization'] = `Bearer ${storage.token}`;
 			}
 
-			if (get(clusterStore)) {
-				config.headers['X-Cluster-Token'] = `Bearer ${get(clusterStore)}`;
+			if (storage.clusterToken) {
+				config.headers['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
 			}
 
-			if (get(currentHostname)) {
+			if (storage.hostname) {
 				if ((config.url === '/vm' || config.url === '/jail') && config.method === 'post') {
 					let data;
 
 					try {
 						data = config.data;
 						if (data.node) {
-							config.headers['X-Current-Hostname'] = `${get(currentHostname)}`;
+							config.headers['X-Current-Hostname'] = `${storage.hostname}`;
 						}
 					} catch (e) {
 						adze.withEmoji.error('Error parsing request data:', e);
-						config.headers['X-Current-Hostname'] = `${get(currentHostname)}`;
+						config.headers['X-Current-Hostname'] = `${storage.hostname}`;
 					}
 				} else {
-					config.headers['X-Current-Hostname'] = `${get(currentHostname)}`;
+					config.headers['X-Current-Hostname'] = `${storage.hostname}`;
 				}
 			}
 		}

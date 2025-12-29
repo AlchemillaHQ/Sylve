@@ -2,22 +2,21 @@
 	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
-	import { getPoolsDiskUsage, getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
+	import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
 	import Arc from '$lib/components/custom/Charts/Arc.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
-	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
-	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
+	import type { CPUInfo } from '$lib/types/info/cpu';
+	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PoolsDiskUsage } from '$lib/types/zfs/pool';
 	import { getQuorumStatus } from '$lib/utils/cluster';
 	import { updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import humanFormat from 'human-format';
+	import { resource } from 'runed';
 
 	interface Data {
 		nodes: ClusterNode[];
@@ -29,77 +28,72 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	let results = useQueries([
-		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => {
-				return (await getNodes()) as ClusterNode[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.nodes,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterNode[]) => {
-				updateCache('cluster-nodes', data);
-			}
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const result = await getNodes();
+			updateCache('cluster-nodes', result);
+			return result;
 		},
 		{
-			queryKey: 'cluster-details',
-			queryFn: async () => {
-				return (await getDetails()) as ClusterDetails;
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.details,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterDetails) => {
-				updateCache('cluster-details', data);
-			}
-		},
-		{
-			queryKey: 'cpu-info',
-			queryFn: getCPUInfo,
-			keepPreviousData: true,
-			initialData: data.cpu,
-			refetchOnMount: 'always',
-			onSuccess: (data: CPUInfo | CPUInfoHistorical) => {
-				updateCache('cpu-info', data as CPUInfo);
-			}
-		},
-		{
-			queryKey: 'ram-info',
-			queryFn: getRAMInfo,
-			keepPreviousData: true,
-			initialData: data.ram,
-			onSuccess: (data: RAMInfo | RAMInfoHistorical) => {
-				updateCache('ram-info', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
-		},
-		{
-			queryKey: 'total-disk-usage',
-			queryFn: getPoolsDiskUsageFull,
-			keepPreviousData: true,
-			initialData: data.disk,
-			onSuccess: (data: PoolsDiskUsage) => {
-				updateCache('total-disk-usage', data);
-			},
-			refetchOnMount: true,
-			refetchOnWindowFocus: true
+			initialValue: data.nodes
 		}
-	]);
+	);
 
-	let nodes = $derived($results[0].data ?? []);
-	let clusterDetails = $derived($results[1].data);
-	let cpuInfo = $derived($results[2].data as CPUInfo);
-	let ramInfo = $derived($results[3].data as RAMInfo);
-	let diskInfo = $derived($results[4].data as PoolsDiskUsage);
-	let clustered = $derived(clusterDetails?.cluster.enabled || false);
+	let clusterDetails = resource(
+		() => 'cluster-details',
+		async (key, prevKey, { signal }) => {
+			const result = await getDetails();
+			updateCache('cluster-details', result);
+			return result;
+		},
+		{
+			initialValue: data.details
+		}
+	);
+
+	let cpuInfo = resource(
+		() => 'cpu-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getCPUInfo('current');
+			updateCache('cpu-info', result);
+			return result;
+		},
+		{
+			initialValue: data.cpu
+		}
+	);
+
+	let ramInfo = resource(
+		() => 'ram-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getRAMInfo('current');
+			updateCache('ram-info', result);
+			return result;
+		},
+		{
+			initialValue: data.ram
+		}
+	);
+
+	let diskInfo = resource(
+		() => 'total-disk-usage',
+		async (key, prevKey, { signal }) => {
+			const result = await getPoolsDiskUsageFull();
+			updateCache('total-disk-usage', result);
+			return result;
+		},
+		{
+			initialValue: data.disk
+		}
+	);
+
+	let clustered = $derived.by(() => {
+		return clusterDetails?.current.cluster.enabled ?? false;
+	});
 
 	let total = $derived.by(() => {
-		if (nodes.length === 0) {
+		if (nodes.current.length === 0) {
 			return {
 				cpu: { total: 0, usage: 0 },
 				ram: { total: 0, usage: 0 },
@@ -107,17 +101,20 @@
 			};
 		}
 
-		const totalCPUs = nodes.reduce((acc, node) => acc + node.cpu, 0);
-		const used = nodes.reduce((acc, node) => acc + (node.cpu * node.cpuUsage) / 100, 0);
+		const totalCPUs = nodes.current.reduce((acc, node) => acc + node.cpu, 0);
+		const used = nodes.current.reduce((acc, node) => acc + (node.cpu * node.cpuUsage) / 100, 0);
 
-		const totalMemory = nodes.reduce((acc, node) => acc + node.memory, 0);
-		const usedMemory = nodes.reduce(
+		const totalMemory = nodes.current.reduce((acc, node) => acc + node.memory, 0);
+		const usedMemory = nodes.current.reduce(
 			(acc, node) => acc + ((node.memory ?? 0) * (node.memoryUsage ?? 0)) / 100,
 			0
 		);
 
-		const totalDisk = nodes.reduce((acc, node) => acc + node.disk, 0);
-		const usedDisk = nodes.reduce((acc, node) => acc + (node.disk * node.diskUsage) / 100, 0);
+		const totalDisk = nodes.current.reduce((acc, node) => acc + node.disk, 0);
+		const usedDisk = nodes.current.reduce(
+			(acc, node) => acc + (node.disk * node.diskUsage) / 100,
+			0
+		);
 
 		return {
 			cpu: {
@@ -135,9 +132,9 @@
 		};
 	});
 
-	let quorumStatus = $derived(getQuorumStatus(clusterDetails as ClusterDetails, nodes));
+	let quorumStatus = $derived(getQuorumStatus(clusterDetails.current, nodes.current));
 	let statusCounts = $derived.by(() => {
-		return nodes.reduce(
+		return nodes.current.reduce(
 			(acc, node) => {
 				acc[node.status] = (acc[node.status] || 0) + 1;
 				return acc;
@@ -153,7 +150,7 @@
 			<Card.Header>
 				<Card.Title>
 					<div class="flex items-center gap-2">
-						<Icon icon="solar:health-bold" />
+						<span class="icon-[solar--health-bold] min-h-4 min-w-4"></span>
 						<span>Health</span>
 					</div>
 				</Card.Title>
@@ -163,16 +160,17 @@
 					<div class="flex flex-1 flex-col items-center space-y-2 text-center">
 						<span class="text-xl font-bold">Status</span>
 						{#if !clustered}
-							<Icon icon="mdi:check-circle" class="h-12 w-12 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-12 w-12 text-green-500"></span>
+
 							<span class="text-sm font-semibold">Single Node</span>
 						{:else if quorumStatus === 'ok'}
-							<Icon icon="mdi:check-circle" class="h-12 w-12 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-12 w-12 text-green-500"></span>
 							<span class="text-sm font-semibold">Quorate: Yes</span>
 						{:else if quorumStatus === 'warning'}
-							<Icon icon="material-symbols:warning" class="h-12 w-12 text-yellow-500" />
+							<span class="icon-[material-symbols--warning] h-12 w-12 text-yellow-500"></span>
 							<span class="text-sm font-semibold">Quorate: Yes (Degraded)</span>
 						{:else}
-							<Icon icon="mdi:close-circle" class="h-12 w-12 text-red-500" />
+							<span class="icon-[mdi--close-circle] h-12 w-12 text-red-500"></span>
 							<span class="text-sm font-semibold">Quorate: No</span>
 						{/if}
 					</div>
@@ -181,7 +179,7 @@
 						<span class="text-xl font-bold">Nodes</span>
 
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:check-circle" class="h-5 w-5 text-green-500" />
+							<span class="icon-[mdi--check-circle] h-5 w-5 text-green-500"></span>
 							{#if clustered}
 								<span class="text-md font-semibold">Online: {statusCounts.online || 0}</span>
 							{:else}
@@ -190,7 +188,7 @@
 						</div>
 
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:close-circle" class="h-5 w-5 text-red-500" />
+							<span class="icon-[mdi--close-circle] h-5 w-5 text-red-500"></span>
 							{#if clustered}
 								<span class="text-md font-semibold">Offline: {statusCounts.offline || 0}</span>
 							{:else}
@@ -209,7 +207,7 @@
 			<Card.Header>
 				<Card.Title>
 					<div class="flex items-center gap-2">
-						<Icon icon="clarity:resource-pool-solid" />
+						<span class="icon-[clarity--resource-pool-solid] min-h-4 min-w-4"></span>
 						<span>Resources</span>
 					</div>
 				</Card.Title>
@@ -228,20 +226,24 @@
 						</div>
 					{:else}
 						<div class="flex flex-1 justify-center">
-							<Arc value={cpuInfo?.usage} title="CPU" subtitle="{cpuInfo.physicalCores} vCPUs" />
-						</div>
-						<div class="flex flex-1 justify-center">
 							<Arc
-								value={ramInfo?.usedPercent}
-								title="RAM"
-								subtitle={humanFormat(ramInfo?.total || 0)}
+								value={cpuInfo.current.usage}
+								title="CPU"
+								subtitle="{cpuInfo.current.physicalCores} vCPUs"
 							/>
 						</div>
 						<div class="flex flex-1 justify-center">
 							<Arc
-								value={diskInfo?.usage || 0}
+								value={ramInfo.current.usedPercent}
+								title="RAM"
+								subtitle={humanFormat(ramInfo.current.total || 0)}
+							/>
+						</div>
+						<div class="flex flex-1 justify-center">
+							<Arc
+								value={diskInfo.current.usage || 0}
 								title="Disk"
-								subtitle={humanFormat(diskInfo?.total || 0)}
+								subtitle={humanFormat(diskInfo.current.total || 0)}
 							/>
 						</div>
 					{/if}
@@ -257,7 +259,8 @@
 				<Card.Header>
 					<Card.Title>
 						<div class="flex items-center gap-2">
-							<Icon icon="fa7-solid:hexagon-nodes" />
+							<span class="icon-[fa7-solid--hexagon-nodes] min-h-4 min-w-4"></span>
+
 							<span>Nodes</span>
 						</div>
 					</Card.Title>
@@ -273,14 +276,14 @@
 							</Table.Row>
 						</Table.Header>
 						<Table.Body>
-							{#each nodes as node (node.id)}
+							{#each nodes.current as node (node.id)}
 								<Table.Row>
 									<Table.Cell>
 										<Badge variant="outline" class="text-muted-foreground px-1.5">
 											{#if node.status === 'online'}
-												<Icon icon="mdi:check-circle" class="text-green-500" />
+												<span class="icon-[mdi--check-circle] text-green-500"></span>
 											{:else}
-												<Icon icon="mdi:close-circle" class="text-red-500" />
+												<span class="icon-[mdi--close-circle] text-red-500"></span>
 											{/if}
 											{capitalizeFirstLetter(node.status)}
 										</Badge>

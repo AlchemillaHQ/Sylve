@@ -4,15 +4,16 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Icon from '@iconify/svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import { isBoolean } from '$lib/utils/string';
 
 	interface Props {
 		open: boolean;
 		title: string;
 		icon?: string;
-		type: 'text' | 'number' | 'select' | 'combobox';
+		type: 'text' | 'number' | 'select' | 'combobox' | 'checkbox';
 		placeholder?: string;
-		value: string;
+		value: string | boolean;
 		options?: {
 			label: string;
 			value: string;
@@ -25,7 +26,7 @@
 		title,
 		type,
 		placeholder = '',
-		icon = 'mdi:pencil',
+		icon = 'mdi--pencil',
 		value = $bindable(),
 		options = [],
 		onSave
@@ -33,7 +34,7 @@
 
 	let comboBox = $state({
 		open: false,
-		value: value?.split(',').map((v) => v.trim()),
+		value: !isBoolean(value) ? value?.split(',').map((v) => v.trim()) : [],
 		data: options.map((o) => ({ value: o.value, label: o.label })),
 		onValueChange: (val: string | string[]) => {
 			if (Array.isArray(val)) {
@@ -59,7 +60,7 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon {icon} class="h-6 w-6" />
+					<span class={`icon-[${icon}]`} style="width: 24px; height: 24px;"></span>
 					<span>{title}</span>
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -72,7 +73,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -108,6 +109,12 @@
 				multiple={comboBox.multiple}
 				width="w-full"
 			/>
+		{/if}
+
+		{#if type === 'checkbox'}
+			<div class="mt-4">
+				<CustomCheckbox label={placeholder || 'Check to enable'} bind:checked={value} />
+			</div>
 		{/if}
 
 		<Dialog.Footer class="flex justify-end">

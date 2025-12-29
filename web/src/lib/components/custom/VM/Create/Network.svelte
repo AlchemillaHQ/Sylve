@@ -63,7 +63,7 @@
 </script>
 
 {#snippet radioItem(id: number, name: string, type: 'standard' | 'manual' | 'none')}
-	{@const i = `radio-${id}`}
+	{@const i = `radio-${type}-${id}`}
 	<div class="mb-2 flex items-center space-x-3 rounded-lg border p-4">
 		<RadioGroup.Item value={name} id={i} />
 		<Label for={i} class="flex flex-col items-start gap-2">
@@ -108,8 +108,8 @@
 				bind:value={emulation}
 				data={comboBoxes.emulation.options}
 				classes="flex-1 space-y-1"
-				placeholder="Select emulation type"
-				width="w-[40%]"
+				placeholder="Emulation type"
+				width="w-3/4"
 			></CustomComboBox>
 
 			<CustomComboBox

@@ -10,10 +10,14 @@ package libvirt
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -52,7 +56,7 @@ func removePinArgs(cmd *etree.Element) {
 	}
 }
 
-func updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cpuPinning []int) (string, error) {
+func (s *Service) updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cpuPinning []vmModels.VMCPUPinning) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
 		return "", fmt.Errorf("failed to parse XML: %w", err)
@@ -100,13 +104,14 @@ func updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cpuPinning []in
 		}
 
 		pinStr := ""
+		pinArr := s.GeneratePinArgs(cpuPinning)
 
-		for i, cpu := range cpuPinning {
+		for i, pin := range pinArr {
 			if i > 0 {
 				pinStr += " "
 			}
 
-			pinStr += fmt.Sprintf("-p %d:%d", i, cpu)
+			pinStr += pin
 		}
 
 		if pinStr != "" {
@@ -311,41 +316,125 @@ func cleanPassthrough(xml string) (string, error) {
 	return out, nil
 }
 
-func (s *Service) ModifyCPU(
-	vmId int,
-	cpuSockets int,
-	cpuCores int,
-	cpuThreads int,
-	cpuPinning []int,
-) error {
-	vm, err := s.GetVmByVmId(vmId)
-
+func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequest) error {
+	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
-
+	status, err := s.IsDomainShutOff(vm.RID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed_to_check_domain_shutoff_status: %w", err)
 	}
 
-	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+	if !status {
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	if vm.CPUCores == cpuCores &&
-		vm.CPUSockets == cpuSockets &&
-		vm.CPUsThreads == cpuThreads &&
-		len(vm.CPUPinning) == len(cpuPinning) {
-		for i, cpu := range vm.CPUPinning {
-			if i >= len(cpuPinning) || cpu != cpuPinning[i] {
-				return fmt.Errorf("no_changes_detected: %d", vmId)
+	err = s.ValidateCPUPins(uint(vm.RID), req.CPUPinning, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_validate_cpu_pins: %w", err)
+	}
+
+	vm.CPUCores = req.CPUCores
+	vm.CPUSockets = req.CPUSockets
+	vm.CPUThreads = req.CPUThreads
+
+	// Normalize the incoming pins (optional: sort for stable equality checks)
+	newPins := make([]vmModels.VMCPUPinning, 0, len(req.CPUPinning))
+	for _, p := range req.CPUPinning {
+		cores := append([]int(nil), p.Cores...)
+		sort.Ints(cores)
+		newPins = append(newPins, vmModels.VMCPUPinning{
+			VMID:       vm.ID,
+			HostSocket: p.Socket,
+			HostCPU:    cores,
+		})
+	}
+	sort.Slice(newPins, func(i, j int) bool {
+		if newPins[i].HostSocket != newPins[j].HostSocket {
+			return newPins[i].HostSocket < newPins[j].HostSocket
+		}
+		// secondary sort for deterministic order
+		if len(newPins[i].HostCPU) != len(newPins[j].HostCPU) {
+			return len(newPins[i].HostCPU) < len(newPins[j].HostCPU)
+		}
+		for k := range newPins[i].HostCPU {
+			if newPins[i].HostCPU[k] != newPins[j].HostCPU[k] {
+				return newPins[i].HostCPU[k] < newPins[j].HostCPU[k]
 			}
 		}
+		return false
+	})
+
+	// Load existing pinning to check for no-op updates
+	if err := s.DB.Preload("CPUPinning").First(&vm, vm.ID).Error; err != nil {
+		return fmt.Errorf("failed_to_load_vm_pinning: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	// Build a normalized copy for comparison
+	oldPins := make([]vmModels.VMCPUPinning, 0, len(vm.CPUPinning))
+	for _, p := range vm.CPUPinning {
+		cores := append([]int(nil), p.HostCPU...)
+		sort.Ints(cores)
+		oldPins = append(oldPins, vmModels.VMCPUPinning{
+			VMID:       vm.ID,
+			HostSocket: p.HostSocket,
+			HostCPU:    cores,
+		})
+	}
+	sort.Slice(oldPins, func(i, j int) bool {
+		if oldPins[i].HostSocket != oldPins[j].HostSocket {
+			return oldPins[i].HostSocket < oldPins[j].HostSocket
+		}
+		if len(oldPins[i].HostCPU) != len(oldPins[j].HostCPU) {
+			return len(oldPins[i].HostCPU) < len(oldPins[j].HostCPU)
+		}
+		for k := range oldPins[i].HostCPU {
+			if oldPins[i].HostCPU[k] != oldPins[j].HostCPU[k] {
+				return oldPins[i].HostCPU[k] < oldPins[j].HostCPU[k]
+			}
+		}
+		return false
+	})
+
+	// Quick no-op guard (prevents unnecessary writes)
+	if reflect.DeepEqual(oldPins, newPins) &&
+		vm.CPUSockets == req.CPUSockets &&
+		vm.CPUCores == req.CPUCores &&
+		vm.CPUThreads == req.CPUThreads {
+		return fmt.Errorf("no_changes_detected: %d", rid)
+	}
+
+	tx := s.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// Update basic CPU topology
+	if err := tx.Model(&vm).Updates(map[string]any{
+		"cpu_sockets": req.CPUSockets,
+		"cpu_cores":   req.CPUCores,
+		"cpu_threads": req.CPUThreads,
+	}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_update_vm_cpu: %w", err)
+	}
+
+	// Replace pinning in one shot:
+	// This clears existing rows (for this VM) and inserts `newPins`, setting VMID automatically.
+	// NOTE: Association.Replace requires that newPins have no zero primary keys (they don't) and the FK is declared.
+	if err := tx.Model(&vm).Association("CPUPinning").Replace(newPins); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_replace_cpu_pinning: %w", err)
+	}
+
+	err = tx.Commit().Error
+	if err != nil {
+		return fmt.Errorf("failed_to_commit_cpu_update_transaction: %w", err)
+	}
+
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -356,19 +445,7 @@ func (s *Service) ModifyCPU(
 	}
 
 	xml := string(domainXML)
-	updatedXML := xml
-
-	vm.CPUCores = cpuCores
-	vm.CPUSockets = cpuSockets
-	vm.CPUsThreads = cpuThreads
-	vm.CPUPinning = cpuPinning
-
-	if err := s.DB.Save(&vm).Error; err != nil {
-		return fmt.Errorf("failed_to_update_vm_cpu_in_db: %w", err)
-	}
-
-	updatedXML, err = updateCPU(xml, cpuSockets, cpuCores, cpuThreads, cpuPinning)
-
+	updatedXML, err := s.updateCPU(xml, vm.CPUSockets, vm.CPUCores, vm.CPUThreads, vm.CPUPinning)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_cpu_in_xml: %w", err)
 	}
@@ -384,28 +461,28 @@ func (s *Service) ModifyCPU(
 	return nil
 }
 
-func (s *Service) ModifyRAM(vmId int, ram int) error {
-	vm, err := s.GetVmByVmId(vmId)
+func (s *Service) ModifyRAM(rid uint, ram int) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
 	if vm.RAM == ram {
-		return fmt.Errorf("no_changes_detected: %d", vmId)
+		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -439,32 +516,44 @@ func (s *Service) ModifyRAM(vmId int, ram int) error {
 	return nil
 }
 
-func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolution string, vncPassword string, vncWait bool) error {
-	vm, err := s.GetVmByVmId(vmId)
+func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequest) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	if vm.VNCPort == vncPort &&
-		vm.VNCResolution == vncResolution &&
-		vm.VNCPassword == vncPassword &&
+	vncWait := false
+
+	if req.VNCWait != nil {
+		vncWait = *req.VNCWait
+	}
+
+	vncEnabled := false
+
+	if req.VNCEnabled != nil {
+		vncEnabled = *req.VNCEnabled
+	}
+
+	if vm.VNCPort == req.VNCPort &&
+		vm.VNCResolution == req.VNCResolution &&
+		vm.VNCPassword == req.VNCPassword &&
 		vm.VNCWait == vncWait &&
 		vm.VNCEnabled == vncEnabled {
-		return fmt.Errorf("no_changes_detected: %d", vmId)
+		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -478,16 +567,16 @@ func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolutio
 	updatedXML := xml
 
 	vm.VNCEnabled = vncEnabled
-	vm.VNCPort = vncPort
-	vm.VNCResolution = vncResolution
-	vm.VNCPassword = vncPassword
+	vm.VNCPort = req.VNCPort
+	vm.VNCResolution = req.VNCResolution
+	vm.VNCPassword = req.VNCPassword
 	vm.VNCWait = vncWait
 
 	if err := s.DB.Save(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_update_vm_vnc_in_db: %w", err)
 	}
 
-	updatedXML, err = updateVNC(xml, vncPort, vncResolution, vncPassword, vncWait, vncEnabled)
+	updatedXML, err = updateVNC(xml, req.VNCPort, req.VNCResolution, req.VNCPassword, vncWait, vncEnabled)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}
@@ -503,24 +592,24 @@ func (s *Service) ModifyVNC(vmId int, vncEnabled bool, vncPort int, vncResolutio
 	return nil
 }
 
-func (s *Service) ModifyPassthrough(vmId int, pciDevices []int) error {
-	vm, err := s.GetVmByVmId(vmId)
+func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
+	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
 		return err
 	}
 
-	shutoff, err := s.IsDomainShutOff(vm.VmID)
+	shutoff, err := s.IsDomainShutOff(vm.RID)
 
 	if err != nil {
 		return err
 	}
 
 	if !shutoff {
-		return fmt.Errorf("domain_not_shutoff: %d", vm.VmID)
+		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -569,6 +658,7 @@ func findLowestIndex(xml string) (int, error) {
 	}
 	bhyveCommandline := doc.FindElement("//commandline")
 	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
+		fmt.Println("i1", 10)
 		return 10, nil
 	}
 
@@ -578,6 +668,7 @@ func findLowestIndex(xml string) (int, error) {
 		if valueAttr == nil {
 			continue
 		}
+
 		value := valueAttr.Value
 		if len(value) >= 2 && value[0:2] == "-s" {
 			parts := strings.Fields(value)
@@ -594,11 +685,46 @@ func findLowestIndex(xml string) (int, error) {
 		}
 	}
 
+	fmt.Println(usedIndices)
+
 	for i := 10; i < 30; i++ {
 		if !usedIndices[i] {
+			fmt.Println("i2", i)
 			return i, nil
 		}
 	}
 
 	return -1, fmt.Errorf("all indices 10-29 are in use")
+}
+
+func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
+	used := make(map[int]bool)
+	if bhyveCommandline == nil {
+		return used
+	}
+
+	for _, arg := range bhyveCommandline.ChildElements() {
+		valueAttr := arg.SelectAttr("value")
+		if valueAttr == nil {
+			continue
+		}
+		value := strings.TrimSpace(valueAttr.Value)
+		if value == "" {
+			continue
+		}
+
+		// handle "-s 10:0,..." and "-s10:0,..."
+		if strings.HasPrefix(value, "-s") {
+			rest := strings.TrimPrefix(value, "-s")
+			rest = strings.TrimSpace(rest)
+			colon := strings.Index(rest, ":")
+			if colon > 0 {
+				if idx, err := strconv.Atoi(rest[:colon]); err == nil {
+					used[idx] = true
+				}
+			}
+		}
+	}
+
+	return used
 }

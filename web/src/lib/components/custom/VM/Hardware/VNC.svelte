@@ -10,7 +10,6 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generatePassword, parseBoolean } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -74,7 +73,7 @@
 		}
 
 		const response = await modifyVNC(
-			vm.vmId,
+			vm.rid,
 			parseBoolean(properties.vncEnabled),
 			Number(properties.port),
 			properties.resolution,
@@ -101,7 +100,8 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="arcticons:vncviewer" class="h-5 w-5" />
+					<span class="icon-[arcticons--vncviewer] h-5 w-5"></span>
+
 					<span>VNC</span>
 				</div>
 
@@ -115,7 +115,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -128,7 +128,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -185,7 +185,7 @@
 							properties.password = generatePassword();
 						}}
 					>
-						<Icon icon="fad:random-2dice" class="h-6 w-6" />
+						<span class="icon-[fad--random-2dice] h-6 w-6"></span>
 					</Button>
 				</div>
 			</div>

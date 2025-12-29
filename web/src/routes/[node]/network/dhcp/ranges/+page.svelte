@@ -10,12 +10,12 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { DHCPConfig, DHCPRange } from '$lib/types/network/dhcp';
 	import type { Iface } from '$lib/types/network/iface';
+	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { secondsToDnsmasq } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -23,73 +23,65 @@
 		switches: SwitchList;
 		dhcpConfig: DHCPConfig;
 		dhcpRanges: DHCPRange[];
+		networkObjects: NetworkObject[];
 	}
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
-			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async (key, prevKey, { signal }) => {
+			const res = await getInterfaces();
+			updateCache(key, res);
+			return res;
 		},
-		{
-			queryKey: 'network-switches',
-			queryFn: async () => {
-				return await getSwitches();
-			},
-			keepPreviousData: true,
-			initialData: data.switches,
-			onSuccess: (data: SwitchList) => {
-				updateCache('network-switches', data);
-			}
-		},
-		{
-			queryKey: 'dhcp-config',
-			queryFn: async () => {
-				return await getDHCPConfig();
-			},
-			keepPreviousData: true,
-			initialData: data.dhcpConfig,
-			onSuccess: (data: DHCPConfig) => {
-				updateCache('dhcp-config', data);
-			}
-		},
-		{
-			queryKey: 'dhcp-ranges',
-			queryFn: async () => {
-				return await getDHCPRanges();
-			},
-			keepPreviousData: true,
-			initialData: data.dhcpRanges,
-			onSuccess: (data: DHCPRange[]) => {
-				updateCache('dhcp-ranges', data);
-			}
-		}
-	]);
+		{ initialValue: data.interfaces }
+	);
 
-	let networkInterfaces = $derived($results[0].data as Iface[]);
-	let networkSwitches = $derived($results[1].data as SwitchList);
-	let dhcpConfig = $derived($results[2].data as DHCPConfig);
-	let dhcpRanges = $derived($results[3].data as DHCPRange[]);
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
+	let dhcpConfig = resource(
+		() => 'dhcp-config',
+		async (key, prevKey, { signal }) => {
+			const res = await getDHCPConfig();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpConfig }
+	);
+
+	let dhcpRanges = resource(
+		() => 'dhcp-ranges',
+		async (key, prevKey, { signal }) => {
+			const res = await getDHCPRanges();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.dhcpRanges }
+	);
+
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			queryClient.invalidateQueries('network-interfaces');
-			queryClient.invalidateQueries('network-switches');
-			queryClient.invalidateQueries('dhcp-config');
-			queryClient.invalidateQueries('dhcp-ranges');
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				networkInterfaces.refetch();
+				networkSwitches.refetch();
+				dhcpConfig.refetch();
+				dhcpRanges.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let modals = $state({
 		create: {
@@ -165,14 +157,14 @@
 
 		const rows: Row[] = [];
 
-		if (!dhcpRanges || dhcpRanges.length === 0) {
+		if (!dhcpRanges || dhcpRanges.current.length === 0) {
 			return {
 				columns,
 				rows
 			};
 		}
 
-		for (const range of dhcpRanges) {
+		for (const range of dhcpRanges.current) {
 			let swName = 'N/A';
 			if (range.standardSwitch) {
 				swName = range.standardSwitch.name;
@@ -197,7 +189,9 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
 	let selectedRange = $derived(
-		dhcpRanges && activeRow ? dhcpRanges.find((r) => r.id === Number(activeRow.id)) || null : null
+		dhcpRanges && activeRow
+			? dhcpRanges.current.find((r) => r.id === Number(activeRow.id)) || null
+			: null
 	);
 </script>
 
@@ -213,9 +207,9 @@
 	>
 		<div class="flex items-center">
 			{#if type === 'delete'}
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 			{:else if type === 'edit'}
-				<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+				<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 			{/if}
 			<span>{type === 'delete' ? 'Delete' : 'Edit'}</span>
 		</div>
@@ -228,7 +222,7 @@
 
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -252,11 +246,11 @@
 	<CreateOrEdit
 		bind:open={modals.create.open}
 		bind:reload
-		{networkInterfaces}
-		{networkSwitches}
-		{dhcpConfig}
+		networkInterfaces={networkInterfaces.current}
+		networkSwitches={networkSwitches.current}
+		dhcpConfig={dhcpConfig.current}
 		selectedRange={null}
-		{dhcpRanges}
+		dhcpRanges={dhcpRanges.current}
 	/>
 {/if}
 
@@ -264,11 +258,11 @@
 	<CreateOrEdit
 		bind:open={modals.edit.open}
 		bind:reload
-		{networkInterfaces}
-		{networkSwitches}
-		{dhcpConfig}
+		networkInterfaces={networkInterfaces.current}
+		networkSwitches={networkSwitches.current}
+		dhcpConfig={dhcpConfig.current}
 		{selectedRange}
-		{dhcpRanges}
+		dhcpRanges={dhcpRanges.current}
 	/>
 {/if}
 

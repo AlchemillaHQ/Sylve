@@ -8,8 +8,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -18,23 +17,18 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const queryClient = useQueryClient();
-	const results = useQueries([
+	let objects = resource(
+		() => 'network-objects',
+		async (key, prevKey, { signal }) => {
+			const result = await getNetworkObjects();
+			updateCache(key, result);
+			return result;
+		},
 		{
-			queryKey: 'networkObjects',
-			queryFn: async () => {
-				return await getNetworkObjects();
-			},
-			keepPreviousData: true,
-			initialData: data.objects,
-			onSuccess: (data: NetworkObject[]) => {
-				updateCache('networkObjects', data);
-			}
+			initialValue: data.objects
 		}
-	]);
+	);
 
-	let objects = $derived($results[0].data || []);
 	let modals = $state({
 		create: {
 			open: false
@@ -110,7 +104,7 @@
 
 	const tableData: { rows: Row[]; columns: Column[] } = $derived({
 		columns,
-		rows: objects.map((object) => {
+		rows: objects.current.map((object) => {
 			return {
 				id: object.id,
 				name: object.name,
@@ -140,7 +134,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -155,7 +150,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -168,7 +163,7 @@
 		<Search bind:query />
 		<Button size="sm" class="h-6" onclick={() => (modals.create.open = !modals.create.open)}>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -189,10 +184,10 @@
 {#if modals.create.open}
 	<CreateOrEdit
 		bind:open={modals.create.open}
-		networkObjects={objects}
+		networkObjects={objects.current}
 		edit={false}
 		afterChange={() => {
-			queryClient.refetchQueries('networkObjects');
+			objects.refetch();
 		}}
 	/>
 {/if}
@@ -200,11 +195,11 @@
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		networkObjects={objects}
+		networkObjects={objects.current}
 		edit={true}
 		id={Number(modals.edit.id)}
 		afterChange={() => {
-			queryClient.refetchQueries('networkObjects');
+			objects.refetch();
 		}}
 	/>
 {/if}
@@ -216,7 +211,7 @@
 		onConfirm: async () => {
 			let active = $state.snapshot(activeRow);
 			const result = await deleteNetworkObject(modals.delete.id);
-			queryClient.refetchQueries('networkObjects');
+			objects.refetch();
 			if (isAPIResponse(result) && result.status === 'success') {
 				toast.success(`Object ${active?.name} deleted`, {
 					position: 'bottom-center'

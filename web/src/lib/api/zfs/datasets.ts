@@ -1,14 +1,20 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	DatasetSchema,
+	GZFSDatasetTypeSchema,
+	PaginatedDatasetsResponseSchema,
 	PeriodicSnapshotSchema,
 	type Dataset,
+	type GZFSDatasetType,
+	type PaginatedDatasetsResponse,
 	type PeriodicSnapshot
 } from '$lib/types/zfs/dataset';
 
 import { apiRequest } from '$lib/utils/http';
 
-export async function getDatasets(type: string = 'all'): Promise<Dataset[]> {
+export async function getDatasets(
+	type: GZFSDatasetType = GZFSDatasetTypeSchema.enum.ALL
+): Promise<Dataset[]> {
 	return await apiRequest(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
 }
 
@@ -99,7 +105,7 @@ export async function deletePeriodicSnapshot(guid: string): Promise<APIResponse>
 export async function createFileSystem(
 	name: string,
 	parent: string,
-	properties: Record<string, string>
+	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/filesystem', APIResponseSchema, 'POST', {
 		name: name,
@@ -110,7 +116,7 @@ export async function createFileSystem(
 
 export async function editFileSystem(
 	guid: string,
-	properties: Record<string, string>
+	properties: Record<string, string | undefined>
 ): Promise<APIResponse> {
 	return await apiRequest(`/zfs/datasets/filesystem`, APIResponseSchema, 'PATCH', {
 		guid: guid,
@@ -142,11 +148,11 @@ export async function createVolume(
 }
 
 export async function editVolume(
-	dataset: Dataset,
+	guid: string,
 	properties: Record<string, string>
 ): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/volume', APIResponseSchema, 'PATCH', {
-		name: dataset.name,
+		guid,
 		properties: properties
 	});
 }
@@ -162,9 +168,29 @@ export async function bulkDelete(datasets: Dataset[]): Promise<APIResponse> {
 	});
 }
 
+export async function bulkDeleteByNames(datasets: Dataset[]): Promise<APIResponse> {
+	const names = datasets.map((dataset) => dataset.name);
+	return await apiRequest('/zfs/datasets/bulk-delete-by-names', APIResponseSchema, 'POST', {
+		names: names
+	});
+}
+
 export async function flashVolume(guid: string, uuid: string): Promise<APIResponse> {
 	return await apiRequest('/zfs/datasets/volume/flash', APIResponseSchema, 'POST', {
 		guid: guid,
 		uuid: uuid
 	});
+}
+
+export async function getPaginatedDatasets(
+	page: number,
+	pageSize: number,
+	datasetType: GZFSDatasetType,
+	search: string = ''
+): Promise<PaginatedDatasetsResponse> {
+	return await apiRequest(
+		`/zfs/datasets/paginated?datasetType=${datasetType}&limit=${pageSize}&offset=${(page - 1) * pageSize}&search=${encodeURIComponent(search)}`,
+		PaginatedDatasetsResponseSchema,
+		'GET'
+	);
 }

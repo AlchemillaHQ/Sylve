@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -50,13 +51,67 @@ func ListJailStates(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get Jail State
+// @Description Retrieve the state of a specific jail by CTID
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Param id path int true "Jail CTID"
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[jailServiceInterfaces.State] "Success"
+// @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/state/:id [get]
+func GetJailState(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if id == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_jail_id",
+				Data:    nil,
+				Error:   "Bad Request",
+			})
+			return
+		}
+
+		idInt, err := strconv.Atoi(id)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_jail_id_format: " + err.Error(),
+				Data:    nil,
+				Error:   "Bad Request",
+			})
+			return
+		}
+
+		state, err := jailService.GetStateByCtId(uint(idInt))
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_jail_state: " + err.Error(),
+				Data:    nil,
+				Error:   "Internal Server Error",
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[jailServiceInterfaces.State]{
+			Status:  "success",
+			Message: "jail_state_retrieved",
+			Data:    state,
+			Error:   "",
+		})
+	}
+}
+
 // @Summary Get Jail Logs
-// @Description Retrieve start/stop logs for a specific jail
+// @Description Retrieve Console log for a specific jail
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Param id path int true "Jail ID"
-// @Param start query bool false "Get start logs (default: false for stop logs)"
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[string] "Success"
 // @Failure 404 {object} internal.APIResponse[any] "Jail Not Found"
@@ -111,7 +166,7 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 }
 
 // @Summary Get Jail Statistics
-// @Description Retrieve statistics for a specific jail
+// @Description Retrieve statistics for a jail by CTID and GFS step
 // @Tags Jail
 // @Accept json
 // @Produce json
@@ -119,22 +174,23 @@ func GetJailLogs(jailService *jail.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[[]jailModels.JailStats] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /jail/stats/:ctId/:limit [get]
+// @Router /jail/stats/:ctid/:step [get]
 func GetJailStats(jailService *jail.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctId := c.Param("ctId")
-		limit := c.Param("limit")
-		if ctId == "" || limit == "" {
+		ctId, _ := utils.ParamUint(c, "ctId")
+		step := c.Param("step")
+
+		if ctId == 0 || step == "" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
 				Data:    nil,
-				Error:   "ctId and limit are required",
+				Error:   "ctid and step are required",
 			})
 			return
 		}
 
-		stats, err := jailService.GetJailUsage(int(utils.StringToUint64(ctId)), int(utils.StringToUint64(limit)))
+		stats, err := jailService.GetJailUsage(ctId, db.GFSStep(step))
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",

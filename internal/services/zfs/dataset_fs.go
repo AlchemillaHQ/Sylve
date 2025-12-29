@@ -9,15 +9,15 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"os"
-
-	"github.com/alchemillahq/sylve/pkg/zfs"
+	"strings"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
 
-func (s *Service) CreateFilesystem(name string, props map[string]string) error {
+func (s *Service) CreateFilesystem(ctx context.Context, name string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -37,50 +37,69 @@ func (s *Service) CreateFilesystem(name string, props map[string]string) error {
 	name = fmt.Sprintf("%s/%s", parent, name)
 	delete(props, "parent")
 
-	_, err := zfs.CreateFilesystem(name, props)
+	dataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, name, props)
 
 	if err != nil {
 		return err
 	}
 
-	datasets, err := zfs.Datasets(name)
-	if err != nil {
-		return err
+	if dataset == nil {
+		return fmt.Errorf("failed_to_create_filesystem")
 	}
 
-	for _, dataset := range datasets {
-		if dataset.Name == name {
-			return nil
-		}
-	}
+	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "create")
 
-	return fmt.Errorf("failed to create filesystem %s", name)
+	return nil
 }
 
-func (s *Service) EditFilesystem(guid string, props map[string]string) error {
+func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	datasets, err := zfs.Datasets("")
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+
 	if err != nil {
 		return err
 	}
 
-	for _, dataset := range datasets {
-		if dataset.GUID == guid {
-			return zfs.EditFilesystem(dataset.Name, props)
-		}
+	if mp, ok := props["mountpoint"]; ok && mp == "" {
+		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
 	}
+
+	if dataset != nil {
+		return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
+	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 
 	return fmt.Errorf("filesystem with guid %s not found", guid)
 }
 
-func (s *Service) DeleteFilesystem(guid string) error {
+func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
+	foundFS, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
+
+	if err != nil {
+		return err
+	}
+
+	if foundFS == nil {
+		return fmt.Errorf("filesystem with guid %s not found", guid)
+	}
+
+	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	for _, name := range noDelete {
+		if strings.HasSuffix(foundFS.Name, name) {
+			return fmt.Errorf("cannot_delete_critical_filesystem")
+		}
+	}
+
 	var count int64
-	if err := s.DB.Model(&vmModels.Storage{}).Where("dataset = ?", guid).Count(&count).Error; err != nil {
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("guid = ?", guid).
+		Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to check if dataset is in use: %w", err)
 	}
 
@@ -88,43 +107,22 @@ func (s *Service) DeleteFilesystem(guid string) error {
 		return fmt.Errorf("dataset_in_use_by_vm")
 	}
 
-	filesystems, err := zfs.Filesystems("")
-	if err != nil {
+	var keylocation string
+
+	if prop, err := foundFS.GetProperty(ctx, "keylocation"); err == nil {
+		keylocation = prop.Value
+	}
+
+	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}
 
-	for _, filesystem := range filesystems {
-		fguid, err := filesystem.GetProperty("guid")
-		if err != nil {
-			return err
-		}
-
-		if fguid != guid {
-			continue
-		}
-
-		keylocation, err := filesystem.GetProperty("keylocation")
-		if err != nil {
-			return err
-		}
-
-		if err := filesystem.Destroy(zfs.DestroyRecursive); err != nil {
-			return err
-		}
-
-		if keylocation != "" && keylocation != "none" {
-			keylocation = keylocation[7:]
-			if _, err := os.Stat(keylocation); err == nil {
-				if err := os.Remove(keylocation); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("keylocation_file_not_found: %s", keylocation)
-			}
-		}
-
-		return nil
+	if keylocation != "" && keylocation != "none" && strings.HasPrefix(keylocation, "file://") {
+		path := strings.TrimPrefix(keylocation, "file://")
+		_ = os.Remove(path)
 	}
 
-	return fmt.Errorf("filesystem with guid %s not found", guid)
+	s.SignalDSChange(foundFS.Pool, foundFS.Name, "generic-dataset", "edit")
+
+	return nil
 }

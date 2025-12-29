@@ -1,29 +1,41 @@
 <script lang="ts">
 	import { createVolume } from '$lib/api/zfs/datasets';
+	import { getPools } from '$lib/api/zfs/pool';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { GroupedByPool } from '$lib/types/zfs/dataset';
-	import type { Zpool } from '$lib/types/zfs/pool';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidSize } from '$lib/utils/numbers';
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
-		pools: Zpool[];
 		grouped: GroupedByPool[];
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), pools, grouped, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), grouped, reload = $bindable() }: Props = $props();
+
+	const pools = resource(
+		() => 'zfs-pools',
+		async () => {
+			const result = await getPools();
+			updateCache('zfs-pools', result);
+			return result;
+		},
+		{
+			initialValue: []
+		}
+	);
+
 	let options = {
 		name: '',
 		parent: '',
@@ -82,14 +94,14 @@
 			return;
 		}
 
-		const parentSize = grouped.find((group) => group.pool.name === properties.parent)?.pool.free;
-
-		if (!parentSize) {
-			toast.error('Parent not found', {
+		const parentPool = pools.current.find((pool) => pool.name === properties.parent);
+		if (!parentPool) {
+			toast.error('Parent pool not found', {
 				position: 'bottom-center'
 			});
 			return;
 		}
+		const parentSize = parentPool.free;
 
 		if (humanFormat.parse(properties.size) > parentSize) {
 			toast.error('Volume size is greater than available space', {
@@ -148,7 +160,8 @@
 			<Dialog.Title class="flex items-center justify-between text-left">
 				<div class="flex items-center">
 					<div class="flex items-center">
-						<Icon icon="carbon:volume-block-storage" class="mr-2 h-5 w-5" />
+						<span class="icon-[carbon--volume-block-storage] mr-2 h-5 w-5"></span>
+
 						<span>Create Volume</span>
 					</div>
 				</div>
@@ -162,7 +175,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -175,7 +188,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -209,7 +222,7 @@
 				<SimpleSelect
 					label="Pool"
 					placeholder="Select Pool"
-					options={pools.map((pool) => ({
+					options={pools.current.map((pool) => ({
 						value: pool.name,
 						label: pool.name
 					}))}
@@ -242,13 +255,12 @@
 									properties.encryptionKey = generatePassword();
 								}}
 							>
-								<Icon
-									icon="fad:random-2dice"
-									class="h-6 w-6"
+								<span
+									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
 										properties.encryptionKey = generatePassword();
 									}}
-								/>
+								></span>
 							</Button>
 						</div>
 					</div>

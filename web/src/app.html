@@ -5,6 +5,29 @@
     <meta charset="utf-8" />
     <link rel="icon" href="" id="favicon" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        html {
+            background: #ffffff;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            html {
+                background: #161616;
+            }
+        }
+    </style>
+
+    <script>
+        (() => {
+            const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.style.background = dark ? '#161616' : '#ffffff';
+            const faviconEl = document.getElementById('favicon');
+            if (faviconEl) {
+                faviconEl.href = dark ? '/logo/white.svg' : '/logo/black.svg';
+            }
+        })();
+    </script>
+
     %sveltekit.head%
 </head>
 

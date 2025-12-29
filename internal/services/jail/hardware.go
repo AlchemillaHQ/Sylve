@@ -10,6 +10,7 @@ package jail
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -31,54 +32,50 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 		return fmt.Errorf("memory must be at least 1MB, got: %dMB", mb)
 	}
 
-	cfg, err := s.GetJailConfig(ctId)
+	postStart, err := s.GetHookScriptPath(ctId, "post-start")
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(cfg) == "" {
-		return fmt.Errorf("jail config not found for CTID: %d", ctId)
+
+	content, err := os.ReadFile(postStart)
+	if err != nil {
+		return fmt.Errorf("failed to read post-start hook script: %w", err)
 	}
 
-	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
-	prefix := fmt.Sprintf(`exec.poststart += "rctl -a jail:%s:memoryuse:deny=`, ctIdHash)
-
-	lines := strings.Split(cfg, "\n")
+	lines := strings.Split(string(content), "\n")
 	found := false
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
-			lines[i] = fmt.Sprintf(`	exec.poststart += "rctl -a jail:%s:memoryuse:deny=%dM";`, ctIdHash, mb)
+		t := strings.TrimSpace(line)
+		if strings.Contains(t, "rctl -a") && strings.Contains(t, "memoryuse") {
+			lines[i] = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb)
 			found = true
 			break
 		}
 	}
 
-	var newCfg string
-	if found {
-		newCfg = strings.Join(lines, "\n")
-	} else {
-		toAppend := fmt.Sprintf("\texec.poststart += \"rctl -a jail:%s:memoryuse:deny=%dM\";\n", ctIdHash, mb)
-		newCfg, err = s.AppendToConfig(ctId, cfg, toAppend)
-		if err != nil {
-			return fmt.Errorf("failed to append memory limit to config: %w", err)
-		}
+	if !found {
+		lines = append(lines, fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
 	}
 
-	if err := s.SaveJailConfig(ctId, newCfg); err != nil {
-		return fmt.Errorf("failed to save jail config: %w", err)
+	newContent := strings.Join(lines, "\n")
+	if err := os.WriteFile(postStart, []byte(newContent), 0755); err != nil {
+		return fmt.Errorf("failed to write updated post-start hook script: %w", err)
 	}
 
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	// Live update
+	_, err = utils.RunCommand("rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+	if err != nil {
+		return fmt.Errorf("failed to apply memory limit with rctl: %w", err)
+	}
+
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
 
 	jail.Memory = int(memoryBytes)
 	if err := s.DB.Save(&jail).Error; err != nil {
 		return fmt.Errorf("failed to update jail memory in database: %w", err)
-	}
-
-	if _, err := utils.RunCommand("rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", ctIdHash, mb)); err != nil {
-		return fmt.Errorf("failed to apply memory limit with rctl: %w", err)
 	}
 
 	return nil
@@ -107,10 +104,9 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		return fmt.Errorf("failed_to_fetch_current_jails: %w", err)
 	}
 
-	// Track usage of each core across all jails
 	coreUsage := map[int]int{}
 	for _, j := range currentJails {
-		if j.CTID == int(ctId) {
+		if j.CTID == ctId {
 			continue
 		}
 		for _, c := range j.CPUSet {
@@ -128,11 +124,9 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		all = append(all, coreCount{Core: i, Count: coreUsage[i]})
 	}
 
-	// Sort by least used cores first
 	sort.Slice(all, func(i, j int) bool { return all[i].Count < all[j].Count })
-
-	// Pick the least used cores
 	selected := make([]int, 0, cores)
+
 	for i := 0; i < int(cores) && i < len(all); i++ {
 		selected = append(selected, all[i].Core)
 	}
@@ -142,44 +136,47 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 
 	coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selected), " ", ",", -1), "[]")
 	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
-	wantLine := fmt.Sprintf(`	exec.created += "cpuset -l %s -j %s";`, coreListStr, ctIdHash)
 
-	// Look for an existing cpuset line
-	lines := strings.Split(cfg, "\n")
+	postStart, err := s.GetHookScriptPath(ctId, "post-start")
+	if err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(postStart)
+	if err != nil {
+		return fmt.Errorf("failed to read post-start hook script: %w", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
+	newLine := fmt.Sprintf("cpuset -l %s -j %s", coreListStr, ctIdHash)
+
 	found := false
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, `exec.created += "cpuset -l`) && strings.HasSuffix(t, fmt.Sprintf(`-j %s";`, ctIdHash)) {
-			lines[i] = wantLine
+		if strings.HasPrefix(t, "cpuset -l ") {
+			lines[i] = newLine
 			found = true
 			break
 		}
 	}
 
-	var newCfg string
-	if found {
-		// Replace in-place
-		newCfg = strings.Join(lines, "\n")
-	} else {
-		// Append neatly before closing curly
-		toAppend := fmt.Sprintf("\texec.created += \"cpuset -l %s -j %s\";\n", coreListStr, ctIdHash)
-		newCfg, err = s.AppendToConfig(ctId, cfg, toAppend)
-		if err != nil {
-			return fmt.Errorf("failed to append CPU set to config: %w", err)
-		}
+	if !found {
+		lines = append(lines, newLine)
 	}
 
-	if err := s.SaveJailConfig(ctId, newCfg); err != nil {
-		return fmt.Errorf("failed to save jail config: %w", err)
+	newContent := strings.Join(lines, "\n")
+	if err := os.WriteFile(postStart, []byte(newContent), 0755); err != nil {
+		return fmt.Errorf("failed to write updated post-start hook script: %w", err)
 	}
 
-	// Update DB
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
+
 	jail.Cores = int(cores)
 	jail.CPUSet = selected
+
 	if err := s.DB.Save(&jail).Error; err != nil {
 		return fmt.Errorf("failed to update jail CPU in database: %w", err)
 	}
@@ -196,15 +193,16 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 }
 
 func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
-	var jail jailModels.Jail
-	if err := s.DB.Find(&jail, "ct_id = ?", ctId).Error; err != nil {
-		return fmt.Errorf("failed to find jail with CTID %d: %w", ctId, err)
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return err
 	}
+
 	if strings.TrimSpace(cfg) == "" {
 		return fmt.Errorf("jail config not found for CTID: %d", ctId)
 	}
@@ -214,10 +212,10 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 	if enabled {
 		const oneGiB = int64(1024 * 1024 * 1024)
 
-		// Use refactored append-safe methods
 		if err := s.UpdateMemory(ctId, oneGiB); err != nil {
 			return fmt.Errorf("failed to set default memory limit: %w", err)
 		}
+
 		if err := s.UpdateCPU(ctId, 1); err != nil {
 			return fmt.Errorf("failed to set default cpu limit: %w", err)
 		}
@@ -233,43 +231,48 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 		return nil
 	}
 
-	// --- Disable path ---
-	lines := strings.Split(cfg, "\n")
-	memPrefix := fmt.Sprintf(`exec.poststart += "rctl -a jail:%s:memoryuse:deny=`, ctIdHash)
-	cpuCreatedSuffix := fmt.Sprintf(`-j %s";`, ctIdHash)
+	postStart, err := s.GetHookScriptPath(ctId, "post-start")
+	if err != nil {
+		return err
+	}
 
+	content, err := os.ReadFile(postStart)
+	if err != nil {
+		return fmt.Errorf("failed to read post-start hook script: %w", err)
+	}
+
+	lines := strings.Split(string(content), "\n")
 	filtered := make([]string, 0, len(lines))
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
-		isMem := strings.HasPrefix(t, memPrefix)
-		isCPU := strings.HasPrefix(t, `exec.created += "cpuset -l`) && strings.HasSuffix(t, cpuCreatedSuffix)
-		if isMem || isCPU {
-			continue // remove both memory + CPU limit lines
+		isRctl := strings.Contains(t, "rctl -a")
+		isCpuset := strings.Contains(t, "cpuset -l")
+		if isRctl || isCpuset {
+			continue
 		}
 		filtered = append(filtered, line)
 	}
 
-	newCfg := strings.Join(filtered, "\n")
-	if err := s.SaveJailConfig(ctId, newCfg); err != nil {
-		return fmt.Errorf("failed to save jail config: %w", err)
+	newContent := strings.Join(filtered, "\n")
+	if err := os.WriteFile(postStart, []byte(newContent), 0755); err != nil {
+		return fmt.Errorf("failed to write updated post-start hook script: %w", err)
 	}
 
-	// Remove live rctl rule
-	if _, err := utils.RunCommand("rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash)); err != nil {
-		logger.L.Warn().Err(err).Msgf("failed to remove rctl rules for jail %s", ctIdHash)
+	_, err = utils.RunCommand("rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash))
+	if err != nil {
+		logger.L.Warn().Err(err).Msgf("Failed to remove rctl rules for jail %d", ctId)
 	}
 
-	// Reset CPU affinity to all cores
 	numLogical := cpuid.CPU.LogicalCores
-	allRange := "0"
+	allRange := ""
 	if numLogical > 1 {
 		allRange = fmt.Sprintf("0-%d", numLogical-1)
 	}
-	if _, err := utils.RunCommand("cpuset", "-l", allRange, "-j", ctIdHash); err != nil {
-		logger.L.Warn().Err(err).Msgf("failed to reset cpuset for jail %s", ctIdHash)
+	_, err = utils.RunCommand("cpuset", "-l", allRange, "-j", ctIdHash)
+	if err != nil {
+		logger.L.Warn().Err(err).Msgf("Failed to reset cpuset for jail %d", ctId)
 	}
 
-	// Reset DB fields
 	val := false
 	jail.ResourceLimits = &val
 	jail.Memory = 0

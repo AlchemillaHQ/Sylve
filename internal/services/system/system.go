@@ -13,6 +13,7 @@ import (
 
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 
+	"github.com/alchemillahq/gzfs"
 	"gorm.io/gorm"
 )
 
@@ -22,10 +23,12 @@ type Service struct {
 	DB        *gorm.DB
 	syncMutex sync.Mutex
 	achMutex  sync.Mutex
+	GZFS      *gzfs.Client
 }
 
-func NewSystemService(db *gorm.DB) systemServiceInterfaces.SystemServiceInterface {
+func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {
 	return &Service{
-		DB: db,
+		DB:   db,
+		GZFS: gzfs,
 	}
 }

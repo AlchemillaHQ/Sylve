@@ -13,18 +13,73 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
 )
 
-type Storage struct {
-	ID        uint   `gorm:"primaryKey" json:"id"`
-	Name      string `json:"name" gorm:"default:''"`
-	Type      string `json:"type"`
-	Dataset   string `json:"dataset"`
-	Size      int64  `json:"size"`
-	Emulation string `json:"emulation"`
+func (Storage) TableName() string {
+	return "vm_storages"
+}
 
-	VMID uint `json:"vmId" gorm:"index"`
+type VMStorageType string
+
+const (
+	VMStorageTypeRaw       VMStorageType = "raw"
+	VMStorageTypeZVol      VMStorageType = "zvol"
+	VMStorageTypeDiskImage VMStorageType = "image"
+)
+
+type VMStorageEmulationType string
+
+const (
+	VirtIOStorageEmulation VMStorageEmulationType = "virtio-blk"
+	AHCIHDStorageEmulation VMStorageEmulationType = "ahci-hd"
+	AHCICDStorageEmulation VMStorageEmulationType = "ahci-cd"
+	NVMEStorageEmulation   VMStorageEmulationType = "nvme"
+)
+
+type TimeOffset string
+
+const (
+	TimeOffsetUTC   TimeOffset = "utc"
+	TimeOffsetLocal TimeOffset = "localtime"
+)
+
+type VMStorageDataset struct {
+	ID   uint   `gorm:"primaryKey" json:"id"`
+	Pool string `json:"pool"`
+	Name string `json:"name"`
+	GUID string `json:"guid"`
+}
+
+func (VMStorageDataset) TableName() string {
+	return "vm_storage_datasets"
+}
+
+type Storage struct {
+	ID   uint          `gorm:"primaryKey" json:"id"`
+	Type VMStorageType `json:"type"`
+
+	Name         string `json:"name"`
+	DownloadUUID string `json:"uuid"`
+
+	Pool string `json:"pool"`
+
+	DatasetID *uint            `json:"datasetId" gorm:"column:dataset_id"`
+	Dataset   VMStorageDataset `json:"dataset" gorm:"foreignKey:DatasetID;references:ID"`
+
+	Size      int64                  `json:"size"`
+	Emulation VMStorageEmulationType `json:"emulation"`
+
+	RecordSize   int `json:"recordSize"`
+	VolBlockSize int `json:"volBlockSize"`
+
+	BootOrder int  `json:"bootOrder"`
+	VMID      uint `json:"vmId" gorm:"index"`
+}
+
+func (Network) TableName() string {
+	return "vm_networks"
 }
 
 type Network struct {
@@ -74,35 +129,69 @@ type VMStats struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 }
 
+func (VMStats) TableName() string {
+	return "vm_stats"
+}
+
+func (s VMStats) GetID() uint {
+	return s.ID
+}
+
+func (s VMStats) GetCreatedAt() time.Time {
+	return s.CreatedAt
+}
+
+type VMCPUPinning struct {
+	ID   uint `gorm:"primaryKey" json:"id"`
+	VMID uint `json:"vmId" gorm:"index"`
+
+	HostSocket int   `json:"hostSocket"`
+	HostCPU    []int `json:"hostCpu" gorm:"serializer:json;type:json"`
+}
+
 type VM struct {
-	ID            uint   `gorm:"primaryKey" json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	VmID          int    `json:"vmId"`
-	CPUSockets    int    `json:"cpuSockets"`
-	CPUCores      int    `json:"cpuCores"`
-	CPUsThreads   int    `json:"cpuThreads"`
-	RAM           int    `json:"ram"`
-	Serial        bool   `json:"serial" gorm:"default:false"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	RID         uint   `json:"rid" gorm:"column:rid;not null;uniqueIndex;"`
+
+	CPUSockets int `json:"cpuSockets"`
+	CPUCores   int `json:"cpuCores"`
+	CPUThreads int `json:"cpuThreads"`
+
+	CPUPinning []VMCPUPinning `json:"cpuPinning" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+
+	RAM int `json:"ram"`
+
+	TPMEmulation     bool `json:"tpmEmulation"`
+	ShutdownWaitTime int  `json:"shutdownWaitTime" gorm:"default:10"`
+
+	Serial bool `json:"serial" gorm:"default:false"`
+
 	VNCEnabled    bool   `json:"vncEnabled" gorm:"default:true"`
 	VNCPort       int    `json:"vncPort"`
 	VNCPassword   string `json:"vncPassword"`
 	VNCResolution string `json:"vncResolution"`
 	VNCWait       bool   `json:"vncWait"`
-	StartAtBoot   bool   `json:"startAtBoot"`
-	TPMEmulation  bool   `json:"tpmEmulation"`
-	StartOrder    int    `json:"startOrder"`
-	WoL           bool   `json:"wol" gorm:"default:false"`
-	TimeOffset    string `json:"timeOffset" gorm:"default:'utc'"`
 
-	ISO        string    `json:"iso"`
+	StartAtBoot bool       `json:"startAtBoot"`
+	StartOrder  int        `json:"startOrder"`
+	WoL         bool       `json:"wol" gorm:"default:false"`
+	TimeOffset  TimeOffset `json:"timeOffset" gorm:"default:'utc'"`
+
 	Storages   []Storage `json:"storages" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	Networks   []Network `json:"networks" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	PCIDevices []int     `json:"pciDevices" gorm:"serializer:json;type:json"`
-	CPUPinning []int     `json:"cpuPinning" gorm:"serializer:json;type:json"`
 
-	Stats []VMStats `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	State string    `json:"state" gorm:"-"`
+	ACPI bool `json:"acpi"`
+	APIC bool `json:"apic"`
+
+	Stats []VMStats           `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	State libvirt.DomainState `json:"state" gorm:"-"`
+
+	CloudInitData     string `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData string `json:"cloudInitMetaData" gorm:"type:text"`
+	IgnoreUMSR        bool   `json:"ignoreUMSR" gorm:"default:false"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

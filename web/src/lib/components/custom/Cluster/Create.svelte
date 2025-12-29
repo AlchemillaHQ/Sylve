@@ -3,10 +3,9 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { clusterStore } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -63,7 +62,7 @@
 			});
 		} else {
 			if (typeof response.data === 'string') {
-				clusterStore.set(response.data);
+				storage.clusterToken = response.data;
 			}
 
 			toast.success('Cluster created', {
@@ -80,7 +79,7 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="oui:ml-create-population-job" class="h-6 w-6" />
+					<span class="icon-[oui--ml-create-population-job] h-6 w-6"></span>
 					<span>Create Cluster</span>
 				</div>
 
@@ -94,7 +93,8 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+
 						<span class="sr-only">Reset</span>
 					</Button>
 
@@ -107,7 +107,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -131,7 +131,7 @@
 			<div class="flex w-full items-center justify-end gap-2">
 				<Button onclick={create} type="submit" size="sm" disabled={loading}>
 					{#if loading}
-						<Icon icon="mdi:loading" class="h-4 w-4 animate-spin" />
+						<span class="icon-[mdi-light--loading] h-4 w-4 animate-spin"></span>
 					{:else}
 						Create
 					{/if}

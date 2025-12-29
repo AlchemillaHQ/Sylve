@@ -8,15 +8,14 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { clusterStore } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { resource } from 'runed';
 
 	interface Data {
 		cluster: ClusterDetails;
@@ -24,40 +23,33 @@
 
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
-	let queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'cluster-info',
-			queryFn: async () => {
-				return await getDetails();
-			},
-			keepPreviousData: true,
-			initialData: data.cluster,
-			refetchOnMount: 'always',
-			onSuccess: (data: ClusterDetails) => {
-				updateCache('cluster-info', data);
-			}
-		}
-	]);
+
+	const datacenter = resource(
+		() => 'cluster-info',
+		async (key, prevKey, { signal }) => {
+			const res = await getDetails();
+			updateCache('cluster-info', res);
+			return res;
+		},
+		{ initialValue: data.cluster }
+	);
 
 	$effect(() => {
 		if (reload) {
-			queryClient.refetchQueries('cluster-info');
-
+			datacenter.refetch();
 			reload = false;
 		}
 	});
 
-	let dataCenter = $derived($results[0].data);
-
-	let canReset = $derived(dataCenter?.cluster.enabled === true);
-
+	let canReset = $derived(datacenter.current.cluster.enabled === true);
 	let canCreate = $derived(
-		dataCenter?.cluster.raftBootstrap === null && dataCenter?.cluster.enabled === false
+		datacenter.current.cluster.raftBootstrap === null &&
+			datacenter.current.cluster.enabled === false
 	);
 
 	let canJoin = $derived(
-		dataCenter?.cluster.raftBootstrap !== true && dataCenter?.cluster.enabled === false
+		datacenter.current.cluster.raftBootstrap !== true &&
+			datacenter.current.cluster.enabled === false
 	);
 
 	let modals = $state({
@@ -124,8 +116,8 @@
 			}
 		];
 
-		if (dataCenter?.nodes) {
-			for (const node of dataCenter.nodes) {
+		if (datacenter.current.nodes) {
+			for (const node of datacenter.current.nodes) {
 				rows.push({
 					id: node.id,
 					leader: node.isLeader,
@@ -163,7 +155,7 @@
 		{disabled}
 	>
 		<div class="flex items-center">
-			<Icon {icon} class="mr-1 h-4 w-4" />
+			<span class="icon-[{icon}] mr-1 h-4 w-4"></span>
 			<span>{title}</span>
 		</div>
 	</Button>
@@ -176,22 +168,23 @@
 		{#if !canCreate}
 			<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
 				<div class="flex items-center">
-					<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+
 					<span>View Join Information</span>
 				</div>
 			</Button>
 		{/if}
 
 		{#if canCreate}
-			{@render button('create', 'oui:ml-create-population-job', 'Create Cluster', !canCreate)}
+			{@render button('create', 'oui--ml-create-population-job', 'Create Cluster', !canCreate)}
 		{/if}
 
 		{#if canJoin}
-			{@render button('join', 'grommet-icons:cluster', 'Join Cluster', !canJoin)}
+			{@render button('join', 'grommet-icons--cluster', 'Join Cluster', !canJoin)}
 		{/if}
 
 		{#if canReset}
-			{@render button('reset', 'mdi:refresh', 'Reset Cluster', !canReset)}
+			{@render button('reset', 'mdi--refresh', 'Reset Cluster', !canReset)}
 		{/if}
 	</div>
 
@@ -205,7 +198,7 @@
 </div>
 
 <Create bind:open={modals.create.open} bind:reload />
-<JoinInformation bind:open={modals.view.open} cluster={dataCenter} />
+<JoinInformation bind:open={modals.view.open} cluster={datacenter.current} />
 <Join bind:open={modals.join.open} bind:reload />
 
 <AlertDialog
@@ -214,7 +207,7 @@
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();
-			clusterStore.set('');
+			storage.clusterToken = '';
 			reload = true;
 			if (response.error) {
 				handleAPIError(response);

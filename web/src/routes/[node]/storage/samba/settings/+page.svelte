@@ -9,9 +9,7 @@
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
-	import { untrack } from 'svelte';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -22,50 +20,46 @@
 
 	let { data }: { data: Data } = $props();
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'samba-config',
-			queryFn: async () => {
-				return await getSambaConfig();
-			},
-			keepPreviousData: true,
-			initialData: data.sambaConfig,
-			onSuccess: (data: SambaConfig) => {
-				updateCache('samba-config', data);
-			}
+	let sambaConfig = resource(
+		() => 'samba-config',
+		async () => {
+			const result = await getSambaConfig();
+			updateCache('samba-config', result);
+			return result;
 		},
 		{
-			queryKey: 'network-interfaces',
-			queryFn: async () => {
-				return await getInterfaces();
-			},
-			keepPreviousData: true,
-			initialData: data.interfaces,
-			onSuccess: (data: Iface[]) => {
-				updateCache('network-interfaces', data);
-			}
+			initialValue: data.sambaConfig
 		}
-	]);
+	);
+
+	let networkInterfaces = resource(
+		() => 'network-interfaces',
+		async () => {
+			const result = await getInterfaces();
+			updateCache('network-interfaces', result);
+			return result;
+		},
+		{
+			initialValue: data.interfaces
+		}
+	);
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload) {
-			queryClient.refetchQueries('samba-config');
-			queryClient.refetchQueries('network-interfaces');
-
-			untrack(() => {
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				sambaConfig.refetch();
+				networkInterfaces.refetch();
 				reload = false;
-			});
+			}
 		}
-	});
+	);
 
-	let sambaConfig: SambaConfig = $derived($results[0].data as SambaConfig);
-	let interfaces: Iface[] = $derived($results[1].data as Iface[]);
 	let usableIfaces = $derived.by(() => {
 		let filtered = [];
-		for (const iface of interfaces) {
+		for (const iface of networkInterfaces.current) {
 			if (iface.groups && iface.groups.length > 0) {
 				if (!iface.groups.includes('tap')) {
 					filtered.push(iface);
@@ -80,23 +74,23 @@
 
 	let options = {
 		unixCharset: {
-			value: (() => $state.snapshot(sambaConfig.unixCharset))(),
+			value: (() => $state.snapshot(sambaConfig.current.unixCharset))(),
 			open: false
 		},
 		workgroup: {
-			value: (() => $state.snapshot(sambaConfig.workgroup))(),
+			value: (() => $state.snapshot(sambaConfig.current.workgroup))(),
 			open: false
 		},
 		serverString: {
-			value: (() => $state.snapshot(sambaConfig.serverString))(),
+			value: (() => $state.snapshot(sambaConfig.current.serverString))(),
 			open: false
 		},
 		interfaces: {
-			value: (() => $state.snapshot(sambaConfig.interfaces))(),
+			value: (() => $state.snapshot(sambaConfig.current.interfaces))(),
 			open: false
 		},
 		bindInterfaces: {
-			value: (() => ($state.snapshot(sambaConfig.bindInterfacesOnly) ? 'Yes' : 'No'))(),
+			value: (() => ($state.snapshot(sambaConfig.current.bindInterfacesOnly) ? 'Yes' : 'No'))(),
 			open: false
 		}
 	};
@@ -138,29 +132,29 @@
 		],
 		rows: [
 			{
-				id: generateNanoId(`${sambaConfig.unixCharset}`),
+				id: generateNanoId(`${sambaConfig.current.unixCharset}`),
 				property: 'Unix Charset',
-				value: sambaConfig.unixCharset
+				value: sambaConfig.current.unixCharset
 			},
 			{
-				id: generateNanoId(`${sambaConfig.workgroup}`),
+				id: generateNanoId(`${sambaConfig.current.workgroup}`),
 				property: 'Workgroup',
-				value: sambaConfig.workgroup
+				value: sambaConfig.current.workgroup
 			},
 			{
-				id: generateNanoId(`${sambaConfig.serverString}`),
+				id: generateNanoId(`${sambaConfig.current.serverString}`),
 				property: 'Server String',
-				value: sambaConfig.serverString
+				value: sambaConfig.current.serverString
 			},
 			{
-				id: generateNanoId(`${sambaConfig.interfaces}`),
+				id: generateNanoId(`${sambaConfig.current.interfaces}`),
 				property: 'Interfaces',
-				value: sambaConfig.interfaces
+				value: sambaConfig.current.interfaces
 			},
 			{
-				id: generateNanoId(`${sambaConfig.bindInterfacesOnly}`),
+				id: generateNanoId(`${sambaConfig.current.bindInterfacesOnly}`),
 				property: 'Bind Interfaces Only',
-				value: sambaConfig.bindInterfacesOnly ? 'Yes' : 'No'
+				value: sambaConfig.current.bindInterfacesOnly ? 'Yes' : 'No'
 			}
 		]
 	});
@@ -226,7 +220,8 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 						<span>Edit {activeRow.property}</span>
 					</div>
 				</Button>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { store } from '$lib/stores/auth';
+	import { storage } from '$lib';
 	import { getDefaultTitle, terminalStore } from '$lib/stores/terminal.svelte';
 	import { sha256 } from '$lib/utils/string';
 	import {
@@ -10,9 +10,7 @@
 		type ITerminalOptions,
 		type Terminal
 	} from '@battlefieldduck/xterm-svelte';
-	import Icon from '@iconify/svelte';
 	import adze from 'adze';
-	import { nanoid } from 'nanoid';
 	import { untrack } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 
@@ -24,11 +22,11 @@
 	};
 
 	let tabsCount = $derived.by(() => {
-		return $terminalStore.tabs.length;
+		return terminalStore.tabs?.length || 0;
 	});
 
 	let currentTab = $derived.by(() => {
-		return $terminalStore.tabs.find((tab) => tab.id === $terminalStore.activeTabId);
+		return terminalStore.tabs.find((tab) => tab.id === terminalStore.activeTabId);
 	});
 
 	async function killSession(sessionId: string): Promise<boolean> {
@@ -71,7 +69,7 @@
 			terminal?.loadAddon(fitAddon);
 			fitAddon.fit();
 
-			const hash = await sha256($store, 1);
+			const hash = await sha256(storage.token || '', 1);
 
 			ws = new WebSocket(`/api/info/terminal?id=${currentTab?.id}&hash=${hash}`);
 			ws.binaryType = 'arraybuffer';
@@ -113,18 +111,18 @@
 
 	async function visiblityAction(t: string, e?: MouseEvent | string) {
 		if (t === 'window-minimize') {
-			$terminalStore.isMinimized = true;
+			terminalStore.isMinimized = true;
 			return;
 		}
 
 		if (t === 'window-close') {
-			const tabsToKill = [...$terminalStore.tabs];
+			const tabsToKill = [...terminalStore.tabs];
 			for (const tab of tabsToKill) {
 				await killSession(tab.id);
 			}
 
-			$terminalStore.tabs = [];
-			$terminalStore.isOpen = false;
+			terminalStore.tabs = [];
+			terminalStore.isOpen = false;
 			ws?.close();
 		}
 
@@ -137,9 +135,9 @@
 					const tabId = parent.getAttribute('data-id');
 					if (tabId) {
 						await killSession(tabId);
-						$terminalStore.tabs = $terminalStore.tabs.filter((tab) => tab.id !== tabId);
-						if ($terminalStore.tabs.length > 0) {
-							$terminalStore.activeTabId = $terminalStore.tabs[0].id;
+						terminalStore.tabs = terminalStore.tabs.filter((tab) => tab.id !== tabId);
+						if (terminalStore.tabs.length > 0) {
+							terminalStore.activeTabId = terminalStore.tabs[0].id;
 						}
 					}
 				}
@@ -148,12 +146,12 @@
 
 		if (t === 'tab-select') {
 			const tabId = e as string;
-			$terminalStore.activeTabId = tabId;
+			terminalStore.activeTabId = tabId;
 		}
 	}
 
 	function addTab() {
-		const terminalCount = $terminalStore.tabs.length;
+		const terminalCount = terminalStore.tabs.length;
 		let tabId = `sylve-${terminalCount + 1}`;
 
 		const newTab = {
@@ -161,8 +159,8 @@
 			title: getDefaultTitle()
 		};
 
-		$terminalStore.tabs = [...$terminalStore.tabs, newTab];
-		$terminalStore.activeTabId = newTab.id;
+		terminalStore.tabs = [...terminalStore.tabs, newTab];
+		terminalStore.activeTabId = newTab.id;
 	}
 
 	let innerWidth = $state(0);
@@ -184,12 +182,10 @@
 
 <svelte:window bind:innerWidth />
 
-{#if $terminalStore.isOpen && !$terminalStore.isMinimized}
+{#if terminalStore.isOpen && !terminalStore.isMinimized}
+	<div class="z-9998 fixed inset-0 bg-black/30 backdrop-blur-sm transition-all duration-150"></div>
 	<div
-		class="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-sm transition-all duration-150"
-	></div>
-	<div
-		class="fixed inset-0 z-[9999] flex items-center justify-center transition-all duration-150"
+		class="z-9999 fixed inset-0 flex items-center justify-center transition-all duration-150"
 		in:scale={{ start: 0.9, duration: 150 }}
 		out:scale={{ start: 0.9, duration: 150 }}
 	>
@@ -199,33 +195,33 @@
 			<div class="bg-primary-foreground flex items-center justify-between p-2">
 				<!-- Add Tab Button -->
 				<div class="flex items-center gap-2">
-					<span>{$terminalStore.title}</span>
+					<span>{terminalStore.title}</span>
 				</div>
 				<!-- Minimize / Close -->
 				<div class="flex space-x-3">
 					<button
-						class="rounded-full transition-colors duration-300 ease-in-out hover:bg-yellow-600 hover:text-white"
+						class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-yellow-600 hover:text-white"
 						onclick={() => visiblityAction('window-minimize')}
 						title="Minimize"
 					>
-						<Icon icon="mdi:window-minimize" class="h-5 w-5" />
+						<span class="icon-[mdi--window-minimize] h-5 w-5"></span>
 					</button>
 					<button
-						class="rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+						class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
 						onclick={() => visiblityAction('window-close')}
 						title="Close"
 					>
-						<Icon icon="mdi:close" class="h-5 w-5" />
+						<span class="icon-[mdi--close] h-5 w-5"></span>
 					</button>
 				</div>
 			</div>
 
 			<!-- Available Tabs -->
 			<div class="dark:bg-muted/30 flex overflow-x-auto bg-white">
-				{#each $terminalStore.tabs as tab}
+				{#each terminalStore.tabs as tab}
 					<div
 						class="border-muted-foreground/40 flex cursor-pointer items-center px-3.5 py-2 {tab.id ===
-						$terminalStore.activeTabId
+						terminalStore.activeTabId
 							? 'bg-muted-foreground/40 dark:bg-muted-foreground/25 '
 							: 'border-muted-foreground/25 hover:bg-muted-foreground/25 border-x border-t'}"
 						onclick={() => visiblityAction('tab-select', tab.id)}
@@ -237,14 +233,14 @@
 						<span class="mr-2 whitespace-nowrap text-sm">{tab.title}</span>
 						{#if tabsCount > 1}
 							<button
-								class="rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+								class="flex justify-center rounded-full transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
 								data-id={tab.id}
 								onclick={(e) => {
 									e.stopPropagation();
 									visiblityAction('tab-close', e);
 								}}
 							>
-								<Icon icon="mdi:close" class="h-4 w-4" />
+								<span class="icon-[mdi--close] h-5 w-5"></span>
 							</button>
 						{/if}
 					</div>
@@ -257,18 +253,15 @@
 						onclick={() => addTab()}
 						title="Add new tab"
 					>
-						<Icon icon="ic:sharp-plus" class="h-5 w-5" />
+						<span class="icon-[ic--sharp-plus] h-5 w-5"></span>
 					</button>
 				</div>
 			</div>
 
 			<!-- Terminal Body -->
-			<div
-				id="terminal-container"
-				class="relative min-h-0 w-full flex-grow overflow-hidden bg-black"
-			>
-				{#each $terminalStore.tabs as tab}
-					{#if tab.id === $terminalStore.activeTabId}
+			<div id="terminal-container" class="relative min-h-0 w-full grow overflow-hidden bg-black">
+				{#each terminalStore.tabs as tab}
+					{#if tab.id === terminalStore.activeTabId}
 						<div in:fade={{ duration: 150 }}>
 							<Xterm bind:terminal {options} {onLoad} {onData} />
 						</div>

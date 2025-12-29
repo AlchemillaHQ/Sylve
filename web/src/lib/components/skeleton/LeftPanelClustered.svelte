@@ -9,8 +9,9 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
+	import { DomainState } from '$lib/types/vm/vm';
+	import { resource, useInterval, watch } from 'runed';
 
 	let openIds = $state(new Set<string>(['datacenter']));
 
@@ -21,63 +22,62 @@
 		saveOpenIds(openIds);
 	};
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'cluster-resources',
-			queryFn: async () => await getClusterResources(),
-			keepPreviousData: true,
-			refetchInterval: 30000,
-			initialData: [] as NodeResource[],
-			refetchOnMount: 'always'
+	const cluster = resource(
+		() => 'cluster-resources',
+		async () => {
+			return await getClusterResources();
 		},
 		{
-			queryKey: 'cluster-nodes',
-			queryFn: async () => await getNodes(),
-			keepPreviousData: true,
-			refetchInterval: 30000,
-			initialData: [] as ClusterNode[],
-			refetchOnMount: 'always'
+			initialValue: [] as NodeResource[]
 		}
-	]);
+	);
 
-	const clusterRes = $derived(($results[0]?.data as NodeResource[]) ?? []);
-	const nodes = $derived(($results[1]?.data as ClusterNode[]) ?? []);
+	const nodes = resource(
+		() => 'cluster-nodes',
+		async () => {
+			return await getNodes();
+		},
+		{
+			initialValue: [] as ClusterNode[]
+		}
+	);
 
 	const tree = $derived([
 		{
 			id: 'datacenter',
 			label: 'Data Center',
-			icon: 'ant-design:cluster-outlined',
+			icon: 'ant-design--cluster-outlined',
 			href: '/datacenter',
-			children: clusterRes.map((n) => {
+			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
 					...(n.jails ?? []).map((j) => ({
 						id: `jail-${j.ctId}`,
 						sortId: j.ctId,
 						label: `${j.name} (${j.ctId})`,
-						icon: 'hugeicons:prison',
+						icon: 'hugeicons--prison',
 						href: `/${nodeLabel}/jail/${j.ctId}`,
 						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
 					})),
 					...(n.vms ?? []).map((vm) => ({
-						id: `vm-${vm.vmId}`,
-						sortId: vm.vmId,
-						label: `${vm.name} (${vm.vmId})`,
-						icon: 'material-symbols:monitor-outline',
-						href: `/${nodeLabel}/vm/${vm.vmId}`,
-						state: (vm.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+						id: `vm-${vm.rid}`,
+						sortId: vm.rid,
+						label: `${vm.name} (${vm.rid})`,
+						icon: 'material-symbols--monitor-outline',
+						href: `/${nodeLabel}/vm/${vm.rid}`,
+						state: (vm.state === DomainState.DomainRunning ? 'active' : 'inactive') as
+							| 'active'
+							| 'inactive'
 					}))
 				].sort((a, b) => a.sortId - b.sortId);
 
-				const found = nodes.find((node) => node.nodeUUID === n.nodeUUID);
+				const found = nodes.current.find((node) => node.nodeUUID === n.nodeUUID);
 				const isActive = found && found.status === 'online';
 
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'mdi:server' : 'mdi:server-off',
+					icon: isActive ? 'mdi--server' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? mergedChildren : []
 				};
@@ -98,10 +98,20 @@
 		}
 	});
 
-	$effect(() => {
-		if (reload.leftPanel) {
-			queryClient.refetchQueries('cluster-resources');
-			reload.leftPanel = false;
+	watch(
+		() => reload.leftPanel,
+		(value) => {
+			if (value) {
+				cluster.refetch();
+				nodes.refetch();
+				reload.leftPanel = false;
+			}
+		}
+	);
+
+	useInterval(30000, {
+		callback: () => {
+			reload.leftPanel = true;
 		}
 	});
 </script>

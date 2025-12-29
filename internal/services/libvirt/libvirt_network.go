@@ -15,14 +15,15 @@ import (
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
 )
 
-func (s *Service) NetworkDetach(vmId int, networkId int) error {
-	inactive, err := s.IsDomainInactive(vmId)
+func (s *Service) NetworkDetach(rid uint, networkId uint) error {
+	inactive, err := s.IsDomainInactive(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
 	}
@@ -31,7 +32,7 @@ func (s *Service) NetworkDetach(vmId int, networkId int) error {
 		return fmt.Errorf("vm_is_active: cannot_detach_network")
 	}
 
-	xmlDesc, err := s.GetVMXML(vmId)
+	xmlDesc, err := s.GetVMXML(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_xml: %w", err)
 	}
@@ -90,7 +91,7 @@ func (s *Service) NetworkDetach(vmId int, networkId int) error {
 		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -110,8 +111,8 @@ func (s *Service) NetworkDetach(vmId int, networkId int) error {
 	return nil
 }
 
-func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, macObjId uint) error {
-	inactive, err := s.IsDomainInactive(vmId)
+func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachRequest) error {
+	inactive, err := s.IsDomainInactive(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
 	}
@@ -120,24 +121,29 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 		return fmt.Errorf("vm_is_active: cannot_attach_network")
 	}
 
-	if emulation == "" || (emulation != "virtio" && emulation != "e1000") {
-		return fmt.Errorf("invalid_emulation_type: %s", emulation)
+	if req.Emulation == "" || (req.Emulation != "virtio" && req.Emulation != "e1000") {
+		return fmt.Errorf("invalid_emulation_type: %s", req.Emulation)
+	}
+
+	macObjId := uint(0)
+	if req.MacId != nil {
+		macObjId = *req.MacId
 	}
 
 	swType := ""
 
 	var stdSwitch networkModels.StandardSwitch
-	if err := s.DB.First(&stdSwitch, "name = ?", switchName).Error; err == nil {
+	if err := s.DB.First(&stdSwitch, "name = ?", req.SwitchName).Error; err == nil {
 		swType = "standard"
 	}
 
 	var manualSwitch networkModels.ManualSwitch
-	if err := s.DB.First(&manualSwitch, "name = ?", switchName).Error; err == nil {
+	if err := s.DB.First(&manualSwitch, "name = ?", req.SwitchName).Error; err == nil {
 		swType = "manual"
 	}
 
 	if swType == "" {
-		return fmt.Errorf("switch_not_found: %s", switchName)
+		return fmt.Errorf("switch_not_found: %s", req.SwitchName)
 	}
 
 	vms, err := s.ListVMs()
@@ -147,7 +153,7 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 
 	var vm *vmModels.VM
 	for _, v := range vms {
-		if v.VmID == vmId {
+		if v.RID == req.RID {
 			vm = &v
 			break
 		}
@@ -268,7 +274,7 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 		SwitchID:   switchId,
 		SwitchType: swType,
 		MacID:      &macObjId,
-		Emulation:  emulation,
+		Emulation:  req.Emulation,
 	}
 
 	if err := s.DB.Create(&network).Error; err != nil {
@@ -288,7 +294,7 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 		macAddress = macObj.Entries[0].Value
 	}
 
-	xmlDesc, err := s.GetVMXML(vmId)
+	xmlDesc, err := s.GetVMXML(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_xml: %w", err)
 	}
@@ -339,7 +345,7 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(req.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
@@ -355,8 +361,8 @@ func (s *Service) NetworkAttach(vmId int, switchName string, emulation string, m
 	return nil
 }
 
-func (s *Service) FindAndChangeMAC(vmId int, oldMac string, newMac string) error {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(vmId))
+func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error {
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}

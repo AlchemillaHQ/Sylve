@@ -8,9 +8,11 @@
 
 package serviceInterfaces
 
+import "context"
+
 type StartupServiceInterface interface {
 	InitKeys(authService AuthServiceInterface) error
 	SysctlSync() error
 	InitFirewall() error
-	Initialize(authService AuthServiceInterface) error
+	Initialize(authService AuthServiceInterface, ctx context.Context) error
 }

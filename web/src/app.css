@@ -1,9 +1,12 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@source not "./lib/locales";
+@source not "./locales";
 
 @custom-variant dark (&:is(.dark *));
 @plugin "@iconify/tailwind4";
+@source '../node_modules/layerchart/dist';
+@import '@layerstack/tailwind/core.css';
+/* @import '@layerstack/tailwind/themes/basic.css'; */
 
 :root {
     --radius: 0.3rem;
@@ -105,6 +108,10 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-surface-100: var(--surface-100);
+    --color-surface-200: var(--surface-200);
+    --color-surface-300: var(--surface-300);
+    --color-surface-content: var(--surface-content);
 }
 
 @layer base {

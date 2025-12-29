@@ -9,18 +9,19 @@
 package disk
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 	"syscall"
 
+	"github.com/alchemillahq/gzfs"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	diskUtils "github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/alchemillahq/sylve/pkg/zfs"
 
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -32,12 +33,14 @@ type Service struct {
 	DB                 *gorm.DB
 	DiskOperationMutex sync.Mutex
 	ZFS                zfsServiceInterfaces.ZfsServiceInterface
+	GZFS               *gzfs.Client
 }
 
-func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface) diskServiceInterfaces.DiskServiceInterface {
+func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) diskServiceInterfaces.DiskServiceInterface {
 	return &Service{
-		DB:  db,
-		ZFS: zfsService,
+		DB:   db,
+		ZFS:  zfsService,
+		GZFS: gzfs,
 	}
 }
 
@@ -144,7 +147,7 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 	return disks, nil
 }
 
-func (s *Service) GetDiskDevices() ([]diskServiceInterfaces.Disk, error) {
+func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
 	var disks []diskServiceInterfaces.Disk
 
 	mesh, err := s.ParseGeomOutput()
@@ -213,29 +216,12 @@ func (s *Service) GetDiskDevices() ([]diskServiceInterfaces.Disk, error) {
 
 		if len(disk.Partitions) == 0 {
 			found := false
-			pools, err := zfs.ListZpools()
+			devPath := "/dev/" + d.Name
 
-			if err == nil {
-				for _, pool := range pools {
-					for _, vdev := range pool.Vdevs {
-						if vdev.Name == "/dev/"+d.Name {
-							disk.Usage = "ZFS"
-							found = true
-							break
-						}
-
-						for _, device := range vdev.VdevDevices {
-							if device.Name == "/dev/"+d.Name {
-								disk.Usage = "ZFS"
-								found = true
-								break
-							}
-						}
-					}
-					if found {
-						break
-					}
-				}
+			in, _, err := s.GZFS.Zpool.IsDeviceInZpool(ctx, devPath)
+			if err == nil && in {
+				disk.Usage = "ZFS"
+				found = true
 			}
 
 			if !found {

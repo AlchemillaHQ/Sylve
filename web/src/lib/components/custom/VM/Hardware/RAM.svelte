@@ -7,7 +7,6 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 
-	import Icon from '@iconify/svelte';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 
@@ -55,7 +54,7 @@
 		}
 
 		if (vm) {
-			const response = await modifyRAM(vm.vmId, bytes);
+			const response = await modifyRAM(vm.rid, bytes);
 
 			if (response.error) {
 				handleAPIError(response);
@@ -81,7 +80,8 @@
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="ri:ram-fill" class="h-5 w-5" />
+					<span class="icon-[ri--ram-fill] h-5 w-5"></span>
+
 					<span>RAM</span>
 				</div>
 
@@ -95,7 +95,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -108,7 +108,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

@@ -20,6 +20,30 @@
 	import humanFormat from 'human-format';
 	import { onDestroy, onMount } from 'svelte';
 
+	interface Props {
+		title?: string;
+		description?: string;
+		icon?: string;
+		elements: AreaChartElement[];
+		formatSize?: boolean;
+		containerClass?: string;
+		showResetButton?: boolean;
+		chart: Chart | null;
+		percentage?: boolean;
+	}
+
+	let {
+		title = '',
+		description = '',
+		icon = '',
+		elements,
+		formatSize = false,
+		containerClass = 'p-5',
+		showResetButton = true,
+		chart = $bindable(),
+		percentage = false
+	}: Props = $props();
+
 	let data = $derived.by(() => {
 		if (!elements?.length) return [];
 
@@ -66,6 +90,7 @@
 	});
 
 	let series = $derived.by(() => {
+		if (!elements?.length) return [];
 		return elements.map((element) => ({
 			key: element.field,
 			label: element.label,
@@ -94,29 +119,6 @@
 		}));
 	});
 
-	interface Props {
-		title?: string;
-		description?: string;
-		icon?: string;
-		elements: AreaChartElement[];
-		formatSize?: boolean;
-		containerClass?: string;
-		showResetButton?: boolean;
-		chart: Chart | null;
-		percentage?: boolean;
-	}
-
-	let {
-		title = '',
-		description = '',
-		icon = '',
-		elements,
-		formatSize = false,
-		containerClass = 'p-5',
-		showResetButton = true,
-		chart = $bindable(),
-		percentage = false
-	}: Props = $props();
 	let canvas: HTMLCanvasElement;
 	let zoomEnabled = $state(false);
 
@@ -244,9 +246,32 @@
 
 	$effect(() => {
 		if (chart) {
-			chart.options.plugins.zoom.zoom.wheel.enabled = zoomEnabled;
-			chart.options.plugins.zoom.zoom.pinch.enabled = zoomEnabled;
-			chart.options.plugins.zoom.pan.enabled = zoomEnabled;
+			if (
+				chart.options &&
+				chart.options.plugins &&
+				chart.options.plugins.zoom &&
+				chart.options.plugins.zoom.zoom &&
+				chart.options.plugins.zoom.zoom.wheel
+			) {
+				chart.options.plugins.zoom.zoom.wheel.enabled = zoomEnabled;
+			}
+			if (
+				chart.options &&
+				chart.options.plugins &&
+				chart.options.plugins.zoom &&
+				chart.options.plugins.zoom.zoom &&
+				chart.options.plugins.zoom.zoom.pinch
+			) {
+				chart.options.plugins.zoom.zoom.pinch.enabled = zoomEnabled;
+			}
+			if (
+				chart.options &&
+				chart.options.plugins &&
+				chart.options.plugins.zoom &&
+				chart.options.plugins.zoom.pan
+			) {
+				chart.options.plugins.zoom.pan.enabled = zoomEnabled;
+			}
 			chart.update('none');
 		}
 	});

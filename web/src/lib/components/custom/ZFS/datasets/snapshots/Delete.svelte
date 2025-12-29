@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { deleteSnapshot } from '$lib/api/zfs/datasets';
+	import { bulkDeleteByNames } from '$lib/api/zfs/datasets';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
@@ -8,12 +8,12 @@
 
 	interface Props {
 		open: boolean;
-		dataset: Dataset;
+		datasets: Dataset[];
 		askRecursive?: boolean;
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), dataset, askRecursive = true, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), datasets, askRecursive = true, reload = $bindable() }: Props = $props();
 	let recursive = $state(false);
 
 	async function onCancel() {
@@ -21,17 +21,17 @@
 	}
 
 	async function onConfirm() {
-		if (dataset.guid) {
-			const response = await deleteSnapshot(dataset, recursive);
-			reload = true;
+		if (datasets.length > 0) {
+			const response = await bulkDeleteByNames(datasets);
 
 			if (response.status === 'success') {
-				toast.success(`Deleted snapshot ${dataset.name}`, {
+				open = false;
+				toast.success(`Deleted ${datasets.length} snapshots`, {
 					position: 'bottom-center'
 				});
 			} else {
 				handleAPIError(response);
-				toast.error(`Failed to delete snapshot ${dataset.name}`, {
+				toast.error(`Failed to delete snapshots`, {
 					position: 'bottom-center'
 				});
 			}
@@ -41,7 +41,7 @@
 			});
 		}
 
-		open = false;
+		reload = true;
 	}
 </script>
 
@@ -49,9 +49,13 @@
 	<AlertDialog.Content onInteractOutside={(e) => e.preventDefault()}>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Are you sure?</AlertDialog.Title>
-			<AlertDialog.Description
-				>This will delete the snapshot <b>{dataset.name}</b></AlertDialog.Description
-			>
+			<AlertDialog.Description>
+				{#if datasets.length === 1}
+					<b>This will delete snapshot {datasets[0].name}</b>
+				{:else}
+					<b>This will delete {datasets.length} snapshots</b>
+				{/if}
+			</AlertDialog.Description>
 		</AlertDialog.Header>
 
 		{#if askRecursive}

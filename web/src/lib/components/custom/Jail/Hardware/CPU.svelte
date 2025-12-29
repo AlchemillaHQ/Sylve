@@ -3,16 +3,18 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { Jail } from '$lib/types/jail/jail';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		jail: Jail | undefined;
+		reload: boolean;
+		cpu: CPUInfo;
 	}
 
-	let { open = $bindable(), jail }: Props = $props();
+	let { open = $bindable(), jail, reload = $bindable(), cpu }: Props = $props();
 	let cores = $derived(jail?.cores || 1);
 
 	async function modify() {
@@ -20,6 +22,8 @@
 
 		if (cores < 1) {
 			error = 'CPU cores must be at least 1';
+		} else if (cores > cpu.logicalCores) {
+			error = `CPU cores larger than logical cores (${cpu.logicalCores})`;
 		}
 
 		if (error) {
@@ -30,8 +34,9 @@
 		}
 
 		const response = await modifyCPU(jail?.ctId || 0, cores);
+		reload = true;
 		if (response.error) {
-			toast.error(response.error, {
+			toast.error('CPU cores update failed', {
 				position: 'bottom-center'
 			});
 		} else {
@@ -49,7 +54,8 @@
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="solar:cpu-bold" class="h-5 w-5" />
+					<span class="icon-[solar--cpu-bold] h-5 w-5"></span>
+
 					<span>CPU</span>
 				</div>
 
@@ -63,7 +69,7 @@
 							cores = jail?.cores || 1;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 					<Button
@@ -76,7 +82,7 @@
 							open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

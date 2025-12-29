@@ -7,18 +7,19 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
 	const cacheDuration = SEVEN_DAYS;
-	const vmId = params.node;
+	const rid = params.node;
 
 	const [vms, domain, datasets, pools, downloads] = await Promise.all([
 		cachedFetch('vm-list', async () => getVMs(), cacheDuration),
-		cachedFetch(`vm-domain-${vmId}`, async () => getVMDomain(Number(vmId)), cacheDuration),
+		cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(Number(rid)), cacheDuration),
 		cachedFetch('datasets', async () => await getDatasets(), cacheDuration),
-		cachedFetch('pools', getPools, cacheDuration),
+		cachedFetch('pools', async () => getPools(), cacheDuration),
 		cachedFetch('downloads', async () => getDownloads(), cacheDuration)
 	]);
 
 	return {
 		vms: vms,
+		rid: rid,
 		domain: domain,
 		datasets: datasets,
 		pools: pools,

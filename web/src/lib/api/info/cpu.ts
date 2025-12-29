@@ -5,16 +5,14 @@ import {
 	type CPUInfoHistorical
 } from '$lib/types/info/cpu';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
 
+export async function getCPUInfo(queryType: 'current'): Promise<CPUInfo>;
+export async function getCPUInfo(queryType: 'historical'): Promise<CPUInfoHistorical>;
 export async function getCPUInfo(
-	queryObj?: QueryFunctionContext
+	queryType?: 'current' | 'historical'
 ): Promise<CPUInfo | CPUInfoHistorical> {
-	if (queryObj) {
-		if (queryObj.queryKey.includes('cpuInfoHistorical')) {
-			return await apiRequest('/info/cpu/historical', CPUInfoHistoricalSchema, 'GET');
-		}
+	if (queryType === 'historical') {
+		return await apiRequest('/info/cpu/historical', CPUInfoHistoricalSchema, 'GET');
 	}
-
 	return await apiRequest('/info/cpu', CPUInfoSchema, 'GET');
 }

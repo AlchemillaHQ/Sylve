@@ -30,7 +30,7 @@ import (
 
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	ormConfig := &gorm.Config{
-		Logger:         gormLogger.Default.LogMode(gormLogger.Silent),
+		Logger:         gormLogger.Default.LogMode(gormLogger.Warn),
 		TranslateError: true,
 	}
 
@@ -47,11 +47,17 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error connecting to database: %v", err)
 	}
 
+	// db = db.Session(&gorm.Session{
+	// 	PrepareStmt: true,
+	// })
+
 	db.Exec("PRAGMA foreign_keys = OFF")
 	db.Exec("PRAGMA journal_mode = WAL")
 	db.Exec("PRAGMA synchronous = NORMAL")
 
 	err = db.AutoMigrate(
+		&models.BasicSettings{},
+
 		&models.System{},
 		&models.User{},
 		&models.Group{},
@@ -61,14 +67,18 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&vmModels.Storage{},
 		&vmModels.Network{},
 		&vmModels.VMStats{},
+		&vmModels.VMCPUPinning{},
 		&vmModels.VM{},
 
 		&jailModels.Network{},
+		&jailModels.Storage{},
 		&jailModels.JailStats{},
+		&jailModels.JailHooks{},
 		&jailModels.Jail{},
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},
+		&models.DevdEvent{},
 
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -82,7 +92,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&infoModels.CPU{},
 		&infoModels.RAM{},
 		&infoModels.Swap{},
-		&infoModels.IODelay{},
 		&infoModels.NetworkInterface{},
 		&infoModels.Note{},
 		&infoModels.AuditRecord{},
@@ -105,8 +114,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
-		&clusterModels.ClusterS3Config{},
-		&clusterModels.ClusterDirectoryConfig{},
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
 	)
@@ -143,6 +150,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	if err != nil {
 		logger.L.Fatal().Msgf("Error applying database fixups: %v", err)
 	}
+
+	db.Model(&models.BasicSettings{}).
+		Where("id = ? AND (SELECT COUNT(*) FROM basic_settings) = 1", 1).
+		Update("restarted", true)
 
 	return db
 }

@@ -6,7 +6,6 @@
 	import type { Disk, Partition } from '$lib/types/disk/disk';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { getDiskSize } from '$lib/utils/disk';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -26,9 +25,14 @@
 			return;
 		}
 
-		const vdev = pool?.vdevs.find((v) => v.devices.some((d) => d.name === old));
+		const vdev = pool?.vdevs
+			? Object.values(pool.vdevs).find(
+					(v) => v.vdevs && Object.values(v.vdevs).some((d) => d.name === old)
+				)
+			: null;
+
 		const disks = {
-			old: vdev?.devices.find((d) => d.name === old),
+			old: vdev?.vdevs ? Object.values(vdev.vdevs).find((d) => d.name === old) : null,
 			latest: usable.disks.find((d) => d.device === latest)
 		};
 
@@ -37,6 +41,7 @@
 				toast.error('New disk is smaller than old disk', {
 					position: 'bottom-center'
 				});
+				return;
 			}
 		} else if (!disks.latest && disks.old) {
 			const partition = usable.partitions.find((p) => p.name === latest);
@@ -45,7 +50,6 @@
 					toast.error('New partition is smaller than old device', {
 						position: 'bottom-center'
 					});
-
 					return;
 				}
 			}
@@ -101,7 +105,7 @@
 					open = false;
 				}}
 			>
-				<Icon icon="material-symbols:close-rounded" class="h-5 w-5" />
+				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
 			</Dialog.Close>
 		</div>
 

@@ -28,6 +28,12 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin:       func(r *http.Request) bool { return true },
 }
 
+// activeConnections tracks active VNC connections per port
+var (
+	activeConnections = make(map[string]bool)
+	connectionsMutex  = sync.RWMutex{}
+)
+
 const (
 	writeWait  = 10 * time.Second
 	pongWait   = 10 * time.Minute // how long we’ll wait for the next pong
@@ -41,9 +47,40 @@ func VNCProxyHandler(c *gin.Context) {
 		return
 	}
 
+	// Check if there's already an active connection to this port
+	connectionsMutex.Lock()
+	portInUse := activeConnections[port]
+	if !portInUse {
+		// Reserve this port
+		activeConnections[port] = true
+	}
+	connectionsMutex.Unlock()
+
+	// Ensure we clean up the connection tracking when we're done
+	defer func() {
+		if !portInUse {
+			connectionsMutex.Lock()
+			delete(activeConnections, port)
+			connectionsMutex.Unlock()
+		}
+	}()
+
+	// Upgrade to WebSocket first
+	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		return
+	}
+	defer wsConn.Close()
+
+	// If port is in use, close WebSocket with custom error
+	if portInUse {
+		wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4409, "VNC port is already in use by another client"))
+		return
+	}
+
 	rawConn, err := net.Dial("tcp", "localhost:"+port)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect to VNC"})
+		wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to VNC"))
 		return
 	}
 	defer rawConn.Close()
@@ -53,12 +90,6 @@ func VNCProxyHandler(c *gin.Context) {
 		_ = tcp.SetKeepAlive(true)
 		_ = tcp.SetKeepAlivePeriod(30 * time.Second)
 	}
-
-	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		return
-	}
-	defer wsConn.Close()
 
 	// Keepalive: expect a pong within pongWait; extend on each pong.
 	wsConn.SetReadDeadline(time.Now().Add(pongWait))

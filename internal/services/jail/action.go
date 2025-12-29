@@ -30,6 +30,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get jails path: %w", err)
 	}
+
 	jailConf := fmt.Sprintf("%s/%d/%d.conf", jailsPath, ctId, ctId)
 
 	var jail jailModels.Jail
@@ -37,7 +38,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return fmt.Errorf("failed to find jail with ct_id %d: %w", ctId, err)
 	}
 
-	jailName := utils.HashIntToNLetters(jail.CTID, 5)
+	jailName := utils.HashIntToNLetters(int(jail.CTID), 5)
 
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command("jail", args...)
@@ -49,6 +50,11 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	switch action {
 	case "start":
+		err := s.NetworkService.SyncEpairs(true)
+		if err != nil {
+			return fmt.Errorf("failed to sync epairs: %w", err)
+		}
+
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
 			return fmt.Errorf("failed to start jail %s: %v\n%s", jailName, err, out)
 		}

@@ -1,40 +1,25 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
-	IODelayHistoricalSchema,
-	IODelaySchema,
 	PoolsDiskUsageSchema,
 	PoolStatPointsResponseSchema,
 	ZpoolSchema,
+	ZPoolStatusPoolSchema,
 	type CreateZpool,
-	type IODelay,
-	type IODelayHistorical,
 	type PoolsDiskUsage,
 	type PoolStatPointsResponse,
 	type ReplaceDevice,
-	type Zpool
+	type Zpool,
+	type ZpoolStatusPool
 } from '$lib/types/zfs/pool';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
 
-export async function getIODelay(
-	queryObj: QueryFunctionContext | undefined
-): Promise<IODelay | IODelayHistorical> {
-	if (queryObj) {
-		if (queryObj.queryKey.includes('ioDelayHistorical')) {
-			const data = await apiRequest(
-				'/zfs/pool/io-delay/historical',
-				IODelayHistoricalSchema,
-				'GET'
-			);
-			return IODelayHistoricalSchema.parse(data);
-		}
-	}
-
-	return await apiRequest('/zfs/pool/io-delay', IODelaySchema, 'GET');
+export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
+	return await apiRequest(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
 }
 
-export async function getPools(): Promise<Zpool[]> {
-	return await apiRequest('/zfs/pools', ZpoolSchema.array(), 'GET');
+export async function getPools(all?: boolean): Promise<Zpool[]> {
+	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
+	return await apiRequest(url, ZpoolSchema.array(), 'GET');
 }
 
 export async function getPoolsDiskUsage(): Promise<number> {
@@ -62,7 +47,7 @@ export async function createPool(data: CreateZpool) {
 }
 
 export async function replaceDevice(data: ReplaceDevice) {
-	return await apiRequest(`/zfs/pools/${data.guid}/replace-device`, APIResponseSchema, 'POST', {
+	return await apiRequest(`/zfs/pools/${data.guid}/replace-device`, APIResponseSchema, 'PATCH', {
 		...data
 	});
 }

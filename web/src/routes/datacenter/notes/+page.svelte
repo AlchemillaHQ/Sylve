@@ -14,7 +14,7 @@
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
 	import Icon from '@iconify/svelte';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -23,25 +23,28 @@
 	}
 
 	let { data }: { data: Data } = $props();
-
-	const queryClient = useQueryClient();
-	let results = useQueries([
+	let notes = resource(
+		() => 'cluster-notes',
+		async () => {
+			return (await getNotes()) as Note[];
+		},
 		{
-			queryKey: 'cluster-notes',
-			queryFn: async () => {
-				return (await getNotes()) as Note[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.notes,
-			refetchOnMount: 'always',
-			onSuccess: (data: Note[]) => {
-				updateCache('cluster-notes', data);
+			initialValue: data.notes
+		}
+	);
+
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				notes.refetch();
+				reload = false;
 			}
 		}
-	]);
+	);
 
-	let notes: Note[] = $derived($results[0].data as Note[]);
 	let modalState = $state({
 		title: '',
 		content: '',
@@ -88,7 +91,7 @@
 			// }
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
-			queryClient.refetchQueries('cluster-notes');
+			reload = true;
 			if (response.status === 'success') {
 				toast.success('Note created', { position: 'bottom-center' });
 				handleNote(undefined, false, true);
@@ -104,7 +107,7 @@
 	}
 
 	function viewNote(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
+		const note = notes.current.find((note) => note.id === id);
 		if (note) {
 			modalState.title = note.title;
 			modalState.content = note.content;
@@ -114,7 +117,7 @@
 	}
 
 	function handleDelete(id: number | string | undefined) {
-		const note = notes.find((note) => note.id === id);
+		const note = notes.current.find((note) => note.id === id);
 		if (note) {
 			modalState.title = note.title;
 			modalState.content = note.content;
@@ -124,7 +127,7 @@
 	}
 
 	function handleBulkDelete(ids: number[]) {
-		const notesToDelete = notes.filter((note) => ids.includes(note.id));
+		const notesToDelete = notes.current.filter((note) => ids.includes(note.id));
 		if (notesToDelete.length > 0) {
 			modalState.title = `${notesToDelete.length} notes`;
 			modalState.isBulkDeleteOpen = true;
@@ -160,7 +163,7 @@
 		}
 	]);
 
-	let tableData = $derived(generateTableData(columns, notes));
+	let tableData = $derived(generateTableData(columns, notes.current));
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
 </script>
@@ -198,7 +201,7 @@
 		{#if type === 'edit-note'}
 			<Button
 				onclick={() => {
-					const note = notes.find((note) => activeRow && note.id === activeRow[0]?.id);
+					const note = notes.current.find((note) => activeRow && note.id === activeRow[0]?.id);
 					handleNote(note, true);
 				}}
 				size="sm"
@@ -357,8 +360,7 @@
 			onConfirm: async () => {
 				const id = activeRow ? activeRow[0]?.id : null;
 				const result = await deleteNote(id as number);
-
-				queryClient.refetchQueries('cluster-notes');
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Note deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);
@@ -384,7 +386,7 @@
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
 				const result = await deleteNote(ids[0]);
-				queryClient.refetchQueries('cluster-notes');
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Notes deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);

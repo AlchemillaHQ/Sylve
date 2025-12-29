@@ -1,9 +1,13 @@
-import type { Jail } from '$lib/types/jail/jail';
-import type { CreateData, VM } from '$lib/types/vm/vm';
+import type { Jail, SimpleJail } from '$lib/types/jail/jail';
+import type { CreateData, SimpleVm, VM } from '$lib/types/vm/vm';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
+import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 
-export function isValidCreateData(modal: CreateData): boolean {
+export function isValidCreateData(
+	modal: CreateData,
+	utypeDownloads: UTypeGroupedDownload[]
+): boolean {
 	const toastConfig: Record<string, unknown> = {
 		duration: 3000,
 		position: 'bottom-center'
@@ -24,29 +28,27 @@ export function isValidCreateData(modal: CreateData): boolean {
 		return false;
 	}
 
-	if (modal.storage.type === 'raw') {
+	if (modal.storage.type === 'raw' || modal.storage.type === 'zvol') {
+		if (!modal.storage.pool || modal.storage.pool.length < 1) {
+			toast.error('No ZFS pool selected', toastConfig);
+			return false;
+		}
+
 		if (!modal.storage.size || modal.storage.size < 1024 * 1024 * 128) {
 			toast.error('Disk size must be >= 128 MiB', toastConfig);
 			return false;
 		}
-	}
 
-	if (modal.storage.type === 'raw' || modal.storage.type === 'zvol') {
-		if (!modal.storage.guid || modal.storage.guid.length < 1) {
-			const noun = modal.storage.type === 'raw' ? 'filesystem' : 'volume';
-			toast.error(`No ${noun} selected`, toastConfig);
+		if (modal.storage.emulation === '') {
+			toast.error('No emulation type selected', toastConfig);
 			return false;
 		}
 	}
 
-	if (modal.storage.emulation === '') {
-		toast.error('No emulation type selected', toastConfig);
+	if (modal.storage.iso === '') {
+		toast.error(`Select 'none' if you don't want an installation media`, toastConfig);
+		return false;
 	}
-
-	// if (modal.storage.type === 'none' && modal.storage.iso === '') {
-	// 	toast.error('Atleast one disk or ISO must be selected', toastConfig);
-	// 	return false;
-	// }
 
 	if (modal.network.switch !== '' && modal.network.switch.toLowerCase() !== 'none') {
 		if (modal.network.emulation === '') {
@@ -90,11 +92,53 @@ export function isValidCreateData(modal: CreateData): boolean {
 		return false;
 	}
 
+	if (
+		(modal.advanced.cloudInit.data && !modal.advanced.cloudInit.metadata) ||
+		(!modal.advanced.cloudInit.data && modal.advanced.cloudInit.metadata)
+	) {
+		toast.error('Cloud-Init user and meta data required if enabled', toastConfig);
+		return false;
+	}
+
+	if (modal.advanced.cloudInit.enabled) {
+		if (!modal.advanced.cloudInit.data || !modal.advanced.cloudInit.metadata) {
+			toast.error('Cloud-Init user and meta data required if enabled', toastConfig);
+			return false;
+		}
+
+		if (modal.storage.iso === '' || modal.storage.iso.toLowerCase() === 'none') {
+			toast.error('Cloud-Init requires installation media', toastConfig);
+			return false;
+		}
+
+		const initImage = utypeDownloads.find(
+			(download) => download.uType === 'cloud-init' && download.uuid === modal.storage.iso
+		);
+		if (!initImage) {
+			toast.error('Selected installation media is not a valid Cloud-Init image', toastConfig);
+			return false;
+		}
+
+		if (modal.storage.type === 'none') {
+			toast.error('Cloud-Init requires a storage device', toastConfig);
+			return false;
+		}
+	}
+
 	return true;
 }
 
-export function getNextId(vms: VM[], jails: Jail[]): number {
-	const usedIds = [...vms.map((vm) => vm.vmId), ...jails.map((jail) => jail.ctId)];
+export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]): number {
+	const usedIds = [...vms.map((vm) => vm.rid), ...jails.map((jail) => jail.ctId)];
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;
+}
+
+export function generateCores(threadCount: number) {
+	return Array.from({ length: threadCount }, (_, i) => {
+		return {
+			id: i + 1,
+			status: Math.random() > 0.5 ? 'available' : 'busy'
+		};
+	});
 }

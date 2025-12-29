@@ -12,6 +12,31 @@ import (
 	"encoding/xml"
 )
 
+type StorageType string
+
+const (
+	StorageTypeRaw       StorageType = "raw"
+	StorageTypeZVOL      StorageType = "zvol"
+	StorageTypeDiskImage StorageType = "image"
+	StorageTypeNone      StorageType = "none"
+)
+
+type StorageEmulationType string
+
+const (
+	VirtIOStorageEmulation StorageEmulationType = "virtio-blk"
+	AHCIHDStorageEmulation StorageEmulationType = "ahci-hd"
+	AHCICDStorageEmulation StorageEmulationType = "ahci-cd"
+	NVMEStorageEmulation   StorageEmulationType = "nvme"
+)
+
+type StorageAttachType string
+
+const (
+	StorageAttachTypeImport StorageAttachType = "import"
+	StorageAttachTypeNew    StorageAttachType = "new"
+)
+
 type StoragePoolXML struct {
 	XMLName xml.Name `xml:"pool"`
 	Text    string   `xml:",chardata"`
@@ -28,4 +53,36 @@ type StoragePool struct {
 	Name   string
 	Source string
 	UUID   string
+}
+
+type StorageAttachRequest struct {
+	AttachType StorageAttachType `json:"attachType" binding:"required"`
+	RawPath    string            `json:"rawPath"`
+	Dataset    string            `json:"dataset"`
+
+	RID  uint   `json:"rid" binding:"required"`
+	Name string `json:"name"`
+	UUID string `json:"downloadUUID"`
+
+	Pool        string               `json:"pool" binding:"required"`
+	StorageType StorageType          `json:"storageType" binding:"required"`
+	Emulation   StorageEmulationType `json:"emulation" binding:"required"`
+
+	Size         *int64 `json:"size"`
+	RecordSize   *int   `json:"recordSize"`
+	VolBlockSize *int   `json:"volBlockSize"`
+	BootOrder    *int   `json:"bootOrder"`
+}
+
+type StorageUpdateRequest struct {
+	ID        int                  `json:"id" binding:"required"`
+	Name      string               `json:"name" binding:"required"`
+	Size      int64                `json:"size" binding:"required"`
+	Emulation StorageEmulationType `json:"emulation" binding:"required"`
+	BootOrder *int                 `json:"bootOrder"`
+}
+
+type StorageDetachRequest struct {
+	RID       uint `json:"rid" binding:"required"`
+	StorageId int  `json:"storageId" binding:"required"`
 }

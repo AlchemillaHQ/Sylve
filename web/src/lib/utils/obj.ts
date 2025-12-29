@@ -36,3 +36,7 @@ export function findValue(value: unknown, object: Record<string, any>): boolean 
 	}
 	return Object.values(object).some((val) => val === value);
 }
+
+export function countKeys(obj: Record<string, any>): number {
+	return Object.keys(obj).length;
+}

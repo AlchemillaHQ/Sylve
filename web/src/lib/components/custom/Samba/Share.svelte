@@ -10,7 +10,6 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import Icon from '@iconify/svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -179,7 +178,8 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:folder-network" class="h-6 w-6" />
+					<span class="icon-[mdi--folder-network] h-6 w-6"></span>
+
 					{#if edit}
 						<span>Edit Samba Share</span>
 					{:else}
@@ -197,7 +197,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -210,7 +210,7 @@
 							properties = options;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>

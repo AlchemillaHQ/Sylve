@@ -24,43 +24,75 @@
 		isValidFileName
 	} from '$lib/utils/string';
 	import { generateTableData } from '$lib/utils/utilities/downloader';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
-
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import { sleep } from '$lib/utils';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { untrack } from 'svelte';
 	interface Data {
 		downloads: Download[];
 	}
 
 	let { data }: { data: Data } = $props();
-	const results = useQueries([
+	let reload = $state(false);
+
+	const visible = new IsDocumentVisible();
+	const downloads = resource(
+		() => 'downloads',
+		async () => {
+			const results = await getDownloads();
+			updateCache('downloads', results);
+			return results;
+		},
 		{
-			queryKey: ['downloads'],
-			queryFn: async () => {
-				return await getDownloads();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.downloads,
-			onSuccess: (data: Download[]) => {
-				updateCache('downloads', data);
+			initialValue: data.downloads
+		}
+	);
+
+	$effect(() => {
+		if (visible.current) {
+			untrack(() => {
+				downloads.refetch();
+			});
+		}
+	});
+
+	$effect(() => {
+		if (reload) {
+			downloads.refetch();
+			reload = false;
+		}
+	});
+
+	useInterval(1000, {
+		callback: () => {
+			const incomplete = (downloads.current as Download[]).some(
+				(d) => d.status !== 'done' && d.status !== 'failed'
+			);
+
+			if (incomplete) {
+				downloads.refetch();
 			}
 		}
-	]);
+	});
 
-	let modalState = $state({
+	let options = {
 		isOpen: false,
 		isDelete: false,
 		isBulkDelete: false,
 		title: '',
 		url: '',
 		name: '',
-		ignoreTLS: false
-	});
+		ignoreTLS: false,
+		automaticExtraction: false,
+		automaticRawConversion: false,
+		loading: false,
+		downloadType: 'uncategorized' as 'base-rootfs' | 'uncategorized'
+	};
 
-	let downloads = $derived($results[0].data as Download[]);
-	let tableData = $derived(generateTableData(downloads));
+	let modalState = $state(options);
+	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let onlyParentsSelected: boolean = $derived.by(() => {
@@ -100,7 +132,7 @@
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
 			if (row.progress === '-') {
-				const parent = downloads.find((d) => d.uuid === row.parentUUID);
+				const parent = downloads.current.find((d) => d.uuid === row.parentUUID);
 				return parent ? parent.progress === 100 : false;
 			} else if (row.progress === 100) {
 				return true;
@@ -133,14 +165,26 @@
 			return;
 		}
 
+		if (!modalState.downloadType) {
+			modalState.downloadType = 'uncategorized';
+		}
+
+		modalState.loading = true;
+
+		await sleep(500);
+
 		const result = await startDownload(
 			modalState.url,
+			modalState.downloadType,
 			modalState.name || undefined,
-			modalState.ignoreTLS
+			modalState.ignoreTLS,
+			modalState.automaticExtraction,
+			modalState.automaticRawConversion
 		);
+
 		if (result) {
-			modalState.isOpen = false;
-			modalState.url = '';
+			modalState = options;
+			reload = true;
 			toast.success('Download started', { position: 'bottom-center' });
 		} else {
 			toast.error('Download failed', { position: 'bottom-center' });
@@ -183,25 +227,30 @@
 			}
 		}
 	}
+
+	async function handleCopyURL() {
+		const row = activeRows ? activeRows[0] : null;
+		if (row) {
+			const result = await getSignedURL(row.name as string, (row.parentUUID as string) || row.uuid);
+			if (isAPIResponse(result) && result.status === 'success') {
+				const url = result.data as string;
+				const fullURl = new URL(url, window.location.origin).toString();
+				await navigator.clipboard.writeText(fullURl);
+				toast.success('Download URL copied to clipboard', { position: 'bottom-center' });
+			} else {
+				handleAPIError(result as APIResponse);
+				toast.error('Failed to get download link', { position: 'bottom-center' });
+			}
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'delete' && onlyParentsSelected}
-		{#if activeRows && activeRows.length >= 1}
-			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
-					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
-				</div>
-			</Button>
-		{/if}
-	{/if}
-
 	{#if type === 'download' && onlyChildSelected && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:download" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
 					<span>Download</span>
 				</div>
 			</Button>
@@ -212,8 +261,31 @@
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
-					<Icon icon="mdi:download" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--download] mr-1 h-4 w-4"></span>
 					<span>Download</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
+
+	{#if type === 'copy' && ((httpDownloadSelected && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
+		{#if activeRows && activeRows.length == 1}
+			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5">
+				<div class="flex items-center">
+					<span class="icon-[mdi--content-copy] mr-1 h-4 w-4"></span>
+					<span>Copy URL</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
+
+	{#if type === 'delete' && onlyParentsSelected}
+		{#if activeRows && activeRows.length >= 1}
+			<Button onclick={handleDelete} size="sm" variant="outline" class="h-6.5">
+				<div class="flex items-center">
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
+					<span>{activeRows.length > 1 ? 'Bulk Delete' : 'Delete'}</span>
 				</div>
 			</Button>
 		{/if}
@@ -226,13 +298,15 @@
 
 		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6  ">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>
 
-		{@render button('delete')}
 		{@render button('download')}
+		{@render button('copy')}
+		{@render button('delete')}
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
@@ -241,7 +315,7 @@
 				<Dialog.Header class="flex-1">
 					<Dialog.Title>
 						<div class="flex items-center gap-2">
-							<Icon icon="mdi:download" class="text-primary h-5 w-5" />
+							<span class="icon-[mdi--download] text-primary h-5 w-5"></span>
 							<span>Download</span>
 						</div>
 					</Dialog.Title>
@@ -258,7 +332,7 @@
 							modalState.url = '';
 						}}
 					>
-						<Icon icon="radix-icons:reset" class="h-4 w-4" />
+						<span class="icon-[radix-icons--reset] h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
@@ -271,7 +345,7 @@
 							modalState.url = '';
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
 				</div>
@@ -279,31 +353,74 @@
 
 			<CustomValueInput
 				label={'Magnet / HTTP URL / Path'}
-				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60&dn=debian-12.10.0-amd64-netinst.iso&xl=663748608&tr=http%3A%2F%2Fbttracker.debian.org%3A6969%2Fannounce"
+				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60"
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"
+				type="textarea"
+				textAreaClasses="h-24 w-full"
 			/>
 
-			{#if modalState.url && isDownloadURL(modalState.url)}
+			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}
 				<div class="flex flex-col gap-4">
-					<CustomValueInput
-						label={'Optional File Name'}
-						placeholder="freebsd-14.3-base-amd64.txz"
-						bind:value={modalState.name}
-						classes="flex-1 space-y-1 mt-2"
-					/>
+					<div class="flex flex-row gap-4">
+						<CustomValueInput
+							label={'Optional File Name'}
+							placeholder="freebsd-14.3-base-amd64.txz"
+							bind:value={modalState.name}
+							classes="flex-1 space-y-1 mt-2"
+						/>
 
-					<CustomCheckbox
-						label="Ignore TLS Errors"
-						bind:checked={modalState.ignoreTLS}
-						classes="flex items-center gap-2"
-					/>
+						<SimpleSelect
+							label="Download Type"
+							placeholder="Select Download Type"
+							options={[
+								{ value: 'uncategorized', label: 'Uncategorized (ISOs, IMGs, etc.)' },
+								{ value: 'base-rootfs', label: 'Base / RootFS' },
+								{ value: 'cloud-init', label: 'Cloud-Init' }
+							]}
+							classes={{
+								parent: 'mt-2.5 flex-1 space-y-1 w-full',
+								label: 'mb-2',
+								trigger: 'w-full'
+							}}
+							bind:value={modalState.downloadType}
+							onChange={(value) =>
+								(modalState.downloadType = value as 'base-rootfs' | 'uncategorized')}
+						/>
+					</div>
+
+					<div class="mt-2 flex flex-row gap-2">
+						{#if isDownloadURL(modalState.url)}
+							<CustomCheckbox
+								label="Ignore TLS Errors"
+								bind:checked={modalState.ignoreTLS}
+								classes="flex items-center gap-2"
+							/>
+						{/if}
+						<CustomCheckbox
+							label="Extract Automatically"
+							bind:checked={modalState.automaticExtraction}
+							classes="flex items-center gap-2"
+						/>
+
+						<CustomCheckbox
+							label="Auto-convert to RAW"
+							bind:checked={modalState.automaticRawConversion}
+							classes="flex items-center gap-2"
+						/>
+					</div>
 				</div>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2 py-2">
-					<Button onclick={newDownload} type="submit" size="sm">Download</Button>
+					<Button onclick={newDownload} type="submit" size="sm">
+						{#if modalState.loading}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						{:else}
+							<span>Download</span>
+						{/if}
+					</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -324,9 +441,9 @@
 			onConfirm: async () => {
 				const id = activeRows ? activeRows[0]?.id : null;
 				const result = await deleteDownload(id as number);
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
-					modalState.isDelete = false;
-					modalState.title = '';
+					modalState = options;
 					activeRows = null;
 				} else {
 					handleAPIError(result as APIResponse);
@@ -334,7 +451,7 @@
 				}
 			},
 			onCancel: () => {
-				modalState.isDelete = false;
+				modalState = options;
 				modalState.title = '';
 			}
 		}}
@@ -347,9 +464,9 @@
 			onConfirm: async () => {
 				const ids = activeRows ? activeRows.map((row) => row.id) : [];
 				const result = await bulkDeleteDownloads(ids as number[]);
+				reload = true;
 				if (isAPIResponse(result) && result.status === 'success') {
-					modalState.isBulkDelete = false;
-					modalState.title = '';
+					modalState = options;
 					activeRows = null;
 				} else {
 					handleAPIError(result as APIResponse);
@@ -357,7 +474,7 @@
 				}
 			},
 			onCancel: () => {
-				modalState.isBulkDelete = false;
+				modalState = options;
 				modalState.title = '';
 			}
 		}}

@@ -5,12 +5,12 @@
 // This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
-
-//go:build freebsd
+//go:build freebsd || darwin
 
 package sysctl
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,18 +20,37 @@ func TestGetString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetString failed: %v", err)
 	}
-	if !strings.HasPrefix(val, "FreeBSD") && val != "Darwin" {
-		t.Errorf("unexpected kern.ostype value: %q", val)
+
+	switch runtime.GOOS {
+	case "freebsd":
+		if !strings.HasPrefix(val, "FreeBSD") {
+			t.Errorf("unexpected kern.ostype value: %q", val)
+		}
+	case "darwin":
+		if val != "Darwin" {
+			t.Errorf("unexpected kern.ostype value: %q", val)
+		}
 	}
 }
 
 func TestGetInt64(t *testing.T) {
-	val, err := GetInt64("vm.swap_idle_enabled")
-	if err != nil {
-		t.Errorf("GetInt64 failed: %v", err)
+	var key string
+
+	// vm.swap_idle_enabled does NOT exist on macOS
+	switch runtime.GOOS {
+	case "freebsd":
+		key = "vm.kmem_zmax"
+	case "darwin":
+		key = "kern.maxfiles"
 	}
-	if val != 0 && val != 1 {
-		t.Errorf("Unexpected value for vm.swap_idle_enabled: %d", val)
+
+	val, err := GetInt64(key)
+	if err != nil {
+		t.Fatalf("GetInt64(%s) failed: %v", key, err)
+	}
+
+	if val <= 0 {
+		t.Errorf("unexpected value for %s: %d", key, val)
 	}
 }
 

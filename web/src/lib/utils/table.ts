@@ -8,15 +8,15 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import type { Row } from '$lib/types/components/tree-table';
+import type { Row, TablePreferences } from '$lib/types/components/tree-table';
 import humanFormat, { type ScaleLike } from 'human-format';
+import { deepEqual } from 'fast-equals';
 import {
 	TabulatorFull,
 	type CellComponent,
 	type RowComponent,
 	type Tabulator
 } from 'tabulator-tables';
-import { iconCache } from './icons';
 
 export function deselectAllRows(table: Tabulator | null) {
 	if (table) {
@@ -75,24 +75,24 @@ export const renderWithIcon = (
 	extraClass?: string,
 	title?: string
 ) => {
-	const icon = iconCache[iconKey] || '';
+	const [set, icon] = iconKey.split(':');
+
 	return `
-                        <span class="gap-1 w-full" title="${title || ''}">
-                            <span class="shrink-0 ${extraClass || ''}">${icon}</span>
-                            <span class="">${suffix}</span>
-                        </span>
-                    `.trim();
+		<span class="inline-flex items-center gap-1" title="${title || ''}">
+			<span class="icon-[${set}--${icon}] shrink-0 h-3.5 w-3.5  align-middle translate-y-px ${extraClass || ''}"></span>
+			  <span class="leading-none">${suffix}</span>
+		</span>
+	`.trim();
 };
 
 export function sizeFormatter(cell: CellComponent) {
 	try {
 		const sizeOptions = {
-			scale: 'binary' as ScaleLike,
 			unit: 'B',
 			maxDecimals: 1
 		};
 
-		return humanFormat(cell.getValue(), sizeOptions);
+		return humanFormat(Number(cell.getValue()), sizeOptions);
 	} catch (e) {
 		return cell.getValue();
 	}
@@ -136,39 +136,56 @@ export function matchAny(data: any, filterParams: any): boolean {
 	return recursiveMatch(data);
 }
 
-function cleanChildren(row: any): any {
-	if (Array.isArray(row.children)) {
-		row.children = row.children.map(cleanChildren);
-		row.children = row.children.filter((child: null) => child != null);
-
-		if (row.children.length === 0) {
-			delete row.children;
-		}
-	} else {
-		delete row.children;
+function cleanChildren<T extends { children?: T[] | null }>(row: T): T {
+	if (!Array.isArray(row.children)) {
+		const { children, ...rest } = row;
+		return rest as T;
 	}
 
-	return row;
+	const children = row.children.map(cleanChildren).filter(Boolean);
+
+	if (children.length === 0) {
+		const { children: _, ...rest } = row;
+		return rest as T;
+	}
+
+	return { ...row, children };
 }
 
 export function hasRowsChanged(table: Tabulator | null, newData: Row[]): boolean {
-	if (!table) {
-		return true;
-	}
+	if (!table) return true;
 
-	const currentData = table.getData();
-	if (currentData.length !== newData.length) {
-		return true;
-	}
+	const current = table.getData();
+	if (current.length !== newData.length) return true;
 
-	for (let i = 0; i < currentData.length; i++) {
-		const currentRow = cleanChildren({ ...currentData[i] });
-		const newRow = cleanChildren({ ...newData[i] });
-
-		if (JSON.stringify(currentRow) !== JSON.stringify(newRow)) {
+	for (let i = 0; i < current.length; i++) {
+		if (!deepEqual(cleanChildren(current[i]), cleanChildren(newData[i]))) {
 			return true;
 		}
 	}
 
 	return false;
+}
+
+export const restoreTreeState = (expandMap: Map<number, boolean>, rows: RowComponent[]) => {
+	for (const row of rows) {
+		const id = row.getData().id;
+
+		const expanded = expandMap.get(id);
+		if (expanded !== undefined) {
+			expanded ? row.treeExpand() : row.treeCollapse();
+		}
+
+		const children = row.getTreeChildren();
+		if (children.length) {
+			restoreTreeState(expandMap, children);
+		}
+	}
+};
+
+export function normalizePrefs(prefs: TablePreferences | null): TablePreferences {
+	return {
+		columnWidths: prefs?.columnWidths ?? {},
+		collapsedRows: prefs?.collapsedRows ?? {}
+	};
 }

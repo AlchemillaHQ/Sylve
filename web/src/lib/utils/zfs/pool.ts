@@ -2,10 +2,18 @@ import type { APIResponse, PieChartData, SeriesDataWithBaseline } from '$lib/typ
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Disk } from '$lib/types/disk/disk';
 import type { Dataset } from '$lib/types/zfs/dataset';
-import type { Zpool } from '$lib/types/zfs/pool';
+import type {
+	ScanSentenceResult,
+	ScanStatsRaw,
+	Zpool,
+	ZpoolStatusPool,
+	ZpoolVdev
+} from '$lib/types/zfs/pool';
 import humanFormat from 'human-format';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon, sizeFormatter } from '../table';
+import { countKeys } from '../obj';
+import { epochToLocal } from '../time';
 
 export const raidTypeArr = [
 	{
@@ -34,6 +42,33 @@ export const raidTypeArr = [
 		available: false
 	}
 ];
+
+function getPoolRedundancy(pool: Zpool): 'Stripe' | 'Mirror' | 'RAIDZ' | 'RAIDZ2' | 'RAIDZ3' {
+	if (!pool.vdevs) {
+		return 'Stripe';
+	}
+
+	for (const vdevKey in pool.vdevs) {
+		const vdev = pool.vdevs[vdevKey];
+		const vdevType = vdev.vdev_type.toLowerCase();
+
+		if (vdevType === 'mirror') {
+			return 'Mirror';
+		} else if (vdevType === 'raidz') {
+			if (vdev.name.startsWith('raidz1')) {
+				return 'RAIDZ';
+			} else if (vdev.name.startsWith('raidz2')) {
+				return 'RAIDZ2';
+			} else if (vdev.name.startsWith('raidz3')) {
+				return 'RAIDZ3';
+			} else {
+				return 'RAIDZ';
+			}
+		}
+	}
+
+	return 'Stripe';
+}
 
 export function generateTableData(
 	pools: Zpool[],
@@ -107,109 +142,73 @@ export function generateTableData(
 
 	for (const pool of pools) {
 		const poolRow = {
-			id: generateNumberFromString(pool.name + '-pool'),
+			id: generateNumberFromString(pool.name + pool.guid + '-pool'),
 			name: pool.name,
 			size: pool.size,
 			used: pool.allocated,
-			health: pool.health,
-			redundancy: '',
+			health: pool.state,
+			redundancy: getPoolRedundancy(pool),
 			children: [] as Row[],
 			guid: pool.guid || ''
 		};
 
-		for (const vdev of pool.vdevs) {
-			if (vdev.name.includes('mirror') || vdev.name.includes('raid') || vdev.devices.length > 1) {
-				let redundancy = 'Stripe';
-				let vdevLabel = vdev.name;
-
-				if (vdev.name.startsWith('mirror')) {
-					redundancy = 'Mirror';
-					vdevLabel = vdev.name.replace(/mirror-?(\d+)/i, 'Mirror $1');
-				} else if (vdev.name.startsWith('raidz')) {
-					redundancy = 'RAIDZ ' + vdev.name.match(/raidz-?(\d+)/i)?.[1];
-					vdevLabel = vdev.name.replace(/^raidz/i, 'RAIDZ');
+		if (pool.vdevs && countKeys(pool.vdevs) > 0) {
+			for (const vdev in pool.vdevs) {
+				/* This happens when like a drive in vdev is removed, we don't really need to show it in UI AFAICS..*/
+				if (vdev.startsWith('indirect')) {
+					continue;
 				}
 
-				const vdevRow = {
-					id: generateNumberFromString(vdev.name),
-					name: vdevLabel,
-					size: vdev.alloc + vdev.free,
-					used: vdev.alloc,
-					health: vdev.health,
-					redundancy: '-',
-					children: [] as Row[]
-				};
+				const current = pool.vdevs[vdev];
+				if (
+					current.vdev_type.toLowerCase() === 'raidz' ||
+					current.vdev_type.toLowerCase() === 'mirror'
+				) {
+					const vdevRow: Row = {
+						id: generateNumberFromString(current.name + pool.guid),
+						name: current.name,
+						size: current.size,
+						used: current.allocated,
+						health: current.state,
+						redundancy: '-',
+						children: []
+					};
 
-				for (const device of vdev.devices) {
-					if (
-						vdev.replacingDevices &&
-						vdev.replacingDevices.some(
-							(r) => r.oldDrive.name === device.name || r.newDrive.name === device.name
-						)
-					) {
-						continue;
+					for (const child in current.vdevs) {
+						const childVdev = current.vdevs[child];
+						vdevRow.children!.push({
+							id: generateNumberFromString(childVdev.name + pool.guid),
+							name: childVdev.name,
+							size: childVdev.size,
+							used: childVdev.allocated,
+							health: childVdev.state,
+							redundancy: '-',
+							children: []
+						});
 					}
 
-					vdevRow.children.push({
-						id: generateNumberFromString(device.name),
-						name: device.name,
-						size: device.size,
-						used: '-',
-						health: device.health,
+					poolRow.children!.push(vdevRow);
+				} else {
+					poolRow.children!.push({
+						id: generateNumberFromString(current.name + pool.guid),
+						name: current.name,
+						size: current.size,
+						used: current.allocated,
+						health: current.state,
 						redundancy: '-',
 						children: []
 					});
 				}
-
-				if (vdev.replacingDevices && vdev.replacingDevices.length > 0) {
-					for (const replacing of vdev.replacingDevices) {
-						vdevRow.children.push({
-							id: generateNumberFromString(replacing.oldDrive.name),
-							name: `${replacing.oldDrive.name} [OLD]`,
-							size: replacing.oldDrive.size,
-							used: '-',
-							health: `${replacing.oldDrive.health} (Being replaced)`,
-							redundancy: '-',
-							children: []
-						});
-
-						vdevRow.children.push({
-							id: generateNumberFromString(replacing.newDrive.name),
-							name: `${replacing.newDrive.name} [NEW]`,
-							size: replacing.newDrive.size,
-							used: '-',
-							health: `${replacing.newDrive.health} (Replacement)`,
-							redundancy: '-',
-							children: []
-						});
-					}
-				}
-
-				poolRow.children.push(vdevRow);
-				poolRow.redundancy = redundancy;
-			} else {
-				poolRow.children.push({
-					id: generateNumberFromString(vdev.devices[0].name),
-					name: vdev.devices[0].name,
-					size: vdev.devices[0].size,
-					used: '-',
-					health: vdev.devices[0].health,
-					redundancy: '-',
-					children: []
-				});
-				poolRow.redundancy = 'Stripe';
 			}
 		}
 
-		rows.push(poolRow);
-
-		if (pool.spares && pool.spares.length > 0) {
-			const sparesRow: Row = {
-				id: generateNumberFromString(`${pool.name}-spares`),
-				name: 'Spares',
+		if (pool.l2cache && countKeys(pool.l2cache) > 0) {
+			const l2cacheRow: Row = {
+				id: generateNumberFromString(`${pool.name}-${pool.guid}-l2cache`),
+				name: 'L2 Cache',
 				size:
-					pool.spares.reduce((acc, spare) => acc + spare.size, 0) > 0
-						? pool.spares.reduce((acc, spare) => acc + spare.size, 0)
+					Object.values(pool.l2cache).reduce((acc, cache) => acc + cache.size, 0) > 0
+						? Object.values(pool.l2cache).reduce((acc, cache) => acc + cache.size, 0)
 						: '-',
 				used: '-',
 				health: '-',
@@ -217,13 +216,74 @@ export function generateTableData(
 				children: []
 			};
 
-			for (const spare of pool.spares) {
-				sparesRow.children!.push({
-					id: generateNumberFromString(spare.name),
-					name: spare.name,
-					size: spare.size,
+			for (const cache in pool.l2cache) {
+				const current = pool.l2cache[cache];
+				l2cacheRow.children!.push({
+					id: generateNumberFromString(current.guid + pool.guid),
+					name: current.name,
+					size: current.size,
 					used: '-',
-					health: spare.health,
+					health: current.state,
+					redundancy: '-',
+					children: []
+				});
+			}
+
+			poolRow.children!.push(l2cacheRow);
+		}
+
+		if (pool.logs && countKeys(pool.logs) > 0) {
+			const logsRow: Row = {
+				id: generateNumberFromString(`${pool.name}-${pool.guid}-logs`),
+				name: 'Logs',
+				size:
+					Object.values(pool.logs).reduce((acc, log) => acc + log.size, 0) > 0
+						? Object.values(pool.logs).reduce((acc, log) => acc + log.size, 0)
+						: '-',
+				used: '-',
+				health: '-',
+				redundancy: '-',
+				children: []
+			};
+
+			for (const log in pool.logs) {
+				const current = pool.logs[log];
+				logsRow.children!.push({
+					id: generateNumberFromString(current.guid + pool.guid),
+					name: current.name,
+					size: current.size,
+					used: '-',
+					health: current.state,
+					redundancy: '-',
+					children: []
+				});
+			}
+
+			poolRow.children!.push(logsRow);
+		}
+
+		if (pool.spares && countKeys(pool.spares) > 0) {
+			const sparesRow: Row = {
+				id: generateNumberFromString(`${pool.name}-${pool.guid}-spares`),
+				name: 'Spares',
+				size:
+					Object.values(pool.spares).reduce((acc, spare) => acc + spare.size, 0) > 0
+						? Object.values(pool.spares).reduce((acc, spare) => acc + spare.size, 0)
+						: '-',
+				used: '-',
+				health: '-',
+				redundancy: '-',
+				children: []
+			};
+
+			for (const spare in pool.spares) {
+				const current = pool.spares[spare];
+				sparesRow.children!.push({
+					id: generateNumberFromString(current.guid + pool.guid),
+					name: current.name,
+					size: current.size,
+					used: '-',
+					health: current.state,
 					redundancy: '-',
 					children: []
 				});
@@ -232,44 +292,19 @@ export function generateTableData(
 			poolRow.children!.push(sparesRow);
 		}
 
-		if (pool.cache && pool.cache.length > 0) {
-			const cacheRow: Row = {
-				id: generateNumberFromString(`${pool.name}-cache`),
-				name: 'Cache',
-				size:
-					pool.cache.reduce((acc, cache) => acc + cache.size, 0) > 0
-						? pool.cache.reduce((acc, cache) => acc + cache.size, 0)
-						: '-',
-				used: '-',
-				health: '-',
-				redundancy: '-',
-				children: []
-			};
-
-			for (const cache of pool.cache) {
-				cacheRow.children!.push({
-					id: generateNumberFromString(cache.name),
-					name: cache.name,
-					size: cache.size,
-					used: '-',
-					health: cache.health,
-					redundancy: '-',
-					children: []
-				});
-			}
-
-			poolRow.children!.push(cacheRow);
-		}
+		rows.push(poolRow);
 	}
 
-	// spares should be at the end of the pool
 	rows = rows.map((row) => {
 		if (row.children) {
-			const sparesIndex = row.children.findIndex((child) => child.name === 'Spares');
-			if (sparesIndex !== -1) {
-				const sparesRow = row.children.splice(sparesIndex, 1)[0];
-				row.children.push(sparesRow);
-			}
+			const specialVdevs = ['Logs', 'L2 Cache', 'Spares'];
+			specialVdevs.forEach((vdevName) => {
+				const vdevIndex = row.children!.findIndex((child) => child.name === vdevName);
+				if (vdevIndex !== -1) {
+					const vdevRow = row.children!.splice(vdevIndex, 1)[0];
+					row.children!.push(vdevRow);
+				}
+			});
 		}
 		return row;
 	});
@@ -284,29 +319,46 @@ export function isPool(pools: Zpool[], name: string): boolean {
 	return pools.some((pool) => pool.name === name);
 }
 
+function vdevContains(vdev: ZpoolVdev, name: string): boolean {
+	if (vdev.name === name) return true;
+
+	return Object.values(vdev.vdevs ?? {}).some((child) => vdevContains(child, name));
+}
+
 export function isReplaceableDevice(pools: Zpool[], name: string): boolean {
 	for (const pool of pools) {
-		if (pool.vdevs.some((vdev) => vdev.name === name)) {
-			return false; // False if we're striped
+		if (Object.values(pool.vdevs).some((vdev) => vdev.name === name)) {
+			return false;
+		}
+
+		if (
+			Object.values(pool.vdevs).some((vdev) =>
+				Object.values(vdev.vdevs ?? {}).some((child) => vdevContains(child, name))
+			)
+		) {
+			return true;
+		}
+
+		if (Object.values(pool.logs ?? {}).some((v) => v.name === name)) {
+			return true;
 		}
 	}
 
-	return pools.some((pool) => {
-		for (const vdev of pool.vdevs) {
-			if (vdev.devices.some((device) => device.name === name)) {
-				return true;
-			}
-		}
-		return false;
-	});
+	return false;
 }
 
 export function getPoolByDevice(pools: Zpool[], name: string): string {
 	for (const pool of pools) {
-		for (const vdev of pool.vdevs) {
-			if (vdev.devices.some((device) => device.name === name)) {
-				return pool.name;
-			}
+		if (Object.values(pool.vdevs).some((vdev) => vdevContains(vdev, name))) {
+			return pool.name;
+		}
+
+		if (
+			Object.values(pool.spares ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.logs ?? {}).some((v) => v.name === name) ||
+			Object.values(pool.l2cache ?? {}).some((v) => v.name === name)
+		) {
+			return pool.name;
 		}
 	}
 
@@ -456,4 +508,146 @@ export function formatValue(
 		default:
 			return value;
 	}
+}
+
+type ScanHandler = (stats: ZpoolStatusPool['scan_stats']) => ScanSentenceResult;
+
+const parseStatsTime = (v: string | number | undefined) => {
+	if (!v) return 0;
+	if (typeof v === 'number') return v;
+	if (/^\d+$/.test(v)) return Number(v); // epoch string
+	const t = Date.parse(v);
+	return isNaN(t) ? 0 : Math.floor(t / 1000);
+};
+
+export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSentenceResult {
+	if (!stats || !stats.function) return { title: '', text: null, progressPercent: null };
+
+	const num = (v: string | number | undefined): number => (v === undefined ? 0 : Number(v) || 0);
+	const start = parseStatsTime(stats.start_time);
+	const end = parseStatsTime(stats.end_time);
+	const examined = num(stats.examined);
+	const toExamine = num(stats.to_examine);
+	const issued = num(stats.issued);
+	const errors = num(stats.errors);
+	const skipped = num(stats.skipped);
+	const processed = num(stats.processed);
+	const bytesPerScan = num(stats.bytes_per_scan);
+	const issuedBytesPerScan = num(stats.issued_bytes_per_scan);
+
+	const now = Date.now() / 1000;
+	const elapsed =
+		stats.state === 'SCANNING' ? Math.max(1, now - start) : Math.max(1, (end || now) - start);
+	const issuedPerSec = issued > 0 ? issued / elapsed : 0;
+
+	const formatRemaining = (secs: number) => {
+		if (secs <= 0) return '0s remaining';
+		if (secs >= 3600)
+			return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m remaining`;
+		if (secs >= 60) return `${Math.floor(secs / 60)}m ${Math.floor(secs % 60)}s remaining`;
+		return `${Math.floor(secs)}s remaining`;
+	};
+
+	const h = (v: number) => humanFormat(v);
+	const scanRateStr = issuedPerSec > 0 ? `${humanFormat(Math.floor(issuedPerSec))}/s` : null;
+
+	const handlers: Record<string, ScanHandler> = {
+		scrub: (s) => {
+			const progress =
+				toExamine > 0 ? Math.min(100, Math.round((examined / toExamine) * 100)) : null;
+
+			if (s?.state === 'SCANNING') {
+				let timeRemaining = '';
+				if (issuedPerSec > 0 && toExamine > issued) {
+					timeRemaining = formatRemaining((toExamine - issued) / issuedPerSec);
+				}
+
+				let text = `Scrub in progress since ${epochToLocal(start)}: ${h(examined)} / ${h(toExamine)} scanned`;
+				if (scanRateStr) text += `, ${h(issued)} / ${h(toExamine)} issued at ${scanRateStr}`;
+				text += `, ${h(errors)} repaired`;
+				if (progress !== null) text += `, ${progress}% done`;
+				if (timeRemaining) text += `, ${timeRemaining}`;
+
+				return { title: 'Pool Scrub', text, progressPercent: progress };
+			}
+
+			// finished / paused / canceled: show final summary (use end_time if available)
+			const durationSec = end > start ? end - start : Math.max(0, Date.now() / 1000 - start);
+			const durationText = (() => {
+				if (durationSec >= 3600)
+					return `${Math.floor(durationSec / 3600)}h ${Math.floor((durationSec % 3600) / 60)}m`;
+				if (durationSec >= 60)
+					return `${Math.floor(durationSec / 60)}m ${Math.floor(durationSec % 60)}s`;
+				return `${Math.floor(durationSec)}s`;
+			})();
+
+			const text = `Scrub finished (${epochToLocal(end || start)}). ${h(examined)} / ${h(toExamine)} scanned, ${h(errors)} repaired, took ${durationText}`;
+			return { title: 'Pool Scrub', text, progressPercent: progress ?? 100 };
+		},
+		resilver: (s) => {
+			const progress =
+				toExamine > 0 ? Math.min(100, Math.round((processed / toExamine) * 100)) : null;
+
+			// ---------- SCANNING ----------
+			if (s?.state === 'SCANNING') {
+				const processedPerSec = processed > 0 ? processed / elapsed : 0;
+				let timeRemaining = '';
+
+				if (processedPerSec > 0 && toExamine > processed) {
+					timeRemaining = formatRemaining((toExamine - processed) / processedPerSec);
+				}
+
+				let text =
+					`Resilver in progress since ${epochToLocal(start)}: ` +
+					`${h(processed)} / ${h(toExamine)} resilvered`;
+
+				if (processedPerSec > 0) {
+					text += ` at ${h(Math.floor(processedPerSec))}/s`;
+				}
+
+				if (skipped > 0) text += `, ${h(skipped)} skipped`;
+				if (errors > 0) text += `, ${h(errors)} errors`;
+				if (progress !== null) text += `, ${progress}% done`;
+				if (timeRemaining) text += `, ${timeRemaining}`;
+
+				return { title: 'Pool Resilver', text, progressPercent: progress };
+			}
+
+			// ---------- FINISHED ----------
+			const durationSec = Math.max(0, end - start);
+			const durationText =
+				durationSec >= 3600
+					? `${Math.floor(durationSec / 3600)}h ${Math.floor((durationSec % 3600) / 60)}m`
+					: durationSec >= 60
+						? `${Math.floor(durationSec / 60)}m ${Math.floor(durationSec % 60)}s`
+						: `${Math.floor(durationSec)}s`;
+
+			const text =
+				`Resilver finished (${epochToLocal(end)}). ` +
+				`${h(processed)} / ${h(toExamine)} resilvered` +
+				(skipped ? `, ${h(skipped)} skipped` : '') +
+				`, took ${durationText}`;
+
+			return {
+				title: 'Pool Resilver',
+				text,
+				progressPercent: 100
+			};
+		}
+
+		// placeholder for future handlers:
+		// resilver: s => { ... },
+		// trim: s => { ... },
+	};
+
+	const fn = String(stats.function || '').toLowerCase();
+	for (const key of Object.keys(handlers)) {
+		if (fn.includes(key)) return handlers[key](stats);
+	}
+
+	return {
+		title: stats.function,
+		text: stats.state ? `${stats.function} ${stats.state.toLowerCase()}` : stats.function,
+		progressPercent: null
+	};
 }

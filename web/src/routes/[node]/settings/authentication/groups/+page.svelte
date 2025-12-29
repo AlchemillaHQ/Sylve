@@ -13,8 +13,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -25,37 +24,28 @@
 
 	let { data }: { data: Data } = $props();
 
-	const results = useQueries([
-		{
-			queryKey: ['users'],
-			queryFn: async () => {
-				return (await listUsers()) as User[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.users,
-			onSuccess: (data: User[]) => {
-				updateCache('users', data);
-			}
+	const users = resource(
+		() => 'users',
+		async (key, prevKey, { signal }) => {
+			const res = await listUsers();
+			updateCache(key, res);
+			return res;
 		},
-		{
-			queryKey: ['groups'],
-			queryFn: async () => {
-				return (await listGroups()) as Group[];
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.groups,
-			onSuccess: (data: Group[]) => {
-				updateCache('groups', data);
-			}
-		}
-	]);
+		{ initialValue: data.users }
+	);
 
-	let users = $derived($results[0].data as User[]);
-	let groups = $derived($results[1].data as Group[]);
+	let groups = resource(
+		() => 'groups',
+		async (key, prevKey, { signal }) => {
+			const res = await listGroups();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.groups }
+	);
+
 	let usersOptions = $derived.by(() => {
-		return users.map((user) => ({
+		return users.current.map((user) => ({
 			label: user.username,
 			value: user.username
 		}));
@@ -86,13 +76,25 @@
 	};
 
 	let properties = $state(options);
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				groups.refetch();
+				users.refetch();
+				reload = false;
+			}
+		}
+	);
 
 	async function onCreate() {
 		let error = '';
 
 		if (!properties.create.name.trim() || properties.create.users.value.length === 0) {
 			error = 'Name and users are required';
-		} else if (groups.some((g) => g.name === properties.create.name.trim())) {
+		} else if (groups.current.some((g) => g.name === properties.create.name.trim())) {
 			error = 'Group name already exists';
 		}
 
@@ -107,6 +109,8 @@
 			properties.create.name.trim(),
 			properties.create.users.value
 		);
+
+		reload = true;
 
 		if (response.error) {
 			handleAPIError(response);
@@ -137,6 +141,8 @@
 			properties.addUsers.combobox.value,
 			activeRow ? activeRow.name : ''
 		);
+
+		reload = true;
 
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -198,7 +204,7 @@
 		};
 	}
 
-	let tableData = $derived(generateTableData(users, groups));
+	let tableData = $derived(generateTableData(users.current, groups.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -217,7 +223,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -237,7 +244,8 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="material-symbols:group-add" class="mr-1 h-4 w-4" />
+					<span class="icon-[material-symbols--group-add] mr-1 h-4 w-4"></span>
+
 					<span>Add Users</span>
 				</div>
 			</Button>
@@ -254,7 +262,7 @@
 			class="h-6"
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -275,14 +283,15 @@
 {#if properties.create.open}
 	<Dialog.Root bind:open={properties.create.open}>
 		<Dialog.Content
-			class="sm:max-w-[425px]"
+			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
 			<Dialog.Header>
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon="mdi:account-group" class="h-5 w-5" />
+						<span class="icon-[mdi--account-group] h-5 w-5"></span>
+
 						<span>New Group</span>
 					</div>
 					<div class="flex items-center gap-0.5">
@@ -295,7 +304,7 @@
 								properties = options;
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -308,7 +317,8 @@
 								properties.create.open = false;
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>
@@ -346,14 +356,15 @@
 {#if properties.addUsers.open}
 	<Dialog.Root bind:open={properties.addUsers.open}>
 		<Dialog.Content
-			class="sm:max-w-[425px]"
+			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
 		>
 			<Dialog.Header>
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon="material-symbols:group-add" class="h-5 w-5" />
+						<span class="icon-[material-symbols--group-add] h-5 w-5"></span>
+
 						<span>Add Users</span>
 					</div>
 					<div class="flex items-center gap-0.5">
@@ -366,7 +377,7 @@
 								properties = options;
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -379,7 +390,8 @@
 								properties.addUsers.open = false;
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>
@@ -413,6 +425,7 @@
 	actions={{
 		onConfirm: async () => {
 			const result = await deleteGroup(properties.delete.id);
+			reload = true;
 			if (result.status === 'error') {
 				handleAPIError(result);
 				toast.error('Failed to delete group', {

@@ -2,5 +2,6 @@
 	"autoconnect": true,
 	"view_only": false,
 	"quality": "4",
-	"compression": "4"
+	"compression": "4",
+	"resize": "scale"
 }

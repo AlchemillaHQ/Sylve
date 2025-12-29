@@ -29,7 +29,7 @@ func (s *Service) WolTasks() {
 					var status string
 
 					if strings.Contains(err.Error(), "vm_wol_disabled") {
-						logger.L.Debug().Msgf("Wake-on-LAN is disabled for VM: %s (%d)", vm.Name, vm.VmID)
+						logger.L.Debug().Msgf("Wake-on-LAN is disabled for VM: %s (%d)", vm.Name, vm.RID)
 						status = "wol_disabled"
 					} else if strings.Contains(err.Error(), "record not found") {
 						logger.L.Debug().Msgf("Failed to find VM associated with MAC: %s", wol.Mac)

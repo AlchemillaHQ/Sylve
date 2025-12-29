@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/h2non/filetype"
@@ -42,21 +43,35 @@ func DeleteFile(path string) error {
 	return nil
 }
 
+func DeleteFileIfExists(path string) error {
+	err := os.Remove(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed_to_open_source: %w", err)
+		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(dst)
+	destinationFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("failed_to_create_dest: %w", err)
+		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer destFile.Close()
+	defer destinationFile.Close()
 
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return fmt.Errorf("failed_to_copy_file: %w", err)
+	_, err = io.Copy(destinationFile, sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	err = destinationFile.Sync()
+	if err != nil {
+		return fmt.Errorf("failed to sync destination file: %w", err)
 	}
 
 	return nil
@@ -107,6 +122,24 @@ func CreateOrTruncateFile(path string, size int64) error {
 
 	if err := f.Truncate(size); err != nil {
 		return fmt.Errorf("failed to truncate file: %w", err)
+	}
+
+	return nil
+}
+
+func CreateOrResizeFile(path string, size int64) error {
+	if !IsAbsPath(path) {
+		return fmt.Errorf("path must be absolute: %s", path)
+	}
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open raw file: %w", err)
+	}
+	defer f.Close()
+
+	if err := f.Truncate(size); err != nil {
+		return fmt.Errorf("failed_to_resize_raw_file: %w", err)
 	}
 
 	return nil
@@ -416,4 +449,190 @@ func DecompressOne(mime, src, out string) error {
 func HasCmd(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+func IsFileInDirectory(filePath, dirPath string) (bool, error) {
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_absolute_file_path: %w", err)
+	}
+
+	absDirPath, err := filepath.Abs(dirPath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_absolute_dir_path: %w", err)
+	}
+
+	relPath, err := filepath.Rel(absDirPath, absFilePath)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_get_relative_path: %w", err)
+	}
+
+	if relPath == "." || relPath == ".." || relPath[:3] == ".."+string(os.PathSeparator) {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+const (
+	defaultBlockSize  = "1M"
+	defaultQueueDepth = 8
+)
+
+func FlashImageToDiskCtx(ctx context.Context, source, dest string) error {
+	if source == "" || dest == "" {
+		return fmt.Errorf("source and dest must be non-empty")
+	}
+	if source == dest {
+		return fmt.Errorf("source and dest must not be the same path")
+	}
+
+	srcInfo, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("stat source %q: %w", source, err)
+	}
+	if srcInfo.IsDir() {
+		return fmt.Errorf("source %q is a directory, expected a file", source)
+	}
+
+	if _, err := exec.LookPath("camdd"); err != nil {
+		return fmt.Errorf("camdd not found in PATH: %w", err)
+	}
+
+	inArg := fmt.Sprintf("file=%s,bs=%s", source, defaultBlockSize)
+
+	var outArg string
+	if strings.HasPrefix(dest, "/dev/") {
+		if _, err := os.Stat(dest); err != nil {
+			return fmt.Errorf("destination device %q not found or not accessible: %w", dest, err)
+		}
+
+		if strings.HasPrefix(dest, "/dev/pass") {
+			// True pass(4) device
+			outArg = fmt.Sprintf("pass=%s,bs=%s,depth=%d", dest, defaultBlockSize, defaultQueueDepth)
+		} else {
+			// zvols, /dev/da0, /dev/nvd0, /dev/md*, etc.
+			outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
+		}
+	} else {
+		if info, err := os.Stat(dest); err == nil && info.IsDir() {
+			return fmt.Errorf("destination %q is a directory, expected a file", dest)
+		}
+		if !filepath.IsAbs(dest) {
+			if abs, err := filepath.Abs(dest); err == nil {
+				dest = abs
+			}
+		}
+		outArg = fmt.Sprintf("file=%s,bs=%s", dest, defaultBlockSize)
+	}
+
+	args := []string{"-i", inArg, "-o", outArg}
+
+	cmd := exec.CommandContext(ctx, "camdd", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("camdd canceled or timed out: %w", ctx.Err())
+		}
+		return fmt.Errorf("camdd failed: %w", err)
+	}
+
+	return nil
+}
+
+func FlashImageToDisk(source, dest string) error {
+	return FlashImageToDiskCtx(context.Background(), source, dest)
+}
+
+func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+
+	defer os.Remove(tmp)
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func AtomicAppendFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+
+	var existing []byte
+	if b, err := os.ReadFile(path); err == nil {
+		existing = b
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+
+	defer os.Remove(tmp)
+
+	if _, err := f.Write(existing); err != nil {
+		f.Close()
+		return err
+	}
+
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		if _, err := f.Write([]byte("\n")); err != nil {
+			f.Close()
+			return err
+		}
+	}
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Chmod(tmp, perm); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+
+	return nil
 }

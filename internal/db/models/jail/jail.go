@@ -21,7 +21,10 @@ func (Network) TableName() string {
 }
 
 type Network struct {
-	ID uint `gorm:"primaryKey" json:"id"`
+	ID     uint `gorm:"primaryKey" json:"id"`
+	JailID uint `json:"jid" gorm:"column:jid;index"`
+
+	Name string `json:"name" gorm:"not null;uniqueIndex:idx_jail_network_name"`
 
 	SwitchID   uint   `json:"switchId" gorm:"not null;index"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
@@ -42,10 +45,10 @@ type Network struct {
 	IPv6GwID  *uint                 `json:"ipv6GwId" gorm:"column:ipv6_gw_id"`
 	IPv6GwObj *networkModels.Object `json:"ipv6GwObj" gorm:"foreignKey:IPv6GwID"`
 
+	DefaultGateway bool `json:"defaultGateway" gorm:"default:false"`
+
 	DHCP  bool `json:"dhcp" gorm:"default:false"`
 	SLAAC bool `json:"slaac" gorm:"default:false"`
-
-	CTID uint `json:"ctId" gorm:"index"`
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
@@ -70,33 +73,91 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 
 type JailStats struct {
 	ID          uint    `json:"id" gorm:"primaryKey"`
-	CTID        int     `json:"ctId"`
+	JailID      uint    `json:"jid" gorm:"column:jid;index"`
 	CPUUsage    float64 `json:"cpuUsage"`
 	MemoryUsage float64 `json:"memoryUsage"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 }
 
+func (j JailStats) GetID() uint {
+	return j.ID
+}
+
+func (j JailStats) GetCreatedAt() time.Time {
+	return j.CreatedAt
+}
+
+type Storage struct {
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	JailID uint   `json:"jid" gorm:"column:jid;index"`
+	Pool   string `json:"pool" gorm:"not null"`
+	GUID   string `json:"guid" gorm:"uniqueIndex;not null"`
+	Name   string `json:"name"`
+	IsBase bool   `json:"isBase" gorm:"default:false"`
+}
+
+func (Storage) TableName() string {
+	return "jail_storages"
+}
+
+type JailHookPhase string
+
+const (
+	JailHookPhasePreStart  JailHookPhase = "prestart"
+	JailHookPhaseStart     JailHookPhase = "start"
+	JailHookPhasePostStart JailHookPhase = "poststart"
+	JailHookPhasePreStop   JailHookPhase = "prestop"
+	JailHookPhaseStop      JailHookPhase = "stop"
+	JailHookPhasePostStop  JailHookPhase = "poststop"
+)
+
+type JailHooks struct {
+	JailID  uint          `json:"jid" gorm:"column:jid;index"`
+	Phase   JailHookPhase `json:"phase" gorm:"column:phase;index"`
+	Enabled bool          `json:"enabled"`
+	Script  string        `json:"script"`
+}
+
+type JailType string
+
+const (
+	JailTypeFreeBSD JailType = "freebsd"
+	JailTypeLinux   JailType = "linux"
+)
+
 type Jail struct {
-	ID          uint   `json:"id" gorm:"primaryKey"`
-	CTID        int    `json:"ctId" gorm:"unique;not null;uniqueIndex"`
-	Name        string `json:"name" gorm:"not null;unique"`
-	Description string `json:"description"`
-	Dataset     string `json:"dataset"`
-	Base        string `json:"base"`
-	StartAtBoot *bool  `json:"startAtBoot" gorm:"default:false"`
-	StartOrder  int    `json:"startOrder"`
+	ID          uint     `json:"id" gorm:"primaryKey"`
+	CTID        uint     `json:"ctId" gorm:"unique;not null;uniqueIndex"`
+	Name        string   `json:"name" gorm:"not null;unique"`
+	Hostname    string   `json:"hostname"`
+	Description string   `json:"description"`
+	Type        JailType `json:"type"`
+
+	StartAtBoot *bool `json:"startAtBoot" gorm:"default:false"`
+	StartOrder  int   `json:"startOrder"`
 
 	InheritIPv4 bool `json:"inheritIPv4"`
 	InheritIPv6 bool `json:"inheritIPv6"`
 
-	ResourceLimits *bool `json:"resourceLimits" gorm:"default:true"`
-	Cores          int   `json:"cores"`
-	CPUSet         []int `json:"cpuSet" gorm:"serializer:json;type:json"`
-	Memory         int   `json:"memory"`
+	ResourceLimits *bool  `json:"resourceLimits" gorm:"default:true"`
+	Cores          int    `json:"cores"`
+	CPUSet         []int  `json:"cpuSet" gorm:"serializer:json;type:json"`
+	Memory         int    `json:"memory"`
+	DevFSRuleset   string `json:"devfsRuleset"`
 
-	Networks []Network   `json:"networks" gorm:"foreignKey:CTID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Stats    []JailStats `json:"-" gorm:"foreignKey:CTID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Fstab             string      `json:"fstab"`
+	CleanEnvironment  bool        `json:"cleanEnvironment"`
+	AdditionalOptions string      `json:"additionalOptions"`
+	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
+	JailHooks         []JailHooks `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+
+	Storages []Storage   `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Networks []Network   `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Stats    []JailStats `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+
+	MetadataMeta string `json:"metadataMeta"`
+	MetadataEnv  string `json:"metadataEnv"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

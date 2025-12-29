@@ -17,18 +17,13 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/pkg/crypto"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
-
-type DownloadFileRequest struct {
-	URL       string  `json:"url" binding:"required"`
-	Filename  *string `json:"filename"`
-	IgnoreTLS *bool   `json:"ignoreTLS"`
-}
 
 type BulkDeleteDownloadRequest struct {
 	IDs []int `json:"ids" binding:"required"`
@@ -70,6 +65,37 @@ func ListDownloads(utilitiesService *utilities.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary List Downloads Grouped by Type
+// @Description List downloads grouped by their type
+// @Tags Utilities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]utilitiesServiceInterfaces.UTypeGroupedDownload] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /utilities/downloads/utype [get]
+func ListDownloadsByUType(utilitiesService *utilities.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		groupedDownloads, err := utilitiesService.ListDownloadsByUType()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_downloads_by_utype",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]utilitiesServiceInterfaces.UTypeGroupedDownload]{
+			Status:  "success",
+			Message: "downloads_grouped_by_utype_listed",
+			Error:   "",
+			Data:    groupedDownloads,
+		})
+	}
+}
+
 // @Summary Download File
 // @Description Download a file from a Magnet or HTTP(s) URL
 // @Tags Utilities
@@ -83,7 +109,7 @@ func ListDownloads(utilitiesService *utilities.Service) gin.HandlerFunc {
 // @Router /utilities/downloads [post]
 func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var request DownloadFileRequest
+		var request utilitiesServiceInterfaces.DownloadFileRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -94,21 +120,7 @@ func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 			return
 		}
 
-		var fileName string
-		if request.Filename != nil && *request.Filename != "" {
-			fileName = *request.Filename
-		} else {
-			fileName = ""
-		}
-
-		var insecureOkay bool
-		if request.IgnoreTLS != nil && *request.IgnoreTLS {
-			insecureOkay = true
-		} else {
-			insecureOkay = false
-		}
-
-		if err := utilitiesService.DownloadFile(request.URL, fileName, insecureOkay); err != nil {
+		if err := utilitiesService.DownloadFile(request); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_download_file",

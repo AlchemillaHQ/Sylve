@@ -10,7 +10,7 @@
 
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Disk, Partition, SmartAttribute, SmartCtl, SmartNVME } from '$lib/types/disk/disk';
-import type { Zpool } from '$lib/types/zfs/pool';
+import type { Zpool, ZpoolVdev } from '$lib/types/zfs/pool';
 import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from './numbers';
@@ -123,10 +123,6 @@ export function isPartitionInDisk(disks: Disk[], partition: Partition): Disk | n
 export function zpoolUseableDisks(disks: Disk[], pools: Zpool[]): Disk[] {
 	const useable: Disk[] = [];
 	for (const disk of disks) {
-		if (disk.device === 'da0' || disk.device === 'cd0') {
-			continue;
-		}
-
 		if (disk.usage === 'Partitions') {
 			continue;
 		}
@@ -136,38 +132,50 @@ export function zpoolUseableDisks(disks: Disk[], pools: Zpool[]): Disk[] {
 		}
 	}
 
+	console.log('Useable disks:', useable);
+
 	return useable;
 }
 
-export function zpoolUseablePartitions(disks: Disk[], pools: Zpool[]): Partition[] {
-	const useablePartitions: Partition[] = [];
-	const usedPartitionNames = new Set<string>();
-	for (const pool of pools) {
-		for (const vdev of pool.vdevs) {
-			for (const device of vdev.devices) {
-				if (device.name.startsWith('/dev/')) {
-					usedPartitionNames.add(device.name.split('/').pop()!);
-				}
-			}
+function collectUsedDeviceNames(
+	vdevs?: Record<string, ZpoolVdev> | null,
+	out = new Set<string>()
+): Set<string> {
+	if (!vdevs) return out;
+
+	for (const vdev of Object.values(vdevs)) {
+		if (vdev.path?.startsWith('/dev/')) {
+			out.add(vdev.path.split('/').pop()!);
 		}
+
+		if (vdev.vdevs) {
+			collectUsedDeviceNames(vdev.vdevs, out);
+		}
+	}
+
+	return out;
+}
+
+export function zpoolUseablePartitions(disks: Disk[], pools: Zpool[]): Partition[] {
+	const usable: Partition[] = [];
+	const usedPartitionNames = new Set<string>();
+
+	for (const pool of pools) {
+		collectUsedDeviceNames(pool.vdevs, usedPartitionNames);
 	}
 
 	for (const disk of disks) {
-		if (disk.usage === 'Partitions') {
-			const hasEFI = disk.partitions.some((partition) => partition.usage === 'EFI');
-			if (hasEFI) {
-				continue;
-			}
+		if (disk.usage !== 'Partitions') continue;
+		if (disk.partitions.some((p) => p.usage === 'EFI')) continue;
 
-			for (const partition of disk.partitions) {
-				if (!usedPartitionNames.has(partition.name)) {
-					useablePartitions.push(partition);
-				}
+		for (const partition of disk.partitions) {
+			if (!usedPartitionNames.has(partition.name)) {
+				usable.push(partition);
 			}
 		}
 	}
 
-	return useablePartitions;
+	return usable;
 }
 
 export function getDiskSize(disk: Disk): string {

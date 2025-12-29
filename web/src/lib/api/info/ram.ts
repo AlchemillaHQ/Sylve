@@ -5,28 +5,25 @@ import {
 	type RAMInfoHistorical
 } from '$lib/types/info/ram';
 import { apiRequest } from '$lib/utils/http';
-import type { QueryFunctionContext } from '@sveltestack/svelte-query';
 
+export async function getRAMInfo(queryType: 'current'): Promise<RAMInfo>;
+export async function getRAMInfo(queryType: 'historical'): Promise<RAMInfoHistorical>;
 export async function getRAMInfo(
-	queryObj?: QueryFunctionContext
+	queryType?: 'current' | 'historical'
 ): Promise<RAMInfo | RAMInfoHistorical> {
-	if (queryObj) {
-		if (queryObj.queryKey.includes('ramInfoHistorical')) {
-			return await apiRequest('/info/ram/historical', RAMInfoHistoricalSchema, 'GET');
-		}
+	if (queryType === 'historical') {
+		return await apiRequest('/info/ram/historical', RAMInfoHistoricalSchema, 'GET');
 	}
-
 	return await apiRequest('/info/ram', RAMInfoSchema, 'GET');
 }
 
+export async function getSwapInfo(queryType: 'current'): Promise<RAMInfo>;
+export async function getSwapInfo(queryType: 'historical'): Promise<RAMInfoHistorical>;
 export async function getSwapInfo(
-	queryObj?: QueryFunctionContext
+	queryType?: 'current' | 'historical'
 ): Promise<RAMInfo | RAMInfoHistorical> {
-	if (queryObj) {
-		if (queryObj.queryKey.includes('swapInfoHistorical')) {
-			return await apiRequest('/info/swap/historical', RAMInfoHistoricalSchema, 'GET');
-		}
+	if (queryType === 'historical') {
+		return await apiRequest('/info/swap/historical', RAMInfoHistoricalSchema, 'GET');
 	}
-
 	return await apiRequest('/info/swap', RAMInfoSchema, 'GET');
 }

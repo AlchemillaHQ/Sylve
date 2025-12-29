@@ -10,7 +10,6 @@
 	import Replace from '$lib/components/custom/ZFS/pools/Replace.svelte';
 	import Status from '$lib/components/custom/ZFS/pools/Status.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Disk } from '$lib/types/disk/disk';
 	import type { Zpool } from '$lib/types/zfs/pool';
@@ -23,61 +22,85 @@
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
-	import Icon from '@iconify/svelte';
-	import { useQueries } from '@sveltestack/svelte-query';
 	import { toast } from 'svelte-sonner';
+	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
+	import { storage } from '$lib';
+	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
 
 	interface Data {
 		disks: Disk[];
 		pools: Zpool[];
 	}
 
+	let visible = new IsDocumentVisible();
+	let reload = $state(false);
+
 	let { data }: { data: Data } = $props();
 
-	const results = useQueries([
-		{
-			queryKey: ['diskList'],
-			queryFn: async () => {
-				return await listDisks();
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.disks,
-			onSuccess: (data: Disk[]) => {
-				updateCache('disks', data);
-			}
+	const pools = resource(
+		() => 'pool-list',
+		async () => {
+			const pools = await getPools(false);
+			updateCache('pool-list', pools);
+			return pools;
 		},
 		{
-			queryKey: ['poolList'],
-			queryFn: async () => {
-				let pools = await getPools();
+			initialValue: data.pools
+		}
+	);
 
-				if (pools.length === 0) {
-					return data.pools;
-				}
+	const disks = resource(
+		() => 'disk-list',
+		async () => {
+			const disks = await listDisks();
+			updateCache('disk-list', disks);
+			return disks;
+		},
+		{
+			initialValue: data.disks
+		}
+	);
 
-				return pools;
-			},
-			refetchInterval: 1000,
-			keepPreviousData: true,
-			initialData: data.pools,
-			onSuccess: (data: Zpool[]) => {
-				updateCache('pools', data);
+	useInterval(2000, {
+		callback: async () => {
+			if (visible.current && !storage.idle) {
+				pools.refetch();
 			}
 		}
-	]);
+	});
 
-	let disks = $derived($results[0].data as Disk[]);
-	let pools = $derived($results[1].data as Zpool[]);
+	useInterval(5000, {
+		callback: async () => {
+			if (visible.current && !storage.idle) {
+				disks.refetch();
+			}
+		}
+	});
 
-	let tableData = $derived(generateTableData(pools, disks));
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
-	let activePool: Zpool | null = $derived(
-		activeRow && isPool(pools, activeRow.name)
-			? pools.find((p) => p.guid === activeRow.guid) || null
-			: null
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				pools.refetch();
+				disks.refetch();
+				reload = false;
+			}
+		}
 	);
+
+	let tableData = $derived(generateTableData(pools.current, disks.current));
+	let activeRows = $state<Row[] | null>(null);
+	let activeRow: Row | null = $derived(
+		activeRows && Array.isArray(activeRows) && activeRows.length > 0 ? (activeRows[0] as Row) : null
+	);
+
+	let activePool: Zpool | null = $derived.by(() => {
+		if (activeRow && isPool(pools.current, activeRow.name)) {
+			return pools.current.find((p) => p.pool_guid === activeRow.guid) || null;
+		} else {
+			return null;
+		}
+	});
 
 	let replacing = $derived.by(() => {
 		if (tableData.rows.length > 0) {
@@ -100,9 +123,11 @@
 		}
 	});
 
-	let usable = $derived({
-		disks: zpoolUseableDisks(disks, pools),
-		partitions: zpoolUseablePartitions(disks, pools)
+	let usable = $derived.by(() => {
+		return {
+			disks: zpoolUseableDisks(disks.current, pools.current),
+			partitions: zpoolUseablePartitions(disks.current, pools.current)
+		};
 	});
 
 	let query = $state('');
@@ -128,50 +153,11 @@
 			}
 		}
 	});
-
-	export function parsePoolActionError(error: APIResponse): string {
-		if (error.message && error.message === 'pool_create_failed') {
-			if (error.error) {
-				if (error.error.includes('mirror contains devices of different sizes')) {
-					return 'Pool contains a mirror with devices of different sizes';
-				} else if (error.error.includes('raidz contains devices of different sizes')) {
-					return 'Pool contains a RAIDZ vdev with devices of different sizes';
-				}
-			}
-		}
-
-		if (error.message && error.message === 'pool_delete_failed') {
-			if (error.error) {
-				if (error.error.includes('pool or dataset is busy')) {
-					return 'Pool is busy';
-				}
-
-				if (
-					error.error.startsWith('dataset ') &&
-					error.error.endsWith('is in use and cannot be deleted')
-				) {
-					return 'Pool has a dataset that is in use by a VM or Jail';
-				}
-			}
-		}
-
-		if (error.message && error.message === 'pool_edit_failed') {
-			if (error.error) {
-				if (error.error.startsWith('spare_device') && error.error.includes('is too small')) {
-					return 'Spare device is too small';
-				}
-			}
-
-			return 'Pool edit failed';
-		}
-
-		return '';
-	}
 </script>
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
-		{#if isPool(pools, activeRow.name)}
+		{#if isPool(pools.current, activeRow.name)}
 			{#if type === 'pool-status'}
 				<Button
 					onclick={() => {
@@ -182,14 +168,15 @@
 					class="h-6.5"
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+
 						<span>Status</span>
 					</div>
 				</Button>
 			{/if}
 
 			{#if type === 'pool-scrub'}
-				{#if isPool(pools, activeRow.name)}
+				{#if isPool(pools.current, activeRow.name)}
 					<Button
 						onclick={async () => {
 							const response = await scrubPool(activeRow?.guid);
@@ -210,7 +197,8 @@
 						title={scrubbing ? 'A scrub is already in progress' : ''}
 					>
 						<div class="flex items-center">
-							<Icon icon="cil:scrubber" class="mr-1 h-4 w-4" />
+							<span class="icon-[cil--scrubber] mr-1 h-4 w-4"></span>
+
 							<span>Scrub</span>
 						</div>
 					</Button>
@@ -231,7 +219,8 @@
 						: ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:pencil" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
 						<span>Edit</span>
 					</div>
 				</Button>
@@ -249,7 +238,7 @@
 					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 						<span>Delete</span>
 					</div>
 				</Button>
@@ -257,25 +246,26 @@
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools, activeRow.name)}
+			{#if isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
 				<Button
 					onclick={() => {
-						let pool = getPoolByDevice(pools, activeRow.name);
-
+						let pool = getPoolByDevice(pools.current, activeRow.name);
 						modals.replace.open = true;
 						modals.replace.data = {
-							pool: pool ? pools.find((p) => p.name === pool) || null : null,
+							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
 							old: activeRow.name as string,
 							latest: ''
 						};
 					}}
+					variant="outline"
 					size="sm"
-					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black disabled:!pointer-events-auto disabled:hover:bg-neutral-600 dark:text-white"
+					class="h-6.5"
 					disabled={replacing}
 					title={replacing ? 'Replace already in progress' : ''}
 				>
 					<div class="flex items-center">
-						<Icon icon="mdi:swap-horizontal" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+
 						<span>Replace Device</span>
 					</div>
 				</Button>
@@ -295,7 +285,8 @@
 			title={replacing ? 'Please wait for the current replace operation to finish' : ''}
 		>
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+
 				<span>New</span>
 			</div>
 		</Button>
@@ -316,7 +307,9 @@
 	/>
 </div>
 
-<Status bind:open={modals.status.open} pool={activePool} />
+{#if activePool}
+	<Status bind:open={modals.status.open} pool={activePool} />
+{/if}
 
 <!-- Delete -->
 <AlertDialog
@@ -330,6 +323,7 @@
 			modals.delete.open = false;
 			let pool = $state.snapshot(activePool);
 			let response = await deletePool(pool?.guid as string);
+			reload = true;
 			handleAPIResponse(response, {
 				success: `Pool ${pool?.name} deleted`,
 				error: parsePoolActionError(response)
@@ -352,8 +346,16 @@
 	/>
 {/if}
 
-<Create bind:open={modals.create.open} {usable} {disks} {pools} {parsePoolActionError} />
+{#if activePool && modals.edit.open}
+	<Edit bind:open={modals.edit.open} pool={activePool} {usable} bind:reload />
+{/if}
 
-{#if activePool}
-	<Edit bind:open={modals.edit.open} pool={activePool} {usable} {parsePoolActionError} />
+{#if modals.create.open}
+	<Create
+		bind:open={modals.create.open}
+		{usable}
+		disks={disks.current}
+		pools={pools.current}
+		bind:reload
+	/>
 {/if}

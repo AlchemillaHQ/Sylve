@@ -13,6 +13,10 @@ import {
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
+	return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
+}
+
 export async function getVMs(): Promise<VM[]> {
 	return await apiRequest('/vm', z.array(VMSchema), 'GET');
 }
@@ -25,10 +29,11 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
 	return await apiRequest('/vm', APIResponseSchema, 'POST', {
 		name: data.name,
 		node: data.node,
-		vmId: parseInt(data.id.toString(), 10),
+		description: data.description,
+		rid: parseInt(data.id.toString(), 10),
 		iso: data.storage.iso,
+		storagePool: data.storage.pool,
 		storageType: data.storage.type,
-		storageDataset: data.storage.guid,
 		storageSize: data.storage.size,
 		storageEmulationType: data.storage.emulation,
 		switchName: data.network.switch,
@@ -37,82 +42,108 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
 		cpuSockets: parseInt(data.hardware.sockets.toString(), 10),
 		cpuCores: parseInt(data.hardware.cores.toString(), 10),
 		cpuThreads: parseInt(data.hardware.threads.toString(), 10),
-		ram: parseInt(data.hardware.memory.toString(), 10),
 		cpuPinning: data.hardware.pinnedCPUs,
+		ram: parseInt(data.hardware.memory.toString(), 10),
+		pciDevices: data.hardware.passthroughIds,
+		tpmEmulation: data.advanced.tpmEmulation,
 		serial: data.advanced.serial,
 		vncPort: data.advanced.vncPort,
 		vncPassword: data.advanced.vncPassword,
 		vncWait: data.advanced.vncWait,
 		vncResolution: data.advanced.vncResolution,
 		startAtBoot: data.advanced.startAtBoot,
-		tpmEmulation: data.advanced.tpmEmulation,
 		bootOrder: parseInt(data.advanced.bootOrder.toString(), 10),
-		pciDevices: data.hardware.passthroughIds,
-		description: data.description,
-		timeOffset: data.advanced.timeOffset
+		timeOffset: data.advanced.timeOffset,
+		cloudInit: data.advanced.cloudInit.enabled,
+		cloudInitData: data.advanced.cloudInit.data,
+		cloudInitMetadata: data.advanced.cloudInit.metadata,
+		ignoreUMSR: data.advanced.ignoreUmsrs
 	});
 }
 
 export async function deleteVM(
-	id: number,
+	rid: number,
 	deleteMacs: boolean,
 	deleteRawDisks: boolean,
 	deleteVolumes: boolean
 ): Promise<APIResponse> {
 	return await apiRequest(
-		`/vm/${id}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}`,
+		`/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}`,
 		APIResponseSchema,
 		'DELETE'
 	);
 }
 
-export async function getVMDomain(id: number | string): Promise<VMDomain> {
-	return await apiRequest(`/vm/domain/${id}`, VMDomainSchema, 'GET');
+export async function getVMDomain(rid: number | string): Promise<VMDomain> {
+	return await apiRequest(`/vm/domain/${rid}`, VMDomainSchema, 'GET');
 }
 
-export async function actionVm(id: number | string, action: string): Promise<APIResponse> {
-	return await apiRequest(`/vm/${action}/${id}`, APIResponseSchema, 'POST');
+export async function actionVm(rid: number | string, action: string): Promise<APIResponse> {
+	return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST');
 }
 
-export async function getStats(vmId: number, limit: number): Promise<VMStat[]> {
-	return await apiRequest(`/vm/stats/${vmId}/${limit}`, z.array(VMStatSchema), 'GET');
+export async function getStats(rid: number, step: string): Promise<VMStat[]> {
+	return await apiRequest(`/vm/stats/${rid}/${step}`, z.array(VMStatSchema), 'GET');
 }
 
-export async function updateDescription(id: number, description: string): Promise<APIResponse> {
+export async function updateDescription(rid: number, description: string): Promise<APIResponse> {
 	return await apiRequest(`/vm/description`, APIResponseSchema, 'PUT', {
-		id,
+		rid,
 		description
 	});
 }
 
-export async function modifyWoL(vmid: number, enabled: boolean): Promise<APIResponse> {
-	return await apiRequest(`/vm/options/wol/${vmid}`, APIResponseSchema, 'PUT', {
+export async function modifyWoL(rid: number, enabled: boolean): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/wol/${rid}`, APIResponseSchema, 'PUT', {
 		enabled
 	});
 }
 
+export async function modifyIgnoreUMSR(rid: number, ignore: boolean): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/ignore-umsrs/${rid}`, APIResponseSchema, 'PUT', {
+		ignoreUMSRs: ignore
+	});
+}
+
 export async function modifyBootOrder(
-	vmid: number,
+	rid: number,
 	startAtBoot: boolean,
 	bootOrder: number
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/options/boot-order/${vmid}`, APIResponseSchema, 'PUT', {
+	return await apiRequest(`/vm/options/boot-order/${rid}`, APIResponseSchema, 'PUT', {
 		startAtBoot,
 		bootOrder
 	});
 }
 
 export async function modifyClockOffset(
-	vmid: number,
+	rid: number,
 	timeOffset: 'localtime' | 'utc'
 ): Promise<APIResponse> {
-	return await apiRequest(`/vm/options/clock/${vmid}`, APIResponseSchema, 'PUT', {
+	return await apiRequest(`/vm/options/clock/${rid}`, APIResponseSchema, 'PUT', {
 		timeOffset
 	});
 }
 
-export async function modifySerialConsole(vmid: number, enabled: boolean): Promise<APIResponse> {
-	return await apiRequest(`/vm/options/serial-console/${vmid}`, APIResponseSchema, 'PUT', {
+export async function modifySerialConsole(rid: number, enabled: boolean): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/serial-console/${rid}`, APIResponseSchema, 'PUT', {
 		enabled
+	});
+}
+
+export async function modifyShutdownWaitTime(rid: number, waitTime: number): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/shutdown-wait-time/${rid}`, APIResponseSchema, 'PUT', {
+		waitTime
+	});
+}
+
+export async function modifyCloudInitData(
+	rid: number,
+	data: string,
+	metadata: string
+): Promise<APIResponse> {
+	return await apiRequest(`/vm/options/cloud-init/${rid}`, APIResponseSchema, 'PUT', {
+		data,
+		metadata
 	});
 }

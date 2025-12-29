@@ -1,50 +1,47 @@
 <script lang="ts">
 	import { getAuditRecords } from '$lib/api/info/audit';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { AuditRecord } from '$lib/types/info/audit';
-	import type { VM } from '$lib/types/vm/vm';
+	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { useQueries, useQueryClient } from '@sveltestack/svelte-query';
+	import { resource, watch } from 'runed';
+	import { fade } from 'svelte/transition';
 
-	const queryClient = useQueryClient();
-	const results = useQueries([
-		{
-			queryKey: 'audit-record',
-			queryFn: async () => {
-				return await getAuditRecords();
-			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: [] as AuditRecord[]
-		},
-		{
-			queryKey: 'vms-list',
-			queryFn: async () => {
-				return await getVMs();
-			},
-			refetchInterval: false,
-			keepPreviousData: true,
-			initialData: [] as VM[]
+	const auditRecords = resource(
+		() => 'audit-record',
+		async (key, prevKey, { signal }) => {
+			const results = await getAuditRecords();
+			updateCache(key, results);
+			return results;
 		}
-	]);
+	);
 
-	$effect(() => {
-		if (reload.auditLog) {
-			queryClient.refetchQueries('audit-record');
-			reload.auditLog = false;
+	const simpleVmList = resource(
+		() => 'simple-vm-list',
+		async (key, prevKey, { signal }) => {
+			const results = await getSimpleVMs();
+			updateCache(key, results);
+			return results;
 		}
-	});
+	);
 
-	let data = $derived($results[0].data as AuditRecord[]);
-	let vms = $derived($results[1].data as VM[]);
+	watch(
+		() => reload.auditLog,
+		(value) => {
+			if (value) {
+				auditRecords.refetch().then(() => {
+					reload.auditLog = false;
+				});
+			}
+		}
+	);
 
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
-		'/api/network/switch': 'Switch',
+		'/api/network/switch': 'Standard Switch',
 		'/api/vnc': 'VNC',
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
 		'/api/disk/wipe': 'Disk - Wipe',
@@ -64,15 +61,27 @@
 		'/api/vm/stop': 'VM - Stop',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
-		'/api/utilities/download': 'Downloader'
+		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
+		'/api/utilities/download': 'Downloader',
+		'/api/vm/storage/detach': 'VM Storage - Detach',
+		'/api/vm/storage/attach': 'VM Storage - Attach',
+		'/api/vm': 'VM',
+		'/api/network/manual-switch': 'Manual Switch',
+		'/api/zfs/pools': 'ZFS Pool',
+		'/api/disk/create-partitions': 'Disk - Create Partitions',
+		'/api/jail/network/inheritance': 'Jail - Network Inherit',
+		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
+		'/api/jail/network': 'Jail Network',
+		'/api/jail': 'Jail'
 	});
 
 	let records = $derived.by(() => {
-		if (!data) return [];
+		if (!auditRecords.current) return [];
 
-		return data.map((record) => {
-			const path = record.action?.path || '';
-			const method = record.action?.method || '';
+		return auditRecords.current.map((record) => {
+			const recordCopy = $state.snapshot(record);
+			const path = recordCopy.action?.path || '';
+			const method = recordCopy.action?.method || '';
 
 			let resolvedAction = method;
 
@@ -87,7 +96,7 @@
 						case 'GET':
 							if (path.includes('vnc')) {
 								const port = path.split('/').pop();
-								const vm = vms.find((vm) => vm.vncPort === Number(port));
+								const vm = simpleVmList.current?.find((vm) => vm.vncPort === Number(port));
 
 								resolvedAction = `${label} - ${vm ? vm.name : 'Unknown VM'} (${port})`;
 							} else {
@@ -103,7 +112,7 @@
 							break;
 						case 'DELETE':
 							resolvedAction = `${label} - Delete`;
-							record.action.body = {
+							recordCopy.action.body = {
 								id: record.id
 							};
 							break;
@@ -120,7 +129,7 @@
 			}
 
 			return {
-				...record,
+				...recordCopy,
 				resolvedAction
 			};
 		});
@@ -144,9 +153,9 @@
 
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
-		<div class="flex h-full flex-col overflow-hidden">
-			<Table.Root class="w-full table-fixed border-collapse">
-				<Table.Header class="bg-background sticky top-0 z-[50] ">
+		<div class="flex h-full flex-col overflow-hidden" transition:fade|global={{ duration: 400 }}>
+			<Table.Root class="w-full table-auto border-collapse">
+				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row class="dark:hover:bg-background ">
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
 							>Start Time</Table.Head
@@ -169,18 +178,20 @@
 					</Table.Row>
 				</Table.Header>
 
-				<Table.Body class="flex-grow overflow-auto pb-32">
+				<Table.Body class="grow overflow-auto pb-32">
 					{#each records as record, i (i)}
 						<Table.Row>
-							<Table.Cell class="h-10 px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{record.node}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2">{`${record.user}@${record.authType}`}</Table.Cell>
-							<Table.Cell class="h-10 px-4 py-2" title={JSON.stringify(record.action.body)}
+							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.started)}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
+							<Table.Cell class="text-wrap px-4 py-2"
+								>{`${record.user}@${record.authType}`}</Table.Cell
+							>
+							<Table.Cell class="text-wrap px-4 py-2" title={JSON.stringify(record.action.body)}
 								>{record.resolvedAction}</Table.Cell
 							>
 							<Table.Cell
-								class="h-10 px-4 py-2"
+								class="text-wrap px-4 py-2"
 								title={record.action?.response != null
 									? typeof record.action.response === 'string'
 										? record.action.response

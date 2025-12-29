@@ -11,25 +11,19 @@ package infoModels
 import "time"
 
 type CPU struct {
-	ID        uint      `gorm:"primarykey" json:"id,omitempty"`
+	ID        uint      `gorm:"primarykey" json:"id"`
 	Usage     float64   `json:"usage"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime;index" json:"createdAt"`
 }
 
 type RAM struct {
-	ID        uint      `gorm:"primarykey" json:"id,omitempty"`
+	ID        uint      `gorm:"primarykey" json:"id"`
 	Usage     float64   `json:"usage"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime;index" json:"createdAt"`
 }
 
 type Swap struct {
-	ID        uint      `gorm:"primarykey" json:"id,omitempty"`
+	ID        uint      `gorm:"primarykey" json:"id"`
 	Usage     float64   `json:"usage"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
-}
-
-type IODelay struct {
-	ID        uint      `gorm:"primarykey" json:"id,omitempty"`
-	Delay     float64   `json:"delay"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime;index" json:"createdAt"`
 }
