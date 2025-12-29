@@ -59,6 +59,7 @@ Running Sylve is pretty easy, but `sylve` depends on some packages that you can 
 | samba4XX       | 4.XX         | No       | Yes      | SMB file sharing service                         |
 | swtpm          | 0.10.1       | No       | Yes      | TPM emulator for VMs                             |
 | jansson        | 2.14.1       | No       | No       | C library for JSON parsing                       |
+| qemu-tools     | 10.1.0_1     | No       | Yes      | QEMU utilities for disk image manipulation       |
 
 We also need to enable some services in order to run Sylve, you can drop these into `/etc/rc.conf` if you don't have it already:
 

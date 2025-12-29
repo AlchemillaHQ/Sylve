@@ -32,6 +32,7 @@ msgstr "कंसोल"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr "भंडारण"
 
@@ -119,12 +120,10 @@ msgstr "डिस्क्स"
 #~ msgstr "डैशबोर्ड"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Pools"
 msgstr "पूल्स"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Datasets"
 msgstr "डेटासेट्स"
 
@@ -133,12 +132,10 @@ msgid "File Systems"
 msgstr "फ़ाइल सिस्टम्स"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Volumes"
 msgstr "वॉल्यूम्स"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Snapshots"
 msgstr "स्नैपशॉट्स"
 
@@ -552,7 +549,6 @@ msgstr "नया टैब जोड़ें"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr "कोई डेटा उपलब्ध नहीं"
 
@@ -714,7 +710,6 @@ msgstr "नाम"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
 msgstr "आकार"
 
@@ -1107,6 +1102,7 @@ msgstr "क्लस्टर रीसेट के बाद लॉगिन �
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
@@ -1401,8 +1397,6 @@ msgstr "ज़ूम सक्षम करें"
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "<0/> Reset zoom"
 msgstr "<0/> ज़ूम रीसेट करें"
 
@@ -3601,6 +3595,7 @@ msgstr "संसाधन सीमाएँ संपादित करने
 #. placeholder {0}: title
 #. placeholder {0}: title
 #. placeholder {0}: activeRow.property
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -4055,43 +4050,33 @@ msgstr "उपयोगकर्ता को हटाने में वि�
 msgid "User deleted"
 msgstr "उपयोगकर्ता हटा दिया गया"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Allocated"
-msgstr "आवंटित"
+#~ msgid "Allocated"
+#~ msgstr "आवंटित"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Free"
-msgstr "मुक्त"
+#~ msgid "Free"
+#~ msgstr "मुक्त"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dedup Ratio"
-msgstr "डिडुप रेश्यो"
+#~ msgid "Dedup Ratio"
+#~ msgstr "डिडुप रेश्यो"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Stats"
-msgstr "पूल आँकड़े"
+#~ msgid "Pool Stats"
+#~ msgstr "पूल आँकड़े"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a stat type"
-msgstr "एक आँकड़ा प्रकार चुनें"
+#~ msgid "Select a stat type"
+#~ msgstr "एक आँकड़ा प्रकार चुनें"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a interval"
-msgstr "एक अंतराल चुनें"
+#~ msgid "Select a interval"
+#~ msgstr "एक अंतराल चुनें"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dataset Compression"
-msgstr "डेटासेट संपीड़न"
+#~ msgid "Dataset Compression"
+#~ msgstr "डेटासेट संपीड़न"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Select a pool"
 msgstr "एक पूल चुनें"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Usage"
-msgstr "पूल उपयोग"
+#~ msgid "Pool Usage"
+#~ msgstr "पूल उपयोग"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool contains a mirror with devices of different sizes"
@@ -4867,16 +4852,25 @@ msgstr "कोई पूल चयनित नहीं है"
 msgid "No dataset selected"
 msgstr "कोई डेटा सेट चयनित नहीं है"
 
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Failed to create snapshot"
 msgstr "स्नैपशॉट बनाने में विफल"
 
-#. placeholder {0}: pool
+#. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
 #. placeholder {0}: pool
 #. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} created"
 msgstr "स्नैपशॉट {0}@{1} बनाया गया"
 
@@ -6193,9 +6187,8 @@ msgstr ""
 msgid "Failed to delete periodic snapshot"
 msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Filesystems"
-msgstr ""
+#~ msgid "Filesystems"
+#~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
@@ -6720,4 +6713,14 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "ENV (Key=Value per line)"
+msgstr ""
+
+#: src/lib/runes/useQuery.svelte.ts
+msgid "Unexpected error occurred"
+msgstr ""
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+msgid "Snapshot {0}@{1} already exists"
 msgstr ""

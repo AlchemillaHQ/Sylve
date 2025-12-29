@@ -32,6 +32,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr ""
 
@@ -119,12 +120,10 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Pools"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Datasets"
 msgstr ""
 
@@ -133,12 +132,10 @@ msgid "File Systems"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Volumes"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Snapshots"
 msgstr ""
 
@@ -551,7 +548,6 @@ msgstr ""
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr ""
 
@@ -713,7 +709,6 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
 msgstr ""
 
@@ -1105,6 +1100,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1501,8 +1497,6 @@ msgstr ""
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "<0/> Reset zoom"
 msgstr ""
 
@@ -3605,6 +3599,7 @@ msgstr ""
 #. placeholder {0}: title
 #. placeholder {0}: title
 #. placeholder {0}: activeRow.property
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -4188,43 +4183,33 @@ msgstr ""
 msgid "Pool {0} deleted"
 msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Allocated"
-msgstr ""
+#~ msgid "Allocated"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Free"
-msgstr ""
+#~ msgid "Free"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dedup Ratio"
-msgstr ""
+#~ msgid "Dedup Ratio"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Stats"
-msgstr ""
+#~ msgid "Pool Stats"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a stat type"
-msgstr ""
+#~ msgid "Select a stat type"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a interval"
-msgstr ""
+#~ msgid "Select a interval"
+#~ msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dataset Compression"
-msgstr ""
+#~ msgid "Dataset Compression"
+#~ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Select a pool"
 msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Usage"
-msgstr ""
+#~ msgid "Pool Usage"
+#~ msgstr ""
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
@@ -4879,16 +4864,25 @@ msgstr ""
 msgid "No dataset selected"
 msgstr ""
 
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Failed to create snapshot"
 msgstr ""
 
-#. placeholder {0}: pool
+#. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
 #. placeholder {0}: pool
 #. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} created"
 msgstr ""
 
@@ -6187,9 +6181,8 @@ msgstr ""
 msgid "Failed to delete periodic snapshot"
 msgstr ""
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Filesystems"
-msgstr ""
+#~ msgid "Filesystems"
+#~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
@@ -6714,4 +6707,14 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "ENV (Key=Value per line)"
+msgstr ""
+
+#: src/lib/runes/useQuery.svelte.ts
+msgid "Unexpected error occurred"
+msgstr ""
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+msgid "Snapshot {0}@{1} already exists"
 msgstr ""

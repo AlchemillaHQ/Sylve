@@ -32,6 +32,7 @@ msgstr "Console"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr "Storage"
 
@@ -119,12 +120,10 @@ msgstr "Disks"
 #~ msgstr "Dashboard"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Pools"
 msgstr "Pools"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Datasets"
 msgstr "Datasets"
 
@@ -133,12 +132,10 @@ msgid "File Systems"
 msgstr "File Systems"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Volumes"
 msgstr "Volumes"
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Snapshots"
 msgstr "Snapshots"
 
@@ -553,7 +550,6 @@ msgstr "Add new tab"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "No data available"
 msgstr "No data available"
 
@@ -715,7 +711,6 @@ msgstr "Name"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Size"
 msgstr "Size"
 
@@ -1107,6 +1102,7 @@ msgstr "Failed to delete notes"
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1503,8 +1499,6 @@ msgstr "Enable Zoom"
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "<0/> Reset zoom"
 msgstr "<0/> Reset zoom"
 
@@ -3613,6 +3607,7 @@ msgstr "Enable resource limits to edit"
 #. placeholder {0}: title
 #. placeholder {0}: title
 #. placeholder {0}: activeRow.property
+#. placeholder {0}: activeRow.property
 #. placeholder {0}: title
 #. placeholder {0}: title
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -4200,43 +4195,33 @@ msgstr "Replace Device"
 msgid "Pool {0} deleted"
 msgstr "Pool {0} deleted"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Allocated"
-msgstr "Allocated"
+#~ msgid "Allocated"
+#~ msgstr "Allocated"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Free"
-msgstr "Free"
+#~ msgid "Free"
+#~ msgstr "Free"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dedup Ratio"
-msgstr "Dedup Ratio"
+#~ msgid "Dedup Ratio"
+#~ msgstr "Dedup Ratio"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Stats"
-msgstr "Pool Stats"
+#~ msgid "Pool Stats"
+#~ msgstr "Pool Stats"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a stat type"
-msgstr "Select a stat type"
+#~ msgid "Select a stat type"
+#~ msgstr "Select a stat type"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Select a interval"
-msgstr "Select a interval"
+#~ msgid "Select a interval"
+#~ msgstr "Select a interval"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Dataset Compression"
-msgstr "Dataset Compression"
+#~ msgid "Dataset Compression"
+#~ msgstr "Dataset Compression"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Select a pool"
 msgstr "Select a pool"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Pool Usage"
-msgstr "Pool Usage"
+#~ msgid "Pool Usage"
+#~ msgstr "Pool Usage"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
@@ -4891,16 +4876,25 @@ msgstr "No pool selected"
 msgid "No dataset selected"
 msgstr "No dataset selected"
 
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Failed to create snapshot"
 msgstr "Failed to create snapshot"
 
-#. placeholder {0}: pool
+#. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
 #. placeholder {0}: pool
 #. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} created"
 msgstr "Snapshot {0}@{1} created"
 
@@ -6221,9 +6215,8 @@ msgstr "Error replacing device"
 msgid "Failed to delete periodic snapshot"
 msgstr "Failed to delete periodic snapshot"
 
-#: src/routes/[node]/storage/zfs/dashboard/+page.svelte
-msgid "Filesystems"
-msgstr "Filesystems"
+#~ msgid "Filesystems"
+#~ msgstr "Filesystems"
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
@@ -6761,3 +6754,13 @@ msgstr "Meta (Key=Value per line)"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "ENV (Key=Value per line)"
 msgstr "ENV (Key=Value per line)"
+
+#: src/lib/runes/useQuery.svelte.ts
+msgid "Unexpected error occurred"
+msgstr "Unexpected error occurred"
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+msgid "Snapshot {0}@{1} already exists"
+msgstr "Snapshot {0}@{1} already exists"
