@@ -9,6 +9,7 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -362,7 +363,9 @@ func IsTarLike(path string, mime string) bool {
 
 func StreamToFile(cmd []string, outPath string) error {
 	c := exec.Command(cmd[0], cmd[1:]...)
-	c.Stderr = os.Stderr
+
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
 
 	stdout, err := c.StdoutPipe()
 	if err != nil {
@@ -386,7 +389,17 @@ func StreamToFile(cmd []string, outPath string) error {
 		_ = c.Wait()
 		return err
 	}
-	return c.Wait()
+
+	err = c.Wait()
+	if err != nil {
+		out := stderr.String()
+		if strings.Contains(out, "trailing garbage ignored") {
+			return nil
+		}
+		return fmt.Errorf("decompress failed (StreamToFile): %w (%s)", err, out)
+	}
+
+	return nil
 }
 
 func SniffMIME(path string) (string, types.Type, error) {

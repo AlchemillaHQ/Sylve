@@ -543,10 +543,6 @@ func (s *Service) StartPostProcess(id *uint) error {
 
 			outName := defaultOutName(d.Path, kind.Extension)
 			outFile := filepath.Join(extractsPath, outName)
-			if err := utils.DecompressOne(mime, d.Path, outFile); err != nil {
-				logger.L.Error().Msgf("decompress failed: %v", err)
-				return s.failDownload(&d, err)
-			}
 
 			if err := utils.DecompressOne(mime, d.Path, outFile); err != nil {
 				logger.L.Error().Msgf("decompress failed: %v", err)
