@@ -17,7 +17,6 @@
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, watch } from 'runed';
-	import { untrack } from 'svelte';
 	import { storage } from '$lib/index';
 
 	interface Data {

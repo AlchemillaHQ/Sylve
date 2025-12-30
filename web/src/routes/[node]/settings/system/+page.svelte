@@ -148,15 +148,15 @@
 			open: false,
 			values: basicSettings.current.pools.join(',')
 		},
-		dhcpServer: {
+		'dhcp-server': {
 			open: false,
 			enabled: basicSettings.current.services.includes('dhcp-server')
 		},
-		wolServer: {
+		'wol-server': {
 			open: false,
 			enabled: basicSettings.current.services.includes('wol-server')
 		},
-		sambaServer: {
+		'samba-server': {
 			open: false,
 			enabled: basicSettings.current.services.includes('samba-server')
 		},
@@ -228,15 +228,15 @@
 				if (activeRow?.property === 'ZFS Pools') {
 					modals.zfsPools.open = true;
 				} else if (activeRow?.property === 'DHCP Server') {
-					modals.dhcpServer.open = true;
+					modals['dhcp-server'].open = true;
 				} else if (activeRow?.property === 'WoL Server') {
-					modals.wolServer.open = true;
+					modals['wol-server'].open = true;
 				} else if (activeRow?.property === 'Samba Server') {
-					modals.sambaServer.open = true;
+					modals['samba-server'].open = true;
 				} else if (activeRow?.property === 'Virtualization') {
-					modals.virtualization.open = true;
+					modals['virtualization'].open = true;
 				} else if (activeRow?.property === 'Jails') {
-					modals.jails.open = true;
+					modals['jails'].open = true;
 				}
 			}}
 		>
@@ -253,7 +253,7 @@
 
 {#snippet serviceToggleDialog(
 	serviceName: string,
-	serviceKey: 'dhcpServer' | 'wolServer' | 'sambaServer' | 'virtualization' | 'jails',
+	serviceKey: 'dhcp-server' | 'wol-server' | 'samba-server' | 'virtualization' | 'jails',
 	enabled: boolean
 )}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
@@ -316,8 +316,8 @@
 	options={poolOptions}
 />
 
-{@render serviceToggleDialog('DHCP Server', 'dhcpServer', modals.dhcpServer.enabled)}
-{@render serviceToggleDialog('WoL Server', 'wolServer', modals.wolServer.enabled)}
-{@render serviceToggleDialog('Samba Server', 'sambaServer', modals.sambaServer.enabled)}
-{@render serviceToggleDialog('Virtualization', 'virtualization', modals.virtualization.enabled)}
-{@render serviceToggleDialog('Jails', 'jails', modals.jails.enabled)}
+{@render serviceToggleDialog('DHCP Server', 'dhcp-server', modals['dhcp-server'].enabled)}
+{@render serviceToggleDialog('WoL Server', 'wol-server', modals['wol-server'].enabled)}
+{@render serviceToggleDialog('Samba Server', 'samba-server', modals['samba-server'].enabled)}
+{@render serviceToggleDialog('Virtualization', 'virtualization', modals['virtualization'].enabled)}
+{@render serviceToggleDialog('Jails', 'jails', modals['jails'].enabled)}

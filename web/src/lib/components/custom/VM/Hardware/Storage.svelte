@@ -17,6 +17,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { Debounced } from 'runed';
+	import { roundUpToBlock } from '$lib/utils/zfs';
 
 	interface Props {
 		open: boolean;
@@ -98,7 +99,8 @@
 			return;
 		}
 
-		if (newSize < currentSize) {
+		const EPSILON = 1024 * 8;
+		if (newSize < currentSize - EPSILON) {
 			if (lastRejectedSize === sizeStr) return;
 			lastRejectedSize = sizeStr;
 
@@ -290,7 +292,9 @@
 		}
 
 		if (selectedStorage) {
-			if (parsedSize < selectedStorage.size) {
+			// Allow a small tolerance (epsilon) to avoid floating-point rounding issues
+			const EPSILON = 1024; // 1 KB tolerance
+			if (parsedSize < selectedStorage.size - EPSILON) {
 				toast.error('New size cannot be smaller than current size', toastOptions);
 				return;
 			}
@@ -306,11 +310,16 @@
 			return;
 		}
 
+		const dataset = selectedStorage?.dataset;
+		const blockSize =
+			datasets.find((d) => d.guid === dataset?.guid)?.properties?.volblocksize || 8192;
+		const roundedSize = roundUpToBlock(parsedSize, Number(blockSize));
+
 		editProperties.loading = true;
 		const response = await storageUpdate(
 			selectedStorage ? selectedStorage.id : 0,
 			editProperties.name,
-			parsedSize,
+			roundedSize,
 			editProperties.emulation,
 			Number(editProperties.bootOrder)
 		);

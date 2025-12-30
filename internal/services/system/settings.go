@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/pkg/pkg"
@@ -60,11 +61,17 @@ func (s *Service) ToggleDHCPServer(enable bool) error {
 		}
 
 		_, err := utils.RunCommand("service", "dnsmasq", "start")
-		return err
+		if err != nil {
+			if !strings.Contains(err.Error(), "already running") {
+				return err
+			}
+		}
 	} else {
 		_, err := utils.RunCommand("service", "dnsmasq", "stop")
 		return err
 	}
+
+	return nil
 }
 
 func (s *Service) ServiceToggle(service models.AvailableService) error {
