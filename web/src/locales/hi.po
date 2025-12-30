@@ -809,11 +809,9 @@ msgid "ZFS Snapshot"
 msgstr "ZFS स्नैपशॉट"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Start"
 msgstr "VM - प्रारंभ करें"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Stop"
 msgstr "VM - रोकें"
@@ -2700,10 +2698,8 @@ msgstr "CPU थ्रेड्स"
 msgid "CPU Pinning"
 msgstr "CPU पिनिंग"
 
-#. placeholder {0}: displayPinnedCount
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "<0/> Manage ({0} pinned)"
-msgstr "<0/> प्रबंधित करें ({0} पिन किए गए)"
+#~ msgid "<0/> Manage ({0} pinned)"
+#~ msgstr "<0/> प्रबंधित करें ({0} पिन किए गए)"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -3046,6 +3042,8 @@ msgid "Wait for VNC"
 msgstr "वीएनसी का इंतजार करें"
 
 #. placeholder {0}: socketIndex
+#. placeholder {0}: socketIndex
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Socket {0}"
 msgstr "सॉकेट {0}"
@@ -3075,7 +3073,6 @@ msgid "{0} busy"
 msgstr "{0} व्यस्त"
 
 #. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
-#. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -5210,8 +5207,10 @@ msgstr ""
 msgid "TPM Emulation"
 msgstr ""
 
-#~ msgid "Manage ({0} pinned)"
-#~ msgstr ""
+#. placeholder {0}: displayPinnedCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Manage ({0} pinned)"
+msgstr ""
 
 #~ msgid "Select cores from {0} ({1} selectable):"
 #~ msgstr ""
@@ -6725,4 +6724,14 @@ msgstr ""
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 msgid "Snapshot {0}@{1} already exists"
+msgstr ""
+
+#~ msgid "Loading CPU information..."
+#~ msgstr ""
+
+#~ msgid "Loading..."
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "CPU Info Unavailable"
 msgstr ""

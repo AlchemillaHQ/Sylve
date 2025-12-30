@@ -19,6 +19,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
+	import { core } from 'zod/v4';
 
 	interface Data {
 		rid: number;
@@ -118,7 +119,13 @@
 			pinning: data.vm.cpuPinning,
 			vCPUs: data.vm.cpuSockets * data.vm.cpuCores * data.vm.cpuThreads,
 			open: false,
-			pinnedCPUs: [] as CPUPin[]
+			pinnedCPUs:
+				data.vm.cpuPinning?.map((pin) => {
+					return {
+						socket: pin.hostSocket,
+						cores: pin.hostCpu
+					};
+				}) || ([] as CPUPin[])
 		},
 		ram: {
 			value: data.vm.ram,
@@ -146,6 +153,7 @@
 			properties.cpu.cores = vm.cpuCores;
 			properties.cpu.threads = vm.cpuThreads;
 			properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
+			properties.cpu.pinning = vm.cpuPinning;
 			properties.ram.value = vm.ram;
 			properties.vnc.enabled = vm.vncEnabled;
 			properties.vnc.port = vm.vncPort;

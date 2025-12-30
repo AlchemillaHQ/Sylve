@@ -14,6 +14,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,6 +60,27 @@ func ModifyCPU(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Message: "invalid_request",
 				Data:    nil,
 				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "rid_not_provided",
+			})
+			return
+		}
+
+		if err := libvirtService.ModifyCPU(uint(rid), req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
 			})
 			return
 		}

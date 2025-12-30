@@ -808,11 +808,9 @@ msgid "ZFS Snapshot"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Start"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Stop"
 msgstr ""
@@ -2704,10 +2702,8 @@ msgstr ""
 msgid "CPU Pinning"
 msgstr ""
 
-#. placeholder {0}: displayPinnedCount
-#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-msgid "<0/> Manage ({0} pinned)"
-msgstr ""
+#~ msgid "<0/> Manage ({0} pinned)"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -2777,6 +2773,8 @@ msgid "Select installation media"
 msgstr ""
 
 #. placeholder {0}: socketIndex
+#. placeholder {0}: socketIndex
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Socket {0}"
 msgstr ""
@@ -2806,7 +2804,6 @@ msgid "{0} busy"
 msgstr ""
 
 #. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
-#. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -5207,8 +5204,10 @@ msgstr ""
 #~ msgid "हिन्दी"
 #~ msgstr ""
 
-#~ msgid "Manage ({0} pinned)"
-#~ msgstr ""
+#. placeholder {0}: displayPinnedCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Manage ({0} pinned)"
+msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
@@ -6719,4 +6718,14 @@ msgstr ""
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 msgid "Snapshot {0}@{1} already exists"
+msgstr ""
+
+#~ msgid "Loading CPU information..."
+#~ msgstr ""
+
+#~ msgid "Loading..."
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "CPU Info Unavailable"
 msgstr ""

@@ -1,4 +1,5 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
+import type { CPUPin, VM } from '$lib/types/vm/vm';
 import { apiRequest } from '$lib/utils/http';
 
 export async function modifyCPU(
@@ -6,7 +7,7 @@ export async function modifyCPU(
 	cpuSockets: number,
 	cpuCores: number,
 	cpuThreads: number,
-	cpuPinning: number[]
+	cpuPinning: CPUPin[]
 ): Promise<APIResponse> {
 	return await apiRequest(`/vm/hardware/cpu/${rid}`, APIResponseSchema, 'PUT', {
 		cpuSockets,

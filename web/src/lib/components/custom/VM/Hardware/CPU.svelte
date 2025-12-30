@@ -3,12 +3,13 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
-	import { getCache, handleAPIError } from '$lib/utils/http';
+	import { handleAPIError } from '$lib/utils/http';
 
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
+	import { resource } from 'runed';
+	import { getCPUInfo } from '$lib/api/info/cpu';
 
 	interface Props {
 		open: boolean;
@@ -17,7 +18,14 @@
 		pinnedCPUs: CPUPin[];
 	}
 
-	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
+	let cpuInfo = resource(
+		() => 'cpu-info',
+		async () => {
+			const result = await getCPUInfo('current');
+			return result;
+		}
+	);
+
 	let { open = $bindable(), vm, vms, pinnedCPUs = $bindable() }: Props = $props();
 	let options = {
 		cpu: {
@@ -52,7 +60,7 @@
 
 		let totalPinned = allPinnedIndices.length;
 
-		if (totalPinned === cpuInfo?.logicalCores) {
+		if (totalPinned === cpuInfo.current?.logicalCores) {
 			properties.cpu.pinning = properties.cpu.pinning.slice(0, -1);
 			toast.info('At least one CPU must be left unpinned', {
 				position: 'bottom-center'
@@ -67,7 +75,7 @@
 				parseInt(properties.cpu.sockets.toString(), 10),
 				parseInt(properties.cpu.cores.toString(), 10),
 				parseInt(properties.cpu.threads.toString(), 10),
-				properties.cpu.pinning.map((x) => parseInt(x.toString(), 10))
+				pinnedCPUs
 			);
 
 			if (response.error) {
@@ -158,14 +166,7 @@
 		<div class="grid grid-cols-1 md:grid-cols-2">
 			<div>
 				{#if cpuInfo}
-					<CPUSelector
-						bind:open={isPinningOpen}
-						bind:cpuInfo
-						bind:pinnedCPUs
-						{vm}
-						{vms}
-						{coreSelectionLimit}
-					/>
+					<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vm} {vms} {coreSelectionLimit} />
 				{/if}
 			</div>
 		</div>

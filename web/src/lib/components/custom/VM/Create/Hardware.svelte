@@ -1,17 +1,13 @@
 <script lang="ts">
-	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
-	import { updateCache } from '$lib/utils/http';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import humanFormat from 'human-format';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
-	import { resource } from 'runed';
 
 	interface Props {
 		sockets: number;
@@ -62,14 +58,6 @@
 	);
 
 	let selectedPptIds = $state<string[]>([]);
-	let cpuInfo = resource(
-		() => 'cpu-info-current',
-		async () => {
-			const result = await getCPUInfo('current');
-			updateCache('cpu-info-current', result);
-			return result as CPUInfo;
-		}
-	);
 
 	function toggle(id: string, on: boolean) {
 		selectedPptIds = on ? [...selectedPptIds, id] : selectedPptIds.filter((x) => x !== id);
@@ -105,15 +93,7 @@
 
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<div>
-				{#if cpuInfo.current}
-					<CPUSelector
-						bind:open={isPinningOpen}
-						cpuInfo={cpuInfo.current}
-						bind:pinnedCPUs
-						{vms}
-						{coreSelectionLimit}
-					/>
-				{/if}
+				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vms} {coreSelectionLimit} />
 			</div>
 
 			<CustomValueInput

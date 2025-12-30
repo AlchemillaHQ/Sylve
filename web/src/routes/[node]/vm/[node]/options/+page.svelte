@@ -13,8 +13,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
 
 	interface Data {
@@ -48,11 +47,9 @@
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible || reload) {
-			untrack(() => {
-				vm.refetch();
-			});
+	watch([() => storage.visible, () => reload], ([newVisible], [newReload]) => {
+		if (newVisible || newReload) {
+			vm.refetch();
 		}
 	});
 

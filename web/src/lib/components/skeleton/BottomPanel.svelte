@@ -89,8 +89,6 @@
 				path.startsWith(prefix)
 			);
 
-			console.log(matchedEntry);
-
 			if (matchedEntry) {
 				const label = matchedEntry[1];
 				if (!label.includes('-')) {
