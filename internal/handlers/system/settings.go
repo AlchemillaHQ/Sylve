@@ -97,7 +97,7 @@ func AddUsablePools(systemService *system.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param service body internal.ToggleServiceRequest true "Service Toggle Request"
+// @Param service path string true "Service name to toggle"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

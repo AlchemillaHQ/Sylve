@@ -443,6 +443,119 @@ const docTemplate = `{
                 }
             }
         },
+        "/basic/initialize": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Initialize Sylve with the provided configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Initialize Sylve",
+                "parameters": [
+                    {
+                        "description": "Initialization Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_system.InitializeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/basic/reboot": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Initiate a system reboot",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Initiate System Reboot",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/basic/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve the basic settings of Sylve",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Get Basic Settings",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_BasicSettings"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/cluster": {
             "get": {
                 "security": [
@@ -776,252 +889,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/cluster/storage": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get all storage backends configured in the cluster (S3, etc.)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Get Cluster Storages",
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_cluster_Storages"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/storage/directory": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Create a new Directory storage configuration in the cluster",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Create a Directory Storage",
-                "parameters": [
-                    {
-                        "description": "Create Directory Storage Request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers_cluster.CreateDirStorageRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/storage/directory/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Delete a Directory storage configuration from the cluster by ID",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Delete a Directory Storage",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Storage ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/storage/s3": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Create a new S3 storage configuration in the cluster",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Create an S3 Storage",
-                "parameters": [
-                    {
-                        "description": "Create S3 Storage Request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers_cluster.CreateS3StorageRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/cluster/storage/s3/{id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Delete an S3 storage configuration from the cluster by ID",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Delete an S3 Storage",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Storage ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
         "/disk/create-partitions": {
             "post": {
                 "security": [
@@ -1236,7 +1103,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hardware/cpu/:vmid": {
+        "/hardware/cpu/:rid": {
             "put": {
                 "security": [
                     {
@@ -1261,7 +1128,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers_vm.ModifyCPURequest"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.ModifyCPURequest"
                         }
                     }
                 ],
@@ -1287,7 +1154,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hardware/ppt/:vmid": {
+        "/hardware/ppt/:rid": {
             "put": {
                 "security": [
                     {
@@ -1338,7 +1205,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hardware/ram/:vmid": {
+        "/hardware/ram/:rid": {
             "put": {
                 "security": [
                     {
@@ -1389,7 +1256,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hardware/vnc/:vmid": {
+        "/hardware/vnc/:rid": {
             "put": {
                 "security": [
                     {
@@ -1414,7 +1281,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers_vm.ModifyVNCRequest"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.ModifyVNCRequest"
                         }
                     }
                 ],
@@ -2077,6 +1944,72 @@ const docTemplate = `{
                 }
             }
         },
+        "/jail/:id": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a jail by its CTID or ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Get a Jail by an Identifier",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Jail CTID or ID",
+                        "name": "identifier",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "ctid",
+                            "id"
+                        ],
+                        "type": "string",
+                        "default": "ctid",
+                        "description": "Type of identifier (ctid or id)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_jail_Jail"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/:id/logs": {
             "get": {
                 "security": [
@@ -2084,7 +2017,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve start/stop logs for a specific jail",
+                "description": "Retrieve Console log for a specific jail",
                 "consumes": [
                     "application/json"
                 ],
@@ -2102,12 +2035,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Get start logs (default: false for stop logs)",
-                        "name": "start",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2348,7 +2275,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers_jail.AddNetworkRequest"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.AddJailNetworkRequest"
                         }
                     }
                 ],
@@ -2368,14 +2295,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/jail/network/disinherit/{ctId}": {
-            "delete": {
+        "/jail/network/inheritance/:ctId": {
+            "put": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update the network settings of a jail to disinherit from the host",
+                "description": "Set network inheritance for a jail",
                 "consumes": [
                     "application/json"
                 ],
@@ -2385,58 +2312,15 @@ const docTemplate = `{
                 "tags": [
                     "Jail"
                 ],
-                "summary": "Update Jail to Disinherit Hosts Network",
+                "summary": "Set Network Inheritance",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Container ID",
-                        "name": "ctId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/jail/network/inheritance": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Update the network settings of a jail to inherit from the host",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Jail"
-                ],
-                "summary": "Update Jail to Inherit Hosts Network",
-                "parameters": [
-                    {
-                        "description": "Inherit Network Request",
+                        "description": "Set Inheritance Request",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers_jail.JailInheritNetworkRequest"
+                            "$ref": "#/definitions/internal_handlers_jail.SetInheritanceRequest"
                         }
                     }
                 ],
@@ -2625,14 +2509,63 @@ const docTemplate = `{
                 }
             }
         },
-        "/jail/stats/:ctId/:limit": {
+        "/jail/state/:id": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve statistics for a specific jail",
+                "description": "Retrieve the state of a specific jail by CTID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Get Jail State",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Jail CTID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_State"
+                        }
+                    },
+                    "404": {
+                        "description": "Jail Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/jail/stats/:ctid/:step": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve statistics for a jail by CTID and GFS step",
                 "consumes": [
                     "application/json"
                 ],
@@ -3805,7 +3738,58 @@ const docTemplate = `{
                 }
             }
         },
-        "/options/boot-order/:vmid": {
+        "/options/additional-options/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Additional Options configuration of a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify Additional Options of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify Additional Options Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyAdditionalOptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/boot-order/:rid": {
             "put": {
                 "security": [
                     {
@@ -3856,7 +3840,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/options/clock/:vmid": {
+        "/options/clock/:rid": {
             "put": {
                 "security": [
                     {
@@ -3907,7 +3891,262 @@ const docTemplate = `{
                 }
             }
         },
-        "/options/serial-console/:vmid": {
+        "/options/cloud-init/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Cloud-Init Data and Metadata of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify Cloud-Init Data of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify Cloud-Init Data Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyCloudInitDataRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/devfs-rules/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the DevFS rules configuration of a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify DevFS rules of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify DevFS Rules Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyDevFSRulesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/fstab/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Fstab configuration of a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify Fstab of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify Fstab Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyFstabRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/ignore-umsrs/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Ignore UMSRs configuration of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify Ignore UMSRs of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify Ignore UMSRs Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyIgnoreUMSRsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/metadata/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Metadata configuration of a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify Metadata of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify Metadata Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyMetadataRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/serial-console/:rid": {
             "put": {
                 "security": [
                     {
@@ -3958,7 +4197,58 @@ const docTemplate = `{
                 }
             }
         },
-        "/options/wol/:vmid": {
+        "/options/shutdown-wait-time/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Shutdown Wait Time configuration of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify Shutdown Wait Time of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify Shutdown Wait Time Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyShutdownWaitTimeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/wol/:rid": {
             "put": {
                 "security": [
                     {
@@ -4363,6 +4653,183 @@ const docTemplate = `{
                     "VM"
                 ],
                 "summary": "Detach Storage from a Virtual Machine",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/storage/update": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update properties of a virtual machine's storage volume",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Update Virtual Machine Storage",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/system/basic-settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get basic system settings information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Get Basic System Settings",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_BasicSettings"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/system/basic-settings/pools": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add usable ZFS pools to the system settings",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Add Usable ZFS Pools",
+                "parameters": [
+                    {
+                        "description": "List of ZFS Pools to add",
+                        "name": "pools",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/system/basic-settings/toggle-service/:service": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Enable or disable a specific service in the system settings",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Toggle Service",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Service name to toggle",
+                        "name": "service",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -5186,6 +5653,40 @@ const docTemplate = `{
                 }
             }
         },
+        "/utilities/downloads/utype": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List downloads grouped by their type",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "List Downloads Grouped by Type",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_utilities_UTypeGroupedDownload"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/utilities/downloads/{id}": {
             "delete": {
                 "security": [
@@ -5381,6 +5882,72 @@ const docTemplate = `{
                 }
             }
         },
+        "/vm/:id": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a virtual machine by its RID or ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Get a Virtual Machine by RID or ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Virtual Machine RID or ID",
+                        "name": "rid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "rid",
+                            "id"
+                        ],
+                        "type": "string",
+                        "default": "rid",
+                        "description": "Type of identifier (rid or id)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_vm_VM"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/vm/description": {
             "put": {
                 "security": [
@@ -5388,7 +5955,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update the description of a virtual machine by its ID",
+                "description": "Update the description of a virtual machine by its RID",
                 "consumes": [
                     "application/json"
                 ],
@@ -5426,14 +5993,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/vm/domain/{id}": {
+        "/vm/domain/:rid": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve the domain information of a virtual machine by its ID",
+                "description": "Retrieve the domain information of a virtual machine by its RID",
                 "consumes": [
                     "application/json"
                 ],
@@ -5447,8 +6014,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Virtual Machine ID",
-                        "name": "id",
+                        "description": "Virtual Machine RID",
+                        "name": "rid",
                         "in": "path",
                         "required": true
                     }
@@ -5515,7 +6082,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/vm/stats/:vmId/:limit": {
+        "/vm/stats/:rid/:step": {
             "get": {
                 "security": [
                     {
@@ -5555,14 +6122,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/vm/{action}/{id}": {
+        "/vm/{action}/:rid": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Perform a specified action (start, stop, reboot) on a virtual machine by its ID",
+                "description": "Perform a specified action (start, stop, reboot) on a virtual machine by its RID",
                 "consumes": [
                     "application/json"
                 ],
@@ -5576,8 +6143,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Virtual Machine ID",
-                        "name": "id",
+                        "description": "Virtual Machine RID",
+                        "name": "rid",
                         "in": "path",
                         "required": true
                     },
@@ -5766,6 +6333,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/zfs/datasets/bulk-delete-by-name": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Bulk delete ZFS datasets by their names",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Bulk Delete Datasets By Name",
+                "parameters": [
+                    {
+                        "description": "Bulk Delete Datasets By Name Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_zfs.BulkDeleteByNameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/zfs/datasets/filesystem": {
             "post": {
                 "security": [
@@ -5909,6 +6521,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/zfs/datasets/paginated": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all ZFS Datasets with Pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Get all ZFS Datasets with Pagination",
+                "parameters": [
+                    {
+                        "description": "Paginated Datasets Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.PaginatedDatasetsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.PaginatedDatasetsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/zfs/datasets/snapshot": {
             "post": {
                 "security": [
@@ -6018,6 +6681,55 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreatePeriodicSnapshotJobRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify retention of a periodic ZFS snapshot job",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Modify retention of a periodic ZFS snapshot job",
+                "parameters": [
+                    {
+                        "description": "Modify Periodic Snapshot Retention Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ModifyPeriodicSnapshotRetentionRequest"
                         }
                     }
                 ],
@@ -6254,7 +6966,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers_zfs.EditVolumeRequest"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.EditVolumeRequest"
                         }
                     }
                 ],
@@ -6374,74 +7086,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/zfs/pool/avg-io-delay": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get the average IO delay of all pools",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ZFS"
-                ],
-                "summary": "Get Average IO Delay",
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_AvgIODelayResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
-        "/zfs/pool/io-delay/historical": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get the historical IO delays of all pools",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ZFS"
-                ],
-                "summary": "Get Average IO Delay Historical",
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_info_IODelay"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    }
-                }
-            }
-        },
         "/zfs/pool/stats/{interval}/{limit}": {
             "get": {
                 "security": [
@@ -6549,7 +7193,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Zpool"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreateZPoolRequest"
                         }
                     }
                 ],
@@ -6634,7 +7278,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Disk usage percentage",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_PoolDisksUsageResponse"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SimpleZFSDiskUsage"
                         }
                     },
                     "500": {
@@ -6766,6 +7410,49 @@ const docTemplate = `{
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/zfs/pools/{guid}/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the status of a ZFS pool",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Get Pool Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool GUID",
+                        "name": "guid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-gzfs_ZPoolStatusPool"
                         }
                     },
                     "500": {
@@ -6921,26 +7608,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_info.CPU"
-                    }
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_info_IODelay": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_info.IODelay"
                     }
                 },
                 "error": {
@@ -7294,6 +7961,26 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_utilities_UTypeGroupedDownload": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_utilities.UTypeGroupedDownload"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_pkg_system_pciconf_PCIDevice": {
             "type": "object",
             "properties": {
@@ -7302,6 +7989,23 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_system_pciconf.PCIDevice"
                     }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_BasicSettings": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.BasicSettings"
                 },
                 "error": {
                     "type": "string"
@@ -7348,11 +8052,11 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_cluster_ClusterDetails": {
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_jail_Jail": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.ClusterDetails"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Jail"
                 },
                 "error": {
                     "type": "string"
@@ -7365,11 +8069,28 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_cluster_Storages": {
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_vm_VM": {
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.Storages"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VM"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_cluster_ClusterDetails": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.ClusterDetails"
                 },
                 "error": {
                     "type": "string"
@@ -7450,6 +8171,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_State": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.State"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_LvDomain": {
             "type": "object",
             "properties": {
@@ -7501,45 +8239,45 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_zfs_SimpleZFSDiskUsage": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SimpleZFSDiskUsage"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-gzfs_ZPoolStatusPool": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/gzfs.ZPoolStatusPool"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_network_ListSwitchResponse": {
             "type": "object",
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers_network.ListSwitchResponse"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_AvgIODelayResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_handlers_zfs.AvgIODelayResponse"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_PoolDisksUsageResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/internal_handlers_zfs.PoolDisksUsageResponse"
                 },
                 "error": {
                     "type": "string"
@@ -7611,6 +8349,49 @@ const docTemplate = `{
                 },
                 "value": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models.AvailableService": {
+            "type": "string",
+            "enum": [
+                "dhcp-server",
+                "jails",
+                "samba-server",
+                "virtualization",
+                "wol-server"
+            ],
+            "x-enum-varnames": [
+                "DHCPServer",
+                "Jails",
+                "SambaServer",
+                "Virtualization",
+                "WoLServer"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models.BasicSettings": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "initialized": {
+                    "type": "boolean"
+                },
+                "pools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "restarted": {
+                    "type": "boolean"
+                },
+                "services": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.AvailableService"
+                    }
                 }
             }
         },
@@ -7747,20 +8528,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterDirectoryConfig": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterNode": {
             "type": "object",
             "properties": {
@@ -7825,32 +8592,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterS3Config": {
-            "type": "object",
-            "properties": {
-                "accessKey": {
-                    "type": "string"
-                },
-                "bucket": {
-                    "type": "string"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "region": {
-                    "type": "string"
-                },
-                "secretKey": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal_db_models_info.AuditRecord": {
             "type": "object",
             "properties": {
@@ -7909,20 +8650,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_db_models_info.IODelay": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "delay": {
-                    "type": "number"
-                },
-                "id": {
-                    "type": "integer"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal_db_models_info.Note": {
             "type": "object",
             "properties": {
@@ -7974,8 +8701,17 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_jail.Jail": {
             "type": "object",
             "properties": {
-                "base": {
+                "additionalOptions": {
                     "type": "string"
+                },
+                "allowedOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cleanEnvironment": {
+                    "type": "boolean"
                 },
                 "cores": {
                     "type": "integer"
@@ -7992,10 +8728,16 @@ const docTemplate = `{
                 "ctId": {
                     "type": "integer"
                 },
-                "dataset": {
+                "description": {
                     "type": "string"
                 },
-                "description": {
+                "devfsRuleset": {
+                    "type": "string"
+                },
+                "fstab": {
+                    "type": "string"
+                },
+                "hostname": {
                     "type": "string"
                 },
                 "id": {
@@ -8007,8 +8749,20 @@ const docTemplate = `{
                 "inheritIPv6": {
                     "type": "boolean"
                 },
+                "jailHooks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailHooks"
+                    }
+                },
                 "memory": {
                     "type": "integer"
+                },
+                "metadataEnv": {
+                    "type": "string"
+                },
+                "metadataMeta": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -8040,7 +8794,52 @@ const docTemplate = `{
                 "stoppedAt": {
                     "type": "string"
                 },
+                "storages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Storage"
+                    }
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType"
+                },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_jail.JailHookPhase": {
+            "type": "string",
+            "enum": [
+                "prestart",
+                "start",
+                "poststart",
+                "prestop",
+                "stop",
+                "poststop"
+            ],
+            "x-enum-varnames": [
+                "JailHookPhasePreStart",
+                "JailHookPhaseStart",
+                "JailHookPhasePostStart",
+                "JailHookPhasePreStop",
+                "JailHookPhaseStop",
+                "JailHookPhasePostStop"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_jail.JailHooks": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "jid": {
+                    "type": "integer"
+                },
+                "phase": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailHookPhase"
+                },
+                "script": {
                     "type": "string"
                 }
             }
@@ -8054,10 +8853,10 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
-                "ctId": {
+                "id": {
                     "type": "integer"
                 },
-                "id": {
+                "jid": {
                     "type": "integer"
                 },
                 "memoryUsage": {
@@ -8065,11 +8864,22 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_jail.JailType": {
+            "type": "string",
+            "enum": [
+                "freebsd",
+                "linux"
+            ],
+            "x-enum-varnames": [
+                "JailTypeFreeBSD",
+                "JailTypeLinux"
+            ]
+        },
         "github_com_alchemillahq_sylve_internal_db_models_jail.Network": {
             "type": "object",
             "properties": {
-                "ctId": {
-                    "type": "integer"
+                "defaultGateway": {
+                    "type": "boolean"
                 },
                 "dhcp": {
                     "type": "boolean"
@@ -8101,11 +8911,17 @@ const docTemplate = `{
                 "ipv6Obj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "jid": {
+                    "type": "integer"
+                },
                 "macId": {
                     "type": "integer"
                 },
                 "macObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
+                },
+                "name": {
+                    "type": "string"
                 },
                 "slaac": {
                     "type": "boolean"
@@ -8114,6 +8930,29 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "switchType": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_jail.Storage": {
+            "type": "object",
+            "properties": {
+                "guid": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "isBase": {
+                    "type": "boolean"
+                },
+                "jid": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pool": {
                     "type": "string"
                 }
             }
@@ -8522,6 +9361,47 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "processing",
+                "done",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "DownloadStatusPending",
+                "DownloadStatusProcessing",
+                "DownloadStatusDone",
+                "DownloadStatusFailed"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadType": {
+            "type": "string",
+            "enum": [
+                "http",
+                "torrent",
+                "path"
+            ],
+            "x-enum-varnames": [
+                "DownloadTypeHTTP",
+                "DownloadTypeTorrent",
+                "DownloadTypePath"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType": {
+            "type": "string",
+            "enum": [
+                "base-rootfs",
+                "cloud-init",
+                "uncategoried"
+            ],
+            "x-enum-varnames": [
+                "DownloadUTypeBase",
+                "DownloadUTypeCloudInit",
+                "DownloadUTypeOther"
+            ]
+        },
         "github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadedFile": {
             "type": "object",
             "properties": {
@@ -8545,7 +9425,19 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_utilities.Downloads": {
             "type": "object",
             "properties": {
+                "automaticExtraction": {
+                    "type": "boolean"
+                },
+                "automaticRawConversion": {
+                    "type": "boolean"
+                },
                 "createdAt": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "extractedPath": {
                     "type": "string"
                 },
                 "files": {
@@ -8556,6 +9448,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "ignoreTLS": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -8569,8 +9464,14 @@ const docTemplate = `{
                 "size": {
                     "type": "integer"
                 },
+                "status": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadStatus"
+                },
                 "type": {
-                    "type": "string"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadType"
+                },
+                "uType": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -8615,11 +9516,17 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_vm.Storage": {
             "type": "object",
             "properties": {
+                "bootOrder": {
+                    "type": "integer"
+                },
                 "dataset": {
-                    "type": "string"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageDataset"
+                },
+                "datasetId": {
+                    "type": "integer"
                 },
                 "emulation": {
-                    "type": "string"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType"
                 },
                 "id": {
                     "type": "integer"
@@ -8627,27 +9534,62 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
+                "pool": {
+                    "type": "string"
+                },
+                "recordSize": {
+                    "type": "integer"
+                },
                 "size": {
                     "type": "integer"
                 },
                 "type": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageType"
+                },
+                "uuid": {
                     "type": "string"
                 },
                 "vmId": {
                     "type": "integer"
+                },
+                "volBlockSize": {
+                    "type": "integer"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.TimeOffset": {
+            "type": "string",
+            "enum": [
+                "utc",
+                "localtime"
+            ],
+            "x-enum-varnames": [
+                "TimeOffsetUTC",
+                "TimeOffsetLocal"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_vm.VM": {
             "type": "object",
             "properties": {
+                "acpi": {
+                    "type": "boolean"
+                },
+                "apic": {
+                    "type": "boolean"
+                },
+                "cloudInitData": {
+                    "type": "string"
+                },
+                "cloudInitMetaData": {
+                    "type": "string"
+                },
                 "cpuCores": {
                     "type": "integer"
                 },
                 "cpuPinning": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning"
                     }
                 },
                 "cpuSockets": {
@@ -8665,8 +9607,8 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "iso": {
-                    "type": "string"
+                "ignoreUMSR": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -8686,8 +9628,14 @@ const docTemplate = `{
                 "ram": {
                     "type": "integer"
                 },
+                "rid": {
+                    "type": "integer"
+                },
                 "serial": {
                     "type": "boolean"
+                },
+                "shutdownWaitTime": {
+                    "type": "integer"
                 },
                 "startAtBoot": {
                     "type": "boolean"
@@ -8699,7 +9647,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "state": {
-                    "type": "string"
+                    "$ref": "#/definitions/libvirt.DomainState"
                 },
                 "stoppedAt": {
                     "type": "string"
@@ -8711,16 +9659,13 @@ const docTemplate = `{
                     }
                 },
                 "timeOffset": {
-                    "type": "string"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.TimeOffset"
                 },
                 "tpmEmulation": {
                     "type": "boolean"
                 },
                 "updatedAt": {
                     "type": "string"
-                },
-                "vmId": {
-                    "type": "integer"
                 },
                 "vncEnabled": {
                     "type": "boolean"
@@ -8739,6 +9684,26 @@ const docTemplate = `{
                 },
                 "wol": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning": {
+            "type": "object",
+            "properties": {
+                "hostCpu": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "hostSocket": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "vmId": {
+                    "type": "integer"
                 }
             }
         },
@@ -8764,6 +9729,51 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageDataset": {
+            "type": "object",
+            "properties": {
+                "guid": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pool": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType": {
+            "type": "string",
+            "enum": [
+                "virtio-blk",
+                "ahci-hd",
+                "ahci-cd",
+                "nvme"
+            ],
+            "x-enum-varnames": [
+                "VirtIOStorageEmulation",
+                "AHCIHDStorageEmulation",
+                "AHCICDStorageEmulation",
+                "NVMEStorageEmulation"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageType": {
+            "type": "string",
+            "enum": [
+                "raw",
+                "zvol",
+                "image"
+            ],
+            "x-enum-varnames": [
+                "VMStorageTypeRaw",
+                "VMStorageTypeZVol",
+                "VMStorageTypeDiskImage"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_zfs.PeriodicSnapshot": {
             "type": "object",
@@ -8813,6 +9823,9 @@ const docTemplate = `{
                 "maxAgeDays": {
                     "description": "e.g., 30 (delete older than 30 days)",
                     "type": "integer"
+                },
+                "pool": {
+                    "type": "string"
                 },
                 "prefix": {
                     "type": "string"
@@ -8885,23 +9898,6 @@ const docTemplate = `{
                 },
                 "suffrage": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.Storages": {
-            "type": "object",
-            "properties": {
-                "directories": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterDirectoryConfig"
-                    }
-                },
-                "s3": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ClusterS3Config"
-                    }
                 }
             }
         },
@@ -9031,6 +10027,9 @@ const docTemplate = `{
                 "physicalCores": {
                     "type": "integer"
                 },
+                "sockets": {
+                    "type": "integer"
+                },
                 "threadsPerCore": {
                     "type": "integer"
                 },
@@ -9081,15 +10080,72 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.AddJailNetworkRequest": {
+            "type": "object",
+            "required": [
+                "ctId",
+                "name",
+                "switchName"
+            ],
+            "properties": {
+                "ctId": {
+                    "type": "integer"
+                },
+                "defaultGateway": {
+                    "type": "boolean"
+                },
+                "dhcp": {
+                    "type": "boolean"
+                },
+                "ip4": {
+                    "type": "integer"
+                },
+                "ip4gw": {
+                    "type": "integer"
+                },
+                "ip6": {
+                    "type": "integer"
+                },
+                "ip6gw": {
+                    "type": "integer"
+                },
+                "macId": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slaac": {
+                    "type": "boolean"
+                },
+                "switchName": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_jail.CreateJailRequest": {
             "type": "object",
             "required": [
                 "ctId",
-                "name"
+                "name",
+                "pool",
+                "type"
             ],
             "properties": {
+                "additionalOptions": {
+                    "type": "string"
+                },
+                "allowedOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "base": {
                     "type": "string"
+                },
+                "cleanEnvironment": {
+                    "type": "boolean"
                 },
                 "cores": {
                     "type": "integer"
@@ -9097,14 +10153,23 @@ const docTemplate = `{
                 "ctId": {
                     "type": "integer"
                 },
-                "dataset": {
+                "description": {
                     "type": "string"
                 },
-                "description": {
+                "devfsRuleset": {
                     "type": "string"
                 },
                 "dhcp": {
                     "type": "boolean"
+                },
+                "fstab": {
+                    "type": "string"
+                },
+                "hooks": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.Hooks"
+                },
+                "hostname": {
+                    "type": "string"
                 },
                 "inheritIPv4": {
                     "type": "boolean"
@@ -9130,7 +10195,16 @@ const docTemplate = `{
                 "memory": {
                     "type": "integer"
                 },
+                "metadataEnv": {
+                    "type": "string"
+                },
+                "metadataMeta": {
+                    "type": "string"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "pool": {
                     "type": "string"
                 },
                 "resourceLimits": {
@@ -9147,6 +10221,43 @@ const docTemplate = `{
                 },
                 "switchName": {
                     "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "script": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.Hooks": {
+            "type": "object",
+            "properties": {
+                "poststart": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                },
+                "poststop": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                },
+                "prestart": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                },
+                "prestop": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                },
+                "start": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
+                },
+                "stop": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase"
                 }
             }
         },
@@ -9184,30 +10295,61 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CPUPinning": {
+            "type": "object",
+            "required": [
+                "cores",
+                "socket"
+            ],
+            "properties": {
+                "cores": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "socket": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CreateVMRequest": {
             "type": "object",
             "required": [
                 "cpuCores",
-                "cpuPinning",
                 "cpuSockets",
                 "cpuThreads",
                 "name",
                 "ram",
-                "startAtBoot",
-                "storageType",
+                "rid",
                 "timeOffset",
-                "tpmEmulation",
-                "vmId",
                 "vncPort"
             ],
             "properties": {
+                "acpi": {
+                    "type": "boolean"
+                },
+                "apic": {
+                    "type": "boolean"
+                },
+                "cloudInit": {
+                    "type": "boolean"
+                },
+                "cloudInitData": {
+                    "type": "string"
+                },
+                "cloudInitMetaData": {
+                    "type": "string"
+                },
                 "cpuCores": {
                     "type": "integer"
                 },
                 "cpuPinning": {
                     "type": "array",
                     "items": {
-                        "type": "integer"
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CPUPinning"
                     }
                 },
                 "cpuSockets": {
@@ -9218,6 +10360,9 @@ const docTemplate = `{
                 },
                 "description": {
                     "type": "string"
+                },
+                "ignoreUMSR": {
+                    "type": "boolean"
                 },
                 "iso": {
                     "type": "string"
@@ -9237,6 +10382,9 @@ const docTemplate = `{
                 "ram": {
                     "type": "integer"
                 },
+                "rid": {
+                    "type": "integer"
+                },
                 "serial": {
                     "type": "boolean"
                 },
@@ -9246,17 +10394,17 @@ const docTemplate = `{
                 "startOrder": {
                     "type": "integer"
                 },
-                "storageDataset": {
-                    "type": "string"
-                },
                 "storageEmulationType": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType"
+                },
+                "storagePool": {
                     "type": "string"
                 },
                 "storageSize": {
                     "type": "integer"
                 },
                 "storageType": {
-                    "type": "string"
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageType"
                 },
                 "switchEmulationType": {
                     "type": "string"
@@ -9265,17 +10413,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "timeOffset": {
-                    "type": "string",
-                    "enum": [
-                        "utc",
-                        "localtime"
-                    ]
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.TimeOffset"
                 },
                 "tpmEmulation": {
                     "type": "boolean"
-                },
-                "vmId": {
-                    "type": "integer"
                 },
                 "vncPassword": {
                     "type": "string"
@@ -9308,6 +10449,56 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.ModifyCPURequest": {
+            "type": "object",
+            "required": [
+                "cpuCores",
+                "cpuSockets",
+                "cpuThreads"
+            ],
+            "properties": {
+                "cpuCores": {
+                    "type": "integer"
+                },
+                "cpuPinning": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CPUPinning"
+                    }
+                },
+                "cpuSockets": {
+                    "type": "integer"
+                },
+                "cpuThreads": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.ModifyVNCRequest": {
+            "type": "object",
+            "required": [
+                "vncPassword",
+                "vncPort",
+                "vncResolution"
+            ],
+            "properties": {
+                "vncEnabled": {
+                    "type": "boolean"
+                },
+                "vncPassword": {
+                    "type": "string"
+                },
+                "vncPort": {
+                    "type": "integer"
+                },
+                "vncResolution": {
+                    "type": "string"
+                },
+                "vncWait": {
+                    "type": "boolean"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList": {
             "type": "object",
             "properties": {
@@ -9317,13 +10508,57 @@ const docTemplate = `{
                 "name": {
                     "type": "string"
                 },
-                "state": {
-                    "type": "string"
+                "rid": {
+                    "type": "integer"
                 },
-                "vmId": {
+                "state": {
+                    "$ref": "#/definitions/libvirt.DomainState"
+                },
+                "vncPort": {
                     "type": "integer"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType": {
+            "type": "string",
+            "enum": [
+                "virtio-blk",
+                "ahci-hd",
+                "ahci-cd",
+                "nvme"
+            ],
+            "x-enum-varnames": [
+                "VirtIOStorageEmulation",
+                "AHCIHDStorageEmulation",
+                "AHCICDStorageEmulation",
+                "NVMEStorageEmulation"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageType": {
+            "type": "string",
+            "enum": [
+                "raw",
+                "zvol",
+                "image",
+                "none"
+            ],
+            "x-enum-varnames": [
+                "StorageTypeRaw",
+                "StorageTypeZVOL",
+                "StorageTypeDiskImage",
+                "StorageTypeNone"
+            ]
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.TimeOffset": {
+            "type": "string",
+            "enum": [
+                "utc",
+                "localtime"
+            ],
+            "x-enum-varnames": [
+                "TimeOffsetUTC",
+                "TimeOffsetLocal"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.CreateDHCPRangeRequest": {
             "type": "object",
@@ -9562,6 +10797,41 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_system.InitializeRequest": {
+            "type": "object",
+            "required": [
+                "pools",
+                "services"
+            ],
+            "properties": {
+                "pools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "services": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.AvailableService"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_utilities.UTypeGroupedDownload": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "uType": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType"
+                },
+                "uuid": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreatePeriodicSnapshotJobRequest": {
             "type": "object",
             "required": [
@@ -9608,76 +10878,129 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Dataset": {
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreateZPoolRequest": {
             "type": "object",
+            "required": [
+                "name"
+            ],
             "properties": {
-                "aclinherit": {
-                    "type": "string"
+                "createForce": {
+                    "type": "boolean"
                 },
-                "aclmode": {
-                    "type": "string"
+                "name": {
+                    "type": "string",
+                    "maxLength": 24,
+                    "minLength": 1
                 },
-                "avail": {
-                    "type": "integer"
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
-                "checksum": {
-                    "type": "string"
+                "raidType": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.RaidType"
                 },
-                "compression": {
-                    "type": "string"
+                "spares": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
-                "dedup": {
-                    "type": "string"
-                },
+                "vdevs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Vdev"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.EditVolumeRequest": {
+            "type": "object",
+            "required": [
+                "guid",
+                "properties"
+            ],
+            "properties": {
                 "guid": {
                     "type": "string"
                 },
-                "logicalused": {
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ModifyPeriodicSnapshotRetentionRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
                     "type": "integer"
                 },
-                "mounted": {
+                "keepDaily": {
+                    "type": "integer"
+                },
+                "keepHourly": {
+                    "type": "integer"
+                },
+                "keepLast": {
+                    "type": "integer"
+                },
+                "keepMonthly": {
+                    "type": "integer"
+                },
+                "keepWeekly": {
+                    "type": "integer"
+                },
+                "keepYearly": {
+                    "type": "integer"
+                },
+                "maxAgeDays": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.PaginatedDatasetsRequest": {
+            "type": "object",
+            "required": [
+                "datasetType"
+            ],
+            "properties": {
+                "-": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SortParam"
+                    }
+                },
+                "datasetType": {
+                    "$ref": "#/definitions/gzfs.DatasetType"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "search": {
                     "type": "string"
                 },
-                "mountpoint": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "origin": {
-                    "type": "string"
-                },
-                "primarycache": {
-                    "type": "string"
-                },
-                "quota": {
+                "size": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.PaginatedDatasetsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gzfs.Dataset"
+                    }
                 },
-                "recordsize": {
-                    "type": "integer"
-                },
-                "referenced": {
-                    "type": "integer"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "used": {
-                    "type": "integer"
-                },
-                "usedbydataset": {
-                    "type": "integer"
-                },
-                "volblocksize": {
-                    "type": "integer"
-                },
-                "volmode": {
-                    "type": "string"
-                },
-                "volsize": {
-                    "type": "integer"
-                },
-                "written": {
+                "last_page": {
                     "type": "integer"
                 }
             }
@@ -9702,6 +11025,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.RaidType": {
+            "type": "string",
+            "enum": [
+                "stripe",
+                "mirror",
+                "raidz",
+                "raidz2",
+                "raidz3"
+            ],
+            "x-enum-varnames": [
+                "RaidTypeStripe",
+                "RaidTypeMirror",
+                "RaidTypeRaidZ",
+                "RaidTypeRaidZ2",
+                "RaidTypeRaidZ3"
+            ]
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ReplaceDevice": {
             "type": "object",
             "required": [
@@ -9721,6 +11061,28 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SimpleZFSDiskUsage": {
+            "type": "object",
+            "properties": {
+                "total": {
+                    "type": "number"
+                },
+                "usage": {
+                    "type": "number"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.SortParam": {
+            "type": "object",
+            "properties": {
+                "dir": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Vdev": {
             "type": "object",
             "properties": {
@@ -9732,49 +11094,6 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Zpool": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "createForce": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 24,
-                    "minLength": 1
-                },
-                "properties": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "raidType": {
-                    "type": "string",
-                    "enum": [
-                        "mirror",
-                        "raidz",
-                        "raidz2",
-                        "raidz3"
-                    ]
-                },
-                "spares": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "vdevs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Vdev"
-                    }
                 }
             }
         },
@@ -9918,6 +11237,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "hwaddr": {
+                    "type": "string"
                 },
                 "ipv4": {
                     "type": "array",
@@ -10096,255 +11418,375 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_pkg_zfs.CacheDevice": {
+        "gzfs.Dataset": {
             "type": "object",
             "properties": {
-                "health": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.RW": {
-            "type": "object",
-            "properties": {
-                "read": {
+                "available": {
                     "type": "integer"
                 },
-                "write": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.ReplacingDevice": {
-            "type": "object",
-            "properties": {
-                "health": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "newDrive": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.VdevDevice"
-                },
-                "oldDrive": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.VdevDevice"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.SpareDevice": {
-            "type": "object",
-            "properties": {
-                "health": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.Vdev": {
-            "type": "object",
-            "properties": {
-                "alloc": {
-                    "type": "integer"
-                },
-                "bandwidth": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.RW"
-                },
-                "devices": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.VdevDevice"
-                    }
-                },
-                "free": {
-                    "type": "integer"
-                },
-                "guid": {
-                    "type": "string"
-                },
-                "health": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "operations": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.RW"
-                },
-                "replacingDevices": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.ReplacingDevice"
-                    }
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.VdevDevice": {
-            "type": "object",
-            "properties": {
-                "health": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "integer"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.Zpool": {
-            "type": "object",
-            "properties": {
-                "allocated": {
-                    "type": "integer"
-                },
-                "cache": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.CacheDevice"
-                    }
-                },
-                "dedupRatio": {
+                "compressratio": {
                     "type": "number"
                 },
-                "fragmentation": {
-                    "type": "integer"
-                },
-                "free": {
-                    "type": "integer"
-                },
-                "freeing": {
-                    "type": "integer"
+                "createtxg": {
+                    "type": "string"
                 },
                 "guid": {
                     "type": "string"
                 },
-                "health": {
+                "mountpoint": {
                     "type": "string"
-                },
-                "id": {
-                    "description": "Same as GUID but for ease of use in Tabulator",
-                    "type": "string"
-                },
-                "leaked": {
-                    "type": "integer"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "pool": {
                     "type": "string"
                 },
                 "properties": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.ZpoolProperty"
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZFSProperty"
                     }
                 },
-                "readOnly": {
-                    "type": "boolean"
-                },
-                "size": {
+                "referenced": {
                     "type": "integer"
                 },
-                "spares": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.SpareDevice"
-                    }
+                "type": {
+                    "$ref": "#/definitions/gzfs.DatasetType"
                 },
-                "status": {
-                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.ZpoolStatus"
-                },
-                "vdevs": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.Vdev"
-                    }
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_pkg_zfs.ZpoolDevice": {
-            "type": "object",
-            "properties": {
-                "children": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.ZpoolDevice"
-                    }
-                },
-                "cksum": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "note": {
-                    "type": "string"
-                },
-                "read": {
-                    "type": "integer"
-                },
-                "state": {
-                    "type": "string"
-                },
-                "write": {
+                "used": {
                     "type": "integer"
                 }
             }
         },
-        "github_com_alchemillahq_sylve_pkg_zfs.ZpoolProperty": {
+        "gzfs.DatasetType": {
+            "type": "string",
+            "enum": [
+                "ALL",
+                "FILESYSTEM",
+                "VOLUME",
+                "SNAPSHOT"
+            ],
+            "x-enum-varnames": [
+                "DatasetTypeAll",
+                "DatasetTypeFilesystem",
+                "DatasetTypeVolume",
+                "DatasetTypeSnapshot"
+            ]
+        },
+        "gzfs.ZFSProperty": {
             "type": "object",
             "properties": {
-                "property": {
-                    "type": "string"
-                },
                 "source": {
-                    "type": "string"
+                    "$ref": "#/definitions/gzfs.ZFSPropertySource"
                 },
                 "value": {
                     "type": "string"
                 }
             }
         },
-        "github_com_alchemillahq_sylve_pkg_zfs.ZpoolStatus": {
+        "gzfs.ZFSPropertySource": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "gzfs.ZPool": {
+            "type": "object",
+            "properties": {
+                "allocated": {
+                    "type": "integer"
+                },
+                "dedup_ratio": {
+                    "type": "number"
+                },
+                "fragmentation": {
+                    "type": "number"
+                },
+                "free": {
+                    "type": "integer"
+                },
+                "l2cache": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolVDEV"
+                    }
+                },
+                "logs": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolVDEV"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pool_guid": {
+                    "type": "string"
+                },
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZFSProperty"
+                    }
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "spa_version": {
+                    "type": "string"
+                },
+                "spares": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolVDEV"
+                    }
+                },
+                "state": {
+                    "$ref": "#/definitions/gzfs.ZPoolState"
+                },
+                "txg": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "zpl_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "gzfs.ZPoolState": {
+            "type": "string",
+            "enum": [
+                "ONLINE",
+                "DEGRADED",
+                "FAULTED",
+                "OFFLINE",
+                "REMOVED",
+                "UNAVAIL",
+                "CORRUPT_DATA",
+                "UNKNOWN"
+            ],
+            "x-enum-varnames": [
+                "ZPoolStateOnline",
+                "ZPoolStateDegraded",
+                "ZPoolStateFaulted",
+                "ZPoolStateOffline",
+                "ZPoolStateRemoved",
+                "ZPoolStateUnavailible",
+                "ZPoolStateCorruptData",
+                "ZPoolStateUnknown"
+            ]
+        },
+        "gzfs.ZPoolStatusPool": {
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string"
                 },
-                "devices": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.ZpoolDevice"
+                "l2cache": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolStatusVDEV"
                     }
                 },
-                "errors": {
-                    "type": "string"
+                "logs": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolStatusVDEV"
+                    }
                 },
                 "name": {
                     "type": "string"
                 },
-                "scan": {
+                "pool_guid": {
                     "type": "string"
+                },
+                "scan_stats": {
+                    "$ref": "#/definitions/gzfs.ZPoolStatusScanStats"
+                },
+                "spa_version": {
+                    "type": "string"
+                },
+                "spares": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolStatusVDEV"
+                    }
                 },
                 "state": {
                     "type": "string"
                 },
                 "status": {
                     "type": "string"
+                },
+                "txg": {
+                    "type": "string"
+                },
+                "vdevs": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolStatusVDEV"
+                    }
+                },
+                "zpl_version": {
+                    "type": "string"
+                }
+            }
+        },
+        "gzfs.ZPoolStatusScanStats": {
+            "type": "object",
+            "properties": {
+                "bytes_per_scan": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "errors": {
+                    "type": "string"
+                },
+                "examined": {
+                    "type": "string"
+                },
+                "function": {
+                    "type": "string"
+                },
+                "issued": {
+                    "type": "string"
+                },
+                "issued_bytes_per_scan": {
+                    "type": "string"
+                },
+                "pass_start": {
+                    "type": "string"
+                },
+                "processed": {
+                    "type": "string"
+                },
+                "scrub_pause": {
+                    "type": "string"
+                },
+                "scrub_spent_paused": {
+                    "type": "string"
+                },
+                "skipped": {
+                    "type": "string"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "to_examine": {
+                    "type": "string"
+                }
+            }
+        },
+        "gzfs.ZPoolStatusVDEV": {
+            "type": "object",
+            "properties": {
+                "alloc_space": {
+                    "type": "string"
+                },
+                "checksum_errors": {
+                    "type": "string"
+                },
+                "class": {
+                    "type": "string"
+                },
+                "def_space": {
+                    "type": "string"
+                },
+                "guid": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "read_errors": {
+                    "type": "string"
+                },
+                "rep_dev_size": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "total_space": {
+                    "type": "string"
+                },
+                "vdev_type": {
+                    "type": "string"
+                },
+                "vdevs": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolStatusVDEV"
+                    }
+                },
+                "write_errors": {
+                    "type": "string"
+                }
+            }
+        },
+        "gzfs.ZPoolVDEV": {
+            "type": "object",
+            "properties": {
+                "allocated": {
+                    "type": "integer"
+                },
+                "class": {
+                    "type": "string"
+                },
+                "fragmentation": {
+                    "type": "number"
+                },
+                "free": {
+                    "type": "integer"
+                },
+                "guid": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "phys_path": {
+                    "type": "string"
+                },
+                "properties": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZFSProperty"
+                    }
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "vdev_type": {
+                    "type": "string"
+                },
+                "vdevs": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/gzfs.ZPoolVDEV"
+                    }
                 }
             }
         },
@@ -10438,6 +11880,9 @@ const docTemplate = `{
         "internal_handlers_auth.SuccessfulLogin": {
             "type": "object",
             "properties": {
+                "basicSettings": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.BasicSettings"
+                },
                 "clusterToken": {
                     "type": "string"
                 },
@@ -10477,22 +11922,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_cluster.CreateDirStorageRequest": {
-            "type": "object",
-            "required": [
-                "name",
-                "path"
-            ],
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "minLength": 3
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_handlers_cluster.CreateNoteRequest": {
             "type": "object",
             "required": [
@@ -10507,38 +11936,6 @@ const docTemplate = `{
                 "title": {
                     "type": "string",
                     "minLength": 3
-                }
-            }
-        },
-        "internal_handlers_cluster.CreateS3StorageRequest": {
-            "type": "object",
-            "required": [
-                "accessKey",
-                "bucket",
-                "endpoint",
-                "name",
-                "region",
-                "secretKey"
-            ],
-            "properties": {
-                "accessKey": {
-                    "type": "string"
-                },
-                "bucket": {
-                    "type": "string"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string",
-                    "minLength": 3
-                },
-                "region": {
-                    "type": "string"
-                },
-                "secretKey": {
-                    "type": "string"
                 }
             }
         },
@@ -10653,42 +12050,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_jail.AddNetworkRequest": {
-            "type": "object",
-            "required": [
-                "ctId",
-                "switchName"
-            ],
-            "properties": {
-                "ctId": {
-                    "type": "integer"
-                },
-                "dhcp": {
-                    "type": "boolean"
-                },
-                "ip4": {
-                    "type": "integer"
-                },
-                "ip4gw": {
-                    "type": "integer"
-                },
-                "ip6": {
-                    "type": "integer"
-                },
-                "ip6gw": {
-                    "type": "integer"
-                },
-                "macId": {
-                    "type": "integer"
-                },
-                "slaac": {
-                    "type": "boolean"
-                },
-                "switchName": {
-                    "type": "string"
-                }
-            }
-        },
         "internal_handlers_jail.JailEditDescRequest": {
             "type": "object",
             "required": [
@@ -10700,23 +12061,6 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
-                }
-            }
-        },
-        "internal_handlers_jail.JailInheritNetworkRequest": {
-            "type": "object",
-            "required": [
-                "ctId"
-            ],
-            "properties": {
-                "ctId": {
-                    "type": "integer"
-                },
-                "ipv4": {
-                    "type": "boolean"
-                },
-                "ipv6": {
-                    "type": "boolean"
                 }
             }
         },
@@ -10747,6 +12091,63 @@ const docTemplate = `{
                 },
                 "memory": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyAdditionalOptionsRequest": {
+            "type": "object",
+            "properties": {
+                "additionalOptions": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyBootOrderRequest": {
+            "type": "object",
+            "properties": {
+                "bootOrder": {
+                    "type": "integer"
+                },
+                "startAtBoot": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyDevFSRulesRequest": {
+            "type": "object",
+            "properties": {
+                "devFSRules": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyFstabRequest": {
+            "type": "object",
+            "properties": {
+                "fstab": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyMetadataRequest": {
+            "type": "object",
+            "properties": {
+                "env": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.SetInheritanceRequest": {
+            "type": "object",
+            "properties": {
+                "ipv4": {
+                    "type": "boolean"
+                },
+                "ipv6": {
+                    "type": "boolean"
                 }
             }
         },
@@ -11098,37 +12499,30 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_vm.ModifyCPURequest": {
-            "type": "object",
-            "required": [
-                "cpuCores",
-                "cpuPinning",
-                "cpuSockets",
-                "cpuThreads"
-            ],
-            "properties": {
-                "cpuCores": {
-                    "type": "integer"
-                },
-                "cpuPinning": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "cpuSockets": {
-                    "type": "integer"
-                },
-                "cpuThreads": {
-                    "type": "integer"
-                }
-            }
-        },
         "internal_handlers_vm.ModifyClockRequest": {
             "type": "object",
             "properties": {
                 "timeOffset": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyCloudInitDataRequest": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyIgnoreUMSRsRequest": {
+            "type": "object",
+            "properties": {
+                "ignoreUMSRs": {
+                    "type": "boolean"
                 }
             }
         },
@@ -11165,30 +12559,11 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_vm.ModifyVNCRequest": {
+        "internal_handlers_vm.ModifyShutdownWaitTimeRequest": {
             "type": "object",
-            "required": [
-                "vncEnabled",
-                "vncPassword",
-                "vncPort",
-                "vncResolution",
-                "vncWait"
-            ],
             "properties": {
-                "vncEnabled": {
-                    "type": "boolean"
-                },
-                "vncPassword": {
-                    "type": "string"
-                },
-                "vncPort": {
+                "waitTime": {
                     "type": "integer"
-                },
-                "vncResolution": {
-                    "type": "string"
-                },
-                "vncWait": {
-                    "type": "boolean"
                 }
             }
         },
@@ -11203,23 +12578,28 @@ const docTemplate = `{
         "internal_handlers_vm.VMEditDescRequest": {
             "type": "object",
             "required": [
-                "description",
-                "id"
+                "rid"
             ],
             "properties": {
                 "description": {
                     "type": "string"
                 },
-                "id": {
+                "rid": {
                     "type": "integer"
                 }
             }
         },
-        "internal_handlers_zfs.AvgIODelayResponse": {
+        "internal_handlers_zfs.BulkDeleteByNameRequest": {
             "type": "object",
+            "required": [
+                "names"
+            ],
             "properties": {
-                "delay": {
-                    "type": "number"
+                "names": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -11303,7 +12683,7 @@ const docTemplate = `{
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.Dataset"
+                        "$ref": "#/definitions/gzfs.Dataset"
                     }
                 },
                 "error": {
@@ -11335,24 +12715,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_zfs.EditVolumeRequest": {
-            "type": "object",
-            "required": [
-                "name",
-                "properties"
-            ],
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "properties": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
         "internal_handlers_zfs.FlashVolumeRequest": {
             "type": "object",
             "required": [
@@ -11365,17 +12727,6 @@ const docTemplate = `{
                 },
                 "uuid": {
                     "type": "string"
-                }
-            }
-        },
-        "internal_handlers_zfs.PoolDisksUsageResponse": {
-            "type": "object",
-            "properties": {
-                "total": {
-                    "type": "number"
-                },
-                "usage": {
-                    "type": "number"
                 }
             }
         },
@@ -11439,7 +12790,7 @@ const docTemplate = `{
                 "data": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_zfs.Zpool"
+                        "$ref": "#/definitions/gzfs.ZPool"
                     }
                 },
                 "error": {
@@ -11452,6 +12803,30 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "libvirt.DomainState": {
+            "type": "integer",
+            "format": "int32",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+            ],
+            "x-enum-varnames": [
+                "DomainNostate",
+                "DomainRunning",
+                "DomainBlocked",
+                "DomainPaused",
+                "DomainShutdown",
+                "DomainShutoff",
+                "DomainCrashed",
+                "DomainPmsuspended"
+            ]
         },
         "map_string_string": {
             "type": "object",

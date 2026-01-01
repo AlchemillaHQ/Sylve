@@ -94,7 +94,7 @@ func SetNetworkInheritance(jailService *jail.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body AddNetworkRequest true "Add Network Request"
+// @Param request body jailServiceInterfaces.AddJailNetworkRequest true "Add Network Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Router /jail/network [post]

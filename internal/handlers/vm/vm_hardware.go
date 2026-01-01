@@ -165,7 +165,7 @@ func ModifyRAM(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body ModifyVNCRequest true "Modify VNC Request"
+// @Param request body libvirtServiceInterfaces.ModifyVNCRequest true "Modify VNC Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"

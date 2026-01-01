@@ -31,6 +31,7 @@ import (
 	utilitiesHandlers "github.com/alchemillahq/sylve/internal/handlers/utilities"
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
+	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
@@ -42,8 +43,6 @@ import (
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
-
-	zfsHandlers "github.com/alchemillahq/sylve/internal/handlers/zfs"
 )
 
 // @title           Sylve API

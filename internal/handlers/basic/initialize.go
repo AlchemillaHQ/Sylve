@@ -22,7 +22,7 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body InitializeRequest true "Initialization Request"
+// @Param request body systemServiceInterfaces.InitializeRequest true "Initialization Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /basic/initialize [post]

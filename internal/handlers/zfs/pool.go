@@ -55,7 +55,7 @@ type PoolEditRequest struct {
 // @Produce json
 // @Security BearerAuth
 // @Param guid path string true "Pool GUID"
-// @Success 200 {object} internal.APIResponse[*gzfs.ZPoolStatusPool] "Success"
+// @Success 200 {object} internal.APIResponse[gzfs.ZPoolStatusPool] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/pools/{guid}/status [get]
 func GetPoolStatus(zfsService *zfs.Service) gin.HandlerFunc {
@@ -166,7 +166,7 @@ func GetDisksUsage(zfsService *zfs.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body zfsServiceInterfaces.Zpool true "Request"
+// @Param request body zfsServiceInterfaces.CreateZPoolRequest true "Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/pools [post]

@@ -6767,3 +6767,7 @@ msgstr "Snapshot {0}@{1} already exists"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Info Unavailable"
 msgstr "CPU Info Unavailable"
+
+#: src/routes/swagger/+page.svelte
+msgid "Swagger"
+msgstr "Swagger"

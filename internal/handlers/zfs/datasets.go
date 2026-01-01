@@ -430,7 +430,7 @@ func CreatePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body ModifyPeriodicSnapshotRetentionRequest true "Modify Periodic Snapshot Retention Request"
+// @Param request body zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest true "Modify Periodic Snapshot Retention Request"
 // @Success 200 {object} internal.APIResponse[any] "OK"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -683,7 +683,7 @@ func CreateVolume(zfsService *zfs.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body EditVolumeRequest true "Edit Volume Request"
+// @Param request body zfsServiceInterfaces.EditVolumeRequest true "Edit Volume Request"
 // @Success 200 {object} internal.APIResponse[any] "OK"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
@@ -810,7 +810,7 @@ func BulkDeleteDataset(zfsService *zfs.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body zfsServiceInterfaces.BulkDeleteDatasetsByNameRequest true "Bulk Delete Datasets By Name Request"
+// @Param request body BulkDeleteByNameRequest true "Bulk Delete Datasets By Name Request"
 // @Success 200 {object} internal.APIResponse[any] "OK"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /zfs/datasets/bulk-delete-by-name [post]
