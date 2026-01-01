@@ -86,10 +86,10 @@ kern.racct.enable=1
 
 ## From source
 
-Install required packages.
+Install required (and optional) packages:
 
 ```sh
-pkg install git node22 npm-node22 go tmux libvirt bhyve-firmware smartmontools tmux samba422 jansson swtpm
+pkg install git node22 npm-node22 go tmux libvirt bhyve-firmware smartmontools tmux samba422 jansson swtpm qemu-tools
 ```
 
 Clone the repo and build Sylve.
