@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 export function compareMACs(mac1: string, mac2: string, ignoreFirstByte = false) {
   const clean = (m: string) => m.toLowerCase().replace(/[^a-f0-9]/g, '');
   let [m1, m2] = [clean(mac1), clean(mac2)];
