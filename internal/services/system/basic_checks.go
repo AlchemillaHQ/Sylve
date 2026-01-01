@@ -95,19 +95,24 @@ func (s *Service) CheckDHCPServer() error {
 }
 
 func (s *Service) CheckSambaServer() error {
-	supportedPkgs := []string{"samba419", "samba420"}
-	var present bool
+	output, err := utils.RunCommand("pkg", "info")
+	if err != nil {
+		return fmt.Errorf("failed to run pkg info: %w", err)
+	}
 
-	for _, p := range supportedPkgs {
-		if pkg.IsPackageInstalled(p) {
-			present = true
+	lines := strings.Split(output, "\n")
+	sambaInstalled := false
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "samba4") {
+			sambaInstalled = true
 			break
 		}
 	}
 
-	if present {
-		return nil
+	if !sambaInstalled {
+		return fmt.Errorf("samba4XX_erquired_package_not_installed")
 	}
 
-	return fmt.Errorf("samba_server_required_package_not_installed")
+	return nil
 }
