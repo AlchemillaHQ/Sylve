@@ -66,6 +66,14 @@ func (s *Service) CreateGroup(name string, members []string) error {
 		return fmt.Errorf("failed_to_create_unix_group: %w", err)
 	}
 
+	for _, member := range members {
+		if err := system.AddUserToGroup(member, name); err != nil {
+			s.DB.Delete(&group)
+			system.DeleteUnixGroup(name)
+			return fmt.Errorf("failed_to_add_user_to_unix_group: %w", err)
+		}
+	}
+
 	return nil
 }
 

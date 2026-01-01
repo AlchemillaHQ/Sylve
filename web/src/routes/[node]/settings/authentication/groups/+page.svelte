@@ -426,6 +426,8 @@
 		onConfirm: async () => {
 			const result = await deleteGroup(properties.delete.id);
 			reload = true;
+			activeRows = null;
+			activeRow = null;
 			if (result.status === 'error') {
 				handleAPIError(result);
 				toast.error('Failed to delete group', {
