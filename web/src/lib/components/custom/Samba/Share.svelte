@@ -44,8 +44,7 @@
 							dataset.mountpoint !== '-' &&
 							dataset.mountpoint !== null &&
 							dataset.mountpoint !== '' &&
-							dataset.mountpoint !== '/' &&
-							dataset.mounted
+							dataset.mountpoint !== '/'
 					)
 					.map((dataset) => ({
 						label: dataset.name,

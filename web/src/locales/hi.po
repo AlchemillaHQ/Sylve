@@ -32,7 +32,6 @@ msgstr "कंसोल"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Storage"
 msgstr "भंडारण"
 
