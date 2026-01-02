@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/info"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,7 @@ func RealTimeCPUInfoHandler(infoService *info.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		info, err := infoService.GetCPUInfo(false)
 		if err != nil {
+			logger.L.Debug().Err(err).Msg("failed to get cpu info")
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",
