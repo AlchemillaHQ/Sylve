@@ -363,15 +363,15 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return err
 	}
 
-	err = s.CreateStorageParent(vm.RID, "", ctx)
-	if err != nil {
-		return fmt.Errorf("failed_to_create_storage_parent: %w", err)
-	}
-
-	if vm.Storages != nil && len(vm.Storages) > 0 {
+	if len(vm.Storages) > 0 {
 		for _, storage := range vm.Storages {
 			if storage.Type == vmModels.VMStorageTypeRaw ||
 				storage.Type == vmModels.VMStorageTypeZVol {
+				err = s.CreateStorageParent(vm.RID, storage.Pool, ctx)
+				if err != nil {
+					return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+				}
+
 				err = s.CreateVMDisk(vm.RID, storage, ctx)
 
 				if err != nil {
