@@ -311,9 +311,21 @@
 		}
 
 		const dataset = selectedStorage?.dataset;
-		const blockSize =
-			datasets.find((d) => d.guid === dataset?.guid)?.properties?.volblocksize || 8192;
-		const roundedSize = roundUpToBlock(parsedSize, Number(blockSize));
+		const fDataset = datasets.find((d) => d.guid === dataset?.guid);
+
+		let blockSize = 8192;
+		if (fDataset && fDataset.properties) {
+			if (fDataset.type === GZFSDatasetTypeSchema.enum.VOLUME && fDataset.properties.volblocksize) {
+				blockSize = Number(fDataset.properties.volblocksize);
+			} else if (
+				fDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM &&
+				fDataset.properties.recordsize
+			) {
+				blockSize = Number(fDataset.properties.recordsize);
+			}
+		}
+
+		const roundedSize = roundUpToBlock(parsedSize, blockSize);
 
 		editProperties.loading = true;
 		const response = await storageUpdate(
