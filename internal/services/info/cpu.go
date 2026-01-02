@@ -21,56 +21,73 @@ import (
 )
 
 func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, error) {
-	percentages, err := cpu.Percent(time.Second, false)
-	if err != nil {
-		return infoServiceInterfaces.CPUInfo{}, err
+	info := infoServiceInterfaces.CPUInfo{
+		Usage: 0,
 	}
 
-	used := float64(0)
-	if len(percentages) > 0 {
-		used = percentages[0]
+	if perc, err := cpu.Percent(time.Second, false); err == nil && len(perc) > 0 {
+		info.Usage = perc[0]
 	}
 
 	if usageOnly {
-		return infoServiceInterfaces.CPUInfo{
-			Usage: used,
-		}, nil
+		return info, nil
 	}
 
-	physicalCores := int16(cpuid.CPU.PhysicalCores)
+	logical := int16(utils.GetLogicalCores())
+	if logical <= 0 {
+		logical = int16(cpuid.CPU.LogicalCores)
+	}
+	if logical <= 0 {
+		logical = 1
+	}
+
+	physical := int16(cpuid.CPU.PhysicalCores)
+	if physical <= 0 {
+		physical = logical
+	}
+
 	threadsPerCore := int16(cpuid.CPU.ThreadsPerCore)
-
-	logicalCores := int16(utils.GetLogicalCores())
-	if logicalCores == 0 {
-		logicalCores = int16(cpuid.CPU.LogicalCores)
+	if threadsPerCore <= 0 {
+		threadsPerCore = 1
 	}
 
-	sockets := (logicalCores) / (physicalCores * threadsPerCore)
+	sockets := int16(1)
+	if physical*threadsPerCore > 0 {
+		if v := logical / (physical * threadsPerCore); v > 0 {
+			sockets = v
+		}
+	}
 
-	return infoServiceInterfaces.CPUInfo{
-		Name:           cpuid.CPU.BrandName,
-		Sockets:        sockets,
-		PhysicalCores:  int16(cpuid.CPU.PhysicalCores),
-		ThreadsPerCore: int16(cpuid.CPU.ThreadsPerCore),
-		LogicalCores:   logicalCores,
-		Family:         int16(cpuid.CPU.Family),
-		Model:          int16(cpuid.CPU.Model),
-		Features:       cpuid.CPU.FeatureSet(),
-		CacheLine:      int16(cpuid.CPU.CacheLine),
-		Cache: struct {
-			L1D int16 `json:"l1d"`
-			L1I int16 `json:"l1i"`
-			L2  int16 `json:"l2"`
-			L3  int16 `json:"l3"`
-		}{
-			L1D: int16(cpuid.CPU.Cache.L1D),
-			L1I: int16(cpuid.CPU.Cache.L1I),
-			L2:  int16(cpuid.CPU.Cache.L2),
-			L3:  int16(cpuid.CPU.Cache.L3),
-		},
-		Frequency: int64(cpuid.CPU.Hz),
-		Usage:     used,
-	}, nil
+	cache := struct {
+		L1D int16 `json:"l1d"`
+		L1I int16 `json:"l1i"`
+		L2  int16 `json:"l2"`
+		L3  int16 `json:"l3"`
+	}{
+		L1D: int16(cpuid.CPU.Cache.L1D),
+		L1I: int16(cpuid.CPU.Cache.L1I),
+		L2:  int16(cpuid.CPU.Cache.L2),
+		L3:  int16(cpuid.CPU.Cache.L3),
+	}
+
+	freq := int64(cpuid.CPU.Hz)
+	if freq < 0 {
+		freq = 0
+	}
+
+	info.Name = cpuid.CPU.BrandName
+	info.Sockets = sockets
+	info.PhysicalCores = physical
+	info.ThreadsPerCore = threadsPerCore
+	info.LogicalCores = logical
+	info.Family = int16(cpuid.CPU.Family)
+	info.Model = int16(cpuid.CPU.Model)
+	info.Features = cpuid.CPU.FeatureSet()
+	info.CacheLine = int16(cpuid.CPU.CacheLine)
+	info.Cache = cache
+	info.Frequency = freq
+
+	return info, nil
 }
 
 func (s *Service) GetCPUUsageHistorical() ([]infoModels.CPU, error) {
