@@ -22,11 +22,11 @@ import (
 )
 
 func getSmartCtlData(device string) (diskServiceInterfaces.SmartData, error) {
-	output, err := utils.RunCommand("smartctl",
-		"-A",
-		"-H",
-		"-j",
-		fmt.Sprintf("/dev/%s", device))
+	output, err := utils.RunCommandAllowExitCode(
+		"smartctl",
+		[]int{0, 32, 64, 128},
+		"-A", "-H", "-j", "/dev/"+device,
+	)
 
 	if err != nil {
 		return diskServiceInterfaces.SmartData{}, err

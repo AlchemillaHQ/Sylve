@@ -64,3 +64,36 @@ func RunCommandWithContext(ctx context.Context, command string, args ...string) 
 
 	return output, nil
 }
+
+func RunCommandAllowExitCode(command string, allowed []int, args ...string) (string, error) {
+	cmd := exec.Command(command, args...)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	output := out.String()
+
+	if err == nil {
+		return output, nil
+	}
+
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		return output, fmt.Errorf("command execution failed: %v, output: %s", err, output)
+	}
+
+	code := exitErr.ExitCode()
+	for _, allowedCode := range allowed {
+		if code == allowedCode {
+			return output, nil
+		}
+	}
+
+	return output, fmt.Errorf(
+		"command execution failed: exit status %d, output: %s",
+		code,
+		output,
+	)
+}
