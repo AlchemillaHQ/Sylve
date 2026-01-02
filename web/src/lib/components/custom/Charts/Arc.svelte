@@ -8,6 +8,14 @@
 	}
 
 	let { title, subtitle, value }: Props = $props();
+
+	const ranges = [
+		{ max: 33, color: 'fill-green-500' },
+		{ max: 66, color: 'fill-yellow-500' },
+		{ max: 100, color: 'fill-red-500' }
+	] as const;
+
+	const color = $derived(ranges.find((r) => value <= r.max)?.color ?? 'fill-red-500');
 </script>
 
 <div class="h-[150px] w-[200px] overflow-auto rounded-sm">
@@ -22,7 +30,7 @@
 					cornerRadius={20}
 					padAngle={0.02}
 					range={[-120, 120]}
-					class="fill-yellow-500 opacity-60"
+					class={`${color} opacity-70`}
 					track={{ class: 'fill-none stroke-primary/20' }}
 				>
 					{#snippet children({ value })}
@@ -30,7 +38,7 @@
 							value={title}
 							textAnchor="middle"
 							verticalAnchor="end"
-							y={-38}
+							y={-35}
 							class="text-md font-bold"
 							fill="currentColor"
 						/>
@@ -40,7 +48,7 @@
 								value={subtitle}
 								textAnchor="middle"
 								verticalAnchor="end"
-								y={-15}
+								y={-10}
 								class="text-xs font-medium"
 								fill="currentColor"
 							/>

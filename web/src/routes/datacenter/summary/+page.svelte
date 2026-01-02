@@ -229,7 +229,7 @@
 							<Arc
 								value={cpuInfo.current.usage}
 								title="CPU"
-								subtitle="{cpuInfo.current.physicalCores} vCPUs"
+								subtitle="{cpuInfo.current.logicalCores} vCPUs"
 							/>
 						</div>
 						<div class="flex flex-1 justify-center">
