@@ -116,6 +116,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ClusterNode{},
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
+
+		&models.Migrations{},
 	)
 
 	if err != nil {

@@ -175,7 +175,9 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 			if !fileExists(full) {
 				continue
 			}
+
 			l := strings.ToLower(f.Name)
+
 			if strings.HasSuffix(l, ".iso") && isoCandidate == "" {
 				isoCandidate = full
 			} else if includeImg && strings.HasSuffix(l, ".img") && imgCandidate == "" {
@@ -183,12 +185,21 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 			}
 		}
 
+		if isoCandidate == "" && imgCandidate == "" {
+			isoCandidate = filepath.Join(torrentsDir, uuid, download.Name)
+			if !fileExists(isoCandidate) || !hasAllowedExt(isoCandidate) {
+				isoCandidate = ""
+			}
+		}
+
 		if isoCandidate != "" {
 			return isoCandidate, nil
 		}
+
 		if includeImg && imgCandidate != "" {
 			return imgCandidate, nil
 		}
+
 		return "", fmt.Errorf("iso_or_img_not_found_in_torrent: %s", uuid)
 
 	case "path":
