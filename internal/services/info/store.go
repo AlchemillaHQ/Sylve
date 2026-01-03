@@ -82,6 +82,8 @@ func (s *Service) StoreStats() {
 }
 
 func (s *Service) StoreNetworkInterfaceStats() {
+	bootstrapped := false
+
 	interfaces, err := s.GetNetworkInterfacesInfo()
 	if err != nil {
 		logger.L.Err(err).Msg("failed to get network interfaces info")
@@ -122,6 +124,7 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		prev := last[key]
 
 		if prev == nil {
+			bootstrapped = true
 			ifaceModels = append(ifaceModels, infoModels.NetworkInterface{
 				Name:    iface.Name,
 				Flags:   iface.Flags,
@@ -163,6 +166,10 @@ func (s *Service) StoreNetworkInterfaceStats() {
 
 	if err := s.DB.Create(&ifaceModels).Error; err != nil {
 		logger.L.Err(err).Msg("failed to store network interface delta stats")
+		return
+	}
+
+	if bootstrapped {
 		return
 	}
 

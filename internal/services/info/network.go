@@ -45,6 +45,8 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
 	type row struct {
 		Name          string
+		Network       string
+		Address       string
 		CreatedAt     time.Time
 		ReceivedBytes int64
 		SentBytes     int64
@@ -53,7 +55,7 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	var rows []row
 	if err := s.DB.
 		Model(&infoModels.NetworkInterface{}).
-		Select("name, created_at, received_bytes, sent_bytes").
+		Select("name, network, address, created_at, received_bytes, sent_bytes").
 		Order("name, created_at ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -63,75 +65,25 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 		return nil, nil
 	}
 
-	const sampleInterval = 10 * time.Second
-	const maxGap = 4 * sampleInterval
-
-	type prevSample struct {
-		CreatedAt     time.Time
-		ReceivedBytes int64
-		SentBytes     int64
-	}
-
-	prevByName := make(map[string]prevSample, 8)
-
-	// Bucket by Unix second, summed across all interfaces.
 	buckets := make(map[int64]*infoServiceInterfaces.HistoricalNetworkInterface)
 
 	for _, cur := range rows {
-		prev, ok := prevByName[cur.Name]
-		if ok {
-			dt := cur.CreatedAt.Sub(prev.CreatedAt)
+		sec := cur.CreatedAt.Truncate(time.Minute).Unix()
 
-			if dt <= 0 {
-				prevByName[cur.Name] = prevSample{
-					CreatedAt:     cur.CreatedAt,
-					ReceivedBytes: cur.ReceivedBytes,
-					SentBytes:     cur.SentBytes,
-				}
-				continue
+		b, ok := buckets[sec]
+		if !ok {
+			b = &infoServiceInterfaces.HistoricalNetworkInterface{
+				CreatedAt: time.Unix(sec, 0).In(cur.CreatedAt.Location()),
 			}
-
-			if dt > maxGap {
-				prevByName[cur.Name] = prevSample{
-					CreatedAt:     cur.CreatedAt,
-					ReceivedBytes: cur.ReceivedBytes,
-					SentBytes:     cur.SentBytes,
-				}
-				continue
-			}
-
-			recvDelta := cur.ReceivedBytes - prev.ReceivedBytes
-			sentDelta := cur.SentBytes - prev.SentBytes
-
-			// Counter reset / wrap
-			if recvDelta < 0 {
-				recvDelta = 0
-			}
-			if sentDelta < 0 {
-				sentDelta = 0
-			}
-
-			if recvDelta > 0 || sentDelta > 0 {
-				sec := cur.CreatedAt.Unix() // one bucket per second
-
-				b, ok := buckets[sec]
-				if !ok {
-					b = &infoServiceInterfaces.HistoricalNetworkInterface{
-						CreatedAt: time.Unix(sec, 0).In(cur.CreatedAt.Location()),
-					}
-					buckets[sec] = b
-				}
-
-				// SUM bytes across all NICs for this second
-				b.ReceivedBytes += recvDelta
-				b.SentBytes += sentDelta
-			}
+			buckets[sec] = b
 		}
 
-		prevByName[cur.Name] = prevSample{
-			CreatedAt:     cur.CreatedAt,
-			ReceivedBytes: cur.ReceivedBytes,
-			SentBytes:     cur.SentBytes,
+		if cur.ReceivedBytes > 0 {
+			b.ReceivedBytes += cur.ReceivedBytes
+		}
+
+		if cur.SentBytes > 0 {
+			b.SentBytes += cur.SentBytes
 		}
 	}
 
@@ -139,7 +91,6 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 		return nil, nil
 	}
 
-	// map -> sorted slice
 	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(buckets))
 	for _, v := range buckets {
 		result = append(result, *v)
