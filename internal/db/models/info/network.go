@@ -14,6 +14,7 @@ type NetworkInterface struct {
 	ID    uint   `gorm:"primaryKey" json:"id"`
 	Name  string `gorm:"index" json:"name"`
 	Flags string `json:"flags"`
+	IsDelta bool   `json:"isDelta"`
 
 	Network string `json:"network"`
 	Address string `json:"address"`

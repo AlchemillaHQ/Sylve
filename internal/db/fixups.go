@@ -20,7 +20,7 @@ func Fixups(db *gorm.DB) error {
 }
 
 func runNetworkDeltaMigration(db *gorm.DB) {
-	const name = "network_interface_delta_migration"
+	const name = "network_interface_delta_migration_2"
 
 	var count int64
 	if err := db.

@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"sync"
 	"time"
+	"context"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -19,6 +20,7 @@ import (
 )
 
 const retention = 70 * 24 * time.Hour
+const netRetention = 2 * time.Hour
 
 func (s *Service) StoreStats() {
 	type task struct {
@@ -82,70 +84,75 @@ func (s *Service) StoreStats() {
 }
 
 func (s *Service) StoreNetworkInterfaceStats() {
-	bootstrapped := false
-
 	interfaces, err := s.GetNetworkInterfacesInfo()
-	if err != nil {
-		logger.L.Err(err).Msg("failed to get network interfaces info")
-		return
-	}
-
-	if len(interfaces) == 0 {
+	if err != nil || len(interfaces) == 0 {
+		if err != nil {
+			logger.L.Err(err).Msg("failed to get network interfaces info")
+		}
 		return
 	}
 
 	var prevRows []*infoModels.NetworkInterface
-	if err := s.DB.
-		Select(
-			"id", "name", "network", "address",
-			"received_packets", "received_errors", "dropped_packets",
-			"received_bytes", "sent_packets", "send_errors",
-			"sent_bytes", "collisions",
-			"created_at",
-		).
-		Order("created_at DESC").
-		Find(&prevRows).Error; err != nil {
-		logger.L.Err(err).Msg("failed loading previous network samples")
+	if err := s.DB.Raw(`
+		SELECT ni.id, ni.name, ni.network,
+		       ni.received_packets, ni.received_errors,
+		       ni.dropped_packets, ni.received_bytes,
+		       ni.sent_packets, ni.send_errors,
+		       ni.sent_bytes, ni.collisions
+		FROM network_interfaces ni
+		JOIN (
+			SELECT name, network, MAX(created_at) AS max_created_at
+			FROM network_interfaces
+			GROUP BY name, network
+		) latest
+		ON ni.name = latest.name
+		AND ni.network = latest.network
+		AND ni.created_at = latest.max_created_at
+	`).Scan(&prevRows).Error; err != nil {
+		logger.L.Err(err).Msg("failed loading previous network interface stats")
 		return
 	}
 
-	last := make(map[string]*infoModels.NetworkInterface, 8)
+	last := make(map[string]*infoModels.NetworkInterface, len(prevRows))
 	for _, r := range prevRows {
-		key := r.Name + "|" + r.Network + "|" + r.Address
-		if _, ok := last[key]; !ok {
-			last[key] = r
-		}
+		last[r.Name+"|"+r.Network] = r
 	}
 
-	ifaceModels := make([]infoModels.NetworkInterface, 0, len(interfaces))
+	now := time.Now()
+	rows := make([]infoModels.NetworkInterface, 0, len(interfaces))
+
+	delta := func(cur, old int64) int64 {
+		if cur < old {
+			return 0
+		}
+		return cur - old
+	}
 
 	for _, iface := range interfaces {
-		key := iface.Name + "|" + iface.Network + "|" + iface.Address
+		key := iface.Name + "|" + iface.Network
 		prev := last[key]
 
 		if prev == nil {
-			bootstrapped = true
-			ifaceModels = append(ifaceModels, infoModels.NetworkInterface{
-				Name:    iface.Name,
-				Flags:   iface.Flags,
-				Network: iface.Network,
-				Address: iface.Address,
+			rows = append(rows, infoModels.NetworkInterface{
+				Name:            iface.Name,
+				Flags:           iface.Flags,
+				Network:         iface.Network,
+				Address:         iface.Address,
+				IsDelta:         false,
+				ReceivedPackets: iface.ReceivedPackets,
+				ReceivedBytes:   iface.ReceivedBytes,
+				SentPackets:     iface.SentPackets,
+				SentBytes:       iface.SentBytes,
 			})
 			continue
 		}
 
-		delta := func(cur, old int64) int64 {
-			if cur < old {
-				return cur
-			}
-			return cur - old
-		}
-
-		ifaceModels = append(ifaceModels, infoModels.NetworkInterface{
+		rows = append(rows, infoModels.NetworkInterface{
 			Name:    iface.Name,
 			Flags:   iface.Flags,
 			Network: iface.Network,
 			Address: iface.Address,
+			IsDelta: true,
 
 			ReceivedPackets: delta(iface.ReceivedPackets, prev.ReceivedPackets),
 			ReceivedErrors:  delta(iface.ReceivedErrors, prev.ReceivedErrors),
@@ -160,87 +167,38 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		})
 	}
 
-	if len(ifaceModels) == 0 {
+	if len(rows) == 0 {
 		return
 	}
 
-	if err := s.DB.Create(&ifaceModels).Error; err != nil {
-		logger.L.Err(err).Msg("failed to store network interface delta stats")
+	if err := s.DB.Create(&rows).Error; err != nil {
+		logger.L.Err(err).Msg("failed storing network interface stats")
 		return
 	}
 
-	if bootstrapped {
-		return
-	}
-
-	now := time.Now()
-
-	var rows []*infoModels.NetworkInterface
+	cutoff := now.Add(-netRetention)
 	if err := s.DB.
-		Select("id", "name", "network", "address", "created_at").
-		Order("created_at DESC").
-		Find(&rows).Error; err != nil {
-		logger.L.Err(err).Msg("failed loading network rows for prune")
-		return
-	}
-
-	groups := make(map[string][]db.ReflectRow, 8)
-	for _, r := range rows {
-		key := r.Name + "|" + r.Network + "|" + r.Address
-		groups[key] = append(groups[key], db.ReflectRow{Ptr: r})
-	}
-
-	delSet := make(map[uint]struct{})
-
-	for _, adapters := range groups {
-		_, deleteIDs := db.ApplyGFS(now, adapters)
-		for _, id := range deleteIDs {
-			delSet[id] = struct{}{}
-		}
-	}
-
-	if err := s.DB.
-		Where("created_at < ?", now.Add(-retention)).
-		Select("id").
-		Find(&rows).Error; err == nil {
-		for _, r := range rows {
-			delSet[r.ID] = struct{}{}
-		}
-	}
-
-	if len(delSet) == 0 {
-		return
-	}
-
-	allDeleteIDs := make([]uint, 0, len(delSet))
-	for id := range delSet {
-		allDeleteIDs = append(allDeleteIDs, id)
-	}
-
-	const batchSize = 500
-	for i := 0; i < len(allDeleteIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(allDeleteIDs) {
-			end = len(allDeleteIDs)
-		}
-
-		if err := s.DB.
-			Delete(&infoModels.NetworkInterface{}, allDeleteIDs[i:end]).
-			Error; err != nil {
-			logger.L.Err(err).Msg("failed pruning network interface stats")
-		}
+		Where("is_delta = true AND created_at < ?", cutoff).
+		Delete(&infoModels.NetworkInterface{}).
+		Error; err != nil {
+		logger.L.Err(err).Msg("failed pruning old network interface deltas")
 	}
 }
 
-func (s *Service) Cron() {
+func (s *Service) Cron(ctx context.Context) {
+	s.StoreStats()
+	s.StoreNetworkInterfaceStats()
+
 	statsTicker := time.NewTicker(10 * time.Second)
 	netTicker := time.NewTicker(2 * time.Minute)
-
 	defer statsTicker.Stop()
 	defer netTicker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
+
 		case <-statsTicker.C:
 			s.StoreStats()
 

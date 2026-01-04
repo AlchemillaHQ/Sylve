@@ -232,6 +232,11 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 		if memBacking.FindElement("locked") == nil {
 			memBacking.CreateElement("locked")
 		}
+	} else {
+		if memBacking := doc.FindElement("//memoryBacking"); memBacking != nil {
+			parent := memBacking.Parent()
+			parent.RemoveChild(memBacking)
+		}
 	}
 
 	bhyveCL := doc.FindElement("//bhyve:commandline")
@@ -268,45 +273,6 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 		idx := startIdx + i
 		arg := bhyveCL.CreateElement("bhyve:arg")
 		arg.CreateAttr("value", fmt.Sprintf("-s %d:0,passthru,%s", idx, pid))
-	}
-
-	out, err := doc.WriteToString()
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize XML: %w", err)
-	}
-	return out, nil
-}
-
-func removeMemoryBacking(xml string) (string, error) {
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return "", fmt.Errorf("failed to parse XML: %w", err)
-	}
-
-	if mem := doc.FindElement("//memoryBacking"); mem != nil {
-		parent := mem.Parent()
-		parent.RemoveChild(mem)
-	}
-
-	out, err := doc.WriteToString()
-	if err != nil {
-		return "", fmt.Errorf("failed to serialize XML: %w", err)
-	}
-	return out, nil
-}
-
-func cleanPassthrough(xml string) (string, error) {
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return "", fmt.Errorf("failed to parse XML: %w", err)
-	}
-
-	if bhyveCL := doc.FindElement("//bhyve:commandline"); bhyveCL != nil {
-		for _, arg := range bhyveCL.SelectElements("bhyve:arg") {
-			if v := arg.SelectAttrValue("value", ""); strings.Contains(v, "passthru") {
-				bhyveCL.RemoveChild(arg)
-			}
-		}
 	}
 
 	out, err := doc.WriteToString()

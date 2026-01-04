@@ -143,7 +143,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	}
 
-	go s.Info.Cron()
+	go s.Info.Cron(ctx)
 	go s.ZFS.Cron()
 	go s.ZFS.StartSnapshotScheduler(context.Background())
 

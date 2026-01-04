@@ -391,7 +391,7 @@
 							color: 'two',
 							points: networkUsageHistorical.current.map((d) => ({
 								date: new Date(d.createdAt).getTime(),
-								value: Number(d.receivedBytes)
+								value: Number(d.receivedBytes) / 120
 							}))
 						},
 						{
@@ -399,7 +399,7 @@
 							color: 'one',
 							points: networkUsageHistorical.current.map((d) => ({
 								date: new Date(d.createdAt).getTime(),
-								value: Number(d.sentBytes)
+								value: Number(d.sentBytes) / 120
 							}))
 						}
 					]}

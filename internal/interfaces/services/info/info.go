@@ -8,7 +8,10 @@
 
 package infoServiceInterfaces
 
-import infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+import (
+	"context"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+)
 
 type InfoServiceInterface interface {
 	GetAuditRecords(limit int) ([]infoModels.AuditRecord, error)
@@ -33,5 +36,5 @@ type InfoServiceInterface interface {
 
 	StoreStats()
 	StoreNetworkInterfaceStats()
-	Cron()
+	Cron(ctx context.Context)
 }

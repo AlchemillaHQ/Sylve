@@ -44,9 +44,6 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 
 func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
 	type row struct {
-		Name          string
-		Network       string
-		Address       string
 		CreatedAt     time.Time
 		ReceivedBytes int64
 		SentBytes     int64
@@ -55,8 +52,9 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	var rows []row
 	if err := s.DB.
 		Model(&infoModels.NetworkInterface{}).
-		Select("name, network, address, created_at, received_bytes, sent_bytes").
-		Order("name, created_at ASC").
+		Select("created_at, received_bytes, sent_bytes").
+		Where("is_delta = true").
+		Order("created_at ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -78,17 +76,8 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 			buckets[sec] = b
 		}
 
-		if cur.ReceivedBytes > 0 {
-			b.ReceivedBytes += cur.ReceivedBytes
-		}
-
-		if cur.SentBytes > 0 {
-			b.SentBytes += cur.SentBytes
-		}
-	}
-
-	if len(buckets) == 0 {
-		return nil, nil
+		b.ReceivedBytes += cur.ReceivedBytes
+		b.SentBytes += cur.SentBytes
 	}
 
 	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(buckets))
