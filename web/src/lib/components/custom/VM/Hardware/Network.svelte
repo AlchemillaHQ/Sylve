@@ -22,7 +22,6 @@
 
 	let { open = $bindable(), switches, vm, networkObjects, vms }: Props = $props();
 	let usable = $derived.by(() => {
-		const used = new Set((vm?.networks ?? []).map((n) => `${n.switchType}-${n.switchId}`));
 		return [
 			...(switches.standard ?? []).map((s) => ({
 				...s,
@@ -32,7 +31,7 @@
 				...s,
 				uid: `manual-${s.id}`
 			}))
-		].filter((s) => !used.has(s.uid));
+		];
 	});
 
 	let usableMacs = $derived.by(() => {

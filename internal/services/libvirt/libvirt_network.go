@@ -159,18 +159,6 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 		}
 	}
 
-	var existingNetwork vmModels.Network
-
-	if swType == "standard" {
-		if err := s.DB.First(&existingNetwork, "vm_id = ? AND switch_id = ? AND switch_type = ?", vm.ID, stdSwitch.ID, "standard").Error; err == nil {
-			return fmt.Errorf("std_network_already_attached_to_vm: %s", existingNetwork.MAC)
-		}
-	} else if swType == "manual" {
-		if err := s.DB.First(&existingNetwork, "vm_id = ? AND switch_id = ? AND switch_type = ?", vm.ID, manualSwitch.ID, "manual").Error; err == nil {
-			return fmt.Errorf("man_network_already_attached_to_vm: %s", existingNetwork.MAC)
-		}
-	}
-
 	var sw any
 
 	switch swType {
@@ -324,10 +312,11 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 
 	sourceEl := etree.NewElement("source")
 
-	if swType == "manual" {
+	switch swType {
+	case "manual":
 		manualSwitch := sw.(networkModels.ManualSwitch)
 		sourceEl.CreateAttr("bridge", manualSwitch.Bridge)
-	} else if swType == "standard" {
+	case "standard":
 		stdSwitch := sw.(networkModels.StandardSwitch)
 		sourceEl.CreateAttr("bridge", stdSwitch.BridgeName)
 	}

@@ -105,7 +105,7 @@ func RegisterRoutes(r *gin.Engine,
 	info.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
-
+		
 		info.GET("/cpu", infoHandlers.RealTimeCPUInfoHandler(infoService))
 		info.GET("/cpu/historical", infoHandlers.HistoricalCPUInfoHandler(infoService))
 

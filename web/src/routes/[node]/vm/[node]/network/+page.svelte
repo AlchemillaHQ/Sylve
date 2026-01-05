@@ -179,10 +179,8 @@
 
 	let table = $derived(generateTableData());
 	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 	let query = $state('');
 	let usable = $derived.by(() => {
-		const used = new Set((vm?.networks ?? []).map((n) => `${n.switchType}-${n.switchId}`));
 		return [
 			...(switches.current.standard ?? []).map((s) => ({
 				...s,
@@ -192,7 +190,7 @@
 				...s,
 				uid: `manual-${s.id}`
 			}))
-		].filter((s) => !used.has(s.uid));
+		];
 	});
 
 	let options = {

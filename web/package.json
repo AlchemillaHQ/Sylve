@@ -17,6 +17,7 @@
 		"#app.css": "./src/app.css"
 	},
 	"devDependencies": {
+		"@rollup/wasm-node": "^4.30.1",
 		"@eslint/compat": "^1.2.5",
 		"@eslint/js": "^9.18.0",
 		"@iconify/json": "^2.2.394",
@@ -101,5 +102,9 @@
 		"validator": "^13.15.20",
 		"wuchale": "^0.18.5",
 		"zod": "^3.25.67"
-	}
+	},
+
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@^4.30.1"
+  }
 }
