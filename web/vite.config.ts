@@ -23,6 +23,6 @@ export default defineConfig({
 		target: 'esnext'
 	},
 	server: {
-		allowedHosts: []
+		allowedHosts: ["altair.difuse.io"]
 	}
 });

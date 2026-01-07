@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 
@@ -11,16 +10,12 @@
 			key: string;
 			value: string;
 		};
-		type: string;
 		KV:
 			| Record<string, string | number | Record<string, string | number>>
 			| Array<Record<string, string | number>>;
-		actions: {
-			close: () => void;
-		};
 	}
 
-	let { open, titles, type, KV, actions }: Props = $props();
+	let { open = $bindable(), titles, KV }: Props = $props();
 
 	let tableHeaders = $derived.by(() => {
 		if (Array.isArray(KV)) {
@@ -53,7 +48,9 @@
 
 			<Dialog.Close
 				class="flex h-6 w-6 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={actions.close}
+				onclick={() => {
+					open = false;
+				}}
 			>
 				<span class="icon-[material-symbols--close-rounded] h-6 w-6"></span>
 			</Dialog.Close>

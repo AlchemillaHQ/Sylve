@@ -21,27 +21,6 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
-func getSmartCtlData(device string) (diskServiceInterfaces.SmartData, error) {
-	output, err := utils.RunCommandAllowExitCode(
-		"smartctl",
-		[]int{0, 32, 64, 128},
-		"-A", "-H", "-j", "/dev/"+device,
-	)
-
-	if err != nil {
-		return diskServiceInterfaces.SmartData{}, err
-	}
-
-	var parsed diskServiceInterfaces.SmartData
-	err = json.Unmarshal([]byte(output), &parsed)
-
-	if err != nil {
-		return diskServiceInterfaces.SmartData{}, err
-	}
-
-	return parsed, nil
-}
-
 func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) {
 	output, err := utils.RunCommand("nvmecontrol", "devlist")
 	if err != nil {
@@ -74,8 +53,7 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 				}
 
 				output = utils.RemoveEmptyLines(output)
-				parsedSMART := parseNVMeSMART(output)
-				parsedSMART.Device = nvmeDevice
+				parsedSMART := parseNVMeSMART(output, nvmeDevice)
 
 				return parsedSMART, nil
 			}
@@ -85,11 +63,31 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 	return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("NVMe device with serial %s not found", serial)
 }
 
-func parseNVMeSMART(output string) diskServiceInterfaces.SMARTNvme {
+func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvme {
 	var smart diskServiceInterfaces.SMARTNvme
 
+	// Set up device info for discriminated union
+	smart.Device = diskServiceInterfaces.DeviceInfo{
+		Name:     device,
+		InfoName: device,
+		Type:     "nvme",
+		Protocol: "NVMe",
+	}
+
+	// Set up basic smartctl info structure
+	smart.Smartctl = diskServiceInterfaces.SmartctlInfo{
+		Version:      []int{7, 2},
+		PreRelease:   false,
+		SVNRevision:  "unknown",
+		PlatformInfo: "FreeBSD",
+		Argv:         []string{"nvmecontrol", "logpage"},
+		ExitStatus:   0,
+	}
+
+	// Set up smart status
+	smart.SmartStatus = diskServiceInterfaces.SmartStatus{Passed: true}
+
 	fields := map[string]*int{
-		`Temperature:\s+(\d+)\s+K`:                  &smart.Temperature,
 		`Available spare threshold:\s+(\d+)`:        &smart.AvailableSpareThreshold,
 		`Percentage used:\s+(\d+)`:                  &smart.PercentageUsed,
 		`Data units \(512,000 byte\) read:\s+(\d+)`: &smart.DataUnitsRead,
@@ -97,8 +95,6 @@ func parseNVMeSMART(output string) diskServiceInterfaces.SMARTNvme {
 		`Host read commands:\s+(\d+)`:               &smart.HostReadCommands,
 		`Host write commands:\s+(\d+)`:              &smart.HostWriteCommands,
 		`Controller busy time \(minutes\):\s+(\d+)`: &smart.ControllerBusyTime,
-		`Power cycles:\s+(\d+)`:                     &smart.PowerCycles,
-		`Power on hours:\s+(\d+)`:                   &smart.PowerOnHours,
 		`Unsafe shutdowns:\s+(\d+)`:                 &smart.UnsafeShutdowns,
 		`Media errors:\s+(\d+)`:                     &smart.MediaErrors,
 		`No\. error info log entries:\s+(\d+)`:      &smart.ErrorInfoLogEntries,
@@ -108,6 +104,36 @@ func parseNVMeSMART(output string) diskServiceInterfaces.SMARTNvme {
 		`Temperature 2 Transition Count:\s+(\d+)`:   &smart.Temperature2TransitionCnt,
 		`Total Time For Temperature 1:\s+(\d+)`:     &smart.TotalTimeForTemperature1,
 		`Total Time For Temperature 2:\s+(\d+)`:     &smart.TotalTimeForTemperature2,
+	}
+
+	// Handle temperature specially to set both fields
+	re := regexp.MustCompile(`Temperature:\s+(\d+)\s+K`)
+	match := re.FindStringSubmatch(output)
+	if len(match) > 1 {
+		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err == nil {
+			smart.Temperature = diskServiceInterfaces.Temperature{Current: value}
+		}
+	}
+
+	// Handle power on hours specially
+	re = regexp.MustCompile(`Power on hours:\s+(\d+)`)
+	match = re.FindStringSubmatch(output)
+	if len(match) > 1 {
+		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err == nil {
+			smart.PowerOnTime = diskServiceInterfaces.PowerOnTime{Hours: value}
+		}
+	}
+
+	// Handle power cycles
+	re = regexp.MustCompile(`Power cycles:\s+(\d+)`)
+	match = re.FindStringSubmatch(output)
+	if len(match) > 1 {
+		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err == nil {
+			smart.PowerCycleCount = value
+		}
 	}
 
 	for pattern, field := range fields {
@@ -121,8 +147,8 @@ func parseNVMeSMART(output string) diskServiceInterfaces.SMARTNvme {
 		}
 	}
 
-	re := regexp.MustCompile(`Critical Warning State:\s+(0x[0-9A-Fa-f]+)`)
-	match := re.FindStringSubmatch(output)
+	re = regexp.MustCompile(`Critical Warning State:\s+(0x[0-9A-Fa-f]+)`)
+	match = re.FindStringSubmatch(output)
 	if len(match) > 1 {
 		smart.CriticalWarning = match[1]
 	}
@@ -156,6 +182,37 @@ func parseNVMeSMART(output string) diskServiceInterfaces.SMARTNvme {
 	}
 
 	return smart
+}
+
+func getSmartCtlData(device string) (diskServiceInterfaces.SmartData, error) {
+	output, err := utils.RunCommandAllowExitCode(
+		"smartctl",
+		[]int{0, 32, 64, 128},
+		"-A", "-H", "-j", "/dev/"+device,
+	)
+
+	if err != nil {
+		return diskServiceInterfaces.SmartData{}, err
+	}
+
+	var parsed diskServiceInterfaces.SmartData
+	err = json.Unmarshal([]byte(output), &parsed)
+
+	if err != nil {
+		return diskServiceInterfaces.SmartData{}, err
+	}
+
+	// Ensure protocol is set correctly for discriminated union
+	if parsed.Device.Protocol == "" {
+		if strings.HasPrefix(device, "nvme") || strings.HasPrefix(device, "nda") {
+			parsed.Device.Protocol = "NVMe"
+		} else {
+			// Default to ATA for SATA drives
+			parsed.Device.Protocol = "ATA"
+		}
+	}
+
+	return parsed, nil
 }
 
 func (s *Service) GetSmartData(disk diskServiceInterfaces.DiskInfo) (interface{}, error) {

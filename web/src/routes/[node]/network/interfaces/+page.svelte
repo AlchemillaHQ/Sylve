@@ -58,7 +58,7 @@
 		{ initialValue: data.vms }
 	);
 
-	let columns: Column[] = $derived([
+	let columns: Column[] = [
 		{
 			field: 'id',
 			title: 'ID',
@@ -176,23 +176,19 @@
 			title: 'isEpair',
 			visible: false
 		}
-	]);
+	];
 
 	let tableData = $derived(generateTableData(columns, networkInterfaces.current));
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
+
 	let viewModal = $state({
 		title: '',
 		key: 'Attribute',
 		value: 'Value',
 		open: false,
 		KV: {},
-		type: 'kv',
-		actions: {
-			close: () => {
-				viewModal.open = false;
-			}
-		}
+		type: 'kv'
 	});
 
 	function viewInterface(iface: string) {
@@ -233,10 +229,8 @@
 			key: viewModal.key,
 			value: viewModal.value
 		}}
-		open={viewModal.open}
+		bind:open={viewModal.open}
 		KV={viewModal.KV}
-		type={viewModal.type}
-		actions={viewModal.actions}
 	></KvTableModal>
 
 	<TreeTable

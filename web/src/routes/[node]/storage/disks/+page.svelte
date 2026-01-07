@@ -261,14 +261,8 @@
 			key: 'Attribute',
 			value: 'Value'
 		}}
-		open={smartModal.open}
+		bind:open={smartModal.open}
 		KV={smartModal.KV}
-		type={smartModal.type}
-		actions={{
-			close: () => {
-				smartModal.open = false;
-			}
-		}}
 	></KvTableModal>
 
 	<TreeTable

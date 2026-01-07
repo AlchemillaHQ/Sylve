@@ -40,10 +40,16 @@ type NvmeCriticalWarningState struct {
 }
 
 type SMARTNvme struct {
-	Device                    string                   `json:"device"`
+	JSONFormatVersion         []int                    `json:"json_format_version"`
+	Smartctl                  SmartctlInfo             `json:"smartctl"`
+	LocalTime                 LocalTime                `json:"local_time"`
+	Device                    DeviceInfo               `json:"device"`
+	SmartStatus               SmartStatus              `json:"smart_status"`
+	PowerOnTime               PowerOnTime              `json:"power_on_time"`
+	PowerCycleCount           int                      `json:"power_cycle_count"`
+	Temperature               Temperature              `json:"temperature"`
 	CriticalWarning           string                   `json:"criticalWarning"`
 	CriticalWarningState      NvmeCriticalWarningState `json:"criticalWarningState"`
-	Temperature               int                      `json:"temperature"`
 	AvailableSpare            int                      `json:"availableSpare"`
 	AvailableSpareThreshold   int                      `json:"availableSpareThreshold"`
 	PercentageUsed            int                      `json:"percentageUsed"`
@@ -52,8 +58,6 @@ type SMARTNvme struct {
 	HostReadCommands          int                      `json:"hostReadCommands"`
 	HostWriteCommands         int                      `json:"hostWriteCommands"`
 	ControllerBusyTime        int                      `json:"controllerBusyTime"`
-	PowerCycles               int                      `json:"powerCycles"`
-	PowerOnHours              int                      `json:"powerOnHours"`
 	UnsafeShutdowns           int                      `json:"unsafeShutdowns"`
 	MediaErrors               int                      `json:"mediaErrors"`
 	ErrorInfoLogEntries       int                      `json:"errorInfoLogEntries"`
