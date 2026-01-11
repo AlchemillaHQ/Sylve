@@ -1,0 +1,5591 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Sylve\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-11-19T16:37:17.888Z\n"
+"PO-Revision-Date: 2026-01-11 10:05+0800\n"
+"Last-Translator: ykla <yklaxds@gmail.com>\n"
+"Language-Team: ykla <yklaxds@gmail.com>\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#: src/lib/stores/terminal.svelte.ts
+msgid "Terminal"
+msgstr "终端"
+
+#: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+msgid "Summary"
+msgstr "摘要"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Console"
+msgstr "终端"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Storage"
+msgstr "存储"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Hardware"
+msgstr "硬件"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Network"
+msgstr "网络"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Options"
+msgstr "选项"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Notes"
+msgstr "附注"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Objects"
+msgstr "对象"
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Interfaces"
+msgstr "接口"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "Switches"
+msgstr "交换机"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Manual"
+msgstr "手动"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Standard"
+msgstr "标准"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Ranges"
+msgstr "范围"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Leases"
+msgstr "租约"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Config"
+msgstr "配置"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Explorer"
+msgstr "资源管理器"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Disks"
+msgstr "磁盘"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Pools"
+msgstr "存储池"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Datasets"
+msgstr "数据集"
+
+#: src/routes/[node]/+layout.svelte
+msgid "File Systems"
+msgstr "文件系统"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Volumes"
+msgstr "卷"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Snapshots"
+msgstr "快照"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Samba"
+msgstr "Samba"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Shares"
+msgstr "共享"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Settings"
+msgstr "设置"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Audit Logs"
+msgstr "审计日志"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Utilities"
+msgstr "工具"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Downloader"
+msgstr "下载器"
+
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "PCI Passthrough"
+msgstr "PCI 直通"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Authentication"
+msgstr "身份验证"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Users"
+msgstr "用户"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Groups"
+msgstr "群组"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Node — <0/>"
+msgstr "节点 — <0/>"
+
+#: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+msgid "Help"
+msgstr "帮助"
+
+#: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+msgid "Difuse-sidebar"
+msgstr "模糊侧边栏"
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Cluster"
+msgstr "集群"
+
+#: src/lib/components/skeleton/LeftPanel.svelte
+#: src/lib/components/skeleton/LeftPanelClustered.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Data Center"
+msgstr "数据中心"
+
+#: src/routes/inactive-node/+page.svelte
+msgid ""
+"This node can’t be reached right now. Check the network connection and "
+"confirm the node is\n"
+"powered on."
+msgstr ""
+"此节点目前无法访问。请检查网络连接，并确认该节点\n"
+"已开机。"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Color Theme"
+msgstr "色彩主题"
+
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialization/Reboot.svelte
+#: src/lib/components/custom/Initialize.svelte
+#: src/lib/components/custom/Login.svelte
+msgid "Sylve Logo"
+msgstr "Sylve Logo"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialization/Reboot.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "SYLVE"
+msgstr "SYLVE"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Toggle navigation menu"
+msgstr "切换导航菜单"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Virtual Environment 0.0.1"
+msgstr "虚拟环境 0.0.1"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Create VM"
+msgstr "创建虚拟机"
+
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Create Jail"
+msgstr "创建 Jail"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Toggle user menu"
+msgstr "切换用户菜单"
+
+#: src/lib/components/custom/Header.svelte
+msgid "⌘⇧Q"
+msgstr "⌘⇧Q"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "Sylve initialized"
+msgstr "Sylve 已初始化"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "ZFS Storage Pools"
+msgstr "ZFS 存储池"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "Select Pools"
+msgstr "选择存储池"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "Services"
+msgstr "服务"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Virtualization"
+msgstr "虚拟化"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Jails"
+msgstr "Jail"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Samba Server"
+msgstr "Samba 服务器"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "DHCP Server"
+msgstr "DHCP 服务器"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "WOL Server"
+msgstr "WoL 服务器"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "We've hit the following errors during initialization"
+msgstr "初始化过程中出现以下错误"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Initialize.svelte
+msgid "Initialize"
+msgstr "初始化"
+
+#. placeholder {0}: Object.keys(value).length
+#: src/lib/components/custom/KVTableModal.svelte
+msgid "Object ({0} properties)"
+msgstr "对象（{0} 个属性）"
+
+#: src/lib/components/custom/Login.svelte
+#: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "Enter"
+msgstr "输入"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Login.svelte
+msgid "Username"
+msgstr "用户名"
+
+#: src/lib/components/custom/Login.svelte
+msgid "Enter your username"
+msgstr "输入你的用户名"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Login.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Password"
+msgstr "密码"
+
+#: src/lib/components/custom/Login.svelte
+msgid "Realm"
+msgstr "域"
+
+#: src/lib/components/custom/Login.svelte
+msgid "PAM"
+msgstr "PAM"
+
+#: src/lib/components/custom/Login.svelte
+msgid "Sylve"
+msgstr "Sylve"
+
+#: src/lib/components/custom/Login.svelte
+msgid "Remember Me"
+msgstr "记住我"
+
+#: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login"
+msgstr "登录"
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/SimpleSelect.svelte
+msgid "Select an option"
+msgstr "请选择一个选项"
+
+#. placeholder {0}: sessionId
+#: src/lib/components/custom/Terminal.svelte
+msgid "Session killed: {0}"
+msgstr "会话已终止：{0}"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Minimize"
+msgstr "最小化"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/lib/components/disk/CreatePartition.svelte
+#: src/lib/components/ui/dialog/dialog-content.svelte
+#: src/lib/components/ui/sheet/sheet-content.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Close"
+msgstr "关闭"
+
+#: src/lib/components/custom/Terminal.svelte
+msgid "Add new tab"
+msgstr "新增标签页"
+
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "No data available"
+msgstr "无数据可用"
+
+#. placeholder {0}: sizes.length > 1 ? 's' : ''
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Partition{0} created"
+msgstr "已创建分区 {0}"
+
+#. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Error creating {0}"
+msgstr "创建 {0} 时出错"
+
+#. placeholder {0}: newPartitions.length + 1
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "New Partition {0}"
+msgstr "新建分区 {0}"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Create Partitions"
+msgstr "创建分区"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/lib/components/disk/CreatePartition.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Reset"
+msgstr "重置"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/disk/CreatePartition.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Name"
+msgstr "名称"
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Size"
+msgstr "大小"
+
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Usage"
+msgstr "使用情况"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Actions"
+msgstr "动作"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Existing"
+msgstr "现有"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "No partitions created yet"
+msgstr "尚未创建分区"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Add Partition"
+msgstr "添加分区"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "No space left"
+msgstr "空间已满"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Save Partitions"
+msgstr "保存分区"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Standard Switch"
+msgstr "标准交换机"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Initialize GPT"
+msgstr "磁盘 - 初始化 GPT"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Wipe"
+msgstr "磁盘 - 擦写"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Network Object"
+msgstr "网络对象"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer - Delete"
+msgstr "文件管理器 - 删除"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "File Explorer"
+msgstr "文件管理器"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Filesystem"
+msgstr "ZFS 文件系统"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Volume"
+msgstr "ZFS 卷"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Samba Share"
+msgstr "Samba 共享"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth Group"
+msgstr "认证组"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Auth User"
+msgstr "认证用户"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Samba Config - Edit"
+msgstr "Samba 配置 - 编辑"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Dataset - Bulk Delete"
+msgstr "ZFS 数据集 - 批量删除"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Snapshot"
+msgstr "ZFS 快照"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Start"
+msgstr "虚拟机 - 启动"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Stop"
+msgstr "虚拟机 - 停止"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Start"
+msgstr "Jail - 启动"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Stop"
+msgstr "Jail - 停止"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Storage - Detach"
+msgstr "虚拟机存储 - 分离"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Storage - Attach"
+msgstr "虚拟机存储 - 附加"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Manual Switch"
+msgstr "手动交换机"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "ZFS Pool"
+msgstr "ZFS 存储池"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Disk - Create Partitions"
+msgstr "磁盘 - 创建分区"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Create"
+msgstr "登录 - 创建"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Start Time"
+msgstr "开始时间"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "End Time"
+msgstr "结束时间"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/VM/Create/Basic.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Node"
+msgstr "节点"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "User"
+msgstr "用户"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Action"
+msgstr "动作"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Status"
+msgstr "状态"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "No response"
+msgstr "无回应"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Node ID"
+msgstr "节点 ID"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Address"
+msgstr "地址"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Suffrage"
+msgstr "权限"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "View Join Information"
+msgstr "查看加入信息"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Create Cluster"
+msgstr "创建集群"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join Cluster"
+msgstr "加入集群"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Reset Cluster"
+msgstr "重置集群"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset clustering data on this node"
+msgstr "这将重置此节点上的集群数据"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Failed to reset cluster"
+msgstr "集群重置失败"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Login required after cluster reset"
+msgstr "集群重置后需要登录"
+
+#: src/routes/[node]/notes/+page.svelte
+msgid "Note updated"
+msgstr "附注已更新"
+
+#: src/routes/[node]/notes/+page.svelte
+msgid "Failed to update note"
+msgstr "附注更新失败"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Note created"
+msgstr "已创建附注"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Failed to create note"
+msgstr "附注创建失败"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Created"
+msgstr "已创建"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Updated"
+msgstr "已更新"
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "View"
+msgstr "查看"
+
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Delete"
+msgstr "删除"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Edit"
+msgstr "编辑"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Bulk Delete"
+msgstr "批量删除"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/storage/+page.svelte
+msgid "New"
+msgstr "新键"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Note"
+msgstr "附注"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Post Upgrade Summary"
+msgstr "升级后概要"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Content"
+msgstr "内容"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "This is a note"
+msgstr "这是附注"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Save"
+msgstr "保存"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Failed to delete note"
+msgstr "附注删除失败"
+
+#: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Failed to delete notes"
+msgstr "附注删除失败"
+
+#: src/lib/components/custom/Charts/Area.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "CPU Usage"
+msgstr "CPU 使用率"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "RAM Usage"
+msgstr "内存使用情况"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Swap Usage"
+msgstr "Swap 使用率"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Network RX"
+msgstr "网络接收"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Network TX"
+msgstr "网络发送"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Disk Usage"
+msgstr "磁盘使用情况"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "CPU(s)"
+msgstr "CPU"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Operating System"
+msgstr "操作系统"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Uptime"
+msgstr "运行时间"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Load Average"
+msgstr "平均负载"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Boot Mode"
+msgstr "启动模式"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Sylve Version"
+msgstr "Sylve 版本"
+
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Memory Usage"
+msgstr "内存使用情况"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Network Usage"
+msgstr "网络使用情况"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Type"
+msgstr "类型"
+
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Details"
+msgstr "详情"
+
+#. placeholder {0}: s3Storage.bucket
+#. placeholder {1}: s3Storage.region
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Bucket: {0}<br/>Region: {1}"
+msgstr "存储桶：{0}<br/>区域：{1}"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Directory"
+msgstr "目录"
+
+#. placeholder {0}: dirStorage.path
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Path: {0}"
+msgstr "路径：{0}"
+
+#. placeholder {0}: activeRow?.name
+#: src/routes/datacenter/storage/+page.svelte
+msgid "This will delete {0}"
+msgstr "将删除 {0}"
+
+#. placeholder {0}: activeRow?.name
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Failed to delete {0}"
+msgstr "{0} 删除失败"
+
+#. placeholder {0}: activeRow?.name
+#: src/routes/datacenter/storage/+page.svelte
+msgid "Deleted {0}"
+msgstr "{0} 已删除"
+
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Note deleted"
+msgstr "附注已删除"
+
+#: src/routes/datacenter/notes/+page.svelte
+msgid "Notes deleted"
+msgstr "附注已删除"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Health"
+msgstr "健康度"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Single Node"
+msgstr "单节点"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Quorate: Yes"
+msgstr "法定节点：是"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Quorate: Yes (Degraded)"
+msgstr "法定节点：是（降级）"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Quorate: No"
+msgstr "法定节点：否"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Nodes"
+msgstr "节点"
+
+#. placeholder {0}: statusCounts.online || 0
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Online: {0}"
+msgstr "在线：{0}"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Online: 1"
+msgstr "在线：1"
+
+#. placeholder {0}: statusCounts.offline || 0
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Offline: {0}"
+msgstr "离线： {0}"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Offline: N/A"
+msgstr "离线：不适用"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Resources"
+msgstr "资源"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Disk"
+msgstr "磁盘"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Hostname"
+msgstr "主机名"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/datacenter/summary/+page.svelte
+msgid "ID"
+msgstr "ID"
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Last Ping"
+msgstr "上次 Ping"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Username and password are required"
+msgstr "需要用户名和密码"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Invalid username"
+msgstr "用户名无效"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Username already exists"
+msgstr "用户名已存在"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Invalid email address"
+msgstr "电子邮件地址无效"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password must be at least 8 characters long"
+msgstr "密码长度必须至少为 8 个字符"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Failed to create user"
+msgstr "用户创建失败"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "User created"
+msgstr "用户已创建"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "No user selected for editing"
+msgstr "未选择要编辑的用户"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Failed to edit user"
+msgstr "用户编辑失败"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "User edited"
+msgstr "已编辑用户"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Create User"
+msgstr "创建用户"
+
+#. placeholder {0}: user?.username
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Edit User - {0}"
+msgstr "编辑用户 - {0}"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "E-Mail"
+msgstr "电子邮件"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Enter or generate password"
+msgstr "输入或生成密码"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Admin"
+msgstr "Admin"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Create"
+msgstr "创建"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Invalid IP address"
+msgstr "IP 地址无效"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Invalid port number"
+msgstr "端口号无效"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+msgid "Failed to create cluster"
+msgstr "集群创建失败"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+msgid "Cluster created"
+msgstr "集群已创建"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Node IP"
+msgstr "节点 IP"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Node Port"
+msgstr "节点端口"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader API is required"
+msgstr "需要 Leader API"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster Key is required"
+msgstr "需要集群密钥"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Unable to join cluster"
+msgstr "无法加入集群"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Joined cluster"
+msgstr "已加入集群"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader API (192.168.1.1:8181)"
+msgstr "Leader API (192.168.1.1:8181)"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Cluster Key"
+msgstr "集群密钥"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Join"
+msgstr "加入"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Cluster key copied"
+msgstr "集群密钥已复制"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Cluster Information"
+msgstr "集群信息"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Property"
+msgstr "属性"
+
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/lib/components/custom/Charts/LayerBrush.svelte
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Value"
+msgstr "值"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Leader Node"
+msgstr "Leader 节点"
+
+#: src/lib/components/custom/Cluster/JoinInformation.svelte
+msgid "Copy"
+msgstr "复制"
+
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "HH:mm"
+msgstr "HH:mm"
+
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "Disable Zoom"
+msgstr "禁用缩放"
+
+#: src/lib/components/custom/Charts/Area.svelte
+msgid "Enable Zoom"
+msgstr "启用缩放"
+
+#: src/lib/components/custom/Charts/Area.svelte
+#: src/lib/components/custom/Charts/Bar.svelte
+msgid "<0/> Reset zoom"
+msgstr "<0/> 重置缩放"
+
+#: src/lib/components/custom/Charts/Bar.svelte
+msgid "Baseline"
+msgstr "基线"
+
+#: src/lib/components/custom/Charts/Bar.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Date"
+msgstr "日期"
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Are you sure?"
+msgstr "你确定吗？"
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+msgid "This action cannot be undone. This will permanently delete"
+msgstr "此操作无法撤销。永久删除"
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Cancel"
+msgstr "取消"
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Continue"
+msgstr "继续"
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Enter value"
+msgstr "输入值"
+
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Folder"
+msgstr "文件夹"
+
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "File"
+msgstr "文件"
+
+#. placeholder {0}: isFolder ? 'Folder' : 'File'
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+msgid "<0/> Create {0}"
+msgstr "<0/> 创建 {0}"
+
+#. placeholder {0}: isFolder ? 'folder' : 'file'
+#: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+msgid "Enter {0} name"
+msgstr "输入 {0} 名称"
+
+#: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "<0/> Upload File"
+msgstr "<0/> 上传文件"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "<0/> Open"
+msgstr "<0/> 打开"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "<0/> Download"
+msgstr "<0/> 下载"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "<0/> Copy"
+msgstr "<0/> 复制"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "<0/> Cut"
+msgstr "<0/> 剪切"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+msgid "<0/> Rename"
+msgstr "<0/> 重命名"
+
+#: src/lib/components/custom/FileExplorer/GridView.svelte
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "<0/> Delete"
+msgstr "<0/> 删除"
+
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+msgid "Enter new name"
+msgstr "输入新名称"
+
+#: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Rename"
+msgstr "重命名"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "<0/> Add New"
+msgstr "<0/> 新建项目"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "New File"
+msgstr "新建文件"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "New Folder"
+msgstr "新建文件夹"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "Upload File"
+msgstr "上传文件"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "Search files..."
+msgstr "搜索文件……"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "<0/> Sort"
+msgstr "<0/> 排序"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "A - Z"
+msgstr "A - Z"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "Z - A"
+msgstr "Z - A"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "Last Modified"
+msgstr "最后修改时间"
+
+#: src/lib/components/custom/FileExplorer/Toolbar.svelte
+msgid "First Modified"
+msgstr "首次修改时间"
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "Yesterday"
+msgstr "昨天"
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "MMM d"
+msgstr "月日"
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "MMM d, yyyy"
+msgstr "月日，年"
+
+#: src/lib/components/custom/FileExplorer/ListView.svelte
+msgid "Modified"
+msgstr "已修改"
+
+#: src/lib/components/custom/TreeTable/Search.svelte
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "Search..."
+msgstr "选择……"
+
+#: src/lib/components/custom/TreeTable/Search.svelte
+msgid "Escape"
+msgstr "退出"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Share name already exists"
+msgstr "共享名称已存在"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Name is required"
+msgstr "名称为必填项"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Dataset is required"
+msgstr "数据集为必填项"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "No groups selected and guests are not allowed"
+msgstr "未选择任何组且不允许访客"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Share cannot have overlapping groups"
+msgstr "共享不能有重叠的组"
+
+#. placeholder {0}: edit ? 'edit' : 'create'
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Failed to {0} Samba share"
+msgstr "{0} Samba 共享失败"
+
+#. placeholder {0}: edit ? 'edited' : 'created'
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Samba share {0}"
+msgstr "Samba 共享 {0}"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Edit Samba Share"
+msgstr "编辑 Samba 共享"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Create Samba Share"
+msgstr "创建 Samba 共享"
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Dataset"
+msgstr "数据集"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select dataset"
+msgstr "选择数据集"
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Read-Only Groups"
+msgstr "只读群组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select groups"
+msgstr "选择群组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Writeable Groups"
+msgstr "可写群组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Create Mask"
+msgstr "创建 Mask"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Directory Mask"
+msgstr "目录 Mask"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guests"
+msgstr "来宾"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Only"
+msgstr "只读"
+
+#: src/lib/components/ui/breadcrumb/breadcrumb-ellipsis.svelte
+msgid "More"
+msgstr "更多"
+
+#: src/lib/components/ui/command/command-dialog.svelte
+msgid "Command Palette"
+msgstr "命令面板"
+
+#: src/lib/components/ui/command/command-dialog.svelte
+msgid "Search for a command to run"
+msgstr "查找要运行的命令"
+
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+msgid "Type to create"
+msgstr "输入以创建"
+
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+msgid "Add"
+msgstr "添加"
+
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "No data"
+msgstr "无数据"
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Model"
+msgstr "型号"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/VM/Create/Basic.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Description"
+msgstr "描述"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "MAC Address"
+msgstr "MAC 地址"
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Metric"
+msgstr "度量"
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Active"
+msgstr "活动"
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Attribute"
+msgstr "属性"
+
+#. placeholder {0}: ifaceData.name
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Details - {0}"
+msgstr "详情- {0}"
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid ""
+"Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will "
+"make it unavailable to the host."
+msgstr "您确定要通过 <b>{0}</b> 传递 <b>{1}</b> 吗？这将导致主机无法使用它。"
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid ""
+"Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? "
+"This will make it available to the host again."
+msgstr ""
+"您确定要移除 <b>{1}</b> 的 <b>{0}</b> 直通吗？这将使主机可以再次使用它。"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Enable Passthrough"
+msgstr "启用直通"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Disable Passthrough"
+msgstr "禁用直通"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device added to passthrough"
+msgstr "直通设备"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to add device to passthrough"
+msgstr "设备直通失败"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device removed from passthrough"
+msgstr "禁用设备直通"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device is in use by a VM, failed to remove"
+msgstr "虚拟机正在使用该设备，移除失败"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to remove device from passthrough"
+msgstr "无法将设备从直通中移除"
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Data"
+msgstr "数据"
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Updated At"
+msgstr "更新于"
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object {0} deleted"
+msgstr "已删除对象 {0}"
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object {0} is in use"
+msgstr "对象 {0} 正在使用中"
+
+#. placeholder {0}: active?.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Error deleting object {0}"
+msgstr "删除对象 {0} 时出错"
+
+#. placeholder {0}: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "S.M.A.R.T Values ({0})"
+msgstr "S.M.A.R.T 值 ({0})"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "NVMe"
+msgstr "NVMe"
+
+#. placeholder {0}: activePartition.name
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid ""
+"This action cannot be undone. This will permanently <b>delete</b> partition "
+"<b>{0}</b>."
+msgstr "此操作无法撤销。这将永久 <b>删除</b> 分区 <b>{0}</b>。"
+
+#. placeholder {0}: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid ""
+"This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</"
+"b>."
+msgstr "此操作无法撤销。这将永久 <b>擦除</b> 磁盘 <b>{0}</b>。"
+
+#. placeholder {0}: activeDisk.device
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Disk {0} initialized with GPT"
+msgstr "已使用 GPT 初始化磁盘 {0}"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "S.M.A.R.T Values"
+msgstr "S.M.A.R.T 值"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Initialize GPT"
+msgstr "GPT 初始化"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Wipe Disk"
+msgstr "擦除磁盘"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Delete Partition"
+msgstr "删除分区"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Create Partition"
+msgstr "创建分区"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Disk Wiped"
+msgstr "已擦除磁盘"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Partition Deleted"
+msgstr "已删除分区"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Device busy"
+msgstr "设备忙"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unable to wipe busy disk"
+msgstr "无法擦除正在使用的磁盘"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unable to delete busy partition"
+msgstr "无法删除正在使用的分区"
+
+#. placeholder {0}: activeDisk ? 'wiping disk' : 'deleting partition'
+#. placeholder {1}: result.error
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Error {0}: {1}"
+msgstr "错误 {0}: {1}"
+
+#. placeholder {0}: isFolder ? 'folder' : 'file'
+#. placeholder {1}: name
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to create {0} \"{1}\""
+msgstr "{0} \"{1}\" 创建失败"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Renamed successfully"
+msgstr "重命名完成"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to rename"
+msgstr "重命名失败"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Files"
+msgstr "文件"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Drop files here to upload"
+msgstr "将文件拖放到此处以上传"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Files will be uploaded to the current folder"
+msgstr "文件将上传到当前文件夹"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "<0/> Refresh"
+msgstr "<0/> 刷新"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "<0/> Paste"
+msgstr "<0/> 粘贴"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "<0/> New File"
+msgstr "<0/> 新建文件"
+
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "<0/> New Folder"
+msgstr "<0/> 新建文件夹"
+
+#. placeholder {0}: sortedItems.length
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "{0} items"
+msgstr "{0} 个项目"
+
+#. placeholder {0}: sortedItems.filter((item: any) => item.type === 'folder').length
+#. placeholder {1}: sortedItems.filter((item: any) => item.type === 'file').length
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "{0} folders, {1} files"
+msgstr "{0} 个文件夹，{1} 个文件"
+
+#. placeholder {0}: modals.delete.item.type === 'folder' ? 'folder' : 'file'
+#. placeholder {1}: modals.delete.item.id.split('/').pop() || ''
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to delete {0} \"{1}\"."
+msgstr "无法删除 {0} “{1}”。"
+
+#. placeholder {0}: selectedItems.length
+#. placeholder {1}: selectedItems.length > 1 ? 's' : ''
+#: src/routes/[node]/storage/explorer/+page.svelte
+msgid "Failed to delete {0} item{1}."
+msgstr "无法删除 {0} 个项目{1}。"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Please enter a valid URL"
+msgstr "请输入有效的 URL"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Please enter a valid Magnet, HTTP URL or Path"
+msgstr "请输入有效的磁力链接、HTTP URL 或路径"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Invalid file name"
+msgstr "文件名无效"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download started"
+msgstr "已开始下载"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download failed"
+msgstr "下载失败"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to get download link"
+msgstr "下载链接获取失败"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download"
+msgstr "下载"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Magnet / HTTP URL / Path"
+msgstr "磁力链接 / HTTP URL / 路径"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Optional File Name"
+msgstr "可选文件名"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Ignore TLS Errors"
+msgstr "忽略 TLS 错误"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to delete download"
+msgstr "删除下载失败"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to delete downloads"
+msgstr "删除下载失败"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Missing required fields"
+msgstr "缺少必填字段"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Failed to create S3 storage"
+msgstr "S3 存储创建失败"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "S3 storage created"
+msgstr "已创建 S3 存储"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Failed to create Directory storage"
+msgstr "目录存储创建失败"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Directory storage created"
+msgstr "目录存储已创建"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Please select a storage type"
+msgstr "请选择存储类型"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Create Storage"
+msgstr "创建存储"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select Type"
+msgstr "选择类型"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Endpoint"
+msgstr "端点"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Region"
+msgstr "区域"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Bucket"
+msgstr "存储桶"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Access Key"
+msgstr "访问密钥"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Secret Key"
+msgstr "密钥"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+msgid "Backups"
+msgstr "备份"
+
+#: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Path"
+msgstr "路径"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/VM/Create/Basic.svelte
+msgid "Select Node"
+msgstr "选择节点"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+msgid "Jail Name"
+msgstr "Jail 名称"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+msgid "Postgres"
+msgstr "Postgres"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+msgid "Jail ID"
+msgstr "Jail ID"
+
+#: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/VM/Create/Basic.svelte
+msgid "Optional description for this virtual machine"
+msgstr "有关此虚拟机的可选描述"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Basic"
+msgstr "基础"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "None"
+msgstr "无"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Failed to create jail"
+msgstr "jail 创建失败"
+
+#. placeholder {0}: data.name
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Jail {0} created"
+msgstr "已创建 Jail {0}"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "CPU Cores"
+msgstr "CPU 核心数"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "Memory Size"
+msgstr "内存大小"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Boot Order"
+msgstr "启动顺序"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Start On Boot"
+msgstr "开机启动"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Resource Limits"
+msgstr "资源限制"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Mac"
+msgstr "MAC"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Host"
+msgstr "主机"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Standard switch"
+msgstr "标准交换机"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Manual switch"
+msgstr "自定义交换机"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Inherit network from the host"
+msgstr "从主机继承网络"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "No network switch will be allocated now, you can add it later"
+msgstr "当前不会分配网络交换机，您可以稍后添加"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Inherit"
+msgstr "继承"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 Network"
+msgstr "IPv4 网络"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4"
+msgstr "IPv4"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Select IPv4"
+msgstr "选择 IPv4"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 Gateway"
+msgstr "IPv4 网关"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select IPv4 Gateway"
+msgstr "选择 IPv4 网关"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 Network"
+msgstr "IPv6 网络"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6"
+msgstr "IPv6"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Select IPv6"
+msgstr "选择 IPv6"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 Gateway"
+msgstr "IPv6 网关"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select IPv6 Gateway"
+msgstr "选择 IPv6 网关"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Select MAC"
+msgstr "选择 MAC"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Base"
+msgstr "基本"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select base"
+msgstr "选择基础项"
+
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores must be at least 1"
+msgstr "CPU 核心数必须至少为 1"
+
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores updated"
+msgstr "CPU 核心数已更新"
+
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "CPU"
+msgstr "CPU"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "RAM value must be greater than 0"
+msgstr "内存值必须大于 0"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "RAM value exceeds available memory"
+msgstr "RAM 值超出可用内存"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "RAM value is too high, at least 1 GiB must be reserved for the host"
+msgstr "内存值过高，必须至少为主机保留 1 GiB"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "Failed to modify RAM"
+msgstr "内存调整失败"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "RAM modified"
+msgstr "内存已调整"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+msgid "Jail not found"
+msgstr "找不到 Jail"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "RAM"
+msgstr "内存"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Invalid domain"
+msgstr "域名无效"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Invalid DNS server"
+msgstr "DNS 服务器无效"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Error updating DHCP configuration"
+msgstr "更新 DHCP 时出错"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Updated DHCP configuration"
+msgstr "DHCP 配置已更新"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Update DHCP Configuration"
+msgstr "更新 DHCP 配置"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "Domain"
+msgstr "域名"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "DNS Servers"
+msgstr "DNS 服务器"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Select DNS servers"
+msgstr "选择 DNS 服务器"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+msgid "Select switches"
+msgstr "选择交换机"
+
+#: src/lib/components/custom/Network/DHCP/Config.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "Expand Hosts"
+msgstr "扩展 Hosts"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Host(s)"
+msgstr "主机"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Network(s)"
+msgstr "网络"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "MAC(s)"
+msgstr "MAC"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "DUID(s)"
+msgstr "DUID"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Type is required"
+msgstr "需要指定类型"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one host must be selected"
+msgstr "必须至少选择一个主机"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one network must be selected"
+msgstr "必须至少选择一个网络"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one MAC must be selected"
+msgstr "必须至少选择一个 MAC 地址"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one DUID must be selected"
+msgstr "必须至少选择一个 DUID"
+
+#. placeholder {0}: host
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid host IP: {0}"
+msgstr "无效的主机 IP：{0}"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot mix IPv4 and IPv6 addresses"
+msgstr "无法混合 IPv4 和 IPv6 地址"
+
+#. placeholder {0}: net
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid network CIDR: {0}"
+msgstr "无效的网络 CIDR：{0}"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot mix IPv4 and IPv6 networks"
+msgstr "无法混合使用 IPv4 和 IPv6 网络"
+
+#. placeholder {0}: mac
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid MAC address: {0}"
+msgstr "无效的 MAC 地址：{0}"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "DUID cannot be empty"
+msgstr "DUID 必须非空"
+
+#. placeholder {0}: duid
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid DUID: {0}"
+msgstr "无效的 DUID： {0}"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Failed to create network object"
+msgstr "网络对象创建失败"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Object with this name already exists"
+msgstr "已存在同名对象"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Created object"
+msgstr "已创建对象"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Host object used in switch, only one IP is allowed"
+msgstr "主机对象已用于交换机，仅允许使用一个 IP"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "No changes detected"
+msgstr "未检测到任何更改"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot change type of object that is in use"
+msgstr "无法更改使用中的对象类型"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Cannot change object of active VM"
+msgstr "无法更改运行中的虚拟机的对象"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Failed to update network object"
+msgstr "网络对象更新失败"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Updated object"
+msgstr "对象已更新"
+
+#. placeholder {0}: editingObject.name
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Edit Object - {0}"
+msgstr "编辑对象 - {0}"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Create Object"
+msgstr "创建对象"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Windows"
+msgstr "Windows"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Select type"
+msgstr "选择类型"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Hosts"
+msgstr "主机"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Select hosts"
+msgstr "选择主机"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Networks"
+msgstr "网络"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Select networks"
+msgstr "选择网络"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "MACs"
+msgstr "MAC"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Select MACs"
+msgstr "选择 MAC"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "DUIDs"
+msgstr "DUID"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Select DUIDs"
+msgstr "选择 DUID"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Local Time"
+msgstr "地方时"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Port"
+msgstr "VNC 端口"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Password"
+msgstr "VNC 密码"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Enter or generate passphrase"
+msgstr "输入或生成密码短语"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "VNC Resolution"
+msgstr "VNC 分辨率"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Select VNC resolution"
+msgstr "选择 VNC 分辨率"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Clock Offset"
+msgstr "时钟偏移"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Select Time Offset"
+msgstr "选择时间偏移"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Startup/Shutdown Order"
+msgstr "启动/关闭顺序"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "Serial Console"
+msgstr "串口终端"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Wait"
+msgstr "等待 VNC"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "TPM Emulation"
+msgstr "TPM 仿真"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Enable Cloud-Init"
+msgstr "启用 Cloud-Init"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init User Data"
+msgstr "Cloud-Init 用户数据"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init Meta Data"
+msgstr "Cloud-Init 元数据"
+
+#: src/lib/components/custom/VM/Create/Basic.svelte
+msgid "VM Name"
+msgstr "虚拟机名称"
+
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "CPU Sockets"
+msgstr "CPU 插槽"
+
+#: src/lib/components/custom/VM/Create/Hardware.svelte
+msgid "CPU Threads"
+msgstr "CPU 线程"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "CPU Pinning"
+msgstr "CPU 亲和性"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Advanced"
+msgstr "高级"
+
+#. placeholder {0}: modal.name
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Created VM {0}"
+msgstr "已创建虚拟机 {0}"
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Failed to create VM"
+msgstr "虚拟机创建失败"
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Create Virtual Machine"
+msgstr "创建虚拟机"
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "VirtIO"
+msgstr "VirtIO"
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Emulation Type"
+msgstr "模拟类型"
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Emulation type"
+msgstr "仿真类型"
+
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Select MAC address"
+msgstr "选择 MAC 地址"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Storage Pool"
+msgstr "存储池"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Select storage pool"
+msgstr "选择存储池"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Disk Size"
+msgstr "磁盘大小"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Select emulation type"
+msgstr "选择模拟类型"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Installation Media"
+msgstr "安装介质"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Select installation media"
+msgstr "选择安装介质"
+
+#. placeholder {0}: socketIndex
+#. placeholder {0}: socketIndex
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket {0}"
+msgstr "插槽 {0}"
+
+#. placeholder {0}: coreSelectionLimit
+#. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "You can only select up to {0} cores."
+msgstr "最多只能选择 {0} 个核心。"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> CPU Pinning"
+msgstr "<0/> CPU 亲和性"
+
+#. placeholder {0}: actualAvailable
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} available"
+msgstr "{0} 可用"
+
+#. placeholder {0}: busyCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "{0} busy"
+msgstr "{0} 正在使用"
+
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedLabels.length
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/ui/custom-input/combobox-bindable.svelte
+msgid "{0} selected"
+msgstr "已选择 {0}"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "<0/> Back to Sockets"
+msgstr "<0/> 返回到插槽"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Select All Available"
+msgstr "选择所有可用项"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Clear Selection"
+msgstr "清除选择"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Save & Back to Sockets"
+msgstr "保存并返回到插槽"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Clear All Pinning"
+msgstr "清除所有亲和性设置"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "Failed to modify CPU"
+msgstr "CPU 调整失败"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "VM not found"
+msgstr "找不到虚拟机"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "Sockets"
+msgstr "插槽"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "Cores"
+msgstr "核心"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "Threads"
+msgstr "线程"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Failed to modify PCI devices"
+msgstr "PCI 设备调整失败"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "PCI devices modified"
+msgstr "PCI 设备已修改"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "PCI Devices"
+msgstr "PCI 设备"
+
+#: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
+msgid "Select PCI Devices"
+msgstr "选择 PCI 设备"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Switch is required"
+msgstr "需要指定交换机"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Emulation is required"
+msgstr "需要指定仿真"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Error attaching VM to switch"
+msgstr "将虚拟机连接到交换机时出错"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "VM attached to switch"
+msgstr "虚拟机已连接到交换机"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "New Network"
+msgstr "新建网络"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "Switch"
+msgstr "切换"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Select Switch"
+msgstr "选择交换机"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Emulation"
+msgstr "仿真"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select Emulation"
+msgstr "选择仿真"
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Failed to modify clock offset"
+msgstr "时钟偏差调整失败"
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Modified clock offset"
+msgstr "时钟偏差已修改"
+
+#: src/lib/components/custom/VM/Options/Clock.svelte
+msgid "Offset"
+msgstr "偏移"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid storage name"
+msgstr "存储名称无效"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "No ZFS pool selected"
+msgstr "未选择 ZFS 存储池"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Please specify a boot order"
+msgstr "请指定启动顺序"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Boot order already in use"
+msgstr "启动顺序已被占用"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid disk path"
+msgstr "磁盘路径无效"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Unable to find disk"
+msgstr "找不到磁盘"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Please select a ZFS Volume"
+msgstr "请选择 ZFS 卷"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to import disk"
+msgstr "磁盘导入失败"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Disk imported"
+msgstr "磁盘已导入"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Please specify a size"
+msgstr "请指定大小"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to attach disk"
+msgstr "磁盘附加失败"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Disk attached"
+msgstr "已附加磁盘"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "New Storage"
+msgstr "新建存储"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "DB Storage"
+msgstr "DB 存储"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Import"
+msgstr "导入"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Disk Type"
+msgstr "磁盘类型"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select Disk Type"
+msgstr "选择磁盘类型"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Raw Disk"
+msgstr "裸磁盘"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Image"
+msgstr "镜像"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Pool"
+msgstr "存储池"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Select Pool"
+msgstr "选择存储池"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "ISO Image"
+msgstr "ISO 镜像"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select ISO Image"
+msgstr "选择 ISO 镜像"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Raw Disk Path"
+msgstr "裸磁盘路径"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select ZFS Volume"
+msgstr "选择 ZFS 卷"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "AHCI Hard Disk"
+msgstr "AHCI 硬盘"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "VirtIO Block"
+msgstr "VirtIO 块"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Password too short"
+msgstr "密码太短"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Port must be between 5900 and 65535"
+msgstr "端口必须介于 5900 到 65535 之间"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Invalid resolution selected"
+msgstr "所选分辨率无效"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "VNC port already in use"
+msgstr "VNC 端口已被占用"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Failed to modify VNC"
+msgstr "VNC 修改失败"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "VNC modified"
+msgstr "VNC 已修改"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "VNC"
+msgstr "VNC"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "Enabled"
+msgstr "已启用"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "Disabled"
+msgstr "已禁用"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Port"
+msgstr "端口"
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Wait for VNC"
+msgstr "等待 VNC 连接"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid ""
+"Either both user and meta data should be empty or both should be provided"
+msgstr "用户和元数据要么都为空，要么都必须提供"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Failed to modify Cloud Init data"
+msgstr "Cloud-Init 数据修改失败"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Modified Cloud Init data"
+msgstr "Cloud-Init 数据已修改"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Cloud Init"
+msgstr "Cloud-Init"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "User Data"
+msgstr "用户数据"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Cloud Init Data"
+msgstr "Cloud-Init 数据"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Metadata"
+msgstr "没有元数据"
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Cloud Init Metadata"
+msgstr "Cloud-Init 元数据"
+
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid "Failed to modify serial console"
+msgstr "串行控制台修改失败"
+
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid "Modified serial console"
+msgstr "串行控制台已修改"
+
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid ""
+"This VM currently has serial console access enabled. You can disable it "
+"using the button\n"
+"below."
+msgstr ""
+"此虚拟机当前已启用串行控制台访问。您可以使用\n"
+"下方按钮将其禁用。"
+
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid ""
+"This VM currently has serial console access disabled. You can enable it "
+"using the button\n"
+"below."
+msgstr ""
+"此虚拟机当前已禁用串行控制台访问。您可以使用\n"
+"下方按钮将其启用。"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid "Enable"
+msgstr "启用"
+
+#: src/lib/components/custom/VM/Options/Serial.svelte
+msgid "Disable"
+msgstr "禁用"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Shutdown Wait Time must be a non-negative number"
+msgstr "关机等待时间必须为非负数"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Failed to modify shutdown wait time"
+msgstr "关机等待时间修改失败"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+msgid "Modified shutdown wait time"
+msgstr "关机等待时间已修改"
+
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Shutdown Wait Time"
+msgstr "关机等待时间"
+
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+msgid "Start Order"
+msgstr "启动顺序"
+
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+msgid "Failed to modify start order"
+msgstr "启动顺序修改失败"
+
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+msgid "Modified start order"
+msgstr "启动顺序已修改"
+
+#: src/lib/components/custom/Jail/Options/StartOrder.svelte
+#: src/lib/components/custom/VM/Options/StartOrder.svelte
+msgid "Start at Boot"
+msgstr "开机启动"
+
+#: src/lib/components/custom/VM/Options/WoL.svelte
+msgid "Failed to modify WoL setting"
+msgstr "WoL 设置调整失败"
+
+#: src/lib/components/custom/VM/Options/WoL.svelte
+msgid "Modified WoL setting"
+msgstr "WoL 设置已修改"
+
+#: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Wake on LAN"
+msgstr "网络唤醒（WoL）"
+
+#: src/lib/components/custom/VM/Options/WoL.svelte
+msgid ""
+"Setting this option to be <0>on</0> will enable Wake on LAN for this VM for "
+"all MAC addresses attached\n"
+"to it"
+msgstr ""
+"将此选项设置为 <0>开启</0> 将为此虚拟机启用 Wake on LAN，适用于附加到它的\n"
+"所有 MAC 地址"
+
+#: src/lib/components/custom/VM/Options/WoL.svelte
+msgid "WoL"
+msgstr "WoL"
+
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Pool edited"
+msgstr "已编辑存储池"
+
+#. placeholder {0}: pool.name
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Edit ZFS Pool - {0}"
+msgstr "编辑 ZFS 存储池 - {0}"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Auto Expand"
+msgstr "自动扩展"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select Auto Expand"
+msgstr "选择自动扩展"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Yes"
+msgstr "是"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "No"
+msgstr "否"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Auto Trim"
+msgstr "自动 TRIM"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select Auto Trim"
+msgstr "选择自动 TRIM"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Delegation"
+msgstr "委托"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select Delegation"
+msgstr "选择委派"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Fail Mode"
+msgstr "失效模式"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select Fail Mode"
+msgstr "选择失效模式"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Wait"
+msgstr "等待"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Panic"
+msgstr "Panic"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Spares"
+msgstr "备用"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select spares"
+msgstr "选择备件"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Auto Replace"
+msgstr "自动替换"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Select Auto Replace"
+msgstr "选择自动替换"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Comment"
+msgstr "注释"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Comments about the pool"
+msgstr "关于存储池的注释"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replacement device not selected"
+msgstr "未选择替换设备"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "New disk is smaller than old disk"
+msgstr "新磁盘小于旧磁盘"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "New partition is smaller than old device"
+msgstr "新分区小于旧设备"
+
+#. placeholder {0}: old
+#. placeholder {1}: pool.name
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replace {0} in {1}"
+msgstr "在 {1} 中替换 {0}"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Select Replacement Device"
+msgstr "选择替换设备"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replace"
+msgstr "替换"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks within a VDEV should ideally be the same type"
+msgstr "VDEV 内的磁盘类型最好保持一致"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks within a VDEV should ideally be the same drive type"
+msgstr "VDEV 内的磁盘最好为相同驱动类型"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks within a VDEV should ideally be the same size"
+msgstr "VDEV 内的磁盘最好大小一致"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Partitions within a VDEV should ideally be the same size"
+msgstr "VDEV 内的分区最好大小一致"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks/Partitions within a VDEV should ideally be the same drive type"
+msgstr "VDEV 内的磁盘/分区最好为相同驱动类型"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No available disks or partitions"
+msgstr "无可用磁盘或分区"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Invalid pool name"
+msgstr "无效的池名称"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "At least one VDEV containing disks is required"
+msgstr "至少需要一个包含磁盘的 VDEV"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Spares must be larger than the largest disk in the pool"
+msgstr "备用盘必须大于存储池中最大的磁盘"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "A pool with this name already exists"
+msgstr "已存在同名的池"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Pool Created"
+msgstr "已创建存储池"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No available disks"
+msgstr "无可用磁盘"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Partitions"
+msgstr "分区"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No available partitions"
+msgstr "无可用分区"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "<0/> Create ZFS Pool"
+msgstr "<0/> 创建 ZFS 存储池池"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Devices"
+msgstr "设备"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Virtual Devices"
+msgstr "虚拟设备"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Redundancy <0/>"
+msgstr "<0/> 冗余"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Select Redundancy"
+msgstr "选择冗余"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "VDEVs"
+msgstr "VDEV"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Drop disks here"
+msgstr "将磁盘拖放到此处"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Mount Point"
+msgstr "挂载点"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Force Create"
+msgstr "强制创建"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "AShift"
+msgstr "扇区大小（AShift）"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Select ASHIFT"
+msgstr "选择块对齐参数（ASHIFT）"
+
+#. placeholder {0}: data.ctId
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Jail console connected for jail {0}"
+msgstr "已连接 Jail 控制台，Jail 为 {0}"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid ""
+"The Jail is currently powered off.<0/> Start the Jail to access its console."
+msgstr "该 Jail 已关闭。<0/> 启动 Jail 以访问其控制台。"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Pool Status"
+msgstr "存储池池状态"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Scan Activity"
+msgstr "扫描活动"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "No recent scan activity"
+msgstr "近期无扫描活动"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Device Topology"
+msgstr "设备拓扑"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Cache"
+msgstr "缓存"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "No devices found"
+msgstr "找不到设备"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Error Status"
+msgstr "错误状态"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "No known data errors"
+msgstr "未知的数据错误"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Unlimited"
+msgstr "无限"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Disable Resource Limits"
+msgstr "禁用资源限制"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Enable Resource Limits"
+msgstr "启用资源限制"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Enable resource limits to edit"
+msgstr "启用资源限制以进行编辑"
+
+#. placeholder {0}: title
+#. placeholder {0}: title
+#. placeholder {0}: activeRow.property
+#. placeholder {0}: activeRow.property
+#. placeholder {0}: title
+#. placeholder {0}: title
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Edit {0}"
+msgstr "编辑 {0}"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid ""
+"This will give unlimited resources to this jail, proceed with <b>caution!</b>"
+msgstr "这将向此 jail 提供无限资源，请 <b>谨慎！</b> 操作"
+
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid ""
+"This will enable resource limits for this jail, defaulting to <b>1 GB RAM</"
+"b> and <b>1 vCPU</b>, you can change this later"
+msgstr ""
+"这将为此 jail 启用资源限制，默认设置为 <b>1 GB RAM</b> 和 <b>1 vCPU</b>，你后"
+"续再更改"
+
+#. placeholder {0}: adjective
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Failed to {0} resource limits"
+msgstr "资源限制失败 {0}"
+
+#. placeholder {0}: adjective
+#: src/routes/[node]/jail/[node]/hardware/+page.svelte
+msgid "Resource limits {0}"
+msgstr "资源限制 {0}"
+
+#. placeholder {0}: dateToAgo(jail.current.startedAt)
+#. placeholder {0}: dateToAgo(vm.current.startedAt)
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Started {0}"
+msgstr "{0} 已开始"
+
+#. placeholder {0}: dateToAgo(jail.current.stoppedAt)
+#. placeholder {0}: dateToAgo(vm.current.stoppedAt)
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stopped {0}"
+msgstr "{0} 已停止"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Deleting Jail"
+msgstr "正在删除 Jail"
+
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
+msgstr "请稍候，正在删除 Jail <b>{0} ({1})</b>"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Error deleting jail"
+msgstr "删除 Jail 时出错"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail deleted"
+msgstr "Jail 已删除"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Stopping Jail"
+msgstr "正在停止 Jail"
+
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+msgstr "请稍候，正在停止 Jail <b>{0} ({1})</b>"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Starting Jail"
+msgstr "正在启动 Jail"
+
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
+msgstr "请稍候，正在启动 Jail <b>{0} ({1})</b>"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stop"
+msgstr "停止"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Start"
+msgstr "开始"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Running"
+msgstr "正在运行"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stopped"
+msgstr "已停止"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "This will permanently delete Jail"
+msgstr "这将永久删除 Jail"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Delete MAC Object(s)"
+msgstr "删除 MAC 对象"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Delete Root Filesystem"
+msgstr "删除根文件系统"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/routes/[node]/network/dhcp/config/+page.svelte
+msgid "Update"
+msgstr "更新"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Failed to inherit network"
+msgstr "继承网络失败"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Failed to disinherit network"
+msgstr "继承网络取消失败"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Failed to add network"
+msgstr "网络添加失败"
+
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Failed to delete network"
+msgstr "网络删除失败"
+
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Network deleted"
+msgstr "网络已删除"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Disinherit Network"
+msgstr "取消继承网络"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "Inherit Network"
+msgstr "继承网络"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+msgid "Detach"
+msgstr "分离"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Disinherit"
+msgstr "取消继承"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select MAC Address"
+msgstr "选择 MAC 地址"
+
+#. placeholder {0}: activeRow.switch
+#: src/routes/[node]/jail/[node]/network/+page.svelte
+msgid "This will detach the jail from the switch <b>{0}</b>"
+msgstr "这将从交换机 <b>{0}</b> 中分离 Jail"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Static"
+msgstr "静态"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Dynamic"
+msgstr "动态"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Identifier"
+msgstr "标识符"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "IP Address"
+msgstr "IP 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Range"
+msgstr "范围"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "Expiry"
+msgstr "到期"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Never"
+msgstr "永不"
+
+#. placeholder {0}: activeRow?.hostname || activeRow?.ip || ''
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid ""
+"This action cannot be undone. This will permanently delete static DHCP lease "
+"for <b>{0}</b>"
+msgstr "该操作不可撤销。将永久删除 <b>{0}</b> 的静态 DHCP 租约"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Failed to delete DHCP lease"
+msgstr "DHCP 租约删除失败"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "DHCP lease deleted"
+msgstr "DHCP 租约已删除"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "Start IP"
+msgstr "起始 IP"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "End IP"
+msgstr "结束 IP"
+
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "DHCP Range"
+msgstr "DHCP 范围"
+
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid ""
+"This action cannot be undone. This will permanently delete this DHCP range "
+"including all leases/options associated with it"
+msgstr "此操作无法撤销。此操作将永久删除此 DHCP 范围及其所有关联的租约/选项"
+
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "Failed to delete DHCP range"
+msgstr "DHCP 范围删除失败"
+
+#: src/routes/[node]/network/dhcp/ranges/+page.svelte
+msgid "DHCP range deleted"
+msgstr "DHCP 范围已删除"
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+msgid "No usable bridges available"
+msgstr "无可用的桥接网络"
+
+#. placeholder {0}: modals.deleteSwitch.name
+#. placeholder {0}: confirmModals.deleteSwitch.name
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch {0} deleted"
+msgstr "交换机 {0} 已删除"
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch is in use by a VM"
+msgstr "交换机正被虚拟机使用"
+
+#: src/routes/[node]/network/switches/manual/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Error deleting switch"
+msgstr "删除交换机时出错"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Name and users are required"
+msgstr "名称和用户为必填项"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group name already exists"
+msgstr "该组名已存在"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to create group"
+msgstr "组创建失败"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group created"
+msgstr "组已创建"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "No users selected"
+msgstr "未选择用户"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to add users to group"
+msgstr "添加用户到组时失败"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users added to group"
+msgstr "用户已添加到组"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Created At"
+msgstr "创建于"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Add Users"
+msgstr "添加用户"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "New Group"
+msgstr "新建组"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Select users"
+msgstr "选择用户"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to delete group"
+msgstr "组删除失败"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Group deleted"
+msgstr "已删除组"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid switch name"
+msgstr "交换机名称无效"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid MTU"
+msgstr "MTU 无效"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid VLAN"
+msgstr "VLAN 无效"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "There is already a switch with a default route"
+msgstr "已有带默认路由的交换机存在"
+
+#. placeholder {0}: confirmModals.newSwitch.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch {0} created"
+msgstr "已创建交换机 {0}"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Error creating switch"
+msgstr "创建交换机时出错"
+
+#. placeholder {0}: confirmModals.editSwitch.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Switch {0} updated"
+msgstr "交换机 {0} 已更新"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Error updating switch"
+msgstr "更新交换机时出错"
+
+#. placeholder {0}: confirmModals.editSwitch.oldName
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Edit Standard Switch - {0}"
+msgstr "编辑标准交换机 - {0}"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Create Standard Switch"
+msgstr "创建标准交换机"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select IPv4 Network"
+msgstr "选择 IPv4 网络"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select IPv6 Network"
+msgstr "选择 IPv6 网络"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Ports"
+msgstr "端口"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select ports"
+msgstr "选择端口"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Private"
+msgstr "私有"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Disable IPV6"
+msgstr "禁用 IPv6"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Default Route"
+msgstr "默认路由"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Last Usage"
+msgstr "近期使用情况"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot delete admin user"
+msgstr "无法删除管理员用户"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Cannot edit admin user"
+msgstr "无法编辑管理员用户"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Failed to delete user"
+msgstr "用户删除失败"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "User deleted"
+msgstr "用户已删除"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Share"
+msgstr "共享"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Target"
+msgstr "目标"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Unix Charset"
+msgstr "Unix 字符集"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Workgroup"
+msgstr "工作组"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Server String"
+msgstr "服务器字符串"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Bind Interfaces Only"
+msgstr "仅绑定接口"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Failed to update Samba configuration"
+msgstr "Samba 配置更新失败"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Samba configuration updated"
+msgstr "Samba 配置已更新"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Enter Workgroup"
+msgstr "输入工作组"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Enter Unix Charset"
+msgstr "输入 Unix 字符集"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Enter Server String"
+msgstr "输入服务器字符串"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Select Interfaces"
+msgstr "选择接口"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Edit Share"
+msgstr "编辑共享"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Delete Share"
+msgstr "删除共享"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Samba share"
+msgstr "Samba 共享"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Failed to delete Samba share"
+msgstr "Samba 共享删除失败"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Samba share deleted"
+msgstr "Samba 共享已删除"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool contains a mirror with devices of different sizes"
+msgstr "存储池包含一个由不同大小设备组成的镜像"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool contains a RAIDZ vdev with devices of different sizes"
+msgstr "存储池包含一个由不同大小设备组成的 RAIDZ vdev"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool is busy"
+msgstr "存储池正在被占用"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool edit failed"
+msgstr "存储池编辑失败"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Scrub started"
+msgstr "Scrub 已启动"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "A scrub is already in progress"
+msgstr "Scrub 已在运行中"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Scrub"
+msgstr "Scrub"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Please wait for the scrub/replace operation to finish"
+msgstr "请等待清理/替换操作完成"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Please wait for the current replace operation to finish"
+msgstr "请等待当前的替换操作完成"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Replace already in progress"
+msgstr "替换已在进行中"
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Replace Device"
+msgstr "替换设备"
+
+#. placeholder {0}: pool?.name
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Pool {0} deleted"
+msgstr "已删除存储池 {0}"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Select a pool"
+msgstr "选择存储池"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Shutoff"
+msgstr "关闭"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Serial"
+msgstr "序号"
+
+#. placeholder {0}: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Switch to {0} Console"
+msgstr "切换到控制台 {0}"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Kill Serial Session"
+msgstr "终止串口会话"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Reconnect Serial"
+msgstr "重新连接串口"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "VM Console"
+msgstr "虚拟机控制台"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "No console is configured for this VM."
+msgstr "此虚拟机未配置控制台。"
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid ""
+"The VM is currently powered off.<0/> Start the VM to access its console."
+msgstr "当前虚拟机已关闭。<0/> 启动虚拟机以访问其控制台。"
+
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Start At Boot / Start Order"
+msgstr "开机启动 / 启动顺序"
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Configured"
+msgstr "已配置"
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Not Configured"
+msgstr "未配置"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Unknown Switch"
+msgstr "未知交换机"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Unknown MAC"
+msgstr "未知 MAC"
+
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Unknown"
+msgstr "未知"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "No available/unused switches to attach to"
+msgstr "无可用或未使用的交换机可连接"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+msgid "VM must be shut off to attach storage"
+msgstr "必须先关闭虚拟机才能挂载存储"
+
+#. placeholder {0}: vm?.name
+#. placeholder {1}: properties.detach.name
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"
+msgstr "这将把虚拟机 <b>{0}</b> 从交换机 <b>{1}</b> 中分离"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Failed to detach network"
+msgstr "网络分离失败"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "Network detached"
+msgstr "网络已分离"
+
+#. placeholder {0}: properties.detach.name
+#. placeholder {1}: vm.name
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+msgid "This will detach the storage {0} from the VM <b>{1}</b>"
+msgstr "这将把存储 {0} 从虚拟机 <b>{1}</b> 中分离"
+
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+msgid "Failed to detach storage"
+msgstr "存储分离失败"
+
+#: src/routes/[node]/vm/[node]/storage/+page.svelte
+msgid "Storage detached"
+msgstr "存储已分离"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Deleting Virtual Machine"
+msgstr "正在删除虚拟机"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
+msgstr "请稍候，正在删除虚拟机 <b>{0} ({1})</b>"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error deleting VM"
+msgstr "删除虚拟机时出错"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM deleted"
+msgstr "虚拟机已删除"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Starting Virtual Machine"
+msgstr "正在启动虚拟机"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being started."
+msgstr "请稍候，正在启动虚拟机 <b>{0} ({1})</b>。"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error starting VM"
+msgstr "启动虚拟机时出错"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM started"
+msgstr "虚拟机已启动"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Stopping Virtual Machine"
+msgstr "正在停止虚拟机"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
+msgstr "请稍候，正在停止虚拟机 <b>{0} ({1})</b>"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error stopping VM"
+msgstr "停止虚拟机时出错"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM stopped"
+msgstr "虚拟机已停止"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Shutting Down Virtual Machine"
+msgstr "正在关闭虚拟机"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
+msgstr "请稍候，正在关闭虚拟机 <b>{0} ({1})</b>"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error shutting down VM"
+msgstr "关闭虚拟机出错"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM shut down"
+msgstr "虚拟机关机"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Rebooting Virtual Machine"
+msgstr "正在重启虚拟机"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
+msgstr "请稍候，正在重启虚拟机 <b>{0} ({1})</b>"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error rebooting VM"
+msgstr "重启虚拟机时出错"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM rebooted"
+msgstr "虚拟机已创建"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Shutdown"
+msgstr "关机"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Reboot"
+msgstr "重启"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Notes about VM"
+msgstr "虚拟机备注"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "This will permanently delete VM"
+msgstr "这将永久删除虚拟机"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Delete RAW Disk(s)"
+msgstr "删除裸磁盘"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Delete Volume(s)"
+msgstr "删除卷"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Invalid hostname"
+msgstr "主机名无效"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Range is required"
+msgstr "需要范围"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Identifier is required"
+msgstr "需要标识符"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "IP Address is required"
+msgstr "需要 IP 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Invalid selection"
+msgstr "选择无效"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Identifier must be a MAC for IPv4 ranges"
+msgstr "IPv4 范围的标识符必须是 MAC 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "IP Address must be an IPv4 address for IPv4 ranges"
+msgstr "IPv4 范围的 IP 地址必须为 IPv4 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Identifier must be a DUID for IPv6 ranges"
+msgstr "IPv6 范围的标识符必须为 DUID"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "IP Address must be an IPv6 address for IPv6 ranges"
+msgstr "IPv6 范围的 IP 地址必须为 IPv6 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Failed to create lease"
+msgstr "租约创建失败"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Lease created"
+msgstr "已创建租约"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Failed to edit lease"
+msgstr "租约编辑失败"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Lease edited"
+msgstr "租约已编辑"
+
+#. placeholder {0}: selectedLease ? 'Edit' : 'Create'
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "{0} DHCP Lease"
+msgstr "DHCP 租约 {0}"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Select Range"
+msgstr "选择范围"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Select Identifier"
+msgstr "选择标识符"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Select IP Address"
+msgstr "选择 IP 地址"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Comments"
+msgstr "注释"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Optional comments"
+msgstr "可选注释"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Invalid name"
+msgstr "名称无效"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Failed to create manual switch"
+msgstr "自定义交换机创建失败"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Manual switch created"
+msgstr "已创建自定义交换机"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Create Manual Switch"
+msgstr "创建自定义交换机"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Bridge"
+msgstr "桥"
+
+#: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+msgid "Select bridge"
+msgstr "选择桥"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP Type is required"
+msgstr "IP 类型为必填项"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "No switch selected"
+msgstr "未选择交换机"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Failed to find interface for selected switch"
+msgstr "未能找到所选交换机的接口"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP Range not in switch subnet"
+msgstr "IP 范围不在交换机子网内"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Selected interface has no IPv4 address"
+msgstr "所选接口无 IPv4 地址"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Selected interface has no usable IPv6 address"
+msgstr "所选接口无可用的 IPv6 地址"
+
+#. placeholder {0}: ipv6.ip
+#. placeholder {1}: ipv6.prefixLength
+#. placeholder {0}: ipv6.ip
+#. placeholder {1}: ipv6.prefixLength
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP Range not in switch subnet ({0}/{1})"
+msgstr "IP 范围不在交换机子网内（{0}/{1}）"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Expiry is required"
+msgstr "到期时间为必填项"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Error creating DHCP range"
+msgstr "DHCP 范围创建出错"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Created DHCP range"
+msgstr "DHCP 范围已创建"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "No DHCP range selected"
+msgstr "未选择任何 DHCP 范围"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Error updating DHCP range"
+msgstr "DHCP 范围更新出错"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Updated DHCP range"
+msgstr "DHCP 范围已更新"
+
+#. placeholder {0}: selectedRange ? 'Edit' : 'Create'
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "{0} DHCP Range"
+msgstr "DHCP 范围 {0}"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "IP Type"
+msgstr "IP 类型"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Select IP Type"
+msgstr "选择 IP 类型"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "RA Only"
+msgstr "仅 RA"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "No parent selected"
+msgstr "未选择父接口"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Encryption key is required"
+msgstr "加密密钥为必填项"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Invalid quota size"
+msgstr "配额大小无效"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "Failed to create filesystem"
+msgstr "文件系统创建失败"
+
+#. placeholder {0}: n
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "File System {0} created"
+msgstr "已创建文件系统 {0}"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "<0/> Create Filesystem"
+msgstr "创建文件系统 <0/>"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "Parent"
+msgstr "父接口"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "Select parent"
+msgstr "选择父接口"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "ATime"
+msgstr "访问时间"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select ATime"
+msgstr "选择访问时间"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Checksum"
+msgstr "校验和"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select Checksum"
+msgstr "选择校验和"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Compression"
+msgstr "压缩"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select Compression"
+msgstr "选择压缩"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Deduplication"
+msgstr "去重"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select Deduplication"
+msgstr "选择去重"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Encryption"
+msgstr "加密"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+msgid "Select Encryption"
+msgstr "选择加密"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Passphrase"
+msgstr "密码短语"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Quota"
+msgstr "配额"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "ACL Inherit"
+msgstr "ACL 继承"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select ACL Inherit"
+msgstr "选择 ALC 继承"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "ACL Mode"
+msgstr "ALC 模式"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select ACL Mode"
+msgstr "选择 ALC 模式"
+
+#. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
+#. placeholder {0}: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Snapshot - {0}"
+msgstr "快照 - {0}"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Prefix"
+msgstr "前缀"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Recursive"
+msgstr "递归"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Quota size is less than current used or reserved space"
+msgstr "配额大小小于当前已使用或保留的空间"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Failed to edit filesystem"
+msgstr "文件系统编辑失败"
+
+#. placeholder {0}: n
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "File System {0} edited"
+msgstr "文件系统 {0} 已编辑"
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "<0/> Edit Filesystem - {0}"
+msgstr "<0/> 编辑文件系统 - {0}"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Snapshot GUID not found"
+msgstr "未找到快照 GUID"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Simple"
+msgstr "简单"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Cron Expression"
+msgstr "Cron 表达式"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Minute"
+msgstr "每分钟"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Hour"
+msgstr "每小时"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Day"
+msgstr "每日"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Week"
+msgstr "每周"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Month"
+msgstr "每月"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Every Year"
+msgstr "每年"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Name/prefix required for snapshot(s)"
+msgstr "快照需要名称/前缀"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "No pool selected"
+msgstr "未选择存储池"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "No dataset selected"
+msgstr "未选择数据集"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Failed to create snapshot"
+msgstr "快照创建失败"
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#. placeholder {0}: pool
+#. placeholder {1}: properties.name
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+msgid "Snapshot {0}@{1} created"
+msgstr "已创建快照 {0}@{1}"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Create Snapshot"
+msgstr "创建快照"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Select a dataset"
+msgstr "选择数据集"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Interval"
+msgstr "间隔"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Select an interval"
+msgstr "选择间隔"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention"
+msgstr "轮替"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Select a retention policy"
+msgstr "选择轮替策略"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Last"
+msgstr "保留最新"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Max Age (Days)"
+msgstr "最大存活时间（天）"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Hourly"
+msgstr "按小时保留"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Daily"
+msgstr "按天保留"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Weekly"
+msgstr "按周保留"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Monthly"
+msgstr "按月保留"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Keep Yearly"
+msgstr "按年保留"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "View Snapshot Jobs"
+msgstr "查看快照任务"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Last Run"
+msgstr "上次运行"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Jan 01, 0001"
+msgstr "1月 01, 0001"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Deleted"
+msgstr "已删除"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "No snapshot jobs"
+msgstr "无快照任务"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Save Snapshot Jobs"
+msgstr "保存快照任务"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Error modifying retention policy"
+msgstr "保留策略修改失败"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention policy modified"
+msgstr "保留策略已修改"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention Policies -"
+msgstr "轮替策略 -"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Invalid volume name"
+msgstr "卷名无效"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Please select a pool"
+msgstr "请选择存储池"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Invalid volume size"
+msgstr "卷大小无效"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Volume size is greater than available space"
+msgstr "卷大小大于可用空间"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Failed to create volume"
+msgstr "创建卷失败"
+
+#. placeholder {0}: n
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Volume {0} created"
+msgstr "卷 {0} 已创建"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Create Volume"
+msgstr "创建卷"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Block Size"
+msgstr "块大小"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select block size"
+msgstr "选择块大小"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select compression type"
+msgstr "选择压缩类型"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select deduplication mode"
+msgstr "选择去重模式"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Select encryption"
+msgstr "选择加密方式"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Primary Cache"
+msgstr "主缓存"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select primary cache mode"
+msgstr "选择主缓存模式"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume Mode"
+msgstr "卷模式"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Select volume mode"
+msgstr "选择卷模式"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Failed to edit volume"
+msgstr "卷模式编辑失败"
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "<0/> Edit Volume - {0}"
+msgstr "<0/> 编辑卷 - {0}"
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "<0/> Flash File to {0}"
+msgstr "<0/> 刷写文件到 {0}"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Select File"
+msgstr "选择文件"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Error flashing volume"
+msgstr "刷写卷时出错"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Volume"
+msgstr "卷"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Flash"
+msgstr "刷写"
+
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Edit Filesystem"
+msgstr "编辑文件系统"
+
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Delete Filesystem"
+msgstr "删除文件系统"
+
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Delete Datasets"
+msgstr "删除数据集"
+
+#. placeholder {0}: activeDataset.name
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Deleted filesystem {0}"
+msgstr "已删除文件系统 {0}"
+
+#. placeholder {0}: activeDataset.name
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Failed to delete filesystem {0}"
+msgstr "文件系统 {0} 删除失败"
+
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Filesystem GUID not found"
+msgstr "找不到文件系统 GUID"
+
+#. placeholder {0}: modals.bulk.delete.title
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+msgid "Are you sure you want to delete {0}? This action cannot be undone."
+msgstr "确定要删除 {0} 吗？此操作无法撤销。"
+
+#. placeholder {0}: activeDatasets.length
+#. placeholder {0}: activeSnapshot.length
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Deleted {0} datasets"
+msgstr "已删除 {0} 数据集"
+
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Failed to delete datasets"
+msgstr "数据集删除失败"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "View Periodics"
+msgstr "查看定期任务"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Failed to delete snapshots"
+msgstr "快照删除失败"
+
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Flash File"
+msgstr "刷写文件"
+
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Delete Volume"
+msgstr "删除卷"
+
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Edit Volume"
+msgstr "编辑卷"
+
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Delete Volumes"
+msgstr "删除卷"
+
+#. placeholder {0}: activeVolume.name
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Deleted volume {0}"
+msgstr "已删除卷 {0}"
+
+#. placeholder {0}: activeVolume.name
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Failed to delete volume {0}"
+msgstr "卷 {0} 删除失败"
+
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "Volume GUID not found"
+msgstr "找不到卷 GUID"
+
+#. placeholder {0}: modals.bulk.delete.title
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
+msgid "This will delete {0}. This action cannot be undone."
+msgstr "这将删除 {0}。此操作无法撤销。"
+
+#. placeholder {0}: displayPinnedCount
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Manage ({0} pinned)"
+msgstr "管理（已固定 {0} 个）"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Extract Automatically"
+msgstr "自动解压缩"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download Type"
+msgstr "下载类型"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Select Download Type"
+msgstr "选择下载类型"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Base / RootFS"
+msgstr "基本/根文件系统"
+
+#: src/lib/components/custom/Header.svelte
+msgid "<0/> Language"
+msgstr "<0/> 语言"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Download URL copied to clipboard"
+msgstr "下载 URK 已复制到剪切板"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Copy URL"
+msgstr "复制 URL"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Downloader - Create Signed URL"
+msgstr "下载器 - 创建单个 URL"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Cloud-Init"
+msgstr "Cloud-Init"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Apply"
+msgstr "应用"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Apply Changes"
+msgstr "应用变更"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Pool is in use by a VM or Jail"
+msgstr "池正在被虚拟机或 Jail 占用"
+
+#: src/lib/utils/zfs/pool.svelte.ts
+msgid "Cannot replace with smaller device"
+msgstr "无法用更小的设备进行替换"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unimplemented MSR Accesses"
+msgstr "忽略未实现的 MSR 访问"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Ignore Unknown MSR Accesses"
+msgstr "忽略未知的 MSR 访问"
+
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "Ignore Unimplemented MSRs Accesses"
+msgstr "忽略未实现的 MSR 访问"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Failed to modify unimplemented MSRs access setting"
+msgstr "修改未实现的 MSR 访问设置失败"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid "Modified unimplemented MSRs access setting"
+msgstr "已修改未实现的 MSR 访问设置"
+
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+msgid ""
+"Enable this option to ignore accesses to unimplemented Model-Specific "
+"Registers (MSRs) by the\n"
+"VM. This can help prevent crashes or instability caused by such accesses, "
+"but may also lead to\n"
+"unexpected behavior if the guest OS relies on these MSRs."
+msgstr ""
+"启用此选项以忽略虚拟机对未实现的特定模型寄存器（MSR）的访问。\n"
+"这可以帮助防止因访问这些寄存器而导致的崩溃或不稳定，\n"
+"但如果来宾操作系统依赖这些 MSR，可能会导致意外行为。"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Log Out"
+msgstr "注销"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Save Changes"
+msgstr "保存变更"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Attach Storage"
+msgstr "附近存储"
+
+#. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Edit - {0}"
+msgstr "编辑 - {0}"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "New size cannot be smaller than current size"
+msgstr "新大小不能小于当前大小"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to update storage"
+msgstr "存储更新失败"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Storage updated"
+msgstr "存储已更新"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Hourly"
+msgstr "每小时"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Daily"
+msgstr "每日"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Weekly"
+msgstr "每周"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Monthly"
+msgstr "每月"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Yearly"
+msgstr "每年"
+
+#: src/lib/components/custom/Header.svelte
+msgid "VM creation form minimized"
+msgstr "虚拟机创建表单已最小化"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Uncategorized (ISOs, IMGs, etc.)"
+msgstr "未分类（ISO、IMG 等）"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select ZFS pool"
+msgstr "选择 ZFS 存储池"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Jail creation form minimized"
+msgstr "jail 创建表单已最小化"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "FStab Additions"
+msgstr "添加 fstab 项"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "FStab Entries"
+msgstr "fstab 条目"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Additional Options"
+msgstr "附加选项"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Select Jail Type"
+msgstr "选择 Jail 类型"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "FreeBSD"
+msgstr "FreeBSD"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Set Hostname (allow.set_hostname)"
+msgstr "设置主机名 (allow.set_hostname)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Raw Sockets (allow.raw_sockets)"
+msgstr "Raw Sockets (allow.raw_sockets)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Change File Flags (allow.chflags)"
+msgstr "修改文件标志位 (allow.chflags)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount Filesystems (allow.mount)"
+msgstr "挂载文件系统 (allow.mount)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "FS Quotas (allow.quotas)"
+msgstr "文件系统配额(allow.quotas)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
+msgstr "读取内核消息缓冲区（allow.read_msgbuf）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Socket Address Families (allow.socket_af)"
+msgstr "套接字地址族（allow.socket_af）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Memory Locking (allow.mlock)"
+msgstr "内存锁定（allow.mlock）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "NFS Daemon (allow.nfsd)"
+msgstr "NFS 守护程序 (allow.nfsd)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Reserved Ports (allow.reserved_ports)"
+msgstr "保留端口（allow.reserved_ports）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
+msgstr "非特权进程调试（allow.unprivileged_proc_debug）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount fdescfs (allow.mount.fdescfs)"
+msgstr "挂载 fdescfs (allow.mount.fdescfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount fusefs (allow.mount.fusefs)"
+msgstr "挂载 fusefs (allow.mount.fusefs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount nullfs (allow.mount.nullfs)"
+msgstr "挂载 nullfs (allow.mount.nullfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount procfs (allow.mount.procfs)"
+msgstr "挂载 procfs (allow.mount.procfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount linprocfs (allow.mount.linprocfs)"
+msgstr "挂载 linprocfs (allow.mount.linprocfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount linsysfs (allow.mount.linsysfs)"
+msgstr "挂载 linsysfs (allow.mount.linsysfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount tmpfs (allow.mount.tmpfs)"
+msgstr "挂载 tmpfs (allow.mount.tmpfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount ZFS (allow.mount.zfs)"
+msgstr "挂载 ZFS (allow.mount.zfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Virtual Machines (allow.vmm)"
+msgstr "虚拟机 (allow.vmm)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Allowed Options"
+msgstr "允许的选项"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Select Allowed Options"
+msgstr "选择要允许的选项"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Clean Environment"
+msgstr "清理环境"
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid ""
+"The above script will run during {0}, Ensure they are valid for the host or\n"
+"jail"
+msgstr ""
+"上述脚本将在 {0} 期间运行，请确保它们对主机或\n"
+"jail 有效"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Custom Options"
+msgstr "自定义选项"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Devfs Ruleset"
+msgstr "Devfs 规则集"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Leave empty for default ruleset"
+msgstr "留空以使用默认规则集"
+
+#: src/lib/components/custom/Jail/Create/Hardware.svelte
+msgid "Custom Devfs Ruleset"
+msgstr "自定义 Devfs 规则集"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
+msgstr "自定义 Jail 生命周期钩子（exec.* 脚本）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Mount devfs (allow.mount.devfs)"
+msgstr "挂载 devfs (allow.mount.devfs)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Linux (Experimental)"
+msgstr "Linux（实验性）"
+
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "View Logs"
+msgstr "查看日志"
+
+#. placeholder {0}: jail.current.name
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "{0} Logs"
+msgstr "{0} 日志"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Monaco, Menlo, \"Courier New\", monospace"
+msgstr "Monaco, Menlo, “Courier New”, 等宽字体"
+
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket connected for tab {0}"
+msgstr "标签页 {0} 的终端 WebSocket 已连接"
+
+#. placeholder {0}: currentTab?.id
+#: src/lib/components/custom/Terminal.svelte
+msgid "Terminal WebSocket disconnected for tab {0}"
+msgstr "标签页 {0} 的终端 WebSocket 已断开"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Record Size"
+msgstr "记录大小"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select Record Size"
+msgstr "选择记录大小"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Custom Mount Point"
+msgstr "自定义挂载点"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Simple Linux"
+msgstr "简易 Linux"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select FStab Option"
+msgstr "选择 fstab 选项"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (env)"
+msgstr "没有元数据 (env)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (meta)"
+msgstr "元数据 (meta)"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (Environment Variables)"
+msgstr "元数据（环境变量）"
+
+#: src/lib/components/custom/Jail/Create/Advanced.svelte
+msgid "Metadata (Meta)"
+msgstr "元数据 (Meta)"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Disconnect"
+msgstr "断开"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Reconnect"
+msgstr "重新连接"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid ""
+"The console has been disconnected.<0/> Click the \"Reconnect\" button to re-"
+"establish the connection."
+msgstr "控制台已断开连接。<0/> 点击“重新连接”按钮以恢复连接。"
+
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores update failed"
+msgstr "CPU 核心数更新失败"
+
+#. placeholder {0}: cpu.logicalCores
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores larger than logical cores ({0})"
+msgstr "CPU 核心数大于逻辑核心数（{0}）"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will disinherit the network configuration from the host. Choose "
+"this if you want\n"
+"to attach a custom network switch to this jail or disable networking "
+"entirely. Changes will\n"
+"take effect after restarting the jail."
+msgstr ""
+"启用此选项将取消继承主机的网络配置。\n"
+"如果你希望为此 jail 连接自定义网络交换机或完全禁用网络，请选择此项。\n"
+"更改将在重启 jail 后生效。"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will inherit the network configuration from the host. Choose "
+"this if you want\n"
+"the jail to share the host's networking. You can select which protocols to "
+"inherit below.\n"
+"Changes will take effect after restarting the jail."
+msgstr ""
+"启用此选项将继承主机的网络配置。如果你希望 jail 共享主机的网络，请选择此"
+"项。\n"
+"你可以在下方选择要继承的协议。\n"
+"更改将在重启 jail 后生效。"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network disinherited"
+msgstr "网络未继承"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "At least one protocol required"
+msgstr "至少需要一个协议"
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network inherited"
+msgstr "网络已继承"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Primary Network"
+msgstr "主网络"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "IPv4 Address"
+msgstr "IPv4 地址"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select IPv4 Address"
+msgstr "选择 IPv4 地址"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "IPv6 Address"
+msgstr "IPv6 地址"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Select IPv6 Address"
+msgstr "选择 IPv6 地址"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Default Gateway"
+msgstr "默认网关"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Default gateway already exists"
+msgstr "默认网关已存在"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Network added successfully"
+msgstr "网络添加成功"
+
+#: src/lib/components/custom/Jail/Network/Add.svelte
+msgid "Network name already exists"
+msgstr "网络名称已存在"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Network Inherit"
+msgstr "jail - 网络继承"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Network Disinherit"
+msgstr "jail - 网络未继承"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Network"
+msgstr "Jail 网络"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Auto-convert to RAW"
+msgstr "自动转换为 RAW"
+
+#. placeholder {0}: jail.current?.name
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Console settings - {0}"
+msgstr "终端设置 - {0}"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Font Size"
+msgstr "字体大小"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Background"
+msgstr "背景"
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Foreground"
+msgstr "前景"
+
+#: src/lib/components/custom/Charts/EChart.svelte
+#: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+msgid "Save As Image"
+msgstr "保存为图片"
+
+#. placeholder {0}: num(vdev.read_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "R:{0}"
+msgstr "R:{0}"
+
+#. placeholder {0}: num(vdev.write_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "W:{0}"
+msgstr "W:{0}"
+
+#. placeholder {0}: num(vdev.checksum_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "C:{0}"
+msgstr "C:{0}"
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Logs"
+msgstr "日志"
+
+#. placeholder {0}: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Errors detected{0}"
+msgstr "检测到错误 {0}"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Received"
+msgstr "接收"
+
+#: src/routes/[node]/summary/+page.svelte
+msgid "Sent"
+msgstr "发送"
+
+#: src/routes/[node]/+layout.svelte
+msgid "System"
+msgstr "系统"
+
+#: src/lib/components/custom/Settings/System/ZFSPools.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools"
+msgstr "ZFS 存储池"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "At least one ZFS Pool must be selected"
+msgstr "必须至少选择一个 ZFS 存储池"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "No changes made to ZFS Pools"
+msgstr "ZFS 存储池未发生任何变更"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to update ZFS Pools"
+msgstr "ZFS 存储池更新失败"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated successfully"
+msgstr "ZFS 存储池更新成功"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Enter ZFS Pools"
+msgstr "输入 ZFS 存储池"
+
+#: src/lib/components/custom/Settings/System/ZFSPools.svelte
+msgid "Select ZFS Pools"
+msgstr "选择 ZFS 存储池"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Cannot remove initialized ZFS Pools"
+msgstr "无法移除已初始化的 ZFS 存储池"
+
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Add spares to enable auto replace"
+msgstr "添加备用以启用自动替换"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Parent pool not found"
+msgstr "未找到父存储池"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size must match block size"
+msgstr "卷大小必须与块大小匹配"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid size format"
+msgstr "无效的大小格式"
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume {0} edited"
+msgstr "卷 {0} 已编辑"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume Size"
+msgstr "卷大小"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid ""
+"Volume size is not a multiple of block size, click on this if you'd like to "
+"automatically adjust it"
+msgstr "卷大小不是块大小的整数倍，点击此选项可自动调整"
+
+#: src/lib/components/custom/Terminal.svelte
+msgid "Failed to connect to terminal WebSocket"
+msgstr "终端 WebSocket 连接失败"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Unknown VM"
+msgstr "未知的虚拟机"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Started"
+msgstr "已开始"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Bad Request"
+msgstr "错误请求"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Error"
+msgstr "错误"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv4 gateway or address"
+msgstr "IPv4 网关或地址无效"
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Invalid IPv6 gateway or address"
+msgstr "IPv6 网关或地址无效"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Block devices managed by ZFS"
+msgstr "由 ZFS 管理的块设备"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "Disk images that can be used with any filesystem"
+msgstr "可用于任何文件系统的磁盘映像"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No Storage"
+msgstr "找不到存储"
+
+#: src/lib/components/custom/VM/Create/Storage.svelte
+msgid "No storage will be allocated for this virtual machine"
+msgstr "将不会为此虚拟机分配存储"
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.latest
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replacing {0} with {1}"
+msgstr "正在用 {1} 替换 {0}"
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.name
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Device replacement started for {0} in {1}"
+msgstr "已开始替换 {1} 中的设备 {0}"
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Error replacing device"
+msgstr "替换设备时出错"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshot"
+msgstr "定期快照删除失败"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Used"
+msgstr "已使用"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Referenced"
+msgstr "已引用"
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Deleted {0} snapshots"
+msgstr "已删除快照 {0}"
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete {0} snapshots"
+msgstr "将删除 {0} 个快照"
+
+#. placeholder {0}: datasets[0].name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete snapshot {0}"
+msgstr "将删除快照 {0}"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Delete Snapshot"
+msgid_plural "Delete # Snapshots"
+msgstr[0] "删除快照"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create Directory"
+msgstr "创建目录"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Delete (File/Directory)"
+msgstr "删除（文件/目录）"
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create File"
+msgstr "创建文件"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Voter"
+msgstr "投票者"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Non Voter"
+msgstr "非投票者"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Staging"
+msgstr "暂存"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Socket"
+msgid_plural "Socket #"
+msgstr[0] "插槽"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Core"
+msgid_plural "Core #"
+msgstr[0] "核心"
+
+#. placeholder {0}: selectedCores.size
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Selected: {0},"
+msgstr "已选择 {0},"
+
+#. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "Limit: {0}"
+msgstr "限制：{0}"
+
+#: src/lib/components/disk/CreatePartition.svelte
+msgid "Remaining space: <0/>"
+msgstr "剩余空间：<0/>"
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Check to enable"
+msgstr "点击启用"
+
+#. placeholder {0}: activeRow?.property
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Toggle {0}"
+msgstr "切换 {0}"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "Setup Complete"
+msgstr "设置完成"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Restart"
+msgstr "<0/> 重启"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Restarting..."
+msgstr "<0/> 正在重启……"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is restarting…"
+msgstr "系统正在重启……"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System is back online"
+msgstr "系统已重新上线"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "System did not come back online in time"
+msgstr "系统未能在规定时间内重新上线"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "We need to restart the system to apply changes"
+msgstr "我们需要重启系统来应用更改"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "WoL Server"
+msgstr "WOL 服务器"
+
+#: src/routes/+error.svelte
+msgid "Not Found"
+msgstr "找不到"
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "Invalid RAM value"
+msgstr "内存值无效"
+
+#. placeholder {0}: enabled ? 'disable' : 'enable'
+#. placeholder {1}: displayName
+#. placeholder {2}: networkWarning
+#: src/routes/[node]/settings/system/+page.svelte
+msgid ""
+"You are about to {0} {1}, {2}you will have to restart Sylve and or the host "
+"system for changes to take effect"
+msgstr "你即将 {0} {1}，{2} 你需要重启 Sylve 或主机系统以使更改生效"
+
+#. placeholder {0}: serviceName
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle {0}"
+msgstr "{0} 切换失败"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail"
+msgstr "Jail"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "FSTab Entries"
+msgstr "fstab 条目"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the fstab entries for this jail"
+msgstr "管理此 jail 的 fstab 条目"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Failed to save changes"
+msgstr "变更保存失败"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Changes saved"
+msgstr "变更已保存"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "DevFS Ruleset"
+msgstr "DevFS 规则集"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the devfs ruleset for this jail"
+msgstr "管理此 jail 的 devfs 规则集"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage additional options for this jail"
+msgstr "管理此 jail 的附加选项"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta and Env key-value pairs"
+msgstr "元数据和环境键值对"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta (Key=Value per line)"
+msgstr "元数据（每行键=值）"
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "ENV (Key=Value per line)"
+msgstr "环境变量（每行键=值）"
+
+#: src/lib/runes/useQuery.svelte.ts
+msgid "Unexpected error occurred"
+msgstr "发生了意外错误"
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+msgid "Snapshot {0}@{1} already exists"
+msgstr "快照 {0}@{1} 已存在"
+
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+msgid "CPU Info Unavailable"
+msgstr "CPU 信息不可用"
+
+#: src/routes/swagger/+page.svelte
+msgid "Swagger"
+msgstr "Swagger"
