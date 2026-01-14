@@ -46,8 +46,10 @@
 	}
 
 	let visible = new IsDocumentVisible();
+
 	let { data }: { data: Data } = $props();
-	let ctId = data.ctId;
+
+	let ctId = $derived(data.ctId);
 	let gfsStep = $state<GFSStep>('hourly');
 
 	let modalState = $state({
