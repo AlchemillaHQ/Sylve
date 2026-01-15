@@ -22,6 +22,22 @@ type Raft struct {
 	Reset bool `json:"reset"`
 }
 
+type DHTConfig struct {
+	Port    int  `json:"port"`
+	Enabled bool `json:"enabled"`
+}
+
+type BTTRPC struct {
+	Enabled bool   `json:"enabled"`
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
+type BTT struct {
+	RPC BTTRPC    `json:"rpc"`
+	DHT DHTConfig `json:"dht"`
+}
+
 type SylveConfig struct {
 	Environment   string          `json:"environment"`
 	ProxyToVite   bool            `json:"proxyToVite"`
@@ -34,6 +50,7 @@ type SylveConfig struct {
 	DataPath      string          `json:"dataPath"`
 	TLS           TLSConfig       `json:"tlsConfig"`
 	Raft          Raft            `json:"raft"`
+	BTT           BTT             `json:"btt"`
 }
 
 type APIResponse[T any] struct {

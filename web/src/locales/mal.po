@@ -6516,9 +6516,8 @@ msgstr ""
 #~ msgid "System needs to restart to apply changes"
 #~ msgstr ""
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restart"
-msgstr ""
+#~ msgid "<0/> Restart"
+#~ msgstr ""
 
 #~ msgid "Initialized"
 #~ msgstr ""
@@ -6529,9 +6528,8 @@ msgstr ""
 #~ msgid "Failed to restart system: {0}"
 #~ msgstr ""
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restarting..."
-msgstr ""
+#~ msgid "<0/> Restarting..."
+#~ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is restarting…"
@@ -6554,9 +6552,8 @@ msgstr ""
 #~ msgid "Test123"
 #~ msgstr ""
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "We need to restart the system to apply changes"
-msgstr ""
+#~ msgid "We need to restart the system to apply changes"
+#~ msgstr ""
 
 #~ msgid "You are about to {0} the WOL Server"
 #~ msgstr ""
@@ -6747,4 +6744,18 @@ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Default Sylve Group (sylve_g)"
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid ""
+"A <0>full system reboot</0> is required for Sylve to\n"
+"finish initialization. Continue when ready."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Rebooting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Reboot"
 msgstr ""

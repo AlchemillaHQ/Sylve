@@ -6562,9 +6562,8 @@ msgstr "Setup Complete"
 #~ msgid "System needs to restart to apply changes"
 #~ msgstr "System needs to restart to apply changes"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restart"
-msgstr "<0/> Restart"
+#~ msgid "<0/> Restart"
+#~ msgstr "<0/> Restart"
 
 #~ msgid "Initialized"
 #~ msgstr "Initialized"
@@ -6575,9 +6574,8 @@ msgstr "<0/> Restart"
 #~ msgid "Failed to restart system: {0}"
 #~ msgstr "Failed to restart system: {0}"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restarting..."
-msgstr "<0/> Restarting..."
+#~ msgid "<0/> Restarting..."
+#~ msgstr "<0/> Restarting..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is restarting…"
@@ -6600,9 +6598,8 @@ msgstr "System did not come back online in time"
 #~ msgid "Test123"
 #~ msgstr "Test123"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "We need to restart the system to apply changes"
-msgstr "We need to restart the system to apply changes"
+#~ msgid "We need to restart the system to apply changes"
+#~ msgstr "We need to restart the system to apply changes"
 
 #~ msgid "You are about to {0} the WOL Server"
 #~ msgstr "You are about to {0} the WOL Server"
@@ -6794,3 +6791,19 @@ msgstr "Modify Users"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Default Sylve Group (sylve_g)"
 msgstr "Default Sylve Group (sylve_g)"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid ""
+"A <0>full system reboot</0> is required for Sylve to\n"
+"finish initialization. Continue when ready."
+msgstr ""
+"A <0>full system reboot</0> is required for Sylve to\n"
+"finish initialization. Continue when ready."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Rebooting..."
+msgstr "<0/> Rebooting..."
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Reboot"
+msgstr "<0/> Reboot"

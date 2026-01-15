@@ -51,6 +51,19 @@ func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServic
 	cfg.Database = config.GetDownloadsPath("torrent.db")
 	cfg.DataDir = config.GetDownloadsPath("torrents")
 
+	cfg.RPCEnabled = config.ParsedConfig.BTT.RPC.Enabled
+
+	if config.ParsedConfig.BTT.RPC.Enabled {
+		cfg.RPCHost = config.ParsedConfig.BTT.RPC.Address
+		cfg.RPCPort = config.ParsedConfig.BTT.RPC.Port
+	}
+
+	cfg.DHTEnabled = config.ParsedConfig.BTT.DHT.Enabled
+
+	if config.ParsedConfig.BTT.DHT.Enabled {
+		cfg.DHTPort = uint16(config.ParsedConfig.BTT.DHT.Port)
+	}
+
 	session, err := torrent.NewSession(cfg)
 	if err != nil {
 		logger.L.Fatal().Msgf("Failed to create torrent downloader %v", err)
