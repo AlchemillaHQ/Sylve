@@ -3988,17 +3988,14 @@ msgstr "समूह बनाने में विफल"
 msgid "Group created"
 msgstr "समूह बनाया गया"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr "कोई उपयोगकर्ता चयनित नहीं है"
+#~ msgid "No users selected"
+#~ msgstr "कोई उपयोगकर्ता चयनित नहीं है"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr "उपयोगकर्ताओं को समूह में जोड़ने में विफल"
+#~ msgid "Failed to add users to group"
+#~ msgstr "उपयोगकर्ताओं को समूह में जोड़ने में विफल"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr "उपयोगकर्ता समूह में जोड़े गए"
+#~ msgid "Users added to group"
+#~ msgstr "उपयोगकर्ता समूह में जोड़े गए"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -4006,11 +4003,8 @@ msgstr "उपयोगकर्ता समूह में जोड़े �
 msgid "Created At"
 msgstr "निर्मित किया गया"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr "उपयोगकर्ता जोड़ें"
+#~ msgid "Add Users"
+#~ msgstr "उपयोगकर्ता जोड़ें"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "New Group"
@@ -6738,4 +6732,25 @@ msgstr ""
 
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Edit Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users modified in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to modify users in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Modify Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Default Sylve Group (sylve_g)"
 msgstr ""

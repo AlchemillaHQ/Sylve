@@ -139,7 +139,8 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 		return "", err
 	}
 
-	if dl.Type == "torrent" {
+	switch dl.Type {
+	case "torrent":
 		var file utilitiesModels.DownloadedFile
 		if err := s.DB.Where("id = ?", id).First(&file).Error; err != nil {
 			logger.L.Error().Msgf("Failed to get file by ID: %v", err)
@@ -155,7 +156,7 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 		fullPath := path.Join(download.Path, file.Name)
 
 		return fullPath, nil
-	} else if dl.Type == "http" {
+	case "http":
 		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
 	}
 
@@ -643,14 +644,19 @@ func (s *Service) SyncDownloadProgress() error {
 }
 
 func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
+	if download.Status == utilitiesModels.DownloadStatusDone {
+		return
+	}
+
 	t := s.BTTClient.GetTorrent(download.UUID)
 	if t == nil {
-		logger.L.Error().Msgf("Torrent %s not found", download.UUID)
+		logger.L.Error().Msgf("Torrent %s not found in client", download.UUID)
 		return
 	}
 
 	st := t.Stats()
 	have, total := st.Pieces.Have, st.Pieces.Total
+
 	if total == 0 {
 		download.Progress = 0
 	} else {
@@ -659,12 +665,26 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	download.Size = st.Bytes.Total
 	download.Name = st.Name
 
-	if total > 0 && have == total && (download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending) {
+	isFinished := total > 0 && have == total
+
+	if isFinished {
 		download.Status = utilitiesModels.DownloadStatusDone
 		download.Progress = 100
+		if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
+			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
+			return
+		}
+	} else {
+		download.Status = utilitiesModels.DownloadStatusProcessing
 	}
 
-	s.DB.Model(download).Select("Progress", "Size", "Name", "Status").Updates(download)
+	err := s.DB.Model(download).
+		Select("Progress", "Size", "Name", "Status").
+		Updates(download).Error
+
+	if err != nil {
+		logger.L.Error().Err(err).Msgf("Failed to update database for download %s", download.UUID)
+	}
 }
 
 func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {

@@ -201,3 +201,46 @@ func AddUsersToGroupHandler(authService *auth.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Update Group Members
+// @Description Update the members of a specified group
+// @Tags Groups
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body AddUsersToGroupRequest true "Update group members request"
+// @Success 200 {object} internal.APIResponse[any] "Group members updated successfully"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /auth/groups/members [put]
+func UpdateGroupMembersHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req AddUsersToGroupRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := authService.SyncGroupMembers(req.Usernames, req.Group); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_update_group_members",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "group_members_updated_successfully",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}

@@ -215,7 +215,7 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 		logger.L.Error().Msgf("Error checking Unix user 'admin': %v", err)
 	}
 	if !exists {
-		err := system.CreateUnixUser(username, "/usr/sbin/nologin", "/nonexistent")
+		err := system.CreateUnixUser(username, "/usr/sbin/nologin", "/nonexistent", "")
 		if err != nil {
 			logger.L.Error().Msgf("Failed to create Unix user 'admin': %v", err)
 			return err

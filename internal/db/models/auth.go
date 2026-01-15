@@ -25,6 +25,7 @@ type User struct {
 	LastLoginTime time.Time `json:"lastLoginTime"`
 
 	Tokens []Token `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"tokens,omitempty"`
+	Groups []Group `gorm:"many2many:user_groups;constraint:OnDelete:CASCADE" json:"groups,omitempty"`
 }
 
 type Group struct {

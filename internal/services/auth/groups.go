@@ -145,3 +145,54 @@ func (s *Service) AddUsersToGroup(usernames []string, groupName string) error {
 
 	return nil
 }
+
+func (s *Service) SyncGroupMembers(usernames []string, groupName string) error {
+	var group models.Group
+
+	if err := s.DB.Preload("Users").Where("name = ?", groupName).First(&group).Error; err != nil {
+		return fmt.Errorf("failed_to_find_group: %w", err)
+	}
+
+	var targetUsers []models.User
+	if len(usernames) > 0 {
+		if err := s.DB.Where("username IN ?", usernames).Find(&targetUsers).Error; err != nil {
+			return fmt.Errorf("failed_to_fetch_target_users: %w", err)
+		}
+
+		if len(targetUsers) != len(usernames) {
+			return fmt.Errorf("one_or_more_users_not_found")
+		}
+	}
+
+	currentMemberNames := make(map[string]bool)
+	for _, u := range group.Users {
+		currentMemberNames[u.Username] = true
+	}
+
+	desiredMemberNames := make(map[string]bool)
+	for _, name := range usernames {
+		desiredMemberNames[name] = true
+	}
+
+	for _, u := range group.Users {
+		if !desiredMemberNames[u.Username] {
+			if err := system.RemoveUserFromGroup(u.Username, groupName); err != nil {
+				return fmt.Errorf("failed_to_remove_unix_member %s: %w", u.Username, err)
+			}
+		}
+	}
+
+	for _, name := range usernames {
+		if !currentMemberNames[name] {
+			if err := system.AddUserToGroup(name, groupName); err != nil {
+				return fmt.Errorf("failed_to_add_unix_member %s: %w", name, err)
+			}
+		}
+	}
+
+	if err := s.DB.Model(&group).Association("Users").Replace(targetUsers); err != nil {
+		return fmt.Errorf("failed_to_sync_db_associations: %w", err)
+	}
+
+	return nil
+}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { addUsersToGroup, createGroup, deleteGroup, listGroups } from '$lib/api/auth/groups';
+	import { createGroup, deleteGroup, listGroups, updateGroupMembers } from '$lib/api/auth/groups';
 	import { listUsers } from '$lib/api/auth/local';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -65,7 +65,7 @@
 			open: false,
 			id: 0
 		},
-		addUsers: {
+		modifyUsers: {
 			open: false,
 			combobox: {
 				open: false,
@@ -129,16 +129,9 @@
 		}
 	}
 
-	async function onAddUsers() {
-		if (properties.addUsers.combobox.value.length === 0) {
-			toast.error('No users selected', {
-				position: 'bottom-center'
-			});
-			return;
-		}
-
-		const response = await addUsersToGroup(
-			properties.addUsers.combobox.value,
+	async function onModifyUsers() {
+		const response = await updateGroupMembers(
+			properties.modifyUsers.combobox.value,
 			activeRow ? activeRow.name : ''
 		);
 
@@ -146,17 +139,17 @@
 
 		if (response.status === 'error') {
 			handleAPIError(response);
-			toast.error('Failed to add users to group', {
+			toast.error('Failed to modify users in group', {
 				position: 'bottom-center'
 			});
 			return;
 		} else {
-			toast.success('Users added to group', {
+			toast.success('Users modified in group', {
 				position: 'bottom-center'
 			});
 
-			properties.addUsers.open = false;
-			properties.addUsers.combobox.value = [];
+			properties.modifyUsers.open = false;
+			properties.modifyUsers.combobox.value = [];
 		}
 	}
 
@@ -169,7 +162,15 @@
 			},
 			{
 				field: 'name',
-				title: 'Name'
+				title: 'Name',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+					if (value === 'sylve_g') {
+						return `Default Sylve Group (sylve_g)`;
+					}
+
+					return value;
+				}
 			},
 			{
 				field: 'createdAt',
@@ -213,29 +214,30 @@
 {#snippet button(type: string)}
 	{#if activeRows && activeRows.length === 1 && !activeRows[0].user}
 		{#if type === 'delete'}
-			<Button
-				onclick={() => {
-					properties.delete.open = !properties.delete.open;
-					properties.delete.id = activeRows ? (activeRows[0].id as number) : 0;
-				}}
-				size="sm"
-				variant="outline"
-				class="h-6.5"
-			>
-				<div class="flex items-center">
-					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
-					<span>Delete</span>
-				</div>
-			</Button>
+			{#if activeRow?.name !== 'sylve_g'}
+				<Button
+					onclick={() => {
+						properties.delete.open = !properties.delete.open;
+						properties.delete.id = activeRows ? (activeRows[0].id as number) : 0;
+					}}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+				>
+					<div class="flex items-center">
+						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+						<span>Delete</span>
+					</div>
+				</Button>
+			{/if}
 		{/if}
 
-		{#if type === 'add-users'}
+		{#if type === 'modify-users'}
 			<Button
 				onclick={() => {
-					properties.addUsers.open = !properties.addUsers.open;
+					properties.modifyUsers.open = !properties.modifyUsers.open;
 					if (activeRows) {
-						properties.addUsers.combobox.value =
+						properties.modifyUsers.combobox.value =
 							activeRows[0].children?.map((user) => user.name) || [];
 					}
 				}}
@@ -244,9 +246,9 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[material-symbols--group-add] mr-1 h-4 w-4"></span>
+					<span class="icon-[material-symbols--edit] mr-1 h-4 w-4"></span>
 
-					<span>Add Users</span>
+					<span>Edit Users</span>
 				</div>
 			</Button>
 		{/if}
@@ -267,7 +269,7 @@
 			</div>
 		</Button>
 
-		{@render button('add-users')}
+		{@render button('modify-users')}
 		{@render button('delete')}
 	</div>
 
@@ -353,8 +355,8 @@
 	</Dialog.Root>
 {/if}
 
-{#if properties.addUsers.open}
-	<Dialog.Root bind:open={properties.addUsers.open}>
+{#if properties.modifyUsers.open}
+	<Dialog.Root bind:open={properties.modifyUsers.open}>
 		<Dialog.Content
 			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
@@ -363,9 +365,8 @@
 			<Dialog.Header>
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<span class="icon-[material-symbols--group-add] h-5 w-5"></span>
-
-						<span>Add Users</span>
+						<span class="icon-[material-symbols--edit] h-5 w-5"></span>
+						<span>Edit Users</span>
 					</div>
 					<div class="flex items-center gap-0.5">
 						<Button
@@ -387,7 +388,7 @@
 							title={'Close'}
 							onclick={() => {
 								properties = options;
-								properties.addUsers.open = false;
+								properties.modifyUsers.open = false;
 							}}
 						>
 							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
@@ -399,11 +400,11 @@
 			</Dialog.Header>
 
 			<CustomComboBox
-				bind:open={properties.addUsers.combobox.open}
-				bind:value={properties.addUsers.combobox.value}
-				data={properties.addUsers.combobox.data}
+				bind:open={properties.modifyUsers.combobox.open}
+				bind:value={properties.modifyUsers.combobox.value}
+				data={properties.modifyUsers.combobox.data}
 				onValueChange={(v) => {
-					properties.addUsers.combobox.value = v as string[];
+					properties.modifyUsers.combobox.value = v as string[];
 				}}
 				placeholder={'Select users'}
 				multiple={true}
@@ -412,7 +413,7 @@
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={() => onAddUsers()} type="submit" size="sm">{'Add Users'}</Button>
+					<Button onclick={() => onModifyUsers()} type="submit" size="sm">{'Modify Users'}</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>

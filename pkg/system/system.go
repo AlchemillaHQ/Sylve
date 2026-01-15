@@ -21,8 +21,16 @@ func UnixUserExists(name string) (bool, error) {
 	return true, nil
 }
 
-func CreateUnixUser(name string, shell string, dir string) error {
-	args := []string{"useradd", name, "-m"}
+func CreateUnixUser(name string, shell string, dir string, group string) error {
+	args := []string{"user", "add", "-n", name, "-m"}
+
+	if group != "" {
+		if UnixGroupExists(group) {
+			args = append(args, "-g", group)
+		} else {
+			return fmt.Errorf("specified group '%s' does not exist", group)
+		}
+	}
 
 	if shell != "" {
 		args = append(args, "-s", shell)
@@ -37,9 +45,8 @@ func CreateUnixUser(name string, shell string, dir string) error {
 	}
 
 	_, err := utils.RunCommand("pw", args...)
-
 	if err != nil {
-		return err
+		return fmt.Errorf("pw command failed: %w", err)
 	}
 
 	return nil
@@ -132,6 +139,31 @@ func AddUserToGroup(user string, group string) error {
 	_, err := utils.RunCommand("pw", "groupmod", group, "-m", user)
 	if err != nil {
 		return fmt.Errorf("failed to add user %s to group %s: %w", user, group, err)
+	}
+
+	return nil
+}
+
+func RemoveUserFromGroup(user string, group string) error {
+	if exists, _ := UnixUserExists(user); !exists {
+		return fmt.Errorf("user %s does not exist", user)
+	}
+	if exists := UnixGroupExists(group); !exists {
+		return fmt.Errorf("group %s does not exist", group)
+	}
+
+	inGroup, err := IsUserInGroup(user, group)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+
+	if !inGroup {
+		return nil
+	}
+
+	_, err = utils.RunCommand("pw", "groupmod", group, "-d", user)
+	if err != nil {
+		return fmt.Errorf("failed to remove user %s from group %s: %w", user, group, err)
 	}
 
 	return nil

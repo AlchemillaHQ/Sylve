@@ -3920,17 +3920,14 @@ msgstr ""
 msgid "Group created"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr ""
+#~ msgid "No users selected"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr ""
+#~ msgid "Failed to add users to group"
+#~ msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr ""
+#~ msgid "Users added to group"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -3938,11 +3935,8 @@ msgstr ""
 msgid "Created At"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr ""
+#~ msgid "Add Users"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "New Group"
@@ -6732,4 +6726,25 @@ msgstr ""
 
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Edit Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users modified in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to modify users in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Modify Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Default Sylve Group (sylve_g)"
 msgstr ""

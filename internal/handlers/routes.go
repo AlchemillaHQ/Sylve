@@ -105,7 +105,7 @@ func RegisterRoutes(r *gin.Engine,
 	info.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
-		
+
 		info.GET("/cpu", infoHandlers.RealTimeCPUInfoHandler(infoService))
 		info.GET("/cpu/historical", infoHandlers.HistoricalCPUInfoHandler(infoService))
 
@@ -384,6 +384,7 @@ func RegisterRoutes(r *gin.Engine,
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
 		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
 		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
+		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
 	}
 
 	cluster := api.Group("/cluster")

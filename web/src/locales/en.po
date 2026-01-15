@@ -3932,17 +3932,14 @@ msgstr "Failed to create group"
 msgid "Group created"
 msgstr "Group created"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "No users selected"
-msgstr "No users selected"
+#~ msgid "No users selected"
+#~ msgstr "No users selected"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Failed to add users to group"
-msgstr "Failed to add users to group"
+#~ msgid "Failed to add users to group"
+#~ msgstr "Failed to add users to group"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Users added to group"
-msgstr "Users added to group"
+#~ msgid "Users added to group"
+#~ msgstr "Users added to group"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
@@ -3950,11 +3947,8 @@ msgstr "Users added to group"
 msgid "Created At"
 msgstr "Created At"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-msgid "Add Users"
-msgstr "Add Users"
+#~ msgid "Add Users"
+#~ msgstr "Add Users"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "New Group"
@@ -6779,3 +6773,24 @@ msgstr "CPU Info Unavailable"
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
 msgstr "Swagger"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Edit Users"
+msgstr "Edit Users"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users modified in group"
+msgstr "Users modified in group"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to modify users in group"
+msgstr "Failed to modify users in group"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Modify Users"
+msgstr "Modify Users"
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Default Sylve Group (sylve_g)"
+msgstr "Default Sylve Group (sylve_g)"

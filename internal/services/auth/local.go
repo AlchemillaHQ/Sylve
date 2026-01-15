@@ -10,6 +10,7 @@ package auth
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -22,7 +23,7 @@ import (
 
 func (s *Service) ListUsers() ([]models.User, error) {
 	var users []models.User
-	if err := s.DB.Find(&users).Error; err != nil {
+	if err := s.DB.Preload("Groups").Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_users: %w", err)
 	}
 	return users, nil
@@ -30,13 +31,18 @@ func (s *Service) ListUsers() ([]models.User, error) {
 
 func (s *Service) GetUserByID(id uint) (*models.User, error) {
 	var user models.User
-	if err := s.DB.First(&user, id).Error; err != nil {
+	if err := s.DB.Preload("Groups").First(&user, id).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_user_by_id: %w", err)
 	}
 	return &user, nil
 }
 
 func (s *Service) CreateUser(user *models.User) error {
+	var basicSettings models.BasicSettings
+	if err := s.DB.First(&basicSettings).Error; err != nil {
+		return fmt.Errorf("failed_to_get_basic_settings: %w", err)
+	}
+
 	if user.Email != "" && !utils.IsValidEmail(user.Email) {
 		return fmt.Errorf("invalid_email_format: %s", user.Email)
 	}
@@ -71,16 +77,25 @@ func (s *Service) CreateUser(user *models.User) error {
 		return fmt.Errorf("user_already_exists: %s", user.Username)
 	}
 
-	if err := system.CreateUnixUser(user.Username, "", ""); err != nil {
+	if err := system.CreateUnixUser(user.Username, "", "", "sylve_g"); err != nil {
 		return fmt.Errorf("failed_to_create_unix_user: %w", err)
 	}
 
-	if err := samba.CreateSambaUser(user.Username, pwCopy); err != nil {
-		return fmt.Errorf("failed_to_create_samba_user: %w", err)
+	if slices.Contains(basicSettings.Services, models.SambaServer) {
+		if err := samba.CreateSambaUser(user.Username, pwCopy); err != nil {
+			return fmt.Errorf("failed_to_create_samba_user: %w", err)
+		}
 	}
 
 	if err := s.DB.Create(user).Error; err != nil {
 		return fmt.Errorf("failed_to_create_user: %w", err)
+	}
+
+	var sylveGroup models.Group
+	if err := s.DB.Where("name = ?", "sylve_g").First(&sylveGroup).Error; err == nil {
+		if err := s.DB.Model(&sylveGroup).Association("Users").Append(user); err != nil {
+			return fmt.Errorf("failed_to_add_user_to_sylve_g_group: %w", err)
+		}
 	}
 
 	return nil
