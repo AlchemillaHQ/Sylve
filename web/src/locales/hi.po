@@ -564,7 +564,7 @@ msgstr "{0} बनाने में त्रुटि"
 #. placeholder {0}: newPartitions.length + 1
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "New Partition {0}"
-msgstr ""
+msgstr "नया विभाजन {0}"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
@@ -1253,7 +1253,7 @@ msgstr "नोड्स"
 #. placeholder {0}: statusCounts.online || 0
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Online: {0}"
-msgstr ""
+msgstr "ऑनलाइन: {0}"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Online: 1"
@@ -1300,7 +1300,7 @@ msgstr "यूज़रनेम और पासवर्ड आवश्यक
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Invalid username"
-msgstr ""
+msgstr "अमान्य उपयोगकर्ता नाम"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -2148,7 +2148,7 @@ msgstr "जेल नाम"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Postgres"
-msgstr ""
+msgstr "पोस्टग्रेस"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Jail ID"
@@ -3604,7 +3604,7 @@ msgstr "संसाधन सीमाएँ संपादित करने
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Edit {0}"
-msgstr ""
+msgstr "{0} संपादित करें"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "This will give unlimited resources to this jail, proceed with <b>caution!</b>"
@@ -4237,7 +4237,7 @@ msgstr "इस VM के लिए कोई कंसोल कॉन्फ़�
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
-msgstr ""
+msgstr "वीएम वर्तमान में बंद है।<0/> इसके कंसोल तक पहुंचने के लिए वीएम शुरू करें।"
 
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4669,7 +4669,7 @@ msgstr "चेकसम चुनें"
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Compression"
-msgstr ""
+msgstr "संकुचन"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -4790,7 +4790,7 @@ msgstr "स्नैपशॉट GUID नहीं मिला"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Simple"
-msgstr ""
+msgstr "साधारण"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -4881,7 +4881,7 @@ msgstr "डेटा सेट चुनें"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval"
-msgstr ""
+msgstr "अंतराल"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -5195,11 +5195,11 @@ msgstr "<0/> भाषा"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Downloader - Create Signed URL"
-msgstr ""
+msgstr "डाउनलोडर - हस्ताक्षरित URL बनाएँ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "TPM Emulation"
-msgstr ""
+msgstr "TPM अनुकरण"
 
 #. placeholder {0}: displayPinnedCount
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -5225,52 +5225,52 @@ msgstr ""
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool is in use by a VM or Jail"
-msgstr ""
+msgstr "पूल किसी VM या जेल द्वारा उपयोग में है"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Cannot replace with smaller device"
-msgstr ""
+msgstr "छोटे डिवाइस से बदला नहीं जा सकता"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select ATime"
-msgstr ""
+msgstr "ATime चुनें"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Server String"
-msgstr ""
+msgstr "सर्वर स्ट्रिंग"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download URL copied to clipboard"
-msgstr ""
+msgstr "डाउनलोड यूआरएल क्लिपबोर्ड पर कॉपी किया गया"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Copy URL"
-msgstr ""
+msgstr "यूआरएल कॉपी करें"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download Type"
-msgstr ""
+msgstr "डाउनलोड प्रकार"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Select Download Type"
-msgstr ""
+msgstr "डाउनलोड प्रकार चुनें"
 
 #~ msgid "Uncategorized"
 #~ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Base / RootFS"
-msgstr ""
+msgstr "बेस / रूटएफएस"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
-msgstr ""
+msgstr "क्लाउड-इनिट"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
-msgstr ""
+msgstr "स्वचालित रूप से निकालें"
 
 #~ msgid "CPU/RAM Usage"
 #~ msgstr ""
@@ -5280,16 +5280,16 @@ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "This will reset clustering data on this node"
-msgstr ""
+msgstr "यह इस नोड पर क्लस्टरिंग डेटा को रीसेट कर देगा"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Failed to add network"
-msgstr ""
+msgstr "नेटवर्क जोड़ने में विफल"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Ignore Unimplemented MSR Accesses"
-msgstr ""
+msgstr "अनियोजित MSR पहुँचों को अनदेखा करें"
 
 #~ msgid "Ignore Unknown MSRs Accesses"
 #~ msgstr ""
@@ -5314,7 +5314,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Ignore Unimplemented MSRs Accesses"
-msgstr ""
+msgstr "अनियोजित एमएसआर अभिगमों को अनदेखा करें"
 
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Failed to modify unimplemented MSRs access setting"
@@ -5377,51 +5377,51 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Hourly"
-msgstr ""
+msgstr "प्रति घंटा"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Daily"
-msgstr ""
+msgstr "दैनिक"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Weekly"
-msgstr ""
+msgstr "साप्ताहिक"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Monthly"
-msgstr ""
+msgstr "मासिक"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Yearly"
-msgstr ""
+msgstr "वार्षिक"
 
 #: src/lib/components/custom/Header.svelte
 msgid "VM creation form minimized"
-msgstr ""
+msgstr "VM निर्माण फ़ॉर्म छोटा किया गया"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Uncategorized (ISOs, IMGs, etc.)"
-msgstr ""
+msgstr "अवर्गीकृत (आईएसओ, आईएमजी, आदि)"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select ZFS pool"
-msgstr ""
+msgstr "ZFS पूल चुनें"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Jail creation form minimized"
-msgstr ""
+msgstr "जेल निर्माण फ़ॉर्म छोटा किया गया"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "FStab Additions"
-msgstr ""
+msgstr "FStab अतिरिक्त"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "FStab Entries"
-msgstr ""
+msgstr "FStab प्रविष्टियाँ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -5429,116 +5429,116 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Additional Options"
-msgstr ""
+msgstr "अतिरिक्त विकल्प"
 
 #~ msgid "Hello World"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Jail Type"
-msgstr ""
+msgstr "जेल प्रकार चुनें"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "FreeBSD"
-msgstr ""
+msgstr "फ्रीबीएसडी"
 
 #~ msgid "Linux"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Set Hostname (allow.set_hostname)"
-msgstr ""
+msgstr "होस्टनेम सेट करें (allow.set_hostname)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Raw Sockets (allow.raw_sockets)"
-msgstr ""
+msgstr "रॉ सॉकेट्स (allow.raw_sockets)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Change File Flags (allow.chflags)"
-msgstr ""
+msgstr "फ़ाइल फ़्लैग बदलें (allow.chflags)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount Filesystems (allow.mount)"
-msgstr ""
+msgstr "फ़ाइल सिस्टम माउंट करें (allow.mount)"
 
 #~ msgid "Mount devfs (allow.mount.devfs"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "FS Quotas (allow.quotas)"
-msgstr ""
+msgstr "एफएस कोटा (allow.quotas)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
-msgstr ""
+msgstr "कर्नेल संदेश बफर पढ़ें (allow.read_msgbuf)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Socket Address Families (allow.socket_af)"
-msgstr ""
+msgstr "सॉकेट एड्रेस परिवार (allow.socket_af)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Memory Locking (allow.mlock)"
-msgstr ""
+msgstr "मेमोरी लॉकिंग (allow.mlock)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "NFS Daemon (allow.nfsd)"
-msgstr ""
+msgstr "एनएफएस डेमॉन (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
-msgstr ""
+msgstr "आरक्षित पोर्ट (allow.reserved_ports)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
-msgstr ""
+msgstr "अविशेषीकृत प्रक्रिया डिबगिंग (allow.unprivileged_proc_debug)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
-msgstr ""
+msgstr "एफडेस्कएफएस माउंट करें (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
-msgstr ""
+msgstr "फ्यूजएफएस माउंट करें (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
-msgstr ""
+msgstr "नुलएफएस माउंट करें (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount procfs (allow.mount.procfs)"
-msgstr ""
+msgstr "प्रोसीएफएस माउंट करें (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
-msgstr ""
+msgstr "लिनप्रोसीएफएस माउंट करें (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
-msgstr ""
+msgstr "लिनसिसएफएस माउंट करें (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
-msgstr ""
+msgstr "टीएमपीएफएस माउंट करें (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
-msgstr ""
+msgstr "जेडएफएस माउंट करें (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Virtual Machines (allow.vmm)"
-msgstr ""
+msgstr "वर्चुअल मशीनें (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Allowed Options"
-msgstr ""
+msgstr "अनुमत विकल्प"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Allowed Options"
-msgstr ""
+msgstr "अनुमत विकल्प चुनें"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Clean Environment"
-msgstr ""
+msgstr "स्वच्छ वातावरण"
 
 #~ msgid "Pre-start (exec.prestart)"
 #~ msgstr ""
@@ -5611,37 +5611,39 @@ msgid ""
 "The above script will run during {0}, Ensure they are valid for the host or\n"
 "jail"
 msgstr ""
+"उपरोक्त स्क्रिप्ट {0} के दौरान चलेगी, सुनिश्चित करें कि वे होस्ट या जेल के लिए\n"
+"वैध हैं"
 
 #~ msgid "Script"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Custom Options"
-msgstr ""
+msgstr "कस्टम विकल्प"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Devfs Ruleset"
-msgstr ""
+msgstr "देवफ्स रूलसेट"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Leave empty for default ruleset"
-msgstr ""
+msgstr "डिफ़ॉल्ट रूलसेट के लिए खाली छोड़ दें"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Custom Devfs Ruleset"
-msgstr ""
+msgstr "कस्टम देवफ्स रूलसेट"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
-msgstr ""
+msgstr "कस्टम जेल लाइफसाइकिल हुक्स (exec.* स्क्रिप्ट्स)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount devfs (allow.mount.devfs)"
-msgstr ""
+msgstr "देवएफएस माउंट करें (allow.mount.devfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Linux (Experimental)"
-msgstr ""
+msgstr "लिनक्स (प्रायोगिक)"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "View Logs"
@@ -5671,7 +5673,7 @@ msgstr ""
 #. placeholder {0}: jail.current.name
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "{0} Logs"
-msgstr ""
+msgstr "{0} लॉग"
 
 #~ msgid "{0} — Logs"
 #~ msgstr ""
@@ -5688,7 +5690,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
-msgstr ""
+msgstr "मोनाको, मेनलो, \"कूरियर न्यू\", मोनोस्पेस"
 
 #~ msgid "Clear"
 #~ msgstr ""
@@ -5699,27 +5701,27 @@ msgstr ""
 #. placeholder {0}: currentTab?.id
 #: src/lib/components/custom/Terminal.svelte
 msgid "Terminal WebSocket connected for tab {0}"
-msgstr ""
+msgstr "टर्मिनल वेबसॉकेट टैब {0} के लिए कनेक्टेड"
 
 #. placeholder {0}: currentTab?.id
 #: src/lib/components/custom/Terminal.svelte
 msgid "Terminal WebSocket disconnected for tab {0}"
-msgstr ""
+msgstr "टर्मिनल वेबसॉकेट टैब {0} के लिए डिस्कनेक्टेड"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Record Size"
-msgstr ""
+msgstr "रिकॉर्ड आकार"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Record Size"
-msgstr ""
+msgstr "रिकॉर्ड आकार चुनें"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Custom Mount Point"
-msgstr ""
+msgstr "कस्टम माउंट पॉइंट"
 
 #~ msgid "Mountpoint"
 #~ msgstr ""
@@ -5742,30 +5744,30 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Simple Linux"
-msgstr ""
+msgstr "सिंपल लिनक्स"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select FStab Option"
-msgstr ""
+msgstr "FStab विकल्प चुनें"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (env)"
-msgstr ""
+msgstr "मेटाडेटा (ईएनवी)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (meta)"
-msgstr ""
+msgstr "मेटाडेटा (मेटा)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Environment Variables)"
-msgstr ""
+msgstr "मेटाडेटा (पर्यावरण चर)"
 
 #~ msgid "Metadata (Metadata Entries)"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Meta)"
-msgstr ""
+msgstr "मेटाडेटा (मेटा)"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Disconnect"
@@ -5811,12 +5813,12 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores update failed"
-msgstr ""
+msgstr "CPU कोर अपडेट विफल"
 
 #. placeholder {0}: cpu.logicalCores
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores larger than logical cores ({0})"
-msgstr ""
+msgstr "लॉजिकल कोर ({0}) से अधिक CPU कोर"
 
 #~ msgid "Linux Jails do not support networking configuration."
 #~ msgstr ""
@@ -5827,6 +5829,10 @@ msgid ""
 "to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
 "take effect after restarting the jail."
 msgstr ""
+"यह विकल्प होस्ट से नेटवर्क कॉन्फ़िगरेशन को असंबद्ध कर देगा। यदि आप इस जेल में\n"
+"एक कस्टम नेटवर्क स्विच संलग्न करना चाहते हैं या पूरी तरह से नेटवर्किंग अक्षम\n"
+"करना चाहते हैं तो इसे चुनें। जेल को पुनरारंभ करने के बाद परिवर्तन प्रभावी\n"
+"होंगे।"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid ""
@@ -5834,75 +5840,79 @@ msgid ""
 "the jail to share the host's networking. You can select which protocols to inherit below.\n"
 "Changes will take effect after restarting the jail."
 msgstr ""
+"यह विकल्प होस्ट से नेटवर्क कॉन्फ़िगरेशन को इनहेरिट करेगा। यदि आप चाहते हैं कि\n"
+"जेल होस्ट की नेटवर्किंग साझा करे तो इसे चुनें। आप नीचे दिए गए प्रोटोकॉल चुन\n"
+"सकते हैं जिन्हें इनहेरिट करना है। जेल को पुनरारंभ करने के बाद परिवर्तन\n"
+"प्रभावी होंगे।"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Network disinherited"
-msgstr ""
+msgstr "नेटवर्क असंबद्ध"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "At least one protocol required"
-msgstr ""
+msgstr "कम से कम एक प्रोटोकॉल आवश्यक है"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid "Network inherited"
-msgstr ""
+msgstr "नेटवर्क इनहेरिट किया गया"
 
 #~ msgid "Network form fields would be implemented here."
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Primary Network"
-msgstr ""
+msgstr "प्राथमिक नेटवर्क"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "IPv4 Address"
-msgstr ""
+msgstr "IPv4 पता"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Select IPv4 Address"
-msgstr ""
+msgstr "IPv4 पता चुनें"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "IPv6 Address"
-msgstr ""
+msgstr "IPv6 पता"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Select IPv6 Address"
-msgstr ""
+msgstr "IPv6 पता चुनें"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Default Gateway"
-msgstr ""
+msgstr "डिफ़ॉल्ट गेटवे"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Default gateway already exists"
-msgstr ""
+msgstr "डिफ़ॉल्ट गेटवे पहले से मौजूद है"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Network added successfully"
-msgstr ""
+msgstr "नेटवर्क सफलतापूर्वक जोड़ा गया"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Network name already exists"
-msgstr ""
+msgstr "नेटवर्क नाम पहले से मौजूद है"
 
 #~ msgid "Jail - Network Inheritance"
 #~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Network Inherit"
-msgstr ""
+msgstr "जेल - नेटवर्क इनहेरिट करें"
 
 #~ msgid "Jail - Network - Inherit"
 #~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Network Disinherit"
-msgstr ""
+msgstr "जेल - नेटवर्क डिसइन्हेरिट करें"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail Network"
-msgstr ""
+msgstr "जेल नेटवर्क"
 
 #~ msgid "Create - Jail"
 #~ msgstr ""
@@ -5915,7 +5925,7 @@ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Auto-convert to RAW"
-msgstr ""
+msgstr "रॉ में स्वतः-रूपांतरित करें"
 
 #~ msgid "Reload Page"
 #~ msgstr ""
@@ -5980,7 +5990,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
-msgstr ""
+msgstr "छवि के रूप में सहेजें"
 
 #~ msgid "Chart"
 #~ msgstr ""
@@ -6020,15 +6030,15 @@ msgstr ""
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Received"
-msgstr ""
+msgstr "प्राप्त किया गया"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Sent"
-msgstr ""
+msgstr "भेजा गया"
 
 #: src/routes/[node]/+layout.svelte
 msgid "System"
-msgstr ""
+msgstr "सिस्टम"
 
 #: src/lib/components/custom/Settings/System/ZFSPools.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -6037,30 +6047,30 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools"
-msgstr ""
+msgstr "ZFS पूल"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "At least one ZFS Pool must be selected"
-msgstr ""
+msgstr "कम से कम एक ZFS पूल का चयन किया जाना चाहिए"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "No changes made to ZFS Pools"
-msgstr ""
+msgstr "ZFS पूल्स में कोई बदलाव नहीं किया गया"
 
 #~ msgid "You cannot remove ZFS Pools that are already initialized"
 #~ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to update ZFS Pools"
-msgstr ""
+msgstr "ZFS पूल्स को अपडेट करने में विफल रहा"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools updated successfully"
-msgstr ""
+msgstr "ZFS पूल्स सफलतापूर्वक अपडेट किए गए"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Enter ZFS Pools"
-msgstr ""
+msgstr "ZFS पूल दर्ज करें"
 
 #: src/lib/components/custom/Settings/System/ZFSPools.svelte
 msgid "Select ZFS Pools"
@@ -6068,7 +6078,7 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Cannot remove initialized ZFS Pools"
-msgstr ""
+msgstr "आरंभ किए गए ZFS पूल्स को हटाया नहीं जा सकता"
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
@@ -6076,7 +6086,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Parent pool not found"
-msgstr ""
+msgstr "पैरेंट पूल नहीं मिला"
 
 #~ msgid "Event has been created"
 #~ msgstr ""
@@ -6086,7 +6096,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume size must match block size"
-msgstr ""
+msgstr "वॉल्यूम का आकार ब्लॉक आकार से मेल खाना चाहिए"
 
 #~ msgid "Auto resize"
 #~ msgstr ""
@@ -6102,65 +6112,65 @@ msgstr ""
 #. placeholder {0}: dataset.name
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume {0} edited"
-msgstr ""
+msgstr "वॉल्यूम {0} संपादित किया गया"
 
 #~ msgid "Size {0}"
 #~ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume Size"
-msgstr ""
+msgstr "वॉल्यूम आकार"
 
 #~ msgid "Volume size is not a multiple of block size"
 #~ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
-msgstr ""
+msgstr "वॉल्यूम आकार ब्लॉक आकार का गुणक नहीं है, यदि आप इसे स्वचालित रूप से समायोजित करना चाहते हैं तो इस पर क्लिक करें"
 
 #: src/lib/components/custom/Terminal.svelte
 msgid "Failed to connect to terminal WebSocket"
-msgstr ""
+msgstr "टर्मिनल वेबसॉकेट से कनेक्ट होने में विफल"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Unknown VM"
-msgstr ""
+msgstr "अज्ञात VM"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Started"
-msgstr ""
+msgstr "शुरू हुआ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Bad Request"
-msgstr ""
+msgstr "खराब अनुरोध"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Error"
-msgstr ""
+msgstr "त्रुटि"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Invalid IPv4 gateway or address"
-msgstr ""
+msgstr "अमान्य IPv4 गेटवे या पता"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Invalid IPv6 gateway or address"
-msgstr ""
+msgstr "अमान्य IPv6 गेटवे या पता"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Block devices managed by ZFS"
-msgstr ""
+msgstr "ZFS द्वारा प्रबंधित ब्लॉक डिवाइस"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Disk images that can be used with any filesystem"
-msgstr ""
+msgstr "डिस्क छवियां जिनका उपयोग किसी भी फाइलसिस्टम के साथ किया जा सकता है"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "No Storage"
-msgstr ""
+msgstr "कोई स्टोरेज नहीं"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "No storage will be allocated for this virtual machine"
-msgstr ""
+msgstr "इस वर्चुअल मशीन के लिए कोई स्टोरेज आवंटित नहीं किया जाएगा"
 
 #. placeholder {0}: snapshot.old
 #. placeholder {1}: snapshot.latest
@@ -6180,28 +6190,28 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Failed to delete periodic snapshot"
-msgstr ""
+msgstr "आवधिक स्नैपशॉट को हटाने में विफल"
 
 #~ msgid "Filesystems"
 #~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
-msgstr ""
+msgstr "उपयोग किया गया"
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Referenced"
-msgstr ""
+msgstr "संदर्भित"
 
 #. placeholder {0}: datasets.length
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Deleted {0} snapshots"
-msgstr ""
+msgstr "{0} स्नैपशॉट हटा दिए गए"
 
 #. placeholder {0}: datasets.length
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "This will delete {0} snapshots"
-msgstr ""
+msgstr "यह {0} स्नैपशॉट हटा देगा"
 
 #~ msgid "This will delete snapshot:"
 #~ msgstr ""
@@ -6209,7 +6219,7 @@ msgstr ""
 #. placeholder {0}: datasets[0].name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "This will delete snapshot {0}"
-msgstr ""
+msgstr "यह स्नैपशॉट {0} को हटा देगा"
 
 #~ msgid "Reload"
 #~ msgstr ""
@@ -6227,8 +6237,8 @@ msgstr ""
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Delete Snapshot"
 msgid_plural "Delete # Snapshots"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "स्नैपशॉट हटाएं"
+msgstr[1] "# स्नैपशॉट हटाएं"
 
 #~ msgid "Open"
 #~ msgstr ""
@@ -6256,30 +6266,30 @@ msgstr[1] ""
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create Directory"
-msgstr ""
+msgstr "डायरेक्टरी बनाएं"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Delete (File/Directory)"
-msgstr ""
+msgstr "मिटाएँ (फ़ाइल/डायरेक्टरी)"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create File"
-msgstr ""
+msgstr "फ़ाइल बनाएं"
 
 #~ msgid "Interval type required"
 #~ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Voter"
-msgstr ""
+msgstr "मतदाता"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Non Voter"
-msgstr ""
+msgstr "गैर मतदाता"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Staging"
-msgstr ""
+msgstr "स्टेजिंग"
 
 #~ msgid "Core"
 #~ msgid_plural "Core#"
@@ -6348,11 +6358,11 @@ msgstr ""
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
-msgstr ""
+msgstr "शेष स्थान: <0/>"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 msgid "Check to enable"
-msgstr ""
+msgstr "सक्षम करने के लिए जांचें"
 
 #~ msgid "Enable DHCP Server"
 #~ msgstr ""
@@ -6378,7 +6388,7 @@ msgstr ""
 #. placeholder {0}: activeRow?.property
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Toggle {0}"
-msgstr ""
+msgstr "{0} टॉगल करें"
 
 #~ msgid "DHCP Server {0}"
 #~ msgstr ""
@@ -6462,7 +6472,7 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "Setup Complete"
-msgstr ""
+msgstr "सेटअप पूर्ण"
 
 #~ msgid "System initialization has finished successfully. A restart is required to apply configuration changes."
 #~ msgstr ""
@@ -6539,15 +6549,15 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is restarting…"
-msgstr ""
+msgstr "सिस्टम पुनरारंभ हो रहा है..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is back online"
-msgstr ""
+msgstr "सिस्टम फिर से ऑनलाइन है"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System did not come back online in time"
-msgstr ""
+msgstr "सिस्टम समय पर ऑनलाइन वापस नहीं आया"
 
 #~ msgid "Preparing reboot…"
 #~ msgstr ""
@@ -6574,7 +6584,7 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "WoL Server"
-msgstr ""
+msgstr "WoL सर्वर"
 
 #~ msgid "You are about to {0} the WoL Server, you might have to restart Sylve and or the host system for changes to take effect"
 #~ msgstr ""
@@ -6590,7 +6600,7 @@ msgstr ""
 
 #: src/routes/+error.svelte
 msgid "Not Found"
-msgstr ""
+msgstr "नहीं मिला"
 
 #~ msgid "Page not found"
 #~ msgstr ""
@@ -6628,7 +6638,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 msgid "Invalid RAM value"
-msgstr ""
+msgstr "अमान्य RAM मान"
 
 #~ msgid "You are about to {0} Virtualization, you will have to restart Sylve and or the host system for changes to take effect"
 #~ msgstr ""
@@ -6644,78 +6654,78 @@ msgstr ""
 #. placeholder {2}: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
-msgstr ""
+msgstr "आप {0} {1} करने वाले हैं, {2}परिवर्तनों को प्रभावी होने के लिए आपको सिल्वे और/या होस्ट सिस्टम को पुनरारंभ करना होगा"
 
 #. placeholder {0}: serviceName
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to toggle {0}"
-msgstr ""
+msgstr "{0} को टॉगल करने में विफल रहा"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
-msgstr ""
+msgstr "जेल"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "FSTab Entries"
-msgstr ""
+msgstr "FSTab प्रविष्टियाँ"
 
 #~ msgid "Fstab Entries"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage the fstab entries for this jail"
-msgstr ""
+msgstr "इस जेल के लिए fstab प्रविष्टियाँ प्रबंधित करें"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Failed to save changes"
-msgstr ""
+msgstr "परिवर्तन सहेजने में विफल"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Changes saved"
-msgstr ""
+msgstr "परिवर्तन सहेजे गए"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "DevFS Ruleset"
-msgstr ""
+msgstr "DevFS नियमसेट"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage the devfs ruleset for this jail"
-msgstr ""
+msgstr "इस जेल के लिए devfs नियमसेट प्रबंधित करें"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage additional options for this jail"
-msgstr ""
+msgstr "इस जेल के लिए अतिरिक्त विकल्प प्रबंधित करें"
 
 #~ msgid "Discord"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Meta and Env key-value pairs"
-msgstr ""
+msgstr "मेटा और Env कुंजी-मूल्य जोड़े"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Meta (Key=Value per line)"
-msgstr ""
+msgstr "मेटा (प्रति पंक्ति कुंजी=मान)"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "ENV (Key=Value per line)"
-msgstr ""
+msgstr "ENV (प्रति पंक्ति कुंजी=मान)"
 
 #: src/lib/runes/useQuery.svelte.ts
 msgid "Unexpected error occurred"
-msgstr ""
+msgstr "अप्रत्याशित त्रुटि हुई"
 
 #. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 msgid "Snapshot {0}@{1} already exists"
-msgstr ""
+msgstr "स्नैपशॉट {0}@{1} पहले से मौजूद है"
 
 #~ msgid "Loading CPU information..."
 #~ msgstr ""
@@ -6725,43 +6735,45 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Info Unavailable"
-msgstr ""
+msgstr "CPU जानकारी अनुपलब्ध"
 
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
-msgstr ""
+msgstr "स्वैगर"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Edit Users"
-msgstr ""
+msgstr "उपयोगकर्ताओं को संपादित करें"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Users modified in group"
-msgstr ""
+msgstr "समूह में उपयोगकर्ता संशोधित किए गए"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Failed to modify users in group"
-msgstr ""
+msgstr "समूह में उपयोगकर्ताओं को संशोधित करने में विफल रहा"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Modify Users"
-msgstr ""
+msgstr "उपयोगकर्ताओं को संशोधित करें"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Default Sylve Group (sylve_g)"
-msgstr ""
+msgstr "डिफ़ॉल्ट सिल्वे ग्रुप (sylve_g)"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid ""
 "A <0>full system reboot</0> is required for Sylve to\n"
 "finish initialization. Continue when ready."
 msgstr ""
+"सिल्व को आरंभीकरण पूरा करने के लिए <0>पूर्ण सिस्टम रीबूट</0> की आवश्यकता है।\n"
+"तैयार होने पर जारी रखें।"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "<0/> Rebooting..."
-msgstr ""
+msgstr "<0/> रीबूट हो रहा है..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "<0/> Reboot"
-msgstr ""
+msgstr "<0/> रीबूट करें"

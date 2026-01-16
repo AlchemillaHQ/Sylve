@@ -101,7 +101,10 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 			"secondarycache": "all",
 		}
 
-		if storage.Type == vmModels.VMStorageTypeRaw {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
+			props["atime"] = "off"
+
 			dataset, err = s.GZFS.ZFS.CreateFilesystem(
 				ctx,
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", target.Name, rid, storage.ID),
@@ -109,7 +112,7 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 					"recordsize": recordSize,
 				}),
 			)
-		} else if storage.Type == vmModels.VMStorageTypeZVol {
+		case vmModels.VMStorageTypeZVol:
 			dataset, err = s.GZFS.ZFS.CreateVolume(
 				ctx,
 				fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", target.Name, rid, storage.ID),

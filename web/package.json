@@ -17,7 +17,6 @@
 		"#app.css": "./src/app.css"
 	},
 	"devDependencies": {
-		"@rollup/wasm-node": "^4.30.1",
 		"@eslint/compat": "^1.2.5",
 		"@eslint/js": "^9.18.0",
 		"@iconify/json": "^2.2.394",
@@ -25,8 +24,9 @@
 		"@iconify/tailwind4": "^1.0.6",
 		"@internationalized/date": "^3.8.2",
 		"@lucide/svelte": "^0.515.0",
+		"@rollup/wasm-node": "^4.30.1",
 		"@sveltejs/adapter-static": "^3.0.8",
-		"@sveltejs/kit": "^2.16.0",
+		"@sveltejs/kit": "^2.49.5",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/forms": "^0.5.9",
 		"@tailwindcss/typography": "^0.5.15",
@@ -72,7 +72,6 @@
 		"@wuchale/vite-plugin": "^0.15.3",
 		"adze": "^2.2.4",
 		"axios": "^1.11.0",
-		"carta-md": "^4.11.1",
 		"chart.js": "^4.5.0",
 		"chartjs-adapter-date-fns": "^3.0.0",
 		"chartjs-plugin-zoom": "^2.2.0",
@@ -103,8 +102,7 @@
 		"wuchale": "^0.18.5",
 		"zod": "^3.25.67"
 	},
-
-  "overrides": {
-    "rollup": "npm:@rollup/wasm-node@^4.30.1"
-  }
+	"overrides": {
+		"rollup": "npm:@rollup/wasm-node@^4.30.1"
+	}
 }

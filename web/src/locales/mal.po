@@ -14,33 +14,33 @@ msgstr ""
 
 #: src/lib/stores/terminal.svelte.ts
 msgid "Terminal"
-msgstr ""
+msgstr "ടെർമിനൽ"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
-msgstr ""
+msgstr "ചുരുക്കം"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
-msgstr ""
+msgstr "കൺസോൾ"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Storage"
-msgstr ""
+msgstr "സംഭരണം"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
-msgstr ""
+msgstr "ഹാർഡ്‌വെയർ"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -51,154 +51,154 @@ msgstr ""
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Network"
-msgstr ""
+msgstr "ശൃംഖല"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
-msgstr ""
+msgstr "ഓപ്ഷനുകൾ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Notes"
-msgstr ""
+msgstr "കുറിപ്പുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Objects"
-msgstr ""
+msgstr "വസ്തുക്കൾ"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Interfaces"
-msgstr ""
+msgstr "ഇന്റർഫേസുകൾ"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Switches"
-msgstr ""
+msgstr "സ്വിച്ചുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Manual"
-msgstr ""
+msgstr "സ്വയം"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Standard"
-msgstr ""
+msgstr "സാധാരണ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Ranges"
-msgstr ""
+msgstr "വ്യാപ്തി"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Leases"
-msgstr ""
+msgstr "പാട്ടങ്ങൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Config"
-msgstr ""
+msgstr "കോൺഫിഗ്"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Explorer"
-msgstr ""
+msgstr "എക്സ്പ്ലോറർ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Disks"
-msgstr ""
+msgstr "ഡിസ്കുകൾ"
 
 #~ msgid "Dashboard"
 #~ msgstr ""
 
 #: src/routes/[node]/+layout.svelte
 msgid "Pools"
-msgstr ""
+msgstr "പൂളുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Datasets"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "File Systems"
-msgstr ""
+msgstr "ഫയൽ സിസ്റ്റങ്ങൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Volumes"
-msgstr ""
+msgstr "വോള്യങ്ങൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ടുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Samba"
-msgstr ""
+msgstr "സാംബ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Shares"
-msgstr ""
+msgstr "പങ്കുവെക്കലുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Settings"
-msgstr ""
+msgstr "ക്രമീകരണങ്ങൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Audit Logs"
-msgstr ""
+msgstr "ഓഡിറ്റ് ലോഗുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Utilities"
-msgstr ""
+msgstr "ഉപയോഗങ്ങൾ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Downloader"
-msgstr ""
+msgstr "ഡൗൺലോഡർ"
 
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "PCI Passthrough"
-msgstr ""
+msgstr "PCI പാസ്‌ത്രൂ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Authentication"
-msgstr ""
+msgstr "പ്രാമാണീകരണം"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Users"
-msgstr ""
+msgstr "ഉപയോക്താക്കൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Groups"
-msgstr ""
+msgstr "ഗ്രൂപ്പുകൾ"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Node — <0/>"
-msgstr ""
+msgstr "നോഡ് — <0/>"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Help"
-msgstr ""
+msgstr "സഹായം"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Difuse-sidebar"
-msgstr ""
+msgstr "ഡിഫ്യൂസ്-സൈഡ്ബാർ"
 
 #: src/routes/datacenter/+layout.svelte
 msgid "Cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ"
 
 #: src/lib/components/skeleton/LeftPanel.svelte
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
@@ -210,11 +210,11 @@ msgstr "ഡാറ്റ സെന്റർ"
 msgid ""
 "This node can’t be reached right now. Check the network connection and confirm the node is\n"
 "powered on."
-msgstr ""
+msgstr "ഈ നോഡിൽ ഇപ്പോൾ എത്തിച്ചേരാൻ കഴിയില്ല. നെറ്റ്‌വർക്ക് കണക്ഷൻ പരിശോധിച്ച് നോഡ് പ്രവർത്തിക്കുന്നുണ്ടെന്ന് ഉറപ്പാക്കുക."
 
 #: src/lib/components/custom/Header.svelte
 msgid "Color Theme"
-msgstr ""
+msgstr "കളർ തീം"
 
 #~ msgid "Language"
 #~ msgstr "ഭാഷ"
@@ -230,62 +230,62 @@ msgstr ""
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve Logo"
-msgstr ""
+msgstr "സിൽവ് ലോഗോ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "SYLVE"
-msgstr ""
+msgstr "സിൽവ്"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Toggle navigation menu"
-msgstr ""
+msgstr "നാവിഗേഷൻ മെനു ടോഗിൾ ചെയ്യുക"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Virtual Environment 0.0.1"
-msgstr ""
+msgstr "വിർച്വൽ എൻവയോൺമെന്റ് 0.0.1"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Create VM"
-msgstr ""
+msgstr "വി.എം. ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
-msgstr ""
+msgstr "ജയിൽ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Toggle user menu"
-msgstr ""
+msgstr "ഉപയോക്തൃ മെനു ടോഗിൾ ചെയ്യുക"
 
 #~ msgid "Log out"
 #~ msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "⌘⇧Q"
-msgstr ""
+msgstr "⌘⇧Q"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Sylve initialized"
-msgstr ""
+msgstr "സിൽവ് ഇനിഷ്യലൈസ് ചെയ്തു"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "ZFS Storage Pools"
-msgstr ""
+msgstr "ZFS സ്റ്റോറേജ് പൂളുകൾ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Select Pools"
-msgstr ""
+msgstr "പൂളുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Services"
-msgstr ""
+msgstr "സേവനങ്ങൾ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -294,7 +294,7 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Virtualization"
-msgstr ""
+msgstr "വിർച്വലൈസേഷൻ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -303,7 +303,7 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Jails"
-msgstr ""
+msgstr "ജയിലുകൾ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -311,7 +311,7 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Samba Server"
-msgstr ""
+msgstr "സാംബ സെർവർ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -320,27 +320,27 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "DHCP Server"
-msgstr ""
+msgstr "DHCP സെർവർ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "WOL Server"
-msgstr ""
+msgstr "WOL സെർവർ"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "We've hit the following errors during initialization"
-msgstr ""
+msgstr "ഇനിഷ്യലൈസേഷൻ സമയത്ത് താഴെ പറയുന്ന പിശകുകൾ സംഭവിച്ചു"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "Initialize"
-msgstr ""
+msgstr "ഇനിഷ്യലൈസ് ചെയ്യുക"
 
 #. placeholder {0}: Object.keys(value).length
 #: src/lib/components/custom/KVTableModal.svelte
 msgid "Object ({0} properties)"
-msgstr ""
+msgstr "വസ്തു ({0} പ്രോപ്പർട്ടികൾ)"
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Terminal.svelte
@@ -348,7 +348,7 @@ msgstr ""
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Enter"
-msgstr ""
+msgstr "നൽകുക"
 
 #~ msgid "English"
 #~ msgstr ""
@@ -375,7 +375,7 @@ msgstr "ഉപയോക്തൃനാമം"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Enter your username"
-msgstr ""
+msgstr "നിങ്ങളുടെ ഉപയോക്തൃനാമം നൽകുക"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
@@ -390,12 +390,12 @@ msgstr "സാമ്രാജ്യം"
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "PAM"
-msgstr ""
+msgstr "പി.എ.എം."
 
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve"
-msgstr ""
+msgstr "സിൽവ്"
 
 #: src/lib/components/custom/Login.svelte
 msgid "Remember Me"
@@ -410,12 +410,12 @@ msgstr "ലോഗിൻ"
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/SimpleSelect.svelte
 msgid "Select an option"
-msgstr ""
+msgstr "ഒരു ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക"
 
 #. placeholder {0}: sessionId
 #: src/lib/components/custom/Terminal.svelte
 msgid "Session killed: {0}"
-msgstr ""
+msgstr "സെഷൻ കിൽ ചെയ്തു: {0}"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
@@ -423,7 +423,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
-msgstr ""
+msgstr "ചെറുതാക്കുക"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -539,35 +539,35 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Close"
-msgstr ""
+msgstr "അടയ്ക്കുക"
 
 #: src/lib/components/custom/Terminal.svelte
 msgid "Add new tab"
-msgstr ""
+msgstr "പുതിയ ടാബ് ചേർക്കുക"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "No data available"
-msgstr ""
+msgstr "ഡാറ്റ ലഭ്യമല്ല"
 
 #. placeholder {0}: sizes.length > 1 ? 's' : ''
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Partition{0} created"
-msgstr ""
+msgstr "പാർട്ടീഷൻ {0} ഉണ്ടാക്കി"
 
 #. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Error creating {0}"
-msgstr ""
+msgstr "{0} ഉണ്ടാക്കുന്നതിൽ പിശക്"
 
 #. placeholder {0}: newPartitions.length + 1
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "New Partition {0}"
-msgstr ""
+msgstr "പുതിയ പാർട്ടീഷൻ {0}"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
-msgstr ""
+msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -666,7 +666,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Reset"
-msgstr ""
+msgstr "പുനഃസജ്ജമാക്കുക"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
@@ -700,7 +700,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Name"
-msgstr ""
+msgstr "പേര്"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
@@ -709,33 +709,33 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Size"
-msgstr ""
+msgstr "വലിപ്പം"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
-msgstr ""
+msgstr "ഉപയോഗം"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Actions"
-msgstr ""
+msgstr "പ്രവർത്തനങ്ങൾ"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Existing"
-msgstr ""
+msgstr "നിലവിലുള്ളത്"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No partitions created yet"
-msgstr ""
+msgstr "പാര്‍ട്ടീഷനുകളൊന്നും ഇതുവരെ ഉണ്ടാക്കിയിട്ടില്ല"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Add Partition"
-msgstr ""
+msgstr "പാര്‍ട്ടീഷൻ ചേർക്കുക"
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No space left"
-msgstr ""
+msgstr "സ്ഥലമില്ല"
 
 #~ msgid "Size: {0}"
 #~ msgstr ""
@@ -745,131 +745,131 @@ msgstr ""
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
-msgstr ""
+msgstr "പാര്‍ട്ടീഷനുകൾ സേവ് ചെയ്യുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Standard Switch"
-msgstr ""
+msgstr "സാധാരണ സ്വിച്ച്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Initialize GPT"
-msgstr ""
+msgstr "ഡിസ്ക് - GPT ഇനിഷ്യലൈസ് ചെയ്യുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Wipe"
-msgstr ""
+msgstr "ഡിസ്ക് - മായ്ക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Network Object"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഒബ്‌ജക്റ്റ്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "File Explorer - Delete"
-msgstr ""
+msgstr "ഫയൽ എക്സ്പ്ലോറർ - ഇല്ലാതാക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "File Explorer"
-msgstr ""
+msgstr "ഫയൽ എക്സ്പ്ലോറർ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Filesystem"
-msgstr ""
+msgstr "ZFS ഫയൽസിസ്റ്റം"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Volume"
-msgstr ""
+msgstr "ZFS വോളിയം"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Samba Share"
-msgstr ""
+msgstr "സാംബ ഷെയർ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Auth Group"
-msgstr ""
+msgstr "ഓത്ത് ഗ്രൂപ്പ്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Auth User"
-msgstr ""
+msgstr "ഓത്ത് യൂസർ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Samba Config - Edit"
-msgstr ""
+msgstr "സാംബ കോൺഫിഗറേഷൻ - എഡിറ്റ് ചെയ്യുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Bulk Delete"
-msgstr ""
+msgstr "ZFS ഡാറ്റാസെറ്റ് - ബൾക്കായി ഇല്ലാതാക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Snapshot"
-msgstr ""
+msgstr "ZFS സ്നാപ്പ്ഷോട്ട്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Start"
-msgstr ""
+msgstr "വിഎം - ആരംഭിക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Stop"
-msgstr ""
+msgstr "വിഎം - നിർത്തുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Start"
-msgstr ""
+msgstr "ജയിൽ - ആരംഭിക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Stop"
-msgstr ""
+msgstr "ജയിൽ - നിർത്തുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Detach"
-msgstr ""
+msgstr "വിഎം സ്റ്റോറേജ് - വേർപെടുത്തുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Attach"
-msgstr ""
+msgstr "വിഎം സ്റ്റോറേജ് - ഘടിപ്പിക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Manual Switch"
-msgstr ""
+msgstr "മാനുവൽ സ്വിച്ച്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "ZFS Pool"
-msgstr ""
+msgstr "ZFS പൂൾ"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Disk - Create Partitions"
-msgstr ""
+msgstr "ഡിസ്ക് - പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login - Create"
-msgstr ""
+msgstr "ലോഗിൻ - ഉണ്ടാക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Start Time"
-msgstr ""
+msgstr "ആരംഭിക്കുന്ന സമയം"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "End Time"
-msgstr ""
+msgstr "അവസാനിക്കുന്ന സമയം"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Node"
-msgstr ""
+msgstr "നോഡ്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User"
-msgstr ""
+msgstr "ഉപയോക്താവ്"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Action"
-msgstr ""
+msgstr "പ്രവർത്തനം"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -880,82 +880,82 @@ msgstr ""
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
-msgstr ""
+msgstr "സ്ഥിതി"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "No response"
-msgstr ""
+msgstr "പ്രതികരിക്കുന്നില്ല"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Node ID"
-msgstr ""
+msgstr "നോഡ് ഐഡി"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Address"
-msgstr ""
+msgstr "വിലാസം"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Suffrage"
-msgstr ""
+msgstr "വോട്ടവകാശം"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "View Join Information"
-msgstr ""
+msgstr "ചേരുന്ന വിവരങ്ങൾ കാണുക"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Create Cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ സൃഷ്ടിക്കുക"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Join Cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്ററിൽ ചേരുക"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Reset Cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ പുനഃസജ്ജമാക്കുക"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "This will reset clustering data on this node"
-msgstr ""
+msgstr "ഇത് ഈ നോഡിലെ ക്ലസ്റ്ററിംഗ് ഡാറ്റ പുനഃസജ്ജമാക്കും"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Failed to reset cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ പുനഃസജ്ജമാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Login required after cluster reset"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ പുനഃസജ്ജമാക്കിയ ശേഷം ലോഗിൻ ആവശ്യമാണ്"
 
 #: src/routes/[node]/notes/+page.svelte
 msgid "Note updated"
-msgstr ""
+msgstr "കുറിപ്പ് അപ്‌ഡേറ്റ് ചെയ്തു"
 
 #: src/routes/[node]/notes/+page.svelte
 msgid "Failed to update note"
-msgstr ""
+msgstr "കുറിപ്പ് അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note created"
-msgstr ""
+msgstr "കുറിപ്പ് സൃഷ്ടിച്ചു"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to create note"
-msgstr ""
+msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
-msgstr ""
+msgstr "സൃഷ്ടിച്ചത്"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
-msgstr ""
+msgstr "അപ്‌ഡേറ്റ് ചെയ്തത്"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -963,7 +963,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "View"
-msgstr ""
+msgstr "കാണുക"
 
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -981,7 +981,7 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Delete"
-msgstr ""
+msgstr "മായ്ക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1002,13 +1002,13 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
-msgstr ""
+msgstr "എഡിറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
-msgstr ""
+msgstr "വലിയ തോതിലുള്ള മായ്ക്കൽ"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
@@ -1033,29 +1033,29 @@ msgstr ""
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "New"
-msgstr ""
+msgstr "പുതിയത്"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note"
-msgstr ""
+msgstr "കുറിപ്പ്"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Post Upgrade Summary"
-msgstr ""
+msgstr "അപ്‌ഗ്രേഡിന് ശേഷമുള്ള സംഗ്രഹം"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Content"
-msgstr ""
+msgstr "ഉള്ളടക്കം"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "This is a note"
-msgstr ""
+msgstr "ഇതൊരു കുറിപ്പാണ്"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
@@ -1084,17 +1084,17 @@ msgstr ""
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
-msgstr ""
+msgstr "സംരക്ഷിക്കുക"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete note"
-msgstr ""
+msgstr "കുറിപ്പ് മായ്ക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to delete notes"
-msgstr ""
+msgstr "കുറിപ്പുകൾ മായ്ക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1105,7 +1105,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
-msgstr ""
+msgstr "സിപിയു ഉപയോഗം"
 
 #~ msgid "I/O Delay"
 #~ msgstr ""
@@ -1116,59 +1116,59 @@ msgstr ""
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "RAM Usage"
-msgstr ""
+msgstr "റാം ഉപയോഗം"
 
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 msgid "Swap Usage"
-msgstr ""
+msgstr "സ്വാപ്പ് ഉപയോഗം"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network RX"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് RX"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network TX"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് TX"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Disk Usage"
-msgstr ""
+msgstr "ഡിസ്ക് ഉപയോഗം"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "CPU(s)"
-msgstr ""
+msgstr "സിപിയു(കൾ)"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Operating System"
-msgstr ""
+msgstr "ഓപ്പറേറ്റിംഗ് സിസ്റ്റം"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Uptime"
-msgstr ""
+msgstr "പ്രവർത്തനസമയം"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Load Average"
-msgstr ""
+msgstr "ശരാശരി ലോഡ്"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Boot Mode"
-msgstr ""
+msgstr "ബൂട്ട് മോഡ്"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Sylve Version"
-msgstr ""
+msgstr "സില്വ് പതിപ്പ്"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Memory Usage"
-msgstr ""
+msgstr "മെമ്മറി ഉപയോഗം"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Network Usage"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഉപയോഗം"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
@@ -1180,7 +1180,7 @@ msgstr ""
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Type"
-msgstr ""
+msgstr "തരം"
 
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Details"
@@ -1227,71 +1227,71 @@ msgstr ""
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Health"
-msgstr ""
+msgstr "ആരോഗ്യം"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Single Node"
-msgstr ""
+msgstr "സിംഗിൾ നോഡ്"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: Yes"
-msgstr ""
+msgstr "ക്വോറേറ്റ്: അതെ"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: Yes (Degraded)"
-msgstr ""
+msgstr "ക്വോറേറ്റ്: അതെ (മോശമായത്)"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Quorate: No"
-msgstr ""
+msgstr "ക്വോറേറ്റ്: ഇല്ല"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Nodes"
-msgstr ""
+msgstr "നോഡുകൾ"
 
 #. placeholder {0}: statusCounts.online || 0
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Online: {0}"
-msgstr ""
+msgstr "ഓൺലൈൻ: {0}"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Online: 1"
-msgstr ""
+msgstr "ഓൺലൈൻ: 1"
 
 #. placeholder {0}: statusCounts.offline || 0
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Offline: {0}"
-msgstr ""
+msgstr "ഓഫ്‌ലൈൻ: {0}"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Offline: N/A"
-msgstr ""
+msgstr "ഓഫ്‌ലൈൻ: ലഭ്യമല്ല"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Resources"
-msgstr ""
+msgstr "വിഭവങ്ങൾ"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Disk"
-msgstr ""
+msgstr "ഡിസ്ക്"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Hostname"
-msgstr ""
+msgstr "ഹോസ്റ്റ് നെയിം"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
-msgstr ""
+msgstr "ഐഡി"
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Last Ping"
-msgstr ""
+msgstr "അവസാന പിംഗ്"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Username and password are required"
@@ -1349,12 +1349,12 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "E-Mail"
-msgstr ""
+msgstr "ഇമെയിൽ"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Enter or generate password"
-msgstr ""
+msgstr "പാസ്‌വേഡ് നൽകുക അല്ലെങ്കിൽ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Admin"
@@ -1380,35 +1380,35 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Create"
-msgstr ""
+msgstr "സൃഷ്ടിക്കുക"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Invalid IP address"
-msgstr ""
+msgstr "തെറ്റായ IP വിലാസം"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Invalid port number"
-msgstr ""
+msgstr "തെറ്റായ പോർട്ട് നമ്പർ"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Cluster created"
-msgstr ""
+msgstr "ക്ലസ്റ്റർ സൃഷ്ടിച്ചു"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Node IP"
-msgstr ""
+msgstr "നോഡ് IP"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Node Port"
-msgstr ""
+msgstr "നോഡ് പോർട്ട്"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Leader API is required"
@@ -1456,7 +1456,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Property"
-msgstr ""
+msgstr "പ്രോപ്പർട്ടി"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
@@ -1472,7 +1472,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Value"
-msgstr ""
+msgstr "മൂല്യം"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Leader Node"
@@ -1497,7 +1497,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/lib/components/custom/Charts/Bar.svelte
 msgid "<0/> Reset zoom"
-msgstr ""
+msgstr "<0/> സൂം പുനഃസജ്ജമാക്കുക"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 msgid "Baseline"
@@ -1506,14 +1506,14 @@ msgstr ""
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Date"
-msgstr ""
+msgstr "തീയതി"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Are you sure?"
-msgstr ""
+msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 msgid "This action cannot be undone. This will permanently delete"
@@ -1526,7 +1526,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Cancel"
-msgstr ""
+msgstr "റദ്ദാക്കുക"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -1535,7 +1535,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Continue"
-msgstr ""
+msgstr "തുടരുക"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 msgid "Enter value"
@@ -1545,29 +1545,29 @@ msgstr ""
 #: src/routes/[node]/storage/explorer/+page.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Folder"
-msgstr ""
+msgstr "ഫോൾഡർ"
 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "File"
-msgstr ""
+msgstr "ഫയൽ"
 
 #. placeholder {0}: isFolder ? 'Folder' : 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
-msgstr ""
+msgstr "<0/> {0} സൃഷ്‌ടിക്കുക"
 
 #. placeholder {0}: isFolder ? 'folder' : 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
-msgstr ""
+msgstr "{0} പേര് നൽകുക"
 
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Upload File"
-msgstr ""
+msgstr "<0/> ഫയൽ അപ്‌ലോഡ് ചെയ്യുക"
 
 #: src/lib/components/custom/FileExplorer/GridView.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
@@ -1607,7 +1607,7 @@ msgstr ""
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Rename"
-msgstr ""
+msgstr "പേരുമാറ്റുക"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "<0/> Add New"
@@ -1635,19 +1635,19 @@ msgstr ""
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "A - Z"
-msgstr ""
+msgstr "A - Z"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Z - A"
-msgstr ""
+msgstr "Z - A"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "Last Modified"
-msgstr ""
+msgstr "അവസാനം മാറ്റം വരുത്തിയത്"
 
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 msgid "First Modified"
-msgstr ""
+msgstr "ആദ്യം മാറ്റം വരുത്തിയത്"
 
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 msgid "Yesterday"
@@ -1669,120 +1669,120 @@ msgstr ""
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Search..."
-msgstr ""
+msgstr "തിരയുക..."
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Escape"
-msgstr ""
+msgstr "എസ്കേപ്പ്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Share name already exists"
-msgstr ""
+msgstr "പങ്കിട്ട പേര് നിലവിൽ ഉണ്ട്"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Name is required"
-msgstr ""
+msgstr "പേര് ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Dataset is required"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റ് ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "No groups selected and guests are not allowed"
-msgstr ""
+msgstr "ഗ്രൂപ്പുകളൊന്നും തിരഞ്ഞെടുത്തിട്ടില്ല, അതിഥികളെ അനുവദിക്കുന്നില്ല"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Share cannot have overlapping groups"
-msgstr ""
+msgstr "പങ്കിടുന്നതിന് ഓവർലാപ്പിംഗ് ഗ്രൂപ്പുകൾ ഉണ്ടാകാൻ പാടില്ല"
 
 #. placeholder {0}: edit ? 'edit' : 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
-msgstr ""
+msgstr "സാംബ പങ്കിടൽ {0} പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: edit ? 'edited' : 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
-msgstr ""
+msgstr "സാംബ പങ്കിടൽ {0}"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Edit Samba Share"
-msgstr ""
+msgstr "സാംബ പങ്കിടൽ എഡിറ്റ് ചെയ്യുക"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Samba Share"
-msgstr ""
+msgstr "സാംബ പങ്കിടൽ സൃഷ്ടിക്കുക"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റ്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select dataset"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Read-Only Groups"
-msgstr ""
+msgstr "വായിക്കാൻ മാത്രമുള്ള ഗ്രൂപ്പുകൾ"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
-msgstr ""
+msgstr "ഗ്രൂപ്പുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Writeable Groups"
-msgstr ""
+msgstr "എഴുതാൻ കഴിയുന്ന ഗ്രൂപ്പുകൾ"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Mask"
-msgstr ""
+msgstr "മാസ്ക് ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Directory Mask"
-msgstr ""
+msgstr "ഡയറക്ടറി മാസ്ക്"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Guests"
-msgstr ""
+msgstr "അതിഥികൾ"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Read Only"
-msgstr ""
+msgstr "വായിക്കാൻ മാത്രം"
 
 #: src/lib/components/ui/breadcrumb/breadcrumb-ellipsis.svelte
 msgid "More"
-msgstr ""
+msgstr "കൂടുതൽ"
 
 #: src/lib/components/ui/command/command-dialog.svelte
 msgid "Command Palette"
-msgstr ""
+msgstr "കമാൻഡ് പാലറ്റ്"
 
 #: src/lib/components/ui/command/command-dialog.svelte
 msgid "Search for a command to run"
-msgstr ""
+msgstr "പ്രവർത്തിപ്പിക്കാൻ ഒരു കമാൻഡ് തിരയുക"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "Type to create"
-msgstr ""
+msgstr "സൃഷ്ടിക്കാൻ ടൈപ്പ് ചെയ്യുക"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "Add"
-msgstr ""
+msgstr "ചേർക്കുക"
 
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "No data"
-msgstr ""
+msgstr "ഡാറ്റയില്ല"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Model"
-msgstr ""
+msgstr "മോഡൽ"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
@@ -1790,7 +1790,7 @@ msgstr ""
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Description"
-msgstr ""
+msgstr "വിവരണം"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -1798,93 +1798,93 @@ msgstr ""
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "MAC Address"
-msgstr ""
+msgstr "MAC വിലാസം"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Metric"
-msgstr ""
+msgstr "മെട്രിക്"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Active"
-msgstr ""
+msgstr "സജീവം"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Attribute"
-msgstr ""
+msgstr "ആട്രിബ്യൂട്ട്"
 
 #. placeholder {0}: ifaceData.name
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Details - {0}"
-msgstr ""
+msgstr "വിശദാംശങ്ങൾ - {0}"
 
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will make it unavailable to the host."
-msgstr ""
+msgstr "നിങ്ങൾ <b>{1}</b> വഴി <b>{0}</b> പാസ് ത്രൂ ചെയ്യാൻ ഉറപ്പാണോ? ഇത് ഹോസ്റ്റിന് ലഭ്യമല്ലാതാക്കും."
 
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? This will make it available to the host again."
-msgstr ""
+msgstr "നിങ്ങൾ <b>{1}</b> വഴി <b>{0}</b>-നുള്ള പാസ് ത്രൂ നീക്കം ചെയ്യാൻ ഉറപ്പാണോ? ഇത് ഹോസ്റ്റിന് വീണ്ടും ലഭ്യമാക്കും."
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Enable Passthrough"
-msgstr ""
+msgstr "പാസ് ത്രൂ പ്രവർത്തനക്ഷമമാക്കുക"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Disable Passthrough"
-msgstr ""
+msgstr "പാസ് ത്രൂ പ്രവർത്തനരഹിതമാക്കുക"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device added to passthrough"
-msgstr ""
+msgstr "ഡിവൈസ് പാസ് ത്രൂവിലേക്ക് ചേർത്തു"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to add device to passthrough"
-msgstr ""
+msgstr "പാസ് ത്രൂവിലേക്ക് ഡിവൈസ് ചേർക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device removed from passthrough"
-msgstr ""
+msgstr "ഡിവൈസ് പാസ് ത്രൂവിൽ നിന്ന് നീക്കം ചെയ്തു"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Device is in use by a VM, failed to remove"
-msgstr ""
+msgstr "ഡിവൈസ് ഒരു VM ഉപയോഗിക്കുന്നു, നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to remove device from passthrough"
-msgstr ""
+msgstr "പാസ് ത്രൂവിൽ നിന്ന് ഡിവൈസ് നീക്കം ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Data"
-msgstr ""
+msgstr "ഡാറ്റ"
 
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Updated At"
-msgstr ""
+msgstr "അപ്ഡേറ്റ് ചെയ്തത്"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Object {0} deleted"
-msgstr ""
+msgstr "{0} ഒബ്ജക്റ്റ് ഇല്ലാതാക്കി"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Object {0} is in use"
-msgstr ""
+msgstr "{0} ഒബ്ജക്റ്റ് ഉപയോഗത്തിലാണ്"
 
 #. placeholder {0}: active?.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Error deleting object {0}"
-msgstr ""
+msgstr "{0} ഒബ്ജക്റ്റ് ഇല്ലാതാക്കുന്നതിൽ പിശക്"
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "S.M.A.R.T Values ({0})"
-msgstr ""
+msgstr "S.M.A.R.T മൂല്യങ്ങൾ ({0})"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -1894,214 +1894,214 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "NVMe"
-msgstr ""
+msgstr "NVMe"
 
 #. placeholder {0}: activePartition.name
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "This action cannot be undone. This will permanently <b>delete</b> partition <b>{0}</b>."
-msgstr ""
+msgstr "ഈ പ്രവർത്തനം പഴയപടിയാക്കാൻ കഴിയില്ല. ഇത് <b>{0}</b> പാർട്ടീഷൻ ശാശ്വതമായി <b>ഇല്ലാതാക്കും</b>."
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
-msgstr ""
+msgstr "ഈ പ്രവർത്തനം പഴയപടിയാക്കാൻ കഴിയില്ല. ഇത് <b>{0}</b> ഡിസ്ക് ശാശ്വതമായി <b>മായ്ച്ചുകളയും</b>."
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk {0} initialized with GPT"
-msgstr ""
+msgstr "ഡിസ്ക് {0} GPT ഉപയോഗിച്ച് ഇനിഷ്യലൈസ് ചെയ്തു"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "S.M.A.R.T Values"
-msgstr ""
+msgstr "S.M.A.R.T മൂല്യങ്ങൾ"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Initialize GPT"
-msgstr ""
+msgstr "GPT ആരംഭിക്കുക"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Wipe Disk"
-msgstr ""
+msgstr "ഡിസ്ക് തുടയ്ക്കുക"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Delete Partition"
-msgstr ""
+msgstr "പാർട്ടീഷൻ ഡിലീറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Create Partition"
-msgstr ""
+msgstr "പാർട്ടീഷൻ ഉണ്ടാക്കുക"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Disk Wiped"
-msgstr ""
+msgstr "ഡിസ്ക് മായ്ച്ചു"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partition Deleted"
-msgstr ""
+msgstr "പാർട്ടീഷൻ മായ്ച്ചു"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Device busy"
-msgstr ""
+msgstr "ഉപകരണം തിരക്കിലാണ്"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to wipe busy disk"
-msgstr ""
+msgstr "തിരക്കുള്ള ഡിസ്ക് തുടയ്ക്കാൻ കഴിഞ്ഞില്ല"
 
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Unable to delete busy partition"
-msgstr ""
+msgstr "തിരക്കുള്ള പാർട്ടീഷൻ ഇല്ലാതാക്കാൻ കഴിഞ്ഞില്ല"
 
 #. placeholder {0}: activeDisk ? 'wiping disk' : 'deleting partition'
 #. placeholder {1}: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
-msgstr ""
+msgstr "പിശക് {0}: {1}"
 
 #. placeholder {0}: isFolder ? 'folder' : 'file'
 #. placeholder {1}: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
-msgstr ""
+msgstr "{0} \"{1}\" ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Renamed successfully"
-msgstr ""
+msgstr "പേര് വിജയകരമായി മാറ്റി"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to rename"
-msgstr ""
+msgstr "പേരുമാറ്റാൻ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Files"
-msgstr ""
+msgstr "ഫയലുകൾ"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Drop files here to upload"
-msgstr ""
+msgstr "അപ്‌ലോഡ് ചെയ്യാൻ ഫയലുകൾ ഇവിടെ ഇടുക"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Files will be uploaded to the current folder"
-msgstr ""
+msgstr "നിലവിലുള്ള ഫോൾഡറിലേക്ക് ഫയലുകൾ അപ്‌ലോഡ് ചെയ്യും"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Refresh"
-msgstr ""
+msgstr "<0/> പുതുക്കുക"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Paste"
-msgstr ""
+msgstr "<0/> ഒട്ടിക്കുക"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New File"
-msgstr ""
+msgstr "<0/> പുതിയ ഫയൽ"
 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New Folder"
-msgstr ""
+msgstr "<0/> പുതിയ ഫോൾഡർ"
 
 #. placeholder {0}: sortedItems.length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} items"
-msgstr ""
+msgstr "{0} ഇനങ്ങൾ"
 
 #. placeholder {0}: sortedItems.filter((item: any) => item.type === 'folder').length
 #. placeholder {1}: sortedItems.filter((item: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
-msgstr ""
+msgstr "{0} ഫോൾഡറുകൾ, {1} ഫയലുകൾ"
 
 #. placeholder {0}: modals.delete.item.type === 'folder' ? 'folder' : 'file'
 #. placeholder {1}: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
-msgstr ""
+msgstr "{0} \"{1}\" ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു."
 
 #. placeholder {0}: selectedItems.length
 #. placeholder {1}: selectedItems.length > 1 ? 's' : ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
-msgstr ""
+msgstr "{0} ഇനം{1} ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു."
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Please enter a valid URL"
-msgstr ""
+msgstr "ദയവായി ഒരു സാധുവായ URL നൽകുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Please enter a valid Magnet, HTTP URL or Path"
-msgstr ""
+msgstr "ദയവായി ഒരു സാധുവായ Magnet, HTTP URL അല്ലെങ്കിൽ Path നൽകുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Invalid file name"
-msgstr ""
+msgstr "തെറ്റായ ഫയലിന്റെ പേര്"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download started"
-msgstr ""
+msgstr "ഡൗൺലോഡ് ആരംഭിച്ചു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download failed"
-msgstr ""
+msgstr "ഡൗൺലോഡ് പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to get download link"
-msgstr ""
+msgstr "ഡൗൺലോഡ് ലിങ്ക് ലഭിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download"
-msgstr ""
+msgstr "ഡൗൺലോഡ്"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Magnet / HTTP URL / Path"
-msgstr ""
+msgstr "മാഗ്നറ്റ് / HTTP URL / പാത"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Optional File Name"
-msgstr ""
+msgstr "ഓപ്ഷണൽ ഫയൽ നാമം"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Ignore TLS Errors"
-msgstr ""
+msgstr "TLS പിശകുകൾ അവഗണിക്കുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to delete download"
-msgstr ""
+msgstr "ഡൗൺലോഡ് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Failed to delete downloads"
-msgstr ""
+msgstr "ഡൗൺലോഡുകൾ ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Missing required fields"
-msgstr ""
+msgstr "ആവശ്യമായ ഫീൽഡുകൾ നഷ്‌ടപ്പെട്ടു"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Failed to create S3 storage"
-msgstr ""
+msgstr "S3 സ്റ്റോറേജ് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "S3 storage created"
-msgstr ""
+msgstr "S3 സ്റ്റോറേജ് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Failed to create Directory storage"
-msgstr ""
+msgstr "ഡയറക്ടറി സ്റ്റോറേജ് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Directory storage created"
-msgstr ""
+msgstr "ഡയറക്ടറി സ്റ്റോറേജ് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Please select a storage type"
-msgstr ""
+msgstr "ഒരു സ്റ്റോറേജ് തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Create Storage"
-msgstr ""
+msgstr "സ്റ്റോറേജ് ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -2135,34 +2135,34 @@ msgstr ""
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Path"
-msgstr ""
+msgstr "പാത"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 msgid "Select Node"
-msgstr ""
+msgstr "നോഡ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Jail Name"
-msgstr ""
+msgstr "ജയിലിന്റെ പേര്"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Postgres"
-msgstr ""
+msgstr "പോസ്റ്റ്ഗ്രസ്"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 msgid "Jail ID"
-msgstr ""
+msgstr "ജയിൽ ഐഡി"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 msgid "Optional description for this virtual machine"
-msgstr ""
+msgstr "ഈ വെർച്വൽ മെഷീനിനായുള്ള ഒരു ഓപ്ഷണൽ വിവരണം"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Basic"
-msgstr ""
+msgstr "അടിസ്ഥാനം"
 
 #~ msgid "Hardware & Advanced"
 #~ msgstr ""
@@ -2178,50 +2178,50 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "None"
-msgstr ""
+msgstr "ഒന്നുമില്ല"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Failed to create jail"
-msgstr ""
+msgstr "ജയിൽ സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: data.name
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Jail {0} created"
-msgstr ""
+msgstr "ജയിൽ {0} സൃഷ്ടിച്ചു"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Cores"
-msgstr ""
+msgstr "സിപിയു കോറുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "Memory Size"
-msgstr ""
+msgstr "മെമ്മറി വലുപ്പം"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot Order"
-msgstr ""
+msgstr "ബൂട്ട് ഓർഡർ"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Start On Boot"
-msgstr ""
+msgstr "ബൂട്ട് ചെയ്യുമ്പോൾ ആരംഭിക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource Limits"
-msgstr ""
+msgstr "വിഭവ പരിധികൾ"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Mac"
-msgstr ""
+msgstr "മാക്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -2229,37 +2229,37 @@ msgstr ""
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Host"
-msgstr ""
+msgstr "ഹോസ്റ്റ്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 msgid "Standard switch"
-msgstr ""
+msgstr "സാധാരണ സ്വിച്ച്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 msgid "Manual switch"
-msgstr ""
+msgstr "മാനുവൽ സ്വിച്ച്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Inherit network from the host"
-msgstr ""
+msgstr "ഹോസ്റ്റിൽ നിന്ന് നെറ്റ്‌വർക്ക് പാരമ്പര്യമായി സ്വീകരിക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 msgid "No network switch will be allocated now, you can add it later"
-msgstr ""
+msgstr "ഇപ്പോൾ നെറ്റ്‌വർക്ക് സ്വിച്ച് അനുവദിക്കില്ല, പിന്നീട് ചേർക്കാം"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Inherit"
-msgstr ""
+msgstr "പാരമ്പര്യം"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Network"
-msgstr ""
+msgstr "IPv4 നെറ്റ്‌വർക്ക്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -2271,28 +2271,28 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4"
-msgstr ""
+msgstr "IPv4"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Select IPv4"
-msgstr ""
+msgstr "IPv4 തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Gateway"
-msgstr ""
+msgstr "IPv4 ഗേറ്റ്‌വേ"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
-msgstr ""
+msgstr "IPv4 ഗേറ്റ്‌വേ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Network"
-msgstr ""
+msgstr "IPv6 നെറ്റ്‌വർക്ക്"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -2304,28 +2304,28 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6"
-msgstr ""
+msgstr "IPv6"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Select IPv6"
-msgstr ""
+msgstr "IPv6 തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Gateway"
-msgstr ""
+msgstr "IPv6 ഗേറ്റ്‌വേ"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
-msgstr ""
+msgstr "IPv6 ഗേറ്റ്‌വേ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select MAC"
-msgstr ""
+msgstr "MAC തിരഞ്ഞെടുക്കുക"
 
 #~ msgid "Filesystem"
 #~ msgstr ""
@@ -2335,11 +2335,11 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Base"
-msgstr ""
+msgstr "അടിസ്ഥാനം"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select base"
-msgstr ""
+msgstr "അടിസ്ഥാനം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores must be at least 1"
@@ -2347,12 +2347,12 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores updated"
-msgstr ""
+msgstr "CPU കോറുകൾ അപ്‌ഡേറ്റ് ചെയ്തു"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "CPU"
-msgstr ""
+msgstr "സി.പി.യു"
 
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
@@ -2390,47 +2390,47 @@ msgstr ""
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Invalid domain"
-msgstr ""
+msgstr "അസാധുവായ ഡൊമെയ്ൻ"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Invalid DNS server"
-msgstr ""
+msgstr "അസാധുവായ DNS സെർവർ"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Error updating DHCP configuration"
-msgstr ""
+msgstr "DHCP കോൺഫിഗറേഷൻ അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Updated DHCP configuration"
-msgstr ""
+msgstr "DHCP കോൺഫിഗറേഷൻ അപ്ഡേറ്റ് ചെയ്തു"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Update DHCP Configuration"
-msgstr ""
+msgstr "DHCP കോൺഫിഗറേഷൻ അപ്ഡേറ്റ് ചെയ്യുക"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Domain"
-msgstr ""
+msgstr "ഡൊമെയ്ൻ"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "DNS Servers"
-msgstr ""
+msgstr "DNS സെർവറുകൾ"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Select DNS servers"
-msgstr ""
+msgstr "DNS സെർവറുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 msgid "Select switches"
-msgstr ""
+msgstr "സ്വിച്ചുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Expand Hosts"
-msgstr ""
+msgstr "ഹോസ്റ്റുകൾ വികസിപ്പിക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2440,7 +2440,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
-msgstr ""
+msgstr "ഹോസ്റ്റ്(കൾ)"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2450,7 +2450,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Network(s)"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക്(കൾ)"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2460,7 +2460,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
-msgstr ""
+msgstr "MAC(കൾ)"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2470,176 +2470,176 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "DUID(s)"
-msgstr ""
+msgstr "DUID(കൾ)"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Type is required"
-msgstr ""
+msgstr "തരം നിർബന്ധമാണ്"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "At least one host must be selected"
-msgstr ""
+msgstr "കുറഞ്ഞത് ഒരു ഹോസ്റ്റ് തിരഞ്ഞെടുക്കണം"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "At least one network must be selected"
-msgstr ""
+msgstr "കുറഞ്ഞത് ഒരു നെറ്റ്‌വർക്കെങ്കിലും തിരഞ്ഞെടുക്കണം"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "At least one MAC must be selected"
-msgstr ""
+msgstr "കുറഞ്ഞത് ഒരു MAC എങ്കിലും തിരഞ്ഞെടുക്കണം"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "At least one DUID must be selected"
-msgstr ""
+msgstr "കുറഞ്ഞത് ഒരു DUID എങ്കിലും തിരഞ്ഞെടുക്കണം"
 
 #. placeholder {0}: host
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Invalid host IP: {0}"
-msgstr ""
+msgstr "അസാധുവായ ഹോസ്റ്റ് IP: {0}"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Cannot mix IPv4 and IPv6 addresses"
-msgstr ""
+msgstr "IPv4, IPv6 വിലാസങ്ങൾ ഒരുമിച്ച് ഉപയോഗിക്കാൻ കഴിയില്ല"
 
 #. placeholder {0}: net
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Invalid network CIDR: {0}"
-msgstr ""
+msgstr "അസാധുവായ നെറ്റ്വർക്ക് CIDR: {0}"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Cannot mix IPv4 and IPv6 networks"
-msgstr ""
+msgstr "IPv4, IPv6 നെറ്റ്‌വർക്കുകൾ ഒരുമിച്ച് ഉപയോഗിക്കാൻ കഴിയില്ല"
 
 #. placeholder {0}: mac
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Invalid MAC address: {0}"
-msgstr ""
+msgstr "അസാധുവായ MAC വിലാസം: {0}"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "DUID cannot be empty"
-msgstr ""
+msgstr "DUID ശൂന്യമായിരിക്കാൻ പാടില്ല"
 
 #. placeholder {0}: duid
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Invalid DUID: {0}"
-msgstr ""
+msgstr "അസാധുവായ DUID: {0}"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Failed to create network object"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഒബ്‌ജക്റ്റ് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Object with this name already exists"
-msgstr ""
+msgstr "ഈ പേരിൽ ഒരു ഒബ്ജക്റ്റ് നിലവിലുണ്ട്"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Created object"
-msgstr ""
+msgstr "ഒബ്ജക്റ്റ് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Host object used in switch, only one IP is allowed"
-msgstr ""
+msgstr "ഹോസ്റ്റ് ഒബ്ജക്റ്റ് സ്വിച്ചിൽ ഉപയോഗിച്ചു, ഒരു ഐപി മാത്രമേ അനുവദിക്കൂ"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "No changes detected"
-msgstr ""
+msgstr "മാറ്റങ്ങളൊന്നും കണ്ടെത്തിയില്ല"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Cannot change type of object that is in use"
-msgstr ""
+msgstr "ഉപയോഗത്തിലുള്ള ഒബ്ജക്റ്റിന്റെ തരം മാറ്റാൻ കഴിയില്ല"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Cannot change object of active VM"
-msgstr ""
+msgstr "സജീവമായ VM-ന്റെ ഒബ്ജക്റ്റ് മാറ്റാൻ കഴിയില്ല"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Failed to update network object"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഒബ്ജക്റ്റ് അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Updated object"
-msgstr ""
+msgstr "ഒബ്ജക്റ്റ് അപ്ഡേറ്റ് ചെയ്തു"
 
 #. placeholder {0}: editingObject.name
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Edit Object - {0}"
-msgstr ""
+msgstr "ഒബ്ജക്റ്റ് എഡിറ്റ് ചെയ്യുക - {0}"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Create Object"
-msgstr ""
+msgstr "ഒബ്ജക്റ്റ് ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Windows"
-msgstr ""
+msgstr "വിൻഡോസ്"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 msgid "Select type"
-msgstr ""
+msgstr "തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Hosts"
-msgstr ""
+msgstr "ഹോസ്റ്റുകൾ"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Select hosts"
-msgstr ""
+msgstr "ഹോസ്റ്റുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Networks"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്കുകൾ"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Select networks"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്കുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "MACs"
-msgstr ""
+msgstr "MAC-കൾ"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Select MACs"
-msgstr ""
+msgstr "MAC-കൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "DUIDs"
-msgstr ""
+msgstr "DUID-കൾ"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Select DUIDs"
-msgstr ""
+msgstr "DUID-കൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Local Time"
-msgstr ""
+msgstr "പ്രാദേശിക സമയം"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "VNC Port"
-msgstr ""
+msgstr "VNC പോർട്ട്"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "VNC Password"
-msgstr ""
+msgstr "VNC പാസ്‌വേഡ്"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Enter or generate passphrase"
-msgstr ""
+msgstr "പാസ്ഫ്രെയ്സ് നൽകുക അല്ലെങ്കിൽ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "VNC Resolution"
-msgstr ""
+msgstr "VNC റെസല്യൂഷൻ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Select VNC resolution"
-msgstr ""
+msgstr "VNC റെസല്യൂഷൻ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -2647,15 +2647,15 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Clock Offset"
-msgstr ""
+msgstr "ക്ലോക്ക് ഓഫ്സെറ്റ്"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Select Time Offset"
-msgstr ""
+msgstr "സമയ ഓഫ്സെറ്റ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Startup/Shutdown Order"
-msgstr ""
+msgstr "പ്രവർത്തനം തുടങ്ങുന്ന / ഷട്ട്ഡൗൺ ചെയ്യുന്ന ക്രമം"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
@@ -2663,43 +2663,43 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Serial Console"
-msgstr ""
+msgstr "സീരിയൽ കൺസോൾ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "VNC Wait"
-msgstr ""
+msgstr "VNC കാത്തിരിപ്പ്"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "TPM Emulation"
-msgstr ""
+msgstr "TPM എമുലേഷൻ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Enable Cloud-Init"
-msgstr ""
+msgstr "ക്ലൗഡ്-ഇനിറ്റ് പ്രവർത്തനക്ഷമമാക്കുക"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Cloud-Init User Data"
-msgstr ""
+msgstr "ക്ലൗഡ്-ഇനിറ്റ് ഉപയോക്തൃ ഡാറ്റ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Cloud-Init Meta Data"
-msgstr ""
+msgstr "ക്ലൗഡ്-ഇനിറ്റ് മെറ്റാ ഡാറ്റ"
 
 #: src/lib/components/custom/VM/Create/Basic.svelte
 msgid "VM Name"
-msgstr ""
+msgstr "വിഎം പേര്"
 
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Sockets"
-msgstr ""
+msgstr "സിപിയു സോക്കറ്റുകൾ"
 
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Threads"
-msgstr ""
+msgstr "സിപിയു ത്രെഡുകൾ"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Pinning"
-msgstr ""
+msgstr "സിപിയു പിന്നിംഗ്"
 
 #~ msgid "<0/> Manage ({0} pinned)"
 #~ msgstr ""
@@ -2708,16 +2708,16 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Advanced"
-msgstr ""
+msgstr "വിപുലമായ"
 
 #. placeholder {0}: modal.name
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Created VM {0}"
-msgstr ""
+msgstr "വിഎം {0} ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Failed to create VM"
-msgstr ""
+msgstr "വിഎം ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #~ msgid "<0/> Create Virtual Machine"
 #~ msgstr ""
@@ -2725,96 +2725,96 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Create Virtual Machine"
-msgstr ""
+msgstr "വെർച്വൽ മെഷീൻ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "VirtIO"
-msgstr ""
+msgstr "VirtIO"
 
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Emulation Type"
-msgstr ""
+msgstr "എമുലേഷൻ തരം"
 
 #: src/lib/components/custom/VM/Create/Network.svelte
 msgid "Emulation type"
-msgstr ""
+msgstr "എമുലേഷൻ തരം"
 
 #: src/lib/components/custom/VM/Create/Network.svelte
 msgid "Select MAC address"
-msgstr ""
+msgstr "MAC അഡ്രസ്സ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Storage Pool"
-msgstr ""
+msgstr "സംഭരണ പൂൾ"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Select storage pool"
-msgstr ""
+msgstr "സംഭരണ പൂൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Disk Size"
-msgstr ""
+msgstr "ഡിസ്ക് വലുപ്പം"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Select emulation type"
-msgstr ""
+msgstr "എമുലേഷൻ തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Installation Media"
-msgstr ""
+msgstr "ഇൻസ്റ്റലേഷൻ മീഡിയ"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Select installation media"
-msgstr ""
+msgstr "ഇൻസ്റ്റലേഷൻ മീഡിയ തിരഞ്ഞെടുക്കുക"
 
 #. placeholder {0}: socketIndex
 #. placeholder {0}: socketIndex
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Socket {0}"
-msgstr ""
+msgstr "{0} സോക്കറ്റ്"
 
 #. placeholder {0}: coreSelectionLimit
 #. placeholder {0}: coreSelectionLimit
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "You can only select up to {0} cores."
-msgstr ""
+msgstr "നിങ്ങൾക്ക് പരമാവധി {0} കോറുകൾ തിരഞ്ഞെടുക്കാൻ കഴിയും."
 
 #~ msgid "Socket"
 #~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> CPU Pinning"
-msgstr ""
+msgstr "<0/> CPU പിന്നിംഗ്"
 
 #. placeholder {0}: actualAvailable
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} available"
-msgstr ""
+msgstr "{0} ലഭ്യമാണ്"
 
 #. placeholder {0}: busyCount
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "{0} busy"
-msgstr ""
+msgstr "{0} തിരക്കിലാണ്"
 
 #. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
-msgstr ""
+msgstr "{0} തിരഞ്ഞെടുത്തു"
 
 #~ msgid "Core utilization"
 #~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "<0/> Back to Sockets"
-msgstr ""
+msgstr "<0/> സോക്കറ്റുകളിലേക്ക് മടങ്ങുക"
 
 #~ msgid "Select cores from {0} ({1} available):"
 #~ msgstr ""
@@ -2827,51 +2827,51 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Select All Available"
-msgstr ""
+msgstr "ലഭ്യമായതെല്ലാം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Clear Selection"
-msgstr ""
+msgstr "തിരഞ്ഞെടുക്കൽ റദ്ദാക്കുക"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Save & Back to Sockets"
-msgstr ""
+msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളിലേക്ക് മടങ്ങുക"
 
 #~ msgid "Confirm {0} Core{1} from {2} Socket{3}"
 #~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Clear All Pinning"
-msgstr ""
+msgstr "എല്ലാ പിന്നിംഗും നീക്കം ചെയ്യുക"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "Failed to modify CPU"
-msgstr ""
+msgstr "CPU മാറ്റുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 msgid "VM not found"
-msgstr ""
+msgstr "വി.എം കണ്ടെത്തിയില്ല"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "Sockets"
-msgstr ""
+msgstr "സോക്കറ്റുകൾ"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "Cores"
-msgstr ""
+msgstr "കോറുകൾ"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 msgid "Threads"
-msgstr ""
+msgstr "ത്രെഡുകൾ"
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "Failed to modify PCI devices"
-msgstr ""
+msgstr "PCI ഉപകരണങ്ങൾ മാറ്റുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "PCI devices modified"
-msgstr ""
+msgstr "PCI ഉപകരണങ്ങൾ മാറ്റി"
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2879,7 +2879,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "PCI Devices"
-msgstr ""
+msgstr "PCI ഉപകരണങ്ങൾ"
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 msgid "Select PCI Devices"
@@ -2888,24 +2888,24 @@ msgstr ""
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
-msgstr ""
+msgstr "സ്വിച്ച് ആവശ്യമാണ്"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Emulation is required"
-msgstr ""
+msgstr "അനുകരണം ആവശ്യമാണ്"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Error attaching VM to switch"
-msgstr ""
+msgstr "വി.എം സ്വിച്ചിൽ ഘടിപ്പിക്കുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "VM attached to switch"
-msgstr ""
+msgstr "വി.എം സ്വിച്ചിൽ ഘടിപ്പിച്ചു"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "New Network"
-msgstr ""
+msgstr "പുതിയ നെറ്റ്‌വർക്ക്"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -2914,34 +2914,34 @@ msgstr ""
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Switch"
-msgstr ""
+msgstr "സ്വിച്ച്"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select Switch"
-msgstr ""
+msgstr "സ്വിച്ച് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Emulation"
-msgstr ""
+msgstr "അനുകരണം"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
-msgstr ""
+msgstr "അനുകരണം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Options/Clock.svelte
 msgid "Failed to modify clock offset"
-msgstr ""
+msgstr "ക്ലോക്ക് ഓഫ്സെറ്റ് പരിഷ്കരിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Options/Clock.svelte
 msgid "Modified clock offset"
-msgstr ""
+msgstr "ക്ലോക്ക് ഓഫ്സെറ്റ് പരിഷ്കരിച്ചു"
 
 #: src/lib/components/custom/VM/Options/Clock.svelte
 msgid "Offset"
@@ -2950,63 +2950,63 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid storage name"
-msgstr ""
+msgstr "അസാധുവായ സ്റ്റോറേജ് പേര്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "No ZFS pool selected"
-msgstr ""
+msgstr "ഒരു ZFS പൂളും തിരഞ്ഞെടുത്തിട്ടില്ല"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a boot order"
-msgstr ""
+msgstr "ഒരു ബൂട്ട് ഓർഡർ വ്യക്തമാക്കുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Boot order already in use"
-msgstr ""
+msgstr "ബൂട്ട് ഓർഡർ ഇതിനകം ഉപയോഗത്തിലുണ്ട്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid disk path"
-msgstr ""
+msgstr "അസാധുവായ ഡിസ്ക് പാത"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Unable to find disk"
-msgstr ""
+msgstr "ഡിസ്ക് കണ്ടെത്താനായില്ല"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please select a ZFS Volume"
-msgstr ""
+msgstr "ഒരു ZFS വോളിയം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to import disk"
-msgstr ""
+msgstr "ഡിസ്ക് ഇറക്കുമതി ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Disk imported"
-msgstr ""
+msgstr "ഡിസ്ക് ഇറക്കുമതി ചെയ്തു"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please specify a size"
-msgstr ""
+msgstr "ഒരു വലുപ്പം നൽകുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to attach disk"
-msgstr ""
+msgstr "ഡിസ്ക് അറ്റാച്ച് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Disk attached"
-msgstr ""
+msgstr "ഡിസ്ക് അറ്റാച്ച് ചെയ്തു"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New Storage"
-msgstr ""
+msgstr "പുതിയ സ്റ്റോറേജ്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "DB Storage"
-msgstr ""
+msgstr "ഡാറ്റാബേസ് സ്റ്റോറേജ്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Import"
@@ -3023,7 +3023,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk"
-msgstr ""
+msgstr "റോ ഡിസ്ക്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Image"
@@ -3035,12 +3035,12 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Pool"
-msgstr ""
+msgstr "പൂൾ"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Select Pool"
-msgstr ""
+msgstr "പൂൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "ISO Image"
@@ -3061,12 +3061,12 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "AHCI Hard Disk"
-msgstr ""
+msgstr "AHCI ഹാർഡ് ഡിസ്ക്"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "VirtIO Block"
-msgstr ""
+msgstr "VirtIO ബ്ലോക്ക്"
 
 #~ msgid "Attach"
 #~ msgstr ""
@@ -3108,7 +3108,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Enabled"
-msgstr ""
+msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3119,7 +3119,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Disabled"
-msgstr ""
+msgstr "പ്രവർത്തനരഹിതമാക്കി"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Port"
@@ -3127,34 +3127,34 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Wait for VNC"
-msgstr ""
+msgstr "VNC-ക്കായി കാത്തിരിക്കുക"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "Either both user and meta data should be empty or both should be provided"
-msgstr ""
+msgstr "ഉപയോക്തൃ ഡാറ്റയും മെറ്റാ ഡാറ്റയും ഒന്നുകിൽ ശൂന്യമായിരിക്കണം അല്ലെങ്കിൽ രണ്ടും നൽകിയിരിക്കണം"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "Failed to modify Cloud Init data"
-msgstr ""
+msgstr "ക്ലൗഡ് ഇനിഷ്യേറ്റ് ഡാറ്റ മാറ്റുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "Modified Cloud Init data"
-msgstr ""
+msgstr "ക്ലൗഡ് ഇനിഷ്യേറ്റ് ഡാറ്റ പരിഷ്കരിച്ചു"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Cloud Init"
-msgstr ""
+msgstr "ക്ലൗഡ് ഇനിഷ്യേറ്റ്"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "User Data"
-msgstr ""
+msgstr "ഉപയോക്തൃ ഡാറ്റ"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "Cloud Init Data"
-msgstr ""
+msgstr "ക്ലൗഡ് ഇനിഷ്യേറ്റ് ഡാറ്റ"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
@@ -3162,11 +3162,11 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Metadata"
-msgstr ""
+msgstr "മെറ്റാഡാറ്റ"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "Cloud Init Metadata"
-msgstr ""
+msgstr "ക്ലൗഡ് ഇനിഷ്യേറ്റ് മെറ്റാഡാറ്റ"
 
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Failed to modify serial console"
@@ -3191,7 +3191,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
-msgstr ""
+msgstr "പ്രവർത്തനക്ഷമമാക്കുക"
 
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Disable"
@@ -3199,22 +3199,22 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Shutdown Wait Time must be a non-negative number"
-msgstr ""
+msgstr "ഷട്ട്ഡൗൺ കാത്തിരിപ്പ് സമയം നെഗറ്റീവ് അല്ലാത്ത സംഖ്യയായിരിക്കണം"
 
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Failed to modify shutdown wait time"
-msgstr ""
+msgstr "ഷട്ട്ഡൗൺ കാത്തിരിപ്പ് സമയം മാറ്റുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 msgid "Modified shutdown wait time"
-msgstr ""
+msgstr "ഷട്ട്ഡൗൺ കാത്തിരിപ്പ് സമയം പരിഷ്കരിച്ചു"
 
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Shutdown Wait Time"
-msgstr ""
+msgstr "ഷട്ട്ഡൗൺ കാത്തിരിപ്പ് സമയം"
 
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
@@ -3222,17 +3222,17 @@ msgstr ""
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Start Order"
-msgstr ""
+msgstr "തുടങ്ങാനുള്ള ക്രമം"
 
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Failed to modify start order"
-msgstr ""
+msgstr "തുടങ്ങാനുള്ള ഓർഡർ പരിഷ്കരിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 msgid "Modified start order"
-msgstr ""
+msgstr "തുടങ്ങാനുള്ള ഓർഡർ പരിഷ്കരിച്ചു"
 
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
@@ -3252,7 +3252,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Wake on LAN"
-msgstr ""
+msgstr "ലാനിൽ ഉണരുക"
 
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid ""
@@ -3276,12 +3276,12 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Auto Expand"
-msgstr ""
+msgstr "സ്വയം വികസിപ്പിക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select Auto Expand"
-msgstr ""
+msgstr "സ്വയം വികസിപ്പിക്കുക തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3303,7 +3303,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Yes"
-msgstr ""
+msgstr "അതെ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3324,214 +3324,214 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "No"
-msgstr ""
+msgstr "ഇല്ല"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Auto Trim"
-msgstr ""
+msgstr "ഓട്ടോ ട്രിം"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select Auto Trim"
-msgstr ""
+msgstr "ഓട്ടോ ട്രിം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Delegation"
-msgstr ""
+msgstr "പ്രതിനിധിത്വം"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select Delegation"
-msgstr ""
+msgstr "പ്രതിനിധിത്വം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Fail Mode"
-msgstr ""
+msgstr " പരാജയ മോഡ് "
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select Fail Mode"
-msgstr ""
+msgstr "പരാജയ മോഡ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Wait"
-msgstr ""
+msgstr "കാത്തിരിക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Panic"
-msgstr ""
+msgstr "പരിഭ്രാന്തി"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Spares"
-msgstr ""
+msgstr "സ്പെയറുകൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select spares"
-msgstr ""
+msgstr "സ്പെയറുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Auto Replace"
-msgstr ""
+msgstr "സ്വയം മാറ്റുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Select Auto Replace"
-msgstr ""
+msgstr "സ്വയം മാറ്റുക തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Comment"
-msgstr ""
+msgstr "കമന്റ്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Comments about the pool"
-msgstr ""
+msgstr "പൂളിനെക്കുറിച്ചുള്ള കമന്റുകൾ"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Replacement device not selected"
-msgstr ""
+msgstr "മാറ്റിസ്ഥാപിക്കാനുള്ള ഉപകരണം തിരഞ്ഞെടുത്തിട്ടില്ല"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "New disk is smaller than old disk"
-msgstr ""
+msgstr "പുതിയ ഡിസ്ക് പഴയ ഡിസ്കിനേക്കാൾ ചെറുതാണ്"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "New partition is smaller than old device"
-msgstr ""
+msgstr "പുതിയ പാർട്ടീഷൻ പഴയ ഉപകരണത്തേക്കാൾ ചെറുതാണ്"
 
 #. placeholder {0}: old
 #. placeholder {1}: pool.name
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Replace {0} in {1}"
-msgstr ""
+msgstr "{1} ലെ {0} മാറ്റുക"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Select Replacement Device"
-msgstr ""
+msgstr "മാറ്റിസ്ഥാപിക്കാനുള്ള ഉപകരണം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Replace"
-msgstr ""
+msgstr "മാറ്റിസ്ഥാപിക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Disks within a VDEV should ideally be the same type"
-msgstr ""
+msgstr "ഒരു VDEV-നുള്ളിലെ ഡിസ്കുകൾ ഒരേ തരം ആയിരിക്കുന്നതാണ് നല്ലത്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Disks within a VDEV should ideally be the same drive type"
-msgstr ""
+msgstr "ഒരു VDEV-നുള്ളിലെ ഡിസ്കുകൾ ഒരേ ഡ്രൈവ് തരം ആയിരിക്കുന്നതാണ് നല്ലത്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Disks within a VDEV should ideally be the same size"
-msgstr ""
+msgstr "ഒരു VDEV-നുള്ളിലെ ഡിസ്കുകൾ ഒരേ വലുപ്പമുള്ളവയായിരിക്കുന്നതാണ് നല്ലത്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Partitions within a VDEV should ideally be the same size"
-msgstr ""
+msgstr "ഒരു VDEV-നുള്ളിലെ പാർട്ടീഷനുകൾ ഒരേ വലുപ്പമുള്ളവയായിരിക്കുന്നതാണ് നല്ലത്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Disks/Partitions within a VDEV should ideally be the same drive type"
-msgstr ""
+msgstr "ഒരു VDEV-നുള്ളിലെ ഡിസ്കുകൾ/പാർട്ടീഷനുകൾ ഒരേ ഡ്രൈവ് തരം ആയിരിക്കുന്നതാണ് നല്ലത്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "No available disks or partitions"
-msgstr ""
+msgstr "ലഭ്യമായ ഡിസ്കുകളോ പാർട്ടീഷനുകളോ ഇല്ല"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Invalid pool name"
-msgstr ""
+msgstr "അസാധുവായ പൂൾ പേര്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "At least one VDEV containing disks is required"
-msgstr ""
+msgstr "ഡിസ്കുകൾ അടങ്ങിയ ഒരു VDEV എങ്കിലും ആവശ്യമാണ്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Spares must be larger than the largest disk in the pool"
-msgstr ""
+msgstr "അധിക ഡിസ്കുകൾ പൂളിലെ ഏറ്റവും വലിയ ഡിസ്കിനേക്കാൾ വലുതായിരിക്കണം"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "A pool with this name already exists"
-msgstr ""
+msgstr "ഈ പേരിൽ ഒരു പൂൾ ഇതിനകം നിലവിലുണ്ട്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Pool Created"
-msgstr ""
+msgstr "പൂൾ ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "No available disks"
-msgstr ""
+msgstr "ലഭ്യമായ ഡിസ്കുകളില്ല"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Partitions"
-msgstr ""
+msgstr "പാർട്ടീഷനുകൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "No available partitions"
-msgstr ""
+msgstr "ലഭ്യമായ പാർട്ടീഷനുകളില്ല"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "<0/> Create ZFS Pool"
-msgstr ""
+msgstr "<0/> ZFS പൂൾ ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Devices"
-msgstr ""
+msgstr "ഉപകരണങ്ങൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Virtual Devices"
-msgstr ""
+msgstr "വെർച്വൽ ഉപകരണങ്ങൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Redundancy <0/>"
-msgstr ""
+msgstr "റിഡൻഡൻസി <0/>"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Select Redundancy"
-msgstr ""
+msgstr "റിഡൻഡൻസി തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "VDEVs"
-msgstr ""
+msgstr "VDEV-കൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Drop disks here"
-msgstr ""
+msgstr "ഡിസ്കുകൾ ഇവിടെ ഇടുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Mount Point"
-msgstr ""
+msgstr "മൗണ്ട് പോയിന്റ്"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Force Create"
-msgstr ""
+msgstr "സൃഷ്ടിക്കാൻ നിർബന്ധിക്കുക"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "AShift"
-msgstr ""
+msgstr "AShift"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Select ASHIFT"
-msgstr ""
+msgstr "AShift തിരഞ്ഞെടുക്കുക"
 
 #. placeholder {0}: data.ctId
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Jail console connected for jail {0}"
-msgstr ""
+msgstr "ജയിലിനായുള്ള ജയിൽ കൺസോൾ {0} ബന്ധിപ്പിച്ചു"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
-msgstr ""
+msgstr "ജയിൽ നിലവിൽ ഓഫാണ്.<0/> അതിൻ്റെ കൺസോളിലേക്ക് പ്രവേശിക്കാൻ ജയിൽ ആരംഭിക്കുക."
 
 #~ msgid "Resilvering"
 #~ msgstr ""
@@ -3547,53 +3547,53 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Pool Status"
-msgstr ""
+msgstr "പൂൾ നില"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Scan Activity"
-msgstr ""
+msgstr "സ്കാൻ പ്രവർത്തനം"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "No recent scan activity"
-msgstr ""
+msgstr "സമീപകാല സ്കാൻ പ്രവർത്തനങ്ങളൊന്നും ഇല്ല"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Device Topology"
-msgstr ""
+msgstr "ഉപകരണ ടോപ്പോളജി"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Cache"
-msgstr ""
+msgstr "കാഷെ"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "No devices found"
-msgstr ""
+msgstr "ഉപകരണങ്ങളൊന്നും കണ്ടെത്തിയില്ല"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Error Status"
-msgstr ""
+msgstr "പിശക് നില"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "No known data errors"
-msgstr ""
+msgstr "അറിയപ്പെടുന്ന ഡാറ്റാ പിശകുകളൊന്നും ഇല്ല"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Unlimited"
-msgstr ""
+msgstr "പരിധിയില്ലാത്തത്"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Disable Resource Limits"
-msgstr ""
+msgstr "വിഭവ പരിധികൾ പ്രവർത്തനരഹിതമാക്കുക"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Enable Resource Limits"
-msgstr ""
+msgstr "വിഭവ പരിധികൾ പ്രവർത്തനക്ഷമമാക്കുക"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Enable resource limits to edit"
-msgstr ""
+msgstr "എഡിറ്റ് ചെയ്യാൻ വിഭവ പരിധികൾ പ്രവർത്തനക്ഷമമാക്കുക"
 
 #. placeholder {0}: title
 #. placeholder {0}: title
@@ -3608,87 +3608,87 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Edit {0}"
-msgstr ""
+msgstr "{0} എഡിറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "This will give unlimited resources to this jail, proceed with <b>caution!</b>"
-msgstr ""
+msgstr "ഇത് ഈ ജയിലിന് പരിധിയില്ലാത്ത വിഭവങ്ങൾ നൽകും, <b>ശ്രദ്ധയോടെ</b> മുന്നോട്ട് പോകുക!"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "This will enable resource limits for this jail, defaulting to <b>1 GB RAM</b> and <b>1 vCPU</b>, you can change this later"
-msgstr ""
+msgstr "ഇത് ഈ ജയിലിന് വിഭവ പരിധികൾ പ്രവർത്തനക്ഷമമാക്കും, ഡിഫോൾട്ടായി <b>1 GB RAM</b> ഉം <b>1 vCPU</b> ഉം ആയിരിക്കും, നിങ്ങൾക്ക് ഇത് പിന്നീട് മാറ്റാവുന്നതാണ്"
 
 #. placeholder {0}: adjective
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Failed to {0} resource limits"
-msgstr ""
+msgstr "വിഭവ പരിധികൾ {0} ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: adjective
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource limits {0}"
-msgstr ""
+msgstr "വിഭവ പരിധികൾ {0}"
 
 #. placeholder {0}: dateToAgo(jail.current.startedAt)
 #. placeholder {0}: dateToAgo(vm.current.startedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Started {0}"
-msgstr ""
+msgstr "{0} മുമ്പ് ആരംഭിച്ചു"
 
 #. placeholder {0}: dateToAgo(jail.current.stoppedAt)
 #. placeholder {0}: dateToAgo(vm.current.stoppedAt)
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopped {0}"
-msgstr ""
+msgstr "{0} മുമ്പ് നിർത്തപ്പെട്ടു"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Deleting Jail"
-msgstr ""
+msgstr "ജയിൽ ഇല്ലാതാക്കുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
-msgstr ""
+msgstr "ജയിൽ <b>{0} ({1})</b> ഇല്ലാതാക്കുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error deleting jail"
-msgstr ""
+msgstr "ജയിൽ ഇല്ലാതാക്കുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail deleted"
-msgstr ""
+msgstr "ജയിൽ ഇല്ലാതാക്കി"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Stopping Jail"
-msgstr ""
+msgstr "ജയിൽ നിർത്തുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
-msgstr ""
+msgstr "ജയിൽ <b>{0} ({1})</b> നിർത്തുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Starting Jail"
-msgstr ""
+msgstr "ജയിൽ ആരംഭിക്കുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
-msgstr ""
+msgstr "ജയിൽ <b>{0} ({1})</b> ആരംഭിക്കുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stop"
-msgstr ""
+msgstr "നിർത്തുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Start"
-msgstr ""
+msgstr "ആരംഭിക്കുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3699,30 +3699,30 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Running"
-msgstr ""
+msgstr "പ്രവർത്തിക്കുന്നു"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopped"
-msgstr ""
+msgstr "നിർത്തി"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "This will permanently delete Jail"
-msgstr ""
+msgstr "ഇത് ജയിലിനെ എന്നെന്നേക്കുമായി ഇല്ലാതാക്കും"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete MAC Object(s)"
-msgstr ""
+msgstr "MAC ഒബ്ജക്റ്റ്(കൾ) ഇല്ലാതാക്കുക"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Delete Root Filesystem"
-msgstr ""
+msgstr "റൂട്ട് ഫയൽസിസ്റ്റം ഇല്ലാതാക്കുക"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update"
-msgstr ""
+msgstr "പുതുക്കുക"
 
 #~ msgid "You must select at least one protocol to inherit"
 #~ msgstr ""
@@ -3752,18 +3752,18 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Failed to add network"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ചേർക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #~ msgid "Network added"
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Failed to delete network"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Network deleted"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഇല്ലാതാക്കി"
 
 #~ msgid "No available switches to add"
 #~ msgstr ""
@@ -3771,17 +3771,17 @@ msgstr ""
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Disinherit Network"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഒഴിവാക്കുക"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Inherit Network"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് ഉൾക്കൊള്ളിക്കുക"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "Detach"
-msgstr ""
+msgstr "വേർപെടുത്തുക"
 
 #~ msgid ""
 #~ "This option will <0>disinherit the network configuration</0> from the host. Choose this if\n"
@@ -3804,37 +3804,37 @@ msgstr ""
 #. placeholder {0}: activeRow.switch
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "This will detach the jail from the switch <b>{0}</b>"
-msgstr ""
+msgstr "ഇത് <b>{0}</b> സ്വിച്ചിൽ നിന്ന് ജയിലിനെ വേർപെടുത്തും"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Static"
-msgstr ""
+msgstr "സ്റ്റാറ്റിക്"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Dynamic"
-msgstr ""
+msgstr "ഡൈനാമിക്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Identifier"
-msgstr ""
+msgstr "തിരിച്ചറിയൽ"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "IP Address"
-msgstr ""
+msgstr "IP വിലാസം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Range"
-msgstr ""
+msgstr "ശ്രേണി"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Expiry"
-msgstr ""
+msgstr "കാലഹരണപ്പെടൽ"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -3842,83 +3842,83 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Never"
-msgstr ""
+msgstr "ഒരിക്കലുമില്ല"
 
 #. placeholder {0}: activeRow?.hostname || activeRow?.ip || ''
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
-msgstr ""
+msgstr "ഈ പ്രവൃത്തി പഴയപടിയാക്കാൻ കഴിയില്ല. ഇത് <b>{0}</b>-നുള്ള സ്റ്റാറ്റിക് DHCP ലീസിനെ എന്നെന്നേക്കുമായി ഇല്ലാതാക്കും."
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Failed to delete DHCP lease"
-msgstr ""
+msgstr "DHCP ലീസ് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "DHCP lease deleted"
-msgstr ""
+msgstr "DHCP ലീസ് ഇല്ലാതാക്കി"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Start IP"
-msgstr ""
+msgstr "ആരംഭ IP"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "End IP"
-msgstr ""
+msgstr "അവസാന IP"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "DHCP Range"
-msgstr ""
+msgstr "DHCP ശ്രേണി"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "This action cannot be undone. This will permanently delete this DHCP range including all leases/options associated with it"
-msgstr ""
+msgstr "ഈ പ്രവൃത്തി പഴയപടിയാക്കാൻ കഴിയില്ല. ഇത് ഈ DHCP ശ്രേണിയും അതുമായി ബന്ധപ്പെട്ട എല്ലാ ലീസുകളും/ഓപ്ഷനുകളും എന്നെന്നേക്കുമായി ഇല്ലാതാക്കും."
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "Failed to delete DHCP range"
-msgstr ""
+msgstr "DHCP ശ്രേണി ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "DHCP range deleted"
-msgstr ""
+msgstr "DHCP ശ്രേണി ഇല്ലാതാക്കി"
 
 #: src/routes/[node]/network/switches/manual/+page.svelte
 msgid "No usable bridges available"
-msgstr ""
+msgstr "ഉപയോഗിക്കാവുന്ന പാലങ്ങളൊന്നും ലഭ്യമല്ല"
 
 #. placeholder {0}: modals.deleteSwitch.name
 #. placeholder {0}: confirmModals.deleteSwitch.name
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} deleted"
-msgstr ""
+msgstr "സ്വിച്ച് {0} ഇല്ലാതാക്കി"
 
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch is in use by a VM"
-msgstr ""
+msgstr "സ്വിച്ച് ഒരു VM ഉപയോഗിക്കുന്നുണ്ട്"
 
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Error deleting switch"
-msgstr ""
+msgstr "സ്വിച്ച് ഇല്ലാതാക്കുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Name and users are required"
-msgstr ""
+msgstr "പേരും ഉപയോക്താക്കളും ആവശ്യമാണ്"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Group name already exists"
-msgstr ""
+msgstr "ഗ്രൂപ്പിന്റെ പേര് നിലവിൽ ഉണ്ട്"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Failed to create group"
-msgstr ""
+msgstr "ഗ്രൂപ്പ് സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Group created"
-msgstr ""
+msgstr "ഗ്രൂപ്പ് സൃഷ്ടിച്ചു"
 
 #~ msgid "No users selected"
 #~ msgstr ""
@@ -3933,14 +3933,14 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Created At"
-msgstr ""
+msgstr "സൃഷ്ടിച്ച തീയതി"
 
 #~ msgid "Add Users"
 #~ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "New Group"
-msgstr ""
+msgstr "പുതിയ ഗ്രൂപ്പ്"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
@@ -3957,148 +3957,148 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Invalid switch name"
-msgstr ""
+msgstr "അസാധുവായ സ്വിച്ച് പേര്"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Invalid MTU"
-msgstr ""
+msgstr "അസാധുവായ MTU"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Invalid VLAN"
-msgstr ""
+msgstr "അസാധുവായ VLAN"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "There is already a switch with a default route"
-msgstr ""
+msgstr "ഒരു സ്ഥിര റൂട്ടുള്ള ഒരു സ്വിച്ച് ഇതിനകം നിലവിലുണ്ട്"
 
 #. placeholder {0}: confirmModals.newSwitch.name
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
-msgstr ""
+msgstr "സ്വിച്ച് {0} സൃഷ്ടിച്ചു"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Error creating switch"
-msgstr ""
+msgstr "സ്വിച്ച് സൃഷ്ടിക്കുന്നതിൽ പിശക്"
 
 #. placeholder {0}: confirmModals.editSwitch.name
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} updated"
-msgstr ""
+msgstr "സ്വിച്ച് {0} അപ്ഡേറ്റ് ചെയ്തു"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Error updating switch"
-msgstr ""
+msgstr "സ്വിച്ച് അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പിശക്"
 
 #. placeholder {0}: confirmModals.editSwitch.oldName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Edit Standard Switch - {0}"
-msgstr ""
+msgstr "സാധാരണ സ്വിച്ച് എഡിറ്റ് ചെയ്യുക - {0}"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Create Standard Switch"
-msgstr ""
+msgstr "സാധാരണ സ്വിച്ച് സൃഷ്ടിക്കുക"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Network"
-msgstr ""
+msgstr "IPv4 നെറ്റ്‌വർക്ക് തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Network"
-msgstr ""
+msgstr "IPv6 നെറ്റ്‌വർക്ക് തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Ports"
-msgstr ""
+msgstr "പോർട്ടുകൾ"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select ports"
-msgstr ""
+msgstr "പോർട്ടുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Private"
-msgstr ""
+msgstr "സ്വകാര്യം"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Disable IPV6"
-msgstr ""
+msgstr "IPV6 പ്രവർത്തനരഹിതമാക്കുക"
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Default Route"
-msgstr ""
+msgstr "സ്ഥിരസ്ഥിതി റൂട്ട്"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Last Usage"
-msgstr ""
+msgstr "അവസാന ഉപയോഗം"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Cannot delete admin user"
-msgstr ""
+msgstr "അഡ്മിൻ ഉപയോക്താവിനെ മായ്ക്കാനാകില്ല"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Cannot edit admin user"
-msgstr ""
+msgstr "അഡ്മിൻ ഉപയോക്താവിനെ എഡിറ്റ് ചെയ്യാനാകില്ല"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "Failed to delete user"
-msgstr ""
+msgstr "ഉപയോക്താവിനെ ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User deleted"
-msgstr ""
+msgstr "ഉപയോക്താവിനെ ഇല്ലാതാക്കി"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Share"
-msgstr ""
+msgstr "പങ്കിടുക"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Target"
-msgstr ""
+msgstr "ലക്ഷ്യം"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Unix Charset"
-msgstr ""
+msgstr "യുണിക്സ് ക്യാരക്ടർസെറ്റ്"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Workgroup"
-msgstr ""
+msgstr "വർക്ക്ഗ്രൂപ്പ്"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Server String"
-msgstr ""
+msgstr "സെർവർ സ്ട്രിംഗ്"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Bind Interfaces Only"
-msgstr ""
+msgstr "ഇന്റർഫേസുകളെ മാത്രം ബന്ധിപ്പിക്കുക"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Failed to update Samba configuration"
-msgstr ""
+msgstr "സാമ്പ ക്രമീകരണം പുതുക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Samba configuration updated"
-msgstr ""
+msgstr "സാമ്പ ക്രമീകരണം പുതുക്കി"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Enter Workgroup"
-msgstr ""
+msgstr "വർക്ക്ഗ്രൂപ്പ് നൽകുക"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Enter Unix Charset"
-msgstr ""
+msgstr "യുണിക്സ് ക്യാരക്ടർസെറ്റ് നൽകുക"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Enter Server String"
-msgstr ""
+msgstr "സെർവർ സ്ട്രിംഗ് നൽകുക"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Select Interfaces"
-msgstr ""
+msgstr "ഇന്റർഫേസുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Edit Share"
@@ -4122,15 +4122,15 @@ msgstr ""
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool contains a mirror with devices of different sizes"
-msgstr ""
+msgstr "പൂളിൽ വ്യത്യസ്ത വലുപ്പത്തിലുള്ള ഉപകരണങ്ങളുള്ള ഒരു മിറർ അടങ്ങിയിരിക്കുന്നു"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool contains a RAIDZ vdev with devices of different sizes"
-msgstr ""
+msgstr "പൂളിൽ വ്യത്യസ്ത വലുപ്പത്തിലുള്ള ഉപകരണങ്ങളുള്ള ഒരു RAIDZ vdev അടങ്ങിയിരിക്കുന്നു"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool is busy"
-msgstr ""
+msgstr "പൂൾ തിരക്കിലാണ്"
 
 #~ msgid "Pool has a dataset that is in use by a VM or Jail"
 #~ msgstr ""
@@ -4140,36 +4140,36 @@ msgstr ""
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool edit failed"
-msgstr ""
+msgstr "പൂൾ എഡിറ്റ് പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Scrub started"
-msgstr ""
+msgstr "സ്ക്രബ് ആരംഭിച്ചു"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "A scrub is already in progress"
-msgstr ""
+msgstr "ഒരു സ്ക്രബ് ഇതിനകം നടന്നുകൊണ്ടിരിക്കുന്നു"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Scrub"
-msgstr ""
+msgstr "സ്ക്രബ്"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Please wait for the scrub/replace operation to finish"
-msgstr ""
+msgstr "സ്ക്രബ്/മാറ്റിവെക്കൽ പ്രവർത്തനം പൂർത്തിയാക്കാൻ ദയവായി കാത്തിരിക്കുക"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Please wait for the current replace operation to finish"
-msgstr ""
+msgstr "നിലവിലെ മാറ്റിവെക്കൽ പ്രവർത്തനം പൂർത്തിയാക്കാൻ ദയവായി കാത്തിരിക്കുക"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Replace already in progress"
-msgstr ""
+msgstr "മാറ്റിവെക്കൽ ഇതിനകം നടന്നുകൊണ്ടിരിക്കുന്നു"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Replace Device"
-msgstr ""
+msgstr "ഉപകരണം മാറ്റിവെക്കുക"
 
 #. placeholder {0}: pool?.name
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -4199,7 +4199,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Select a pool"
-msgstr ""
+msgstr "ഒരു പൂൾ തിരഞ്ഞെടുക്കുക"
 
 #~ msgid "Pool Usage"
 #~ msgstr ""
@@ -4218,36 +4218,36 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Shutoff"
-msgstr ""
+msgstr "ഷട്ട്ഓഫ്"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Serial"
-msgstr ""
+msgstr "സീരിയൽ"
 
 #. placeholder {0}: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
-msgstr ""
+msgstr "{0} കൺസോളിലേക്ക് മാറുക"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Kill Serial Session"
-msgstr ""
+msgstr "സീരിയൽ സെഷൻ നിർത്തുക"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Reconnect Serial"
-msgstr ""
+msgstr "സീരിയൽ വീണ്ടും കണക്ട് ചെയ്യുക"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "VM Console"
-msgstr ""
+msgstr "VM കൺസോൾ"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "No console is configured for this VM."
-msgstr ""
+msgstr "ഈ VM-ന് ഒരു കൺസോളും കോൺഫിഗർ ചെയ്തിട്ടില്ല."
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
-msgstr ""
+msgstr "VM നിലവിൽ പവർ ഓഫ് ചെയ്തിരിക്കുകയാണ്.<0/>കൺസോളിലേക്ക് പ്രവേശിക്കാൻ VM പ്രവർത്തിപ്പിക്കുക."
 
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4256,15 +4256,15 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Start At Boot / Start Order"
-msgstr ""
+msgstr "ബൂട്ടിൽ ആരംഭിക്കുക / ആരംഭിക്കാനുള്ള ക്രമം"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Configured"
-msgstr ""
+msgstr "കോൺഫിഗർ ചെയ്തത്"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Not Configured"
-msgstr ""
+msgstr "കോൺഫിഗർ ചെയ്തിട്ടില്ല"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "Unknown Switch"
@@ -4278,7 +4278,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
-msgstr ""
+msgstr "അജ്ഞാതം"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "No available/unused switches to attach to"
@@ -4287,7 +4287,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "VM must be shut off to attach storage"
-msgstr ""
+msgstr "സംഭരണം ഘടിപ്പിക്കാൻ VM ഷട്ട് ഓഫ് ചെയ്യണം"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: properties.detach.name
@@ -4307,264 +4307,264 @@ msgstr ""
 #. placeholder {1}: vm.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
-msgstr ""
+msgstr "ഇത് {0} എന്ന സ്റ്റോറേജിനെ <b>{1}</b> എന്ന VM-ൽ നിന്ന് വേർപെടുത്തും."
 
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "Failed to detach storage"
-msgstr ""
+msgstr "സംഭരണം വേർപെടുത്തുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "Storage detached"
-msgstr ""
+msgstr "സംഭരണം വേർപെടുത്തി"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Deleting Virtual Machine"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീൻ ഡിലീറ്റ് ചെയ്യുന്നു"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
-msgstr ""
+msgstr "ദയവായി വിഎം <b>{0} ({1})</b> ഡിലീറ്റ് ചെയ്യുമ്പോൾ കാത്തിരിക്കുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error deleting VM"
-msgstr ""
+msgstr "വിഎം ഡിലീറ്റ് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM deleted"
-msgstr ""
+msgstr "വിഎം ഡിലീറ്റ് ചെയ്തു"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Starting Virtual Machine"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീൻ ആരംഭിക്കുന്നു"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
-msgstr ""
+msgstr "ദയവായി വിഎം <b>{0} ({1})</b> സ്റ്റാർട്ട് ചെയ്യുമ്പോൾ കാത്തിരിക്കുക."
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error starting VM"
-msgstr ""
+msgstr "വിഎം സ്റ്റാർട്ട് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM started"
-msgstr ""
+msgstr "വിഎം സ്റ്റാർട്ട് ചെയ്തു"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopping Virtual Machine"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീൻ നിർത്തുന്നു"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
-msgstr ""
+msgstr "ദയവായി വിഎം <b>{0} ({1})</b> സ്റ്റോപ്പ് ചെയ്യുമ്പോൾ കാത്തിരിക്കുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error stopping VM"
-msgstr ""
+msgstr "വിഎം സ്റ്റോപ്പ് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM stopped"
-msgstr ""
+msgstr "വിഎം സ്റ്റോപ്പ് ചെയ്തു"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Shutting Down Virtual Machine"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീൻ ഷട്ട്ഡൗൺ ചെയ്യുന്നു"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
-msgstr ""
+msgstr "ദയവായി വിഎം <b>{0} ({1})</b> ഷട്ട്ഡൗൺ ചെയ്യുമ്പോൾ കാത്തിരിക്കുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error shutting down VM"
-msgstr ""
+msgstr "വിഎം ഷട്ട്ഡൗൺ ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM shut down"
-msgstr ""
+msgstr "വിഎം ഷട്ട്ഡൗൺ ചെയ്തു"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Rebooting Virtual Machine"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീൻ റീബൂട്ട് ചെയ്യുന്നു"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
-msgstr ""
+msgstr "ദയവായി വിഎം <b>{0} ({1})</b> റീബൂട്ട് ചെയ്യുമ്പോൾ കാത്തിരിക്കുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error rebooting VM"
-msgstr ""
+msgstr "വിഎം റീബൂട്ട് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM rebooted"
-msgstr ""
+msgstr "വിഎം റീബൂട്ട് ചെയ്തു"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Shutdown"
-msgstr ""
+msgstr "ഷട്ട്ഡൗൺ"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Reboot"
-msgstr ""
+msgstr "റീബൂട്ട് ചെയ്യുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Notes about VM"
-msgstr ""
+msgstr "വി.എം-നെക്കുറിച്ചുള്ള കുറിപ്പുകൾ"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "This will permanently delete VM"
-msgstr ""
+msgstr "ഇത് വിഎമ്മിനെ ശാശ്വതമായി ഇല്ലാതാക്കും"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete RAW Disk(s)"
-msgstr ""
+msgstr "റോ ഡിസ്‌ക്(കൾ) ഇല്ലാതാക്കുക"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete Volume(s)"
-msgstr ""
+msgstr "വോളിയം(കൾ) ഇല്ലാതാക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Invalid hostname"
-msgstr ""
+msgstr "അസാധുവായ ഹോസ്റ്റ് നെയിം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Range is required"
-msgstr ""
+msgstr "പരിധി ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Identifier is required"
-msgstr ""
+msgstr "ഐഡന്റിഫയർ ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "IP Address is required"
-msgstr ""
+msgstr "IP വിലാസം ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Invalid selection"
-msgstr ""
+msgstr "അസാധുവായ തിരഞ്ഞെടുപ്പ്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Identifier must be a MAC for IPv4 ranges"
-msgstr ""
+msgstr "IPv4 ശ്രേണികൾക്ക് ഐഡന്റിഫയർ MAC ആയിരിക്കണം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "IP Address must be an IPv4 address for IPv4 ranges"
-msgstr ""
+msgstr "IPv4 ശ്രേണികൾക്ക് IP വിലാസം ഒരു IPv4 വിലാസം ആയിരിക്കണം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Identifier must be a DUID for IPv6 ranges"
-msgstr ""
+msgstr "IPv6 ശ്രേണികൾക്ക് ഐഡന്റിഫയർ DUID ആയിരിക്കണം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "IP Address must be an IPv6 address for IPv6 ranges"
-msgstr ""
+msgstr "IPv6 ശ്രേണികൾക്ക് IP വിലാസം ഒരു IPv6 വിലാസം ആയിരിക്കണം"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Failed to create lease"
-msgstr ""
+msgstr "ലീസ് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Lease created"
-msgstr ""
+msgstr "ലീസ് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Failed to edit lease"
-msgstr ""
+msgstr "ലീസ് എഡിറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Lease edited"
-msgstr ""
+msgstr "ലീസ് എഡിറ്റ് ചെയ്തു"
 
 #. placeholder {0}: selectedLease ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
-msgstr ""
+msgstr "{0} DHCP ലീസ്"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Select Range"
-msgstr ""
+msgstr "ശ്രേണി തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Select Identifier"
-msgstr ""
+msgstr "തിരിച്ചറിയൽ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Select IP Address"
-msgstr ""
+msgstr "IP വിലാസം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Comments"
-msgstr ""
+msgstr "അഭിപ്രായങ്ങൾ"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Optional comments"
-msgstr ""
+msgstr "ഓപ്ഷണൽ അഭിപ്രായങ്ങൾ"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Invalid name"
-msgstr ""
+msgstr "അസാധുവായ പേര്"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Failed to create manual switch"
-msgstr ""
+msgstr "മാനുവൽ സ്വിച്ച് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Manual switch created"
-msgstr ""
+msgstr "മാനുവൽ സ്വിച്ച് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Create Manual Switch"
-msgstr ""
+msgstr "ഒരു മാനുവൽ സ്വിച്ച് ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Bridge"
-msgstr ""
+msgstr "ബ്രിഡ്ജ്"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Select bridge"
-msgstr ""
+msgstr "ബ്രിഡ്ജ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "IP Type is required"
-msgstr ""
+msgstr "IP ടൈപ്പ് ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "No switch selected"
-msgstr ""
+msgstr "സ്വിച്ച് തിരഞ്ഞെടുത്തിട്ടില്ല"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Failed to find interface for selected switch"
-msgstr ""
+msgstr "തിരഞ്ഞെടുത്ത സ്വിച്ചിനായി ഇന്റർഫേസ് കണ്ടെത്താനായില്ല"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "IP Range not in switch subnet"
-msgstr ""
+msgstr "സ്വിച്ച് സബ്‌നെറ്റിൽ IP റേഞ്ച് ഇല്ല"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no IPv4 address"
-msgstr ""
+msgstr "തിരഞ്ഞെടുത്ത ഇന്റർഫേസിന് IPv4 വിലാസമില്ല"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Selected interface has no usable IPv6 address"
-msgstr ""
+msgstr "തിരഞ്ഞെടുത്ത ഇന്റർഫേസിന് ഉപയോഗിക്കാവുന്ന IPv6 വിലാസമില്ല"
 
 #. placeholder {0}: ipv6.ip
 #. placeholder {1}: ipv6.prefixLength
@@ -4573,37 +4573,37 @@ msgstr ""
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "IP Range not in switch subnet ({0}/{1})"
-msgstr ""
+msgstr "സ്വിച്ച് സബ്‌നെറ്റിൽ IP റേഞ്ച് ഇല്ല ({0}/{1})"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Expiry is required"
-msgstr ""
+msgstr "കാലഹരണപ്പെടൽ ആവശ്യമാണ്"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Error creating DHCP range"
-msgstr ""
+msgstr "DHCP റേഞ്ച് ഉണ്ടാക്കുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Created DHCP range"
-msgstr ""
+msgstr "DHCP റേഞ്ച് ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "No DHCP range selected"
-msgstr ""
+msgstr "DHCP റേഞ്ച് തിരഞ്ഞെടുത്തിട്ടില്ല"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Error updating DHCP range"
-msgstr ""
+msgstr "DHCP ശ്രേണി അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Updated DHCP range"
-msgstr ""
+msgstr "DHCP ശ്രേണി അപ്ഡേറ്റ് ചെയ്തു"
 
 #. placeholder {0}: selectedRange ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
-msgstr ""
+msgstr "{0} DHCP ശ്രേണി"
 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "IP Type"
@@ -4619,30 +4619,30 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "No parent selected"
-msgstr ""
+msgstr "മാതാപിതാക്കളെ തിരഞ്ഞെടുത്തിട്ടില്ല"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Encryption key is required"
-msgstr ""
+msgstr "എൻക്രിപ്ഷൻ കീ ആവശ്യമാണ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Invalid quota size"
-msgstr ""
+msgstr "അസാധുവായ ക്വാട്ട വലുപ്പം"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "Failed to create filesystem"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: n
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "File System {0} created"
-msgstr ""
+msgstr "ഫയൽ സിസ്റ്റം {0} സൃഷ്ടിച്ചു"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "<0/> Create Filesystem"
-msgstr ""
+msgstr "<0/> ഫയൽസിസ്റ്റം ഉണ്ടാക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "Parent"
@@ -4660,84 +4660,84 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select ATime"
-msgstr ""
+msgstr "ATime തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Checksum"
-msgstr ""
+msgstr "ചെക്ക്സം"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select Checksum"
-msgstr ""
+msgstr "ചെക്ക്സം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Compression"
-msgstr ""
+msgstr "കംപ്രഷൻ"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Compression"
-msgstr ""
+msgstr "കംപ്രഷൻ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Deduplication"
-msgstr ""
+msgstr "ഡ്യൂപ്ലിക്കേഷൻ"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Deduplication"
-msgstr ""
+msgstr "ഡ്യൂപ്ലിക്കേഷൻ നീക്കംചെയ്യൽ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Encryption"
-msgstr ""
+msgstr "എൻക്രിപ്ഷൻ"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "Select Encryption"
-msgstr ""
+msgstr "എൻക്രിപ്ഷൻ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Passphrase"
-msgstr ""
+msgstr "പാസ്ഫ്രെയ്സ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Quota"
-msgstr ""
+msgstr "ക്വാട്ട"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "ACL Inherit"
-msgstr ""
+msgstr "ACL ഇൻഹെറിറ്റ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select ACL Inherit"
-msgstr ""
+msgstr "ACL ഇൻഹെറിറ്റ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "ACL Mode"
-msgstr ""
+msgstr "ACL മോഡ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select ACL Mode"
-msgstr ""
+msgstr "ACL മോഡ് തിരഞ്ഞെടുക്കുക"
 
 #~ msgid "Recordsize"
 #~ msgstr ""
@@ -4750,39 +4750,39 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot - {0}"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് - {0}"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Prefix"
-msgstr ""
+msgstr "പ്രിഫിക്‌സ്"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Recursive"
-msgstr ""
+msgstr "പുനരാരംഭിക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Quota size is less than current used or reserved space"
-msgstr ""
+msgstr "ക്വാട്ട വലുപ്പം നിലവിൽ ഉപയോഗിച്ചതോ റിസർവ് ചെയ്തതോ ആയ സ്ഥലത്തേക്കാൾ കുറവാണ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Failed to edit filesystem"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം എഡിറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: n
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "File System {0} edited"
-msgstr ""
+msgstr "ഫയൽ സിസ്റ്റം {0} എഡിറ്റ് ചെയ്തു"
 
 #. placeholder {0}: dataset.name
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "<0/> Edit Filesystem - {0}"
-msgstr ""
+msgstr "<0/> ഫയൽസിസ്റ്റം എഡിറ്റ് ചെയ്യുക - {0}"
 
 #~ msgid "Deleted snapshot {0}"
 #~ msgstr ""
@@ -4802,48 +4802,48 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Simple"
-msgstr ""
+msgstr "ലളിതം"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Cron Expression"
-msgstr ""
+msgstr "ക്രോൺ എക്സ്പ്രഷൻ"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Minute"
-msgstr ""
+msgstr "എല്ലാ മിനിറ്റിലും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Hour"
-msgstr ""
+msgstr "എല്ലാ മണിക്കൂറിലും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Day"
-msgstr ""
+msgstr "എല്ലാ ദിവസവും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Week"
-msgstr ""
+msgstr "എല്ലാ ആഴ്ചയും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Month"
-msgstr ""
+msgstr "എല്ലാ മാസവും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Every Year"
-msgstr ""
+msgstr "എല്ലാ വർഷവും"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Name/prefix required for snapshot(s)"
@@ -4862,7 +4862,7 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Failed to create snapshot"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
@@ -4877,15 +4877,15 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot {0}@{1} created"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് {0}@{1} ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Create Snapshot"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് സൃഷ്ടിക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 msgid "Select a dataset"
-msgstr ""
+msgstr "ഒരു ഡാറ്റാസെറ്റ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -4893,96 +4893,96 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval"
-msgstr ""
+msgstr "ഇടവേള"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Select an interval"
-msgstr ""
+msgstr "ഒരു ഇടവേള തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention"
-msgstr ""
+msgstr "നിലനിർത്തൽ"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Select a retention policy"
-msgstr ""
+msgstr "ഒരു നിലനിർത്തൽ നയം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Last"
-msgstr ""
+msgstr "അവസാനത്തേത് നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Max Age (Days)"
-msgstr ""
+msgstr "പരമാവധി പ്രായം (ദിവസങ്ങൾ)"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Hourly"
-msgstr ""
+msgstr "മണിക്കൂറിൽ നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Daily"
-msgstr ""
+msgstr "പ്രതിദിനം നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Weekly"
-msgstr ""
+msgstr "പ്രതിവാരം നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Monthly"
-msgstr ""
+msgstr "പ്രതിമാസം നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Yearly"
-msgstr ""
+msgstr "പ്രതിവർഷം നിലനിർത്തുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "View Snapshot Jobs"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് ജോലികൾ കാണുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Last Run"
-msgstr ""
+msgstr "അവസാനമായി പ്രവർത്തിപ്പിച്ചത്"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Jan 01, 0001"
-msgstr ""
+msgstr "ജനുവരി 01, 0001"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Deleted"
-msgstr ""
+msgstr "ഇല്ലാതാക്കി"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "No snapshot jobs"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് ജോലികളൊന്നുമില്ല"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Save Snapshot Jobs"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് ജോലികൾ സംരക്ഷിക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Error modifying retention policy"
-msgstr ""
+msgstr "നിലനിർത്തൽ നയം പരിഷ്കരിക്കുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention policy modified"
-msgstr ""
+msgstr "നിലനിർത്തൽ നയം പരിഷ്കരിച്ചു"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention Policies -"
-msgstr ""
+msgstr "നിലനിർത്തൽ നയങ്ങൾ -"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Invalid volume name"
@@ -5002,64 +5002,64 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Volume size is greater than available space"
-msgstr ""
+msgstr "വോളിയം വലുപ്പം ലഭ്യമായ സ്ഥലത്തേക്കാൾ കൂടുതലാണ്"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Failed to create volume"
-msgstr ""
+msgstr "വോള്യം സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #. placeholder {0}: n
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Volume {0} created"
-msgstr ""
+msgstr "വോള്യം {0} സൃഷ്ടിച്ചു"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Create Volume"
-msgstr ""
+msgstr "വോള്യം സൃഷ്ടിക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Block Size"
-msgstr ""
+msgstr "ബ്ലോക്ക് വലുപ്പം"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select block size"
-msgstr ""
+msgstr "ബ്ലോക്ക് വലുപ്പം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select compression type"
-msgstr ""
+msgstr "കംപ്രഷൻ തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select deduplication mode"
-msgstr ""
+msgstr "ഡ്യൂപ്ലിക്കേഷൻ മോഡ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Select encryption"
-msgstr ""
+msgstr "എൻക്രിപ്ഷൻ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Primary Cache"
-msgstr ""
+msgstr "പ്രൈമറി കാഷെ"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select primary cache mode"
-msgstr ""
+msgstr "പ്രൈമറി കാഷെ മോഡ് തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume Mode"
-msgstr ""
+msgstr "വോള്യം മോഡ്"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select volume mode"
-msgstr ""
+msgstr "വോള്യം മോഡ് തിരഞ്ഞെടുക്കുക"
 
 #~ msgid "Size must be a multiple of volume block size ({0}K)"
 #~ msgstr ""
@@ -5079,7 +5079,7 @@ msgstr ""
 #. placeholder {0}: dataset.name
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "<0/> Flash File to {0}"
-msgstr ""
+msgstr "<0/> ഫയൽ {0}-ലേക്ക് ഫ്ലാഷ് ചെയ്യുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "Select File"
@@ -5099,46 +5099,46 @@ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Edit Filesystem"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം എഡിറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Delete Filesystem"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം ഇല്ലാതാക്കുക"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Delete Datasets"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റുകൾ ഇല്ലാതാക്കുക"
 
 #. placeholder {0}: activeDataset.name
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Deleted filesystem {0}"
-msgstr ""
+msgstr "ഇല്ലാതാക്കിയ ഫയൽസിസ്റ്റം {0}"
 
 #. placeholder {0}: activeDataset.name
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Failed to delete filesystem {0}"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം {0} ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Filesystem GUID not found"
-msgstr ""
+msgstr "ഫയൽസിസ്റ്റം GUID കണ്ടെത്തിയില്ല"
 
 #. placeholder {0}: modals.bulk.delete.title
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Are you sure you want to delete {0}? This action cannot be undone."
-msgstr ""
+msgstr "{0} ഇല്ലാതാക്കാൻ നിങ്ങൾ ഉറപ്പാണോ? ഈ പ്രവർത്തനം പഴയപടിയാക്കാൻ കഴിയില്ല."
 
 #. placeholder {0}: activeDatasets.length
 #. placeholder {0}: activeSnapshot.length
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Deleted {0} datasets"
-msgstr ""
+msgstr "{0} ഡാറ്റാസെറ്റുകൾ ഇല്ലാതാക്കി"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Failed to delete datasets"
-msgstr ""
+msgstr "ഡാറ്റാസെറ്റുകൾ ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #~ msgid "Delete Snapshot"
 #~ msgstr ""
@@ -5148,7 +5148,7 @@ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "View Periodics"
-msgstr ""
+msgstr "ആവർത്തനങ്ങൾ കാണുക"
 
 #~ msgid "Are you sure you want to delete {0} snapshot{1}? This action cannot be undone."
 #~ msgstr ""
@@ -5162,38 +5162,38 @@ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Flash File"
-msgstr ""
+msgstr "ഫ്ലാഷ് ഫയൽ"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Delete Volume"
-msgstr ""
+msgstr "വോളിയം ഇല്ലാതാക്കുക"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Edit Volume"
-msgstr ""
+msgstr "വോളിയം എഡിറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Delete Volumes"
-msgstr ""
+msgstr "വോളിയം ഇല്ലാതാക്കുക"
 
 #. placeholder {0}: activeVolume.name
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Deleted volume {0}"
-msgstr ""
+msgstr "{0} വോളിയം ഇല്ലാതാക്കി"
 
 #. placeholder {0}: activeVolume.name
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Failed to delete volume {0}"
-msgstr ""
+msgstr "{0} വോളിയം ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Volume GUID not found"
-msgstr ""
+msgstr "വോളിയം GUID കണ്ടെത്തിയില്ല"
 
 #. placeholder {0}: modals.bulk.delete.title
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "This will delete {0}. This action cannot be undone."
-msgstr ""
+msgstr "ഇത് {0} ഇല്ലാതാക്കും. ഈ പ്രവർത്തനം പഴയപടിയാക്കാൻ കഴിയില്ല."
 
 #~ msgid "हिन्दी"
 #~ msgstr ""
@@ -5201,23 +5201,23 @@ msgstr ""
 #. placeholder {0}: displayPinnedCount
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Manage ({0} pinned)"
-msgstr ""
+msgstr "നിയന്ത്രിക്കുക ({0} പിൻ ചെയ്തു)"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
-msgstr ""
+msgstr "സ്വയമേവ എക്‌സ്‌ട്രാക്റ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download Type"
-msgstr ""
+msgstr "ഡൗൺലോഡ് തരം"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Select Download Type"
-msgstr ""
+msgstr "ഡൗൺലോഡ് തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Base / RootFS"
-msgstr ""
+msgstr "അടിസ്ഥാനം / റൂട്ട്FS"
 
 #~ msgid "Uncategorized"
 #~ msgstr ""
@@ -5227,23 +5227,23 @@ msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "<0/> Language"
-msgstr ""
+msgstr "<0/> ഭാഷ"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download URL copied to clipboard"
-msgstr ""
+msgstr "ഡൗൺലോഡ് URL ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Copy URL"
-msgstr ""
+msgstr "URL പകർത്തുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Downloader - Create Signed URL"
-msgstr ""
+msgstr "ഡൗൺലോഡർ - സൈൻ ചെയ്ത URL ഉണ്ടാക്കുക"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
-msgstr ""
+msgstr "ക്ലൗഡ്-ഇനിറ്റ്"
 
 #~ msgid "Select cores from {0} ({1} selectable):"
 #~ msgstr ""
@@ -5253,22 +5253,22 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply"
-msgstr ""
+msgstr "അപേക്ഷിക്കുക"
 
 #~ msgid "{0} {1} Core{2} from {3} Socket{4}"
 #~ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply Changes"
-msgstr ""
+msgstr "മാറ്റങ്ങൾ പ്രയോഗിക്കുക"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Pool is in use by a VM or Jail"
-msgstr ""
+msgstr "ഒരു വിഎം അല്ലെങ്കിൽ ജയിൽ ഈ പൂൾ ഉപയോഗിക്കുന്നു"
 
 #: src/lib/utils/zfs/pool.svelte.ts
 msgid "Cannot replace with smaller device"
-msgstr ""
+msgstr "ചെറിയ ഉപകരണം ഉപയോഗിച്ച് മാറ്റിസ്ഥാപിക്കാൻ കഴിയില്ല"
 
 #~ msgid "CPU/RAM Usage"
 #~ msgstr ""
@@ -5279,7 +5279,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Ignore Unimplemented MSR Accesses"
-msgstr ""
+msgstr "നടപ്പിലാക്കാത്ത MSR ആക്സസ്സുകൾ അവഗണിക്കുക"
 
 #~ msgid "Ignore Unknown MSRs Accesses"
 #~ msgstr ""
@@ -5304,7 +5304,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Ignore Unimplemented MSRs Accesses"
-msgstr ""
+msgstr "നടപ്പിലാക്കാത്ത MSR-കളുടെ ആക്സസ്സുകൾ അവഗണിക്കുക"
 
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Failed to modify unimplemented MSRs access setting"
@@ -5338,32 +5338,32 @@ msgstr ""
 
 #: src/lib/components/custom/Header.svelte
 msgid "Log Out"
-msgstr ""
+msgstr "ലോഗ് ഔട്ട് ചെയ്യുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
-msgstr ""
+msgstr "മാറ്റങ്ങൾ സംരക്ഷിക്കുക"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Attach Storage"
-msgstr ""
+msgstr "സ്റ്റോറേജ് ഘടിപ്പിക്കുക"
 
 #. placeholder {0}: selectedName
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
-msgstr ""
+msgstr "തിരുത്തുക - {0}"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New size cannot be smaller than current size"
-msgstr ""
+msgstr "പുതിയ വലുപ്പം നിലവിലെ വലുപ്പത്തേക്കാൾ ചെറുതാകാൻ പാടില്ല"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to update storage"
-msgstr ""
+msgstr "സ്റ്റോറേജ് അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Storage updated"
-msgstr ""
+msgstr "സ്റ്റോറേജ് അപ്ഡേറ്റ് ചെയ്തു"
 
 #~ msgid "Manage ({0} lpinned)"
 #~ msgstr ""
@@ -5371,51 +5371,51 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Hourly"
-msgstr ""
+msgstr "മണിക്കൂറിൽ"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Daily"
-msgstr ""
+msgstr "ദിവസേന"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Weekly"
-msgstr ""
+msgstr "ആഴ്ചതോറും"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Monthly"
-msgstr ""
+msgstr "പ്രതിമാസം"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Yearly"
-msgstr ""
+msgstr "വാർഷികം"
 
 #: src/lib/components/custom/Header.svelte
 msgid "VM creation form minimized"
-msgstr ""
+msgstr "വി.എം. സൃഷ്ടിക്കുന്ന ഫോം ചെറുതാക്കിയിരിക്കുന്നു"
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Uncategorized (ISOs, IMGs, etc.)"
-msgstr ""
+msgstr "തരംതിരിക്കാത്തവ (ISOs, IMGs, മുതലായവ)"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select ZFS pool"
-msgstr ""
+msgstr "ZFS പൂൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Header.svelte
 msgid "Jail creation form minimized"
-msgstr ""
+msgstr "ജയിൽ ഉണ്ടാക്കുന്ന ഫോം ചെറുതാക്കിയിരിക്കുന്നു"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "FStab Additions"
-msgstr ""
+msgstr "FStab കൂട്ടിച്ചേർക്കലുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "FStab Entries"
-msgstr ""
+msgstr "FStab എൻട്രികൾ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -5423,18 +5423,18 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Additional Options"
-msgstr ""
+msgstr "കൂടുതൽ ഓപ്ഷനുകൾ"
 
 #~ msgid "Hello World"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Jail Type"
-msgstr ""
+msgstr "ജയിൽ തരം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "FreeBSD"
-msgstr ""
+msgstr "FreeBSD"
 
 #~ msgid "Linux"
 #~ msgstr ""
@@ -5472,67 +5472,67 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Memory Locking (allow.mlock)"
-msgstr ""
+msgstr "മെമ്മറി ലോക്കിംഗ് (allow.mlock)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "NFS Daemon (allow.nfsd)"
-msgstr ""
+msgstr "എൻഎഫ്എസ് ഡെമൺ (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
-msgstr ""
+msgstr "റിസർവ് ചെയ്ത പോർട്ടുകൾ (allow.reserved_ports)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
-msgstr ""
+msgstr "അധികാരമില്ലാത്ത പ്രോസസ് ഡീബഗ്ഗിംഗ് (allow.unprivileged_proc_debug)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
-msgstr ""
+msgstr "fdescfs മൗണ്ട് ചെയ്യുക (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
-msgstr ""
+msgstr "fusefs മൗണ്ട് ചെയ്യുക (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
-msgstr ""
+msgstr "nullfs മൗണ്ട് ചെയ്യുക (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount procfs (allow.mount.procfs)"
-msgstr ""
+msgstr "procfs മൗണ്ട് ചെയ്യുക (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
-msgstr ""
+msgstr "linprocfs മൗണ്ട് ചെയ്യുക (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
-msgstr ""
+msgstr "linsysfs മൗണ്ട് ചെയ്യുക (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
-msgstr ""
+msgstr "tmpfs മൗണ്ട് ചെയ്യുക (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
-msgstr ""
+msgstr "ZFS മൗണ്ട് ചെയ്യുക (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Virtual Machines (allow.vmm)"
-msgstr ""
+msgstr "വിർച്വൽ മെഷീനുകൾ (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Allowed Options"
-msgstr ""
+msgstr "അനുവദനീയമായ ഓപ്ഷനുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Allowed Options"
-msgstr ""
+msgstr "അനുവദനീയമായ ഓപ്ഷനുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Clean Environment"
-msgstr ""
+msgstr "പരിസ്ഥിതി വൃത്തിയാക്കുക"
 
 #~ msgid "Pre-start (exec.prestart)"
 #~ msgstr ""
@@ -5604,30 +5604,30 @@ msgstr ""
 msgid ""
 "The above script will run during {0}, Ensure they are valid for the host or\n"
 "jail"
-msgstr ""
+msgstr "മുകളിൽ നൽകിയിരിക്കുന്ന സ്ക്രിപ്റ്റ് {0} സമയത്ത് പ്രവർത്തിക്കും, അവ ഹോസ്റ്റിനോ ജയിലിനോ സാധുവാണെന്ന് ഉറപ്പാക്കുക"
 
 #~ msgid "Script"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Custom Options"
-msgstr ""
+msgstr "കസ്റ്റം ഓപ്ഷനുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Devfs Ruleset"
-msgstr ""
+msgstr "Devfs നിയമങ്ങൾ"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Leave empty for default ruleset"
-msgstr ""
+msgstr "സ്ഥിരസ്ഥിതി നിയമങ്ങൾക്കായി ഇത് ശൂന്യമായി വിടുക"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 msgid "Custom Devfs Ruleset"
-msgstr ""
+msgstr "ഇഷ്‌ടാനുസൃത Devfs നിയമങ്ങൾ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
-msgstr ""
+msgstr "കസ്റ്റം ജയിൽ ലൈഫ്സൈക്കിൾ ഹുക്കുകൾ (exec.* സ്ക്രിപ്റ്റുകൾ)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Mount devfs (allow.mount.devfs)"
@@ -5635,11 +5635,11 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Linux (Experimental)"
-msgstr ""
+msgstr "ലിനക്സ് (പരീക്ഷണാത്മകം)"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "View Logs"
-msgstr ""
+msgstr "രേഖകൾ കാണുക"
 
 #~ msgid "Logs for {0} ({1})"
 #~ msgstr ""
@@ -5665,7 +5665,7 @@ msgstr ""
 #. placeholder {0}: jail.current.name
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "{0} Logs"
-msgstr ""
+msgstr "{0} രേഖകൾ"
 
 #~ msgid "{0} — Logs"
 #~ msgstr ""
@@ -5682,7 +5682,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
-msgstr ""
+msgstr "മൊണാക്കോ, മെൻലോ, \"കൊറിയർ ന്യൂ\", മോണോസ്‌പേസ്"
 
 #~ msgid "Clear"
 #~ msgstr ""
@@ -5693,27 +5693,27 @@ msgstr ""
 #. placeholder {0}: currentTab?.id
 #: src/lib/components/custom/Terminal.svelte
 msgid "Terminal WebSocket connected for tab {0}"
-msgstr ""
+msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ലേക്ക് കണക്റ്റ് ചെയ്തു"
 
 #. placeholder {0}: currentTab?.id
 #: src/lib/components/custom/Terminal.svelte
 msgid "Terminal WebSocket disconnected for tab {0}"
-msgstr ""
+msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ൽ നിന്ന് വിച്ഛേദിച്ചു"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Record Size"
-msgstr ""
+msgstr "റെക്കോർഡ് വലുപ്പം"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Record Size"
-msgstr ""
+msgstr "റെക്കോർഡ് വലുപ്പം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Custom Mount Point"
-msgstr ""
+msgstr "ഇഷ്ടാനുസൃത മൗണ്ട് പോയിന്റ്"
 
 #~ msgid "Mountpoint"
 #~ msgstr ""
@@ -5736,41 +5736,41 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Simple Linux"
-msgstr ""
+msgstr "ലളിതമായ ലിനക്സ്"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select FStab Option"
-msgstr ""
+msgstr "FStab ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (env)"
-msgstr ""
+msgstr "മെറ്റാഡാറ്റ (env)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (meta)"
-msgstr ""
+msgstr "മെറ്റാഡാറ്റ (meta)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Environment Variables)"
-msgstr ""
+msgstr "മെറ്റാഡാറ്റ (പരിസ്ഥിതി വേരിയബിളുകൾ)"
 
 #~ msgid "Metadata (Metadata Entries)"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Metadata (Meta)"
-msgstr ""
+msgstr "മെറ്റാഡാറ്റ (മെറ്റാ)"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Disconnect"
-msgstr ""
+msgstr "വിച്ഛേദിക്കുക"
 
 #~ msgid "Connecting to console..."
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Reconnect"
-msgstr ""
+msgstr "വീണ്ടും ബന്ധിപ്പിക്കുക"
 
 #~ msgid "The console session is disconnected.<0/> Reconnect to access the Jail console."
 #~ msgstr ""
@@ -5801,7 +5801,7 @@ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
-msgstr ""
+msgstr "കൺസോൾ വിച്ഛേദിക്കപ്പെട്ടു.<0/> കണക്ഷൻ പുനഃസ്ഥാപിക്കാൻ \"വീണ്ടും ബന്ധിപ്പിക്കുക\" ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുക."
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores update failed"
@@ -5870,33 +5870,33 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Default gateway already exists"
-msgstr ""
+msgstr "സ്ഥിരസ്ഥിതി ഗേറ്റ്‌വേ ഇതിനകം നിലവിലുണ്ട്"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Network added successfully"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് വിജയകരമായി ചേർത്തു"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 msgid "Network name already exists"
-msgstr ""
+msgstr "നെറ്റ്‌വർക്ക് പേര് നിലവിലുണ്ട്"
 
 #~ msgid "Jail - Network Inheritance"
 #~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Network Inherit"
-msgstr ""
+msgstr "ജയിൽ - നെറ്റ്‌വർക്ക് അനന്തരാവകാശം"
 
 #~ msgid "Jail - Network - Inherit"
 #~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Network Disinherit"
-msgstr ""
+msgstr "ജയിൽ - നെറ്റ്‌വർക്ക് അനന്തരാവകാശം ഒഴിവാക്കുക"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail Network"
-msgstr ""
+msgstr "ജയിൽ നെറ്റ്‌വർക്ക്"
 
 #~ msgid "Create - Jail"
 #~ msgstr ""
@@ -5909,7 +5909,7 @@ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Auto-convert to RAW"
-msgstr ""
+msgstr "RAW-ലേക്ക് സ്വയമേവ മാറ്റുക"
 
 #~ msgid "Reload Page"
 #~ msgstr ""
@@ -5920,19 +5920,19 @@ msgstr ""
 #. placeholder {0}: jail.current?.name
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Console settings - {0}"
-msgstr ""
+msgstr "കൺസോൾ ക്രമീകരണങ്ങൾ - {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Font Size"
-msgstr ""
+msgstr "ഫോണ്ട് വലുപ്പം"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Background"
-msgstr ""
+msgstr "പശ്ചാത്തലം"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Foreground"
-msgstr ""
+msgstr "ഫോർഗ്രൗണ്ട്"
 
 #~ msgid "ECharts Example"
 #~ msgstr ""
@@ -5974,7 +5974,7 @@ msgstr ""
 #: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
-msgstr ""
+msgstr "ചിത്രമായി സംരക്ഷിക്കുക"
 
 #~ msgid "Chart"
 #~ msgstr ""
@@ -5991,38 +5991,38 @@ msgstr ""
 #. placeholder {0}: num(vdev.read_errors)
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "R:{0}"
-msgstr ""
+msgstr "ആർ:{0}"
 
 #. placeholder {0}: num(vdev.write_errors)
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "W:{0}"
-msgstr ""
+msgstr "ഡബ്ല്യൂ:{0}"
 
 #. placeholder {0}: num(vdev.checksum_errors)
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "C:{0}"
-msgstr ""
+msgstr "സി:{0}"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Logs"
-msgstr ""
+msgstr "രേഖകൾ"
 
 #. placeholder {0}: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
-msgstr ""
+msgstr "പിശകുകൾ കണ്ടെത്തി{0}"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Received"
-msgstr ""
+msgstr "ലഭിച്ചത്"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Sent"
-msgstr ""
+msgstr "അയച്ചത്"
 
 #: src/routes/[node]/+layout.svelte
 msgid "System"
-msgstr ""
+msgstr "സിസ്റ്റം"
 
 #: src/lib/components/custom/Settings/System/ZFSPools.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -6031,30 +6031,30 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools"
-msgstr ""
+msgstr "ZFS പൂളുകൾ"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "At least one ZFS Pool must be selected"
-msgstr ""
+msgstr "കുറഞ്ഞത് ഒരു ZFS പൂൾ എങ്കിലും തിരഞ്ഞെടുക്കണം"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "No changes made to ZFS Pools"
-msgstr ""
+msgstr "ZFS പൂളുകളിൽ മാറ്റങ്ങളൊന്നും വരുത്തിയിട്ടില്ല"
 
 #~ msgid "You cannot remove ZFS Pools that are already initialized"
 #~ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to update ZFS Pools"
-msgstr ""
+msgstr "ZFS പൂളുകൾ അപ്ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "ZFS Pools updated successfully"
-msgstr ""
+msgstr "ZFS പൂളുകൾ വിജയകരമായി അപ്ഡേറ്റ് ചെയ്തു"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Enter ZFS Pools"
-msgstr ""
+msgstr "ZFS പൂളുകൾ നൽകുക"
 
 #: src/lib/components/custom/Settings/System/ZFSPools.svelte
 msgid "Select ZFS Pools"
@@ -6062,15 +6062,15 @@ msgstr ""
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Cannot remove initialized ZFS Pools"
-msgstr ""
+msgstr "ഇനിഷ്യലൈസ് ചെയ്ത ZFS പൂളുകൾ നീക്കം ചെയ്യാൻ കഴിയില്ല"
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
-msgstr ""
+msgstr "സ്വയമേവയുള്ള മാറ്റിസ്ഥാപിക്കലിന് അധിക ഡിസ്കുകൾ ചേർക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Parent pool not found"
-msgstr ""
+msgstr "മാതൃ പൂൾ കണ്ടെത്തിയില്ല"
 
 #~ msgid "Event has been created"
 #~ msgstr ""
@@ -6088,7 +6088,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Invalid size format"
-msgstr ""
+msgstr "അസാധുവായ വലുപ്പ ഫോർമാറ്റ്"
 
 #~ msgid "Resize to {0}"
 #~ msgstr ""
@@ -6110,82 +6110,82 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
-msgstr ""
+msgstr "വോളിയം വലുപ്പം ബ്ലോക്ക് വലുപ്പത്തിന്റെ ഗുണിതമല്ല, ഇത് സ്വയമേവ ക്രമീകരിക്കണമെങ്കിൽ ഇതിൽ ക്ലിക്ക് ചെയ്യുക"
 
 #: src/lib/components/custom/Terminal.svelte
 msgid "Failed to connect to terminal WebSocket"
-msgstr ""
+msgstr "ടെർമിനൽ വെബ് സോക്കറ്റിലേക്ക് കണക്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Unknown VM"
-msgstr ""
+msgstr "അജ്ഞാത VM"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Started"
-msgstr ""
+msgstr "ആരംഭിച്ചു"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Bad Request"
-msgstr ""
+msgstr "മോശം അഭ്യർത്ഥന"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Error"
-msgstr ""
+msgstr "പിശക്"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Invalid IPv4 gateway or address"
-msgstr ""
+msgstr "തെറ്റായ IPv4 ഗേറ്റ്‌വേ അല്ലെങ്കിൽ വിലാസം"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Invalid IPv6 gateway or address"
-msgstr ""
+msgstr "തെറ്റായ IPv6 ഗേറ്റ്‌വേ അല്ലെങ്കിൽ വിലാസം"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Block devices managed by ZFS"
-msgstr ""
+msgstr "ZFS കൈകാര്യം ചെയ്യുന്ന ബ്ലോക്ക് ഉപകരണങ്ങൾ"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "Disk images that can be used with any filesystem"
-msgstr ""
+msgstr "ഏത് ഫയൽസിസ്റ്റത്തിലും ഉപയോഗിക്കാൻ കഴിയുന്ന ഡിസ്ക് ഇമേജുകൾ"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "No Storage"
-msgstr ""
+msgstr "സംഭരണം ഇല്ല"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
 msgid "No storage will be allocated for this virtual machine"
-msgstr ""
+msgstr "ഈ വെർച്വൽ മെഷീന് സംഭരണം അനുവദിക്കില്ല"
 
 #. placeholder {0}: snapshot.old
 #. placeholder {1}: snapshot.latest
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Replacing {0} with {1}"
-msgstr ""
+msgstr "{0} നെ {1} ഉപയോഗിച്ച് മാറ്റുന്നു"
 
 #. placeholder {0}: snapshot.old
 #. placeholder {1}: snapshot.name
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Device replacement started for {0} in {1}"
-msgstr ""
+msgstr "{1} ലെ {0} നായുള്ള ഉപകരണ മാറ്റിവെക്കൽ ആരംഭിച്ചു"
 
 #: src/lib/components/custom/ZFS/pools/Replace.svelte
 msgid "Error replacing device"
-msgstr ""
+msgstr "ഉപകരണം മാറ്റിസ്ഥാപിക്കുന്നതിൽ പിശക്"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Failed to delete periodic snapshot"
-msgstr ""
+msgstr "ആനുകാലിക സ്നാപ്പ്ഷോട്ട് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #~ msgid "Filesystems"
 #~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Used"
-msgstr ""
+msgstr "ഉപയോഗിച്ചത്"
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Referenced"
-msgstr ""
+msgstr "റെഫർ ചെയ്തത്"
 
 #. placeholder {0}: datasets.length
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -6221,8 +6221,8 @@ msgstr ""
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Delete Snapshot"
 msgid_plural "Delete # Snapshots"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "സ്നാപ്പ്ഷോട്ട് ഇല്ലാതാക്കുക"
+msgstr[1] "# സ്നാപ്പ്ഷോട്ടുകൾ ഇല്ലാതാക്കുക"
 
 #~ msgid "Open"
 #~ msgstr ""
@@ -6250,30 +6250,30 @@ msgstr[1] ""
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create Directory"
-msgstr ""
+msgstr "ഡയറക്‌ടറി സൃഷ്‌ടിക്കുക"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Delete (File/Directory)"
-msgstr ""
+msgstr "മായ്ക്കുക (ഫയൽ/ഡയറക്‌ടറി)"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create File"
-msgstr ""
+msgstr "ഫയൽ സൃഷ്‌ടിക്കുക"
 
 #~ msgid "Interval type required"
 #~ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Voter"
-msgstr ""
+msgstr "വോട്ട് ചെയ്യുന്നയാൾ"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Non Voter"
-msgstr ""
+msgstr "വോട്ട് ചെയ്യാത്തയാൾ"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Staging"
-msgstr ""
+msgstr "സ്റ്റേജിംഗ്"
 
 #~ msgid "Core"
 #~ msgid_plural "Core#"
@@ -6288,14 +6288,14 @@ msgstr ""
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Socket"
 msgid_plural "Socket #"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "സോക്കറ്റ്"
+msgstr[1] "സോക്കറ്റ് #"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Core"
 msgid_plural "Core #"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "കോർ"
+msgstr[1] "കോർ #"
 
 #~ msgid "Socke1t"
 #~ msgid_plural "Socke1t #"
@@ -6327,12 +6327,12 @@ msgstr[1] ""
 #. placeholder {0}: selectedCores.size
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Selected: {0},"
-msgstr ""
+msgstr "തിരഞ്ഞെടുത്തത്: {0},"
 
 #. placeholder {0}: coreSelectionLimit
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Limit: {0}"
-msgstr ""
+msgstr "പരിധി: {0}"
 
 #~ msgid "Size: {0},"
 #~ msgstr ""
@@ -6342,11 +6342,11 @@ msgstr ""
 
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
-msgstr ""
+msgstr "ശേഷിക്കുന്ന സ്ഥലം: <0/>"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 msgid "Check to enable"
-msgstr ""
+msgstr "പ്രവർത്തനക്ഷമമാക്കാൻ പരിശോധിക്കുക"
 
 #~ msgid "Enable DHCP Server"
 #~ msgstr ""
@@ -6372,7 +6372,7 @@ msgstr ""
 #. placeholder {0}: activeRow?.property
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Toggle {0}"
-msgstr ""
+msgstr "{0} ടോഗിൾ ചെയ്യുക"
 
 #~ msgid "DHCP Server {0}"
 #~ msgstr ""
@@ -6456,7 +6456,7 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "Setup Complete"
-msgstr ""
+msgstr "സജ്ജീകരണം പൂർത്തിയായി"
 
 #~ msgid "System initialization has finished successfully. A restart is required to apply configuration changes."
 #~ msgstr ""
@@ -6533,15 +6533,15 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is restarting…"
-msgstr ""
+msgstr "സിസ്റ്റം റീസ്റ്റാർട്ട് ചെയ്യുകയാണ്..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is back online"
-msgstr ""
+msgstr "സിസ്റ്റം തിരികെ ഓൺലൈനിൽ എത്തി"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System did not come back online in time"
-msgstr ""
+msgstr "സിസ്റ്റം കൃത്യസമയത്ത് ഓൺലൈനിൽ വന്നില്ല"
 
 #~ msgid "Preparing reboot…"
 #~ msgstr ""
@@ -6568,7 +6568,7 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "WoL Server"
-msgstr ""
+msgstr "WoL സെർവർ"
 
 #~ msgid "You are about to {0} the WoL Server, you might have to restart Sylve and or the host system for changes to take effect"
 #~ msgstr ""
@@ -6584,7 +6584,7 @@ msgstr ""
 
 #: src/routes/+error.svelte
 msgid "Not Found"
-msgstr ""
+msgstr "കണ്ടെത്തിയില്ല"
 
 #~ msgid "Page not found"
 #~ msgstr ""
@@ -6638,23 +6638,23 @@ msgstr ""
 #. placeholder {2}: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
-msgstr ""
+msgstr "നിങ്ങൾ {0} {1} ചെയ്യാൻ പോകുകയാണ്, {2}മാറ്റങ്ങൾ പ്രാബല്യത്തിൽ വരുന്നതിന് Sylve അല്ലെങ്കിൽ ഹോസ്റ്റ് സിസ്റ്റം പുനരാരംഭിക്കേണ്ടിവരും"
 
 #. placeholder {0}: serviceName
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Failed to toggle {0}"
-msgstr ""
+msgstr "{0} ടോഗിൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
-msgstr ""
+msgstr "ജയിൽ"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "FSTab Entries"
-msgstr ""
+msgstr "FSTab എൻട്രികൾ"
 
 #~ msgid "Fstab Entries"
 #~ msgstr ""
@@ -6676,7 +6676,7 @@ msgstr ""
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "DevFS Ruleset"
-msgstr ""
+msgstr "DevFS നിയമങ്ങൾ"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Manage the devfs ruleset for this jail"
@@ -6699,17 +6699,17 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "ENV (Key=Value per line)"
-msgstr ""
+msgstr "ENV (ഓരോ വരിയിലും കീ=വാല്യൂ)"
 
 #: src/lib/runes/useQuery.svelte.ts
 msgid "Unexpected error occurred"
-msgstr ""
+msgstr "പ്രതീക്ഷിക്കാത്ത പിശക് സംഭവിച്ചു"
 
 #. placeholder {0}: dataset.name
 #. placeholder {1}: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 msgid "Snapshot {0}@{1} already exists"
-msgstr ""
+msgstr "സ്നാപ്പ്ഷോട്ട് {0}@{1} ഇതിനകം നിലവിലുണ്ട്"
 
 #~ msgid "Loading CPU information..."
 #~ msgstr ""
@@ -6719,24 +6719,24 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "CPU Info Unavailable"
-msgstr ""
+msgstr "സിപിയു വിവരങ്ങൾ ലഭ്യമല്ല"
 
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
-msgstr ""
+msgstr "സ്വാഗർ"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Edit Users"
-msgstr ""
+msgstr "ഉപയോക്താക്കളെ എഡിറ്റ് ചെയ്യുക"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Users modified in group"
-msgstr ""
+msgstr "ഗ്രൂപ്പിലെ ഉപയോക്താക്കളെ മാറ്റി"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Failed to modify users in group"
-msgstr ""
+msgstr "ഗ്രൂപ്പിലെ ഉപയോക്താക്കളെ മാറ്റുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Modify Users"
@@ -6744,18 +6744,20 @@ msgstr ""
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Default Sylve Group (sylve_g)"
-msgstr ""
+msgstr "സ്ഥിരമായ സിൽവ് ഗ്രൂപ്പ് (sylve_g)"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid ""
 "A <0>full system reboot</0> is required for Sylve to\n"
 "finish initialization. Continue when ready."
 msgstr ""
+"സിൽവ് ഇനിഷ്യലൈസേഷൻ പൂർത്തിയാക്കാൻ ഒരു <0>പൂർണ്ണ സിസ്റ്റം റീബൂട്ട്</0> ആവശ്യമാണ്.\n"
+"തയ്യാറാകുമ്പോൾ തുടരുക."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "<0/> Rebooting..."
-msgstr ""
+msgstr "<0/> റീബൂട്ട് ചെയ്യുന്നു..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "<0/> Reboot"
-msgstr ""
+msgstr "<0/> റീബൂട്ട്"
