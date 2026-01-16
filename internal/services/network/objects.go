@@ -212,8 +212,14 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 				}
 			}
 
-			if jn.IPv4GwID != nil {
-				if *jn.IPv4GwID == id {
+			if jn.IPv6GwID != nil {
+				if *jn.IPv6GwID == id {
+					return true, nil
+				}
+			}
+
+			if jn.MacID != nil {
+				if *jn.MacID == id {
 					return true, nil
 				}
 			}

@@ -3,7 +3,7 @@
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { detachNetwork } from '$lib/api/vm/network';
-	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
+	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Network from '$lib/components/custom/VM/Hardware/Network.svelte';
@@ -16,12 +16,11 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import { storage } from '$lib';
 
 	interface Data {
-		vms: VM[];
 		vm: VM;
 		domain: VMDomain;
 		interfaces: Iface[];
@@ -58,16 +57,16 @@
 		}
 	);
 
-	const vms = resource(
-		() => 'vms',
+	const vm = resource(
+		() => `vm-${data.rid}`,
 		async (key) => {
-			const result = await getVMs();
+			const result = await getVmById(Number(data.vm.rid), 'rid');
 			updateCache(key, result);
 			return result;
 		},
 		{
 			lazy: true,
-			initialValue: data.vms
+			initialValue: data.vm
 		}
 	);
 
@@ -102,26 +101,23 @@
 			if (storage.visible) {
 				interfaces.refetch();
 				switches.refetch();
-				vms.refetch();
+				vm.refetch();
 				domain.refetch();
 				networkObjects.refetch();
 			}
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
-				interfaces.refetch();
-				switches.refetch();
-				vms.refetch();
-				domain.refetch();
-				networkObjects.refetch();
-			});
+	watch(
+		() => storage.visible,
+		() => {
+			interfaces.refetch();
+			switches.refetch();
+			vm.refetch();
+			domain.refetch();
+			networkObjects.refetch();
 		}
-	});
-
-	let vm = $derived(vms.current.find((vm) => vm.rid === Number(data.rid)));
+	);
 
 	function generateTableData() {
 		const rows: Row[] = [];
@@ -145,8 +141,8 @@
 			}
 		];
 
-		if (vm?.networks) {
-			for (const network of vm.networks) {
+		if (vm.current) {
+			for (const network of vm.current.networks) {
 				let sw: StandardSwitch | ManualSwitch | null = null;
 				if (network.switchType === 'standard') {
 					sw = switches.current.standard?.find((s) => s.id === network.switchId) ?? null;
@@ -236,7 +232,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border p-2">
 		<Button
 			onclick={() => {
-				if (vm) {
+				if (vm.current) {
 					if (usable?.length === 0) {
 						toast.error('No available/unused switches to attach to', {
 							position: 'bottom-center'
@@ -278,10 +274,10 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the VM <b>${vm?.name}</b> from the switch <b>${properties.detach.name}</b>`}
+	customTitle={`This will detach the VM <b>${vm.current.name}</b> from the switch <b>${properties.detach.name}</b>`}
 	actions={{
 		onConfirm: async () => {
-			let response = await detachNetwork(vm?.rid as number, properties.detach.id as number);
+			let response = await detachNetwork(vm.current.rid as number, properties.detach.id as number);
 			if (response.status === 'error') {
 				handleAPIError(response);
 				toast.error('Failed to detach network', {
@@ -306,7 +302,6 @@
 <Network
 	bind:open={properties.attach.open}
 	switches={switches.current}
-	vms={vms.current}
 	networkObjects={networkObjects.current}
-	vm={vm ?? null}
+	vm={vm.current ?? null}
 />

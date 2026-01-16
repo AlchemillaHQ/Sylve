@@ -3,7 +3,6 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
@@ -15,12 +14,11 @@
 	interface Props {
 		open: boolean;
 		switches: SwitchList;
-		vms: VM[];
 		vm: VM | null;
 		networkObjects: NetworkObject[];
 	}
 
-	let { open = $bindable(), switches, vm, networkObjects, vms }: Props = $props();
+	let { open = $bindable(), switches, vm, networkObjects }: Props = $props();
 	let usable = $derived.by(() => {
 		return [
 			...(switches.standard ?? []).map((s) => ({
@@ -35,14 +33,8 @@
 	});
 
 	let usableMacs = $derived.by(() => {
-		const usedMacIds = new Set<number>(
-			vms
-				.flatMap((vm) => vm.networks.map((net) => net.macId))
-				.filter((id): id is number => id !== undefined)
-		);
-
 		return networkObjects.filter(
-			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && !usedMacIds.has(obj.id)
+			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && obj.isUsed === false
 		);
 	});
 

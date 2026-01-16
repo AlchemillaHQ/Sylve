@@ -4279,7 +4279,7 @@ msgstr "जोड़ने के लिए कोई उपलब्ध/अप�
 msgid "VM must be shut off to attach storage"
 msgstr "संग्रहण जोड़ने के लिए VM को बंद करना आवश्यक है"
 
-#. placeholder {0}: vm?.name
+#. placeholder {0}: vm.current.name
 #. placeholder {1}: properties.detach.name
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"

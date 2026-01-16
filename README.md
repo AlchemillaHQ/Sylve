@@ -27,10 +27,18 @@ We’re proud to be supported by:
       <img src="./docs/sponsors/Alchemilla-Dark.png" alt="Alchemilla" width="150"/>
     </picture>
   </a>
+  &emsp;&emsp;&emsp;
+  <a href="https://iptechnics.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./docs/sponsors/IP-Technics-White.png">
+      <img src="./docs/sponsors/IP-Technics-Dark.png" alt="IPTechnics" width="150"/>
+    </picture>
+  </a>
 </p>
 
-- [FreeBSD Foundation](https://freebsdfoundation.org)  
+- [FreeBSD Foundation](https://freebsdfoundation.org)
 - [Alchemilla](https://alchemilla.io)
+- [IPTechnics](https://iptechnics.com)
 
 You can also support the project by [sponsoring us on GitHub](https://github.com/sponsors/AlchemillaHQ).
 
@@ -112,7 +120,7 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 
 1. Bhyve doesn't support bootorders yet
 
-Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download 
+Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download
 
 2. ARM64 support is still pending for Libvirt so the support is not there yet, for everything else it should just work out of the box.
 

@@ -4301,7 +4301,7 @@ msgstr "No available/unused switches to attach to"
 msgid "VM must be shut off to attach storage"
 msgstr "VM must be shut off to attach storage"
 
-#. placeholder {0}: vm?.name
+#. placeholder {0}: vm.current.name
 #. placeholder {1}: properties.detach.name
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"

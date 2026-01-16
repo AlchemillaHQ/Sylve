@@ -4,10 +4,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { onMount } from 'svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { VM } from '$lib/types/vm/vm';
 	import { generateMACOptions } from '$lib/utils/network/object';
 
 	interface Props {
@@ -15,7 +12,6 @@
 		mac: string;
 		emulation: string;
 		switches: SwitchList;
-		vms: VM[];
 		networkObjects: NetworkObject[];
 	}
 
@@ -24,19 +20,12 @@
 		mac = $bindable(),
 		emulation = $bindable(),
 		switches,
-		networkObjects,
-		vms
+		networkObjects
 	}: Props = $props();
 
 	let usableMacs = $derived.by(() => {
-		const usedMacIds = new Set<number>(
-			vms
-				.flatMap((vm) => vm.networks.map((net) => net.macId))
-				.filter((id): id is number => id !== undefined)
-		);
-
 		return networkObjects.filter(
-			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && !usedMacIds.has(obj.id)
+			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && obj.isUsed === false
 		);
 	});
 
