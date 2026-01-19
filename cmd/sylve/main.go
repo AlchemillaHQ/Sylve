@@ -86,6 +86,7 @@ func main() {
 	zS.RegisterJobs()
 
 	go sysS.StartDevdParser(qCtx)
+	go sysS.DevdEventsCleaner(qCtx)
 	go db.StartQueue(qCtx)
 
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)

@@ -106,6 +106,10 @@ func (s *Service) StartDevdParser(
 						continue
 					}
 
+					if ev.System == "" || ev.Subsystem == "" {
+						continue
+					}
+
 					record := &models.DevdEvent{
 						System:    ev.System,
 						Subsystem: ev.Subsystem,
@@ -119,6 +123,38 @@ func (s *Service) StartDevdParser(
 			}
 
 			time.Sleep(time.Second)
+		}
+	}()
+}
+
+func (s *Service) DevdEventsCleaner(ctx context.Context) {
+	cleanup := func() {
+		cutoff := time.Now().Add(-24 * time.Hour)
+
+		res := s.DB.
+			Where("created_at < ?", cutoff).
+			Delete(&models.DevdEvent{})
+
+		if res.Error != nil {
+			logger.L.Error().
+				Err(res.Error).
+				Msg("devd_events cleanup failed")
+		}
+	}
+
+	go func() {
+		cleanup()
+
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cleanup()
+			}
 		}
 	}()
 }

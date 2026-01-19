@@ -23,7 +23,7 @@ func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) er
 	err := s.DB.
 		Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"start_order":   bootOrder,
 			"start_at_boot": startAtBoot,
 		}).Error
@@ -69,7 +69,13 @@ func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 		}
 
 		if !found {
-			newLines = append(newLines, fmt.Sprintf(`	mount.fstab = "%s";`, fstabPath))
+			for i := len(newLines) - 1; i >= 0; i-- {
+				if strings.TrimSpace(newLines[i]) == "}" {
+					fstabLine := fmt.Sprintf(`	mount.fstab = "%s";`, fstabPath)
+					newLines = append(newLines[:i], append([]string{fstabLine}, newLines[i:]...)...)
+					break
+				}
+			}
 		}
 	}
 

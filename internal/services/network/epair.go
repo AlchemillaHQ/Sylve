@@ -110,10 +110,17 @@ func (s *Service) SyncEpairs(_ bool) error {
 			base := hash + "_" + networkId
 
 			epairA := base + "a"
+			epairB := base + "b"
 			// epairB := base + "b" // we don't actually need to check B; CreateEpair will create both
 			// If A side exists, assume the pair is already there/in use and do nothing
 			if ifaceExists(epairA) {
-				continue
+				if !ifaceExists(epairB) {
+					// The 'a' side exists but 'b' is gone.
+					// We must delete 'a' first to recreate the pair cleanly.
+					s.DeleteEpair(base)
+				} else {
+					continue // Both exist, we are good
+				}
 			}
 
 			logger.L.Debug().Msgf("Creating epair %s for jail %d", base, j.CTID)
