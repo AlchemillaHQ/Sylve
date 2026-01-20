@@ -5,22 +5,27 @@ msgstr ""
 "POT-Creation-Date: 2025-11-19T16:37:17.888Z\n"
 "PO-Revision-Date: 2026-01-11 10:05+0800\n"
 "Last-Translator: ykla <yklaxds@gmail.com>\n"
+"Language: zh-CN\n"
 "Language-Team: ykla <yklaxds@gmail.com>\n"
-"Language: zh_CN\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
 "X-Generator: Poedit 3.8\n"
 
 #: src/lib/stores/terminal.svelte.ts
 msgid "Terminal"
 msgstr "终端"
 
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "摘要"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "终端"
@@ -28,24 +33,30 @@ msgstr "终端"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Storage"
 msgstr "存储"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "硬件"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "网络"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "选项"
@@ -72,6 +83,7 @@ msgstr "接口"
 msgid "Switches"
 msgstr "交换机"
 
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Manual"
@@ -131,6 +143,7 @@ msgid "Shares"
 msgstr "共享"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Settings"
 msgstr "设置"
 
@@ -169,11 +182,15 @@ msgstr "群组"
 msgid "Node — <0/>"
 msgstr "节点 — <0/>"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Help"
 msgstr "帮助"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Difuse-sidebar"
 msgstr "模糊侧边栏"
 
@@ -189,8 +206,7 @@ msgstr "数据中心"
 
 #: src/routes/inactive-node/+page.svelte
 msgid ""
-"This node can’t be reached right now. Check the network connection and "
-"confirm the node is\n"
+"This node can’t be reached right now. Check the network connection and confirm the node is\n"
 "powered on."
 msgstr ""
 "此节点目前无法访问。请检查网络连接，并确认该节点\n"
@@ -201,9 +217,13 @@ msgid "Color Theme"
 msgstr "色彩主题"
 
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/lib/components/custom/Initialize.svelte
+#: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve Logo"
 msgstr "Sylve Logo"
@@ -227,6 +247,7 @@ msgid "Create VM"
 msgstr "创建虚拟机"
 
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
 msgstr "创建 Jail"
@@ -331,9 +352,11 @@ msgid "Realm"
 msgstr "域"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/custom/Login.svelte
 msgid "PAM"
 msgstr "PAM"
 
+#: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve"
 msgstr "Sylve"
@@ -343,6 +366,7 @@ msgid "Remember Me"
 msgstr "记住我"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Login"
 msgstr "登录"
@@ -358,7 +382,9 @@ msgid "Session killed: {0}"
 msgstr "会话已终止：{0}"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
 msgstr "最小化"
@@ -372,6 +398,7 @@ msgstr "最小化"
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
@@ -387,6 +414,8 @@ msgstr "最小化"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -458,6 +487,7 @@ msgstr "创建分区"
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -469,6 +499,7 @@ msgstr "创建分区"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -698,6 +729,7 @@ msgstr "动作"
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
 msgstr "状态"
 
@@ -909,16 +941,21 @@ msgstr "附注删除失败"
 #: src/lib/components/custom/Charts/Area.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
 msgstr "CPU 使用率"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "内存使用情况"
 
+#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 msgid "Swap Usage"
 msgstr "Swap 使用率"
@@ -1046,6 +1083,7 @@ msgid "Quorate: No"
 msgstr "法定节点：否"
 
 #: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Nodes"
 msgstr "节点"
 
@@ -1071,6 +1109,7 @@ msgstr "离线：不适用"
 msgid "Resources"
 msgstr "资源"
 
+#: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Disk"
 msgstr "磁盘"
@@ -1609,19 +1648,14 @@ msgstr "详情- {0}"
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
-msgid ""
-"Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will "
-"make it unavailable to the host."
+msgid "Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will make it unavailable to the host."
 msgstr "您确定要通过 <b>{0}</b> 传递 <b>{1}</b> 吗？这将导致主机无法使用它。"
 
 #. placeholder {0}: device
 #. placeholder {1}: vendor
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
-msgid ""
-"Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? "
-"This will make it available to the host again."
-msgstr ""
-"您确定要移除 <b>{1}</b> 的 <b>{0}</b> 直通吗？这将使主机可以再次使用它。"
+msgid "Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? This will make it available to the host again."
+msgstr "您确定要移除 <b>{1}</b> 的 <b>{0}</b> 直通吗？这将使主机可以再次使用它。"
 
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Enable Passthrough"
@@ -1688,16 +1722,12 @@ msgstr "NVMe"
 
 #. placeholder {0}: activePartition.name
 #: src/routes/[node]/storage/disks/+page.svelte
-msgid ""
-"This action cannot be undone. This will permanently <b>delete</b> partition "
-"<b>{0}</b>."
+msgid "This action cannot be undone. This will permanently <b>delete</b> partition <b>{0}</b>."
 msgstr "此操作无法撤销。这将永久 <b>删除</b> 分区 <b>{0}</b>。"
 
 #. placeholder {0}: activeDisk.device
 #: src/routes/[node]/storage/disks/+page.svelte
-msgid ""
-"This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</"
-"b>."
+msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
 msgstr "此操作无法撤销。这将永久 <b>擦除</b> 磁盘 <b>{0}</b>。"
 
 #. placeholder {0}: activeDisk.device
@@ -1955,7 +1985,9 @@ msgstr "基础"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -1963,6 +1995,7 @@ msgstr "基础"
 msgid "None"
 msgstr "无"
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Failed to create jail"
 msgstr "jail 创建失败"
@@ -2005,6 +2038,7 @@ msgid "Mac"
 msgstr "MAC"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Host"
@@ -2030,6 +2064,8 @@ msgid "No network switch will be allocated now, you can add it later"
 msgstr "当前不会分配网络交换机，您可以稍后添加"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Inherit"
 msgstr "继承"
 
@@ -2038,6 +2074,8 @@ msgstr "继承"
 msgid "IPv4 Network"
 msgstr "IPv4 网络"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -2068,6 +2106,8 @@ msgstr "选择 IPv4 网关"
 msgid "IPv6 Network"
 msgstr "IPv6 网络"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -2456,6 +2496,7 @@ msgid "Failed to create VM"
 msgstr "虚拟机创建失败"
 
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Create Virtual Machine"
 msgstr "创建虚拟机"
 
@@ -2506,11 +2547,13 @@ msgstr "选择安装介质"
 #. placeholder {0}: socketIndex
 #. placeholder {0}: socketIndex
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Socket {0}"
 msgstr "插槽 {0}"
 
 #. placeholder {0}: coreSelectionLimit
 #. placeholder {0}: coreSelectionLimit
+#: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "You can only select up to {0} cores."
 msgstr "最多只能选择 {0} 个核心。"
@@ -2817,8 +2860,7 @@ msgid "Wait for VNC"
 msgstr "等待 VNC 连接"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
-msgid ""
-"Either both user and meta data should be empty or both should be provided"
+msgid "Either both user and meta data should be empty or both should be provided"
 msgstr "用户和元数据要么都为空，要么都必须提供"
 
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
@@ -2862,8 +2904,7 @@ msgstr "串行控制台已修改"
 
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid ""
-"This VM currently has serial console access enabled. You can disable it "
-"using the button\n"
+"This VM currently has serial console access enabled. You can disable it using the button\n"
 "below."
 msgstr ""
 "此虚拟机当前已启用串行控制台访问。您可以使用\n"
@@ -2871,8 +2912,7 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid ""
-"This VM currently has serial console access disabled. You can enable it "
-"using the button\n"
+"This VM currently has serial console access disabled. You can enable it using the button\n"
 "below."
 msgstr ""
 "此虚拟机当前已禁用串行控制台访问。您可以使用\n"
@@ -2940,8 +2980,7 @@ msgstr "网络唤醒（WoL）"
 
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid ""
-"Setting this option to be <0>on</0> will enable Wake on LAN for this VM for "
-"all MAC addresses attached\n"
+"Setting this option to be <0>on</0> will enable Wake on LAN for this VM for all MAC addresses attached\n"
 "to it"
 msgstr ""
 "将此选项设置为 <0>开启</0> 将为此虚拟机启用 Wake on LAN，适用于附加到它的\n"
@@ -3192,8 +3231,7 @@ msgid "Jail console connected for jail {0}"
 msgstr "已连接 Jail 控制台，Jail 为 {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
-msgid ""
-"The Jail is currently powered off.<0/> Start the Jail to access its console."
+msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
 msgstr "该 Jail 已关闭。<0/> 启动 Jail 以访问其控制台。"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
@@ -3260,17 +3298,12 @@ msgid "Edit {0}"
 msgstr "编辑 {0}"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
-msgid ""
-"This will give unlimited resources to this jail, proceed with <b>caution!</b>"
+msgid "This will give unlimited resources to this jail, proceed with <b>caution!</b>"
 msgstr "这将向此 jail 提供无限资源，请 <b>谨慎！</b> 操作"
 
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
-msgid ""
-"This will enable resource limits for this jail, defaulting to <b>1 GB RAM</"
-"b> and <b>1 vCPU</b>, you can change this later"
-msgstr ""
-"这将为此 jail 启用资源限制，默认设置为 <b>1 GB RAM</b> 和 <b>1 vCPU</b>，你后"
-"续再更改"
+msgid "This will enable resource limits for this jail, defaulting to <b>1 GB RAM</b> and <b>1 vCPU</b>, you can change this later"
+msgstr "这将为此 jail 启用资源限制，默认设置为 <b>1 GB RAM</b> 和 <b>1 vCPU</b>，你后续再更改"
 
 #. placeholder {0}: adjective
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -3458,9 +3491,7 @@ msgstr "永不"
 
 #. placeholder {0}: activeRow?.hostname || activeRow?.ip || ''
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
-msgid ""
-"This action cannot be undone. This will permanently delete static DHCP lease "
-"for <b>{0}</b>"
+msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
 msgstr "该操作不可撤销。将永久删除 <b>{0}</b> 的静态 DHCP 租约"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -3486,9 +3517,7 @@ msgid "DHCP Range"
 msgstr "DHCP 范围"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
-msgid ""
-"This action cannot be undone. This will permanently delete this DHCP range "
-"including all leases/options associated with it"
+msgid "This action cannot be undone. This will permanently delete this DHCP range including all leases/options associated with it"
 msgstr "此操作无法撤销。此操作将永久删除此 DHCP 范围及其所有关联的租约/选项"
 
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -3821,8 +3850,7 @@ msgid "No console is configured for this VM."
 msgstr "此虚拟机未配置控制台。"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid ""
-"The VM is currently powered off.<0/> Start the VM to access its console."
+msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr "当前虚拟机已关闭。<0/> 启动虚拟机以访问其控制台。"
 
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4793,10 +4821,8 @@ msgstr "已修改未实现的 MSR 访问设置"
 
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid ""
-"Enable this option to ignore accesses to unimplemented Model-Specific "
-"Registers (MSRs) by the\n"
-"VM. This can help prevent crashes or instability caused by such accesses, "
-"but may also lead to\n"
+"Enable this option to ignore accesses to unimplemented Model-Specific Registers (MSRs) by the\n"
+"VM. This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
 "unexpected behavior if the guest OS relies on these MSRs."
 msgstr ""
 "启用此选项以忽略虚拟机对未实现的特定模型寄存器（MSR）的访问。\n"
@@ -5064,6 +5090,7 @@ msgid "Custom Mount Point"
 msgstr "自定义挂载点"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Simple Linux"
 msgstr "简易 Linux"
 
@@ -5096,9 +5123,7 @@ msgid "Reconnect"
 msgstr "重新连接"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
-msgid ""
-"The console has been disconnected.<0/> Click the \"Reconnect\" button to re-"
-"establish the connection."
+msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "控制台已断开连接。<0/> 点击“重新连接”按钮以恢复连接。"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
@@ -5112,10 +5137,8 @@ msgstr "CPU 核心数大于逻辑核心数（{0}）"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid ""
-"This option will disinherit the network configuration from the host. Choose "
-"this if you want\n"
-"to attach a custom network switch to this jail or disable networking "
-"entirely. Changes will\n"
+"This option will disinherit the network configuration from the host. Choose this if you want\n"
+"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
 "take effect after restarting the jail."
 msgstr ""
 "启用此选项将取消继承主机的网络配置。\n"
@@ -5124,14 +5147,11 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 msgid ""
-"This option will inherit the network configuration from the host. Choose "
-"this if you want\n"
-"the jail to share the host's networking. You can select which protocols to "
-"inherit below.\n"
+"This option will inherit the network configuration from the host. Choose this if you want\n"
+"the jail to share the host's networking. You can select which protocols to inherit below.\n"
 "Changes will take effect after restarting the jail."
 msgstr ""
-"启用此选项将继承主机的网络配置。如果你希望 jail 共享主机的网络，请选择此"
-"项。\n"
+"启用此选项将继承主机的网络配置。如果你希望 jail 共享主机的网络，请选择此项。\n"
 "你可以在下方选择要继承的协议。\n"
 "更改将在重启 jail 后生效。"
 
@@ -5317,9 +5337,7 @@ msgid "Volume Size"
 msgstr "卷大小"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
-msgid ""
-"Volume size is not a multiple of block size, click on this if you'd like to "
-"automatically adjust it"
+msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "卷大小不是块大小的整数倍，点击此选项可自动调整"
 
 #: src/lib/components/custom/Terminal.svelte
@@ -5475,13 +5493,11 @@ msgstr "切换 {0}"
 msgid "Setup Complete"
 msgstr "设置完成"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restart"
-msgstr "<0/> 重启"
+#~ msgid "<0/> Restart"
+#~ msgstr "<0/> 重启"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "<0/> Restarting..."
-msgstr "<0/> 正在重启……"
+#~ msgid "<0/> Restarting..."
+#~ msgstr "<0/> 正在重启……"
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "System is restarting…"
@@ -5495,9 +5511,8 @@ msgstr "系统已重新上线"
 msgid "System did not come back online in time"
 msgstr "系统未能在规定时间内重新上线"
 
-#: src/lib/components/custom/Initialization/Reboot.svelte
-msgid "We need to restart the system to apply changes"
-msgstr "我们需要重启系统来应用更改"
+#~ msgid "We need to restart the system to apply changes"
+#~ msgstr "我们需要重启系统来应用更改"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "WoL Server"
@@ -5516,9 +5531,7 @@ msgstr "内存值无效"
 #. placeholder {1}: displayName
 #. placeholder {2}: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
-msgid ""
-"You are about to {0} {1}, {2}you will have to restart Sylve and or the host "
-"system for changes to take effect"
+msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "你即将 {0} {1}，{2} 你需要重启 Sylve 或主机系统以使更改生效"
 
 #. placeholder {0}: serviceName
@@ -5589,3 +5602,17 @@ msgstr "CPU 信息不可用"
 #: src/routes/swagger/+page.svelte
 msgid "Swagger"
 msgstr "Swagger"
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid ""
+"A <0>full system reboot</0> is required for Sylve to\n"
+"finish initialization. Continue when ready."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Rebooting..."
+msgstr ""
+
+#: src/lib/components/custom/Initialization/Reboot.svelte
+msgid "<0/> Reboot"
+msgstr ""

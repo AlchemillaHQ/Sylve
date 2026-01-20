@@ -11,42 +11,42 @@
 import { z } from 'zod/v4';
 
 export const APIResponseSchema = z
-	.object({
-		status: z.string(),
-		message: z.string().optional(),
-		error: z.union([z.string(), z.array(z.string())]).optional(),
-		data: z.unknown().optional()
-	})
-	.describe('APIResponseSchema');
+    .object({
+        status: z.string(),
+        message: z.string().optional(),
+        error: z.union([z.string(), z.array(z.string())]).optional(),
+        data: z.unknown().optional()
+    })
+    .describe('APIResponseSchema');
 
 export interface HistoricalBase {
-	id?: number | string;
-	createdAt?: string | Date;
-	[key: string]: number | string | Date | undefined;
+    id?: number | string;
+    createdAt?: string | Date;
+    [key: string]: number | string | Date | undefined;
 }
 
 export interface HistoricalData {
-	date: Date;
-	[key: string]: number | string | Date;
+    date: Date;
+    [key: string]: number | string | Date;
 }
 
 export interface PieChartData {
-	label: string;
-	value: number;
-	color: string;
+    label: string;
+    value: number;
+    color: string;
 }
 
 export interface SeriesData {
-	name: string;
-	value: number;
+    name: string;
+    value: number;
 }
 
 export interface SeriesDataWithBaseline {
-	name: string;
-	baseline: number;
-	value: number;
+    name: string;
+    baseline: number;
+    value: number;
 }
 
 export type APIResponse = z.infer<typeof APIResponseSchema>;
-export type Locales = 'en' | 'mal' | 'hi';
+export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN';
 export type GFSStep = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
