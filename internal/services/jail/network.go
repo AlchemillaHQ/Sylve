@@ -532,6 +532,21 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 			var jailCfgBuilder strings.Builder
 			jailCfgBuilder.WriteString("\tvnet;\n")
 
+			hasPreStartPointer := false
+			for _, line := range lines {
+				if strings.Contains(line, "exec.prestart") {
+					hasPreStartPointer = true
+					break
+				}
+			}
+
+			if !hasPreStartPointer {
+				preStartPath, err := s.GetHookScriptPath(ctId, "pre-start")
+				if err == nil {
+					jailCfgBuilder.WriteString(fmt.Sprintf("\texec.prestart += \"%s\";\n", preStartPath))
+				}
+			}
+
 			// Add vnet.interface entries
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {

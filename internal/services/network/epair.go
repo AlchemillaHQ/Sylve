@@ -89,6 +89,18 @@ func (s *Service) SyncEpairs(_ bool) error {
 		return fmt.Errorf("failed to list interfaces: %w", err)
 	}
 
+	activePaths := []string{}
+	jls, err := utils.RunCommand("jls", "path")
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(jls), "\n")
+		for _, line := range lines {
+			path := strings.TrimSpace(line)
+			if strings.Contains(path, "/sylve/jails/") {
+				activePaths = append(activePaths, path)
+			}
+		}
+	}
+
 	ifaceExists := func(name string) bool {
 		for _, ifc := range ifaces {
 			if ifc.Name == name {
@@ -102,6 +114,15 @@ func (s *Service) SyncEpairs(_ bool) error {
 
 	for _, j := range jails {
 		hash := utils.HashIntToNLetters(int(j.CTID), 5)
+		jailSuffix := fmt.Sprintf("/sylve/jails/%d", j.CTID)
+		isActive := false
+
+		for _, p := range activePaths {
+			if strings.HasSuffix(p, jailSuffix) {
+				isActive = true
+				break
+			}
+		}
 
 		for _, network := range j.Networks {
 			existingIds = append(existingIds, network.ID)
@@ -111,15 +132,21 @@ func (s *Service) SyncEpairs(_ bool) error {
 
 			epairA := base + "a"
 			epairB := base + "b"
-			// epairB := base + "b" // we don't actually need to check B; CreateEpair will create both
-			// If A side exists, assume the pair is already there/in use and do nothing
+
 			if ifaceExists(epairA) {
 				if !ifaceExists(epairB) {
-					// The 'a' side exists but 'b' is gone.
-					// We must delete 'a' first to recreate the pair cleanly.
-					s.DeleteEpair(base)
+					// VNET Logic: If the jail is active, the 'b' side is inside the jail
+					// and will NOT appear in the host's iface.List(), we if don't skip deletion here the jail will lose its network!!
+					if isActive {
+						logger.L.Debug().Msgf("Jail %d is active; skipping existing VNET pair %s", j.CTID, base)
+						continue
+					}
+
+					// If the jail is NOT active but 'b' is missing, it's a dirty state, how do we end up here exactly?
+					logger.L.Warn().Msgf("Cleaning up orphaned epair %s for inactive jail %d", base, j.CTID)
+					_ = s.DeleteEpair(base)
 				} else {
-					continue // Both exist, we are good
+					continue
 				}
 			}
 
@@ -129,40 +156,29 @@ func (s *Service) SyncEpairs(_ bool) error {
 					j.CTID, network.ID, err)
 			}
 
-			// refresh list after creating, so ifaceExists sees new stuff
+			// Refresh interface list so the next iteration sees the new 'a' side
 			ifaces, _ = iface.List()
 		}
 	}
 
 	for _, ifc := range ifaces {
-		// aaadx_net64b regex match <anystring>_net<number><a||b>
 		m := epairRe.FindStringSubmatch(ifc.Name)
 		if m == nil {
 			continue
 		}
 
 		hash := m[1]
-		netID := m[2]
-		netIDNum, err := strconv.Atoi(netID)
-		if err != nil {
-			continue
-		}
-
+		netIDNum, _ := strconv.Atoi(m[2])
 		suffix := m[3]
 
-		base := fmt.Sprintf("%s_net%s", hash, netID)
-		_ = base
-		_ = suffix
-
 		if !slices.Contains(existingIds, uint(netIDNum)) {
-			logger.L.Debug().Msgf("Deleting unused epair %s", ifc.Name)
-			// if err := s.DeleteEpair(base); err != nil {
-			// 	return fmt.Errorf("failed to delete unused epair %s: %w", ifc.Name, err)
-			// }
+			base := fmt.Sprintf("%s_net%d", hash, netIDNum)
+			if suffix == "a" {
+				logger.L.Debug().Msgf("Deleting unused epair %s", base)
+				_ = s.DeleteEpair(base)
+			}
 		}
 	}
-
-	ifaces, _ = iface.List()
 
 	return nil
 }
