@@ -436,7 +436,8 @@ msgstr "最小化"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -540,7 +541,6 @@ msgstr "创建分区"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -2519,6 +2519,10 @@ msgid "VNC Wait"
 msgstr "等待 VNC"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "TPM Emulation"
 msgstr "TPM 仿真"
 
@@ -2925,11 +2929,13 @@ msgstr "VNC"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Enabled"
 msgstr "已启用"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Disabled"
@@ -3006,10 +3012,12 @@ msgstr ""
 "下方按钮将其启用。"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
 msgstr "启用"
 
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Disable"
 msgstr "禁用"
@@ -5813,4 +5821,28 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Insert a pre-made template"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enable' : 'disable'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "Failed to {0} TPM emulation"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enabled' : 'disabled'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "TPM emulation {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid ""
+"Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling\n"
+"this option after it has been enabled may lead to boot issues if the guest OS relies on TPM\n"
+"functionality."
+msgstr ""
+
+#~ msgid "Enable TPM Emulation"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "<0/> TPM"
 msgstr ""

@@ -9,7 +9,6 @@
 	import VNC from '$lib/components/custom/VM/Hardware/VNC.svelte';
 	import Serial from '$lib/components/custom/VM/Options/Serial.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Row } from '$lib/components/ui/table';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, VM, VMDomain } from '$lib/types/vm/vm';
@@ -20,6 +19,8 @@
 	import { resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
 	import { core } from 'zod/v4';
+	import type { Row } from '$lib/types/components/tree-table';
+	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
 
 	interface Data {
 		rid: number;
@@ -111,6 +112,7 @@
 		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null
 	);
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		cpu: {
 			sockets: data.vm.cpuSockets,
@@ -142,7 +144,8 @@
 			open: false,
 			value: data.vm.pciDevices
 		},
-		serial: { open: false }
+		serial: { open: false },
+		tpmEmulation: { open: false }
 	};
 
 	let properties = $state(options);
@@ -232,6 +235,11 @@
 				id: generateNanoId(`${vm?.name}-pci-devices`),
 				property: 'PCI Devices',
 				value: properties.pciDevices.value || []
+			},
+			{
+				id: generateNanoId('tpm-emulation'),
+				property: 'TPM Emulation',
+				value: vm?.tpmEmulation ? 'Enabled' : 'Disabled'
 			}
 		]
 	});
@@ -239,7 +247,10 @@
 	let reload = $state(false);
 </script>
 
-{#snippet button(property: 'ram' | 'cpu' | 'vnc' | 'pciDevices' | 'serial', title: string)}
+{#snippet button(
+	property: 'ram' | 'cpu' | 'vnc' | 'pciDevices' | 'serial' | 'tpmEmulation',
+	title: string
+)}
 	<Button
 		onclick={() => {
 			properties[property].open = true;
@@ -280,6 +291,10 @@
 
 			{#if activeRow && activeRow.property === 'Serial Console'}
 				{@render button('serial', 'Serial Console')}
+			{/if}
+
+			{#if activeRow && activeRow.property === 'TPM Emulation'}
+				{@render button('tpmEmulation', 'TPM Emulation')}
 			{/if}
 		</div>
 	{/if}
@@ -323,4 +338,8 @@
 
 {#if properties.serial.open && vm}
 	<Serial bind:open={properties.serial.open} {vm} bind:reload />
+{/if}
+
+{#if properties.tpmEmulation.open && vm}
+	<TPM bind:open={properties.tpmEmulation.open} {vm} bind:reload />
 {/if}

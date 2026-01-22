@@ -491,7 +491,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -626,7 +627,6 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
@@ -3031,6 +3031,7 @@ msgstr "वीएनसी"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Enabled"
 msgstr "सक्षम किया गया"
 
@@ -3040,6 +3041,7 @@ msgstr "सक्षम किया गया"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "Disabled"
@@ -3199,10 +3201,12 @@ msgid ""
 msgstr "\"इस वीएम में वर्तमान में सीरियल कंसोल एक्सेस अक्षम है। आप इसे नीचे दिए गए बटन का उपयोग करके सक्षम कर सकते हैं।\""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
 msgstr "सक्षम करें"
 
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Disable"
 msgstr "अक्षम करें"
@@ -5214,6 +5218,10 @@ msgid "Downloader - Create Signed URL"
 msgstr "डाउनलोडर - हस्ताक्षरित URL बनाएँ"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "TPM Emulation"
 msgstr "TPM अनुकरण"
 
@@ -6874,4 +6882,28 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Insert a pre-made template"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enable' : 'disable'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "Failed to {0} TPM emulation"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enabled' : 'disabled'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "TPM emulation {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid ""
+"Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling\n"
+"this option after it has been enabled may lead to boot issues if the guest OS relies on TPM\n"
+"functionality."
+msgstr ""
+
+#~ msgid "Enable TPM Emulation"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "<0/> TPM"
 msgstr ""

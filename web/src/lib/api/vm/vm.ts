@@ -109,6 +109,12 @@ export async function modifyIgnoreUMSR(rid: number, ignore: boolean): Promise<AP
     });
 }
 
+export async function modifyTPM(rid: number, enabled: boolean): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/tpm/${rid}`, APIResponseSchema, 'PUT', {
+        enabled
+    });
+}
+
 export async function modifyBootOrder(
     rid: number,
     startAtBoot: boolean,

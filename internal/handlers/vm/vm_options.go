@@ -13,6 +13,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,6 +45,10 @@ type ModifyCloudInitDataRequest struct {
 
 type ModifyIgnoreUMSRsRequest struct {
 	IgnoreUMSRs *bool `json:"ignoreUMSRs"`
+}
+
+type ModifyTPMRequest struct {
+	Enabled *bool `json:"enabled"`
 }
 
 // @Summary Modify Wake-on-LAN of a Virtual Machine
@@ -537,6 +542,65 @@ func ModifyIgnoreUMSRs(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "ignore_umsrs_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify TPM of a Virtual Machine
+// @Description Modify the TPM configuration of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyTPMRequest true "Modify TPM Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/tpm/:rid [put]
+func ModifyTPM(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_rid_format",
+			})
+			return
+		}
+
+		var req ModifyTPMRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		enabled := false
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
+		if err := libvirtService.ModifyTPMEmulation(uint(rid), enabled); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "tpm_modified",
 			Data:    nil,
 			Error:   "",
 		})

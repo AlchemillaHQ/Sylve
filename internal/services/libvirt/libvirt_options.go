@@ -10,9 +10,12 @@ package libvirt
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/beevik/etree"
 )
@@ -314,4 +317,106 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		Where("rid = ?", rid).
 		Update("ignore_umsr", ignore).Error
 	return err
+}
+
+func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
+	var vm vmModels.VM
+	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
+	}
+
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.Conn.DomainGetState(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
+	}
+
+	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xml); err != nil {
+		return fmt.Errorf("failed_to_parse_xml: %w", err)
+	}
+
+	root := doc.Root()
+	if root == nil {
+		return fmt.Errorf("invalid_domain_xml: root_missing")
+	}
+
+	bhyveCmdEl := doc.FindElement("//bhyve:commandline")
+	if bhyveCmdEl == nil {
+		bhyveCmdEl = root.CreateElement("bhyve:commandline")
+	}
+
+	for {
+		found := false
+		children := bhyveCmdEl.ChildElements()
+		for _, el := range children {
+			if el.Tag == "bhyve:arg" || el.Tag == "arg" {
+				if a := el.SelectAttr("value"); a != nil && len(a.Value) >= 5 && a.Value[:5] == "-ltpm" {
+					bhyveCmdEl.RemoveChild(el)
+					found = true
+					break
+				}
+			}
+		}
+
+		if !found {
+			break
+		}
+	}
+
+	if enabled {
+		dataPath, err := s.GetVMConfigDirectory(vm.RID)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_vm_data_path: %w", err)
+		}
+
+		tpmArg := fmt.Sprintf("-ltpm,swtpm,%s", filepath.Join(dataPath, fmt.Sprintf("%d_tpm.socket", vm.RID)))
+
+		argEl := etree.NewElement("bhyve:arg")
+		argEl.CreateAttr("value", tpmArg)
+		bhyveCmdEl.AddChild(argEl)
+	} else {
+		err := s.StopTPM(vm.RID)
+		if err != nil {
+			if !strings.Contains(err.Error(), "tpm_socket_not_found") {
+				logger.L.Err(err).Msg("Failed to stop TPM")
+			}
+		}
+	}
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+
+	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.DB.
+		Model(&vmModels.VM{}).
+		Where("rid = ?", rid).
+		Update("tpm_emulation", enabled).Error
+	if err != nil {
+		return fmt.Errorf("failed_to_update_tpm_emulation_in_db: %w", err)
+	}
+
+	return nil
 }
