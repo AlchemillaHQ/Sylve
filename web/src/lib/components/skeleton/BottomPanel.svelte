@@ -72,7 +72,8 @@
 		'/api/jail/network/inheritance': 'Jail - Network Inherit',
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
-		'/api/jail': 'Jail'
+		'/api/jail': 'Jail',
+		'/api/utilities/cloud-init/templates': 'Cloud Init Template'
 	});
 
 	let records = $derived.by(() => {

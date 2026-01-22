@@ -471,6 +471,12 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Terminal.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -606,6 +612,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
@@ -676,6 +684,7 @@ msgstr "रीसेट"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
@@ -934,6 +943,7 @@ msgstr "देखें"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -956,6 +966,7 @@ msgstr "हटाएँ"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -984,6 +995,7 @@ msgstr "बल्क डिलीट"
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
@@ -1672,6 +1684,7 @@ msgstr "शेयर नाम पहले से मौजूद है"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Name is required"
 msgstr "नाम आवश्यक है"
 
@@ -3144,6 +3157,7 @@ msgstr "क्लाउड इनिट डेटा संशोधित क�
 msgid "Cloud Init"
 msgstr "क्लाउड इनिट"
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 msgid "User Data"
 msgstr "उपयोगकर्ता डेटा"
@@ -4785,6 +4799,8 @@ msgstr "स्नैपशॉट GUID नहीं मिला"
 #~ msgid "This will delete the snapshot <0/>"
 #~ msgstr "यह स्नैपशॉट <0/> को हटा देगा"
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -5346,6 +5362,7 @@ msgstr ""
 #~ msgid "Mdi <0/> <1/> <2/>"
 #~ msgstr ""
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
 msgstr ""
@@ -6777,3 +6794,84 @@ msgstr "<0/> रीबूट हो रहा है..."
 #: src/lib/components/custom/Initialization/Reboot.svelte
 msgid "<0/> Reboot"
 msgstr "<0/> रीबूट करें"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Cloud Init Templates"
+msgstr ""
+
+#~ msgid "Edit Template"
+#~ msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Create Template"
+msgstr ""
+
+#. placeholder {0}: template?.name
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Edit Template - {0}"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Meta Data"
+msgstr ""
+
+#~ msgid "Insert Sample User Data"
+#~ msgstr ""
+
+#~ msgid "Select a Cloud-Init Template"
+#~ msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Select a Template"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Docker"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "User Data is required"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Meta Data is required"
+msgstr ""
+
+#. placeholder {0}: properties.name
+#. placeholder {1}: isEdit ? 'updated' : 'created'
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Template {0} {1}"
+msgstr ""
+
+#. placeholder {0}: isEdit ? 'update' : 'create'
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Failed to {0} template {1}"
+msgstr ""
+
+#. placeholder {0}: modal.template?.name
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
+msgid "Template {0} deleted"
+msgstr ""
+
+#. placeholder {0}: modal.template?.name
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
+msgid "Failed to delete template {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cloud Init Template"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Use Existing Template"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Insert a pre-made template"
+msgstr ""

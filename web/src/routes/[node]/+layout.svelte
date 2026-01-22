@@ -181,11 +181,15 @@
 					}
 				].filter(Boolean) as NodeItem[]
 			},
-
 			{
 				label: 'Utilities',
 				icon: 'mdi--tools',
 				children: [
+					{
+						label: 'Cloud Init Templates',
+						icon: 'mdi--cloud-upload-outline',
+						href: `/${node}/utilities/cloud-init`
+					},
 					{
 						label: 'Downloader',
 						icon: 'material-symbols--download',

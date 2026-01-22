@@ -212,4 +212,8 @@
 <span class="icon-[fluent--storage-20-filled]"></span>
 <span class="icon-[mdi--lock]"></span>
 <span class="icon-[mdi--autorenew]"></span>
+<span class="icon-[mdi--cloud-upload-outline]"></span>
+<span class="icon-[mdi--database]"></span>
+<span class="icon-[mdi--cloud]"></span>
+<span class="icon-[mdi--folder-question]"></span>
 -->

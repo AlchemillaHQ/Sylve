@@ -9,7 +9,11 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import { generatePassword } from '$lib/utils/string';
+	import { cloudInitPlaceholders, generateTemplate } from '$lib/utils/utilities/cloud-init';
 	import { onMount } from 'svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SimpleSelect from '../../SimpleSelect.svelte';
+	import { watch } from 'runed';
 
 	interface Props {
 		serial: boolean;
@@ -62,16 +66,26 @@
 		{ label: '3840x2160', value: '3840x2160' }
 	];
 
-	let cloudInitPlaceholders = {
-		data: `#cloud-config\nusers:\n  - name: <username>\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    passwd: "$6$c8XPKY..."\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...\n\nssh_pwauth: true`,
-		metadata: `instance-id: iid-local01\nlocal-hostname: test`
-	};
+	// $effect(() => {
+	// 	if (!cloudInit.enabled) {
+	// 		cloudInit.data = '';
+	// 		cloudInit.metadata = '';
+	// 	}
+	// });
 
-	$effect(() => {
-		if (!cloudInit.enabled) {
-			cloudInit.data = '';
-			cloudInit.metadata = '';
+	watch(
+		() => cloudInit.enabled,
+		(enabled) => {
+			if (!enabled) {
+				cloudInit.data = '';
+				cloudInit.metadata = '';
+			}
 		}
+	);
+
+	let templateSelector = $state({
+		open: false,
+		current: ''
 	});
 </script>
 
@@ -102,12 +116,7 @@
 						vncPassword = generatePassword();
 					}}
 				>
-					<span
-						class="icon-[fad--random-2dice] h-6 w-6"
-						onclick={() => {
-							vncPassword = generatePassword();
-						}}
-					></span>
+					<span class="icon-[fad--random-2dice] h-6 w-6"></span>
 				</Button>
 			</div>
 		</div>
@@ -165,14 +174,14 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Enable Cloud-Init"
-			bind:checked={cloudInit.enabled}
+			label="Ignore Unimplemented MSR Accesses"
+			bind:checked={ignoreUmsrs}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Ignore Unimplemented MSR Accesses"
-			bind:checked={ignoreUmsrs}
+			label="Enable Cloud-Init"
+			bind:checked={cloudInit.enabled}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>
@@ -184,6 +193,14 @@
 			bind:value={cloudInit.data}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
+			topRightButton={{
+				icon: 'icon-[mingcute--ai-line]',
+				tooltip: 'Use Existing Template',
+				function: async () => {
+					templateSelector.open = true;
+					return '';
+				}
+			}}
 		/>
 
 		<CustomValueInput
@@ -195,3 +212,45 @@
 		/>
 	{/if}
 </div>
+
+{#if templateSelector.open}
+	<Dialog.Root bind:open={templateSelector.open}>
+		<Dialog.Content class="overflow-hidden p-5 max-w-[320px]!">
+			<Dialog.Header>
+				<div class="flex items-center justify-between">
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--cloud-upload-outline] h-5 w-5"></span>
+						<span>Select a Template</span>
+					</div>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							templateSelector.open = false;
+						}}
+					>
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">{'Close'}</span>
+					</Button>
+				</div>
+			</Dialog.Header>
+
+			<SimpleSelect
+				options={[
+					{ label: 'Simple', value: 'simple' },
+					{ label: 'Docker', value: 'docker' }
+				]}
+				placeholder="Select a Template"
+				bind:value={templateSelector.current}
+				onChange={(e: string) => {
+					const template = generateTemplate(e);
+					cloudInit.data = template.user;
+					cloudInit.metadata = template.meta;
+					templateSelector.open = false;
+				}}
+			/>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}

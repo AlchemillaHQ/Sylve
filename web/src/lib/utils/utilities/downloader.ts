@@ -7,179 +7,196 @@ import { renderWithIcon } from '../table';
 import { escapeHTML } from '../string';
 
 export function generateTableData(data: Download[]): { rows: Row[]; columns: Column[] } {
-	const columns: Column[] = [
-		{
-			field: 'id',
-			title: 'ID',
-			visible: false
-		},
-		{
-			field: 'uuid',
-			title: 'UUID',
-			visible: false
-		},
-		{
-			field: 'name',
-			title: 'Name',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				const row = cell.getRow();
-				const data = row.getData();
-				if (data.type !== '-') {
-					if (data.type === 'torrent') {
-						return renderWithIcon('mdi:magnet', value);
-					} else if (data.type === 'http') {
-						return renderWithIcon('mdi:internet', value);
-					} else {
-						return renderWithIcon('mdi:file', value);
-					}
-				}
+    const columns: Column[] = [
+        {
+            field: 'id',
+            title: 'ID',
+            visible: false
+        },
+        {
+            field: 'uuid',
+            title: 'UUID',
+            visible: false
+        },
+        {
+            field: 'name',
+            title: 'Name',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                const row = cell.getRow();
+                const data = row.getData();
+                if (data.type !== '-') {
+                    if (data.type === 'torrent') {
+                        return renderWithIcon('mdi:magnet', value);
+                    } else if (data.type === 'http') {
+                        return renderWithIcon('mdi:internet', value);
+                    } else {
+                        return renderWithIcon('mdi:file', value);
+                    }
+                }
 
-				return renderWithIcon('mdi:file', value);
-			}
-		},
-		{
-			field: 'size',
-			title: 'Size',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				const error = cell.getRow().getData().error;
+                return renderWithIcon('mdi:file', value);
+            }
+        },
+        {
+            field: 'type',
+            title: 'dType',
+            visible: false
+        },
+        {
+            field: 'utype',
+            title: 'Type',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                if (value === 'base-rootfs') {
+                    return renderWithIcon('mdi:database', 'Base RootFS');
+                } else if (value === 'cloud-init') {
+                    return renderWithIcon('mdi:cloud', 'Cloud-Init');
+                } else if (value === 'uncategorized') {
+                    return renderWithIcon('mdi:folder-question', 'Uncategorized');
+                } else {
+                    return renderWithIcon('mdi:folder-question', 'Uncategorized');
+                }
+            }
+        },
+        {
+            field: 'size',
+            title: 'Size',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                const error = cell.getRow().getData().error;
 
-				if (error) {
-					return '-';
-				}
+                if (error) {
+                    return '-';
+                }
 
-				if (value === 0 || value === '0') {
-					return renderWithIcon('eos-icons:three-dots-loading', '');
-				}
+                if (value === 0 || value === '0') {
+                    return renderWithIcon('eos-icons:three-dots-loading', '');
+                }
 
-				return humanFormat(value);
-			}
-		},
-		{
-			field: 'type',
-			title: 'Type',
-			visible: false
-		},
-		{
-			field: 'progress',
-			title: 'Progress',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				const error = cell.getRow().getData().error;
-				const status = cell.getRow().getData().status;
+                return humanFormat(value);
+            }
+        },
+        {
+            field: 'progress',
+            title: 'Progress',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                const error = cell.getRow().getData().error;
+                const status = cell.getRow().getData().status;
 
-				if (status === 'processing') {
-					return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
-				}
+                if (status === 'processing') {
+                    return renderWithIcon('eos-icons:three-dots-loading', 'Processing');
+                }
 
-				if (error) {
-					if (error.includes('failed to verify certificate')) {
-						return renderWithIcon(
-							'mdi:alert-circle-outline',
-							'Error',
-							'',
-							'Certificate verification failed'
-						);
-					} else {
-						return renderWithIcon('mdi:alert-circle-outline', 'Error', '', escapeHTML(error));
-					}
-				}
+                if (error) {
+                    if (error.includes('failed to verify certificate')) {
+                        return renderWithIcon(
+                            'mdi:alert-circle-outline',
+                            'Error',
+                            '',
+                            'Certificate verification failed'
+                        );
+                    } else {
+                        return renderWithIcon('mdi:alert-circle-outline', 'Error', '', escapeHTML(error));
+                    }
+                }
 
-				if (value === '-') {
-					return '-';
-				}
+                if (value === '-') {
+                    return '-';
+                }
 
-				if (value >= 0 && value < 100) {
-					return renderWithIcon('line-md:downloading-loop', `${value} %`);
-				}
+                if (value >= 0 && value < 100) {
+                    return renderWithIcon('line-md:downloading-loop', `${value} %`);
+                }
 
-				return renderWithIcon('lets-icons:check-fill', '100 %');
-			}
-		},
-		{
-			field: 'parentUUID',
-			title: 'Parent UUID',
-			visible: false
-		}
-	];
+                return renderWithIcon('lets-icons:check-fill', '100 %');
+            }
+        },
+        {
+            field: 'parentUUID',
+            title: 'Parent UUID',
+            visible: false
+        }
+    ];
 
-	const rows: Row[] = [];
+    const rows: Row[] = [];
 
-	for (const download of data) {
-		const row: Row = {
-			id: download.id,
-			uuid: download.uuid,
-			name: download.name,
-			size: download.size,
-			type: download.type,
-			progress: download.progress,
-			error: download.error,
-			status: download.status,
-			children: []
-		};
+    for (const download of data) {
+        const row: Row = {
+            id: download.id,
+            uuid: download.uuid,
+            name: download.name,
+            size: download.size,
+            type: download.type,
+            utype: download.uType,
+            progress: download.progress,
+            error: download.error,
+            status: download.status,
+            children: []
+        };
 
-		for (const file of download.files) {
-			const childRow: Row = {
-				id: generateNumberFromString(file.id + 'file'),
-				uuid: '-',
-				name: file.name,
-				size: file.size,
-				type: '-',
-				children: [],
-				progress: '-',
-				parentUUID: download.uuid,
-				status: '-'
-			};
+        for (const file of download.files) {
+            const childRow: Row = {
+                id: generateNumberFromString(file.id + 'file'),
+                uuid: '-',
+                name: file.name,
+                size: file.size,
+                type: '-',
+                children: [],
+                progress: '-',
+                parentUUID: download.uuid,
+                status: '-'
+            };
 
-			row.children?.push(childRow);
-		}
+            row.children?.push(childRow);
+        }
 
-		rows.push(row);
-	}
+        rows.push(row);
+    }
 
-	return {
-		rows: rows,
-		columns: columns
-	};
+    return {
+        rows: rows,
+        columns: columns
+    };
 }
 
 export function getISOs(
-	downloads: Download[],
-	includeImg: boolean = false
+    downloads: Download[],
+    includeImg: boolean = false
 ): { label: string; value: string }[] {
-	const options: { label: string; value: string }[] = [];
+    const options: { label: string; value: string }[] = [];
 
-	for (const download of downloads || []) {
-		if (download.progress !== 100) continue;
+    for (const download of downloads || []) {
+        if (download.progress !== 100) continue;
 
-		const addIfMatch = (name: string) => {
-			if (
-				name.endsWith('.iso') ||
-				(includeImg && (name.endsWith('.img') || name.endsWith('.raw')))
-			) {
-				options.push({ label: name, value: download.uuid });
-			}
-		};
+        const addIfMatch = (name: string) => {
+            if (
+                name.endsWith('.iso') ||
+                (includeImg && (name.endsWith('.img') || name.endsWith('.raw')))
+            ) {
+                options.push({ label: name, value: download.uuid });
+            }
+        };
 
-		if (download.type === 'http') {
-			addIfMatch(download.name);
-			if (download.extractedPath) {
-				if (download.extractedPath.includes('/')) {
-					const parts = download.extractedPath.split('/');
-					addIfMatch(parts[parts.length - 1]);
-				} else {
-					addIfMatch(download.extractedPath);
-				}
-			}
-		} else if (download.type === 'torrent' && Array.isArray(download.files)) {
-			for (const file of download.files) {
-				addIfMatch(file.name);
-			}
-		} else if (download.type === 'path') {
-			addIfMatch(download.name);
-		}
-	}
+        if (download.type === 'http') {
+            addIfMatch(download.name);
+            if (download.extractedPath) {
+                if (download.extractedPath.includes('/')) {
+                    const parts = download.extractedPath.split('/');
+                    addIfMatch(parts[parts.length - 1]);
+                } else {
+                    addIfMatch(download.extractedPath);
+                }
+            }
+        } else if (download.type === 'torrent' && Array.isArray(download.files)) {
+            for (const file of download.files) {
+                addIfMatch(file.name);
+            }
+        } else if (download.type === 'path') {
+            addIfMatch(download.name);
+        }
+    }
 
-	return [...new Map(options.map((item) => [item['value'], item])).values()];
+    return [...new Map(options.map((item) => [item['value'], item])).values()];
 }

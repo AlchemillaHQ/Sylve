@@ -2,6 +2,7 @@
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
 
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { goto, preloadData } from '$app/navigation';
@@ -189,7 +190,9 @@
 	{:else}
 		<div transition:fade|global={{ duration: 400 }}>
 			<Shell>
-				{@render children()}
+				<Tooltip.Provider>
+					{@render children()}
+				</Tooltip.Provider>
 			</Shell>
 		</div>
 	{/if}

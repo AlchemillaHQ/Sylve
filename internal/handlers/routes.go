@@ -358,6 +358,11 @@ func RegisterRoutes(r *gin.Engine,
 		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
+
+		utilities.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
+		utilities.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
+		utilities.PUT("/cloud-init/templates/:id", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
+		utilities.DELETE("/cloud-init/templates/:id", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
 
 	auth := api.Group("/auth")

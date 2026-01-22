@@ -104,6 +104,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.StandardSwitch{},
 		&networkModels.NetworkPort{},
 
+		&utilitiesModels.CloudInitTemplate{},
 		&utilitiesModels.DownloadedFile{},
 		&utilitiesModels.Downloads{},
 		&utilitiesModels.WoL{},

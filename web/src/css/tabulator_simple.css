@@ -177,7 +177,7 @@
 .tabulator .tabulator-header .tabulator-col.tabulator-col-group .tabulator-col-group-cols {
 	position: relative;
 	display: flex;
-	border-top: 1px solid #aaa;
+	border-top: 1px solid #555;
 	overflow: hidden;
 	margin-right: -1px;
 }
