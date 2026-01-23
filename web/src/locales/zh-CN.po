@@ -4670,7 +4670,6 @@ msgid "Snapshot GUID not found"
 msgstr "未找到快照 GUID"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -5975,7 +5974,6 @@ msgid "Select a Template"
 msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Docker"
 msgstr ""
 

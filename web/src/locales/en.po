@@ -4834,7 +4834,6 @@ msgstr "Snapshot GUID not found"
 #~ msgstr "This will delete the snapshot <0/>"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -6870,7 +6869,6 @@ msgid "Select a Template"
 msgstr "Select a Template"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Docker"
 msgstr "Docker"
 

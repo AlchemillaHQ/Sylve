@@ -4806,7 +4806,6 @@ msgstr "स्नैपशॉट GUID नहीं मिला"
 #~ msgstr "यह स्नैपशॉट <0/> को हटा देगा"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -6840,7 +6839,6 @@ msgid "Select a Template"
 msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Docker"
 msgstr ""
 

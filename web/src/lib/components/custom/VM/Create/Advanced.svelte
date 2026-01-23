@@ -9,11 +9,13 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import { generatePassword } from '$lib/utils/string';
-	import { cloudInitPlaceholders, generateTemplate } from '$lib/utils/utilities/cloud-init';
+	import { cloudInitPlaceholders } from '$lib/utils/utilities/cloud-init';
 	import { onMount } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SimpleSelect from '../../SimpleSelect.svelte';
-	import { watch } from 'runed';
+	import { resource, watch } from 'runed';
+	import { getTemplates } from '$lib/api/utilities/cloud-init';
+	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
 
 	interface Props {
 		serial: boolean;
@@ -66,13 +68,6 @@
 		{ label: '3840x2160', value: '3840x2160' }
 	];
 
-	// $effect(() => {
-	// 	if (!cloudInit.enabled) {
-	// 		cloudInit.data = '';
-	// 		cloudInit.metadata = '';
-	// 	}
-	// });
-
 	watch(
 		() => cloudInit.enabled,
 		(enabled) => {
@@ -87,6 +82,14 @@
 		open: false,
 		current: ''
 	});
+
+	let cloudInitTemplates = resource(
+		() => 'cloud-init-templates',
+		async (key, prevKey, { signal }) => {
+			return await getTemplates();
+		},
+		{ initialValue: [] as CloudInitTemplate[] }
+	);
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
@@ -238,16 +241,16 @@
 			</Dialog.Header>
 
 			<SimpleSelect
-				options={[
-					{ label: 'Simple', value: 'simple' },
-					{ label: 'Docker', value: 'docker' }
-				]}
+				options={cloudInitTemplates.current.map((template) => ({
+					label: template.name,
+					value: template.id.toString()
+				}))}
 				placeholder="Select a Template"
 				bind:value={templateSelector.current}
 				onChange={(e: string) => {
-					const template = generateTemplate(e);
-					cloudInit.data = template.user;
-					cloudInit.metadata = template.meta;
+					const template = cloudInitTemplates.current.find((t) => t.id.toString() === e);
+					cloudInit.data = template?.user || '';
+					cloudInit.metadata = template?.meta || '';
 					templateSelector.open = false;
 				}}
 			/>
