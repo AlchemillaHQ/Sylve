@@ -430,18 +430,22 @@ func (s *Service) RemoveLvVm(rid uint) error {
 	defer s.crudMutex.Unlock()
 
 	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domainGone := false
 	if err != nil {
-		return fmt.Errorf("failed_to_lookup_domain: %w", err)
+		logger.L.Warn().Err(err).Msgf("Domain for VM RID %d not found, assuming already removed", rid)
+		domainGone = true
 	}
 
-	if err := s.Conn.DomainDestroy(domain); err != nil {
-		if !strings.Contains(err.Error(), "is not running") {
-			return fmt.Errorf("failed_to_destroy_domain: %w", err)
+	if !domainGone {
+		if err := s.Conn.DomainDestroy(domain); err != nil {
+			if !strings.Contains(err.Error(), "is not running") {
+				return fmt.Errorf("failed_to_destroy_domain: %w", err)
+			}
 		}
-	}
 
-	if err := s.Conn.DomainUndefine(domain); err != nil {
-		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+		if err := s.Conn.DomainUndefine(domain); err != nil {
+			return fmt.Errorf("failed_to_undefine_domain: %w", err)
+		}
 	}
 
 	vmDir, err := config.GetVMsPath()
@@ -451,7 +455,7 @@ func (s *Service) RemoveLvVm(rid uint) error {
 
 	err = s.StopTPM(rid)
 	if err != nil {
-		return fmt.Errorf("failed to stop TPM for VM %d: %w", rid, err)
+		logger.L.Error().Err(err).Msgf("Failed to stop TPM for VM RID %d", rid)
 	}
 
 	vmPath := filepath.Join(vmDir, strconv.Itoa(int(rid)))

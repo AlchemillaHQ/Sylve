@@ -134,6 +134,10 @@ func validateCPUPins(
 		return fmt.Errorf("invalid_host_logical_cores")
 	}
 
+	if hostLogicalPerSocket <= 0 {
+		return fmt.Errorf("invalid_host_logical_per_socket")
+	}
+
 	vcpu := req.CPUSockets * req.CPUCores * req.CPUThreads
 	if vcpu <= 0 {
 		return fmt.Errorf("invalid_topology_vcpu_is_zero")
@@ -189,7 +193,7 @@ func validateCPUPins(
 		return fmt.Errorf("cpu_pinning_exceeds_logical_cores: pinned=%d logical=%d", totalPinned, hostLogicalCores)
 	}
 
-	// 5) Optional strict per-socket cap
+	// 5) Strict per-socket cap
 	if hostLogicalPerSocket > 0 {
 		for sock, cnt := range perSocketCounts {
 			if cnt > hostLogicalPerSocket {
@@ -221,10 +225,6 @@ func validateCPUPins(
 				occupied[globalCore] = vm.RID
 			}
 		}
-	}
-
-	if hostLogicalPerSocket <= 0 {
-		return fmt.Errorf("host_logical_per_socket_required_for_conflict_check")
 	}
 
 	actualHostCores := make(map[int]struct{}, totalPinned)
@@ -374,11 +374,23 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 	}
 
 	if len(data.CPUPinning) > 0 {
-		err := validateCPUPins(s.DB,
-			data,
-			utils.GetLogicalCores(),
-			utils.GetSocketCount(cpuid.CPU.PhysicalCores,
-				cpuid.CPU.ThreadsPerCore), 0)
+		socketCount := utils.GetSocketCount(cpuid.CPU.PhysicalCores, cpuid.CPU.ThreadsPerCore)
+		if socketCount <= 0 {
+			socketCount = 1
+		}
+
+		logicalCores := utils.GetLogicalCores()
+		if logicalCores <= 0 {
+			// Can this actually happen?
+			logicalCores = 1
+		}
+
+		coresPerSocket := logicalCores / socketCount
+		if coresPerSocket <= 0 {
+			coresPerSocket = logicalCores
+		}
+
+		err := validateCPUPins(s.DB, data, logicalCores, socketCount, coresPerSocket)
 		if err != nil {
 			return err
 		}
