@@ -209,19 +209,38 @@ func validateCPUPins(
 		selfID = uint(*req.RID)
 	}
 
-	occupied := make(map[int]uint, 512) // core -> VMID
+	occupied := make(map[int]uint, 512)
 	for _, vm := range vms {
 		if selfID != 0 && vm.RID == selfID {
 			continue
 		}
 		for _, p := range vm.CPUPinning {
-			for _, c := range p.HostCPU {
-				occupied[c] = vm.ID
+			baseCore := p.HostSocket * hostLogicalPerSocket
+			for _, coreIdx := range p.HostCPU {
+				globalCore := baseCore + coreIdx
+				occupied[globalCore] = vm.RID
 			}
 		}
 	}
 
-	for c := range seenCores {
+	if hostLogicalPerSocket <= 0 {
+		return fmt.Errorf("host_logical_per_socket_required_for_conflict_check")
+	}
+
+	actualHostCores := make(map[int]struct{}, totalPinned)
+	for _, pin := range req.CPUPinning {
+		baseCore := pin.Socket * hostLogicalPerSocket
+		for _, coreIdx := range pin.Cores {
+			actualHostCore := baseCore + coreIdx
+			if actualHostCore >= hostLogicalCores {
+				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
+					pin.Socket, coreIdx, actualHostCore, hostLogicalCores-1)
+			}
+			actualHostCores[actualHostCore] = struct{}{}
+		}
+	}
+
+	for c := range actualHostCores {
 		if owner, taken := occupied[c]; taken {
 			return fmt.Errorf("core_conflict: core=%d already_pinned_by_rid=%d", c, owner)
 		}
