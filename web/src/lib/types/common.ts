@@ -48,5 +48,5 @@ export interface SeriesDataWithBaseline {
 }
 
 export type APIResponse = z.infer<typeof APIResponseSchema>;
-export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN';
+export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN' | 'cs-CZ';
 export type GFSStep = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
