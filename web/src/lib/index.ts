@@ -50,7 +50,8 @@ export const languageArr: { value: Locales; label: string }[] = [
     { value: 'en', label: 'English' },
     { value: 'mal', label: 'മലയാളം' },
     { value: 'hi', label: 'हिन्दी' },
-    { value: 'zh-CN', label: '简体中文' }
+    { value: 'zh-CN', label: '简体中文' },
+    { value: 'cs-CZ', label: 'čeština' }
 ];
 
 class SylveDB extends Dexie {
