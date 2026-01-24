@@ -130,10 +130,11 @@
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="zh-CN">Simplified Chinese (简体中文)</Select.Item>
-						<Select.Item value="en">English</Select.Item>
+						<Select.Item value="cs-CZ">Czech (čeština)</Select.Item>
+                        <Select.Item value="en">English</Select.Item>
 						<Select.Item value="hi">Hindi (हिन्दी)</Select.Item>
 						<Select.Item value="mal">Malayalam (മലയാളം)</Select.Item>
-					</Select.Content>
+                    </Select.Content>
 				</Select.Root>
 			</div>
 		</Card.Content>
