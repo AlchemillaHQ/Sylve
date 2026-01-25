@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { storageDetach } from '$lib/api/vm/storage';
-	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
+	import { getVmById, getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import { getPools } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -16,11 +16,11 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
-	import { resource, useInterval, watch } from 'runed';
-	import { storage } from '$lib/index';
+	import { resource, watch } from 'runed';
 
 	interface Data {
 		vms: VM[];
+		vm: VM;
 		domain: VMDomain;
 		filesystems: Dataset[];
 		volumes: Dataset[];
@@ -39,8 +39,19 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.vms
+		}
+	);
+
+	const vm = resource(
+		() => `vm-${data.rid}`,
+		async (key) => {
+			const result = await getVmById(Number(data.rid), 'rid');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.vm
 		}
 	);
 
@@ -52,7 +63,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.domain
 		}
 	);
@@ -65,13 +75,12 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.pools
 		}
 	);
 
 	const datasets = resource(
-		() => 'zfs-filesystems-volumes',
+		() => 'zfs-filesystems',
 		async (key) => {
 			const results = await Promise.all([
 				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
@@ -84,7 +93,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: [...data.filesystems, ...data.volumes]
 		}
 	);
@@ -97,28 +105,22 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.downloads
 		}
 	);
 
-	watch([() => storage.visible, () => reload], ([visible], [reload]) => {
-		if (visible || reload) {
-			vms.refetch();
-			domain.refetch();
-			pools.refetch();
-			datasets.refetch();
-			downloads.refetch();
-		}
-	});
+	function refreshData() {
+		vm.refetch();
+		vms.refetch();
+		domain.refetch();
+		pools.refetch();
+		datasets.refetch();
+		downloads.refetch();
+	}
 
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
-	let vm: VM = $derived.by(
-		() => vms.current.find((vm: VM) => vm.rid === parseInt(data.rid)) || ({} as VM)
-	);
-
-	let tableData = $derived(generateTableData(vm, datasets.current, downloads.current));
+	let tableData = $derived(generateTableData(vm.current, datasets.current, downloads.current));
 
 	let options = {
 		attach: {
@@ -137,6 +139,14 @@
 
 	let properties = $state(options);
 	let reload = $state(false);
+
+	watch(
+		() => reload,
+		() => {
+			refreshData();
+			reload = false;
+		}
+	);
 </script>
 
 {#snippet button(type: string)}
@@ -212,7 +222,7 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.name}</b>`}
+	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.current.name}</b>`}
 	actions={{
 		onConfirm: async () => {
 			let response = await storageDetach(Number(data.rid), properties.detach.id as number);
@@ -227,6 +237,8 @@
 				toast.success('Storage detached', {
 					position: 'bottom-center'
 				});
+
+				reload = true;
 			}
 
 			properties.detach.open = false;
@@ -244,7 +256,7 @@
 		storageId={null}
 		datasets={datasets.current}
 		downloads={downloads.current}
-		{vm}
+		vm={vm.current}
 		vms={vms.current}
 		pools={pools.current}
 		tableData={null}
@@ -258,7 +270,7 @@
 		storageId={properties.edit.id}
 		datasets={datasets.current}
 		downloads={downloads.current}
-		{vm}
+		vm={vm.current}
 		vms={vms.current}
 		pools={pools.current}
 		{tableData}

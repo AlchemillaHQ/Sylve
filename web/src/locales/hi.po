@@ -4314,7 +4314,7 @@ msgid "Network detached"
 msgstr "नेटवर्क अलग किया गया"
 
 #. placeholder {0}: properties.detach.name
-#. placeholder {1}: vm.name
+#. placeholder {1}: vm.current.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
 msgstr "यह संग्रहण {0} को VM <b>{1}</b> से अलग कर देगा"

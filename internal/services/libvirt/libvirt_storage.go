@@ -499,10 +499,18 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 	storage.Name = req.Name
 	storage.VMID = vm.ID
 
-	if req.Pool == "" || strings.TrimSpace(req.Pool) == "" {
+	if req.Pool == nil || strings.TrimSpace(*req.Pool) == "" {
 		storage.Pool = ""
 	} else {
-		storage.Pool = req.Pool
+		storage.Pool = *req.Pool
+	}
+
+	if storage.Pool == "" &&
+		(req.StorageType == libvirtServiceInterfaces.StorageTypeRaw ||
+			req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL) {
+		{
+			return fmt.Errorf("invalid_pool")
+		}
 	}
 
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
@@ -554,7 +562,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			ctx,
 			gzfs.DatasetTypeVolume,
 			true,
-			req.Pool,
+			*req.Pool,
 		)
 
 		if err != nil {
@@ -601,9 +609,9 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if sourcePool == req.Pool {
+		if sourcePool == *req.Pool {
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-				req.Pool,
+				*req.Pool,
 				vm.RID,
 				storage.ID,
 			)
@@ -615,7 +623,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			}
 
 			storageDataset := vmModels.VMStorageDataset{
-				Pool: req.Pool,
+				Pool: *req.Pool,
 				Name: dataset.Name,
 				GUID: dataset.GUID,
 			}
@@ -641,7 +649,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			}
 
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-				req.Pool,
+				*req.Pool,
 				vm.RID,
 				storage.ID,
 			)
@@ -699,7 +707,13 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 
 	storage.Name = req.Name
 	storage.VMID = vm.ID
-	storage.Pool = req.Pool
+
+	if req.Pool == nil || strings.TrimSpace(*req.Pool) == "" {
+		storage.Pool = ""
+	} else {
+		storage.Pool = *req.Pool
+	}
+
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
 	storage.Size = *req.Size
 	storage.BootOrder = *req.BootOrder
@@ -787,8 +801,14 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 		return fmt.Errorf("boot_order_index_already_in_use: %d", bootOrder)
 	}
 
+	if (req.Pool == nil || strings.TrimSpace(*req.Pool) == "") &&
+		(req.StorageType == libvirtServiceInterfaces.StorageTypeRaw ||
+			req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL) {
+		return fmt.Errorf("invalid_pool")
+	}
+
 	if req.StorageType != libvirtServiceInterfaces.StorageTypeDiskImage {
-		err = s.CreateStorageParent(vm.RID, req.Pool, ctx)
+		err = s.CreateStorageParent(vm.RID, *req.Pool, ctx)
 		if err != nil {
 			return fmt.Errorf("failed_to_create_storage_parent: %w", err)
 		}

@@ -4328,7 +4328,7 @@ msgid "Network detached"
 msgstr ""
 
 #. placeholder {0}: properties.detach.name
-#. placeholder {1}: vm.name
+#. placeholder {1}: vm.current.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
 msgstr "ഇത് {0} എന്ന സ്റ്റോറേജിനെ <b>{1}</b> എന്ന VM-ൽ നിന്ന് വേർപെടുത്തും."

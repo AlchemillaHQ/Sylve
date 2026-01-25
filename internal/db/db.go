@@ -168,14 +168,14 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 
-	hashed, err := utils.HashPassword(adminCfg.Password)
-	if err != nil {
-		logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
-		return err
-	}
-
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
+			hashed, err := utils.HashPassword(adminCfg.Password)
+			if err != nil {
+				logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
+				return err
+			}
+
 			newUser := models.User{
 				Username: username,
 				Email:    adminCfg.Email,
@@ -192,15 +192,34 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 			return result.Error
 		}
 	} else {
-		if user.Email == adminCfg.Email && utils.CheckPasswordHash(adminCfg.Password, user.Password) && user.Admin {
-			logger.L.Debug().Msg("Admin user upto date, no changes needed")
-			return nil
+		updates := map[string]any{}
+		needsUpdate := false
+
+		if user.Email != adminCfg.Email {
+			updates["email"] = adminCfg.Email
+			needsUpdate = true
 		}
 
-		updates := map[string]interface{}{
-			"email":    adminCfg.Email,
-			"password": hashed,
-			"admin":    true,
+		if !user.Admin {
+			updates["admin"] = true
+			needsUpdate = true
+		}
+
+		if adminCfg.Password != "" {
+			if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+				hashed, err := utils.HashPassword(adminCfg.Password)
+				if err != nil {
+					logger.L.Error().Msgf("Failed to hash password for admin update: %v", err)
+					return err
+				}
+				updates["password"] = hashed
+				needsUpdate = true
+			}
+		}
+
+		if !needsUpdate {
+			logger.L.Debug().Msg("Admin user up to date, no changes needed")
+			return nil
 		}
 
 		if err := db.Model(&user).Updates(updates).Error; err != nil {

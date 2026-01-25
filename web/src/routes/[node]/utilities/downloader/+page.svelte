@@ -310,7 +310,7 @@
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="w-[80%] gap-0 overflow-hidden p-3 lg:max-w-xl">
+		<Dialog.Content class="flex flex-col w-[90%] max-h-[90vh] overflow-y-auto p-6 lg:max-w-xl">
 			<div class="flex items-center justify-between py-1 pb-2">
 				<Dialog.Header class="flex-1">
 					<Dialog.Title>

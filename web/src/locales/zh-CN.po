@@ -4191,7 +4191,7 @@ msgid "Network detached"
 msgstr "网络已分离"
 
 #. placeholder {0}: properties.detach.name
-#. placeholder {1}: vm.name
+#. placeholder {1}: vm.current.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
 msgstr "这将把存储 {0} 从虚拟机 <b>{1}</b> 中分离"
