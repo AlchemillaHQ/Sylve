@@ -6891,3 +6891,12 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "<0/> TPM"
 msgstr ""
+
+#~ msgid "Ignore TLS"
+#~ msgstr ""
+
+#~ msgid "Auto-Extract"
+#~ msgstr ""
+
+#~ msgid "Convert to RAW"
+#~ msgstr ""

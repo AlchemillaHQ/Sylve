@@ -177,15 +177,15 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Ignore Unimplemented MSR Accesses"
-			bind:checked={ignoreUmsrs}
+			label="Enable Cloud-Init"
+			bind:checked={cloudInit.enabled}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Enable Cloud-Init"
-			bind:checked={cloudInit.enabled}
-			classes="flex items-center gap-2"
+			label="Ignore Unimplemented MSR Accesses"
+			bind:checked={ignoreUmsrs}
+			classes="flex items-center gap-2 mt-2"
 		></CustomCheckbox>
 	</div>
 

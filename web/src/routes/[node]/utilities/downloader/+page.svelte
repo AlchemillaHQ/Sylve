@@ -296,7 +296,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
-		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6  ">
+		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 
@@ -310,7 +310,7 @@
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="flex flex-col w-[90%] max-h-[90vh] overflow-y-auto p-6 lg:max-w-xl">
+		<Dialog.Content class="gap-0 p-3 max-w-xl">
 			<div class="flex items-center justify-between py-1 pb-2">
 				<Dialog.Header class="flex-1">
 					<Dialog.Title>
@@ -357,7 +357,7 @@
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"
 				type="textarea"
-				textAreaClasses="h-24 w-full"
+				textAreaClasses="h-24 w-full break-all"
 			/>
 
 			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}

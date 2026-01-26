@@ -19,6 +19,7 @@
 		disabled = false
 	}: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let nanoId = $state(generateNanoId(label + id));
 </script>
 
@@ -27,7 +28,7 @@
 	<Label
 		id={nanoId}
 		for={nanoId}
-		class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+		class="text-sm font-medium leading-snug peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
 	>
 		{label}
 	</Label>

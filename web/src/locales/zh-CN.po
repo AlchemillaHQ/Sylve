@@ -6063,3 +6063,15 @@ msgstr ""
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Modify Users"
 msgstr ""
+
+#~ msgid "Uncategorized"
+#~ msgstr ""
+
+#~ msgid "Ignore TLS"
+#~ msgstr ""
+
+#~ msgid "Auto-Extract"
+#~ msgstr ""
+
+#~ msgid "Convert to RAW"
+#~ msgstr ""
