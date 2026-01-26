@@ -249,7 +249,7 @@ func (s *Service) DeleteStandardSwitch(id int) error {
 	var vmCount, jailCount int64
 
 	if err := s.DB.Model(&vmModels.Network{}).
-		Where("switch_id = ?", id).
+		Where("switch_id = ? AND switch_type = ?", id, "standard").
 		Count(&vmCount).Error; err != nil {
 		return fmt.Errorf("db_error_checking_vm_switch: %v", err)
 	}
@@ -259,7 +259,7 @@ func (s *Service) DeleteStandardSwitch(id int) error {
 	}
 
 	if err := s.DB.Model(&jailModels.Network{}).
-		Where("switch_id = ?", id).
+		Where("switch_id = ? AND switch_type = ?", id, "standard").
 		Count(&jailCount).Error; err != nil {
 		return fmt.Errorf("db_error_checking_jail_switch: %v", err)
 	}

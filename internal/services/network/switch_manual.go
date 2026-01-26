@@ -11,7 +11,9 @@ package network
 import (
 	"fmt"
 
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
@@ -74,6 +76,28 @@ func (s *Service) DeleteManualSwitch(id uint) error {
 		return err
 	}
 
+	var vmCount, jailCount int64
+
+	if err := s.DB.Model(&vmModels.Network{}).
+		Where("switch_id = ? AND switch_type = ?", id, "manual").
+		Count(&vmCount).Error; err != nil {
+		return fmt.Errorf("db_error_checking_vm_switch: %v", err)
+	}
+
+	if vmCount > 0 {
+		return fmt.Errorf("switch_in_use_by_vm")
+	}
+
+	if err := s.DB.Model(&jailModels.Network{}).
+		Where("switch_id = ? AND switch_type = ?", id, "manual").
+		Count(&jailCount).Error; err != nil {
+		return fmt.Errorf("db_error_checking_jail_switch: %v", err)
+	}
+
+	if jailCount > 0 {
+		return fmt.Errorf("switch_in_use_by_jail")
+	}
+
 	if err := s.DB.Delete(&sw).Error; err != nil {
 		return err
 	}
@@ -82,20 +106,31 @@ func (s *Service) DeleteManualSwitch(id uint) error {
 }
 
 func (s *Service) UpdateManualSwitch(id uint, name, bridge string) (*networkModels.ManualSwitch, error) {
-	var count int64
-	if err := s.DB.Model(&networkModels.ManualSwitch{}).
-		Where("bridge = ? AND id != ?", bridge, id).
-		Count(&count).Error; err != nil {
-		return nil, err
-	}
-
-	if count > 0 {
-		return nil, fmt.Errorf("bridge_in_use")
-	}
-
 	var oldSw networkModels.ManualSwitch
 	if err := s.DB.First(&oldSw, id).Error; err != nil {
 		return nil, err
+	}
+
+	var vmCount, jailCount int64
+
+	if err := s.DB.Model(&vmModels.Network{}).
+		Where("switch_id = ? AND switch_type = ?", id, "manual").
+		Count(&vmCount).Error; err != nil {
+		return nil, fmt.Errorf("db_error_checking_vm_switch: %v", err)
+	}
+
+	if vmCount > 0 {
+		return nil, fmt.Errorf("switch_in_use_by_vm")
+	}
+
+	if err := s.DB.Model(&jailModels.Network{}).
+		Where("switch_id = ? AND switch_type = ?", id, "manual").
+		Count(&jailCount).Error; err != nil {
+		return nil, fmt.Errorf("db_error_checking_jail_switch: %v", err)
+	}
+
+	if jailCount > 0 {
+		return nil, fmt.Errorf("switch_in_use_by_jail")
 	}
 
 	br, err := iface.Get(bridge)
