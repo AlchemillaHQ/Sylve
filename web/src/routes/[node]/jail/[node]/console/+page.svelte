@@ -186,9 +186,7 @@
 			token: storage.clusterToken
 		};
 
-		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`, [
-			toHex(JSON.stringify(wssAuth))
-		]);
+		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {

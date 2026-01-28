@@ -30,6 +30,8 @@
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { untrack } from 'svelte';
+    import { watch } from 'runed';
+
 	interface Data {
 		downloads: Download[];
 	}
@@ -243,6 +245,14 @@
 			}
 		}
 	}
+
+    watch(() => modalState.downloadType, () => {
+        if (modalState.downloadType === 'base-rootfs') {
+            if (modalState.automaticExtraction === false) {
+                modalState.automaticExtraction = true;
+            }
+        }
+    })
 </script>
 
 {#snippet button(type: string)}

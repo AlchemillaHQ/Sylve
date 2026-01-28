@@ -227,23 +227,23 @@
 					{:else}
 						<div class="flex flex-1 justify-center">
 							<Arc
-								value={cpuInfo.current.usage}
+								value={cpuInfo.current?.usage}
 								title="CPU"
-								subtitle="{cpuInfo.current.logicalCores} vCPUs"
+								subtitle="{cpuInfo.current?.logicalCores} vCPUs"
 							/>
 						</div>
 						<div class="flex flex-1 justify-center">
 							<Arc
-								value={ramInfo.current.usedPercent}
+								value={ramInfo.current?.usedPercent}
 								title="RAM"
-								subtitle={humanFormat(ramInfo.current.total || 0)}
+								subtitle={humanFormat(ramInfo.current?.total || 0)}
 							/>
 						</div>
 						<div class="flex flex-1 justify-center">
 							<Arc
-								value={diskInfo.current.usage || 0}
+								value={diskInfo.current?.usage || 0}
 								title="Disk"
-								subtitle={humanFormat(diskInfo.current.total || 0)}
+								subtitle={humanFormat(diskInfo.current?.total || 0)}
 							/>
 						</div>
 					{/if}

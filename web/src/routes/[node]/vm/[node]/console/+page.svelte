@@ -205,14 +205,7 @@
 		terminal.open(serialEl);
 
 		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}`;
-		ws = new WebSocket(url, [
-			toHex(
-				JSON.stringify({
-					hostname: storage.hostname || '',
-					token: storage.clusterToken || ''
-				})
-			)
-		]);
+		ws = new WebSocket(url);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {
