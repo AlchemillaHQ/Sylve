@@ -250,39 +250,43 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 
 	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
 		const (
-			MaxLifespanHours = 100000.0
-			ErrorThreshold   = 1e10
-			ShockThreshold   = 5000.0
-			MaxWrites        = 3e13
-			SectorPenalty    = 5.0
+			MaxLifespanHours = 50000.0
+			SectorPenalty    = 10.0
 		)
 
 		powerOnHours := float64(data.PowerOnHours)
 		reallocatedSectors := 0
-		seekErrors := 0.0
-		readErrors := 0.0
-		gSenseErrors := float64(data.PowerCycleCount)
-		totalWrites := 0.0
 
 		for _, attr := range data.Attributes {
 			switch attr.ID {
+			// Reallocated Sector Count
 			case 5:
 				reallocatedSectors = int(attr.RawValue)
-			case 7:
-				seekErrors = float64(attr.RawValue)
-			case 1:
-				readErrors = float64(attr.RawValue)
-			case 241:
-				totalWrites = float64(attr.RawValue)
+			// Wear Leveling Count (Specific to some SSDs)
+			case 177:
+				// If available, this is the most accurate wear indicator for SATA SSDs
+				// Often Normalized Value represents % remaining.
+				if attr.Value > 0 {
+					return 100.0 - float64(attr.Value), nil
+				}
+			// Media Wearout Indicator (Intel/others)
+			case 233:
+				if attr.Value > 0 {
+					return 100.0 - float64(attr.Value), nil
+				}
+			//Available Reserved Space / Endurance Remaining (WD/Intel)
+			case 232:
+				if attr.RawValue <= 100 {
+					return float64(100 - attr.RawValue), nil
+				}
 			}
 		}
 
+		// Fallback Heuristic for generic HDDs/SSDs without specific wear attributes
 		wearoutAge := (powerOnHours / MaxLifespanHours) * 100
 		wearoutSectors := float64(reallocatedSectors) * SectorPenalty
-		wearoutMechanical := math.Min((seekErrors+readErrors)/ErrorThreshold*10, 10)
-		wearoutShock := math.Min((gSenseErrors/ShockThreshold)*5, 5)
-		wearoutWrites := math.Min((totalWrites/MaxWrites)*5, 5)
-		totalWearout := wearoutAge + wearoutSectors + wearoutMechanical + wearoutShock + wearoutWrites
+
+		totalWearout := wearoutAge + wearoutSectors
 		totalWearout = math.Min(math.Max(totalWearout, 0), 100)
 
 		return totalWearout, nil

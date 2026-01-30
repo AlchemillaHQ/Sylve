@@ -14,7 +14,7 @@
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { ModeWatcher } from 'mode-watcher';
+	import { mode, ModeWatcher } from 'mode-watcher';
 	import { onMount } from 'svelte';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
@@ -26,6 +26,7 @@
 	import { page } from '$app/state';
 	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings.js';
+	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -162,6 +163,8 @@
 			storage.idle = current;
 		}
 	);
+
+	let busy = $state(false);
 </script>
 
 <svelte:head>
@@ -189,6 +192,11 @@
 		{/if}
 	{:else}
 		<div transition:fade|global={{ duration: 400 }}>
+			<ProgressBar
+				id="top-loader"
+				class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
+				bind:busy
+			/>
 			<Shell>
 				<Tooltip.Provider>
 					{@render children()}
@@ -201,3 +209,9 @@
 		<Login onLogin={handleLogin} loading={loading.login} />
 	</div>
 {/if}
+
+<style>
+	:global(#top-loader) {
+		height: 1px !important;
+	}
+</style>

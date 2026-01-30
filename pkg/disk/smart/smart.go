@@ -1,9 +1,18 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package smart
 
 /*
 #cgo CFLAGS: -I.
 #cgo LDFLAGS: -lcam
 #include <stdlib.h>
+#include <stdbool.h>
 #include "libsmart.h"
 
 bool do_debug = false;
@@ -20,16 +29,13 @@ static int get_protocol(smart_map_t *map) {
 static int get_threshold_for_id(smart_attr_t *attr, uint32_t target_id) {
     if (!attr || !attr->thresh) return 0;
 
-    // FIX: Added 'struct' keyword here
     struct smart_map_s *thresh_map = attr->thresh;
 
     for (uint32_t i = 0; i < thresh_map->count; i++) {
         smart_attr_t t_attr = thresh_map->attr[i];
 
-        // Match the ID
         if (t_attr.id == target_id) {
             // ATA Threshold Entry Structure (12 bytes):
-            // Byte 0: Attribute ID
             // Byte 1: Threshold Value
             if (t_attr.raw && t_attr.bytes >= 2) {
                 unsigned char *b = (unsigned char *)t_attr.raw;
@@ -48,13 +54,11 @@ import (
 )
 
 type Attribute struct {
-	ID   uint32
-	Name string
-
+	ID        uint32
+	Name      string
 	Value     int
 	Worst     int
 	Threshold int
-
 	RawValue  uint64
 	RawBytes  []byte
 	TextValue string
@@ -124,11 +128,16 @@ func Read(devicePath string) (*DeviceInfo, error) {
 		if cAttr.raw != nil && cAttr.bytes > 0 {
 			attr.RawBytes = C.GoBytes(cAttr.raw, C.int(cAttr.bytes))
 
-			if (uint32(cAttr.flags) & 0x02) != 0 {
-				attr.IsText = true
+			// Check Flags
+			// 0x01 = Big Endian
+			// 0x02 = String
+			isBigEndian := (uint32(cAttr.flags) & 0x01) != 0
+			attr.IsText = (uint32(cAttr.flags) & 0x02) != 0
+
+			if attr.IsText {
 				attr.TextValue = string(attr.RawBytes)
 			} else {
-				attr.RawValue = bytesToUint64(attr.RawBytes)
+				attr.RawValue = bytesToUint64(attr.RawBytes, isBigEndian)
 			}
 
 			// ATA Specific Parsing for Value/Worst
@@ -142,33 +151,50 @@ func Read(devicePath string) (*DeviceInfo, error) {
 
 		info.Attributes = append(info.Attributes, attr)
 
+		// Populate convenience fields
 		switch attr.ID {
 		case 9:
 			info.PowerOnHours = int(attr.RawValue)
 		case 12:
 			info.PowerCycleCount = int(attr.RawValue)
 		case 194:
-			info.Temperature = int(attr.RawValue)
-			if isATA && len(attr.RawBytes) >= 12 {
-				info.Temperature = int(attr.RawBytes[5])
-			}
+			info.Temperature = int(attr.RawValue & 0xFF)
 		}
 	}
 
 	return info, nil
 }
 
-func bytesToUint64(b []byte) uint64 {
+func bytesToUint64(b []byte, bigEndian bool) uint64 {
 	var res uint64
-	if len(b) >= 12 {
+	length := len(b)
+
+	if length >= 12 {
+		start := 5
 		for i := 0; i < 6; i++ {
-			res |= uint64(b[5+i]) << (8 * i)
+			var val uint64
+			if bigEndian {
+				val = uint64(b[start+i])
+				res = (res << 8) | val
+			} else {
+				val = uint64(b[start+i])
+				res |= val << (8 * i)
+			}
 		}
 		return res
 	}
 
-	for i := 0; i < len(b); i++ {
-		res = (res << 8) | uint64(b[i])
+	for i := 0; i < length; i++ {
+		var val uint64
+		if bigEndian {
+			// Big Endian: First byte is MSB
+			val = uint64(b[i])
+			res = (res << 8) | val
+		} else {
+			// Little Endian: First byte is LSB
+			val = uint64(b[i])
+			res |= val << (8 * i)
+		}
 	}
 
 	return res

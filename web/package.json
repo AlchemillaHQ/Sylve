@@ -24,6 +24,7 @@
 		"@iconify/tailwind4": "^1.0.6",
 		"@internationalized/date": "^3.8.2",
 		"@lucide/svelte": "^0.515.0",
+		"@prgm/sveltekit-progress-bar": "^3.0.2",
 		"@rollup/wasm-node": "^4.30.1",
 		"@sveltejs/adapter-static": "^3.0.8",
 		"@sveltejs/kit": "^2.49.5",
