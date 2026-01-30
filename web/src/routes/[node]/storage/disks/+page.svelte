@@ -21,6 +21,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	const disks = resource(
 		() => 'disks',
 		async (key, prevKey, { signal }) => {
