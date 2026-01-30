@@ -254,38 +254,55 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 			SectorPenalty    = 10.0
 		)
 
+		var wear177, wear232, wear233 *float64
+
 		powerOnHours := float64(data.PowerOnHours)
 		reallocatedSectors := 0
 
 		for _, attr := range data.Attributes {
 			switch attr.ID {
-			// Reallocated Sector Count
-			case 5:
+			case 5: // Reallocated Sector Count
 				reallocatedSectors = int(attr.RawValue)
-			// Wear Leveling Count (Specific to some SSDs)
-			case 177:
-				// If available, this is the most accurate wear indicator for SATA SSDs
-				// Often Normalized Value represents % remaining.
+
+			case 177: // Wear Leveling Count
 				if attr.Value > 0 {
-					return 100.0 - float64(attr.Value), nil
+					val := 100.0 - float64(attr.Value)
+					wear177 = &val
 				}
-			// Media Wearout Indicator (Intel/others)
-			case 233:
+
+			case 233: // Media Wearout Indicator
 				if attr.Value > 0 {
-					return 100.0 - float64(attr.Value), nil
+					val := 100.0 - float64(attr.Value)
+					wear233 = &val
 				}
-			//Available Reserved Space / Endurance Remaining (WD/Intel)
-			case 232:
+
+			case 232: // Available Reserved Space / Endurance Remaining
+				// WD/Sandisk often store % Remaining in RawValue
 				if attr.RawValue <= 100 {
-					return float64(100 - attr.RawValue), nil
+					val := 100.0 - float64(attr.RawValue)
+					wear232 = &val
 				}
 			}
 		}
 
-		// Fallback Heuristic for generic HDDs/SSDs without specific wear attributes
+		// Priority 1: ID 232 (Endurance Remaining) - Usually the most explicit "Gas Gauge"
+		if wear232 != nil {
+			return *wear232, nil
+		}
+
+		// Priority 2: ID 233 (Media Wearout) - Common Intel Standard apparently?
+		if wear233 != nil {
+			return *wear233, nil
+		}
+
+		// Priority 3: ID 177 (Wear Leveling) - Common for generic SATA SSDs
+		if wear177 != nil {
+			return *wear177, nil
+		}
+
+		// Priority 4: Fallback Heuristic (Old HDDs or cheap SSDs)
 		wearoutAge := (powerOnHours / MaxLifespanHours) * 100
 		wearoutSectors := float64(reallocatedSectors) * SectorPenalty
-
 		totalWearout := wearoutAge + wearoutSectors
 		totalWearout = math.Min(math.Max(totalWearout, 0), 100)
 
