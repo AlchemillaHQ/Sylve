@@ -204,8 +204,35 @@
 						return `<div class="flex flex-col gap-1">${labels
 							.map((t) => `<div>${t}</div>`)
 							.join('')}</div>`;
+					} else if (row.getData().property === 'VNC') {
+						return `
+                            <span class="flex flex-col text-sm leading-tight">
+                                <span>
+                                    ${properties.vnc.enabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                                <span>
+                                    ${properties.vnc.resolution} / ${properties.vnc.port}
+                                </span>
+                                <span >
+                                    ${properties.vnc.password || 'No Password'}
+                                </span>
+                            </span>
+                        `;
 					} else {
 						return value;
+					}
+				},
+				copyOnClick: (row: Row) => {
+					try {
+						const property = row.getData().property;
+						if (property === 'VNC') {
+							return true;
+						}
+
+						return false;
+					} catch (e) {
+						console.error(e);
+						return false;
 					}
 				}
 			}
@@ -224,7 +251,10 @@
 			{
 				id: generateNanoId(`${properties.vnc.port}-vnc-port`),
 				property: 'VNC',
-				value: `${properties.vnc.enabled ? 'Enabled' : 'Disabled'} / ${properties.vnc.resolution} / ${properties.vnc.port}`
+				value: properties.vnc,
+				toCopy: properties.vnc.enabled
+					? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${window.location.hostname}:${properties.vnc.port}`
+					: ''
 			},
 			{
 				id: generateNanoId('serial'),
@@ -271,7 +301,7 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0}
+	{#if activeRows && activeRows?.length !== 0 && domain.current.status && domain.current.status === 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow && activeRow.property === 'RAM'}
 				{@render button('ram', 'RAM')}

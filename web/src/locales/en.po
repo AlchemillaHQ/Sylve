@@ -4244,6 +4244,7 @@ msgstr "Select a pool"
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -6949,3 +6950,7 @@ msgstr "<0/> TPM"
 
 #~ msgid "Convert to RAW"
 #~ msgstr "Convert to RAW"
+
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "No Password"
+msgstr "No Password"

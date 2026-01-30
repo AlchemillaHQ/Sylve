@@ -4232,6 +4232,7 @@ msgstr "ഒരു പൂൾ തിരഞ്ഞെടുക്കുക"
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -6900,3 +6901,7 @@ msgstr ""
 
 #~ msgid "Convert to RAW"
 #~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "No Password"
+msgstr ""
