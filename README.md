@@ -60,7 +60,6 @@ Running Sylve is pretty easy, but `sylve` depends on some packages that you can 
 
 | Dependency     | Min. version | Vendored | Optional | Purpose                                          |
 | -------------- | ------------ | -------- | -------- | ------------------------------------------------ |
-| smartmontools  | 7.4_2        | No       | No       | Disk health monitoring                           |
 | tmux           | 3.2          | No       | No       | Terminal multiplexer, used for the (web) console |
 | libvirt        | 11.7.0       | No       | Yes      | Virtualization API, used for Bhyve               |
 | bhyve-firmware | 1.0_2        | No       | Yes      | Collection of Firmware for bhyve                 |
@@ -97,7 +96,7 @@ kern.racct.enable=1
 Install required (and optional) packages:
 
 ```sh
-pkg install git node22 npm-node22 go tmux libvirt bhyve-firmware smartmontools tmux samba422 jansson swtpm qemu-tools
+pkg install git node22 npm-node22 go tmux libvirt bhyve-firmware tmux samba422 jansson swtpm qemu-tools
 ```
 
 Clone the repo and build Sylve.
