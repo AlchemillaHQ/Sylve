@@ -198,6 +198,7 @@
 		terminal?.dispose?.();
 		terminal = new GhosttyTerminal({
 			cursorBlink: true,
+			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
 			fontSize: 14
 		});
@@ -236,7 +237,8 @@
 		};
 
 		terminal.onData((data: string) => {
-			ws?.send(new TextEncoder().encode('\x00' + data));
+			const normalizedData = data.replace(/\n/g, '\r');
+			ws?.send(new TextEncoder().encode('\x00' + normalizedData));
 		});
 
 		ws.onclose = ws.onerror = () => {

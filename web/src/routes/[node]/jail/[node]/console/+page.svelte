@@ -169,7 +169,8 @@
 		if (destroyed) return;
 
 		terminal = new GhosttyTerminal({
-			cursorBlink: false,
+			cursorBlink: true,
+			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
 			fontSize: theme.current.fontSize || 14,
 			theme: {
@@ -208,7 +209,8 @@
 		};
 
 		terminal.onData((data: string) => {
-			ws?.send(new TextEncoder().encode('\x00' + data));
+			const normalizedData = data.replace(/\n/g, '\r');
+			ws?.send(new TextEncoder().encode('\x00' + normalizedData));
 		});
 	};
 
@@ -288,12 +290,12 @@
 		{/if}
 
 		<div
-			class="terminal-wrapper hidden h-full w-full bg-black"
+			class="terminal-wrapper hidden h-full w-full bg-black focus:outline-none caret-transparent"
 			class:hidden={cState.current}
-			tabindex="0"
+			tabindex="-1"
 			style="outline: none;"
 			bind:this={terminalContainer}
-		/>
+		></div>
 	</div>
 {/if}
 
