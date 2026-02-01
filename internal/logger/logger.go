@@ -104,3 +104,9 @@ func LogWithDeduplication(level zerolog.Level, message string) {
 		L.Info().Msg(message)
 	}
 }
+
+func BootstrapFatal(msg string) {
+	w := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006/01/02 15:04:05"}
+	l := zerolog.New(w).With().Timestamp().Logger()
+	l.Fatal().Msg(msg)
+}

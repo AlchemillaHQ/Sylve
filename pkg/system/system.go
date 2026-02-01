@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -213,4 +214,8 @@ func PixzExists() bool {
 	}
 
 	return true
+}
+
+func IsRoot() bool {
+	return os.Geteuid() == 0
 }

@@ -39,12 +39,19 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
+	sysU "github.com/alchemillahq/sylve/pkg/system"
+
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	cmd.AsciiArt()
+
+	if !sysU.IsRoot() {
+		logger.BootstrapFatal("Root privileges required!")
+	}
+
 	cfg := config.ParseConfig(cmd.ParseFlags())
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 
