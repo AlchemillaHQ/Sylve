@@ -117,11 +117,11 @@ cp -rf ../config.example.json config.json # Edit the config.json file to your li
 
 # Notes
 
-1. Bhyve doesn't support bootorders yet
+1. Root access is required to run Sylve, as it manages system-level resources like networking, storage, jails, and virtual machines. Running without sufficient privileges will result in limited functionality and/or failures.
 
-Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download
+2. Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download OS ISOs and Jail bases using the downloader present in Node > Utilities > Downloader menu.
 
-2. ARM64 support is still pending for Libvirt so the support is not there yet, for everything else it should just work out of the box.
+3. ARM64 support is still pending for Libvirt so the support is not there yet, for everything else it should just work out of the box.
 
 # Contributing
 
