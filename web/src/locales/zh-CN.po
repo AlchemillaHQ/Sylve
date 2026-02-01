@@ -13,7 +13,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "X-Generator: Poedit 3.8\n"
 
-#: src/lib/stores/terminal.svelte.ts
+#: src/routes/[node]/+layout.svelte
 msgid "Terminal"
 msgstr "终端"
 
@@ -339,7 +339,6 @@ msgid "Object ({0} properties)"
 msgstr "对象（{0} 个属性）"
 
 #: src/lib/components/custom/Login.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -390,14 +389,11 @@ msgstr "登录"
 msgid "Select an option"
 msgstr "请选择一个选项"
 
-#. placeholder {0}: sessionId
-#: src/lib/components/custom/Terminal.svelte
-msgid "Session killed: {0}"
-msgstr "会话已终止：{0}"
+#~ msgid "Session killed: {0}"
+#~ msgstr "会话已终止：{0}"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
@@ -447,7 +443,6 @@ msgstr "最小化"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -527,9 +522,8 @@ msgstr "最小化"
 msgid "Close"
 msgstr "关闭"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Add new tab"
-msgstr "新增标签页"
+#~ msgid "Add new tab"
+#~ msgstr "新增标签页"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
@@ -4093,6 +4087,7 @@ msgstr "选择存储池"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -4117,13 +4112,11 @@ msgstr "序号"
 msgid "Switch to {0} Console"
 msgstr "切换到控制台 {0}"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Kill Serial Session"
-msgstr "终止串口会话"
+#~ msgid "Kill Serial Session"
+#~ msgstr "终止串口会话"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Reconnect Serial"
-msgstr "重新连接串口"
+#~ msgid "Reconnect Serial"
+#~ msgstr "重新连接串口"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "VM Console"
@@ -5372,19 +5365,16 @@ msgid "{0} Logs"
 msgstr "{0} 日志"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, “Courier New”, 等宽字体"
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket connected for tab {0}"
-msgstr "标签页 {0} 的终端 WebSocket 已连接"
+#~ msgid "Terminal WebSocket connected for tab {0}"
+#~ msgstr "标签页 {0} 的终端 WebSocket 已连接"
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket disconnected for tab {0}"
-msgstr "标签页 {0} 的终端 WebSocket 已断开"
+#~ msgid "Terminal WebSocket disconnected for tab {0}"
+#~ msgstr "标签页 {0} 的终端 WebSocket 已断开"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -5427,14 +5417,19 @@ msgid "Metadata (Meta)"
 msgstr "元数据 (Meta)"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Disconnect"
 msgstr "断开"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Reconnect"
 msgstr "重新连接"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "控制台已断开连接。<0/> 点击“重新连接”按钮以恢复连接。"
 
@@ -5532,19 +5527,27 @@ msgid "Auto-convert to RAW"
 msgstr "自动转换为 RAW"
 
 #. placeholder {0}: jail.current?.name
+#. placeholder {0}: vm.current?.name
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Console settings - {0}"
 msgstr "终端设置 - {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Font Size"
 msgstr "字体大小"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Background"
 msgstr "背景"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Foreground"
 msgstr "前景"
 
@@ -5657,9 +5660,8 @@ msgstr "卷大小"
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "卷大小不是块大小的整数倍，点击此选项可自动调整"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Failed to connect to terminal WebSocket"
-msgstr "终端 WebSocket 连接失败"
+#~ msgid "Failed to connect to terminal WebSocket"
+#~ msgstr "终端 WebSocket 连接失败"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Unknown VM"
@@ -6079,4 +6081,68 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "No Password"
+msgstr ""
+
+#. placeholder {0}: data.rid
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Serial console connected for VM {0}"
+msgstr ""
+
+#~ msgid "Shell"
+#~ msgstr ""
+
+#: src/routes/[node]/shell/+page.svelte
+msgid "Hello World"
+msgstr ""
+
+#. placeholder {0}: this.tabs.length + 1
+#: src/lib/stores/terminal.svelte.ts
+msgid "Shell {0}"
+msgstr ""
+
+#~ msgid "New Tab"
+#~ msgstr ""
+
+#~ msgid "Main Shell"
+#~ msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host Console Settings"
+msgstr ""
+
+#~ msgid "<0/> Disconnect"
+#~ msgstr ""
+
+#~ msgid "<0/> Reconnect"
+#~ msgstr ""
+
+#~ msgid "Host console is disconnected."
+#~ msgstr ""
+
+#~ msgid "Reconnect Session"
+#~ msgstr ""
+
+#~ msgid "Console Settings"
+#~ msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host console connected"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+msgstr ""
+
+#~ msgid "Help 1"
+#~ msgstr ""
+
+#~ msgid "Hel 1p"
+#~ msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Discord"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Sponsor"
 msgstr ""

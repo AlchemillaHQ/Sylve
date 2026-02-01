@@ -12,7 +12,7 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
 "MIME-Version: 1.0\n"
 
-#: src/lib/stores/terminal.svelte.ts
+#: src/routes/[node]/+layout.svelte
 msgid "Terminal"
 msgstr "Terminal"
 
@@ -345,7 +345,6 @@ msgid "Object ({0} properties)"
 msgstr "Object ({0} properties)"
 
 #: src/lib/components/custom/Login.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -414,14 +413,11 @@ msgstr "Login"
 msgid "Select an option"
 msgstr "Select an option"
 
-#. placeholder {0}: sessionId
-#: src/lib/components/custom/Terminal.svelte
-msgid "Session killed: {0}"
-msgstr "Session killed: {0}"
+#~ msgid "Session killed: {0}"
+#~ msgstr "Session killed: {0}"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
@@ -471,7 +467,6 @@ msgstr "Minimize"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -551,9 +546,8 @@ msgstr "Minimize"
 msgid "Close"
 msgstr "Close"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Add new tab"
-msgstr "Add new tab"
+#~ msgid "Add new tab"
+#~ msgstr "Add new tab"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
@@ -4242,6 +4236,7 @@ msgstr "Select a pool"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -4266,13 +4261,11 @@ msgstr "Serial"
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Kill Serial Session"
-msgstr "Kill Serial Session"
+#~ msgid "Kill Serial Session"
+#~ msgstr "Kill Serial Session"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Reconnect Serial"
-msgstr "Reconnect Serial"
+#~ msgid "Reconnect Serial"
+#~ msgstr "Reconnect Serial"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "VM Console"
@@ -5470,8 +5463,9 @@ msgstr "FStab Entries"
 msgid "Additional Options"
 msgstr "Additional Options"
 
-#~ msgid "Hello World"
-#~ msgstr "Hello World"
+#: src/routes/[node]/shell/+page.svelte
+msgid "Hello World"
+msgstr "Hello World"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Jail Type"
@@ -5735,6 +5729,7 @@ msgstr "{0} Logs"
 #~ msgstr "Minimal Working Demo of a Resize-Aware Terminal"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, \"Courier New\", monospace"
@@ -5745,15 +5740,11 @@ msgstr "Monaco, Menlo, \"Courier New\", monospace"
 #~ msgid "Zoom In"
 #~ msgstr "Zoom In"
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket connected for tab {0}"
-msgstr "Terminal WebSocket connected for tab {0}"
+#~ msgid "Terminal WebSocket connected for tab {0}"
+#~ msgstr "Terminal WebSocket connected for tab {0}"
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket disconnected for tab {0}"
-msgstr "Terminal WebSocket disconnected for tab {0}"
+#~ msgid "Terminal WebSocket disconnected for tab {0}"
+#~ msgstr "Terminal WebSocket disconnected for tab {0}"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -5817,6 +5808,8 @@ msgid "Metadata (Meta)"
 msgstr "Metadata (Meta)"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Disconnect"
 msgstr "Disconnect"
 
@@ -5824,6 +5817,8 @@ msgstr "Disconnect"
 #~ msgstr "Connecting to console..."
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Reconnect"
 msgstr "Reconnect"
 
@@ -5855,6 +5850,7 @@ msgstr "Reconnect"
 #~ msgstr "Hello"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 
@@ -5979,19 +5975,27 @@ msgstr "Auto-convert to RAW"
 #~ msgstr "LOADER"
 
 #. placeholder {0}: jail.current?.name
+#. placeholder {0}: vm.current?.name
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Console settings - {0}"
 msgstr "Console settings - {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Font Size"
 msgstr "Font Size"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Background"
 msgstr "Background"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Foreground"
 msgstr "Foreground"
 
@@ -6173,9 +6177,8 @@ msgstr "Volume Size"
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Failed to connect to terminal WebSocket"
-msgstr "Failed to connect to terminal WebSocket"
+#~ msgid "Failed to connect to terminal WebSocket"
+#~ msgstr "Failed to connect to terminal WebSocket"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Unknown VM"
@@ -6759,8 +6762,9 @@ msgstr "Manage the devfs ruleset for this jail"
 msgid "Manage additional options for this jail"
 msgstr "Manage additional options for this jail"
 
-#~ msgid "Discord"
-#~ msgstr "Discord"
+#: src/routes/[node]/+layout.svelte
+msgid "Discord"
+msgstr "Discord"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Meta and Env key-value pairs"
@@ -6954,3 +6958,59 @@ msgstr "<0/> TPM"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "No Password"
 msgstr "No Password"
+
+#. placeholder {0}: data.rid
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Serial console connected for VM {0}"
+msgstr "Serial console connected for VM {0}"
+
+#~ msgid "Shell"
+#~ msgstr "Shell"
+
+#. placeholder {0}: this.tabs.length + 1
+#: src/lib/stores/terminal.svelte.ts
+msgid "Shell {0}"
+msgstr "Shell {0}"
+
+#~ msgid "New Tab"
+#~ msgstr "New Tab"
+
+#~ msgid "Main Shell"
+#~ msgstr "Main Shell"
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host Console Settings"
+msgstr "Host Console Settings"
+
+#~ msgid "<0/> Disconnect"
+#~ msgstr "<0/> Disconnect"
+
+#~ msgid "<0/> Reconnect"
+#~ msgstr "<0/> Reconnect"
+
+#~ msgid "Host console is disconnected."
+#~ msgstr "Host console is disconnected."
+
+#~ msgid "Reconnect Session"
+#~ msgstr "Reconnect Session"
+
+#~ msgid "Console Settings"
+#~ msgstr "Console Settings"
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host console connected"
+msgstr "Host console connected"
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+
+#~ msgid "Help 1"
+#~ msgstr "Help 1"
+
+#~ msgid "Hel 1p"
+#~ msgstr "Hel 1p"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Sponsor"
+msgstr "Sponsor"

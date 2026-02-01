@@ -12,7 +12,7 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=n == 1 ? 0 : 1;\n"
 "MIME-Version: 1.0\n"
 
-#: src/lib/stores/terminal.svelte.ts
+#: src/routes/[node]/+layout.svelte
 msgid "Terminal"
 msgstr "ടെർമിനൽ"
 
@@ -343,7 +343,6 @@ msgid "Object ({0} properties)"
 msgstr "വസ്തു ({0} പ്രോപ്പർട്ടികൾ)"
 
 #: src/lib/components/custom/Login.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -412,14 +411,11 @@ msgstr "ലോഗിൻ"
 msgid "Select an option"
 msgstr "ഒരു ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക"
 
-#. placeholder {0}: sessionId
-#: src/lib/components/custom/Terminal.svelte
-msgid "Session killed: {0}"
-msgstr "സെഷൻ കിൽ ചെയ്തു: {0}"
+#~ msgid "Session killed: {0}"
+#~ msgstr "സെഷൻ കിൽ ചെയ്തു: {0}"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Minimize"
@@ -469,7 +465,6 @@ msgstr "ചെറുതാക്കുക"
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/Terminal.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -549,9 +544,8 @@ msgstr "ചെറുതാക്കുക"
 msgid "Close"
 msgstr "അടയ്ക്കുക"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Add new tab"
-msgstr "പുതിയ ടാബ് ചേർക്കുക"
+#~ msgid "Add new tab"
+#~ msgstr "പുതിയ ടാബ് ചേർക്കുക"
 
 #: src/lib/components/custom/TreeTable.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
@@ -4230,6 +4224,7 @@ msgstr "ഒരു പൂൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -4254,13 +4249,11 @@ msgstr "സീരിയൽ"
 msgid "Switch to {0} Console"
 msgstr "{0} കൺസോളിലേക്ക് മാറുക"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Kill Serial Session"
-msgstr "സീരിയൽ സെഷൻ നിർത്തുക"
+#~ msgid "Kill Serial Session"
+#~ msgstr "സീരിയൽ സെഷൻ നിർത്തുക"
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Reconnect Serial"
-msgstr "സീരിയൽ വീണ്ടും കണക്ട് ചെയ്യുക"
+#~ msgid "Reconnect Serial"
+#~ msgstr "സീരിയൽ വീണ്ടും കണക്ട് ചെയ്യുക"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "VM Console"
@@ -5452,8 +5445,9 @@ msgstr "FStab എൻട്രികൾ"
 msgid "Additional Options"
 msgstr "കൂടുതൽ ഓപ്ഷനുകൾ"
 
-#~ msgid "Hello World"
-#~ msgstr ""
+#: src/routes/[node]/shell/+page.svelte
+msgid "Hello World"
+msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 msgid "Select Jail Type"
@@ -5707,6 +5701,7 @@ msgstr "{0} രേഖകൾ"
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "മൊണാക്കോ, മെൻലോ, \"കൊറിയർ ന്യൂ\", മോണോസ്‌പേസ്"
@@ -5717,15 +5712,11 @@ msgstr "മൊണാക്കോ, മെൻലോ, \"കൊറിയർ ന്�
 #~ msgid "Zoom In"
 #~ msgstr ""
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket connected for tab {0}"
-msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ലേക്ക് കണക്റ്റ് ചെയ്തു"
+#~ msgid "Terminal WebSocket connected for tab {0}"
+#~ msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ലേക്ക് കണക്റ്റ് ചെയ്തു"
 
-#. placeholder {0}: currentTab?.id
-#: src/lib/components/custom/Terminal.svelte
-msgid "Terminal WebSocket disconnected for tab {0}"
-msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ൽ നിന്ന് വിച്ഛേദിച്ചു"
+#~ msgid "Terminal WebSocket disconnected for tab {0}"
+#~ msgstr "ടെർമിനൽ വെബ് സോക്കറ്റ് ടാബ് {0} ൽ നിന്ന് വിച്ഛേദിച്ചു"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -5789,6 +5780,8 @@ msgid "Metadata (Meta)"
 msgstr "മെറ്റാഡാറ്റ (മെറ്റാ)"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Disconnect"
 msgstr "വിച്ഛേദിക്കുക"
 
@@ -5796,6 +5789,8 @@ msgstr "വിച്ഛേദിക്കുക"
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Reconnect"
 msgstr "വീണ്ടും ബന്ധിപ്പിക്കുക"
 
@@ -5827,6 +5822,7 @@ msgstr "വീണ്ടും ബന്ധിപ്പിക്കുക"
 #~ msgstr ""
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "കൺസോൾ വിച്ഛേദിക്കപ്പെട്ടു.<0/> കണക്ഷൻ പുനഃസ്ഥാപിക്കാൻ \"വീണ്ടും ബന്ധിപ്പിക്കുക\" ബട്ടണിൽ ക്ലിക്ക് ചെയ്യുക."
 
@@ -5945,19 +5941,27 @@ msgstr "RAW-ലേക്ക് സ്വയമേവ മാറ്റുക"
 #~ msgstr ""
 
 #. placeholder {0}: jail.current?.name
+#. placeholder {0}: vm.current?.name
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Console settings - {0}"
 msgstr "കൺസോൾ ക്രമീകരണങ്ങൾ - {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Font Size"
 msgstr "ഫോണ്ട് വലുപ്പം"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Background"
 msgstr "പശ്ചാത്തലം"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Foreground"
 msgstr "ഫോർഗ്രൗണ്ട്"
 
@@ -6139,9 +6143,8 @@ msgstr ""
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "വോളിയം വലുപ്പം ബ്ലോക്ക് വലുപ്പത്തിന്റെ ഗുണിതമല്ല, ഇത് സ്വയമേവ ക്രമീകരിക്കണമെങ്കിൽ ഇതിൽ ക്ലിക്ക് ചെയ്യുക"
 
-#: src/lib/components/custom/Terminal.svelte
-msgid "Failed to connect to terminal WebSocket"
-msgstr "ടെർമിനൽ വെബ് സോക്കറ്റിലേക്ക് കണക്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല"
+#~ msgid "Failed to connect to terminal WebSocket"
+#~ msgstr "ടെർമിനൽ വെബ് സോക്കറ്റിലേക്ക് കണക്റ്റ് ചെയ്യാൻ കഴിഞ്ഞില്ല"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Unknown VM"
@@ -6713,8 +6716,9 @@ msgstr ""
 msgid "Manage additional options for this jail"
 msgstr ""
 
-#~ msgid "Discord"
-#~ msgstr ""
+#: src/routes/[node]/+layout.svelte
+msgid "Discord"
+msgstr ""
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 msgid "Meta and Env key-value pairs"
@@ -6904,4 +6908,60 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 msgid "No Password"
+msgstr ""
+
+#. placeholder {0}: data.rid
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Serial console connected for VM {0}"
+msgstr ""
+
+#~ msgid "Shell"
+#~ msgstr ""
+
+#. placeholder {0}: this.tabs.length + 1
+#: src/lib/stores/terminal.svelte.ts
+msgid "Shell {0}"
+msgstr ""
+
+#~ msgid "New Tab"
+#~ msgstr ""
+
+#~ msgid "Main Shell"
+#~ msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host Console Settings"
+msgstr ""
+
+#~ msgid "<0/> Disconnect"
+#~ msgstr ""
+
+#~ msgid "<0/> Reconnect"
+#~ msgstr ""
+
+#~ msgid "Host console is disconnected."
+#~ msgstr ""
+
+#~ msgid "Reconnect Session"
+#~ msgstr ""
+
+#~ msgid "Console Settings"
+#~ msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host console connected"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+msgstr ""
+
+#~ msgid "Help 1"
+#~ msgstr ""
+
+#~ msgid "Hel 1p"
+#~ msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Sponsor"
 msgstr ""

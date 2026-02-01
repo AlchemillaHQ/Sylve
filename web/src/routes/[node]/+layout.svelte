@@ -75,7 +75,7 @@
 		return [
 			{ label: 'Summary', icon: 'basil--document-outline', href: `/${node}/summary` },
 			{ label: 'Notes', icon: 'mdi--notes', href: `/${node}/notes` },
-
+			{ label: 'Terminal', icon: 'mdi--terminal', href: `/${node}/terminal` },
 			{
 				label: 'Network',
 				icon: 'mdi--network',
@@ -274,16 +274,30 @@
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
 
-		<Button
-			size="sm"
-			class="h-6"
-			onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
-		>
-			<div class="flex items-center">
-				<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
-				<span>Help</span>
-			</div>
-		</Button>
+		<div>
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
+				title="Discord"
+			>
+				<div class="flex items-center">
+					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
+					<span>Help</span>
+				</div>
+			</Button>
+
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => window.open('https://github.com/sponsors/AlchemillaHQ/', '_blank')}
+				title="Sponsor"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--heart] h-5 w-5"></span>
+				</div>
+			</Button>
+		</div>
 	</div>
 
 	<Resizable.PaneGroup

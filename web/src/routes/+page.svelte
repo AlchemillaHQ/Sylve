@@ -216,4 +216,7 @@
 <span class="icon-[mdi--database]"></span>
 <span class="icon-[mdi--cloud]"></span>
 <span class="icon-[mdi--folder-question]"></span>
+<span class="icon-[garden--terminal-cli-stroke-16]"></span>
+<span class="icon-[mdi--terminal]"></span>
+<span class="icon-[mdi--heart]"></span>
 -->

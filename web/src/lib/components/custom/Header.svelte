@@ -3,7 +3,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import { openTerminal, terminalStore } from '$lib/stores/terminal.svelte';
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
@@ -60,24 +59,7 @@
 		</Sheet.Content>
 	</Sheet.Root>
 	<div class="flex w-full items-center justify-end gap-2 md:ml-auto">
-		<!-- desktop view -->
 		<div class="mr-2 hidden items-center gap-4 lg:inline-flex">
-			<Button
-				size="icon"
-				variant="link"
-				class="z-9999 relative flex  w-auto items-center justify-center "
-				onclick={() => openTerminal()}
-			>
-				<span class="icon-[garden--terminal-cli-stroke-16] h-6 w-6"></span>
-				{#if terminalStore.tabs?.length > 0}
-					<span
-						class="absolute -right-1 top-0.5 flex h-4 min-w-2 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
-					>
-						{terminalStore.tabs?.length}
-					</span>
-				{/if}
-			</Button>
-
 			{#if storage.enabledServices?.includes('virtualization')}
 				<Button
 					class="relative h-6"

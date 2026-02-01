@@ -7,8 +7,14 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
-	import { resource, useInterval, watch } from 'runed';
+	import { resource, useInterval, watch, PersistedState, useDebounce } from 'runed';
 	import { mode } from 'mode-watcher';
+	import adze from 'adze';
+	import { fade } from 'svelte/transition';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import ColorPicker from 'svelte-awesome-color-picker';
+	import { swatches } from '$lib/utils/terminal';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
@@ -93,6 +99,58 @@
 	}
 
 	let consoleType: ConsoleType = $state(resolveInitialConsole());
+	let connected = $state(false);
+
+	let cState = new PersistedState(`vm-${data.rid}-console-state`, false);
+	let theme = new PersistedState(`vm-${data.rid}-console-theme`, {
+		background: '#282c34',
+		foreground: '#FFFFFF',
+		fontSize: 14
+	});
+
+	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
+	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
+	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+	let openSettings = $state(false);
+
+	let terminal = $state<GhosttyTerminal | null>(null);
+	let ws: WebSocket | null = null;
+	let terminalContainer = $state<HTMLElement | null>(null);
+	let lastWidth = 0;
+	let lastHeight = 0;
+	let destroyed = $state(false);
+
+	const applyFontSize = useDebounce(() => {
+		if (!terminal) return;
+		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
+		terminal.options.fontSize = theme.current.fontSize;
+		resizeTerminal(lastWidth, lastHeight);
+	}, 200);
+
+	const applyThemeDebounced = useDebounce(() => {
+		if (!terminal) return;
+
+		if (
+			theme.current.background === bgThemeBindable &&
+			theme.current.foreground === fgThemeBindable
+		) {
+			return;
+		}
+
+		theme.current.background = bgThemeBindable;
+		theme.current.foreground = fgThemeBindable;
+
+		terminal.options.theme = {
+			background: theme.current.background,
+			foreground: theme.current.foreground
+		};
+
+		if (ws?.readyState === WebSocket.OPEN) {
+			cleanupSerial(false);
+			serialConnect();
+		}
+	}, 300);
+
 	let vncPath = $derived.by(() => {
 		return vm.current.vncEnabled
 			? `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`
@@ -106,63 +164,39 @@
 		setTimeout(() => (vncLoading = false), 1500);
 	}
 
-	onMount(() => {
-		if (consoleType === 'vnc' && vm.current.vncEnabled) {
-			startVncLoading();
-		}
-	});
-
-	let prevConsoleType: ConsoleType = consoleType;
-	$effect(() => {
-		if (prevConsoleType !== consoleType) {
-			prevConsoleType = consoleType;
-
-			if (consoleType === 'vnc' && vm.current.vncEnabled) {
-				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'vnc');
-				startVncLoading();
-				serialConnected = false;
-				// Disconnect serial when switching to VNC
-				if (ws) {
-					sendKill();
-					ws.close();
-					ws = null;
-				}
-				terminal?.dispose?.();
-				terminal = null;
-			} else if (consoleType === 'serial' && vm.current.serial) {
-				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
-				// Auto-connect serial when switching to it
-				tick().then(() => {
-					serialConnect();
-				});
-			}
-		}
-	});
-
-	let terminal = $state<GhosttyTerminal | null>(null);
-	let serialEl: HTMLDivElement | null = null;
-	let ro: ResizeObserver | null = null;
-	let lastWidth = 0;
-	let lastHeight = 0;
-
-	let ws: WebSocket | null = null;
-	let serialLoading = $state(false);
-
-	function isOpen(w: WebSocket | null): boolean {
-		return !!w && w.readyState === WebSocket.OPEN;
+	function sendSize(cols: number, rows: number) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ cols, rows })));
 	}
 
-	let serialConnected = $state(false);
-	let destroyed = $state(false);
+	function cleanupSerial(forceKill = false) {
+		connected = false;
 
-	function sendKill(sessionId?: string) {
-		if (!isOpen(ws)) return;
-		serialConnected = false;
-		const body = JSON.stringify({ kill: sessionId ?? '' });
-		const payload = new TextEncoder().encode('\x02' + body);
-		try {
-			ws!.send(payload);
-		} catch {}
+		if (ws) {
+			ws.onclose = null;
+			if (ws.readyState === WebSocket.OPEN) {
+				if (forceKill) {
+					const payload = JSON.stringify({ kill: '' });
+					const data = new TextEncoder().encode('\x02' + payload);
+					ws.send(data);
+				}
+				ws.close();
+			}
+			ws = null;
+		}
+
+		terminal?.dispose?.();
+		terminal = null;
+	}
+
+	function disconnectSerial() {
+		cState.current = true;
+		cleanupSerial(true);
+	}
+
+	function reconnectSerial() {
+		cState.current = false;
+		serialConnect();
 	}
 
 	function resizeTerminal(width: number, height: number) {
@@ -174,58 +208,61 @@
 		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
 		if (!canvas) return;
 
-		const cols = terminal.cols || 80;
-		const rows = terminal.rows || 24;
+		const currentCols = terminal.cols || 80;
+		const currentRows = terminal.rows || 24;
 
-		const cellWidth = canvas.clientWidth / cols || 8;
-		const cellHeight = canvas.clientHeight / rows || 16;
+		const cellWidth = canvas.clientWidth / currentCols || 8;
+		const cellHeight = canvas.clientHeight / currentRows || 16;
+		if (!cellWidth || !cellHeight) return;
 
-		const newCols = Math.max(2, Math.floor(width / cellWidth));
-		const newRows = Math.max(2, Math.floor(height / cellHeight));
+		const cols = Math.max(2, Math.floor(width / cellWidth));
+		const rows = Math.max(2, Math.floor(height / cellHeight));
+		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
 
-		terminal.resize(newCols, newRows);
-		ws?.send(new TextEncoder().encode('\x01' + JSON.stringify({ cols: newCols, rows: newRows })));
+		terminal.resize(cols, rows);
+		sendSize(cols, rows);
+
+		terminal.focus();
 	}
 
-	async function serialConnect() {
-		if (!vm.current.serial || !serialEl) return;
+	const serialConnect = async () => {
+		cState.current = false;
 
-		serialLoading = true;
+		if (!vm.current.serial) return;
+		if (domain.current.status === 'Shutoff') return;
+		if (!terminalContainer) return;
 
 		await initGhostty();
 		if (destroyed) return;
 
-		terminal?.dispose?.();
+		cleanupSerial(false);
+
 		terminal = new GhosttyTerminal({
 			cursorBlink: true,
 			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-			fontSize: 14
+			fontSize: theme.current.fontSize || 14,
+			theme: {
+				background: theme.current.background,
+				foreground: theme.current.foreground
+			}
 		});
 
-		terminal.open(serialEl);
+		terminal.open(terminalContainer);
 
 		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}`;
 		ws = new WebSocket(url);
 		ws.binaryType = 'arraybuffer';
 
-		ws.onopen = () => {
-			serialConnected = true;
-			serialLoading = false;
-
-			const rect = serialEl!.getBoundingClientRect();
-			lastWidth = rect.width;
-			lastHeight = rect.height;
-			resizeTerminal(rect.width, rect.height);
-
-			ro?.disconnect();
-			ro = new ResizeObserver((entries) => {
-				const { width, height } = entries[0].contentRect;
-				lastWidth = width;
-				lastHeight = height;
-				resizeTerminal(width, height);
-			});
-			ro.observe(serialEl!);
+		ws.onopen = async () => {
+			connected = true;
+			adze.info(`Serial console connected for VM ${data.rid}`);
+			if (lastWidth && lastHeight) {
+				resizeTerminal(lastWidth, lastHeight);
+			} else if (terminalContainer) {
+				const rect = terminalContainer.getBoundingClientRect();
+				resizeTerminal(rect.width, rect.height);
+			}
 		};
 
 		ws.onmessage = (e) => {
@@ -238,36 +275,54 @@
 
 		terminal.onData((data: string) => {
 			const normalizedData = data.replace(/\n/g, '\r');
-			ws?.send(new TextEncoder().encode('\x00' + normalizedData));
+			if (ws && ws.readyState === WebSocket.OPEN) {
+				ws.send(new TextEncoder().encode('\x00' + normalizedData));
+			}
 		});
 
 		ws.onclose = ws.onerror = () => {
-			serialLoading = false;
-			serialConnected = false;
+			connected = false;
 		};
-	}
+	};
 
 	onMount(() => {
-		if (consoleType === 'serial' && vm.current.serial) {
+		if (consoleType === 'vnc' && vm.current.vncEnabled) {
+			startVncLoading();
+		} else if (consoleType === 'serial' && vm.current.serial && !cState.current) {
 			tick().then(() => {
 				serialConnect();
 			});
 		}
 	});
 
+	watch(
+		() => consoleType,
+		(type) => {
+			if (type === 'vnc' && vm.current.vncEnabled) {
+				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'vnc');
+				startVncLoading();
+				cleanupSerial(false);
+			} else if (type === 'serial' && vm.current.serial) {
+				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
+				if (!cState.current) {
+					tick().then(() => {
+						serialConnect();
+					});
+				}
+			}
+		},
+		{ lazy: true }
+	);
+
 	onDestroy(() => {
 		destroyed = true;
-		ws?.close();
-		terminal?.dispose?.();
-		ro?.disconnect();
+		cleanupSerial(false);
 	});
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
-	<!-- Header: show only if at least one console is available -->
 	{#if (vm.current.vncEnabled || vm.current.serial) && domain.current.status !== 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-			<!-- Switcher: show only if BOTH consoles exist -->
 			{#if vm.current.vncEnabled && vm.current.serial}
 				<Button
 					onclick={() => {
@@ -286,37 +341,46 @@
 				</Button>
 			{/if}
 
-			<!-- Serial control: only when Serial is selected and available -->
 			{#if consoleType === 'serial' && vm.current.serial}
+				{#if connected}
+					<Button
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+						onclick={disconnectSerial}
+					>
+						<div class="flex items-center gap-2">
+							<span class="icon-[mdi--close-circle-outline] h-4 w-4"></span>
+							<span>Disconnect</span>
+						</div>
+					</Button>
+				{:else}
+					<Button
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+						onclick={reconnectSerial}
+					>
+						<div class="flex items-center gap-2">
+							<span class="icon-[mdi--refresh] h-4 w-4"></span>
+							<span>Reconnect</span>
+						</div>
+					</Button>
+				{/if}
+
 				<Button
-					size="sm"
 					variant="outline"
-					class="h-6.5"
-					disabled={serialLoading}
+					size="sm"
+					class="ml-auto h-6"
 					onclick={() => {
-						if (serialConnected) {
-							sendKill();
-							ws?.close();
-							ws = null;
-							terminal?.dispose?.();
-							terminal = null;
-							serialConnected = false;
-						} else {
-							serialConnect();
-						}
+						openSettings = true;
 					}}
 				>
-					<div class="flex items-center gap-2">
-						<span class={`icon-[${serialConnected ? 'mdi--power' : 'mdi--refresh'}] h-4 w-4`}
-						></span>
-						<span>{serialConnected ? 'Kill Serial Session' : 'Reconnect Serial'}</span>
-					</div>
+					<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
 				</Button>
 			{/if}
 		</div>
 	{/if}
 
-	{#if data.domain && data.domain.status !== 'Shutoff'}
+	{#if domain.current.status !== 'Shutoff'}
 		{#if consoleType === 'vnc' && vm.current.vncEnabled}
 			<div class="relative flex min-h-0 flex-1 flex-col">
 				<iframe
@@ -333,19 +397,27 @@
 				{/if}
 			</div>
 		{:else if consoleType === 'serial' && vm.current.serial}
-			<div class="relative flex min-h-0 flex-1 flex-col">
-				<div
-					bind:this={serialEl}
-					class="h-full w-full bg-black"
-					tabindex="0"
-					style="outline: none;"
-				/>
-
-				{#if serialLoading}
-					<div class="bg-background/50 absolute inset-0 z-10 flex items-center justify-center">
-						<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+			<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
+				{#if cState.current}
+					<div
+						class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center"
+					>
+						<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
+						<div class="max-w-md">
+							The console has been disconnected.<br />
+							Click the "Reconnect" button to re-establish the connection.
+						</div>
 					</div>
 				{/if}
+
+				<div
+					class="terminal-wrapper hidden h-full w-full bg-black focus:outline-none caret-transparent"
+					class:hidden={cState.current}
+					tabindex="-1"
+					style="outline: none;"
+					bind:this={terminalContainer}
+					onclick={() => terminal?.focus()}
+				></div>
 			</div>
 		{:else}
 			<div class="flex flex-1 flex-col items-center justify-center space-y-3 text-center text-base">
@@ -363,3 +435,41 @@
 		</div>
 	{/if}
 </div>
+
+<Dialog.Root bind:open={openSettings}>
+	<Dialog.Content class="min-w-[180px]">
+		<Dialog.Header class="p-0">
+			<Dialog.Title class="flex items-center justify-between text-left">
+				Console settings - {vm.current?.name}
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="grid grid-cols-1">
+			<CustomValueInput
+				placeholder="14"
+				label="Font Size"
+				type="number"
+				bind:value={fontSizeBindable}
+				classes="flex-1 space-y-1"
+				onChange={() => {
+					applyFontSize();
+				}}
+			/>
+		</div>
+
+		<div class="grid grid-cols-2">
+			<ColorPicker
+				bind:hex={bgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Background"
+			/>
+			<ColorPicker
+				bind:hex={fgThemeBindable}
+				{swatches}
+				onInput={applyThemeDebounced}
+				label="Foreground"
+			/>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

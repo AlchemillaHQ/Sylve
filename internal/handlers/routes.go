@@ -127,7 +127,7 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
-		info.GET("/terminal", infoHandlers.HandleTerminalWebsocket)
+		info.GET("/terminal", infoHandlers.HandleHostTerminal)
 	}
 
 	zfs := api.Group("/zfs")

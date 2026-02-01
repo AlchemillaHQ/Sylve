@@ -87,10 +87,7 @@ func (s *Service) FreeBSDCheck() error {
 }
 
 func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) error {
-	requiredPackages := []string{
-		"smartmontools",
-		"tmux",
-	}
+	requiredPackages := []string{}
 
 	if basicSettings.Services != nil {
 		if slices.Contains(basicSettings.Services, models.Virtualization) {
