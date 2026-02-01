@@ -8,6 +8,8 @@ tmp/
 node_modules/
 package-lock.json
 package.json
+!docs/app-docs/package.json
+!docs/app-docs/package-lock.json
 !web/package.json
 !web/package-lock.json
 !new-web/package-lock.json
