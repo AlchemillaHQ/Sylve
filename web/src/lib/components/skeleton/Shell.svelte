@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import Header from '$lib/components/custom/Header.svelte';
-	import Terminal from '$lib/components/custom/Terminal.svelte';
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
@@ -75,7 +74,5 @@
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>
-
-		<Terminal />
 	</main>
 </div>
