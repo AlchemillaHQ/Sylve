@@ -196,6 +196,7 @@ msgstr "സഹായം"
 msgid "Difuse-sidebar"
 msgstr "ഡിഫ്യൂസ്-സൈഡ്ബാർ"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Cluster"
 msgstr "ക്ലസ്റ്റർ"
@@ -343,6 +344,7 @@ msgid "Object ({0} properties)"
 msgstr "വസ്തു ({0} പ്രോപ്പർട്ടികൾ)"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -6964,4 +6966,35 @@ msgstr ""
 
 #: src/routes/[node]/+layout.svelte
 msgid "Sponsor"
+msgstr ""
+
+#~ msgid "System - Toggle - DHCP Server"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - DHCP Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - WoL Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Samba Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Jails"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Virtualization"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "No Node ID available"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Reset Node"
 msgstr ""

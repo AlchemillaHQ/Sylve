@@ -20,7 +20,7 @@
 			isValidIPv4(window.location.hostname) || isValidIPv6(window.location.hostname)
 				? window.location.hostname
 				: '',
-		port: 8182,
+		port: 8180,
 		clusterKey: '',
 		leaderApi: ''
 	};
@@ -50,35 +50,41 @@
 			return;
 		}
 
-		const response = await joinCluster(
-			storage.nodeId,
-			properties.ip,
-			Number(properties.port),
-			properties.leaderApi,
-			properties.clusterKey
-		);
+		if (storage.nodeId) {
+			const response = await joinCluster(
+				storage.nodeId,
+				properties.ip,
+				Number(properties.port),
+				properties.leaderApi,
+				properties.clusterKey
+			);
 
-		reload = true;
+			reload = true;
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Unable to join cluster', {
+			if (response.error) {
+				handleAPIError(response);
+				toast.error('Unable to join cluster', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			if (response.data) {
+				if (typeof response.data === 'string') {
+					storage.clusterToken = response.data;
+				}
+			}
+
+			toast.success('Joined cluster', {
 				position: 'bottom-center'
 			});
-			return;
+
+			open = false;
+		} else {
+			toast.error('No Node ID available', {
+				position: 'bottom-center'
+			});
 		}
-
-		if (response.data) {
-			if (typeof response.data === 'string') {
-				storage.clusterToken = response.data;
-			}
-		}
-
-		toast.success('Joined cluster', {
-			position: 'bottom-center'
-		});
-
-		open = false;
 	}
 </script>
 

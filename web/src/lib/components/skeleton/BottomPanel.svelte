@@ -38,6 +38,8 @@
 		}
 	);
 
+	$inspect(auditRecords.current);
+
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
@@ -73,7 +75,14 @@
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
 		'/api/jail': 'Jail',
-		'/api/utilities/cloud-init/templates': 'Cloud Init Template'
+		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
+		'/api/system/basic-settings/services/dhcp-server/toggle': 'Toggle - DHCP Server',
+		'/api/system/basic-settings/services/wol-server/toggle': 'Toggle - WoL Server',
+		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',
+		'/api/system/basic-settings/services/jails/toggle': 'Toggle - Jails',
+		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
+		'/api/cluster/reset-node': 'Cluster - Reset Node',
+		'/api/cluster': 'Cluster'
 	});
 
 	let records = $derived.by(() => {

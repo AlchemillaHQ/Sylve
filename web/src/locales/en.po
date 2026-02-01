@@ -196,6 +196,7 @@ msgstr "Help"
 msgid "Difuse-sidebar"
 msgstr "Difuse-sidebar"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Cluster"
 msgstr "Cluster"
@@ -345,6 +346,7 @@ msgid "Object ({0} properties)"
 msgstr "Object ({0} properties)"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -7014,3 +7016,34 @@ msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" butt
 #: src/routes/[node]/+layout.svelte
 msgid "Sponsor"
 msgstr "Sponsor"
+
+#~ msgid "System - Toggle - DHCP Server"
+#~ msgstr "System - Toggle - DHCP Server"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - DHCP Server"
+msgstr "Toggle - DHCP Server"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - WoL Server"
+msgstr "Toggle - WoL Server"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Samba Server"
+msgstr "Toggle - Samba Server"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Jails"
+msgstr "Toggle - Jails"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Virtualization"
+msgstr "Toggle - Virtualization"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "No Node ID available"
+msgstr "No Node ID available"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Reset Node"
+msgstr "Cluster - Reset Node"

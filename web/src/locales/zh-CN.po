@@ -197,6 +197,7 @@ msgstr "帮助"
 msgid "Difuse-sidebar"
 msgstr "模糊侧边栏"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Cluster"
 msgstr "集群"
@@ -339,6 +340,7 @@ msgid "Object ({0} properties)"
 msgstr "对象（{0} 个属性）"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
@@ -6145,4 +6147,35 @@ msgstr ""
 
 #: src/routes/[node]/+layout.svelte
 msgid "Sponsor"
+msgstr ""
+
+#~ msgid "System - Toggle - DHCP Server"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - DHCP Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - WoL Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Samba Server"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Jails"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Virtualization"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "No Node ID available"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Reset Node"
 msgstr ""

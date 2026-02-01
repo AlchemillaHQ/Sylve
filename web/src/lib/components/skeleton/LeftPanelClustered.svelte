@@ -11,6 +11,7 @@
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 	import { DomainState } from '$lib/types/vm/vm';
+	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 
 	let openIds = $state(new Set<string>(['datacenter']));
@@ -24,7 +25,11 @@
 
 	const cluster = resource(
 		() => 'cluster-resources',
-		async () => {
+		async (_, __, { signal }) => {
+			const services = storage.enabledServices || [];
+			if (!services.includes('virtualization') && !services.includes('jails')) {
+				return [];
+			}
 			return await getClusterResources();
 		},
 		{
@@ -34,7 +39,7 @@
 
 	const nodes = resource(
 		() => 'cluster-nodes',
-		async () => {
+		async (_, __, { signal }) => {
 			return await getNodes();
 		},
 		{
@@ -85,18 +90,39 @@
 		}
 	]);
 
-	$effect(() => {
-		if (tree && tree.length > 0) {
-			const storedIds = loadClusterIds();
-			if (storedIds.size === 0) {
-				openIds = new Set(collectIds(tree));
-				saveOpenIds(openIds);
-			} else {
-				const allNodeIds = new Set(collectIds(tree));
-				openIds = new Set(Array.from(storedIds).filter((id) => allNodeIds.has(id)));
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				cluster.refetch();
+				nodes.refetch();
 			}
 		}
-	});
+	);
+
+	watch(
+		() => storage.enabledServices,
+		() => {
+			cluster.refetch();
+			nodes.refetch();
+		}
+	);
+
+	watch(
+		() => tree.length,
+		(length) => {
+			if (length > 0) {
+				const storedIds = loadClusterIds();
+				if (storedIds.size === 0) {
+					openIds = new Set(collectIds(tree));
+					saveOpenIds(openIds);
+				} else {
+					const allCurrentIds = new Set(collectIds(tree));
+					openIds = new Set(Array.from(storedIds).filter((id) => allCurrentIds.has(id)));
+				}
+			}
+		}
+	);
 
 	watch(
 		() => reload.leftPanel,
@@ -111,7 +137,9 @@
 
 	useInterval(30000, {
 		callback: () => {
-			reload.leftPanel = true;
+			if (!storage.idle) {
+				reload.leftPanel = true;
+			}
 		}
 	});
 </script>

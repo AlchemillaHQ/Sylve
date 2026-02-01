@@ -17,7 +17,7 @@
 	let { open = $bindable(), reload = $bindable() }: Props = $props();
 	let options = {
 		ip: '',
-		port: 8182
+		port: 8180
 	};
 
 	let properties = $state(options);
