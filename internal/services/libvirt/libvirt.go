@@ -10,9 +10,11 @@ package libvirt
 
 import (
 	"net/url"
+	"slices"
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -37,6 +39,29 @@ type Service struct {
 }
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
+	skeleton := &Service{
+		DB:     db,
+		System: system,
+		Conn:   nil,
+		GZFS:   gzfs,
+	}
+
+	var basicSettings models.BasicSettings
+
+	err := db.First(&basicSettings).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return skeleton
+		} else {
+			logger.L.Fatal().Err(err).Msg("failed to check basic settings")
+		}
+	} else {
+		if !slices.Contains(basicSettings.Services, models.Virtualization) {
+			logger.L.Debug().Msg("Virtualization not enabled, skipping libvirt initialization")
+			return skeleton
+		}
+	}
+
 	uri, _ := url.Parse("bhyve:///system")
 	l, err := libvirt.ConnectToURI(uri)
 	if err != nil {
@@ -51,12 +76,9 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 
 	logger.L.Info().Msgf("Libvirt version: %d", v)
 
-	return &Service{
-		DB:     db,
-		System: system,
-		Conn:   l,
-		GZFS:   gzfs,
-	}
+	skeleton.Conn = l
+
+	return skeleton
 }
 
 func (s *Service) CheckVersion() error {
@@ -66,4 +88,24 @@ func (s *Service) CheckVersion() error {
 	}
 
 	return nil
+}
+
+func (s *Service) IsVirtualizationEnabled() bool {
+	var basicSettings models.BasicSettings
+	err := s.DB.First(&basicSettings).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false
+		} else {
+			return false
+		}
+	} else {
+		if !slices.Contains(basicSettings.Services, models.Virtualization) {
+			logger.L.Debug().Msg("Virtualization not enabled, skipping libvirt initialization")
+			return false
+		}
+	}
+
+	return true
 }

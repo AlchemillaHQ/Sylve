@@ -82,6 +82,7 @@ type LibvirtServiceInterface interface {
 	GetDomainState(rid int) (libvirt.DomainState, error)
 
 	CheckVersion() error
+	IsVirtualizationEnabled() bool
 }
 
 type LvDomain struct {
