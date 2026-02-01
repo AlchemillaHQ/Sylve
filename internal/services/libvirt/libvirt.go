@@ -10,9 +10,11 @@ package libvirt
 
 import (
 	"net/url"
+	"slices"
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -37,6 +39,22 @@ type Service struct {
 }
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
+	var basicSettings models.BasicSettings
+
+	err := db.First(&basicSettings).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		} else {
+			logger.L.Fatal().Err(err).Msg("failed to check basic settings")
+		}
+	} else {
+		if !slices.Contains(basicSettings.Services, models.Virtualization) {
+			logger.L.Debug().Msg("Virtualization not enabled, skipping libvirt initialization")
+			return nil
+		}
+	}
+
 	uri, _ := url.Parse("bhyve:///system")
 	l, err := libvirt.ConnectToURI(uri)
 	if err != nil {
