@@ -88,7 +88,6 @@ func (s *Service) FreeBSDCheck() error {
 
 func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) error {
 	requiredPackages := []string{
-		"smartmontools",
 		"tmux",
 	}
 
