@@ -1,9 +1,9 @@
-# Starlight Starter Kit: Basics
+# Starlight Starter Kit: Tailwind
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
 ```
-npm create astro@latest -- --template starlight
+npm create astro@latest -- --template starlight/tailwind
 ```
 
 > 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
@@ -19,6 +19,8 @@ Inside of your Astro + Starlight project, you'll see the following folders and f
 │   ├── assets/
 │   ├── content/
 │   │   └── docs/
+│   ├── styles/
+│   │   └── global.css
 │   └── content.config.ts
 ├── astro.config.mjs
 ├── package.json
@@ -30,6 +32,8 @@ Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. 
 Images can be added to `src/assets/` and embedded in Markdown with a relative link.
 
 Static assets, like favicons, can be placed in the `public/` directory.
+
+The project includes [Tailwind CSS](https://starlight.astro.build/guides/css-and-tailwind/#tailwind-css) for styling. Customize your design by modifying `src/styles/global.css`.
 
 ## 🧞 Commands
 
