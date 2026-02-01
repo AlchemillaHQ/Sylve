@@ -509,7 +509,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				if s.LibVirt != nil {
+				if s.LibVirt.IsVirtualizationEnabled() {
 					active, err := s.LibVirt.IsDomainInactive(vm.RID)
 
 					if err != nil {
@@ -544,7 +544,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				if s.LibVirt != nil {
+				if s.LibVirt.IsVirtualizationEnabled() {
 					err = s.LibVirt.FindAndChangeMAC(vm.RID, object.Entries[0].Value, values[0])
 					if err != nil {
 						return fmt.Errorf("failed to change MAC address in VM %d: %w", vm.RID, err)
