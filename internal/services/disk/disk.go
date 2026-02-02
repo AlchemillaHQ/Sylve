@@ -178,11 +178,11 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
 			smartData, err := s.GetSmartData(d)
 			if err != nil {
-				return nil, err
-			}
-
-			if smartData != nil {
+				logger.L.Err(err).Msg("Failed to retrieve S.M.A.R.T data")
+				disk.SmartData = nil
+			} else if err == nil && smartData != nil {
 				disk.SmartData = smartData
+
 			}
 		} else {
 			disk.SmartData = nil
@@ -191,10 +191,10 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
 			wearOut, err := s.GetWearOut(disk.SmartData)
 			if err != nil {
-				return nil, err
+				disk.WearOut = "Unknown"
+			} else {
+				disk.WearOut = fmt.Sprintf("%.2f", wearOut)
 			}
-
-			disk.WearOut = fmt.Sprintf("%.2f", wearOut)
 		} else {
 			disk.WearOut = "Unknown"
 		}
