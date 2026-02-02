@@ -4,7 +4,12 @@ import HeroFrame from "./HeroFrame";
 
 export const Hero = () => {
   return (
-    <div className="hero-section text-center pt-10 bg-cover bg-center bg-background">
+    <div
+      className="hero-section text-center pt-10 bg-cover bg-center mt-0"
+      style={{
+        backgroundImage: "url(./src/assets/bg.webp)",
+      }}
+    >
       <div
         className="inline-flex items-center gap-2 bg-muted text-muted-foreground px-3 py-1 rounded-full text-sm font-medium mb-8 -translate-y-4 animate-fade-in opacity-0"
         style={{ "--animation-delay": "500ms" } as React.CSSProperties}

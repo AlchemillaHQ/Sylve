@@ -19,10 +19,13 @@ export default defineConfig({
             {
                 icon: 'github',
                 label: 'GitHub',
-                href: 'https://github.com/withastro/starlight',
+                href: 'https://github.com/AlchemillaHQ/Sylve',
+
             },
         ],
-
+        components: {
+            Header: './src/components/CustomHeader.astro',
+        },
         sidebar: [
             {
                 label: 'Guides',
@@ -37,7 +40,7 @@ export default defineConfig({
             },
         ],
         customCss: ['./src/styles/global.css', './src/fonts/font-face.css'],
-		}), react()],
+    }), react()],
     vite: {
         plugins: [tailwindcss(),],
     },
