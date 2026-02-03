@@ -75,18 +75,16 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 		}
 
 		provider := geom.Providers[0]
-		diskType := "Unknown"
+		diskType := "HDD"
 
 		if provider.Config.RotationRate == "0" {
-			if strings.HasPrefix(provider.Name, "nvme") || strings.HasPrefix(provider.Name, "nda") || strings.HasPrefix(provider.Alias, "nv") {
+			if strings.HasPrefix(provider.Name, "nvme") ||
+				strings.HasPrefix(provider.Name, "nda") ||
+				strings.HasPrefix(provider.Alias, "nv") {
 				diskType = "NVMe"
 			} else {
 				diskType = "SSD"
 			}
-		} else if provider.Config.RotationRate != "unknown" && provider.Config.RotationRate != "0" {
-			diskType = "HDD"
-		} else {
-			diskType = "Unknown"
 		}
 
 		disk := diskServiceInterfaces.DiskInfo{
@@ -178,7 +176,7 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
 			smartData, err := s.GetSmartData(d)
 			if err != nil {
-				logger.L.Err(err).Msg("Failed to retrieve S.M.A.R.T data")
+				logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to retrieve S.M.A.R.T data %v", err))
 				disk.SmartData = nil
 			} else if err == nil && smartData != nil {
 				disk.SmartData = smartData
