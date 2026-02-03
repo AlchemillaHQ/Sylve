@@ -1,0 +1,30 @@
+---
+import BaseHead from "@/components/BaseHead.astro";
+import Footer from "@/components/Footer.astro";
+import Header from "@/components/Header.astro";
+import "@/assets/landing.css";
+
+const SITE_TITLE = "Sylve";
+const SITE_DESCRIPTION = "lorem ipsum dolor sit amet";
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <BaseHead
+      title={title ?? SITE_TITLE}
+      description={description ?? SITE_DESCRIPTION}
+    />
+  </head>
+  <body class="dark">
+    <div class="min-h-screen bg-background text-foreground">
+      <Header title={title ?? SITE_TITLE} />
+      <div>
+        <slot />
+      </div>
+      <Footer />
+    </div>
+  </body>
+</html>

@@ -24,7 +24,7 @@ export default function HeroFrame() {
         )}
       >
         <iframe
-          src="https://hayzam.com"
+          src="https://sylve-demo.freebsdfoundation.org/"
           className="relative z-10 w-full h-[600px] rounded-lg border bg-background"
           loading="lazy"
           referrerPolicy="no-referrer"

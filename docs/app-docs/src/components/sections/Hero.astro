@@ -1,0 +1,63 @@
+---
+// src/components/Hero.astro
+import { CopyButton } from "@/components/CopyButton.tsx";
+import HeroFrame from "@/components/HeroFrame.tsx";
+import Particles from "../magicui/particles";
+---
+
+<div class="hero-section text-center pt-10 mt-0">
+  <div
+    class="inline-flex items-center gap-2 bg-muted text-muted-foreground px-3 py-1 rounded-full text-sm font-medium mb-8 -translate-y-4 animate-fade-in opacity-0"
+    style={{ "--animation-delay": "500ms" }}
+  >
+    <div class="w-2 h-2 rounded-full shrink-0 bg-foreground"></div>
+    Free & Open Source
+  </div>
+
+  <h1
+    class="text-white my-6 text-6xl md:text-8xl -translate-y-4 animate-fade-in opacity-0 font-normal"
+    style={{ "--animation-delay": "500ms" }}
+  >
+    FreeBSD Management
+    <span class="block mt-2.5">Made Simple</span>
+  </h1>
+
+  <p
+    class="mb-12 text-lg text-muted-foreground md:text-xl -translate-y-4 animate-fade-in opacity-0"
+    style={{ "--animation-delay": "500ms" }}
+  >
+    Manage FreeBSD like never before
+    <br class="hidden md:block" />
+    fast, intuitive, and reliable.
+  </p>
+
+  <div
+    class="flex justify-center items-center mt-10 -translate-y-4 animate-fade-in opacity-0 gap-4"
+    style={{ "--animation-delay": "500ms" }}
+  >
+    <a
+      href="/guides/example/"
+      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background"
+    >
+      Read Docs
+    </a>
+    <div class="card-wrapper h-11 border">
+      <div
+        class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
+      >
+        <span class="text-foreground">$</span>
+        <span>pkg install sylve</span>
+        <CopyButton client:load text="pkg install sylve" />
+      </div>
+    </div>
+  </div>
+  <Particles
+    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen"
+    quantity={80}
+    ease={70}
+    color="#ffffff"
+    refresh
+    client:load
+  />
+  <HeroFrame client:load />
+</div>

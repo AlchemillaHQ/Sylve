@@ -5,8 +5,11 @@ import tailwindcss from '@tailwindcss/vite';
 
 import react from '@astrojs/react';
 
+const site = "http://localhost:4322/";
+
 // https://astro.build/config
 export default defineConfig({
+    site,
     integrations: [starlight({
         title: 'Sylve',
         logo: {
@@ -24,7 +27,6 @@ export default defineConfig({
             },
         ],
         components: {
-            Header: './src/components/CustomHeader.astro',
         },
         sidebar: [
             {
@@ -39,7 +41,7 @@ export default defineConfig({
                 autogenerate: { directory: 'reference' },
             },
         ],
-        customCss: ['./src/styles/global.css', './src/fonts/font-face.css'],
+        customCss: ['./src/styles/global.css', './src/assets/landing.css'],
     }), react()],
     vite: {
         plugins: [tailwindcss(),],
