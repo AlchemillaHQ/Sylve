@@ -4,14 +4,14 @@ import { cn } from "../lib/utils";
 
 export default function HeroFrame() {
   const { ref, inView } = useInView({
-    threshold: 0.6,
+    threshold: 0.7,
     triggerOnce: true,
   });
 
   return (
     <div
       ref={ref}
-      className="mt-16 perspective-[2000px] opacity-0 animate-fade-in lg:w-[65%] mx-auto"
+      className="mt-16 perspective-[2000px] opacity-0 animate-fade-in lg:w-6xl mx-auto"
       style={{ "--animation-delay": "600ms" } as React.CSSProperties}
     >
       <div

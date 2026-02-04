@@ -1,0 +1,136 @@
+---
+import { motion } from "framer-motion";
+---
+
+<section class="pb-24 relative overflow-hidden">
+  <div class="container mx-auto px-4 relative z-10">
+    <div class="text-center mb-16">
+      <motion.h2
+        initial={{ y: 40, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.7, ease: "easeOut" }}
+        viewport={{ once: true }}
+        className="text-3xl md:text-5xl font-bold mb-4 text-gradient"
+        client:load
+      >
+        Built for Performance & Security
+      </motion.h2>
+      <motion.p
+        initial={{ y: 30, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.7, ease: "easeOut", delay: 0.1 }}
+        viewport={{ once: true }}
+        className="text-muted-foreground text-lg max-w-2xl mx-auto"
+        client:load
+      >
+        Sylve is engineered from the ground up to leverage the unique power of
+        FreeBSD, providing a modern interface for professional server
+        management.
+      </motion.p>
+    </div>
+
+    <motion.div
+      initial={{ y: 40, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.7, ease: "easeOut" }}
+      viewport={{ once: true }}
+      className="grid md:grid-cols-3 gap-8"
+      client:load
+    >
+      <div
+        class="p-8 rounded-2xl border border-muted/20 bg-muted/5 backdrop-blur-sm transition-all hover:border-primary/30"
+      >
+        <div
+          class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-6"
+        >
+          <span class="icon-[mdi--server-network] text-primary text-2xl"></span>
+        </div>
+        <h3 class="text-xl font-bold mb-3 text-foreground">FreeBSD Native</h3>
+        <p class="text-muted-foreground">
+          Deep integration with FreeBSD's core systems. Optimized for Bhyve
+          virtualization, Jails, and ZFS file systems.
+        </p>
+      </div>
+      <div
+        class="p-8 rounded-2xl border border-muted/20 bg-muted/5 backdrop-blur-sm transition-all hover:border-primary/30"
+      >
+        <div
+          class="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-6"
+        >
+          <span class="icon-[mdi--react] text-emerald-500 text-2xl"></span>
+        </div>
+        <h3 class="text-xl font-bold mb-3 text-foreground">Modern Stack</h3>
+        <p class="text-muted-foreground">
+          Built with React and Next.js for a lightning-fast, reactive user
+          experience. Real-time updates via secure APIs.
+        </p>
+      </div>
+      <div
+        class="p-8 rounded-2xl border border-muted/20 bg-muted/5 backdrop-blur-sm transition-all hover:border-primary/30"
+      >
+        <div
+          class="w-12 h-12 rounded-lg bg-amber-500/10 flex items-center justify-center mb-6"
+        >
+          <span class="icon-[mdi--shield-check] text-amber-500 text-2xl"></span>
+        </div>
+        <h3 class="text-xl font-bold mb-3 text-foreground">Secure by Design</h3>
+        <p class="text-muted-foreground">
+          Hardened communication protocols. Role-based access control and
+          system-level security auditing built-in.
+        </p>
+      </div>
+    </motion.div>
+
+    <motion.div
+      initial={{ y: 40, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.7, ease: "easeOut" }}
+      viewport={{ once: true }}
+      className="mt-24 p-1 rounded-3xl bg-linear-to-r from-primary/20 via-muted/20 to-primary/10"
+      client:load
+    >
+      <div
+        class="bg-background rounded-[22px] p-8 md:p-12 flex flex-col md:flex-row items-center justify-between gap-8"
+      >
+        <div class="md:w-1/2">
+          <h3 class="text-2xl md:text-3xl font-bold mb-4">
+            API-First Architecture
+          </h3>
+          <p class="text-muted-foreground text-lg">
+            Every action performed in the Sylve dashboard is available via our
+            RESTful API, allowing for easy automation and integration into your
+            existing workflows.
+          </p>
+        </div>
+        <div class="md:w-1/2 flex justify-center">
+          <div class="grid grid-cols-2 gap-4 w-full max-w-md">
+            <div
+              class="flex items-center gap-3 p-4 rounded-xl border border-muted/20 bg-muted/5"
+            >
+              <span class="icon-[mdi--code-json] text-primary text-xl"></span>
+              <span class="font-mono text-sm">RESTful API</span>
+            </div>
+            <div
+              class="flex items-center gap-3 p-4 rounded-xl border border-muted/20 bg-muted/5"
+            >
+              <span class="icon-[mdi--webhook] text-primary text-xl"></span>
+              <span class="font-mono text-sm">Webhooks</span>
+            </div>
+            <div
+              class="flex items-center gap-3 p-4 rounded-xl border border-muted/20 bg-muted/5"
+            >
+              <span class="icon-[mdi--bash] text-primary text-xl"></span>
+              <span class="font-mono text-sm">CLI Tools</span>
+            </div>
+            <div
+              class="flex items-center gap-3 p-4 rounded-xl border border-muted/20 bg-muted/5"
+            >
+              <span class="icon-[mdi--docker] text-primary text-xl"></span>
+              <span class="font-mono text-sm">OCI-Ready</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  </div>
+</section>

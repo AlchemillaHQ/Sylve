@@ -1,17 +1,18 @@
 ---
 import BaseHead from "@/components/BaseHead.astro";
 import Footer from "@/components/Footer.astro";
-import Header from "@/components/Header.astro";
+import Header from "@/components/sections/Header.astro";
 import "@/assets/landing.css";
 
-const SITE_TITLE = "Sylve";
-const SITE_DESCRIPTION = "lorem ipsum dolor sit amet";
+const SITE_TITLE = "Sylve - FreeBSD Control Panel | Manage VMs, Jails & ZFS";
+const SITE_DESCRIPTION =
+  "Modern web interface for FreeBSD. Unified management of Bhyve VMs, Jails, ZFS storage, networking, and system monitoring. Proxmox-inspired design.";
 
 const { title, description } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={Astro.currentLocale ?? "en"}>
   <head>
     <BaseHead
       title={title ?? SITE_TITLE}
@@ -20,7 +21,7 @@ const { title, description } = Astro.props;
   </head>
   <body class="dark">
     <div class="min-h-screen bg-background text-foreground">
-      <Header title={title ?? SITE_TITLE} />
+      <Header title="Sylve" />
       <div>
         <slot />
       </div>

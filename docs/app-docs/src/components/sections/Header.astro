@@ -1,0 +1,55 @@
+---
+import { buttonVariants } from "@/components/ui/button";
+import MobileSheet from "@/components/MobileSheet";
+import LanguageSelect from "@/components/LanguageSelect.astro";
+import logoWhite from "@/assets/logo-white.svg";
+
+const { title } = Astro.props;
+const currentLocale = Astro.currentLocale ?? "en";
+const localePrefix = currentLocale === "en" ? "" : `/${currentLocale}`;
+---
+
+<header
+  class="fixed top-0 left-0 bg-background/60 backdrop-blur-lg w-full py-4 px-8 z-50 border border-b"
+>
+  <nav class="max-w-screen-2xl mx-auto flex items-center justify-between">
+    <a
+      href={localePrefix || "/"}
+      class="flex flex-row items-center gap-3 hover:text-primary transition-colors duration-300"
+    >
+      <img src={logoWhite.src} alt="Sylve Logo" class="size-6" />
+      <span class="font-bold text-xl">{title}</span>
+    </a>
+    <div class="hidden md:flex flex-row items-center gap-6">
+      <div class="flex flex-row items-center gap-6 text-card-foreground">
+        <a
+          href={`${localePrefix}/guides/example`}
+          class="hover:text-primary transition-colors duration-300"
+          title="Documentation"
+        >
+          Docs
+        </a>
+        <a
+          href={`${localePrefix}/blog`}
+          class="hover:text-primary transition-colors duration-300"
+          title="Blog"
+        >
+          Blog
+        </a>
+      </div>
+
+      <a
+        href="https://github.com/AlchemillaHQ/Sylve"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Star on Github"
+        class={buttonVariants({ variant: "outline" })}
+      >
+        <span class="icon-[mdi--github] size-5"></span> Star on Github
+      </a>
+
+      <LanguageSelect />
+    </div>
+    <MobileSheet client:load localePrefix={localePrefix} />
+  </nav>
+</header>

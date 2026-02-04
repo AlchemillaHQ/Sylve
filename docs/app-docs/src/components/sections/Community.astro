@@ -1,0 +1,70 @@
+---
+import { motion } from "framer-motion";
+---
+
+<motion.section
+  initial={{ y: 40, opacity: 0 }}
+  whileInView={{ y: 0, opacity: 1 }}
+  transition={{ duration: 0.7, ease: "easeOut" }}
+  viewport={{ once: true }}
+  className="pt-10 pb-16"
+  client:load
+>
+  <div class="container mx-auto px-4 text-center">
+    <h2 class="text-3xl md:text-5xl font-bold mb-6 text-gradient">
+      Join the Community
+    </h2>
+    <p class="text-muted-foreground text-lg max-w-2xl mx-auto mb-12">
+      Sylve is a community-driven project. Whether you're a developer, a
+      sysadmin, or just a FreeBSD enthusiast, we'd love to have you on board.
+    </p>
+
+    <div class="flex flex-col sm:flex-row justify-center items-center gap-6">
+      <a
+        href="https://github.com/AlchemillaHQ/Sylve"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center gap-3 px-8 py-4 rounded-full bg-foreground text-background font-bold transition-transform hover:scale-105"
+      >
+        <span class="icon-[mdi--github] text-2xl"></span>
+        Star on GitHub
+      </a>
+      <a
+        href="https://astro.build/chat"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center gap-3 px-8 py-4 rounded-full border border-muted hover:bg-muted/20 font-bold transition-transform hover:scale-105"
+      >
+        <span class="icon-[mdi--discord] text-2xl text-[#5865F2]"></span>
+        Join Discord
+      </a>
+    </div>
+
+    <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 opacity-50">
+      <div class="flex flex-col items-center">
+        <span class="text-2xl font-bold">100%</span>
+        <span class="text-sm text-muted-foreground uppercase tracking-wider"
+          >Open Source</span
+        >
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-2xl font-bold">FreeBSD</span>
+        <span class="text-sm text-muted-foreground uppercase tracking-wider"
+          >First</span
+        >
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-2xl font-bold">MIT</span>
+        <span class="text-sm text-muted-foreground uppercase tracking-wider"
+          >Licensed</span
+        >
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="text-2xl font-bold">Ready</span>
+        <span class="text-sm text-muted-foreground uppercase tracking-wider"
+          >to Scale</span
+        >
+      </div>
+    </div>
+  </div>
+</motion.section>

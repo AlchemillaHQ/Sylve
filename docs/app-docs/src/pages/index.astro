@@ -1,18 +1,23 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Hero from "@/components/sections/Hero.astro";
-// import Hero from "@/components/sections/Hero.astro"
-// import Features from "@/components/sections/Features.astro"
-// import Kanban from "@/components/sections/Kanban.astro"
-// import Download from "@/components/sections/Download.astro"
+import SylveExplainer from "@/components/sections/SylveExplainer.tsx";
+import Architecture from "@/components/sections/Architecture.astro";
+import Community from "@/components/sections/Community.astro";
+import FAQ from "@/components/sections/FAQ";
 ---
 
 <BaseLayout>
   <div class="relative pt-24">
     <Hero />
-    <!-- <Features />
-    <Kanban />
-    <Download /> -->
-    <!-- Sections to add: FAQs, Testimonials -->
+    <div class="relative py-12 px-4 sm:px-6 lg:px-8">
+      <SylveExplainer client:load />
+
+      <Architecture />
+
+      <FAQ client:load />
+
+      <Community />
+    </div>
   </div>
 </BaseLayout>

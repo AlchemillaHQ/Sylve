@@ -1,0 +1,28 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Hero from "@/components/sections/Hero.astro";
+import SylveExplainer from "@/components/sections/SylveExplainer.tsx";
+---
+
+<BaseLayout>
+  <div class="relative pt-24">
+    <Hero />
+    <div class="relative py-12 px-4 sm:px-6 lg:px-8">
+      <section
+        class="max-w-6xl mx-auto flex flex-col items-start mt-12 lg:mt-24"
+      >
+        <h2 class="text-3xl md:text-5xl font-bold mb-2">
+          സമ്പൂർണ്ണ ഫ്രീബിഎസ്ഡി (FreeBSD) കൺട്രോൾ സെന്റർ
+        </h2>
+        <p class="text-muted-foreground block max-w-3xl">
+          ഫ്രീബിഎസ്ഡിയിലെ Bhyve VMs, Jails, ZFS സ്റ്റോറേജ്, നെറ്റ്‌വർക്കിംഗ്,
+          സിസ്റ്റം റിസോഴ്‌സ് എന്നിവ കൈകാര്യം ചെയ്യുന്നതിനുള്ള നിങ്ങളുടെ ഏകീകൃത
+          വെബ് ഇന്റർഫേസാണ് Sylve. ലാളിത്യത്തിനും പവറിനും വേണ്ടി പ്രോക്സ്മോക്സ്
+          (Proxmox) പോലെ രൂപകൽപ്പന ചെയ്തിരിക്കുന്നു.
+          <br />മൂന്ന് പ്രധാന തൂണുകൾ:
+        </p>
+        <SylveExplainer client:load />
+      </section>
+    </div>
+  </div>
+</BaseLayout>

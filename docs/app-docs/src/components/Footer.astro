@@ -1,54 +1,52 @@
 ---
-// import KanriIcon from "@/components/icons/KanriIcon.astro";
-// import { Icon } from "astro-icon/components";
+
 ---
 
-<footer class="p-6 md:pt-12 pb-8 w-full bg-background/60 backdrop-blur-lg z-50">
+<footer
+  class="p-6 md:pt-12 pb-8 w-full bg-background/60 backdrop-blur-lg z-50 border-t border-border"
+>
   <div
-    class="container max-w-7xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-sm"
+    class="container max-w-7xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-sm mx-auto"
   >
     <div class="col-span-1 sm:col-span-2 md:col-span-2 flex flex-col gap-2">
       <a href="#" class="flex items-start gap-2">
-        <!-- <KanriIcon classes="h-6 w-6" /> -->
-        <span class="font-bold text-xl">Kanri</span>
+        <span class="font-bold text-xl">Sylve</span>
       </a>
       <p class="text-muted-foreground max-w-lg">
-        Kanri is a simple and modern offline Kanban board app for Windows, Mac
-        and Linux. It is an offline alternative to Trello® and aims to provide a
-        simple Kanban board offline experience.
+        Sylve is a modern, lightweight web control panel for FreeBSD. Manage
+        Bhyve VMs, Jails, and ZFS storage with ease through an intuitive
+        interface.
       </p>
     </div>
     <div class="grid gap-1">
       <h3 class="font-bold">Pages</h3>
       <a href="/" class="text-muted-foreground">Home</a>
-      <a href="/about" class="text-muted-foreground">About</a>
+      <a href="/blog" class="text-muted-foreground">Blog</a>
+      <!-- <a href="/about" class="text-muted-foreground">About</a>
       <a href="mailto:support@kanriapp.com" class="text-muted-foreground"
         >Contact</a
-      >
+      > -->
     </div>
     <div class="grid gap-1">
       <h3 class="font-bold">Resources</h3>
-      <a href="/blog" class="text-muted-foreground">Kanri Blog</a>
-      <a href="/getting-started/what-is-kanri" class="text-muted-foreground"
-        >Documentation</a
+
+      <a href="/guides/example/" class="text-muted-foreground">Documentation</a>
+      <a
+        href="https://github.com/AlchemillaHQ/Sylve"
+        class="text-muted-foreground">Support</a
       >
-      <a href="/support" class="text-muted-foreground">Support</a>
     </div>
   </div>
   <div
-    class="container max-w-7xl mt-10 text-sm text-gray-500 dark:text-gray-400 flex flex-col sm:flex-row justify-between items-center gap-4"
+    class="container max-w-7xl mx-auto mt-10 text-sm text-gray-500 dark:text-gray-400 flex flex-col sm:flex-row justify-center items-center gap-4"
   >
-    <div class="text-center sm:text-left">
-      © 2022-2026 Kanri Team. All rights reserved.
-    </div>
+    <div class="text-center">© 2026 Sylve. All rights reserved.</div>
     <div class="flex items-center gap-4">
-      <a href="https://github.com/trobonox/kanri" aria-label="GitHub">
-        <!-- <Icon name="bi:github" class="w-5 h-5" /> -->
-        <span class="hidden">Kanri Github Repo</span>
+      <a href="https://github.com/AlchemillaHQ/Sylve" aria-label="GitHub">
+        <span class="hidden">Sylve Github Repo</span>
       </a>
-      <a href="https://discord.gg/AVqHrvxB9C" aria-label="Discord">
-        <!-- <Icon name="bi:discord" class="w-5 h-5" /> -->
-        <span class="hidden">Kanri Discord community</span>
+      <a href="https://astro.build/chat" aria-label="Discord">
+        <span class="hidden">Sylve Discord community</span>
       </a>
       <div class="flex items-center bg-gray-200 dark:bg-gray-700 rounded-full">
       </div>

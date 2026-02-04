@@ -12,13 +12,24 @@ export default defineConfig({
     site,
     integrations: [starlight({
         title: 'Sylve',
+        defaultLocale: 'root',
+        locales: {
+            root: {
+                label: 'English',
+                lang: 'en',
+            },
+            ml: {
+                label: 'മലയാളം',
+                lang: 'ml',
+            },
+        },
         logo: {
             light: './src/assets/logo-black.svg',
             dark: './src/assets/logo-white.svg',
         },
         favicon: './src/assets/logo-white.svg',
+
         social: [
-            { icon: 'discord', label: 'Discord', href: 'https://astro.build/chat' },
             {
                 icon: 'github',
                 label: 'GitHub',
@@ -40,7 +51,9 @@ export default defineConfig({
                 label: 'Reference',
                 autogenerate: { directory: 'reference' },
             },
+
         ],
+
         customCss: ['./src/styles/global.css', './src/assets/landing.css'],
     }), react()],
     vite: {
