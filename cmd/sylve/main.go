@@ -26,6 +26,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/handlers"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/repl"
 	"github.com/alchemillahq/sylve/internal/services"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -52,7 +53,9 @@ func main() {
 		logger.BootstrapFatal("Root privileges required!")
 	}
 
-	cfg := config.ParseConfig(cmd.ParseFlags())
+	cfgPath, enableRepl := cmd.ParseFlags()
+
+	cfg := config.ParseConfig(cfgPath)
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 
 	d := db.SetupDatabase(cfg, false)
@@ -146,6 +149,21 @@ func main() {
 		d,
 	)
 
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	if enableRepl {
+		replCtx := &repl.Context{
+			Auth:           aS.(*auth.Service),
+			Jail:           jS.(*jail.Service),
+			VirtualMachine: lvS.(*libvirt.Service),
+			Network:        nS.(*network.Service),
+			QuitChan:       sigChan,
+		}
+
+		go repl.Start(replCtx)
+	}
+
 	tlsConfig, err := aS.GetSylveCertificate()
 
 	if err != nil {
@@ -182,8 +200,6 @@ func main() {
 		}
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 
 	logger.L.Info().Msg("Shutting down servers gracefully...")

@@ -26,10 +26,11 @@ func AsciiArt() {
 	fmt.Printf("\t              v%s\n", Version)
 }
 
-func ParseFlags() string {
+func ParseFlags() (string, bool) {
 	configPath := flag.String("config", "./config.json", "path to config file")
 	help := flag.Bool("help", false, "print help and exit")
 	version := flag.Bool("version", false, "print version and exit")
+	repl := flag.Bool("repl", false, "enable interactive command prompt")
 
 	flag.Parse()
 
@@ -43,5 +44,5 @@ func ParseFlags() string {
 		os.Exit(0)
 	}
 
-	return *configPath
+	return *configPath, *repl
 }

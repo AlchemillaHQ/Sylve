@@ -71,6 +71,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cenkalti/log v1.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
