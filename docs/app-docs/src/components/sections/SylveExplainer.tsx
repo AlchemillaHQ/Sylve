@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
+import bgImage from "../../assets/bg.webp";
 
 export default function Component() {
   const [selectedFeature, setSelectedFeature] = useState(0);
@@ -9,25 +10,25 @@ export default function Component() {
       title: "Virtualization Hub",
       description:
         "Full control over Bhyve virtual machines and Jails. Create, monitor, start/stop, and manage containers from a single dashboard.",
-      image: "./src/assets/bg.webp",
+      image: bgImage.src,
     },
     {
       title: "ZFS Storage Manager",
       description:
         "Complete ZFS integration for creating pools, datasets, snapshots, and disk monitoring with SMART health checks.",
-      image: "./src/assets/bg.webp",
+      image: bgImage.src,
     },
     {
       title: "Network & Security",
       description:
         "Configure networking, NAT, port forwarding, firewall rules, and system access through an intuitive web interface.",
-      image: "./src/assets/bg.webp",
+      image: bgImage.src,
     },
     {
       title: "Disk Health Monitoring",
       description:
         "Real-time SMART monitoring for all physical disks and partitions. Catch hardware issues before they cause downtime.",
-      image: "./src/assets/bg.webp",
+      image: bgImage.src,
     },
   ];
   return (

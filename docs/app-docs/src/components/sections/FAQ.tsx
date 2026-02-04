@@ -24,7 +24,7 @@ export default function FAQ() {
       question: "How do I install it?",
       answer:
         "Installation is simple. On a fresh FreeBSD system, you can just run `pkg install sylve` and follow the post-install instructions to enable the service and access the web interface.",
-      valye: "installation",
+      value: "installation",
     },
     {
       question: "Does it support ZFS encryption?",

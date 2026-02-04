@@ -1,13 +1,14 @@
 import React from "react";
 import { CopyButton } from "./CopyButton";
 import HeroFrame from "./HeroFrame";
+import bgImage from "../assets/bg.webp";
 
 export const Hero = () => {
   return (
     <div
       className="hero-section text-center pt-10 bg-cover bg-center mt-0"
       style={{
-        backgroundImage: "url(./src/assets/bg.webp)",
+        backgroundImage: `url(${bgImage.src})`,
       }}
     >
       <div
