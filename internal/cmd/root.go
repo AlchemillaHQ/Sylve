@@ -30,7 +30,7 @@ func ParseFlags() (string, bool) {
 	configPath := flag.String("config", "./config.json", "path to config file")
 	help := flag.Bool("help", false, "print help and exit")
 	version := flag.Bool("version", false, "print version and exit")
-	repl := flag.Bool("repl", false, "enable interactive command prompt")
+	repl := flag.Bool("console", false, "enable interactive command prompt")
 
 	flag.Parse()
 
