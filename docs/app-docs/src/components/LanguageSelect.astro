@@ -1,0 +1,73 @@
+---
+import { ChevronDown, Languages } from "lucide-react";
+import { Button } from "./ui/button";
+
+const currentLocale = Astro.currentLocale ?? "en";
+
+const availableLocales = [
+  { code: "en", label: "English", active: currentLocale === "en" },
+  { code: "ml", label: "മലയാളം", active: currentLocale === "ml" },
+];
+
+const currentLocaleData =
+  availableLocales.find((l) => l.code === currentLocale) || availableLocales[0];
+---
+
+<div class="relative inline-block text-left group">
+  <Button
+    type="button"
+    id="language-menu-button"
+    aria-expanded="true"
+    aria-haspopup="true"
+    variant="outline"
+  >
+    <Languages className="size-4" />
+    <span>{currentLocaleData.label}</span>
+    <ChevronDown className="size-4" />
+  </Button>
+
+  <div
+    class="absolute right-0 z-10 mt-2 w-32 origin-top-right rounded-md bg-background border border-muted shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform scale-95 group-hover:scale-100"
+    role="menu"
+    aria-orientation="vertical"
+    aria-labelledby="language-menu-button"
+    tabindex="-1"
+  >
+    <div class="py-1" role="none">
+      {
+        availableLocales.map((locale) => {
+          const pathname = Astro.url.pathname;
+          let newHref = "/";
+
+          if (locale.code === "en") {
+            newHref = pathname.replace(/^\/(ml)\//, "/") || "/";
+          } else {
+            if (pathname.startsWith("/ml/")) {
+              newHref = pathname;
+            } else {
+              newHref = `/ml${pathname === "/" ? "/" : pathname}`;
+              if (!newHref.endsWith("/") && pathname.endsWith("/")) {
+                newHref += "/";
+              }
+            }
+          }
+
+          return (
+            <a
+              href={newHref}
+              class={`block px-4 py-2 text-sm transition-colors duration-200 ${
+                locale.active
+                  ? "text-primary font-bold bg-muted/20"
+                  : "text-muted-foreground hover:bg-muted/10 hover:text-primary"
+              }`}
+              role="menuitem"
+              tabindex="-1"
+            >
+              {locale.label}
+            </a>
+          );
+        })
+      }
+    </div>
+  </div>
+</div>

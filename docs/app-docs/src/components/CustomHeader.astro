@@ -1,0 +1,37 @@
+---
+import SiteTitle from "@astrojs/starlight/components/SiteTitle.astro";
+import Search from "@astrojs/starlight/components/Search.astro";
+import SocialIcons from "@astrojs/starlight/components/SocialIcons.astro";
+import ThemeSelect from "@astrojs/starlight/components/ThemeSelect.astro";
+import LanguageSelect from "@astrojs/starlight/components/LanguageSelect.astro";
+import { buttonVariants } from "./ui/button";
+---
+
+<div class="custom-header flex items-center justify-between">
+  <div class="sl-flex">
+    <div class="sl-flex w-40">
+      <SiteTitle />
+    </div>
+
+    <div class="sl-flex spacer w-96">
+      <Search />
+    </div>
+  </div>
+  <div class="sl-flex right-group flex items-center gap-4">
+    <a href="/guides/example/">Docs</a>
+    <a href="/blog/">Blog</a>
+    <a
+      href="https://github.com/AlchemillaHQ/Sylve"
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Star on Github"
+      class={buttonVariants({ variant: "outline" })}
+    >
+      <span class="icon-[mdi--github] size-5"></span> Star on Github
+    </a>
+    <SocialIcons />
+    <ThemeSelect />
+    <LanguageSelect />
+  </div>
+</div>
+<style></style>

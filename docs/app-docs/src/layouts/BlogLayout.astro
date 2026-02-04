@@ -1,0 +1,128 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import "@/assets/landing.css";
+const { frontmatter } = Astro.props;
+---
+
+<BaseLayout
+  title={`${frontmatter.title} - Sylve Blog`}
+  description={frontmatter.description}
+>
+  <div class="pt-32 px-8 max-w-3xl mx-auto mb-24">
+    <a href="/blog" class="text-primary hover:underline mb-8 inline-block"
+      >← Back to Blog</a
+    >
+    <article class="prose prose-invert prose-lg max-w-none">
+      <header class="mb-8">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">{frontmatter.title}</h1>
+        <div class="flex items-center text-muted-foreground gap-4">
+          <time datetime={new Date(frontmatter.pubDate).toISOString()}>
+            {
+              new Date(frontmatter.pubDate).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            }
+          </time>
+          <span>•</span>
+          <span>{frontmatter.author}</span>
+        </div>
+      </header>
+      <div class="blog-content">
+        <slot />
+      </div>
+    </article>
+  </div>
+</BaseLayout>
+
+<style is:global>
+  .blog-content h1 {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+    font-weight: 700;
+    margin-top: 3rem;
+    margin-bottom: 1.5rem;
+  }
+  .blog-content h2 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 700;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+  }
+  .blog-content h3 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 700;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+  .blog-content p {
+    margin-bottom: 1.5rem;
+    line-height: 1.625;
+    color: #a1a1aa;
+  } /* text-muted-foreground replacement */
+  .blog-content ul {
+    list-style-type: disc;
+    list-style-position: inside;
+    margin-bottom: 1.5rem;
+    color: #a1a1aa;
+  }
+  .blog-content ol {
+    list-style-type: decimal;
+    list-style-position: inside;
+    margin-bottom: 1.5rem;
+    color: #a1a1aa;
+  }
+  .blog-content li {
+    margin-bottom: 0.5rem;
+  }
+  .blog-content img {
+    border-radius: 0.75rem;
+    border: 1px solid #27272a;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    width: 100%;
+  } /* border-border replacement */
+  .blog-content blockquote {
+    border-left-width: 4px;
+    border-color: #3b82f6;
+    padding-left: 1.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    font-style: italic;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    background-color: #18181b;
+    border-top-right-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+  } /* border-primary and bg-background-lighter replacement */
+  .blog-content pre {
+    background-color: #18181b;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid #27272a;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    overflow-x: auto;
+  }
+  .blog-content code {
+    background-color: #18181b;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+    border-radius: 0.25rem;
+    color: #3b82f6;
+    font-size: 0.875rem;
+  }
+  .blog-content a {
+    color: #3b82f6;
+    text-decoration: underline;
+  }
+  .blog-content strong {
+    color: #ffffff;
+    font-weight: 600;
+  }
+</style>

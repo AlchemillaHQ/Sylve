@@ -1,0 +1,77 @@
+---
+import { CopyButton } from "@/components/CopyButton.tsx";
+import HeroFrame from "@/components/HeroFrame.tsx";
+import Particles from "../magicui/particles";
+import { motion } from "framer-motion";
+import { Button } from "../ui/button";
+---
+
+<div class="hero-section text-center pt-10 mt-0">
+  <motion.div
+    initial={{ y: -25, opacity: 0.03 }}
+    whileInView={{ y: 0, opacity: 1 }}
+    transition={{ duration: 0.8, ease: "easeOut" }}
+    client:load
+  >
+    <Button variant="outline" className="rounded-full">
+      <div class="size-2 animate-pulse bg-emerald-500 rounded-full"></div>
+      Free & Open Source</Button
+    >
+  </motion.div>
+
+  <motion.h1
+    initial={{ y: -25, opacity: 0.03 }}
+    whileInView={{ y: 0, opacity: 1 }}
+    transition={{ duration: 0.8, ease: "easeOut" }}
+    client:load
+    className="dark-text-gradient text-gradient my-6 text-6xl md:text-8xl opacity-0 font-normal"
+  >
+    FreeBSD Management
+    <span class="block mt-2.5">Made Simple</span>
+  </motion.h1>
+
+  <motion.p
+    initial={{ y: -20, opacity: 0.03 }}
+    whileInView={{ y: 0, opacity: 1 }}
+    transition={{ duration: 0.8, ease: "easeOut", delay: 0.15 }}
+    client:load
+    className="mb-12 text-lg text-muted-foreground md:text-xl "
+  >
+    Manage FreeBSD like never before
+    <br class="hidden md:block" />
+    fast, intuitive, and reliable.
+  </motion.p>
+
+  <motion.div
+    initial={{ y: -40, opacity: 0.03 }}
+    whileInView={{ y: 0, opacity: 1 }}
+    transition={{ duration: 0.9, ease: "easeOut", delay: 0.2 }}
+    client:load
+    className="flex justify-center items-center mt-10 gap-4"
+  >
+    <a
+      href="/guides/example/"
+      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background"
+    >
+      Read Docs
+    </a>
+    <div class="card-wrapper h-11 border">
+      <div
+        class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
+      >
+        <span class="text-foreground">$</span>
+        <span>pkg install sylve</span>
+        <CopyButton client:load text="pkg install sylve" />
+      </div>
+    </div>
+  </motion.div>
+  <Particles
+    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen"
+    quantity={80}
+    ease={70}
+    color="#ffffff"
+    refresh
+    client:load
+  />
+  <HeroFrame client:load />
+</div>

@@ -1,0 +1,84 @@
+---
+layout: "../../layouts/BlogLayout.astro"
+title: How using Neovim helped me fix my app's architecture
+description: A story of enlightenment and the power of Vim
+pubDate: 2024-08-28
+author: "Trobo"
+---
+
+When you try getting work done in Neovim for the first time, it can be incredibly frustrating. It feels like you're typing with two fingers, much like your Aunt Katie on her laptop, and it can take you 30 minutes just to write two lines of code.
+
+> "But I need to be a 10x dev and ship a gazillion projects by the end of the week!!!!"
+
+The reality is, like many others, I was far from being a 10x developer. I didn’t know much and was more focused on churning out features for my app than on its overall architecture, even though in the back of my head I knew it was a mess (and probably still is, just to a lesser extent).
+
+When I jumped into Neovim, I felt incredibly slow. However, this was the perfect opportunity to explore my codebase, understand what was really going on, and familiarize myself with Vim keybinds and general navigation. During this process, I uncovered some terrible naming conventions and tangled data-passing spaghetti in my code. So let's dive into what I found...
+
+## Discovering the Mess
+
+Kanri is my open-source offline Kanban board app built using Tauri and Vue 3. I’ve been working on it in my spare time for around two years now. However, my efforts have been inconsistent, with work being very on-and-off.
+
+The primary issue I noticed was how I passed data between a card on the Kanban board and the modal used to edit it. Here’s how the old flow worked:
+
+- All data lived in the board route (`[id].vue`).
+- Data was passed to a global modal using an `init` method within the modal component which was called on modal open.
+- Data was then edited from inside the modal.
+- After editing, data was passed back to the board route.
+- It was then passed to the corresponding column where the card lived.
+- The data was mutated inside the column.
+- Finally, it was emitted back to the board route, where it was saved to persistent storage.
+
+When I noticed this, I realized how nuts it was. This structure was a leftover from my early days as a Vue 2 developer, where I thought it was a great idea to have one modal for each column back in Kanri's predecessor, KanbanElectron. While this was quickly fixed in the new version, I was still dealing with a lot of leftovers from the Vue 2 migration.
+
+## Issues I Identified
+
+Here are the main issues I found:
+
+- **Naming Inconsistencies**: I was passing around the index of cards but called it an ID in some instances, which created confusion with the actual unique IDs each card had.
+- **Over-Reliance on Refs**: I was using some nasty hacks with refs and essentially circumvented the proper use of props when opening the modal.
+- **Data Passing Through Too Many Layers**: Data was being passed around needlessly, even though the main data lived in the global board route. It would have been much easier to mutate it there.
+
+### How I Fixed It
+
+- **Naming Fixes**: This was a simple fix to ensure consistency.
+- **Ref Issues**: I addressed this by using actual Vue patterns, like props and watchers, to update the modal's content once it was opened.
+- **Removing Unnecessary Refs**: The refs for all columns stored as key-value pairs (which was incredibly cursed) were removed by simply mutating the card data in the board route directly instead of in a child component.
+- **Simplifying Data Flow**: By mutating the data where it lived, I was able to significantly simplify the code and remove unnecessary clutter.
+
+The final result is a new, more elegant way to mutate cards in place.
+Here's a snippet of the new code:
+
+```ts
+type CardMutateFunction = (card: Card) => void;
+
+const mutateCardData = (columnId: string, cardIndex: number, mutateCard: CardMutateFunction) => {
+    const column = findObjectById<Column>(board.value.columns, columnId);
+    const card = column.cards[cardIndex];
+    mutateCard(card);
+    updateColumnProperties(column);
+}
+
+const setCardTitle = (columnId: string, cardIndex: number, title: string) => {
+    mutateCardData(columnId, cardIndex, (card) => {
+        card.name = title;
+    })
+}
+
+const setCardDescription = (columnId: string, cardIndex: number, description: string) => {
+    mutateCardData(columnId, cardIndex, (card) => {
+        card.description = description;
+    })
+}
+
+// and so on...
+```
+
+### The Moral of the Story
+
+After almost two years of development and progressing from a novice to an intermediate Vue developer, I’ve learned that sometimes you just need to relax and take a step back. Learning new tools or keybinds can improve your workflow in the long term, and it's important to look at the bigger picture instead of hyper-fixating on churning out requested features.
+
+I highly recommend giving Neovim a try (shoutout to ThePrimeagen for getting me down this rabbit hole) to level up your skills over time, even if it feels terribly slow at first.
+
+Hopefully, you were able to learn something from this, even if it’s just from an intermediate developer who's still figuring things out. This is also my first blog post of this kind, so I would definitely appreciate any feedback (you can reach me on Twitter at [@trobo_dev](https://twitter.com/trobo_dev)).
+
+If you're interested in the app Kanri that I mentioned, feel free to check it out here: [Kanri GitHub Repository](https://github.com/trobonox/kanri)

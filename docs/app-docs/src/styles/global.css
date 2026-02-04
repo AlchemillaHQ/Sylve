@@ -1,17 +1,76 @@
 @layer base, starlight, theme, components, utilities;
 
-@import '@astrojs/starlight-tailwind';
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss";
 
-@theme {
-	/*
-	Configure your Tailwind theme that will be used by Starlight.
-	https://starlight.astro.build/guides/css-and-tailwind/#styling-starlight-with-tailwind
-	*/
+/* Light mode colors. */
+:root[data-theme="light"] {
+  --background: #ffffff;
+  --foreground: oklch(0.145 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --muted: oklch(0.623 0.214 259.815);
 }
 
-/*
-Add additional Tailwind styles to this file:
-https://tailwindcss.com/docs/adding-custom-styles#using-custom-css
-*/
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: oklch(0.985 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --muted: oklch(0.269 0 0);
+}
+
+@layer base {
+  * {
+    border: var(--border);
+    outline-color: var(--sidebar);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+}
+
+.sl-container {
+  margin: 0 !important;
+  @apply mx-auto!;
+}
+
+.page {
+  background-color: var(--background);
+}
+
+.header {
+  background-color: var(--sidebar);
+}
+
+.header a {
+  color: var(--foreground) !important;
+}
+
+.header .social-icons a {
+  color: var(--foreground) !important;
+}
+
+.sidebar-content {
+  background-color: var(--sidebar);
+}
+
+.sidebar-content a,
+.sidebar-content .large {
+  color: var(--foreground) !important;
+}
+
+.sidebar-content a:hover {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+.sidebar-content [aria-current="page"] {
+  background-color: var(--muted) !important;
+  border-radius: 0.4rem !important;
+  color: white !important;
+  font-weight: 600;
+}

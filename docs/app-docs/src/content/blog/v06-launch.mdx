@@ -1,0 +1,51 @@
+---
+layout: "../../layouts/BlogLayout.astro"
+title: Kanri v0.6 launch
+description: The new big release of Kanri is out, featuring a lot of small improvements and new features.
+pubDate: 2023-12-09
+author: "Trobo"
+---
+
+**tl;dr:** Kanri v0.6 adds a lot of miscellaneous fixes and new features such as custom colors for cards, rich text in card descriptions and the ability to edit columns in the board creation popup. To find out what has changed exactly, read on!
+
+![Kanri preview image](/kanri_preview.webp)
+
+# New features
+The primary focus of this release was to improve the properties of Kanban cards, which compared to other solutions were quite lackluster. While this release doesn't tackle some major planned additions like card tags or due dates, these features work towards improving the general capabilities of cards. 
+
+## Custom card colors
+Thanks to [@Khusyasy on GitHub](https://github.com/Khusyasy), you can now select custom colors for cards as opposed to just a fixed palette. The color picker uses the one native to your system - if this bothers you and would like an improved and unified color picker across all platforms, please reach out to trobo@kanriapp.com.
+
+![Custom card color image](/custom_card_color.webp)
+
+## Progress indicator for card tasks
+Previously, you were unable to have an overview of your completion progress on cards with a lot of tasks. With the addition of a progress bar inside the card popup, this has been resolved.
+
+![Card tasks progress bar](/card_tasks_progress_bar.webp)
+
+## Rich text card descriptions
+Using TipTap, your cards now have support for rich text! Many formatting styles are available and can be toggled using shortcuts similar to Markdown. Clickable links are not supported for security purposes since your data is stored in a JSON file which could be changed externally.
+
+![Rich text card descriptions](/card_descriptions.webp)
+
+# Other miscellaneous features and fixes
+Here's a selection of other notable changes in the release. To see all changes, please check [the changelog in the GitHub release](https://github.com/trobonox/kanri/releases).
+
+## Option to disable all animations from settings
+Because the app can be a bit sluggish with animations on Linux (because of the GTK WebKit webview which seems to be struggling here), the option to disable all animations should make the app feel more responsive and snappy. This is also recommended for lower-end systems that also struggle with these animations.
+
+## Improved light mode
+Thanks to [@pnxl on GitHub](https://github.com/pnxl), light mode colors have been improved, with better contrast and overall more coherent aesthetics.
+
+![Light mode app screenshot](/kanri_light_mode.webp)
+
+## Contrast improvements
+The contrast/visibility of elements in a lot of areas of the app like in the double click quick edit for cards or the title of a board with a custom background image has been improved to make using the app easier.
+
+# Next steps
+In the future, expect to see development slow down a bit more as I will be a bit more busy with personal matters. To see my ideas and vision for the project, you can check the GitHub readme and the roadmap. Nevertheless, the project is open to contributions and I am happy to check them out (please just make sure to communicate before jumping into something to prevent your changes being rejected).
+
+If all of this sounds interesting to you, you can [download Kanri v0.6 here](https://kanriapp.com/download).
+
+Thanks to everyone who made this release possible!
+If you enjoy Kanri, please make sure to [leave a star on GitHub](https://github.com/trobonox/kanri), as it does not make any profits and your support is the only way to keep it alive.

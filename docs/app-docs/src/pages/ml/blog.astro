@@ -1,0 +1,83 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { getCollection } from "astro:content";
+
+// Filter only posts that have IDs starting with 'ml/'
+const posts = await getCollection("blog", ({ id }) => {
+  return id.startsWith("ml/");
+});
+
+const sortedPosts = posts.sort(
+  (a, b) =>
+    new Date(b.data.pubDate).getTime() - new Date(a.data.pubDate).getTime(),
+);
+---
+
+<BaseLayout title="ബ്ലോഗ് - FreeBSD Bhyve, Jails & ZFS ഗൈഡുകൾ | Sylve">
+  <div class="min-h-screen pt-32 px-8 max-w-4xl mx-auto mb-24">
+    <h1 class="text-4xl font-bold mb-4">Sylve ബ്ലോഗ്</h1>
+    <p class="mb-8 text-muted-foreground">
+      FreeBSD കൈകാര്യം ചെയ്യുന്നതിനെക്കുറിച്ചുള്ള ലേഖനങ്ങളും ട്യൂട്ടോറിയലുകളും
+      ഇവിടെ കണ്ടെത്താം. Bhyve VMs, ZFS, Jails എന്നിവയെക്കുറിച്ച് എല്ലാം.
+    </p>
+    <div class="grid gap-8 md:grid-cols-2">
+      {
+        sortedPosts.map((post) => (
+          <a
+            href={`/blog/${post.id}`}
+            class="group h-full border bg-muted/20 border-muted rounded-lg"
+          >
+            <article class="bg-background-lighter w-full h-full rounded-lg shadow-md overflow-hidden transition-all duration-300 transform hover:scale-105 flex flex-col">
+              <div class="p-6 grow flex flex-col">
+                <h2 class="text-2xl font-semibold mb-2 group-hover:text-primary transition-colors duration-300">
+                  {post.data.title}
+                </h2>
+                <p class="text-muted-foreground mb-4 grow">
+                  {post.data.description}
+                </p>
+                <div class="flex items-center text-sm text-muted-foreground mt-auto">
+                  <span>
+                    {new Date(post.data.pubDate).toLocaleDateString("ml-IN")}
+                  </span>
+                  <span class="mx-2">•</span>
+                  <span>{post.data.author}</span>
+                </div>
+              </div>
+            </article>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  article {
+    animation: fadeIn 0.5s ease-out forwards;
+    opacity: 0;
+  }
+
+  article:nth-child(1) {
+    animation-delay: 0.1s;
+  }
+  article:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  article:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  article:nth-child(4) {
+    animation-delay: 0.4s;
+  }
+</style>
