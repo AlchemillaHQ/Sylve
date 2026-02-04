@@ -35,7 +35,6 @@ func (s *Service) CheckVirtualization() error {
 		"libvirt",
 		"bhyve-firmware",
 		"u-boot-bhyve-arm64",
-		"jansson",
 		"swtpm",
 		"qemu-tools",
 	}

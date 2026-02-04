@@ -107,7 +107,7 @@ func CreatePartitions(device string, sizes []uint64) error {
 }
 
 func ParsePartition(device string) (string, int, error) {
-	re := regexp.MustCompile(`^(/dev/[a-z0-9]+)p([0-9]+)$`)
+	re := regexp.MustCompile(`^(/dev/[a-z0-9]+)[ps]([0-9]+)$`)
 	matches := re.FindStringSubmatch(device)
 
 	if len(matches) != 3 {

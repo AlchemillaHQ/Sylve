@@ -6,6 +6,7 @@ if [ "$(uname)" != "FreeBSD" ]; then
     echo "❌ Error: This script must be run on FreeBSD."
     exit 1
 fi
+
 echo "✅ OS Check: Running on FreeBSD."
 
 check_command() {
@@ -17,10 +18,9 @@ check_command() {
     fi
 }
 
-check_command node "node -v" "pkg install node20"
-check_command npm "npm -v" "pkg install npm-node20"
+check_command node "node -v" "pkg install node24"
+check_command npm "npm -v" "pkg install npm-node24"
 check_command go "go version" "pkg install go"
-check_command virsh "virsh --version" "pkg install libvirt"
 
 echo "=== Dependency check completed ==="
 echo
