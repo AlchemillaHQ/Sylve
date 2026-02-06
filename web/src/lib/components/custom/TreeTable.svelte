@@ -292,6 +292,15 @@
 		table?.on('dataTreeRowExpanded', () => {
 			saveExpandedState();
 		});
+
+		return () => {
+			if (table) {
+				table.destroy();
+				table = null;
+			}
+
+			tableInitialized = false;
+		};
 	});
 
 	function tableFilter(query: string) {
