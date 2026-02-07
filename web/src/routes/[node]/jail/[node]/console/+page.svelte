@@ -217,7 +217,11 @@
 
 		return () => {
 			destroyed = true;
-			ws?.close();
+			if (terminal) {
+				terminal.clear?.();
+				terminal.reset?.();
+			}
+
 			terminal?.dispose?.();
 		};
 	});

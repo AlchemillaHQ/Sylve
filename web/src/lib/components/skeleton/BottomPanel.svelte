@@ -7,6 +7,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
+	import { toast } from 'svelte-sonner';
 	import { fade } from 'svelte/transition';
 
 	const auditRecords = resource(
@@ -207,6 +208,20 @@
 										? record.action.response
 										: JSON.stringify(record.action.response)
 									: 'No response'}
+								onclick={() => {
+									if (record.action?.response != null && record.action.response) {
+										try {
+											const data = JSON.stringify(record.action.response);
+											navigator.clipboard.writeText(data || '');
+
+											toast.success('Copied response to clipboard', {
+												position: 'bottom-center'
+											});
+										} catch (e) {
+											console.log('Error copying resposnse to clipboard', e);
+										}
+									}
+								}}
 							>
 								{formatStatus(record.status)}
 							</Table.Cell>

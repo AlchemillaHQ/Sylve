@@ -402,20 +402,30 @@ html {
 }
 
 /* Control bar buttons */
-#noVNC_control_bar .noVNC_button {
+#noVNC_control_bar .noVNC_button:not(#noVNC_modifiers .noVNC_button) {
 	min-width: unset;
-	padding: 4px 4px;
+	padding: 4px 4px; /* This now ONLY applies to the main left bar */
 	vertical-align: middle;
 	border: 1px solid rgba(255, 255, 255, 0.2);
 	border-radius: 6px;
 	background-color: transparent;
 }
+
 #noVNC_control_bar .noVNC_button.noVNC_selected {
 	border-color: rgba(0, 0, 0, 0.8);
 	background-color: rgba(0, 0, 0, 0.5);
 }
 #noVNC_control_bar .noVNC_button.noVNC_hidden {
 	display: none !important;
+}
+
+#noVNC_modifiers .noVNC_button {
+	display: block;
+	width: 20px;
+	height: 40px;
+	padding: 6px;
+	margin: 4px auto;
+	box-sizing: border-box;
 }
 
 /* Panels */

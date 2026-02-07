@@ -7014,3 +7014,7 @@ msgstr ""
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Cluster - Reset Node"
 msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Copied response to clipboard"
+msgstr ""

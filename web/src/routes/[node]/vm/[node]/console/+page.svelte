@@ -293,6 +293,19 @@
 				serialConnect();
 			});
 		}
+
+		return () => {
+			destroyed = true;
+			if (terminal) {
+				terminal.clear?.();
+				terminal.reset?.();
+			}
+
+			cleanupSerial(false);
+			applyFontSize.cancel?.();
+			applyThemeDebounced.cancel?.();
+			terminal?.dispose?.();
+		};
 	});
 
 	watch(
@@ -313,11 +326,6 @@
 		},
 		{ lazy: true }
 	);
-
-	onDestroy(() => {
-		destroyed = true;
-		cleanupSerial(false);
-	});
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">

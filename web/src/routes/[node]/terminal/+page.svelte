@@ -141,6 +141,11 @@
 		setup();
 		return () => {
 			destroyed = true;
+			if (terminal) {
+				terminal.clear?.();
+				terminal.reset?.();
+			}
+
 			ws?.close();
 			terminal?.dispose?.();
 		};

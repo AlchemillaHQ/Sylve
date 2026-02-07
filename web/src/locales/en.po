@@ -7047,3 +7047,7 @@ msgstr "No Node ID available"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Cluster - Reset Node"
 msgstr "Cluster - Reset Node"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Copied response to clipboard"
+msgstr "Copied response to clipboard"
