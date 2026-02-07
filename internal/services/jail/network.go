@@ -578,19 +578,29 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 						return fmt.Errorf("failed to get previous mac: %w", err)
 					}
 
-					preStartBuilder.WriteString(fmt.Sprintf("# Setup Network Interface %s_%sb\n", ctidHash, networkId))
-					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s_%sa ether %s up\n", ctidHash, networkId, prevMAC))
-					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s_%sb ether %s up\n", ctidHash, networkId, mac))
+					epairA := fmt.Sprintf("%s_%sa", ctidHash, networkId)
+					epairB := fmt.Sprintf("%s_%sb", ctidHash, networkId)
+
+					preStartBuilder.WriteString(fmt.Sprintf("# Setup Network Interface %s\n", epairB))
+					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n", epairA, prevMAC))
+					preStartBuilder.WriteString(fmt.Sprintf(
+						"ifconfig %s descr \"(%s) (%d)\"\n",
+						epairA,
+						jail.Name,
+						jail.CTID,
+					))
+
+					preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n", epairB, mac))
 					preStartBuilder.WriteString("\n")
 
 					bridgeName, err := s.NetworkService.GetBridgeNameByIDType(n.SwitchID, n.SwitchType)
 					if err != nil {
 						return fmt.Errorf("failed to get bridge name: %w", err)
 					}
-					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s_%sa; then\n", bridgeName, ctidHash, networkId))
-					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s_%sa 2>&1 || true\n", bridgeName, ctidHash, networkId))
+					preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA))
+					preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA))
 					preStartBuilder.WriteString("fi\n")
-					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s_%sb\n\n", ctidHash, networkId))
+					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
 				}
 
 				// IPv4 configuration
