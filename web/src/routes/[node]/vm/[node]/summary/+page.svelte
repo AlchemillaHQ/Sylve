@@ -464,19 +464,6 @@
 	</div>
 </div>
 
-<!-- <AlertDialog
-	open={modalState.isDeleteOpen}
-	names={{ parent: 'VM', element: modalState?.title || '' }}
-	actions={{
-		onConfirm: async () => {
-			handleDelete();
-		},
-		onCancel: () => {
-			modalState.isDeleteOpen = false;
-		}
-	}}
-></AlertDialog> -->
-
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
 	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
 		<AlertDialogRaw.Header>

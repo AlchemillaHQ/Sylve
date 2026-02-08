@@ -138,7 +138,7 @@
 			</div>
 		</Card.Content>
 
-		<Card.Footer class="flex items-center justify-between px-6 py-4">
+		<Card.Footer class="flex items-center justify-between">
 			<div class="flex items-center space-x-2">
 				<Checkbox id="remember" bind:checked={remember} />
 				<Label for="remember" class="text-sm font-medium">Remember Me</Label>

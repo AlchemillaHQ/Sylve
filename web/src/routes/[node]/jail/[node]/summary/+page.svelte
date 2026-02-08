@@ -263,7 +263,7 @@
 </script>
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border p-4">
+	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#if jState.current}
 			{#if jState.current.state === 'ACTIVE'}
 				<Button
@@ -276,27 +276,25 @@
 					{'Stop'}
 				</Button>
 			{:else}
-				<div class="flex items-center gap-2">
-					<Button
-						onclick={handleStart}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-						{'Start'}
-					</Button>
+				<Button
+					onclick={handleStart}
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+				>
+					<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+					{'Start'}
+				</Button>
 
-					<Button
-						onclick={() => {
-							modalState.isDeleteOpen = true;
-						}}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						{'Delete'}
-					</Button>
-				</div>
+				<Button
+					onclick={() => {
+						modalState.isDeleteOpen = true;
+					}}
+					size="sm"
+					class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+				>
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+					{'Delete'}
+				</Button>
 			{/if}
 		{/if}
 
