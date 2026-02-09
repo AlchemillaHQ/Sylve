@@ -40,7 +40,7 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
             title: "Network Config",
             formatter(cell, formatterParams, onRendered) {
                 const data = cell.getValue();
-                return data ? data.substring(0, 30) + (data.length > 30 ? "..." : "") : "";
+                return data ? data.substring(0, 30) + (data.length > 30 ? "..." : "") : "-";
             },
         }
     ]
@@ -50,7 +50,8 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
         name: template.name,
         data: {
             user: template.user,
-            metadata: template.meta
+            metadata: template.meta,
+            networkConfig: template.networkConfig
         }
     }));
 
@@ -121,8 +122,7 @@ users:
         meta: `instance-id: sylve-vm-${generateNanoId()}
 local-hostname: freebsd-network-config
 `,
-        networkConfig: `
-ethernets:
+        networkConfig: `ethernets:
   em0:
     addresses:
       - 192.168.0.10/24
@@ -149,8 +149,7 @@ users:
         meta: `instance-id: debian-vm-${generateNanoId()}
 local-hostname: debian-vm
 `,
-        networkConfig: `
-version: 2
+        networkConfig: `version: 2
 ethernets:
   enp0s3:
     dhcp4: false
