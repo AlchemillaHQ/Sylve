@@ -57,9 +57,7 @@ func (s *Service) EditTemplate(req utilitiesServiceInterfaces.EditTemplateReques
 		updates["meta"] = req.Meta
 	}
 
-	if req.NetworkConfig != "" {
-		updates["networkConfig"] = req.NetworkConfig
-	}
+	updates["networkConfig"] = req.NetworkConfig
 
 	if len(updates) == 0 {
 		return nil
