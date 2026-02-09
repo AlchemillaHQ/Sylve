@@ -24,6 +24,7 @@ func (s *Service) AddTemplate(req utilitiesServiceInterfaces.AddTemplateRequest)
 		Name: req.Name,
 		User: req.User,
 		Meta: req.Meta,
+		NetworkConfig: req.NetworkConfig,
 	}
 
 	if err := s.DB.Create(&template).Error; err != nil {
@@ -55,6 +56,8 @@ func (s *Service) EditTemplate(req utilitiesServiceInterfaces.EditTemplateReques
 	if req.Meta != "" {
 		updates["meta"] = req.Meta
 	}
+
+	updates["networkConfig"] = req.NetworkConfig
 
 	if len(updates) == 0 {
 		return nil

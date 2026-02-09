@@ -746,6 +746,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		TimeOffset:        vmModels.TimeOffset(data.TimeOffset),
 		CloudInitData:     data.CloudInitData,
 		CloudInitMetaData: data.CloudInitMetaData,
+		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
 		IgnoreUMSR:        ignoreUMSRs,
 	}
 

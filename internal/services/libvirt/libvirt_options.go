@@ -210,7 +210,7 @@ func (s *Service) ModifyShutdownWaitTime(rid uint, waitTime int) error {
 	return err
 }
 
-func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string) error {
+func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error {
 	if data == "" && metadata != "" || data != "" && metadata == "" {
 		return fmt.Errorf("both_data_and_metadata_must_be_provided")
 	}
@@ -221,12 +221,19 @@ func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string) er
 		}
 	}
 
+	if networkConfig != "" {
+		if utils.IsValidYAML(networkConfig) == false {
+			return fmt.Errorf("invalid_yaml_in_cloud_init_network_config")
+		}
+	}
+
 	err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
 		Updates(map[string]interface{}{
 			"cloud_init_data":      data,
 			"cloud_init_meta_data": metadata,
+			"cloud_init_network_config": networkConfig,
 		}).Error
 
 	if err != nil {

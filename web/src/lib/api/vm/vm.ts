@@ -61,6 +61,7 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         cloudInit: data.advanced.cloudInit.enabled,
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
+        cloudInitNetworkConfig: data.advanced.cloudInit.networkConfig,
         ignoreUMSR: data.advanced.ignoreUmsrs
     });
 }
@@ -150,10 +151,12 @@ export async function modifyShutdownWaitTime(rid: number, waitTime: number): Pro
 export async function modifyCloudInitData(
     rid: number,
     data: string,
-    metadata: string
+    metadata: string,
+    networkConfig: string
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/options/cloud-init/${rid}`, APIResponseSchema, 'PUT', {
         data,
-        metadata
+        metadata,
+        networkConfig
     });
 }

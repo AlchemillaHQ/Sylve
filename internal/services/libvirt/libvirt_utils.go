@@ -477,6 +477,7 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 
 	userDataPath := filepath.Join(cloudInitPath, "user-data")
 	metaDataPath := filepath.Join(cloudInitPath, "meta-data")
+	networkConfigPath := filepath.Join(cloudInitPath, "network-config")
 
 	err = os.WriteFile(userDataPath, []byte(vm.CloudInitData), 0644)
 	if err != nil {
@@ -486,6 +487,13 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 	err = os.WriteFile(metaDataPath, []byte(vm.CloudInitMetaData), 0644)
 	if err != nil {
 		return fmt.Errorf("failed_to_write_meta_data: %w", err)
+	}
+
+	if vm.CloudInitNetworkConfig != "" {
+		err = os.WriteFile(networkConfigPath, []byte(vm.CloudInitNetworkConfig), 0644)
+		if err != nil {
+			return fmt.Errorf("failed_to_write_network_config: %w", err)
+		}
 	}
 
 	isoPath := filepath.Join(vmPath, "cloud-init.iso")

@@ -46,6 +46,7 @@ export interface CreateData {
             enabled: boolean;
             data: string;
             metadata: string;
+            networkConfig: string;
         };
         ignoreUmsrs: boolean;
     };
@@ -134,6 +135,7 @@ export const VMSchema = z.object({
     shutdownWaitTime: z.number().int(),
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
+    cloudInitNetworkConfig: z.string().nullable(),
     ignoreUMSR: z.boolean(),
     tpmEmulation: z.boolean(),
 
