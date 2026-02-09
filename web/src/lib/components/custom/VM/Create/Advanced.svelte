@@ -31,6 +31,7 @@
 			enabled: boolean;
 			data: string;
 			metadata: string;
+			networkConfig: string;
 		};
 		ignoreUmsrs: boolean;
 	}
@@ -74,6 +75,7 @@
 			if (!enabled) {
 				cloudInit.data = '';
 				cloudInit.metadata = '';
+				cloudInit.networkConfig = '';
 			}
 		}
 	);
@@ -213,6 +215,14 @@
 			classes="flex-1 space-y-1.5"
 			type="textarea"
 		/>
+
+		<CustomValueInput
+			label="Cloud-Init Network Config"
+			placeholder={cloudInitPlaceholders.networkConfig}
+			bind:value={cloudInit.networkConfig}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+		/>
 	{/if}
 </div>
 
@@ -251,6 +261,7 @@
 					const template = cloudInitTemplates.current.find((t) => t.id.toString() === e);
 					cloudInit.data = template?.user || '';
 					cloudInit.metadata = template?.meta || '';
+					cloudInit.networkConfig = template?.networkConfig || '';
 					templateSelector.open = false;
 				}}
 			/>

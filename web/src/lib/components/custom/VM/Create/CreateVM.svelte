@@ -185,7 +185,8 @@
 			cloudInit: {
 				enabled: false,
 				data: '',
-				metadata: ''
+				metadata: '',
+				networkConfig: ''
 			},
 			ignoreUmsrs: false
 		}

@@ -6183,3 +6183,24 @@ msgstr ""
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Copied response to clipboard"
 msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Network Config"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Cloud Init Network Config"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init Network Config"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD with Static IP"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian with Static IP"
+msgstr ""

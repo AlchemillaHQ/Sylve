@@ -39,8 +39,9 @@ type ModifyShutdownWaitTimeRequest struct {
 }
 
 type ModifyCloudInitDataRequest struct {
-	Data     string `json:"data"`
-	Metadata string `json:"metadata"`
+	Data     	   string `json:"data"`
+	Metadata 	   string `json:"metadata"`
+	NetworkConfig  string `json:"networkConfig"`
 }
 
 type ModifyIgnoreUMSRsRequest struct {
@@ -459,7 +460,7 @@ func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := libvirtService.ModifyCloudInitData(uint(ridInt), req.Data, req.Metadata); err != nil {
+		if err := libvirtService.ModifyCloudInitData(uint(ridInt), req.Data, req.Metadata, req.NetworkConfig); err != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "internal_server_error",

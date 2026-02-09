@@ -3188,6 +3188,10 @@ msgstr "Metadata"
 msgid "Cloud Init Metadata"
 msgstr "Cloud Init Metadata"
 
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Cloud Init Network Config"
+msgstr "Cloud Init Network Config"
+
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Failed to modify serial console"
 msgstr "Failed to modify serial console"
@@ -7048,6 +7052,25 @@ msgstr "No Node ID available"
 msgid "Cluster - Reset Node"
 msgstr "Cluster - Reset Node"
 
+
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Copied response to clipboard"
 msgstr "Copied response to clipboard"
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Network Config"
+msgstr "Network Config"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Cloud-Init Network Config"
+msgstr "Cloud-Init Network Config"
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD with Static IP"
+msgstr "FreeBSD with Static IP"
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian with Static IP"
+msgstr "Debian with Static IP"
+

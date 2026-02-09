@@ -35,7 +35,7 @@ type LibvirtServiceInterface interface {
 	ModifyClock(rid uint, timeOffset string) error
 	ModifySerial(rid uint, enabled bool) error
 	ModifyShutdownWaitTime(rid uint, waitTime int) error
-	ModifyCloudInitData(rid uint, data string, metadata string) error
+	ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 
 	PruneOrphanedVMStats() error

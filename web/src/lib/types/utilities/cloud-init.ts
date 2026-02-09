@@ -5,6 +5,7 @@ export const CloudInitTemplateSchema = z.object({
     name: z.string(),
     user: z.string(),
     meta: z.string(),
+    networkConfig: z.string(),
     createdAt: z.string(),
     updatedAt: z.string()
 });

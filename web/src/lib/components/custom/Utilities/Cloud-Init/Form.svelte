@@ -19,9 +19,10 @@
 
 	// svelte-ignore state_referenced_locally
 	let options = {
-		name: template?.name || '',
-		user: template?.user || '',
-		meta: template?.meta || ''
+		name: template?.name    || '',
+		user: template?.user    || '',
+		meta: template?.meta    || '',
+		networkConfig: template?.networkConfig || ''
 	};
 
 	let properties = $state(options);
@@ -57,7 +58,8 @@
 			id: template?.id || undefined,
 			name: properties.name,
 			user: properties.user,
-			meta: properties.meta
+			meta: properties.meta,
+			networkConfig: properties.networkConfig
 		};
 
 		let response = null;
@@ -155,6 +157,15 @@
 			textAreaClasses="min-h-32 max-h-64"
 		/>
 
+		<CustomValueInput
+			bind:value={properties.networkConfig}
+			placeholder={cloudInitPlaceholders.networkConfig}
+			classes="space-y-1"
+			label="Network Config"
+			type="textarea"
+			textAreaClasses="min-h-32 max-h-64"
+		/>
+
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
 				<Button onclick={save} type="submit" size="sm">
@@ -196,6 +207,8 @@
 			<SimpleSelect
 				options={[
 					{ label: 'Simple', value: 'simple' },
+					{ label: 'FreeBSD with Static IP', value: 'freebsdNetworkConfig' },
+					{ label: 'Debian with Static IP', value: 'debianNetworkConfig' },
 					{ label: 'Docker', value: 'docker' }
 				]}
 				placeholder="Select a Template"
@@ -205,7 +218,8 @@
 					properties = {
 						name: e,
 						user: template.user,
-						meta: template.meta
+						meta: template.meta,
+                        networkConfig: template.networkConfig
 					};
 
 					templateSelector.open = false;
