@@ -10,6 +10,7 @@ package vncHandler
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -44,8 +45,6 @@ const (
 	inputBufferSize  = 32 * 1024
 	outputBufferSize = 256 * 1024
 	maxMessageSize   = 10 * 1024 * 1024
-
-	coalesceTimeout = 1 * time.Millisecond
 )
 
 type connectionMetrics struct {
@@ -199,17 +198,27 @@ func VNCProxyHandler(c *gin.Context) {
 			}
 
 			if n < len(buf) {
-				rawConn.SetReadDeadline(time.Now().Add(coalesceTimeout))
-
-				for {
+				// Drain any bytes that are already buffered without adding delay.
+				for n < len(buf) {
+					rawConn.SetReadDeadline(time.Now())
 					m, err := rawConn.Read(buf[n:])
 					if m > 0 {
 						n += m
 					}
+					if err == nil {
+						continue
+					}
 
-					if n == len(buf) || err != nil {
+					if ne, ok := err.(net.Error); ok && ne.Timeout() {
 						break
 					}
+
+					// Flush what we have if the peer closed after sending data.
+					if errors.Is(err, io.EOF) && n > 0 {
+						break
+					}
+
+					return
 				}
 			}
 
