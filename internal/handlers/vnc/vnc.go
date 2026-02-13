@@ -9,6 +9,7 @@
 package vncHandler
 
 import (
+	"compress/flate"
 	"context"
 	"errors"
 	"io"
@@ -28,7 +29,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:    128 * 1024,
 	WriteBufferSize:   128 * 1024,
-	EnableCompression: false,
+	EnableCompression: true,
 	CheckOrigin:       func(r *http.Request) bool { return true },
 }
 
@@ -95,9 +96,17 @@ func VNCProxyHandler(c *gin.Context) {
 	}
 	defer wsConn.Close()
 
+	wsConn.EnableWriteCompression(true)
+	_ = wsConn.SetCompressionLevel(flate.BestSpeed)
+	if wsTCP, ok := wsConn.UnderlyingConn().(*net.TCPConn); ok {
+		_ = wsTCP.SetNoDelay(true)
+		_ = wsTCP.SetReadBuffer(256 * 1024)
+		_ = wsTCP.SetWriteBuffer(256 * 1024)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	var dialer net.Dialer
-	rawConn, err := dialer.DialContext(ctx, "tcp", "localhost:"+port)
+	rawConn, err := dialer.DialContext(ctx, "tcp", "127.0.0.1:"+port)
 	cancel()
 
 	if err != nil {
