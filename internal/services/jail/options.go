@@ -330,7 +330,10 @@ func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
 	if err := s.DB.
 		Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
-		Update("allowed_options", normalizedOptions).
+		Select("allowed_options").
+		Updates(&jailModels.Jail{
+			AllowedOptions: normalizedOptions,
+		}).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_update_allowed_options_in_db: %w", err)
 	}

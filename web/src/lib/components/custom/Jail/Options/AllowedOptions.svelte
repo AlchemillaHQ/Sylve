@@ -72,7 +72,7 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<span class="icon-[material-symbols--rule-settings-outline] h-5 w-5"></span>
+					<span class="icon-[material-symbols--rule-settings] h-5 w-5"></span>
 					<span>Allowed Options</span>
 				</div>
 
@@ -102,7 +102,7 @@
 		<div class="space-y-3">
 			<CustomComboBoxBindable
 				bind:open={comboOpen}
-				label="Allowed Options"
+				label=""
 				placeholder="Select Allowed Options"
 				bind:value={selectedOptions}
 				data={[...allowed]}
@@ -111,8 +111,6 @@
 				width="w-full"
 				showSelected={false}
 			/>
-
-			<div class="text-muted-foreground text-xs">{selectedOptions.length} selected</div>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">

@@ -450,6 +450,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -592,6 +594,8 @@ msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1072,6 +1076,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2816,8 +2821,9 @@ msgstr "{0} ലഭ്യമാണ്"
 msgid "{0} busy"
 msgstr "{0} തിരക്കിലാണ്"
 
-#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedOptions.length
 #. placeholder {0}: selectedLabels.length
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -5462,18 +5468,22 @@ msgstr "FreeBSD"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Hostname (allow.set_hostname)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Raw Sockets (allow.raw_sockets)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Change File Flags (allow.chflags)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount Filesystems (allow.mount)"
 msgstr ""
 
@@ -5481,74 +5491,96 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "FS Quotas (allow.quotas)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Socket Address Families (allow.socket_af)"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Memory Locking (allow.mlock)"
 msgstr "മെമ്മറി ലോക്കിംഗ് (allow.mlock)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "NFS Daemon (allow.nfsd)"
 msgstr "എൻഎഫ്എസ് ഡെമൺ (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
 msgstr "റിസർവ് ചെയ്ത പോർട്ടുകൾ (allow.reserved_ports)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
 msgstr "അധികാരമില്ലാത്ത പ്രോസസ് ഡീബഗ്ഗിംഗ് (allow.unprivileged_proc_debug)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
 msgstr "fdescfs മൗണ്ട് ചെയ്യുക (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
 msgstr "fusefs മൗണ്ട് ചെയ്യുക (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
 msgstr "nullfs മൗണ്ട് ചെയ്യുക (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount procfs (allow.mount.procfs)"
 msgstr "procfs മൗണ്ട് ചെയ്യുക (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
 msgstr "linprocfs മൗണ്ട് ചെയ്യുക (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
 msgstr "linsysfs മൗണ്ട് ചെയ്യുക (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
 msgstr "tmpfs മൗണ്ട് ചെയ്യുക (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
 msgstr "ZFS മൗണ്ട് ചെയ്യുക (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Virtual Machines (allow.vmm)"
 msgstr "വിർച്വൽ മെഷീനുകൾ (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Allowed Options"
 msgstr "അനുവദനീയമായ ഓപ്ഷനുകൾ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Select Allowed Options"
 msgstr "അനുവദനീയമായ ഓപ്ഷനുകൾ തിരഞ്ഞെടുക്കുക"
 
@@ -5652,6 +5684,7 @@ msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "കസ്റ്റം ജയിൽ ലൈഫ്സൈക്കിൾ ഹുക്കുകൾ (exec.* സ്ക്രിപ്റ്റുകൾ)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount devfs (allow.mount.devfs)"
 msgstr ""
 
@@ -7028,4 +7061,12 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "We've hit errors during initialization"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Failed to save allowed options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Allowed options saved"
 msgstr ""

@@ -452,6 +452,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -594,6 +596,8 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1074,6 +1078,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2818,7 +2823,7 @@ msgstr "{0} available"
 msgid "{0} busy"
 msgstr "{0} busy"
 
-#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedOptions.length
 #. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -5484,18 +5489,22 @@ msgstr "FreeBSD"
 #~ msgstr "Linux"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Hostname (allow.set_hostname)"
 msgstr "Set Hostname (allow.set_hostname)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Raw Sockets (allow.raw_sockets)"
 msgstr "Raw Sockets (allow.raw_sockets)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Change File Flags (allow.chflags)"
 msgstr "Change File Flags (allow.chflags)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount Filesystems (allow.mount)"
 msgstr "Mount Filesystems (allow.mount)"
 
@@ -5503,74 +5512,95 @@ msgstr "Mount Filesystems (allow.mount)"
 #~ msgstr "Mount devfs (allow.mount.devfs"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "FS Quotas (allow.quotas)"
 msgstr "FS Quotas (allow.quotas)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
 msgstr "Read Kernel Message Buffer (allow.read_msgbuf)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Socket Address Families (allow.socket_af)"
 msgstr "Socket Address Families (allow.socket_af)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Memory Locking (allow.mlock)"
 msgstr "Memory Locking (allow.mlock)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "NFS Daemon (allow.nfsd)"
 msgstr "NFS Daemon (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
 msgstr "Reserved Ports (allow.reserved_ports)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
 msgstr "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
 msgstr "Mount fdescfs (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
 msgstr "Mount fusefs (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
 msgstr "Mount nullfs (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount procfs (allow.mount.procfs)"
 msgstr "Mount procfs (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
 msgstr "Mount linprocfs (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
 msgstr "Mount linsysfs (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
 msgstr "Mount tmpfs (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
 msgstr "Mount ZFS (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Virtual Machines (allow.vmm)"
 msgstr "Virtual Machines (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Allowed Options"
 msgstr "Allowed Options"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Select Allowed Options"
 msgstr "Select Allowed Options"
 
@@ -5684,6 +5714,7 @@ msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "Custom Jail Lifecycle Hooks (exec.* scripts)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount devfs (allow.mount.devfs)"
 msgstr "Mount devfs (allow.mount.devfs)"
 
@@ -7078,3 +7109,11 @@ msgstr "Debian with Static IP"
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "We've hit errors during initialization"
 msgstr "We've hit errors during initialization"
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Failed to save allowed options"
+msgstr "Failed to save allowed options"
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Allowed options saved"
+msgstr "Allowed options saved"

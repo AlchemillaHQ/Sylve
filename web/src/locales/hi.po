@@ -451,6 +451,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -593,6 +595,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1030,6 +1034,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -3083,8 +3088,9 @@ msgstr "{0} उपलब्ध"
 msgid "{0} busy"
 msgstr "{0} व्यस्त"
 
-#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedOptions.length
 #. placeholder {0}: selectedLabels.length
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -5468,18 +5474,22 @@ msgstr "फ्रीबीएसडी"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Hostname (allow.set_hostname)"
 msgstr "होस्टनेम सेट करें (allow.set_hostname)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Raw Sockets (allow.raw_sockets)"
 msgstr "रॉ सॉकेट्स (allow.raw_sockets)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Change File Flags (allow.chflags)"
 msgstr "फ़ाइल फ़्लैग बदलें (allow.chflags)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount Filesystems (allow.mount)"
 msgstr "फ़ाइल सिस्टम माउंट करें (allow.mount)"
 
@@ -5487,74 +5497,96 @@ msgstr "फ़ाइल सिस्टम माउंट करें (allow.m
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "FS Quotas (allow.quotas)"
 msgstr "एफएस कोटा (allow.quotas)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
 msgstr "कर्नेल संदेश बफर पढ़ें (allow.read_msgbuf)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Socket Address Families (allow.socket_af)"
 msgstr "सॉकेट एड्रेस परिवार (allow.socket_af)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Memory Locking (allow.mlock)"
 msgstr "मेमोरी लॉकिंग (allow.mlock)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "NFS Daemon (allow.nfsd)"
 msgstr "एनएफएस डेमॉन (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
 msgstr "आरक्षित पोर्ट (allow.reserved_ports)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
 msgstr "अविशेषीकृत प्रक्रिया डिबगिंग (allow.unprivileged_proc_debug)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
 msgstr "एफडेस्कएफएस माउंट करें (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
 msgstr "फ्यूजएफएस माउंट करें (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
 msgstr "नुलएफएस माउंट करें (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount procfs (allow.mount.procfs)"
 msgstr "प्रोसीएफएस माउंट करें (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
 msgstr "लिनप्रोसीएफएस माउंट करें (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
 msgstr "लिनसिसएफएस माउंट करें (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
 msgstr "टीएमपीएफएस माउंट करें (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
 msgstr "जेडएफएस माउंट करें (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Virtual Machines (allow.vmm)"
 msgstr "वर्चुअल मशीनें (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Allowed Options"
 msgstr "अनुमत विकल्प"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Select Allowed Options"
 msgstr "अनुमत विकल्प चुनें"
 
@@ -5660,6 +5692,7 @@ msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "कस्टम जेल लाइफसाइकिल हुक्स (exec.* स्क्रिप्ट्स)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount devfs (allow.mount.devfs)"
 msgstr "देवएफएस माउंट करें (allow.mount.devfs)"
 
@@ -7044,4 +7077,12 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "We've hit errors during initialization"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Failed to save allowed options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Allowed options saved"
 msgstr ""

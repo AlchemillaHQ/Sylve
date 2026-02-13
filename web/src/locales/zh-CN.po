@@ -428,6 +428,8 @@ msgstr "最小化"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -570,6 +572,8 @@ msgstr "创建分区"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1044,6 +1048,7 @@ msgstr "这是附注"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2767,8 +2772,9 @@ msgstr "{0} 可用"
 msgid "{0} busy"
 msgstr "{0} 正在使用"
 
-#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. placeholder {0}: selectedOptions.length
 #. placeholder {0}: selectedLabels.length
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -5228,90 +5234,116 @@ msgid "FreeBSD"
 msgstr "FreeBSD"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Set Hostname (allow.set_hostname)"
 msgstr "设置主机名 (allow.set_hostname)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Raw Sockets (allow.raw_sockets)"
 msgstr "Raw Sockets (allow.raw_sockets)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Change File Flags (allow.chflags)"
 msgstr "修改文件标志位 (allow.chflags)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount Filesystems (allow.mount)"
 msgstr "挂载文件系统 (allow.mount)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "FS Quotas (allow.quotas)"
 msgstr "文件系统配额(allow.quotas)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Read Kernel Message Buffer (allow.read_msgbuf)"
 msgstr "读取内核消息缓冲区（allow.read_msgbuf）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Socket Address Families (allow.socket_af)"
 msgstr "套接字地址族（allow.socket_af）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Memory Locking (allow.mlock)"
 msgstr "内存锁定（allow.mlock）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "NFS Daemon (allow.nfsd)"
 msgstr "NFS 守护程序 (allow.nfsd)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Reserved Ports (allow.reserved_ports)"
 msgstr "保留端口（allow.reserved_ports）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Unprivileged Process Debugging (allow.unprivileged_proc_debug)"
 msgstr "非特权进程调试（allow.unprivileged_proc_debug）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fdescfs (allow.mount.fdescfs)"
 msgstr "挂载 fdescfs (allow.mount.fdescfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount fusefs (allow.mount.fusefs)"
 msgstr "挂载 fusefs (allow.mount.fusefs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount nullfs (allow.mount.nullfs)"
 msgstr "挂载 nullfs (allow.mount.nullfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount procfs (allow.mount.procfs)"
 msgstr "挂载 procfs (allow.mount.procfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linprocfs (allow.mount.linprocfs)"
 msgstr "挂载 linprocfs (allow.mount.linprocfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount linsysfs (allow.mount.linsysfs)"
 msgstr "挂载 linsysfs (allow.mount.linsysfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount tmpfs (allow.mount.tmpfs)"
 msgstr "挂载 tmpfs (allow.mount.tmpfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount ZFS (allow.mount.zfs)"
 msgstr "挂载 ZFS (allow.mount.zfs)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Virtual Machines (allow.vmm)"
 msgstr "虚拟机 (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
 msgid "Allowed Options"
 msgstr "允许的选项"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Select Allowed Options"
 msgstr "选择要允许的选项"
 
@@ -5349,6 +5381,7 @@ msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "自定义 Jail 生命周期钩子（exec.* 脚本）"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Mount devfs (allow.mount.devfs)"
 msgstr "挂载 devfs (allow.mount.devfs)"
 
@@ -6209,4 +6242,12 @@ msgstr ""
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 msgid "We've hit errors during initialization"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Failed to save allowed options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Allowed options saved"
 msgstr ""
