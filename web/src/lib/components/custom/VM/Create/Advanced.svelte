@@ -16,6 +16,7 @@
 	import { resource, watch } from 'runed';
 	import { getTemplates } from '$lib/api/utilities/cloud-init';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
+	import { resolutions } from '$lib/utils/vm/vnc';
 
 	interface Props {
 		serial: boolean;
@@ -61,13 +62,6 @@
 	];
 
 	let resolutionOpen = $state(false);
-	const resolutions = [
-		{ label: '1024x768', value: '1024x768' },
-		{ label: '1280x720', value: '1280x720' },
-		{ label: '1920x1080', value: '1920x1080' },
-		{ label: '2560x1440', value: '2560x1440' },
-		{ label: '3840x2160', value: '3840x2160' }
-	];
 
 	watch(
 		() => cloudInit.enabled,

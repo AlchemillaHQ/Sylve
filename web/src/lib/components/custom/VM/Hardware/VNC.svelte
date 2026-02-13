@@ -10,6 +10,7 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generatePassword, parseBoolean } from '$lib/utils/string';
+	import { resolutions } from '$lib/utils/vm/vnc';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -18,19 +19,11 @@
 		vms: VM[];
 	}
 
-	const resolutions = [
-		{ label: '1024x768', value: '1024x768' },
-		{ label: '1280x720', value: '1280x720' },
-		{ label: '1920x1080', value: '1920x1080' },
-		{ label: '2560x1440', value: '2560x1440' },
-		{ label: '3840x2160', value: '3840x2160' }
-	];
-
 	let { open = $bindable(), vm, vms }: Props = $props();
 
 	let options = {
 		port: vm?.vncPort || 5900,
-		resolution: vm?.vncResolution || '1024x768',
+		resolution: vm?.vncResolution || '640x480',
 		password: vm?.vncPassword || 'sigma-chad-password-never',
 		wait: vm?.vncWait ?? false,
 		resolutionOpen: false,

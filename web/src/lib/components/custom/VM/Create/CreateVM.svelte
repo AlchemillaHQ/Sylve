@@ -177,7 +177,7 @@
 			vncPort: 0,
 			vncPassword: generatePassword(),
 			vncWait: false,
-			vncResolution: '1024x768',
+			vncResolution: '640x480',
 			startAtBoot: false,
 			bootOrder: 0,
 			tpmEmulation: false,
