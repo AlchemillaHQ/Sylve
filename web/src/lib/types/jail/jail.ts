@@ -87,6 +87,7 @@ export const JailSchema = SimpleJailSchema.extend({
     fstab: z.string(),
     devfsRuleset: z.string(),
     additionalOptions: z.string(),
+    allowedOptions: z.array(z.string()).default([]),
     metadataMeta: z.string(),
     metadataEnv: z.string()
 });

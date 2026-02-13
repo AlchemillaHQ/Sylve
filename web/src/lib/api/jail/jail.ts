@@ -188,6 +188,15 @@ export async function modifyAdditionalOptions(
     });
 }
 
+export async function modifyAllowedOptions(
+    ctId: number,
+    allowedOptions: string[]
+): Promise<APIResponse> {
+    return await apiRequest(`/jail/options/allowed-options/${ctId}`, APIResponseSchema, 'PUT', {
+        allowedOptions
+    });
+}
+
 export async function modifyMetadata(
     ctId: number,
     metadata: string,

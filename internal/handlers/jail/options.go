@@ -9,6 +9,8 @@
 package jailHandlers
 
 import (
+	"strings"
+
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -30,6 +32,10 @@ type ModifyDevFSRulesRequest struct {
 
 type ModifyAdditionalOptionsRequest struct {
 	AdditionalOptions *string `json:"additionalOptions"`
+}
+
+type ModifyAllowedOptionsRequest struct {
+	AllowedOptions *[]string `json:"allowedOptions"`
 }
 
 type ModifyMetadataRequest struct {
@@ -272,6 +278,72 @@ func ModifyAdditionalOptions(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "additional_options_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Allowed Options of a Jail
+// @Description Modify allowed options configuration of a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyAllowedOptionsRequest true "Modify Allowed Options Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/allowed-options/:rid [put]
+func ModifyAllowedOptions(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyAllowedOptionsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		allowedOptions := []string{}
+		if req.AllowedOptions != nil {
+			allowedOptions = *req.AllowedOptions
+		}
+
+		if err := jailService.ModifyAllowedOptions(rid, allowedOptions); err != nil {
+			statusCode := 500
+			message := "internal_server_error"
+			if strings.Contains(err.Error(), "invalid_jail_allowed_options") {
+				statusCode = 400
+				message = "invalid_request"
+			}
+
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "allowed_options_modified",
 			Data:    nil,
 			Error:   "",
 		})

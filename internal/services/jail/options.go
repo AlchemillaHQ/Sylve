@@ -19,6 +19,15 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+func isManagedAllowedOptionLine(trimmedLine string) bool {
+	if !strings.HasPrefix(trimmedLine, "allow.") || !strings.HasSuffix(trimmedLine, ";") {
+		return false
+	}
+
+	opt := strings.TrimSuffix(trimmedLine, ";")
+	return utils.IsValidJailAllowedOpts([]string{opt})
+}
+
 func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) error {
 	err := s.DB.
 		Model(&jailModels.Jail{}).
@@ -206,6 +215,124 @@ func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
 		Update("additional_options", options).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_update_additional_options_in_db: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	normalizedOptions := make([]string, 0, len(options))
+	seen := make(map[string]struct{}, len(options))
+
+	for _, opt := range options {
+		trimmed := strings.TrimSpace(opt)
+		if trimmed == "" {
+			continue
+		}
+
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+
+		seen[trimmed] = struct{}{}
+		normalizedOptions = append(normalizedOptions, trimmed)
+	}
+
+	if !utils.IsValidJailAllowedOpts(normalizedOptions) {
+		return fmt.Errorf("invalid_jail_allowed_options")
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	lines := utils.SplitLines(cfg)
+	newLines := make([]string, 0, len(lines))
+	inAdditionalOptionsSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.Contains(line, "### These are user-defined additional options ###") {
+			inAdditionalOptionsSection = true
+			newLines = append(newLines, line)
+			continue
+		}
+
+		if !inAdditionalOptionsSection {
+			if isManagedAllowedOptionLine(trimmed) {
+				continue
+			}
+
+			if trimmed == "mount.devfs;" {
+				continue
+			}
+
+			if strings.HasPrefix(trimmed, "devfs_ruleset=") && strings.HasSuffix(trimmed, ";") {
+				continue
+			}
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	if len(normalizedOptions) > 0 {
+		blockLines := make([]string, 0, len(normalizedOptions)+4)
+		for _, opt := range normalizedOptions {
+			blockLines = append(blockLines, fmt.Sprintf("\t%s;", opt))
+		}
+
+		if utils.StringInSlice("allow.mount.devfs", normalizedOptions) {
+			blockLines = append(blockLines, "\tmount.devfs;")
+			if strings.TrimSpace(jail.DevFSRuleset) != "" {
+				blockLines = append(blockLines, fmt.Sprintf("\tdevfs_ruleset=%d;", ctId))
+			} else {
+				blockLines = append(blockLines, "\tdevfs_ruleset=61181;")
+			}
+		}
+
+		insertIdx := len(newLines)
+		for i, line := range newLines {
+			if strings.Contains(line, "### These are user-defined additional options ###") {
+				insertIdx = i
+				break
+			}
+
+			if strings.TrimSpace(line) == "}" {
+				insertIdx = i
+				break
+			}
+		}
+
+		if insertIdx > 0 && strings.TrimSpace(newLines[insertIdx-1]) != "" {
+			blockLines = append([]string{""}, blockLines...)
+		}
+
+		if insertIdx < len(newLines) && strings.TrimSpace(newLines[insertIdx]) != "" {
+			blockLines = append(blockLines, "")
+		}
+
+		newLines = append(newLines[:insertIdx], append(blockLines, newLines[insertIdx:]...)...)
+	}
+
+	cfg = strings.Join(newLines, "\n")
+
+	if err := s.SaveJailConfig(ctId, cfg); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	if err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Update("allowed_options", normalizedOptions).
+		Error; err != nil {
+		return fmt.Errorf("failed_to_update_allowed_options_in_db: %w", err)
 	}
 
 	return nil

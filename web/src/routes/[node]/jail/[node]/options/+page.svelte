@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getJailById } from '$lib/api/jail/jail';
+	import AllowedOptions from '$lib/components/custom/Jail/Options/AllowedOptions.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -81,6 +82,16 @@
 					: '—'
 			},
 			{
+				id: generateNanoId('allowedOptions'),
+				property: 'Allowed Options',
+				value: (() => {
+					const options = jail?.current.allowedOptions || [];
+					if (options.length === 0) return '—';
+					if (options.length === 1) return options[0];
+					return `${options[0]} (+${options.length - 1} more)`;
+				})()
+			},
+			{
 				id: generateNanoId('metadata'),
 				property: 'Metadata',
 				value: (() => {
@@ -108,6 +119,7 @@
 		fstab: { open: false },
 		devfsRules: { open: false },
 		additionalOptions: { open: false },
+		allowedOptions: { open: false },
 		metadata: { open: false }
 	});
 
@@ -123,7 +135,13 @@
 </script>
 
 {#snippet button(
-	type: 'startOrder' | 'fstab' | 'devfsRules' | 'additionalOptions' | 'metadata',
+	type:
+		| 'startOrder'
+		| 'fstab'
+		| 'devfsRules'
+		| 'additionalOptions'
+		| 'allowedOptions'
+		| 'metadata',
 	title: string
 )}
 	<Button
@@ -152,6 +170,8 @@
 				{@render button('devfsRules', 'DevFS Ruleset')}
 			{:else if activeRow.property === 'Additional Options'}
 				{@render button('additionalOptions', 'Additional Options')}
+			{:else if activeRow.property === 'Allowed Options'}
+				{@render button('allowedOptions', 'Allowed Options')}
 			{:else if activeRow.property === 'Metadata'}
 				{@render button('metadata', 'Metadata')}
 			{/if}
@@ -193,6 +213,10 @@
 		type="additionalOptions"
 		bind:reload
 	/>
+{/if}
+
+{#if properties.allowedOptions.open && jail.current}
+	<AllowedOptions bind:open={properties.allowedOptions.open} jail={jail.current} bind:reload />
 {/if}
 
 {#if properties.metadata.open && jail.current}
