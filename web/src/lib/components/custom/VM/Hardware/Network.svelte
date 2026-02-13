@@ -34,7 +34,10 @@
 
 	let usableMacs = $derived.by(() => {
 		return networkObjects.filter(
-			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && obj.isUsed === false
+			(obj) =>
+				obj.type === 'Mac' &&
+				obj.entries?.length === 1 &&
+				(obj.isUsed === false || obj.isUsedBy === 'dhcp')
 		);
 	});
 

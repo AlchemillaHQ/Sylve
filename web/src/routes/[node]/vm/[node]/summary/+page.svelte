@@ -76,12 +76,27 @@
 	useInterval(() => 1000, {
 		callback: () => {
 			if (visible.current) {
-				vm.refetch();
 				domain.refetch();
+			}
+		}
+	});
+
+	useInterval(() => 3000, {
+		callback: () => {
+			if (visible.current) {
 				stats.refetch();
 			}
 		}
 	});
+
+	watch(
+		() => domain.current,
+		(currentDomain, prevDomain) => {
+			if (prevDomain?.status !== currentDomain.status) {
+				vm.refetch();
+			}
+		}
+	);
 
 	watch(
 		() => storage.idle,

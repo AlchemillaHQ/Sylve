@@ -330,7 +330,6 @@ msgstr "DHCP Server"
 msgid "WOL Server"
 msgstr "WOL Server"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "We've hit the following errors during initialization"
 msgstr "We've hit the following errors during initialization"
@@ -7052,7 +7051,6 @@ msgstr "No Node ID available"
 msgid "Cluster - Reset Node"
 msgstr "Cluster - Reset Node"
 
-
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Copied response to clipboard"
 msgstr "Copied response to clipboard"
@@ -7074,3 +7072,9 @@ msgstr "FreeBSD with Static IP"
 msgid "Debian with Static IP"
 msgstr "Debian with Static IP"
 
+#~ msgid "<0/> We've hit the following errors during initialization"
+#~ msgstr "<0/> We've hit the following errors during initialization"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "We've hit errors during initialization"
+msgstr "We've hit errors during initialization"

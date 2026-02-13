@@ -45,6 +45,8 @@
 		defaultGateway: false
 	};
 
+	$inspect(generateMACOptions(networkObjects));
+
 	let properties = $state(options);
 	let comboBoxes = $state({
 		sw: {
@@ -237,7 +239,7 @@
 				label="MAC Address"
 				placeholder="Select MAC Address"
 				bind:value={comboBoxes.mac.value}
-				data={comboBoxes.mac.options}
+				data={generateMACOptions(networkObjects)}
 				classes="flex-1 space-y-1"
 				triggerWidth="w-full"
 				width="w-full"

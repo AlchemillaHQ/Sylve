@@ -325,7 +325,7 @@
 							</div>
 						</div>
 
-						<Table.Root class="mt-5">
+						<Table.Root class="mt-5 w-full">
 							<Table.Body>
 								<Table.Row>
 									<Table.Cell>CPU(s)</Table.Cell>
@@ -335,7 +335,9 @@
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell>Operating System</Table.Cell>
-									<Table.Cell>{basicInfo.current.os}</Table.Cell>
+									<Table.Cell class="break-words whitespace-normal"
+										>{basicInfo.current.os}</Table.Cell
+									>
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell>Uptime</Table.Cell>

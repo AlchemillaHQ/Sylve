@@ -235,7 +235,7 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	if data.MAC != nil {
 		mac = uint(*data.MAC)
 		if mac != 0 && swAvailable {
-			used, err := s.NetworkService.IsObjectUsed(mac)
+			used, _, err := s.NetworkService.IsObjectUsed(mac)
 			if err != nil {
 				return fmt.Errorf("failed_to_check_mac_usage: %w", err)
 			}
@@ -264,7 +264,7 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 						return fmt.Errorf("invalid_ipv4_gateway")
 					}
 
-					isUsed, err := s.NetworkService.IsObjectUsed(ipv4Id)
+					isUsed, _, err := s.NetworkService.IsObjectUsed(ipv4Id)
 					if err != nil {
 						return fmt.Errorf("failed_to_check_ipv4_usage: %w", err)
 					}
@@ -286,7 +286,7 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 						return fmt.Errorf("invalid_ipv6_gateway")
 					}
 
-					isUsed, err := s.NetworkService.IsObjectUsed(ipv6Id)
+					isUsed, _, err := s.NetworkService.IsObjectUsed(ipv6Id)
 					if err != nil {
 						return fmt.Errorf("failed_to_check_ipv6_usage: %w", err)
 					}

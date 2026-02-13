@@ -437,14 +437,16 @@ add path 'bpf*' unhide
 }
 
 func ensureServiceRunning(service string) error {
-	_, err := utils.RunCommand("service", service, "status")
-	if err == nil {
-		return nil
+	_, enableErr := utils.RunCommand("service", service, "enable")
+	if enableErr != nil {
+		return fmt.Errorf("could not enable service %s: %w", service, enableErr)
 	}
 
 	_, startErr := utils.RunCommand("service", service, "start")
 	if startErr != nil {
-		return fmt.Errorf("could not start service %s: %w", service, startErr)
+		if !strings.Contains(startErr.Error(), "already running") {
+			return fmt.Errorf("could not start service %s: %w", service, startErr)
+		}
 	}
 
 	return nil

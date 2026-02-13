@@ -33,12 +33,13 @@ func (s *Service) GetObjects() ([]networkModels.Object, error) {
 	}
 
 	for i := range objects {
-		used, err := s.IsObjectUsed(objects[i].ID)
+		used, by, err := s.IsObjectUsed(objects[i].ID)
 		if err != nil {
 			return nil, err
 		}
 
 		objects[i].IsUsed = used
+		objects[i].IsUsedBy = by
 	}
 
 	return objects, nil
@@ -150,11 +151,11 @@ func validateValues(oType string, values []string) error {
 	return nil
 }
 
-func (s *Service) IsObjectUsed(id uint) (bool, error) {
+func (s *Service) IsObjectUsed(id uint) (bool, string, error) {
 	var object networkModels.Object
 
 	if err := s.DB.First(&object, id).Error; err != nil {
-		return false, fmt.Errorf("failed to find object with ID %d: %w", id, err)
+		return false, "", fmt.Errorf("failed to find object with ID %d: %w", id, err)
 	}
 
 	if object.Type == "Host" {
@@ -168,27 +169,27 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 			Preload("GatewayAddressObj.Entries").
 			Preload("Gateway6AddressObj.Entries").
 			Find(&switches).Error; err != nil {
-			return true, err
+			return true, "", err
 		}
 
 		if err := s.DB.Find(&jailNetworks).Error; err != nil {
-			return true, fmt.Errorf("failed to find jail networks: %d %w", id, err)
+			return true, "", fmt.Errorf("failed to find jail networks: %d %w", id, err)
 		}
 
 		if err := s.DB.Preload("IPObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
+			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, sw := range switches {
 			if sw.GatewayAddressObj != nil {
 				if sw.GatewayAddressObj.ID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 
 			if sw.Gateway6AddressObj != nil {
 				if sw.Gateway6AddressObj.ID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 		}
@@ -196,31 +197,31 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		for _, jn := range jailNetworks {
 			if jn.IPv4ID != nil {
 				if *jn.IPv4ID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 
 			if jn.IPv4GwID != nil {
 				if *jn.IPv4GwID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 
 			if jn.IPv6ID != nil {
 				if *jn.IPv6ID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 
 			if jn.IPv6GwID != nil {
 				if *jn.IPv6GwID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 
 			if jn.MacID != nil {
 				if *jn.MacID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 		}
@@ -228,12 +229,12 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		for _, dl := range dhcpLeases {
 			if dl.IPObject != nil {
 				if dl.IPObject.ID == id {
-					return true, nil
+					return true, "", nil
 				}
 			}
 		}
 
-		return false, nil
+		return false, "", nil
 	}
 
 	if object.Type == "Mac" {
@@ -242,73 +243,73 @@ func (s *Service) IsObjectUsed(id uint) (bool, error) {
 		var dhcpLeases []networkModels.DHCPStaticLease
 
 		if err := s.DB.Where("mac_id = ?", id).Find(&vmNetworks).Error; err != nil {
-			return true, fmt.Errorf("failed to find VM networks using object %d: %w", id, err)
+			return true, "", fmt.Errorf("failed to find VM networks using object %d: %w", id, err)
 		}
 
 		if len(vmNetworks) > 0 {
-			return true, nil
+			return true, "", nil
 		}
 
 		if err := s.DB.Where("mac_id = ?", id).Find(&jailNetworks).Error; err != nil {
-			return true, fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
+			return true, "", fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
 		}
 
 		if len(jailNetworks) > 0 {
-			return true, nil
+			return true, "", nil
 		}
 
 		if err := s.DB.Preload("MACObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
+			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, dl := range dhcpLeases {
 			if dl.MACObject != nil {
 				if dl.MACObject.ID == id {
-					return true, nil
+					return true, "dhcp", nil
 				}
 			}
 		}
 
-		return false, nil
+		return false, "", nil
 	}
 
 	if object.Type == "Network" {
 		var jailNetworks []jailModels.Network
 		if err := s.DB.Where("ipv4_id = ? OR ipv4_gw_id = ? OR ipv6_id = ? OR ipv6_gw_id = ?", id, id, id, id).Find(&jailNetworks).Error; err != nil {
-			return true, fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
+			return true, "", fmt.Errorf("failed to find jail networks using object %d: %w", id, err)
 		}
 
 		if len(jailNetworks) > 0 {
-			return true, nil
+			return true, "", nil
 		}
 
 		var switches []networkModels.StandardSwitch
 
 		if err := s.DB.Where("network_object_id = ? OR network6_object_id = ?", id, id).Find(&switches).Error; err != nil {
-			return true, fmt.Errorf("failed to find switches using object %d: %w", id, err)
+			return true, "", fmt.Errorf("failed to find switches using object %d: %w", id, err)
 		}
 
 		if len(switches) > 0 {
-			return true, nil
+			return true, "", nil
 		}
 	}
 
 	if object.Type == "DUID" {
 		var dhcpLeases []networkModels.DHCPStaticLease
 		if err := s.DB.Preload("DUIDObject.Entries").Find(&dhcpLeases).Error; err != nil {
-			return true, fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
+			return true, "", fmt.Errorf("failed to find DHCP leases: %d %w", id, err)
 		}
 
 		for _, dl := range dhcpLeases {
 			if dl.DUIDObject != nil {
 				if dl.DUIDObject.ID == id {
-					return true, nil
+					return true, "dhcp", nil
 				}
 			}
 		}
 	}
 
-	return false, nil
+	return false, "", nil
 }
 
 func (s *Service) CreateObject(name string, oType string, values []string) error {
@@ -353,7 +354,7 @@ func (s *Service) CreateObject(name string, oType string, values []string) error
 }
 
 func (s *Service) DeleteObject(id uint) error {
-	used, err := s.IsObjectUsed(id)
+	used, _, err := s.IsObjectUsed(id)
 	if err != nil {
 		return fmt.Errorf("failed to check if object %d is used: %w", id, err)
 	}
@@ -417,7 +418,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 		return fmt.Errorf("object_with_name_already_exists: %s", name)
 	}
 
-	used, err := s.IsObjectUsed(id)
+	used, _, err := s.IsObjectUsed(id)
 	if err != nil {
 		return fmt.Errorf("failed to check if object %d is used: %w", id, err)
 	}

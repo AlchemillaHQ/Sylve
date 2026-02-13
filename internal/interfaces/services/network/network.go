@@ -41,7 +41,7 @@ type NetworkServiceInterface interface {
 		slaac bool,
 		defaultRoute bool) error
 	DeleteStandardSwitch(id int) error
-	IsObjectUsed(id uint) (bool, error)
+	IsObjectUsed(id uint) (bool, string, error)
 	GetObjectEntryByID(id uint) (string, error)
 	GetBridgeNameByIDType(id uint, swType string) (string, error)
 	CreateEpair(name string) error

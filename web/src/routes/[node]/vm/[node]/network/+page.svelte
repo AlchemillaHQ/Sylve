@@ -91,7 +91,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.networkObjects
 		}
 	);

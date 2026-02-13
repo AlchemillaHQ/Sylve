@@ -39,8 +39,6 @@
 		}
 	);
 
-	$inspect(auditRecords.current);
-
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',

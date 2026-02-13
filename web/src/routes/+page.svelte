@@ -220,4 +220,6 @@
 <span class="icon-[mdi--terminal]"></span>
 <span class="icon-[mdi--heart]"></span>
 <span class="icon-[fluent-mdl2--party-leader]"></span>
+<span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
+<span class="icon-[mdi--public]"></span>
 -->

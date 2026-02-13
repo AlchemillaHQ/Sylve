@@ -53,25 +53,6 @@
 		}
 	);
 
-	useInterval(() => 1000, {
-		callback: () => {
-			if (!storage.idle) {
-				vm.refetch();
-				domain.refetch();
-			}
-		}
-	});
-
-	watch(
-		() => storage.idle,
-		(idle) => {
-			if (!idle) {
-				vm.refetch();
-				domain.refetch();
-			}
-		}
-	);
-
 	const wssAuth = $state({
 		hash: data.hash,
 		hostname: storage.hostname || '',
@@ -119,6 +100,22 @@
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let destroyed = $state(false);
+
+	useInterval(() => 1000, {
+		callback: () => {
+			domain.refetch();
+		}
+	});
+
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				vm.refetch();
+				domain.refetch();
+			}
+		}
+	);
 
 	const applyFontSize = useDebounce(() => {
 		if (!terminal) return;

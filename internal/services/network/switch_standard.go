@@ -147,8 +147,8 @@ func (s *Service) NewStandardSwitch(
 			return fmt.Errorf("invalid_address6_object: %v", err)
 		}
 
-		if o6.Type != "Host" {
-			return fmt.Errorf("address6_object must be Type=Host")
+		if o6.Type != "Network" {
+			return fmt.Errorf("address6_object must be Type=Network")
 		}
 
 		if len(o6.Entries) == 0 {

@@ -16,9 +16,7 @@
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
-	import { core } from 'zod/v4';
+	import { resource, useInterval, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
 
@@ -42,7 +40,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.vms
 		}
 	);
@@ -55,7 +52,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.pciDevices
 		}
 	);
@@ -68,7 +64,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.pptDevices
 		}
 	);
@@ -81,7 +76,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.domain
 		}
 	);
@@ -97,16 +91,15 @@
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
-				vms.refetch();
-				pciDevices.refetch();
-				pptDevices.refetch();
-				domain.refetch();
-			});
+	watch(
+		() => storage.visible,
+		() => {
+			vms.refetch();
+			pciDevices.refetch();
+			pptDevices.refetch();
+			domain.refetch();
 		}
-	});
+	);
 
 	let vm: VM | null = $derived(
 		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null

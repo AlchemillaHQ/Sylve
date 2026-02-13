@@ -142,8 +142,12 @@
 
 			{#if shownErrors.length > 0}
 				<Alert.Root variant="destructive">
-					<span class="icon-[mdi--alert-circle-outline] h-5 w-5 shrink-0 text-red-600"></span>
-					<Alert.Title>We've hit the following errors during initialization</Alert.Title>
+					<Alert.Title>
+						<div class="flex items-center gap-1">
+							<span class="icon-[mdi--alert-circle-outline] h-4 w-4 shrink-0 text-red-600"></span>
+							<span>We've hit errors during initialization</span>
+						</div>
+					</Alert.Title>
 					<Alert.Description>
 						<ul class="list-inside list-disc text-sm">
 							{#each shownErrors as error}

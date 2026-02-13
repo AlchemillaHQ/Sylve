@@ -329,7 +329,6 @@ msgstr "DHCP सर्वर"
 msgid "WOL Server"
 msgstr "WOL सर्वर"
 
-#: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
 msgid "We've hit the following errors during initialization"
 msgstr "आरंभ के दौरान हमें निम्न त्रुटियाँ मिली हैं"
@@ -7038,4 +7037,11 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Debian with Static IP"
+msgstr ""
+
+#~ msgid "<0/> We've hit the following errors during initialization"
+#~ msgstr ""
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+msgid "We've hit errors during initialization"
 msgstr ""

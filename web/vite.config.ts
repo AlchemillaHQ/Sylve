@@ -5,21 +5,24 @@ import { wuchale } from '@wuchale/vite-plugin';
 import { visualizer } from 'rollup-plugin-visualizer';
 
 export default defineConfig({
-	plugins: [
-		wuchale(),
-		tailwindcss(),
-		sveltekit(),
-		visualizer({
-			emitFile: true
-		})
-	],
-	optimizeDeps: {
-		esbuildOptions: {
-			target: 'esnext'
-		},
-		exclude: ['xterm', 'Xterm.svelte', '@battlefieldduck/xterm-svelte']
-	},
-	build: {
-		target: 'esnext'
-	}
+    server: {
+        allowedHosts: true,
+    },
+    plugins: [
+        wuchale(),
+        tailwindcss(),
+        sveltekit(),
+        visualizer({
+            emitFile: true
+        })
+    ],
+    optimizeDeps: {
+        esbuildOptions: {
+            target: 'esnext'
+        },
+        exclude: ['xterm', 'Xterm.svelte', '@battlefieldduck/xterm-svelte']
+    },
+    build: {
+        target: 'esnext'
+    }
 });
