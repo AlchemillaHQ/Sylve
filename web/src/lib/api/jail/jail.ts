@@ -133,6 +133,34 @@ export async function addNetwork(
     });
 }
 
+export async function updateNetwork(
+    networkId: number,
+    name: string,
+    switchName: string,
+    macId: number,
+    ip4: number,
+    ip4gw: number,
+    ip6: number,
+    ip6gw: number,
+    dhcp: boolean,
+    slaac: boolean,
+    defaultGateway: boolean
+): Promise<APIResponse> {
+    return await apiRequest('/jail/network', APIResponseSchema, 'PUT', {
+        networkId,
+        name,
+        switchName,
+        macId,
+        ip4,
+        ip4gw,
+        ip6,
+        ip6gw,
+        dhcp,
+        slaac,
+        defaultGateway
+    });
+}
+
 export async function deleteNetwork(ctId: number, networkId: number): Promise<APIResponse> {
     return await apiRequest(`/jail/network/${ctId}/${networkId}`, APIResponseSchema, 'DELETE');
 }

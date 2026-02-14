@@ -15,7 +15,7 @@
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { toast } from 'svelte-sonner';
-	import Add from '$lib/components/custom/Jail/Network/Add.svelte';
+	import Form from '$lib/components/custom/Jail/Network/Form.svelte';
 
 	interface Data {
 		ctId: number;
@@ -98,6 +98,10 @@
 		},
 		delete: {
 			open: false
+		},
+		edit: {
+			open: false,
+			id: null as number | null
 		}
 	});
 
@@ -263,6 +267,23 @@
 				size="sm"
 				class="h-6"
 				variant="outline"
+				onclick={() => {
+					if (jail && activeRow) {
+						modals.edit.open = true;
+						modals.edit.id = activeRow.id as number;
+					}
+				}}
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+					<span>Edit</span>
+				</div>
+			</Button>
+
+			<Button
+				size="sm"
+				class="h-6"
+				variant="outline"
 				onclick={async () => {
 					if (jail && activeRow) {
 						modals.delete.open = true;
@@ -308,11 +329,23 @@
 {/if}
 
 {#if modals.create.open}
-	<Add
+	<Form
 		bind:open={modals.create.open}
 		jail={jail.current}
 		bind:reload
 		networkObjects={networkObjects.current}
 		networkSwitches={networkSwitches.current}
+		networkId={null}
+	/>
+{/if}
+
+{#if modals.edit.open}
+	<Form
+		bind:open={modals.edit.open}
+		jail={jail.current}
+		bind:reload
+		networkObjects={networkObjects.current}
+		networkSwitches={networkSwitches.current}
+		networkId={modals.edit.id}
 	/>
 {/if}

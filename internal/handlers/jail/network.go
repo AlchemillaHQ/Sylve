@@ -198,3 +198,46 @@ func DeleteNetwork(jailService *jail.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Edit Network Switch for Jail
+// @Description Edit a network switch on a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body jailServiceInterfaces.EditJailNetworkRequest true "Edit Network Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Router /jail/network [put]
+func EditNetwork(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req jailServiceInterfaces.EditJailNetworkRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		err := jailService.EditNetwork(req)
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_edit_network",
+				Data:    nil,
+				Error:   "failed_to_edit_network: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "network_updated_for_jail",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}

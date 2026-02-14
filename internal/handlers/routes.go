@@ -339,6 +339,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/network/disinheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
 
 		jail.POST("/network", jailHandlers.AddNetwork(jailService))
+		jail.PUT("/network", jailHandlers.EditNetwork(jailService))
 		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
 
 		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
