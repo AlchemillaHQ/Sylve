@@ -104,3 +104,45 @@ func NetworkAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Update Network Switch for a Virtual Machine
+// @Description Update a network interface attached to a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/update [put]
+func NetworkUpdate(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req libvirtServiceInterfaces.NetworkUpdateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.NetworkUpdate(req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "network_updated",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}

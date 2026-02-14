@@ -196,6 +196,10 @@
 			open: false,
 			id: null as number | null,
 			name: ''
+		},
+		edit: {
+			open: false,
+			id: null as number | null
 		}
 	};
 
@@ -224,6 +228,26 @@
 				</div>
 			</Button>
 		{/if}
+
+		{#if type === 'edit' && activeRows && activeRows.length === 1}
+			<Button
+				onclick={() => {
+					if (activeRows) {
+						properties.edit.open = true;
+						properties.edit.id = activeRows[0].id as number;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
+					<span>Edit</span>
+				</div>
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -246,7 +270,7 @@
 			size="sm"
 			class="h-6"
 			title={domain && domain.current.status !== 'Shutoff'
-				? 'VM must be shut off to attach storage'
+				? 'VM must be shut off to attach network'
 				: ''}
 			disabled={domain && domain.current.status !== 'Shutoff'}
 		>
@@ -257,6 +281,7 @@
 			</div>
 		</Button>
 
+		{@render button('edit')}
 		{@render button('detach')}
 	</div>
 
@@ -298,9 +323,22 @@
 	}}
 />
 
-<Network
-	bind:open={properties.attach.open}
-	switches={switches.current}
-	networkObjects={networkObjects.current}
-	vm={vm.current ?? null}
-/>
+{#if properties.attach.open}
+	<Network
+		bind:open={properties.attach.open}
+		switches={switches.current}
+		networkObjects={networkObjects.current}
+		vm={vm.current ?? null}
+		networkId={null}
+	/>
+{/if}
+
+{#if properties.edit.open}
+	<Network
+		bind:open={properties.edit.open}
+		switches={switches.current}
+		networkObjects={networkObjects.current}
+		vm={vm.current ?? null}
+		networkId={properties.edit.id}
+	/>
+{/if}

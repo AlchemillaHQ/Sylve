@@ -89,3 +89,10 @@ type NetworkAttachRequest struct {
 	Emulation  string `json:"emulation" binding:"required"`
 	MacId      *uint  `json:"macId"`
 }
+
+type NetworkUpdateRequest struct {
+	NetworkID  uint   `json:"networkId" binding:"required"`
+	SwitchName string `json:"switchName" binding:"required"`
+	Emulation  string `json:"emulation" binding:"required"`
+	MacId      *uint  `json:"macId"`
+}

@@ -27,6 +27,7 @@ type LibvirtServiceInterface interface {
 
 	NetworkDetach(rid uint, networkId uint) error
 	NetworkAttach(req NetworkAttachRequest) error
+	NetworkUpdate(req NetworkUpdateRequest) error
 	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 	FindVmByMac(mac string) (vmModels.VM, error)
 

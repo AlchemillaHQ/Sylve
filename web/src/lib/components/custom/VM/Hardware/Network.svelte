@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { attachNetwork } from '$lib/api/vm/network';
+	import { attachNetwork, updateNetwork as updateNetworkAPI } from '$lib/api/vm/network';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -16,9 +16,28 @@
 		switches: SwitchList;
 		vm: VM | null;
 		networkObjects: NetworkObject[];
+		networkId: number | null;
 	}
 
-	let { open = $bindable(), switches, vm, networkObjects }: Props = $props();
+	let { open = $bindable(), switches, vm, networkObjects, networkId }: Props = $props();
+	let networks = $derived.by(() => vm?.networks ?? []);
+	let selectedNetwork = $derived.by(() => {
+		if (networkId === null) return null;
+		return networks.find((n) => n.id === networkId) || null;
+	});
+	let selectedSwitchName = $derived.by(() => {
+		if (!selectedNetwork) return '';
+		if (selectedNetwork.switchType === 'standard') {
+			return switches.standard?.find((s) => s.id === selectedNetwork.switchId)?.name ?? '';
+		}
+
+		if (selectedNetwork.switchType === 'manual') {
+			return switches.manual?.find((s) => s.id === selectedNetwork.switchId)?.name ?? '';
+		}
+
+		return '';
+	});
+	let selectedMacId = $derived.by(() => selectedNetwork?.macId ?? null);
 	let usable = $derived.by(() => {
 		return [
 			...(switches.standard ?? []).map((s) => ({
@@ -37,7 +56,9 @@
 			(obj) =>
 				obj.type === 'Mac' &&
 				obj.entries?.length === 1 &&
-				(obj.isUsed === false || obj.isUsedBy === 'dhcp')
+				(obj.isUsed === false ||
+					obj.isUsedBy === 'dhcp' ||
+					(selectedMacId !== null && obj.id === selectedMacId))
 		);
 	});
 
@@ -51,6 +72,19 @@
 	};
 
 	let properties = $state(options);
+	let editOptions = {
+		emulation: selectedNetwork ? selectedNetwork.emulation ?? '' : '',
+		mac: {
+			open: false,
+			value: selectedNetwork?.macId ? selectedNetwork.macId.toString() : '0'
+		},
+		switchId: selectedSwitchName || ''
+	};
+	let editProperties = $state(editOptions);
+
+	const toastOptions = {
+		position: 'bottom-center' as const
+	};
 
 	async function addNetwork() {
 		let error = '';
@@ -62,9 +96,7 @@
 		}
 
 		if (error) {
-			toast.error(error, {
-				position: 'bottom-center'
-			});
+			toast.error(error, toastOptions);
 			return;
 		}
 
@@ -89,6 +121,46 @@
 			properties = options;
 		}
 	}
+
+	async function updateNetwork() {
+		if (!selectedNetwork) {
+			return;
+		}
+
+		let error = '';
+
+		if (!editProperties.switchId) {
+			error = 'Switch is required';
+		} else if (!editProperties.emulation) {
+			error = 'Emulation is required';
+		}
+
+		if (error) {
+			toast.error(error, toastOptions);
+			return;
+		}
+
+		const response = await updateNetworkAPI(
+			selectedNetwork.id,
+			editProperties.switchId,
+			editProperties.emulation,
+			editProperties.mac.value !== '0' ? Number(editProperties.mac.value) : 0
+		);
+
+		if (response.error) {
+			handleAPIError(response);
+			toast.error('Error updating VM network', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		toast.success('VM network updated', {
+			position: 'bottom-center'
+		});
+		open = false;
+		editProperties = editOptions;
+	}
 </script>
 
 <Dialog.Root bind:open>
@@ -98,7 +170,7 @@
 				<div class="flex items-center gap-2">
 					<span class="icon-[mdi--network] h-5 w-5"></span>
 
-					<span>New Network</span>
+					<span>{selectedNetwork ? `Edit - ${selectedSwitchName || 'Network'}` : 'New Network'}</span>
 				</div>
 
 				<div class="flex items-center gap-0.5">
@@ -108,7 +180,11 @@
 						title={'Reset'}
 						class="h-4"
 						onclick={() => {
-							properties = options;
+							if (selectedNetwork) {
+								editProperties = editOptions;
+							} else {
+								properties = options;
+							}
 						}}
 					>
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
@@ -120,7 +196,11 @@
 						class="h-4"
 						title={'Close'}
 						onclick={() => {
-							properties = options;
+							if (selectedNetwork) {
+								editProperties = editOptions;
+							} else {
+								properties = options;
+							}
 							open = false;
 						}}
 					>
@@ -131,43 +211,92 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<SimpleSelect
-			label="Switch"
-			placeholder="Select Switch"
-			options={usable?.map((s) => ({
-				value: s.name,
-				label: s.name
-			})) || []}
-			bind:value={properties.switchId}
-			onChange={(value) => (properties.switchId = value)}
-		/>
-
-		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+		{#if !selectedNetwork}
 			<SimpleSelect
-				label="Emulation"
-				placeholder="Select Emulation"
-				options={[
-					{ value: 'virtio', label: 'VirtIO' },
-					{ value: 'e1000', label: 'E1000' }
-				]}
-				bind:value={properties.emulation}
-				onChange={(value) => (properties.emulation = value)}
+				label="Switch"
+				placeholder="Select Switch"
+				options={usable?.map((s) => ({
+					value: s.name,
+					label: s.name
+				})) || []}
+				bind:value={properties.switchId}
+				onChange={(value) => (properties.switchId = value)}
 			/>
 
-			<CustomComboBox
-				bind:open={properties.mac.open}
-				label={'MAC'}
-				bind:value={properties.mac.value}
-				data={generateMACOptions(usableMacs)}
-				classes="flex-1 space-y-1"
-				placeholder="Select MAC"
-				width="w-3/4"
-				multiple={false}
-			></CustomComboBox>
-		</div>
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				<SimpleSelect
+					label="Emulation"
+					placeholder="Select Emulation"
+					options={[
+						{ value: 'virtio', label: 'VirtIO' },
+						{ value: 'e1000', label: 'E1000' }
+					]}
+					bind:value={properties.emulation}
+					onChange={(value) => (properties.emulation = value)}
+				/>
+
+				<CustomComboBox
+					bind:open={properties.mac.open}
+					label={'MAC'}
+					bind:value={properties.mac.value}
+					data={generateMACOptions(usableMacs)}
+					classes="flex-1 space-y-1"
+					placeholder="Select MAC"
+					width="w-3/4"
+					multiple={false}
+				></CustomComboBox>
+			</div>
+		{:else}
+			<SimpleSelect
+				label="Switch"
+				placeholder="Select Switch"
+				options={usable?.map((s) => ({
+					value: s.name,
+					label: s.name
+				})) || []}
+				bind:value={editProperties.switchId}
+				onChange={(value) => (editProperties.switchId = value)}
+			/>
+
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+				<SimpleSelect
+					label="Emulation"
+					placeholder="Select Emulation"
+					options={[
+						{ value: 'virtio', label: 'VirtIO' },
+						{ value: 'e1000', label: 'E1000' }
+					]}
+					bind:value={editProperties.emulation}
+					onChange={(value) => (editProperties.emulation = value)}
+				/>
+
+				<CustomComboBox
+					bind:open={editProperties.mac.open}
+					label={'MAC'}
+					bind:value={editProperties.mac.value}
+					data={generateMACOptions(usableMacs)}
+					classes="flex-1 space-y-1"
+					placeholder="Select MAC"
+					width="w-3/4"
+					multiple={false}
+				></CustomComboBox>
+			</div>
+		{/if}
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={addNetwork} type="submit" size="sm">{'Save'}</Button>
+				<Button
+					onclick={() => {
+						if (selectedNetwork) {
+							updateNetwork();
+						} else {
+							addNetwork();
+						}
+					}}
+					type="submit"
+					size="sm"
+				>
+					{selectedNetwork ? 'Save Changes' : 'Save'}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>
