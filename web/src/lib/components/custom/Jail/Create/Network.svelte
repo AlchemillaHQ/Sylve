@@ -12,6 +12,7 @@
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import { watch } from 'runed';
 
 	interface Props {
 		switch: string;
@@ -97,9 +98,10 @@
 		slaac: false
 	});
 
-	$effect(() => {
-		if (nwSwitch) {
-			if (nwSwitch === 'None') {
+	watch(
+		() => nwSwitch,
+		(current) => {
+			if (current === 'None') {
 				mac = 0;
 				ipv4 = 0;
 				ipv6 = 0;
@@ -107,66 +109,72 @@
 				slaac = false;
 				checkBoxes.dhcp = false;
 				checkBoxes.slaac = false;
-			}
-
-			if (nwSwitch !== 'Inherit') {
+			} else if (current !== 'Inherit') {
 				inheritIPv4 = false;
 				inheritIPv6 = false;
 			}
 		}
+	);
 
-		if (checkBoxes.dhcp) {
-			comboBoxes.ipv4.value = '0';
-			comboBoxes.ipv4Gateway.value = '0';
-			dhcp = true;
-		} else {
-			if (comboBoxes.ipv4.value !== '0') {
-				ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
+	watch(
+		() => checkBoxes.dhcp,
+		(current) => {
+			if (current) {
+				comboBoxes.ipv4.value = '0';
+				comboBoxes.ipv4Gateway.value = '0';
+				dhcp = true;
+			} else {
+				if (comboBoxes.ipv4.value !== '0') {
+					ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
+				}
+				dhcp = false;
 			}
 		}
+	);
 
-		if (checkBoxes.slaac) {
-			comboBoxes.ipv6.value = '0';
-			comboBoxes.ipv6Gateway.value = '0';
-			slaac = true;
-		} else {
-			if (comboBoxes.ipv6.value !== '0') {
-				ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
+	watch(
+		() => checkBoxes.slaac,
+		(current) => {
+			if (current) {
+				comboBoxes.ipv6.value = '0';
+				comboBoxes.ipv6Gateway.value = '0';
+				slaac = true;
+			} else {
+				if (comboBoxes.ipv6.value !== '0') {
+					ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
+				}
+				slaac = false;
 			}
 		}
+	);
 
-		if (comboBoxes.mac.value !== '0') {
-			mac = parseInt(comboBoxes.mac.value) || 0;
-		} else {
-			mac = 0;
+	watch(
+		() => comboBoxes.mac.value,
+		(current) => {
+			if (current !== '0') {
+				mac = parseInt(comboBoxes.mac.value) || 0;
+			} else {
+				mac = 0;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (comboBoxes.ipv4.value !== '0') {
-			ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
-		} else {
-			ipv4 = 0;
-		}
+	watch(
+		[
+			() => comboBoxes.ipv4.value,
+			() => comboBoxes.ipv4Gateway.value,
+			() => comboBoxes.ipv6.value,
+			() => comboBoxes.ipv6Gateway.value
+		],
+		([v4, v4Gw, v6, v6Gw]) => {
+			const parse = (val: string) => (val !== '0' ? parseInt(val) || 0 : 0);
 
-		if (comboBoxes.ipv4Gateway.value !== '0') {
-			ipv4Gateway = parseInt(comboBoxes.ipv4Gateway.value) || 0;
-		} else {
-			ipv4Gateway = 0;
+			ipv4 = parse(v4);
+			ipv4Gateway = parse(v4Gw);
+			ipv6 = parse(v6);
+			ipv6Gateway = parse(v6Gw);
 		}
-
-		if (comboBoxes.ipv6.value !== '0') {
-			ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
-		} else {
-			ipv6 = 0;
-		}
-
-		if (comboBoxes.ipv6Gateway.value !== '0') {
-			ipv6Gateway = parseInt(comboBoxes.ipv6Gateway.value) || 0;
-		} else {
-			ipv6Gateway = 0;
-		}
-	});
+	);
 </script>
 
 {#snippet radioItem(
