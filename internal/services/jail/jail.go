@@ -62,6 +62,7 @@ func (s *Service) GetJails() ([]jailModels.Jail, error) {
 	if err := s.DB.
 		Preload("Storages").
 		Preload("Networks").
+		Preload("JailHooks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").
@@ -77,6 +78,7 @@ func (s *Service) GetJail(id uint) (*jailModels.Jail, error) {
 	if err := s.DB.
 		Preload("Storages").
 		Preload("Networks").
+		Preload("JailHooks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").
@@ -93,6 +95,7 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 	if err := s.DB.
 		Preload("Storages").
 		Preload("Networks").
+		Preload("JailHooks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").

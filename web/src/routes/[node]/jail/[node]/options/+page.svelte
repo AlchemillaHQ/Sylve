@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getJailById } from '$lib/api/jail/jail';
 	import AllowedOptions from '$lib/components/custom/Jail/Options/AllowedOptions.svelte';
+	import LifecycleHooks from '$lib/components/custom/Jail/Options/LifecycleHooks.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -106,6 +107,21 @@
 						.filter(Boolean)
 						.join(' | ');
 				})()
+			},
+			{
+				id: generateNanoId('lifecycleHooks'),
+				property: 'Lifecycle Hooks',
+				value: (() => {
+					const hooks = jail?.current.hooks || [];
+					const enabledHooks = hooks.filter(
+						(hook) => hook.enabled && hook.script && hook.script.trim() !== ''
+					);
+
+					if (enabledHooks.length === 0) return '—';
+					if (enabledHooks.length === 1) return enabledHooks[0].phase;
+
+					return `${enabledHooks[0].phase} (+${enabledHooks.length - 1} more)`;
+				})()
 			}
 		]
 	});
@@ -120,7 +136,8 @@
 		devfsRules: { open: false },
 		additionalOptions: { open: false },
 		allowedOptions: { open: false },
-		metadata: { open: false }
+		metadata: { open: false },
+		lifecycleHooks: { open: false }
 	});
 
 	let reload = $state(false);
@@ -141,7 +158,8 @@
 		| 'devfsRules'
 		| 'additionalOptions'
 		| 'allowedOptions'
-		| 'metadata',
+		| 'metadata'
+		| 'lifecycleHooks',
 	title: string
 )}
 	<Button
@@ -174,6 +192,8 @@
 				{@render button('allowedOptions', 'Allowed Options')}
 			{:else if activeRow.property === 'Metadata'}
 				{@render button('metadata', 'Metadata')}
+			{:else if activeRow.property === 'Lifecycle Hooks'}
+				{@render button('lifecycleHooks', 'Lifecycle Hooks')}
 			{/if}
 		</div>
 	{/if}
@@ -221,4 +241,8 @@
 
 {#if properties.metadata.open && jail.current}
 	<TextEdit bind:open={properties.metadata.open} jail={jail.current} type="metadata" bind:reload />
+{/if}
+
+{#if properties.lifecycleHooks.open && jail.current}
+	<LifecycleHooks bind:open={properties.lifecycleHooks.open} jail={jail.current} bind:reload />
 {/if}

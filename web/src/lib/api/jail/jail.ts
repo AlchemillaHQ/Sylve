@@ -6,6 +6,8 @@ import {
     JailStatSchema,
     SimpleJailSchema,
     type CreateData,
+    type ExecPhaseKey,
+    type ExecPhaseState,
     type Jail,
     type JailLogs,
     type JailStat,
@@ -205,5 +207,14 @@ export async function modifyMetadata(
     return await apiRequest(`/jail/options/metadata/${ctId}`, APIResponseSchema, 'PUT', {
         metadata,
         env
+    });
+}
+
+export async function modifyLifecycleHooks(
+    ctId: number,
+    hooks: Record<ExecPhaseKey, ExecPhaseState>
+): Promise<APIResponse> {
+    return await apiRequest(`/jail/options/lifecycle-hooks/${ctId}`, APIResponseSchema, 'PUT', {
+        hooks
     });
 }

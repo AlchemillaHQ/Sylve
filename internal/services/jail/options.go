@@ -10,12 +10,14 @@ package jail
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -399,6 +401,250 @@ func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
 			"metadata_env":  env,
 		}).Error; err != nil {
 		return fmt.Errorf("failed_to_update_metadata_in_db: %w", err)
+	}
+
+	return nil
+}
+
+type hookEditTarget struct {
+	phase       jailModels.JailHookPhase
+	execKey     string
+	execPath    string
+	hostPath    string
+	inJailPath  string
+	hookPayload jailServiceInterfaces.HookPhase
+}
+
+func (s *Service) hasHookBody(content string) bool {
+	lines := strings.Split(content, "\n")
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if idx == 0 && strings.HasPrefix(trimmed, "#!") {
+			continue
+		}
+		if trimmed != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) removeUserManagedHookSection(content string) string {
+	const start = "### Start User-Managed Hook ###"
+	const end = "### End User-Managed Hook ###"
+
+	content = s.ensureShebang(content)
+
+	si := strings.Index(content, start)
+	if si == -1 {
+		return content
+	}
+
+	ei := strings.Index(content[si:], end)
+	if ei == -1 {
+		result := strings.TrimRight(content[:si], "\n")
+		if result == "" {
+			return "#!/bin/sh\n"
+		}
+		return result + "\n"
+	}
+
+	ei = si + ei + len(end)
+	result := content[:si] + content[ei:]
+	for strings.Contains(result, "\n\n\n") {
+		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
+	}
+
+	result = s.ensureShebang(result)
+	if !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+
+	return result
+}
+
+func (s *Service) ModifyLifecycleHooks(ctId uint, hooks jailServiceInterfaces.Hooks) error {
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jails_path: %w", err)
+	}
+
+	jailDir := filepath.Join(jailsPath, strconv.FormatUint(uint64(ctId), 10))
+	hostScriptsDir := filepath.Join(jailDir, "scripts")
+	if err := os.MkdirAll(hostScriptsDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_host_scripts_dir: %w", err)
+	}
+
+	mountPoint, err := s.GetJailBaseMountPoint(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
+	}
+
+	inJailScriptsDir := filepath.Join(mountPoint, "usr", "local", "sylve", "scripts")
+	if err := os.MkdirAll(inJailScriptsDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_in_jail_scripts_dir: %w", err)
+	}
+
+	targets := []hookEditTarget{
+		{
+			phase:       jailModels.JailHookPhasePreStart,
+			execKey:     "exec.prestart",
+			execPath:    filepath.Join(hostScriptsDir, "pre-start.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "pre-start.sh"),
+			hookPayload: hooks.Prestart,
+		},
+		{
+			phase:       jailModels.JailHookPhaseStart,
+			execKey:     "exec.start",
+			execPath:    "/usr/local/sylve/scripts/start.sh",
+			hostPath:    filepath.Join(hostScriptsDir, "start.sh"),
+			inJailPath:  filepath.Join(inJailScriptsDir, "start.sh"),
+			hookPayload: hooks.Start,
+		},
+		{
+			phase:       jailModels.JailHookPhasePostStart,
+			execKey:     "exec.poststart",
+			execPath:    filepath.Join(hostScriptsDir, "post-start.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "post-start.sh"),
+			hookPayload: hooks.Poststart,
+		},
+		{
+			phase:       jailModels.JailHookPhasePreStop,
+			execKey:     "exec.prestop",
+			execPath:    filepath.Join(hostScriptsDir, "pre-stop.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "pre-stop.sh"),
+			hookPayload: hooks.Prestop,
+		},
+		{
+			phase:       jailModels.JailHookPhaseStop,
+			execKey:     "exec.stop",
+			execPath:    "/usr/local/sylve/scripts/stop.sh",
+			hostPath:    filepath.Join(hostScriptsDir, "stop.sh"),
+			inJailPath:  filepath.Join(inJailScriptsDir, "stop.sh"),
+			hookPayload: hooks.Stop,
+		},
+		{
+			phase:       jailModels.JailHookPhasePostStop,
+			execKey:     "exec.poststop",
+			execPath:    filepath.Join(hostScriptsDir, "post-stop.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "post-stop.sh"),
+			hookPayload: hooks.Poststop,
+		},
+	}
+
+	shouldWireExec := make(map[jailModels.JailHookPhase]bool, len(targets))
+
+	for _, target := range targets {
+		currentContent, err := os.ReadFile(target.hostPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed_to_read_hook_script(%s): %w", target.phase, err)
+			}
+			currentContent = []byte("#!/bin/sh\n")
+		}
+
+		nextContent := string(currentContent)
+		scriptBody := target.hookPayload.Script
+		if target.hookPayload.Enabled && strings.TrimSpace(scriptBody) != "" {
+			nextContent = s.AddSylveAdditionsToHook(nextContent, scriptBody)
+		} else {
+			nextContent = s.removeUserManagedHookSection(nextContent)
+		}
+
+		if err := os.WriteFile(target.hostPath, []byte(nextContent), 0755); err != nil {
+			return fmt.Errorf("failed_to_write_hook_script(%s): %w", target.phase, err)
+		}
+
+		if target.inJailPath != "" {
+			if err := os.WriteFile(target.inJailPath, []byte(nextContent), 0755); err != nil {
+				return fmt.Errorf("failed_to_write_in_jail_hook_script(%s): %w", target.phase, err)
+			}
+		}
+
+		shouldWireExec[target.phase] = s.hasHookBody(nextContent)
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	lines := utils.SplitLines(cfg)
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		shouldSkip := false
+		for _, target := range targets {
+			// Only remove Sylve-managed exec lines that point to managed script paths.
+			if strings.HasPrefix(trimmed, target.execKey) &&
+				strings.Contains(trimmed, fmt.Sprintf("\"%s\"", target.execPath)) {
+				shouldSkip = true
+				break
+			}
+		}
+		if !shouldSkip {
+			filtered = append(filtered, line)
+		}
+	}
+
+	cfgWithoutExec := strings.Join(filtered, "\n")
+	execLines := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if shouldWireExec[target.phase] {
+			execLines = append(execLines, fmt.Sprintf("\t%s += \"%s\";", target.execKey, target.execPath))
+		}
+	}
+
+	if len(execLines) > 0 {
+		cfgWithoutExec, err = s.AppendToConfig(ctId, cfgWithoutExec, "\n"+strings.Join(execLines, "\n")+"\n")
+		if err != nil {
+			return fmt.Errorf("failed_to_append_exec_lines: %w", err)
+		}
+	}
+
+	if err := s.SaveJailConfig(ctId, cfgWithoutExec); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	tx := s.DB.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
+	}
+
+	for _, target := range targets {
+		payload := target.hookPayload
+		updateRes := tx.
+			Model(&jailModels.JailHooks{}).
+			Where("jid = ? AND phase = ?", jail.ID, target.phase).
+			Updates(map[string]any{
+				"enabled": payload.Enabled,
+				"script":  payload.Script,
+			})
+		if updateRes.Error != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed_to_update_hook_row(%s): %w", target.phase, updateRes.Error)
+		}
+
+		if updateRes.RowsAffected == 0 {
+			if err := tx.Create(&jailModels.JailHooks{
+				JailID:  jail.ID,
+				Phase:   target.phase,
+				Enabled: payload.Enabled,
+				Script:  payload.Script,
+			}).Error; err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("failed_to_create_hook_row(%s): %w", target.phase, err)
+			}
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_hook_updates: %w", err)
 	}
 
 	return nil

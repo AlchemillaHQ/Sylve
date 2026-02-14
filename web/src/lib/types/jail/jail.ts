@@ -69,7 +69,22 @@ export const NetworkSchema = z.object({
     defaultGateway: z.boolean().default(false)
 });
 
-export const JailSchema = SimpleJailSchema.extend({
+export const JailHookPhaseSchema = z.enum([
+    'prestart',
+    'start',
+    'poststart',
+    'prestop',
+    'stop',
+    'poststop'
+]);
+
+export const JailHookSchema = z.object({
+    phase: JailHookPhaseSchema,
+    enabled: z.boolean(),
+    script: z.string()
+});
+
+const JailBaseSchema = SimpleJailSchema.extend({
     description: z.string().nullable(),
     startAtBoot: z.boolean(),
     startOrder: z.number().int(),
@@ -88,9 +103,30 @@ export const JailSchema = SimpleJailSchema.extend({
     devfsRuleset: z.string(),
     additionalOptions: z.string(),
     allowedOptions: z.array(z.string()).default([]),
+    hooks: z
+        .array(JailHookSchema)
+        .nullable()
+        .optional()
+        .transform((value) => value ?? []),
     metadataMeta: z.string(),
     metadataEnv: z.string()
 });
+
+export const JailSchema = z.preprocess((input) => {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+        const payload = { ...(input as Record<string, unknown>) };
+        if (payload.hooks == null) {
+            if (Array.isArray(payload.JailHooks)) {
+                payload.hooks = payload.JailHooks;
+            } else if (Array.isArray(payload.jailHooks)) {
+                payload.hooks = payload.jailHooks;
+            }
+        }
+        return payload;
+    }
+
+    return input;
+}, JailBaseSchema);
 
 export const JailStateSchema = z.object({
     ctId: z.number().int(),
@@ -153,6 +189,7 @@ export interface ExecPhaseState {
 export type SimpleJail = z.infer<typeof SimpleJailSchema>;
 export type Jail = z.infer<typeof JailSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
+export type JailHook = z.infer<typeof JailHookSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;

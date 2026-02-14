@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,10 @@ type ModifyAllowedOptionsRequest struct {
 type ModifyMetadataRequest struct {
 	Metadata *string `json:"metadata"`
 	Env      *string `json:"env"`
+}
+
+type ModifyLifecycleHooksRequest struct {
+	Hooks *jailServiceInterfaces.Hooks `json:"hooks"`
 }
 
 // @Summary Modify Boot Order of a Jail
@@ -408,6 +413,65 @@ func ModifyMetadata(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "metadata_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Lifecycle Hooks of a Jail
+// @Description Modify jail exec.* lifecycle hooks in one request
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyLifecycleHooksRequest true "Modify Lifecycle Hooks Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/lifecycle-hooks/:rid [put]
+func ModifyLifecycleHooks(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyLifecycleHooksRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		hooks := jailServiceInterfaces.Hooks{}
+		if req.Hooks != nil {
+			hooks = *req.Hooks
+		}
+
+		if err := jailService.ModifyLifecycleHooks(rid, hooks); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "lifecycle_hooks_modified",
 			Data:    nil,
 			Error:   "",
 		})

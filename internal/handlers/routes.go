@@ -346,6 +346,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
 		jail.PUT("/options/allowed-options/:rid", jailHandlers.ModifyAllowedOptions(jailService))
 		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
+		jail.PUT("/options/lifecycle-hooks/:rid", jailHandlers.ModifyLifecycleHooks(jailService))
 	}
 
 	utilities := api.Group("/utilities")
