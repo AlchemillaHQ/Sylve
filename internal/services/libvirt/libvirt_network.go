@@ -588,13 +588,20 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 	network.SwitchID = switchID
 	network.SwitchType = switchType
 	network.Emulation = req.Emulation
+	updates := map[string]any{
+		"switch_id":   network.SwitchID,
+		"switch_type": network.SwitchType,
+		"emulation":   network.Emulation,
+	}
 	if macObjId != 0 {
-		network.MacID = &macObjId
+		updates["mac_id"] = macObjId
 	} else {
-		network.MacID = nil
+		updates["mac_id"] = nil
 	}
 
-	if err := s.DB.Save(&network).Error; err != nil {
+	if err := s.DB.Model(&vmModels.Network{}).
+		Where("id = ?", network.ID).
+		Updates(updates).Error; err != nil {
 		return fmt.Errorf("failed_to_update_network_record: %w", err)
 	}
 
