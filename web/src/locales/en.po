@@ -47,6 +47,7 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -1016,6 +1017,7 @@ msgstr "Delete"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -2346,6 +2348,7 @@ msgstr "Select IPv6 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select MAC"
 msgstr "Select MAC"
 
@@ -2756,6 +2759,7 @@ msgstr "Create Virtual Machine"
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "VirtIO"
 msgstr "VirtIO"
@@ -2913,9 +2917,11 @@ msgstr "Select PCI Devices"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
 msgstr "Switch is required"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Emulation is required"
 msgstr "Emulation is required"
@@ -2936,6 +2942,7 @@ msgstr "New Network"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -2945,9 +2952,11 @@ msgstr "Switch"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select Switch"
 msgstr "Select Switch"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -2955,6 +2964,7 @@ msgstr "Select Switch"
 msgid "Emulation"
 msgstr "Emulation"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -4330,7 +4340,6 @@ msgstr "Unknown"
 msgid "No available/unused switches to attach to"
 msgstr "No available/unused switches to attach to"
 
-#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "VM must be shut off to attach storage"
 msgstr "VM must be shut off to attach storage"
@@ -5394,6 +5403,7 @@ msgid "Log Out"
 msgstr "Log Out"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
 msgstr "Save Changes"
@@ -5402,7 +5412,9 @@ msgstr "Save Changes"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
+#. placeholder {0}: selectedSwitchName || 'Network'
 #. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
 msgstr "Edit - {0}"
@@ -7144,3 +7156,15 @@ msgstr "Lifecycle hooks saved"
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "The above script will run during {0}, ensure they are valid for the host or jail"
 msgstr "The above script will run during {0}, ensure they are valid for the host or jail"
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "VM must be shut off to attach network"
+msgstr "VM must be shut off to attach network"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Error updating VM network"
+msgstr "Error updating VM network"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "VM network updated"
+msgstr "VM network updated"

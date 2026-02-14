@@ -47,6 +47,7 @@ msgstr "ഹാർഡ്‌വെയർ"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -1014,6 +1015,7 @@ msgstr "മായ്ക്കുക"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -2344,6 +2346,7 @@ msgstr "IPv6 ഗേറ്റ്‌വേ തിരഞ്ഞെടുക്കു
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select MAC"
 msgstr "MAC തിരഞ്ഞെടുക്കുക"
 
@@ -2754,6 +2757,7 @@ msgstr "വെർച്വൽ മെഷീൻ ഉണ്ടാക്കുക"
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "VirtIO"
 msgstr "VirtIO"
@@ -2911,9 +2915,11 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
 msgstr "സ്വിച്ച് ആവശ്യമാണ്"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Emulation is required"
 msgstr "അനുകരണം ആവശ്യമാണ്"
@@ -2934,6 +2940,7 @@ msgstr "പുതിയ നെറ്റ്‌വർക്ക്"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -2943,9 +2950,11 @@ msgstr "സ്വിച്ച്"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select Switch"
 msgstr "സ്വിച്ച് തിരഞ്ഞെടുക്കുക"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -2953,6 +2962,7 @@ msgstr "സ്വിച്ച് തിരഞ്ഞെടുക്കുക"
 msgid "Emulation"
 msgstr "അനുകരണം"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -4314,7 +4324,6 @@ msgstr "അജ്ഞാതം"
 msgid "No available/unused switches to attach to"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "VM must be shut off to attach storage"
 msgstr "സംഭരണം ഘടിപ്പിക്കാൻ VM ഷട്ട് ഓഫ് ചെയ്യണം"
@@ -5372,6 +5381,7 @@ msgid "Log Out"
 msgstr "ലോഗ് ഔട്ട് ചെയ്യുക"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
 msgstr "മാറ്റങ്ങൾ സംരക്ഷിക്കുക"
@@ -5380,7 +5390,9 @@ msgstr "മാറ്റങ്ങൾ സംരക്ഷിക്കുക"
 msgid "Attach Storage"
 msgstr "സ്റ്റോറേജ് ഘടിപ്പിക്കുക"
 
+#. placeholder {0}: selectedSwitchName || 'Network'
 #. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
 msgstr "തിരുത്തുക - {0}"
@@ -7094,4 +7106,16 @@ msgstr ""
 #. placeholder {0}: phase.label
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "The above script will run during {0}, ensure they are valid for the host or jail"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "VM must be shut off to attach network"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Error updating VM network"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "VM network updated"
 msgstr ""

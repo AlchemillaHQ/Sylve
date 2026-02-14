@@ -49,6 +49,7 @@ msgstr "硬件"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -986,6 +987,7 @@ msgstr "删除"
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
+#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -2310,6 +2312,7 @@ msgstr "选择 IPv6 网关"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select MAC"
 msgstr "选择 MAC"
 
@@ -2708,6 +2711,7 @@ msgstr "创建虚拟机"
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "VirtIO"
 msgstr "VirtIO"
@@ -2847,9 +2851,11 @@ msgstr "选择 PCI 设备"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
 msgstr "需要指定交换机"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Emulation is required"
 msgstr "需要指定仿真"
@@ -2870,6 +2876,7 @@ msgstr "新建网络"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -2879,9 +2886,11 @@ msgstr "切换"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Select Switch"
 msgstr "选择交换机"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -2889,6 +2898,7 @@ msgstr "选择交换机"
 msgid "Emulation"
 msgstr "仿真"
 
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -4177,7 +4187,6 @@ msgstr "未知"
 msgid "No available/unused switches to attach to"
 msgstr "无可用或未使用的交换机可连接"
 
-#: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 msgid "VM must be shut off to attach storage"
 msgstr "必须先关闭虚拟机才能挂载存储"
@@ -5148,6 +5157,7 @@ msgid "Log Out"
 msgstr "注销"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
 msgstr "保存变更"
@@ -5156,7 +5166,9 @@ msgstr "保存变更"
 msgid "Attach Storage"
 msgstr "附近存储"
 
+#. placeholder {0}: selectedSwitchName || 'Network'
 #. placeholder {0}: selectedName
+#: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
 msgstr "编辑 - {0}"
@@ -6275,4 +6287,16 @@ msgstr ""
 #. placeholder {0}: phase.label
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "The above script will run during {0}, ensure they are valid for the host or jail"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "VM must be shut off to attach network"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Error updating VM network"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "VM network updated"
 msgstr ""
