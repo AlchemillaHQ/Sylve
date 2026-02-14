@@ -452,6 +452,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -596,6 +598,8 @@ msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1077,6 +1081,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2821,9 +2826,8 @@ msgstr "{0} ലഭ്യമാണ്"
 msgid "{0} busy"
 msgstr "{0} തിരക്കിലാണ്"
 
-#. placeholder {0}: selectedOptions.length
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. placeholder {0}: selectedLabels.length
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -3212,6 +3216,7 @@ msgid ""
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
@@ -5572,7 +5577,6 @@ msgstr "വിർച്വൽ മെഷീനുകൾ (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -5680,6 +5684,7 @@ msgid "Custom Devfs Ruleset"
 msgstr "ഇഷ്‌ടാനുസൃത Devfs നിയമങ്ങൾ"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "കസ്റ്റം ജയിൽ ലൈഫ്സൈക്കിൾ ഹുക്കുകൾ (exec.* സ്ക്രിപ്റ്റുകൾ)"
 
@@ -7069,4 +7074,24 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Allowed options saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Lifecycle Hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Failed to save lifecycle hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Lifecycle hooks saved"
+msgstr ""
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "The above script will run during {0}, ensure they are valid for the host or jail"
 msgstr ""

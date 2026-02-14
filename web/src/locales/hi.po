@@ -453,6 +453,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -597,6 +599,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1035,6 +1039,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -3088,9 +3093,8 @@ msgstr "{0} उपलब्ध"
 msgid "{0} busy"
 msgstr "{0} व्यस्त"
 
-#. placeholder {0}: selectedOptions.length
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. placeholder {0}: selectedLabels.length
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -3204,6 +3208,7 @@ msgid ""
 msgstr "\"इस वीएम में वर्तमान में सीरियल कंसोल एक्सेस अक्षम है। आप इसे नीचे दिए गए बटन का उपयोग करके सक्षम कर सकते हैं।\""
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
@@ -5578,7 +5583,6 @@ msgstr "वर्चुअल मशीनें (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -5688,6 +5692,7 @@ msgid "Custom Devfs Ruleset"
 msgstr "कस्टम देवफ्स रूलसेट"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "कस्टम जेल लाइफसाइकिल हुक्स (exec.* स्क्रिप्ट्स)"
 
@@ -7085,4 +7090,24 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Allowed options saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Lifecycle Hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Failed to save lifecycle hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Lifecycle hooks saved"
+msgstr ""
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "The above script will run during {0}, ensure they are valid for the host or jail"
 msgstr ""

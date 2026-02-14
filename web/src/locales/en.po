@@ -454,6 +454,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -598,6 +600,8 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1079,6 +1083,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2823,7 +2828,7 @@ msgstr "{0} available"
 msgid "{0} busy"
 msgstr "{0} busy"
 
-#. placeholder {0}: selectedOptions.length
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. placeholder {0}: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -3221,6 +3226,7 @@ msgstr ""
 "below."
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
@@ -5710,6 +5716,7 @@ msgid "Custom Devfs Ruleset"
 msgstr "Custom Devfs Ruleset"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "Custom Jail Lifecycle Hooks (exec.* scripts)"
 
@@ -7117,3 +7124,23 @@ msgstr "Failed to save allowed options"
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Allowed options saved"
 msgstr "Allowed options saved"
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Lifecycle Hooks"
+msgstr "Lifecycle Hooks"
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Failed to save lifecycle hooks"
+msgstr "Failed to save lifecycle hooks"
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Lifecycle hooks saved"
+msgstr "Lifecycle hooks saved"
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "The above script will run during {0}, ensure they are valid for the host or jail"
+msgstr "The above script will run during {0}, ensure they are valid for the host or jail"

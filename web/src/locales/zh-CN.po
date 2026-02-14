@@ -430,6 +430,8 @@ msgstr "最小化"
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -574,6 +576,8 @@ msgstr "创建分区"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -1049,6 +1053,7 @@ msgstr "这是附注"
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -2772,9 +2777,8 @@ msgstr "{0} 可用"
 msgid "{0} busy"
 msgstr "{0} 正在使用"
 
-#. placeholder {0}: selectedOptions.length
+#. placeholder {0}: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. placeholder {0}: selectedLabels.length
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
@@ -3149,6 +3153,7 @@ msgstr ""
 "下方按钮将其启用。"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 msgid "Enable"
@@ -5335,7 +5340,6 @@ msgstr "虚拟机 (allow.vmm)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
-#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -5377,6 +5381,7 @@ msgid "Custom Devfs Ruleset"
 msgstr "自定义 Devfs 规则集"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 msgid "Custom Jail Lifecycle Hooks (exec.* scripts)"
 msgstr "自定义 Jail 生命周期钩子（exec.* 脚本）"
 
@@ -6250,4 +6255,24 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 msgid "Allowed options saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Lifecycle Hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Failed to save lifecycle hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Lifecycle hooks saved"
+msgstr ""
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "The above script will run during {0}, ensure they are valid for the host or jail"
 msgstr ""
