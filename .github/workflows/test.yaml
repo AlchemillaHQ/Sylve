@@ -1,0 +1,16 @@
+name: Test
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg install -y node24 npm-node24 go git
+          run: |
+            export GOPATH=$HOME/go
+            export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+            make test

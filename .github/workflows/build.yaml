@@ -1,0 +1,17 @@
+name: Build
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg install -y node24 npm-node24 go git
+          run: |
+            export GOPATH=$HOME/go
+            export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+            chmod +x scripts/build-deps-check.sh
+            make
