@@ -6,6 +6,7 @@
 	import {
 		actionVm,
 		deleteVM,
+		getQGAInfo,
 		getStats,
 		getVmById,
 		getVMDomain,
@@ -17,29 +18,39 @@
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { VMStatSchema, type VM, type VMDomain, type VMStat } from '$lib/types/vm/vm';
+	import {
+		VMStatSchema,
+		type QGAInfo,
+		type VM,
+		type VMDomain,
+		type VMStat
+	} from '$lib/types/vm/vm';
 	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
-	import type { GFSStep } from '$lib/types/common';
+	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
+	import { getVMIconByGaId } from '$lib/utils/vm/vm';
+	import * as Table from '$lib/components/ui/table/index.js';
 
 	interface Data {
 		rid: number;
 		vm: VM;
 		domain: VMDomain;
 		stats: VMStat[];
+		gaInfo: QGAInfo | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	let gfsStep = $state<GFSStep>('hourly');
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => 'vm-' + data.vm.rid,
 		async (key) => {
@@ -50,6 +61,7 @@
 		{ initialValue: data.vm }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.vm.rid}`,
 		async (key) => {
@@ -60,6 +72,7 @@
 		{ initialValue: data.domain }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
@@ -69,6 +82,22 @@
 			return result;
 		},
 		{ initialValue: data.stats }
+	);
+
+	// svelte-ignore state_referenced_locally
+	const gaInfo = resource(
+		() => `vm-qga-${data.vm.rid}`,
+		async (key) => {
+			const result = await getQGAInfo(data.vm.rid);
+			if (isAPIResponse(result)) {
+				if (!isAPIResponse(data.gaInfo)) return data.gaInfo;
+				return null;
+			}
+
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: isAPIResponse(data.gaInfo) ? null : data.gaInfo }
 	);
 
 	const visible = new IsDocumentVisible();
@@ -194,6 +223,8 @@
 				position: 'bottom-center'
 			});
 		}
+
+		gaInfo.refetch();
 	}
 
 	async function handleStop() {
@@ -270,6 +301,8 @@
 				position: 'bottom-center'
 			});
 		}
+
+		gaInfo.refetch();
 	}
 
 	let udTime = $derived.by(() => {
@@ -284,6 +317,8 @@
 		}
 		return '';
 	});
+
+	let activeGaView = $state('os');
 </script>
 
 {#snippet button(type: string)}
@@ -369,7 +404,16 @@
 				<Card.Root class="w-full gap-0 p-4">
 					<Card.Header class="p-0">
 						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-							{`${vm.current.name} ${udTime ? `(${udTime})` : ''}`}
+							<div class="flex items-center gap-1.5 whitespace-nowrap">
+								{#if gaInfo.current && getVMIconByGaId(gaInfo.current?.osInfo.id || '')}
+									<span class="icon {getVMIconByGaId(gaInfo.current?.osInfo.id || '')} h-6 w-6"
+									></span>
+								{/if}
+								<span>{vm.current.name}</span>
+								{#if udTime}
+									<span>({udTime})</span>
+								{/if}
+							</div>
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="mt-3 p-0">
@@ -451,6 +495,134 @@
 					</Card.Content>
 				</Card.Root>
 			</div>
+
+			{#if gaInfo.current && domain.current.status === 'Running'}
+				<div class="space-y-4 px-4 pb-4">
+					<Card.Root class="w-full gap-0 p-4">
+						<Card.Header class="p-0">
+							<Card.Description
+								class="text-md flex items-center justify-between font-normal text-blue-600 dark:text-blue-500"
+							>
+								<div class="flex items-center gap-2">
+									<span class="icon icon-[lucide--bot] h-6 w-6"></span>
+									<span>Guest Information</span>
+								</div>
+
+								<div class="flex items-center gap-2">
+									<SimpleSelect
+										options={[
+											{ label: 'OS Info', value: 'os' },
+											{ label: 'Network', value: 'network' }
+										]}
+										bind:value={activeGaView}
+										classes={{ trigger: 'h-6! text-white min-w-[100px]' }}
+										onChange={(v: string) => {
+											activeGaView = v;
+										}}
+									/>
+
+									<Button
+										variant="secondary"
+										size="icon"
+										class="h-5 w-5"
+										onclick={() => gaInfo.refetch()}
+										disabled={gaInfo.loading}
+									>
+										<span class="icon-[mdi--refresh] h-4 w-4 {gaInfo.loading ? 'animate-spin' : ''}"
+										></span>
+									</Button>
+								</div>
+							</Card.Description>
+						</Card.Header>
+
+						<Card.Content class="mt-3 p-0">
+							{#if activeGaView === 'os'}
+								<Table.Root class="w-full">
+									<Table.Body>
+										<Table.Row>
+											<Table.Cell class="font-medium">OS Name</Table.Cell>
+											<Table.Cell
+												>{gaInfo.current.osInfo['pretty-name'] ||
+													gaInfo.current.osInfo.name ||
+													'Unknown'}</Table.Cell
+											>
+										</Table.Row>
+										<Table.Row>
+											<Table.Cell class="font-medium">Kernel</Table.Cell>
+											<Table.Cell>{gaInfo.current.osInfo['kernel-release'] || '-'}</Table.Cell>
+										</Table.Row>
+										<Table.Row>
+											<Table.Cell class="font-medium">Architecture</Table.Cell>
+											<Table.Cell>{gaInfo.current.osInfo.machine || '-'}</Table.Cell>
+										</Table.Row>
+										<Table.Row>
+											<Table.Cell class="font-medium">Version ID</Table.Cell>
+											<Table.Cell>{gaInfo.current.osInfo['version-id'] || '-'}</Table.Cell>
+										</Table.Row>
+									</Table.Body>
+								</Table.Root>
+							{:else if activeGaView === 'network'}
+								<div class="max-h-64 overflow-y-auto rounded-md border">
+									<Table.Root class="w-full">
+										<Table.Header class="sticky top-0 bg-muted/50 backdrop-blur-sm">
+											<Table.Row>
+												<Table.Head>Interface</Table.Head>
+												<Table.Head>MAC Address</Table.Head>
+												<Table.Head>IP Addresses</Table.Head>
+												<Table.Head class="text-right">RX / TX</Table.Head>
+											</Table.Row>
+										</Table.Header>
+										<Table.Body>
+											{#if gaInfo.current.interfaces && gaInfo.current.interfaces.length > 0}
+												{#each gaInfo.current.interfaces as iface}
+													<Table.Row>
+														<Table.Cell class="font-mono font-bold"
+															>{iface.name || 'unknown'}</Table.Cell
+														>
+														<Table.Cell class="font-mono text-xs"
+															>{iface['hardware-address'] || '-'}</Table.Cell
+														>
+														<Table.Cell>
+															<div class="flex flex-col gap-1">
+																{#if iface['ip-addresses'] && iface['ip-addresses'].length > 0}
+																	{#each iface['ip-addresses'] as ip}
+																		<span class="text-xs">
+																			<span class="text-muted-foreground mr-1 uppercase"
+																				>{ip['ip-address-type']}:</span
+																			>
+																			{ip['ip-address']}/{ip.prefix}
+																		</span>
+																	{/each}
+																{:else}
+																	<span class="text-muted-foreground text-xs">-</span>
+																{/if}
+															</div>
+														</Table.Cell>
+														<Table.Cell class="text-right text-xs">
+															{#if iface.statistics}
+																<div>↓ {humanFormat(iface.statistics['rx-bytes'] || 0)}B</div>
+																<div>↑ {humanFormat(iface.statistics['tx-bytes'] || 0)}B</div>
+															{:else}
+																<span class="text-muted-foreground italic">N/A</span>
+															{/if}
+														</Table.Cell>
+													</Table.Row>
+												{/each}
+											{:else}
+												<Table.Row>
+													<Table.Cell colspan={4} class="text-center text-muted-foreground py-4">
+														No network interfaces reported by agent.
+													</Table.Cell>
+												</Table.Row>
+											{/if}
+										</Table.Body>
+									</Table.Root>
+								</div>
+							{/if}
+						</Card.Content>
+					</Card.Root>
+				</div>
+			{/if}
 
 			<div class="space-y-4 px-4 pb-4">
 				<LineBrush

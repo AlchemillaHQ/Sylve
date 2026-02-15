@@ -640,9 +640,9 @@ func findLowestIndex(xml string) (int, error) {
 			parts := strings.Fields(value)
 			if len(parts) >= 2 {
 				indexPart := parts[1]
-				colonIndex := strings.Index(indexPart, ":")
-				if colonIndex > 0 {
-					indexStr := indexPart[0:colonIndex] // "10"
+				sepIndex := strings.IndexAny(indexPart, ":,")
+				if sepIndex > 0 {
+					indexStr := indexPart[0:sepIndex] // "10"
 					if index, err := strconv.Atoi(indexStr); err == nil {
 						usedIndices[index] = true
 					}
@@ -679,13 +679,13 @@ func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
 			continue
 		}
 
-		// handle "-s 10:0,..." and "-s10:0,..."
+		// handle "-s 10:0,...", "-s10:0,...", and "-s 10,virtio-console,..."
 		if strings.HasPrefix(value, "-s") {
 			rest := strings.TrimPrefix(value, "-s")
 			rest = strings.TrimSpace(rest)
-			colon := strings.Index(rest, ":")
-			if colon > 0 {
-				if idx, err := strconv.Atoi(rest[:colon]); err == nil {
+			sep := strings.IndexAny(rest, ":,")
+			if sep > 0 {
+				if idx, err := strconv.Atoi(rest[:sep]); err == nil {
 					used[idx] = true
 				}
 			}

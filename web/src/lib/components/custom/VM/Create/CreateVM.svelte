@@ -188,7 +188,8 @@
 				metadata: '',
 				networkConfig: ''
 			},
-			ignoreUmsrs: false
+			ignoreUmsrs: false,
+			qemuGuestAgent: false
 		}
 	};
 
@@ -346,6 +347,7 @@
 									bind:timeOffset={modal.advanced.timeOffset}
 									bind:cloudInit={modal.advanced.cloudInit}
 									bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
+									bind:qemuGuestAgent={modal.advanced.qemuGuestAgent}
 								/>
 							{/if}
 						</div>

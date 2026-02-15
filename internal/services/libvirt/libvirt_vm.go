@@ -145,6 +145,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		sIndex++
 	}
 
+	if vm.QemuGuestAgent {
+		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
+			sIndex,
+			filepath.Join(vmPath, "qga.sock"),
+		)
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: qgaArg,
+			},
+		})
+		sIndex++
+	}
+
 	var interfaces []libvirtServiceInterfaces.Interface
 
 	if vm.Networks != nil && len(vm.Networks) > 0 {
@@ -677,121 +690,181 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
 
-	err = s.CheckPCIDevicesInUse(vm)
-	if err != nil {
-		return err
+	if action == "start" || action == "reboot" {
+		if err := s.CheckPCIDevicesInUse(vm); err != nil {
+			return err
+		}
 	}
 
 	switch action {
 	case "start":
-		state, _, err := s.Conn.DomainGetState(domain, 0)
-		if err != nil {
-			return fmt.Errorf("could_not_get_state: %w", err)
-		}
-
-		if state == 1 {
-			return nil
-		}
-
-		err = s.StartTPM()
-
-		if err != nil {
-			return fmt.Errorf("failed_to_start_tpm: %w", err)
-		}
-
-		if err := s.Conn.DomainCreate(domain); err != nil {
-			return fmt.Errorf("failed_to_start_domain: %w", err)
-		}
-
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_run: %w", err)
-		}
-
-		if newState != 1 {
-			return fmt.Errorf("unexpected_state_after_start: %d", newState)
-		}
+		err = s.startVM(&domain, vm)
 	case "shutdown":
-		shutdown := false
-		if err := s.Conn.DomainShutdown(domain); err == nil {
-			shutdown = true
-		}
-
-		if vm.ShutdownWaitTime > 0 {
-			time.Sleep(time.Duration(vm.ShutdownWaitTime) * time.Second)
-		}
-
-		stateAfterShutdown, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if !shutdown || stateAfterShutdown != 5 {
-			if err := s.Conn.DomainDestroy(domain); err != nil {
-				return fmt.Errorf("failed_to_stop_domain: %w", err)
-			}
-		}
-
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_stop: %w", err)
-		}
-
-		if newState != 5 {
-			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
-		}
+		err = s.shutdownVM(&domain, vm)
 	case "stop":
-		if err := s.Conn.DomainDestroy(domain); err != nil {
-			return fmt.Errorf("failed_to_stop_domain: %w", err)
-		}
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_stop: %w", err)
-		}
-
-		if newState != 5 {
-			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
-		}
+		err = s.stopVM(&domain, vm)
 	case "reboot":
-		state, _, err := s.Conn.DomainGetState(domain, 0)
-		if err != nil {
-			return fmt.Errorf("could_not_get_state: %w", err)
-		}
-
-		if state != 1 {
-			return fmt.Errorf("domain_not_running_for_reboot")
-		}
-
-		if err := s.Conn.DomainReboot(domain, 0); err != nil {
-			return fmt.Errorf("failed_to_reboot_domain: %w", err)
-		}
+		err = s.rebootVM(&domain, vm)
 	default:
 		return fmt.Errorf("invalid_action: %s", action)
 	}
 
-	/* This is an ugly hack because sometimes bhyve does not really stop?
-	And this causes issues with the next start. So we find the user of the VNC port and kill that PID */
-	if action == "stop" || action == "shutdown" {
-		user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
-		if err != nil {
-			if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
-				return err
-			}
-		}
-
-		if user > 0 {
-			if err := utils.KillProcess(user); err != nil {
-				return fmt.Errorf("failed_to_kill_process_using_vnc_port: %w", err)
-			}
-		}
+	if err != nil {
+		return err
 	}
 
-	err = s.SetActionDate(vm, action)
-
-	if err != nil {
+	if err := s.SetActionDate(vm, action); err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.RID)
 	}
 
+	return nil
+}
+
+func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.RemoveQGASocket(vm); err != nil {
+		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
+	}
+
+	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_get_state: %w", err)
+	}
+
+	if state == 1 {
+		return nil
+	}
+
+	if err := s.StartTPM(); err != nil {
+		return fmt.Errorf("failed_to_start_tpm: %w", err)
+	}
+
+	if err := s.Conn.DomainCreate(*domain); err != nil {
+		return fmt.Errorf("failed_to_start_domain: %w", err)
+	}
+
+	newState, _, err := s.Conn.DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_verify_run: %w", err)
+	}
+	if newState != 1 {
+		return fmt.Errorf("unexpected_state_after_start: %d", newState)
+	}
+
+	return nil
+}
+
+func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.Conn.DomainDestroy(*domain); err != nil {
+		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
+	}
+
+	return s.cleanupResources(vm)
+}
+
+func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.Conn.DomainShutdown(*domain); err != nil {
+		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
+	}
+
+	waitTime := vm.ShutdownWaitTime
+	if waitTime <= 0 {
+		waitTime = 30
+	}
+
+	timeout := time.After(time.Duration(waitTime) * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			logger.L.Warn().Msgf("Shutdown timed out after %ds, forcing destroy", waitTime)
+			return s.forceDestroy(domain, vm)
+
+		case <-ticker.C:
+			state, _, err := s.Conn.DomainGetState(*domain, 0)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_state: %w", err)
+			}
+
+			if state == 5 {
+				return s.cleanupResources(vm)
+			}
+		}
+	}
+}
+
+func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.Conn.DomainDestroy(*domain); err != nil {
+		state, _, _ := s.Conn.DomainGetState(*domain, 0)
+		if state != 5 {
+			return fmt.Errorf("failed_to_force_destroy: %w", err)
+		}
+	}
+
+	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_verify_stop: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("vm_still_running_after_destroy_state_%d", state)
+	}
+
+	return s.cleanupResources(vm)
+}
+
+func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_get_state: %w", err)
+	}
+	if state != 1 {
+		return fmt.Errorf("domain_not_running_for_reboot")
+	}
+
+	if err := s.shutdownVM(domain, vm); err != nil {
+		return fmt.Errorf("reboot_failed_during_shutdown: %w", err)
+	}
+
+	if err := s.startVM(domain, vm); err != nil {
+		return fmt.Errorf("reboot_failed_during_start: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) cleanupResources(vm vmModels.VM) error {
+	user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
+	if err != nil {
+		if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
+			logger.L.Error().Err(err).Msg("Error checking VNC port usage")
+		}
+	} else if user > 0 {
+		if err := utils.KillProcess(user); err != nil {
+			logger.L.Error().Err(err).Msg("Failed to kill process using VNC port")
+		}
+	}
+
+	if err := s.RemoveQGASocket(vm); err != nil {
+		logger.L.Error().Err(err).Msg("Error cleaning up qemu-ga socket")
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) RemoveQGASocket(vm vmModels.VM) error {
+	if vm.QemuGuestAgent {
+		dataPath, err := s.GetVMConfigDirectory(vm.RID)
+		if err == nil {
+			qgaSocketPath := filepath.Join(dataPath, "qga.sock")
+			err := utils.DeleteFileIfExists(qgaSocketPath)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

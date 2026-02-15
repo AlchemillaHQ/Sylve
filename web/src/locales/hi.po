@@ -51,6 +51,7 @@ msgstr "हार्डवेयर"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Network"
 msgstr "नेटवर्क"
 
@@ -450,8 +451,6 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
@@ -504,6 +503,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -600,8 +601,6 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
@@ -644,6 +643,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
@@ -691,8 +692,6 @@ msgstr "रीसेट"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -970,7 +969,6 @@ msgstr "हटाएँ"
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
-#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1046,7 +1044,6 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
@@ -1063,6 +1060,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
@@ -1699,8 +1697,6 @@ msgid "Share name already exists"
 msgstr "शेयर नाम पहले से मौजूद है"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1826,11 +1822,10 @@ msgstr "विवरण"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "MAC Address"
 msgstr "MAC पता"
 
@@ -2313,16 +2308,12 @@ msgstr "IPv4 चुनें"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Gateway"
 msgstr "IPv4 गेटवे"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr "IPv4 गेटवे चुनें"
@@ -2350,16 +2341,12 @@ msgstr "IPv6 चुनें"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Gateway"
 msgstr "IPv6 गेटवे"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr "IPv6 गेटवे चुनें"
@@ -2853,8 +2840,6 @@ msgid "Select PCI Devices"
 msgstr "PCI डिवाइसेस चुनें"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
@@ -2874,14 +2859,11 @@ msgid "VM attached to switch"
 msgstr "VM स्विच से जुड़ी हुई है"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "New Network"
 msgstr "नया नेटवर्क"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -2892,8 +2874,6 @@ msgid "Switch"
 msgstr "स्विच"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -3361,6 +3341,7 @@ msgstr "ऑटो विस्तार चुनें"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Yes"
 msgstr "हाँ"
 
@@ -3379,6 +3360,7 @@ msgstr "हाँ"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -3760,8 +3742,6 @@ msgid "Disinherit"
 msgstr "विरासत से हटाएं"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select MAC Address"
 msgstr "MAC पता चुनें"
 
@@ -3838,6 +3818,7 @@ msgid "Start"
 msgstr "शुरू करें"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -4331,6 +4312,7 @@ msgstr "अज्ञात MAC"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
 msgstr "अज्ञात"
@@ -5352,7 +5334,6 @@ msgid "This will reset clustering data on this node"
 msgstr "यह इस नोड पर क्लस्टरिंग डेटा को रीसेट कर देगा"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Failed to add network"
 msgstr "नेटवर्क जोड़ने में विफल"
 
@@ -5416,7 +5397,6 @@ msgstr ""
 #~ msgid "Mdi <0/> <1/> <2/>"
 #~ msgstr ""
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -5427,9 +5407,8 @@ msgstr ""
 msgid "Attach Storage"
 msgstr ""
 
-#. placeholder {0}: selectedNetwork.name
+#. placeholder {0}: selectedSwitchName || 'Network'
 #. placeholder {0}: selectedName
-#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
@@ -5967,55 +5946,38 @@ msgstr "नेटवर्क इनहेरिट किया गया"
 #~ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Primary Network"
 msgstr "प्राथमिक नेटवर्क"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv4 Address"
 msgstr "IPv4 पता"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select IPv4 Address"
 msgstr "IPv4 पता चुनें"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv6 Address"
 msgstr "IPv6 पता"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select IPv6 Address"
 msgstr "IPv6 पता चुनें"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Default Gateway"
 msgstr "डिफ़ॉल्ट गेटवे"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Default gateway already exists"
 msgstr "डिफ़ॉल्ट गेटवे पहले से मौजूद है"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network added successfully"
 msgstr "नेटवर्क सफलतापूर्वक जोड़ा गया"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network name already exists"
 msgstr "नेटवर्क नाम पहले से मौजूद है"
 
@@ -7185,10 +7147,92 @@ msgstr ""
 msgid "VM network updated"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Failed to update network"
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "QEMU Guest Agent"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Network/Form.svelte
-msgid "Network updated successfully"
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Failed to modify QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Modified QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid ""
+"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
+"This improves guest integration for features like shutdown, status, and filesystem operations,\n"
+"when the guest agent is installed inside the VM."
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Enable QEMU Guest Agent"
+msgstr ""
+
+#~ msgid "<A>"
+#~ msgstr ""
+
+#~ msgid "Guest Infomation"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Guest Information"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "OS Info"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "OS Name"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Kernel"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Architecture"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Version ID"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Interface"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "IP Addresses"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "RX / TX"
+msgstr ""
+
+#~ msgid "No IP"
+#~ msgstr ""
+
+#. placeholder {0}: humanFormat(iface.statistics['rx-bytes'] || 0)
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "↓ {0}B"
+msgstr ""
+
+#. placeholder {0}: humanFormat(iface.statistics['tx-bytes'] || 0)
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "↑ {0}B"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "N/A"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "No network interfaces reported by agent."
 msgstr ""

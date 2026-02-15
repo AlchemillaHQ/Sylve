@@ -35,6 +35,7 @@
 			networkConfig: string;
 		};
 		ignoreUmsrs: boolean;
+		qemuGuestAgent: boolean;
 	}
 
 	let {
@@ -48,7 +49,8 @@
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
 		cloudInit = $bindable(),
-		ignoreUmsrs = $bindable()
+		ignoreUmsrs = $bindable(),
+		qemuGuestAgent = $bindable()
 	}: Props = $props();
 
 	onMount(() => {
@@ -181,6 +183,12 @@
 		<CustomCheckbox
 			label="Ignore Unimplemented MSR Accesses"
 			bind:checked={ignoreUmsrs}
+			classes="flex items-center gap-2 mt-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="QEMU Guest Agent"
+			bind:checked={qemuGuestAgent}
 			classes="flex items-center gap-2 mt-2"
 		></CustomCheckbox>
 	</div>
