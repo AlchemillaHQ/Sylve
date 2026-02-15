@@ -39,13 +39,17 @@ type ModifyShutdownWaitTimeRequest struct {
 }
 
 type ModifyCloudInitDataRequest struct {
-	Data     	   string `json:"data"`
-	Metadata 	   string `json:"metadata"`
-	NetworkConfig  string `json:"networkConfig"`
+	Data          string `json:"data"`
+	Metadata      string `json:"metadata"`
+	NetworkConfig string `json:"networkConfig"`
 }
 
 type ModifyIgnoreUMSRsRequest struct {
 	IgnoreUMSRs *bool `json:"ignoreUMSRs"`
+}
+
+type ModifyQemuGuestAgentRequest struct {
+	Enabled *bool `json:"enabled"`
 }
 
 type ModifyTPMRequest struct {
@@ -543,6 +547,76 @@ func ModifyIgnoreUMSRs(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "ignore_umsrs_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify QEMU Guest Agent of a Virtual Machine
+// @Description Modify the QEMU Guest Agent configuration of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyQemuGuestAgentRequest true "Modify QEMU Guest Agent Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/qemu-guest-agent/:rid [put]
+func ModifyQemuGuestAgent(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Param("rid")
+		if rid == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "rid_not_provided",
+			})
+			return
+		}
+
+		ridInt, err := strconv.Atoi(rid)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_rid_format",
+			})
+			return
+		}
+
+		var req ModifyQemuGuestAgentRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		enabled := false
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
+		if err := libvirtService.ModifyQemuGuestAgent(uint(ridInt), enabled); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "qemu_guest_agent_modified",
 			Data:    nil,
 			Error:   "",
 		})

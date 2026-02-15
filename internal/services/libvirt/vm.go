@@ -557,6 +557,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	apic := true
 	acpi := true
 	ignoreUMSRs := false
+	qemuGuestAgent := false
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -599,6 +600,9 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 
 	if data.IgnoreUMSRs != nil {
 		ignoreUMSRs = *data.IgnoreUMSRs
+	}
+	if data.QemuGuestAgent != nil {
+		qemuGuestAgent = *data.QemuGuestAgent
 	}
 
 	var networks []vmModels.Network
@@ -723,31 +727,32 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	}
 
 	vm := &vmModels.VM{
-		Name:              data.Name,
-		RID:               *data.RID,
-		Description:       data.Description,
-		CPUSockets:        data.CPUSockets,
-		CPUCores:          data.CPUCores,
-		CPUThreads:        data.CPUThreads,
-		RAM:               data.RAM,
-		Serial:            serial,
-		VNCPort:           data.VNCPort,
-		VNCPassword:       data.VNCPassword,
-		VNCResolution:     data.VNCResolution,
-		VNCWait:           vncWait,
-		StartAtBoot:       startAtBoot,
-		TPMEmulation:      tpmEmulation,
-		StartOrder:        data.StartOrder,
-		PCIDevices:        data.PCIDevices,
-		APIC:              apic,
-		ACPI:              acpi,
-		Storages:          storages,
-		Networks:          networks,
-		TimeOffset:        vmModels.TimeOffset(data.TimeOffset),
-		CloudInitData:     data.CloudInitData,
-		CloudInitMetaData: data.CloudInitMetaData,
+		Name:                   data.Name,
+		RID:                    *data.RID,
+		Description:            data.Description,
+		CPUSockets:             data.CPUSockets,
+		CPUCores:               data.CPUCores,
+		CPUThreads:             data.CPUThreads,
+		RAM:                    data.RAM,
+		Serial:                 serial,
+		VNCPort:                data.VNCPort,
+		VNCPassword:            data.VNCPassword,
+		VNCResolution:          data.VNCResolution,
+		VNCWait:                vncWait,
+		StartAtBoot:            startAtBoot,
+		TPMEmulation:           tpmEmulation,
+		StartOrder:             data.StartOrder,
+		PCIDevices:             data.PCIDevices,
+		APIC:                   apic,
+		ACPI:                   acpi,
+		Storages:               storages,
+		Networks:               networks,
+		TimeOffset:             vmModels.TimeOffset(data.TimeOffset),
+		CloudInitData:          data.CloudInitData,
+		CloudInitMetaData:      data.CloudInitMetaData,
 		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
-		IgnoreUMSR:        ignoreUMSRs,
+		IgnoreUMSR:             ignoreUMSRs,
+		QemuGuestAgent:         qemuGuestAgent,
 	}
 
 	vm.CPUPinning = []vmModels.VMCPUPinning{}

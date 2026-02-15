@@ -145,6 +145,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		sIndex++
 	}
 
+	if vm.QemuGuestAgent {
+		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
+			sIndex,
+			filepath.Join(vmPath, "qga.sock"),
+		)
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: qgaArg,
+			},
+		})
+		sIndex++
+	}
+
 	var interfaces []libvirtServiceInterfaces.Interface
 
 	if vm.Networks != nil && len(vm.Networks) > 0 {

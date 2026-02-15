@@ -58,9 +58,10 @@ type CreateVMRequest struct {
 	CloudInitMetaData      string `json:"cloudInitMetaData"`
 	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig"`
 
-	APIC        *bool `json:"apic"`
-	ACPI        *bool `json:"acpi"`
-	IgnoreUMSRs *bool `json:"ignoreUMSR"`
+	APIC           *bool `json:"apic"`
+	ACPI           *bool `json:"acpi"`
+	IgnoreUMSRs    *bool `json:"ignoreUMSR"`
+	QemuGuestAgent *bool `json:"qemuGuestAgent"`
 
 	StartAtBoot *bool      `json:"startAtBoot"`
 	StartOrder  int        `json:"startOrder"`

@@ -62,7 +62,8 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
         cloudInitNetworkConfig: data.advanced.cloudInit.networkConfig,
-        ignoreUMSR: data.advanced.ignoreUmsrs
+        ignoreUMSR: data.advanced.ignoreUmsrs,
+        qemuGuestAgent: data.advanced.qemuGuestAgent
     });
 }
 
@@ -107,6 +108,12 @@ export async function modifyWoL(rid: number, enabled: boolean): Promise<APIRespo
 export async function modifyIgnoreUMSR(rid: number, ignore: boolean): Promise<APIResponse> {
     return await apiRequest(`/vm/options/ignore-umsrs/${rid}`, APIResponseSchema, 'PUT', {
         ignoreUMSRs: ignore
+    });
+}
+
+export async function modifyQemuGuestAgent(rid: number, enabled: boolean): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/qemu-guest-agent/${rid}`, APIResponseSchema, 'PUT', {
+        enabled
     });
 }
 

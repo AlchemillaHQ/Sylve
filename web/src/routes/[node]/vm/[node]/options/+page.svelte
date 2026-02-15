@@ -4,6 +4,7 @@
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
 	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
 	import IgnoreUMSR from '$lib/components/custom/VM/Options/IgnoreUMSR.svelte';
+	import QemuGuestAgent from '$lib/components/custom/VM/Options/QemuGuestAgent.svelte';
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
@@ -110,6 +111,11 @@
 				id: generateNanoId('ignoreUMSRs'),
 				property: 'Ignore Unimplemented MSRs Accesses',
 				value: vm ? (vm.current.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
+			},
+			{
+				id: generateNanoId('qemuGuestAgent'),
+				property: 'QEMU Guest Agent',
+				value: vm ? (vm.current.qemuGuestAgent ? 'Yes' : 'No') : 'N/A'
 			}
 		]
 	});
@@ -120,12 +126,20 @@
 		timeOffset: { open: false },
 		shutdownWaitTime: { open: false },
 		cloudInit: { open: false },
-		ignoreUMSR: { open: false }
+		ignoreUMSR: { open: false },
+		qemuGuestAgent: { open: false }
 	});
 </script>
 
 {#snippet button(
-	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit' | 'ignoreUMSR',
+	type:
+		| 'startOrder'
+		| 'wol'
+		| 'timeOffset'
+		| 'shutdownWaitTime'
+		| 'cloudInit'
+		| 'ignoreUMSR'
+		| 'qemuGuestAgent',
 	title: string
 )}
 	<Button
@@ -162,6 +176,8 @@
 				{@render button('cloudInit', 'Cloud Init')}
 			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
 				{@render button('ignoreUMSR', 'Ignore Unimplemented MSRs Accesses')}
+			{:else if activeRow.property === 'QEMU Guest Agent'}
+				{@render button('qemuGuestAgent', 'QEMU Guest Agent')}
 			{/if}
 		</div>
 	{/if}
@@ -199,4 +215,8 @@
 
 {#if properties.ignoreUMSR.open && vm}
 	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.qemuGuestAgent.open && vm}
+	<QemuGuestAgent bind:open={properties.qemuGuestAgent.open} vm={vm.current} bind:reload />
 {/if}

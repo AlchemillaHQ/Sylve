@@ -231,8 +231,8 @@ func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string, ne
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
 		Updates(map[string]interface{}{
-			"cloud_init_data":      data,
-			"cloud_init_meta_data": metadata,
+			"cloud_init_data":           data,
+			"cloud_init_meta_data":      metadata,
 			"cloud_init_network_config": networkConfig,
 		}).Error
 
@@ -324,6 +324,112 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		Where("rid = ?", rid).
 		Update("ignore_umsr", ignore).Error
 	return err
+}
+
+func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
+	var vm vmModels.VM
+	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
+	}
+
+	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.Conn.DomainGetState(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
+	}
+
+	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
+	}
+
+	doc := etree.NewDocument()
+	if err := doc.ReadFromString(xml); err != nil {
+		return fmt.Errorf("failed_to_parse_xml: %w", err)
+	}
+
+	root := doc.Root()
+	if root == nil {
+		return fmt.Errorf("invalid_domain_xml: root_missing")
+	}
+
+	bhyveCmdEl := doc.FindElement("//bhyve:commandline")
+	if bhyveCmdEl == nil {
+		bhyveCmdEl = root.CreateElement("bhyve:commandline")
+	}
+
+	for {
+		found := false
+		children := bhyveCmdEl.ChildElements()
+		for _, el := range children {
+			if el.Tag == "bhyve:arg" || el.Tag == "arg" {
+				if a := el.SelectAttr("value"); a != nil && strings.Contains(a.Value, "org.qemu.guest_agent.0=") {
+					bhyveCmdEl.RemoveChild(el)
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			break
+		}
+	}
+
+	if enabled {
+		dataPath, err := s.GetVMConfigDirectory(vm.RID)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_vm_data_path: %w", err)
+		}
+
+		used := parseUsedIndicesFromElement(bhyveCmdEl)
+		index := 10
+		for index < 30 && used[index] {
+			index++
+		}
+		if index >= 30 {
+			return fmt.Errorf("no_free_indices_available_for_qemu_guest_agent")
+		}
+
+		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
+			index,
+			filepath.Join(dataPath, "qga.sock"),
+		)
+
+		argEl := etree.NewElement("bhyve:arg")
+		argEl.CreateAttr("value", qgaArg)
+		bhyveCmdEl.AddChild(argEl)
+	}
+
+	out, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed_to_serialize_xml: %w", err)
+	}
+
+	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.DB.
+		Model(&vmModels.VM{}).
+		Where("rid = ?", rid).
+		Update("qemu_guest_agent", enabled).Error
+	if err != nil {
+		return fmt.Errorf("failed_to_update_qemu_guest_agent_in_db: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {

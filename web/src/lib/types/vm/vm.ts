@@ -49,6 +49,7 @@ export interface CreateData {
             networkConfig: string;
         };
         ignoreUmsrs: boolean;
+        qemuGuestAgent: boolean;
     };
 }
 
@@ -137,6 +138,7 @@ export const VMSchema = z.object({
     cloudInitMetaData: z.string().nullable(),
     cloudInitNetworkConfig: z.string().nullable(),
     ignoreUMSR: z.boolean(),
+    qemuGuestAgent: z.boolean(),
     tpmEmulation: z.boolean(),
 
     createdAt: z.string(),
