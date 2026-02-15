@@ -53,6 +53,7 @@ msgstr "硬件"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Network"
 msgstr "网络"
 
@@ -1793,6 +1794,7 @@ msgstr "描述"
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "MAC Address"
 msgstr "MAC 地址"
 
@@ -3672,6 +3674,7 @@ msgstr "开始"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Running"
 msgstr "正在运行"
 
@@ -4186,6 +4189,7 @@ msgstr "未知 MAC"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
 msgstr "未知"
@@ -6333,4 +6337,67 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 msgid "Enable QEMU Guest Agent"
+msgstr ""
+
+#~ msgid "<A>"
+#~ msgstr ""
+
+#~ msgid "Guest Infomation"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Guest Information"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "OS Info"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "OS Name"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Kernel"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Architecture"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Version ID"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Interface"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "IP Addresses"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "RX / TX"
+msgstr ""
+
+#~ msgid "No IP"
+#~ msgstr ""
+
+#. placeholder {0}: humanFormat(iface.statistics['rx-bytes'] || 0)
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "↓ {0}B"
+msgstr ""
+
+#. placeholder {0}: humanFormat(iface.statistics['tx-bytes'] || 0)
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "↑ {0}B"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "N/A"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "No network interfaces reported by agent."
 msgstr ""

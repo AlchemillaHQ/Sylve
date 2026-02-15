@@ -1,10 +1,12 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
+    QGAInfoSchema,
     SimpleVmSchema,
     VMDomainSchema,
     VMSchema,
     VMStatSchema,
     type CreateData,
+    type QGAInfo,
     type SimpleVm,
     type VM,
     type VMDomain,
@@ -166,4 +168,8 @@ export async function modifyCloudInitData(
         metadata,
         networkConfig
     });
+}
+
+export async function getQGAInfo(rid: number): Promise<APIResponse | QGAInfo> {
+    return await apiRequest(`/vm/qga/${rid}`, QGAInfoSchema, 'GET');
 }
