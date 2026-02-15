@@ -479,6 +479,8 @@ msgstr "最小化"
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -617,6 +619,8 @@ msgstr "创建分区"
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
@@ -1069,6 +1073,7 @@ msgstr "这是附注"
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
@@ -3281,6 +3286,7 @@ msgstr "选择自动扩展"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "Yes"
 msgstr "是"
 
@@ -3299,6 +3305,7 @@ msgstr "是"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -6299,4 +6306,31 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "VM network updated"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+msgid "QEMU Guest Agent"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Failed to modify QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Modified QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid ""
+"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
+"This improves guest integration for features like shutdown, status, and filesystem operations,\n"
+"when the guest agent is installed inside the VM."
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Enable QEMU Guest Agent"
 msgstr ""

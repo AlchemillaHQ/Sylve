@@ -398,7 +398,7 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 			return fmt.Errorf("no_free_indices_available_for_qemu_guest_agent")
 		}
 
-		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
+		qgaArg := fmt.Sprintf("-s %d:0,virtio-console,org.qemu.guest_agent.0=%s",
 			index,
 			filepath.Join(dataPath, "qga.sock"),
 		)
