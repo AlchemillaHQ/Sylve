@@ -45,7 +45,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.basicInfo
 		}
 	);
@@ -59,7 +58,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.cpuInfo
 		}
 	);
@@ -73,7 +71,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.cpuInfoHistorical
 		}
 	);
@@ -87,7 +84,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.ramInfo
 		}
 	);
@@ -101,7 +97,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.ramInfoHistorical
 		}
 	);
@@ -115,7 +110,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.swapInfo
 		}
 	);
@@ -129,7 +123,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.swapInfoHistorical
 		}
 	);
@@ -143,7 +136,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.totalDiskUsage
 		}
 	);
@@ -157,7 +149,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.networkUsageHistorical
 		}
 	);
