@@ -168,7 +168,7 @@ func (s *Service) AddPPTDevice(domain string, id string) error {
 	}
 
 	detach, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"detach",
 		"-f",
 		fmt.Sprintf("pci%d:%d:%d:%d", intDomain, intParts[0], intParts[1], intParts[2]),
@@ -181,7 +181,7 @@ func (s *Service) AddPPTDevice(domain string, id string) error {
 	}
 
 	clearDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"clear",
 		"driver",
 		"-f",
@@ -193,7 +193,7 @@ func (s *Service) AddPPTDevice(domain string, id string) error {
 	}
 
 	setDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"set",
 		"driver",
 		fmt.Sprintf("pci%d:%d:%d:%d", intDomain, intParts[0], intParts[1], intParts[2]),
@@ -251,7 +251,7 @@ func (s *Service) RemovePPTDevice(id string) error {
 	}
 
 	detach, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"detach",
 		"-f",
 		fmt.Sprintf("pci%d:%s:%s:%s", existing.Domain, parts[0], parts[1], parts[2]),
@@ -262,7 +262,7 @@ func (s *Service) RemovePPTDevice(id string) error {
 	}
 
 	clearDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"clear",
 		"driver",
 		"-f",
@@ -274,7 +274,7 @@ func (s *Service) RemovePPTDevice(id string) error {
 	}
 
 	setDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"set",
 		"driver",
 		fmt.Sprintf("pci%d:%s:%s:%s", existing.Domain, parts[0], parts[1], parts[2]),

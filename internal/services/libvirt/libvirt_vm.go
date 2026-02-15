@@ -532,7 +532,7 @@ func (s *Service) StartTPM() error {
 		}
 	}
 
-	psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+	psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 	if err != nil {
 		return fmt.Errorf("failed_to_run_ps_command: %w", err)
 	}
@@ -576,7 +576,7 @@ func (s *Service) StartTPM() error {
 				"--daemon",
 			}
 
-			_, err = utils.RunCommand("swtpm", args...)
+			_, err = utils.RunCommand("/usr/local/bin/swtpm", args...)
 			if err != nil {
 				return fmt.Errorf("failed_to_start_swtpm_for_vm: %d, error: %w", rid, err)
 			}
@@ -612,7 +612,7 @@ func (s *Service) StopTPM(rid uint) error {
 		return fmt.Errorf("tpm_socket_not_found: %s", tpmSocket)
 	}
 
-	psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+	psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 	if err != nil {
 		return fmt.Errorf("failed_to_run_ps_command: %w", err)
 	}

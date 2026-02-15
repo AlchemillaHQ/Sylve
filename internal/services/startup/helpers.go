@@ -99,7 +99,7 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 		}
 
 		if slices.Contains(basicSettings.Services, models.SambaServer) {
-			output, err := utils.RunCommand("pkg", "info")
+			output, err := utils.RunCommand("/usr/sbin/pkg", "info")
 			if err != nil {
 				return fmt.Errorf("failed to run pkg info: %w", err)
 			}
@@ -197,14 +197,14 @@ func (s *Service) CheckServiceDependencies(basicSettings models.BasicSettings) e
 
 func (s *Service) EnableLinux() error {
 	loadKLD := func(module string) error {
-		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
 		return nil
 	}
 
 	ensureFallbackBrand := func(name string) error {
-		out, err := utils.RunCommand("sysctl", "-ni", name)
+		out, err := utils.RunCommand("/sbin/sysctl", "-ni", name)
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", name, err)
 		}
@@ -220,7 +220,7 @@ func (s *Service) EnableLinux() error {
 		}
 
 		if val == -1 {
-			if _, err := utils.RunCommand("sysctl", fmt.Sprintf("%s=3", name)); err != nil {
+			if _, err := utils.RunCommand("/sbin/sysctl", fmt.Sprintf("%s=3", name)); err != nil {
 				return fmt.Errorf("failed to set %s=3: %w", name, err)
 			}
 		}
@@ -228,7 +228,7 @@ func (s *Service) EnableLinux() error {
 	}
 
 	linuxMount := func(fs, mountPoint, opts string) error {
-		mountOut, err := utils.RunCommand("mount")
+		mountOut, err := utils.RunCommand("/sbin/mount")
 		if err != nil {
 			return fmt.Errorf("failed to list mounts: %w", err)
 		}
@@ -250,7 +250,7 @@ func (s *Service) EnableLinux() error {
 
 		args = append(args, "-t", fs, fs, mountPoint)
 
-		if _, err := utils.RunCommand("mount", args...); err != nil {
+		if _, err := utils.RunCommand("/sbin/mount", args...); err != nil {
 			return fmt.Errorf("failed to mount %s on %s: %w", fs, mountPoint, err)
 		}
 		return nil
@@ -293,7 +293,7 @@ func (s *Service) EnableLinux() error {
 		return err
 	}
 
-	emulPathRaw, err := utils.RunCommand("sysctl", "-n", "compat.linux.emul_path")
+	emulPathRaw, err := utils.RunCommand("/sbin/sysctl", "-n", "compat.linux.emul_path")
 	if err != nil {
 		return fmt.Errorf("failed to get compat.linux.emul_path: %w", err)
 	}
@@ -341,7 +341,7 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	}
 
 	for _, module := range requiredModules {
-		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
 	}
@@ -429,7 +429,7 @@ add path 'bpf*' unhide
 		return fmt.Errorf("devfssync: failed to write to /etc/devfs.rules: %w", err)
 	}
 
-	if _, err := utils.RunCommand("service", "devfs", "restart"); err != nil {
+	if _, err := utils.RunCommand("/usr/sbin/service", "devfs", "restart"); err != nil {
 		return fmt.Errorf("devfssync: failed to restart devfs service: %w", err)
 	}
 
@@ -437,12 +437,12 @@ add path 'bpf*' unhide
 }
 
 func ensureServiceRunning(service string) error {
-	_, enableErr := utils.RunCommand("service", service, "enable")
+	_, enableErr := utils.RunCommand("/usr/sbin/service", service, "enable")
 	if enableErr != nil {
 		return fmt.Errorf("could not enable service %s: %w", service, enableErr)
 	}
 
-	_, startErr := utils.RunCommand("service", service, "start")
+	_, startErr := utils.RunCommand("/usr/sbin/service", service, "start")
 	if startErr != nil {
 		if !strings.Contains(startErr.Error(), "already running") {
 			return fmt.Errorf("could not start service %s: %w", service, startErr)

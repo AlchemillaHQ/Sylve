@@ -25,7 +25,7 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 		}
 	}
 
-	output, err := utils.RunCommand("netstat", "-ibdn", "--libxo", "json")
+	output, err := utils.RunCommand("/usr/bin/netstat", "-ibdn", "--libxo", "json")
 	if err != nil {
 		return nil, err
 	}

@@ -25,7 +25,7 @@ import (
 var epairRe = regexp.MustCompile(`^([a-z0-9]{5})_net([0-9]+)(a|b)$`)
 
 func (s *Service) CreateEpair(name string) error {
-	output, err := utils.RunCommand("ifconfig", "epair", "create")
+	output, err := utils.RunCommand("/sbin/ifconfig", "epair", "create")
 	if err != nil {
 		return fmt.Errorf("failed to create epair: %w", err)
 	}
@@ -37,12 +37,12 @@ func (s *Service) CreateEpair(name string) error {
 
 	epairB := strings.TrimSuffix(epairA, "a") + "b"
 
-	_, err = utils.RunCommand("ifconfig", epairA, "name", name+"a")
+	_, err = utils.RunCommand("/sbin/ifconfig", epairA, "name", name+"a")
 	if err != nil {
 		return fmt.Errorf("failed to rename epair %s to %s: %w", epairA, name+"a", err)
 	}
 
-	_, err = utils.RunCommand("ifconfig", epairB, "name", name+"b")
+	_, err = utils.RunCommand("/sbin/ifconfig", epairB, "name", name+"b")
 	if err != nil {
 		return fmt.Errorf("failed to rename epair %s to %s: %w", epairB, name+"b", err)
 	}
@@ -69,7 +69,7 @@ func (s *Service) DeleteEpair(name string) error {
 		return fmt.Errorf("epair %s not found", name)
 	}
 
-	_, err = utils.RunCommand("ifconfig", epairA, "destroy")
+	_, err = utils.RunCommand("/sbin/ifconfig", epairA, "destroy")
 
 	if err != nil {
 		return fmt.Errorf("failed to delete epair %s: %w", epairA, err)
@@ -90,7 +90,7 @@ func (s *Service) SyncEpairs(_ bool) error {
 	}
 
 	activePaths := []string{}
-	jls, err := utils.RunCommand("jls", "path")
+	jls, err := utils.RunCommand("/usr/sbin/jls", "path")
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(jls), "\n")
 		for _, line := range lines {

@@ -160,7 +160,7 @@ func (s *Service) StoreVMUsage() error {
 				memUsagePercent = (usedMemMB / maxMemMB) * 100
 			}
 		} else {
-			psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+			psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 			if err != nil {
 				continue
 			}

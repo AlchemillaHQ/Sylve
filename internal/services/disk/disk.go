@@ -294,7 +294,7 @@ func (s *Service) InitializeGPT(device string) error {
 	s.DiskOperationMutex.Lock()
 	defer s.DiskOperationMutex.Unlock()
 
-	output, err := utils.RunCommand("gpart", "create", "-s", "gpt", device)
+	output, err := utils.RunCommand("/sbin/gpart", "create", "-s", "gpt", device)
 	if err != nil {
 		if strings.Contains(output, "File exists") {
 			return fmt.Errorf("gpt_partition_table_already_exists")

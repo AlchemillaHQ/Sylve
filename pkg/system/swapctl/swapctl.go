@@ -15,7 +15,7 @@ type SwapDevice struct {
 }
 
 func GetSwapDevices() ([]SwapDevice, error) {
-	output, err := utils.RunCommand("swapctl", "-l")
+	output, err := utils.RunCommand("/sbin/swapctl", "-l")
 	if err != nil {
 		return nil, err
 	}

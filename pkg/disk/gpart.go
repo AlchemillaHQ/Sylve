@@ -40,7 +40,7 @@ func DestroyDisk(device string) error {
 		return err
 	}
 
-	output, err := utils.RunCommand("gpart", "destroy", "-F", device)
+	output, err := utils.RunCommand("/sbin/gpart", "destroy", "-F", device)
 	if err != nil {
 		return fmt.Errorf("error destroying disk %s: %v, output: %s", device, err, output)
 	}
@@ -64,7 +64,7 @@ func CreatePartition(device string, size uint64, ptype string) error {
 		ptype = "freebsd-zfs"
 	}
 
-	output, err := utils.RunCommand("gpart", "add", "-t", ptype, "-s", fmt.Sprintf("%dMB", mbytes), device)
+	output, err := utils.RunCommand("/sbin/gpart", "add", "-t", ptype, "-s", fmt.Sprintf("%dMB", mbytes), device)
 	if err != nil {
 		return fmt.Errorf("error creating partition on disk %s: %v, output: %s", device, err, output)
 	}
@@ -134,7 +134,7 @@ func DeletePartition(device string) error {
 		return err
 	}
 
-	output, err := utils.RunCommand("gpart", "delete", "-i", fmt.Sprintf("%d", partition), disk)
+	output, err := utils.RunCommand("/sbin/gpart", "delete", "-i", fmt.Sprintf("%d", partition), disk)
 	if err != nil {
 		return fmt.Errorf("error deleting partition %d from disk %s: %v, output: %s", partition, disk, err, output)
 	}
