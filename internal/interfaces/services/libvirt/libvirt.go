@@ -39,6 +39,7 @@ type LibvirtServiceInterface interface {
 	ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 	ModifyQemuGuestAgent(rid uint, enabled bool) error
+	GetQemuGuestAgentInfo(rid uint) (QemuGuestAgentInfo, error)
 
 	PruneOrphanedVMStats() error
 	ApplyVMStatsRetention() error

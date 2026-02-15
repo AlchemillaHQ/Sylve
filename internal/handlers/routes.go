@@ -310,6 +310,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
 		vm.PUT("/options/qemu-guest-agent/:rid", vmHandlers.ModifyQemuGuestAgent(libvirtService))
 		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))
+		vm.GET("/qga/:rid", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
 		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}
