@@ -753,12 +753,9 @@ html {
 	visibility: visible;
 	opacity: 1;
 }
-#noVNC_overtake_actions {
-	margin-top: 10px;
-	text-align: center;
-}
 #noVNC_overtake_button {
 	min-width: 180px;
+	margin-top: 10px;
 }
 #noVNC_connect_dlg .noVNC_logo {
 	transition: 0.5s ease-in-out;
@@ -992,7 +989,8 @@ html {
 	box-shadow: none;
 }
 
-.dark #noVNC_connect_button {
+.dark #noVNC_connect_button,
+.dark #noVNC_overtake_button {
 	background-color: #444444;
 }
 
@@ -1051,7 +1049,8 @@ html {
 	border-top: 1px solid #222222;
 }
 
-.dark #noVNC_connect_button {
+.dark #noVNC_connect_button,
+.dark #noVNC_overtake_button {
 	background-color: #272727;
 	color: white;
 }
