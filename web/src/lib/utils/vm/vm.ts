@@ -149,6 +149,24 @@ export function getVMIconByGaId(id: string): string {
             return 'icon-[mdi--debian]'
         case 'openwrt':
             return 'icon-[simple-icons--openwrt]'
+        case 'ubuntu':
+            return 'icon-[mdi--ubuntu]'
+        case 'fedora':
+            return 'icon-[mdi--fedora]'
+        case 'rhel':
+            return 'icon-[mdi--redhat]'
+        case 'centos':
+            return 'icon-[mdi--centos]'
+        case 'arch':
+            return 'icon-[mdi--arch]'
+        case 'alpine':
+            return 'icon-[file-icons--alpine-linux]'
+        case 'freebsd':
+            return 'icon-[mdi--freebsd]'
+        case 'openbsd':
+            return 'icon-[file-icons--openbsd]'
+        case 'mswindows':
+            return 'icon-[ri--windows-fill]'
         default:
             return ''
     }
