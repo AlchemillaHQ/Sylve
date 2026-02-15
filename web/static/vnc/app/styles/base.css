@@ -789,7 +789,8 @@ html {
 
 	/* box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5); */
 }
-#noVNC_connect_button {
+#noVNC_connect_button,
+#noVNC_overtake_button {
 	width: 100%;
 	padding: 6px 30px;
 	cursor: pointer;
@@ -805,7 +806,8 @@ html {
 	gap: 4px;
 }
 
-#noVNC_connect_button img {
+#noVNC_connect_button img,
+#noVNC_overtake_button img {
 	vertical-align: bottom;
 	height: 1.3em;
 }
