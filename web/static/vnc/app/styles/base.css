@@ -753,6 +753,13 @@ html {
 	visibility: visible;
 	opacity: 1;
 }
+#noVNC_overtake_actions {
+	margin-top: 10px;
+	text-align: center;
+}
+#noVNC_overtake_button {
+	min-width: 180px;
+}
 #noVNC_connect_dlg .noVNC_logo {
 	transition: 0.5s ease-in-out;
 	padding: 10px;

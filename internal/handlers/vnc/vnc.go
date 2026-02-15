@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,9 +35,15 @@ var upgrader = websocket.Upgrader{
 }
 
 var (
-	activeConnections = make(map[string]bool)
+	activeConnections = make(map[string]*vncSessionOwner)
 	connectionsMutex  sync.RWMutex
+	sessionCounter    atomic.Uint64
 )
+
+type vncSessionOwner struct {
+	id   uint64
+	conn *websocket.Conn
+}
 
 const (
 	writeWait  = 10 * time.Second
@@ -46,6 +53,9 @@ const (
 	inputBufferSize  = 32 * 1024
 	outputBufferSize = 256 * 1024
 	maxMessageSize   = 10 * 1024 * 1024
+
+	vncSessionInUseReason = "VNC session is already in use by another client"
+	vncSessionTakenReason = "VNC session was overtaken by another client"
 )
 
 type connectionMetrics struct {
@@ -75,21 +85,6 @@ func VNCProxyHandler(c *gin.Context) {
 		return
 	}
 
-	connectionsMutex.Lock()
-	if activeConnections[port] {
-		connectionsMutex.Unlock()
-		c.JSON(http.StatusConflict, gin.H{"error": "VNC port is already in use"})
-		return
-	}
-	activeConnections[port] = true
-	connectionsMutex.Unlock()
-
-	defer func() {
-		connectionsMutex.Lock()
-		delete(activeConnections, port)
-		connectionsMutex.Unlock()
-	}()
-
 	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
@@ -103,6 +98,47 @@ func VNCProxyHandler(c *gin.Context) {
 		_ = wsTCP.SetReadBuffer(256 * 1024)
 		_ = wsTCP.SetWriteBuffer(256 * 1024)
 	}
+
+	overtake := false
+	switch strings.ToLower(c.Query("overtake")) {
+	case "1", "true", "yes":
+		overtake = true
+	}
+
+	connectionsMutex.Lock()
+	existingSession, hasExistingSession := activeConnections[port]
+	if hasExistingSession && !overtake {
+		connectionsMutex.Unlock()
+		_ = wsConn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, vncSessionInUseReason),
+			time.Now().Add(writeWait),
+		)
+		return
+	}
+	sessionID := sessionCounter.Add(1)
+	activeConnections[port] = &vncSessionOwner{
+		id:   sessionID,
+		conn: wsConn,
+	}
+	connectionsMutex.Unlock()
+
+	if hasExistingSession && overtake && existingSession != nil {
+		_ = existingSession.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, vncSessionTakenReason),
+			time.Now().Add(writeWait),
+		)
+		_ = existingSession.conn.Close()
+	}
+
+	defer func() {
+		connectionsMutex.Lock()
+		if owner, ok := activeConnections[port]; ok && owner.id == sessionID {
+			delete(activeConnections, port)
+		}
+		connectionsMutex.Unlock()
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	var dialer net.Dialer
