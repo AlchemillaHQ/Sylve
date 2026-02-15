@@ -1030,16 +1030,16 @@ const UI = {
 	},
 
 	showOvertakeOption() {
-		const overtakeButton = document.getElementById('noVNC_overtake_button');
-		if (overtakeButton) {
-			overtakeButton.hidden = false;
+		const overtakeActions = document.getElementById('noVNC_overtake_actions');
+		if (overtakeActions) {
+			overtakeActions.hidden = false;
 		}
 	},
 
 	hideOvertakeOption() {
-		const overtakeButton = document.getElementById('noVNC_overtake_button');
-		if (overtakeButton) {
-			overtakeButton.hidden = true;
+		const overtakeActions = document.getElementById('noVNC_overtake_actions');
+		if (overtakeActions) {
+			overtakeActions.hidden = true;
 		}
 	},
 
