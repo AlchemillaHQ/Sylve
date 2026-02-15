@@ -7,42 +7,42 @@ import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
-	const cacheDuration = SEVEN_DAYS;
-	const [
-		basicInfo,
-		cpuInfo,
-		cpuInfoHistorical,
-		ramInfo,
-		ramInfoHistorical,
-		swapInfo,
-		swapInfoHistorical,
-		totalDiskUsage,
-		networkUsageHistorical
-	] = await Promise.all([
-		cachedFetch('basicInfo', async () => getBasicInfo(), cacheDuration),
-		cachedFetch('cpuInfo', async () => getCPUInfo('current'), cacheDuration),
-		cachedFetch('cpuInfoHistorical', () => getCPUInfo('historical'), cacheDuration),
-		cachedFetch('ramInfo', async () => getRAMInfo('current'), cacheDuration),
-		cachedFetch('ramInfoHistorical', () => getRAMInfo('historical'), cacheDuration),
-		cachedFetch('swapInfo', async () => getSwapInfo('current'), cacheDuration),
-		cachedFetch('swapInfoHistorical', () => getSwapInfo('historical'), cacheDuration),
-		cachedFetch('totalDiskUsage', async () => getPoolsDiskUsage(), cacheDuration),
-		cachedFetch(
-			'networkUsageHistorical',
-			async () => getNetworkInterfaceInfoHistorical(),
-			cacheDuration
-		)
-	]);
+    const cacheDuration = SEVEN_DAYS;
+    const [
+        basicInfo,
+        cpuInfo,
+        cpuInfoHistorical,
+        ramInfo,
+        ramInfoHistorical,
+        swapInfo,
+        swapInfoHistorical,
+        totalDiskUsage,
+        networkUsageHistorical
+    ] = await Promise.all([
+        cachedFetch('basic-info', async () => getBasicInfo(), cacheDuration),
+        cachedFetch('cpu-info', async () => getCPUInfo('current'), cacheDuration),
+        cachedFetch('cpu-info-historical', () => getCPUInfo('historical'), cacheDuration),
+        cachedFetch('ram-info', async () => getRAMInfo('current'), cacheDuration),
+        cachedFetch('ram-info-historical', () => getRAMInfo('historical'), cacheDuration),
+        cachedFetch('swap-info', async () => getSwapInfo('current'), cacheDuration),
+        cachedFetch('swap-info-historical', () => getSwapInfo('historical'), cacheDuration),
+        cachedFetch('total-disk-usage', async () => getPoolsDiskUsage(), cacheDuration),
+        cachedFetch(
+            'network-usage-historical',
+            async () => getNetworkInterfaceInfoHistorical(),
+            cacheDuration
+        )
+    ]);
 
-	return {
-		basicInfo,
-		cpuInfo,
-		cpuInfoHistorical,
-		ramInfo,
-		ramInfoHistorical,
-		swapInfo,
-		swapInfoHistorical,
-		totalDiskUsage,
-		networkUsageHistorical
-	};
+    return {
+        basicInfo,
+        cpuInfo,
+        cpuInfoHistorical,
+        ramInfo,
+        ramInfoHistorical,
+        swapInfo,
+        swapInfoHistorical,
+        totalDiskUsage,
+        networkUsageHistorical
+    };
 }

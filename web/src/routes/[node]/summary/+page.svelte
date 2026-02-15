@@ -19,8 +19,8 @@
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { watch } from 'runed';
 
 	interface Data {
 		basicInfo: BasicInfo;
@@ -36,6 +36,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const basicInfo = resource(
 		() => 'basic-info',
 		async (key, prevKey, { signal }) => {
@@ -49,6 +50,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
 		() => 'cpu-info',
 		async (key, prevKey, { signal }) => {
@@ -62,45 +64,7 @@
 		}
 	);
 
-	const ramInfo = resource(
-		() => 'ram-info',
-		async (key, prevKey, { signal }) => {
-			const result = await getRAMInfo('current');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.ramInfo
-		}
-	);
-
-	const swapInfo = resource(
-		() => 'swap-info',
-		async (key, prevKey, { signal }) => {
-			const result = await getSwapInfo('current');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.swapInfo
-		}
-	);
-
-	const totalDiskUsage = resource(
-		() => 'total-disk-usage',
-		async (key, prevKey, { signal }) => {
-			const result = await getPoolsDiskUsage();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.totalDiskUsage
-		}
-	);
-
+	// svelte-ignore state_referenced_locally
 	const cpuInfoHistorical = resource(
 		() => 'cpu-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -114,6 +78,21 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const ramInfo = resource(
+		() => 'ram-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getRAMInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.ramInfo
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const ramInfoHistorical = resource(
 		() => 'ram-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -127,6 +106,21 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const swapInfo = resource(
+		() => 'swap-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getSwapInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.swapInfo
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const swapInfoHistorical = resource(
 		() => 'swap-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -140,6 +134,21 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const totalDiskUsage = resource(
+		() => 'total-disk-usage',
+		async (key, prevKey, { signal }) => {
+			const result = await getPoolsDiskUsage();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.totalDiskUsage
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const networkUsageHistorical = resource(
 		() => 'network-usage-historical',
 		async (key, prevKey, { signal }) => {
@@ -182,9 +191,10 @@
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		() => storage.visible,
+		() => {
+			if (storage.visible) {
 				basicInfo.refetch();
 				cpuInfo.refetch();
 				ramInfo.refetch();
@@ -194,69 +204,9 @@
 				ramInfoHistorical.refetch();
 				swapInfoHistorical.refetch();
 				networkUsageHistorical.refetch();
-			});
-		}
-	});
-
-	let chartElements = $derived.by(() => {
-		return [
-			{
-				field: 'cpuUsage',
-				label: 'CPU Usage',
-				color: 'chart-1',
-				data: cpuInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'ramUsage',
-				label: 'RAM Usage',
-				color: 'chart-3',
-				data: ramInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'swapUsage',
-				label: 'Swap Usage',
-				color: 'chart-4',
-				data: swapInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'networkUsageRx',
-				label: 'Network RX',
-				color: 'chart-1',
-				data: networkUsageHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.receivedBytes.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'networkUsageTx',
-				label: 'Network TX',
-				color: 'chart-4',
-				data: networkUsageHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.sentBytes.toFixed(2)
-					}))
-					.slice(-16)
 			}
-		];
-	});
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col">

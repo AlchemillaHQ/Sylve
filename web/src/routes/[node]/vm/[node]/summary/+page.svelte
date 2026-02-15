@@ -144,16 +144,23 @@
 
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
-	let lastDesc = $state('');
+	let isDescInitialized = false;
 
-	$effect(() => {
-		const value = debouncedDesc.current;
+	watch(
+		() => debouncedDesc.current,
+		(curr, prev) => {
+			if (!isDescInitialized) {
+				isDescInitialized = true;
+				return;
+			}
 
-		if (value !== undefined && value !== null && value !== lastDesc) {
-			updateDescription(vm.current.rid, value);
-			lastDesc = value;
+			if (curr !== undefined && prev !== undefined) {
+				if (curr !== prev) {
+					updateDescription(vm.current.rid, curr);
+				}
+			}
 		}
-	});
+	);
 
 	let modalState = $state({
 		isDeleteOpen: false,
