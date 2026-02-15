@@ -167,6 +167,8 @@ export function getVMIconByGaId(id: string): string {
             return 'icon-[file-icons--openbsd]'
         case 'mswindows':
             return 'icon-[ri--windows-fill]'
+        case 'rocky':
+            return 'icon-[simple-icons--rockylinux]'
         default:
             return ''
     }
