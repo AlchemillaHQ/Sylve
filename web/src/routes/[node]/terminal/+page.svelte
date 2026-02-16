@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
-	import { sha256 } from '$lib/utils/string';
+	import { sha256, toHex } from '$lib/utils/string';
 	import adze from 'adze';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount, tick } from 'svelte';
@@ -11,6 +11,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
+	import { page } from '$app/state';
 
 	let terminal = $state<GhosttyTerminal | null>(null);
 	let ws = $state<WebSocket | null>(null);
@@ -120,7 +121,16 @@
 		terminal.open(terminalContainer);
 
 		const hash = await sha256(storage.token || '', 1);
-		ws = new WebSocket(`/api/info/terminal?hash=${hash}`);
+		const selectedHostname =
+			page.url.pathname.split('/').filter(Boolean)[0] || storage.hostname || '';
+		const wsAuth = toHex(
+			JSON.stringify({
+				hostname: selectedHostname,
+				token: storage.clusterToken || ''
+			})
+		);
+
+		ws = new WebSocket(`/api/info/terminal?hash=${hash}&auth=${encodeURIComponent(wsAuth)}`);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {

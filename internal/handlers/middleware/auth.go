@@ -26,6 +26,7 @@ import (
 func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
+		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") || path == "/api/info/terminal"
 
 		if strings.HasPrefix(path, "/api/utilities/downloads/") &&
 			!strings.HasPrefix(path, "/api/utilities/downloads/bulk-delete") &&
@@ -43,7 +44,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			return
 		}
 
-		if strings.HasPrefix(path, "/api/vnc/") {
+		if isWSAuthPath {
 			if authHex := c.Query("auth"); authHex != "" {
 				var wssAuth struct {
 					Hash     string `json:"hash"`
@@ -81,11 +82,11 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 					}
 				}
 
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_vnc_auth"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_ws_auth"})
 				return
 			}
 
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "missing_vnc_auth"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "missing_ws_auth"})
 			return
 		}
 
