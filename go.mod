@@ -33,6 +33,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/msteinert/pam v1.2.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/quic-go/quic-go v0.58.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil v3.21.11+incompatible
@@ -127,7 +128,6 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/powerman/rpc-codec v1.2.2 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.58.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
