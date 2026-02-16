@@ -20,8 +20,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/quic-go/quic-go"
 )
@@ -59,8 +61,31 @@ func (s *Service) replicateDatasetToNode(
 	if err != nil {
 		return nil, fmt.Errorf("source_snapshots: %w", err)
 	}
-	if len(localSnaps) == 0 {
-		return nil, fmt.Errorf("no_source_snapshots")
+
+	// For backup jobs, always create a new snapshot on each run
+	// For manual replications, only create if none exist
+	shouldCreateSnapshot := len(localSnaps) == 0 || jobID != nil
+
+	if shouldCreateSnapshot {
+		if len(localSnaps) == 0 {
+			logger.L.Info().Str("dataset", srcDataset).Msg("no_snapshots_found_creating_automatic_snapshot")
+		} else {
+			logger.L.Info().Str("dataset", srcDataset).Msg("creating_new_snapshot_for_backup_job")
+		}
+
+		dataset, err := s.GZFS.ZFS.Get(ctx, srcDataset, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_get_source_dataset: %w", err)
+		}
+
+		snapName := "backup-" + time.Now().UTC().Format("2006-01-02-15-04-05")
+		snap, err := dataset.Snapshot(ctx, snapName, false)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_create_snapshot: %w", err)
+		}
+
+		logger.L.Info().Str("snapshot", snap.Name).Msg("automatic_snapshot_created")
+		localSnaps = append(localSnaps, snap)
 	}
 
 	sort.Slice(localSnaps, func(i, j int) bool {

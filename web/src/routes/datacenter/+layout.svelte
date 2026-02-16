@@ -7,7 +7,7 @@
 	let openCategories: { [key: string]: boolean } = $state({});
 
 	const toggleCategory = (label: string) => {
-		openCategories[label] = !openCategories[label];
+		openCategories = { ...openCategories, [label]: !openCategories[label] };
 	};
 
 	interface NodeItem {
@@ -93,7 +93,7 @@
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
 								{#each nodeItems as item}
-									<TreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
+									<TreeView {item} onToggle={toggleCategory} />
 								{/each}
 							</ScrollArea>
 						</ul>

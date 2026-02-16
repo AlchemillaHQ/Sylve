@@ -36,7 +36,7 @@ type BackupJobInput struct {
 	CronExpr           string `json:"cronExpr"`
 	Force              bool   `json:"force"`
 	WithIntermediates  bool   `json:"withIntermediates"`
-	Enabled            bool   `json:"enabled"`
+	Enabled            *bool  `json:"enabled"`
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
@@ -218,6 +218,11 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 		return err
 	}
 
+	enabled := false
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
 			"name":                job.Name,
@@ -229,7 +234,7 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 			"cron_expr":           job.CronExpr,
 			"force":               job.Force,
 			"with_intermediates":  job.WithIntermediates,
-			"enabled":             job.Enabled,
+			"enabled":             enabled,
 			"next_run_at":         job.NextRunAt,
 		}).Error
 	}
@@ -315,7 +320,13 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 
 	now := time.Now().UTC()
 	next := schedule.Next(now)
-	if !input.Enabled {
+	enabled := false
+
+	if input.Enabled != nil {
+		enabled = *input.Enabled
+	}
+
+	if !enabled {
 		next = time.Time{}
 	}
 
@@ -330,7 +341,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		CronExpr:           cronExpr,
 		Force:              input.Force,
 		WithIntermediates:  input.WithIntermediates,
-		Enabled:            input.Enabled,
+		Enabled:            enabled,
 	}
 
 	if mode == clusterModels.BackupJobModeDataset {

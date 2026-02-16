@@ -294,7 +294,13 @@
 			</div>
 		</Button>
 
-		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6" disabled={!selectedJobId}>
+		<Button
+			onclick={() => (deleteModalOpen = true)}
+			size="sm"
+			variant="outline"
+			class="h-6"
+			disabled={!selectedJobId}
+		>
 			<div class="flex items-center">
 				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
 				<span>Delete</span>
@@ -370,12 +376,18 @@
 			{#if jobModal.mode === 'dataset'}
 				<div class="col-span-2 grid gap-1">
 					<label class="text-sm font-medium">Source Dataset</label>
-					<input class="border-input h-9 rounded-md border px-2" bind:value={jobModal.sourceDataset} />
+					<input
+						class="border-input h-9 rounded-md border px-2"
+						bind:value={jobModal.sourceDataset}
+					/>
 				</div>
 			{:else}
 				<div class="col-span-2 grid gap-1">
 					<label class="text-sm font-medium">Jail Root Dataset</label>
-					<input class="border-input h-9 rounded-md border px-2" bind:value={jobModal.jailRootDataset} />
+					<input
+						class="border-input h-9 rounded-md border px-2"
+						bind:value={jobModal.jailRootDataset}
+					/>
 				</div>
 			{/if}
 
@@ -391,21 +403,21 @@
 				<label class="text-sm font-medium">Cron (5-field)</label>
 				<input class="border-input h-9 rounded-md border px-2" bind:value={jobModal.cronExpr} />
 			</div>
+		</div>
 
-			<div class="flex items-end gap-4 pb-1 text-sm">
-				<label class="flex items-center gap-2">
-					<input type="checkbox" bind:checked={jobModal.force} />
-					Force recv
-				</label>
-				<label class="flex items-center gap-2">
-					<input type="checkbox" bind:checked={jobModal.withIntermediates} />
-					With intermediates
-				</label>
-				<label class="flex items-center gap-2">
-					<input type="checkbox" bind:checked={jobModal.enabled} />
-					Enabled
-				</label>
-			</div>
+		<div class="flex items-end gap-4 pb-1 text-sm">
+			<label class="flex items-center gap-2">
+				<input type="checkbox" bind:checked={jobModal.force} />
+				Force recv
+			</label>
+			<label class="flex items-center gap-2">
+				<input type="checkbox" bind:checked={jobModal.withIntermediates} />
+				With intermediates
+			</label>
+			<label class="flex items-center gap-2">
+				<input type="checkbox" bind:checked={jobModal.enabled} />
+				Enabled
+			</label>
 		</div>
 
 		<Dialog.Footer>

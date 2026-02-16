@@ -9,12 +9,9 @@
 package replication
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"sort"
 	"strings"
 	"time"
 
@@ -146,76 +143,23 @@ func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool)
 }
 
 func (s *Service) runJailBackupJob(ctx context.Context, job *clusterModels.BackupJob) error {
-	root := strings.TrimSpace(job.JailRootDataset)
-	if root == "" {
-		root = "zroot/sylve/jails"
+	src := strings.TrimSpace(job.JailRootDataset)
+	if src == "" {
+		return fmt.Errorf("jail_root_dataset_required")
 	}
 
-	datasets, err := s.listChildDatasets(ctx, root)
-	if err != nil {
-		return err
-	}
-	if len(datasets) == 0 {
-		return fmt.Errorf("no_jail_datasets_found")
-	}
+	logger.L.Info().Str("source", src).Str("destination", job.DestinationDataset).Msg("backing_up_jail_dataset")
 
-	sort.Strings(datasets)
-
-	var errs []string
-	for _, src := range datasets {
-		rel := strings.TrimPrefix(strings.TrimPrefix(src, root), "/")
-		dst := job.DestinationDataset
-		if rel != "" {
-			dst = strings.TrimSuffix(job.DestinationDataset, "/") + "/" + rel
-		}
-
-		if _, err := s.replicateDatasetToNode(
-			ctx,
-			src,
-			dst,
-			job.Target.Endpoint,
-			job.Force,
-			job.WithIntermediates,
-			&job.ID,
-		); err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", src, err))
-		}
-	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-
-	if len(errs) == len(datasets) {
-		return fmt.Errorf("all_jail_dataset_backups_failed: %s", strings.Join(errs, " | "))
-	}
-
-	return fmt.Errorf("partial_jail_dataset_backup_failure: %s", strings.Join(errs, " | "))
-}
-
-func (s *Service) listChildDatasets(ctx context.Context, root string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-r", root)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		if isDatasetMissingErr(err) || isDatasetMissingErr(fmt.Errorf(stderr.String())) {
-			return nil, fmt.Errorf("jail_root_dataset_not_found")
-		}
-		return nil, fmt.Errorf("list_jail_datasets_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	res := make([]string, 0, len(lines))
-	for _, line := range lines {
-		name := strings.TrimSpace(line)
-		if name == "" || name == root {
-			continue
-		}
-		res = append(res, name)
-	}
-
-	return res, nil
+	_, err := s.replicateDatasetToNode(
+		ctx,
+		src,
+		job.DestinationDataset,
+		job.Target.Endpoint,
+		job.Force,
+		job.WithIntermediates,
+		&job.ID,
+	)
+	return err
 }
 
 func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error) {

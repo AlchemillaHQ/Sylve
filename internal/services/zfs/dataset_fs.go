@@ -67,10 +67,12 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	}
 
 	if dataset != nil {
-		return s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
+		err := s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
+		if err == nil {
+			s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
+		}
+		return err
 	}
-
-	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
 
 	return fmt.Errorf("filesystem with guid %s not found", guid)
 }

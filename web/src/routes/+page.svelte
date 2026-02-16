@@ -222,4 +222,7 @@
 <span class="icon-[fluent-mdl2--party-leader]"></span>
 <span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
 <span class="icon-[mdi--public]"></span>
+<span class="icon-[mdi--backup-restore]"></span>
+<span class="icon-[mdi--server-network]"></span>
+<span class="icon-[mdi--calendar-sync]"></span>
 -->

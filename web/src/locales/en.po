@@ -125,6 +125,7 @@ msgid "Pools"
 msgstr "Pools"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Datasets"
 msgstr "Datasets"
 
@@ -307,6 +308,7 @@ msgstr "Virtualization"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Jails"
 msgstr "Jails"
 
@@ -452,6 +454,8 @@ msgstr "Minimize"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
@@ -602,6 +606,8 @@ msgstr "Create Partitions"
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
@@ -693,6 +699,8 @@ msgstr "Reset"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -718,6 +726,10 @@ msgstr "Reset"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
@@ -899,6 +911,9 @@ msgstr "Action"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
@@ -1001,6 +1016,8 @@ msgstr "View"
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Delete"
@@ -1013,6 +1030,7 @@ msgstr "Delete"
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1024,6 +1042,8 @@ msgstr "Delete"
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Edit"
@@ -1088,6 +1108,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
@@ -1111,6 +1132,8 @@ msgstr "This is a note"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Save"
 msgstr "Save"
@@ -1202,6 +1225,7 @@ msgstr "Network Usage"
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Type"
 msgstr "Type"
@@ -1549,6 +1573,9 @@ msgstr "This action cannot be undone. This will permanently delete"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -1704,6 +1731,8 @@ msgid "Share name already exists"
 msgstr "Share name already exists"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1743,6 +1772,8 @@ msgstr "Create Samba Share"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Dataset"
 msgstr "Dataset"
 
@@ -1814,11 +1845,15 @@ msgstr "Model"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Description"
 msgstr "Description"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -2135,6 +2170,7 @@ msgid "Select Type"
 msgstr "Select Type"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Endpoint"
 msgstr "Endpoint"
 
@@ -2155,6 +2191,7 @@ msgid "Secret Key"
 msgstr "Secret Key"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Backups"
 msgstr "Backups"
 
@@ -2305,12 +2342,16 @@ msgstr "Select IPv4"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 Gateway"
 msgstr "IPv4 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv4 Gateway"
 msgstr "Select IPv4 Gateway"
@@ -2338,12 +2379,16 @@ msgstr "Select IPv6"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Gateway"
 msgstr "IPv6 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Select IPv6 Gateway"
 msgstr "Select IPv6 Gateway"
@@ -2918,6 +2963,8 @@ msgid "Select PCI Devices"
 msgstr "Select PCI Devices"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "Switch is required"
@@ -2937,11 +2984,14 @@ msgid "VM attached to switch"
 msgstr "VM attached to switch"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 msgid "New Network"
 msgstr "New Network"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -2952,6 +3002,8 @@ msgid "Switch"
 msgstr "Switch"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -3146,6 +3198,8 @@ msgstr "VNC"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Enabled"
 msgstr "Enabled"
 
@@ -3357,6 +3411,8 @@ msgstr "Select Auto Expand"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Yes"
 msgstr "Yes"
 
@@ -3379,6 +3435,8 @@ msgstr "Yes"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "No"
 msgstr "No"
 
@@ -3808,6 +3866,7 @@ msgstr "Failed to disinherit network"
 #~ msgstr "IPv6 Gateway is required when IPv6 network is selected"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Failed to add network"
 msgstr "Failed to add network"
 
@@ -3859,6 +3918,8 @@ msgid "Disinherit"
 msgstr "Disinherit"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select MAC Address"
 msgstr "Select MAC Address"
 
@@ -4114,6 +4175,7 @@ msgid "Share"
 msgstr "Share"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target"
 msgstr "Target"
 
@@ -5015,6 +5077,7 @@ msgid "View Snapshot Jobs"
 msgstr "View Snapshot Jobs"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Last Run"
 msgstr "Last Run"
 
@@ -5408,6 +5471,7 @@ msgstr ""
 msgid "Log Out"
 msgstr "Log Out"
 
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -5418,8 +5482,9 @@ msgstr "Save Changes"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. placeholder {0}: selectedSwitchName || 'Network'
+#. placeholder {0}: selectedNetwork.name
 #. placeholder {0}: selectedName
+#: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
@@ -5963,38 +6028,55 @@ msgstr "Network inherited"
 #~ msgstr "Network form fields would be implemented here."
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Primary Network"
 msgstr "Primary Network"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv4 Address"
 msgstr "IPv4 Address"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select IPv4 Address"
 msgstr "Select IPv4 Address"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "IPv6 Address"
 msgstr "IPv6 Address"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Select IPv6 Address"
 msgstr "Select IPv6 Address"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Default Gateway"
 msgstr "Default Gateway"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Default gateway already exists"
 msgstr "Default gateway already exists"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network added successfully"
 msgstr "Network added successfully"
 
 #: src/lib/components/custom/Jail/Network/Add.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network name already exists"
 msgstr "Network name already exists"
 
@@ -6246,6 +6328,8 @@ msgid "Unknown VM"
 msgstr "Unknown VM"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Started"
 msgstr "Started"
 
@@ -6254,6 +6338,7 @@ msgid "Bad Request"
 msgstr "Bad Request"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Error"
 msgstr "Error"
 
@@ -6305,6 +6390,7 @@ msgstr "Failed to delete periodic snapshot"
 #~ msgstr "Filesystems"
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Used"
 msgstr "Used"
 
@@ -7289,3 +7375,273 @@ msgstr "VM - Update Description"
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Login required after initializing cluster"
 msgstr "Login required after initializing cluster"
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Targets"
+msgstr "Targets"
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Jobs"
+msgstr "Jobs"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Available"
+msgstr "Available"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Direction"
+msgstr "Direction"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Source Dataset"
+msgstr "Source Dataset"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Destination Dataset"
+msgstr "Destination Dataset"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Completed"
+msgstr "Completed"
+
+#. placeholder {0}: job.name
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Job: {0}"
+msgstr "Job: {0}"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup target updated"
+msgstr "Backup target updated"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup target created"
+msgstr "Backup target created"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Failed to update target"
+msgstr "Failed to update target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Failed to create target"
+msgstr "Failed to create target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup target deleted"
+msgstr "Backup target deleted"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Failed to delete target"
+msgstr "Failed to delete target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Failed to pull dataset from backup target"
+msgstr "Failed to pull dataset from backup target"
+
+#. placeholder {0}: result.mode
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup pull complete ({0})"
+msgstr "Backup pull complete ({0})"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "New Target"
+msgstr "New Target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Dataset prefix"
+msgstr "Dataset prefix"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Loading Datasets..."
+msgstr "Loading Datasets..."
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Loading Status..."
+msgstr "Loading Status..."
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Pull State"
+msgstr "Pull State"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Target Datasets"
+msgstr "Target Datasets"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "No datasets loaded"
+msgstr "No datasets loaded"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Target Replication Status"
+msgstr "Target Replication Status"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "No status loaded"
+msgstr "No status loaded"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Edit Backup Target"
+msgstr "Edit Backup Target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "New Backup Target"
+msgstr "New Backup Target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Endpoint (host:port)"
+msgstr "Endpoint (host:port)"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "<0/> Enabled"
+msgstr "<0/> Enabled"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Pull Dataset From Backup Target"
+msgstr "Pull Dataset From Backup Target"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Source Dataset (on target)"
+msgstr "Source Dataset (on target)"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Destination Dataset (local)"
+msgstr "Destination Dataset (local)"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Snapshot (optional)"
+msgstr "Snapshot (optional)"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "<0/> Force recv"
+msgstr "<0/> Force recv"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "<0/> With intermediates"
+msgstr "<0/> With intermediates"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Pulling..."
+msgstr "Pulling..."
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Pull"
+msgstr "Pull"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Delete selected backup target?"
+msgstr "Delete selected backup target?"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Mode"
+msgstr "Mode"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Source"
+msgstr "Source"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination"
+msgstr "Destination"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Schedule"
+msgstr "Schedule"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Last Status"
+msgstr "Last Status"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job updated"
+msgstr "Backup job updated"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job created"
+msgstr "Backup job created"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to update job"
+msgstr "Failed to update job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to create job"
+msgstr "Failed to create job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job deleted"
+msgstr "Backup job deleted"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to delete job"
+msgstr "Failed to delete job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job started"
+msgstr "Backup job started"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to run job"
+msgstr "Failed to run job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "New Job"
+msgstr "New Job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run Now"
+msgstr "Run Now"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading Events..."
+msgstr "Loading Events..."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Refresh Events"
+msgstr "Refresh Events"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Job Runs / Replication Events"
+msgstr "Job Runs / Replication Events"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No backup events loaded"
+msgstr "No backup events loaded"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Edit Backup Job"
+msgstr "Edit Backup Job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "New Backup Job"
+msgstr "New Backup Job"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Jail Root Dataset"
+msgstr "Jail Root Dataset"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination Dataset (on target)"
+msgstr "Destination Dataset (on target)"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Cron (5-field)"
+msgstr "Cron (5-field)"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Delete selected backup job?"
+msgstr "Delete selected backup job?"
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Failed to update network"
+msgstr "Failed to update network"
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Network updated successfully"
+msgstr "Network updated successfully"

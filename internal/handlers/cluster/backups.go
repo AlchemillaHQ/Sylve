@@ -39,7 +39,7 @@ type backupJobRequest struct {
 	CronExpr           string `json:"cronExpr" binding:"required"`
 	Force              bool   `json:"force"`
 	WithIntermediates  bool   `json:"withIntermediates"`
-	Enabled            bool   `json:"enabled"`
+	Enabled            *bool  `json:"enabled"`
 }
 
 type backupPullRequest struct {

@@ -205,12 +205,24 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
-		case "create", "update":
+		case "create":
 			var target BackupTarget
 			if err := json.Unmarshal(raw, &target); err != nil {
 				return err
 			}
 			return upsertBackupTarget(db, &target)
+		case "update":
+			var target BackupTarget
+			if err := json.Unmarshal(raw, &target); err != nil {
+				return err
+			}
+			// Use Updates with map to properly handle boolean false values
+			return db.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(map[string]any{
+				"name":        target.Name,
+				"endpoint":    target.Endpoint,
+				"description": target.Description,
+				"enabled":     target.Enabled,
+			}).Error
 		case "delete":
 			var payload struct {
 				ID uint `json:"id"`
@@ -234,7 +246,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_job", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
-		case "create", "update":
+		case "create":
 			var job BackupJob
 			if err := json.Unmarshal(raw, &job); err != nil {
 				return err
@@ -246,6 +258,31 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
 			return upsertBackupJob(db, &job)
+		case "update":
+			var job BackupJob
+			if err := json.Unmarshal(raw, &job); err != nil {
+				return err
+			}
+			if job.Mode == "" {
+				job.Mode = BackupJobModeDataset
+			}
+			if !validBackupJobMode(job.Mode) {
+				return fmt.Errorf("invalid_backup_job_mode")
+			}
+			// Use Updates with map to properly handle boolean false values
+			return db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+				"name":                job.Name,
+				"target_id":           job.TargetID,
+				"mode":                job.Mode,
+				"source_dataset":      job.SourceDataset,
+				"jail_root_dataset":   job.JailRootDataset,
+				"destination_dataset": job.DestinationDataset,
+				"cron_expr":           job.CronExpr,
+				"force":               job.Force,
+				"with_intermediates":  job.WithIntermediates,
+				"enabled":             job.Enabled,
+				"next_run_at":         job.NextRunAt,
+			}).Error
 		case "delete":
 			var payload struct {
 				ID uint `json:"id"`
