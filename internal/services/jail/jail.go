@@ -10,6 +10,7 @@ package jail
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,11 +62,20 @@ func (s *Service) GetJails() ([]jailModels.Jail, error) {
 	var jails []jailModels.Jail
 	if err := s.DB.
 		Preload("Storages").
-		Preload("Networks").
 		Preload("JailHooks").
+		Preload("Networks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").
+		Preload("Networks.IPv4Obj").
+		Preload("Networks.IPv4Obj.Entries").
+		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv6Obj").
+		Preload("Networks.IPv6Obj.Entries").
+		Preload("Networks.IPv6Obj.Resolutions").
+		Preload("Networks.IPv6GwObj").
+		Preload("Networks.IPv6GwObj.Entries").
+		Preload("Networks.IPv6GwObj.Resolutions").
 		Find(&jails).Error; err != nil {
 		logger.L.Error().Err(err).Msg("get_jails: failed to fetch jails")
 		return nil, fmt.Errorf("failed_to_fetch_jails: %w", err)
@@ -77,11 +87,20 @@ func (s *Service) GetJail(id uint) (*jailModels.Jail, error) {
 	var jail jailModels.Jail
 	if err := s.DB.
 		Preload("Storages").
-		Preload("Networks").
 		Preload("JailHooks").
+		Preload("Networks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").
+		Preload("Networks.IPv4Obj").
+		Preload("Networks.IPv4Obj.Entries").
+		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv6Obj").
+		Preload("Networks.IPv6Obj.Entries").
+		Preload("Networks.IPv6Obj.Resolutions").
+		Preload("Networks.IPv6GwObj").
+		Preload("Networks.IPv6GwObj.Entries").
+		Preload("Networks.IPv6GwObj.Resolutions").
 		First(&jail, "id = ?", id).Error; err != nil {
 		logger.L.Error().Err(err).Msgf("get_jail: failed to fetch jail with id %d", id)
 		return nil, fmt.Errorf("failed_to_fetch_jail: %w", err)
@@ -94,11 +113,20 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 	var jail jailModels.Jail
 	if err := s.DB.
 		Preload("Storages").
-		Preload("Networks").
 		Preload("JailHooks").
+		Preload("Networks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
 		Preload("Networks.MacAddressObj.Resolutions").
+		Preload("Networks.IPv4Obj").
+		Preload("Networks.IPv4Obj.Entries").
+		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv6Obj").
+		Preload("Networks.IPv6Obj.Entries").
+		Preload("Networks.IPv6Obj.Resolutions").
+		Preload("Networks.IPv6GwObj").
+		Preload("Networks.IPv6GwObj.Entries").
+		Preload("Networks.IPv6GwObj.Resolutions").
 		First(&jail, "ct_id = ?", ctId).Error; err != nil {
 		logger.L.Error().Err(err).Msgf("get_jail_by_ctid: failed to fetch jail with ct_id %d", ctId)
 		return nil, fmt.Errorf("failed_to_fetch_jail_by_ctid: %w", err)
@@ -1217,6 +1245,18 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		return
 	}
 
+	sylveDir := filepath.Join(mountPoint, ".sylve")
+	if err = os.MkdirAll(sylveDir, 0755); err != nil {
+		err = fmt.Errorf("failed_to_create_sylve_directory: %w", err)
+		return
+	}
+
+	err = s.WriteJailJSON(*data.CTID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail metadata")
+		return
+	}
+
 	// Transaction was already committed after database operations
 	return nil
 }
@@ -1333,6 +1373,48 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 	if err := s.DB.Save(&jail).Error; err != nil {
 		logger.L.Error().Err(err).Msg("update_jail_description: failed to update jail description")
 		return fmt.Errorf("failed_to_update_jail_description: %w", err)
+	}
+
+	err = s.WriteJailJSON(jail.CTID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after description update")
+	}
+
+	return nil
+}
+
+func (s *Service) WriteJailJSON(ctId uint) error {
+	if ctId == 0 {
+		return fmt.Errorf("invalid_ct_id")
+	}
+
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return err
+	}
+
+	var mountPoints []string
+	for _, storage := range jail.Storages {
+		if storage.IsBase {
+			mountPoints = append(mountPoints, fmt.Sprintf("/%s/sylve/jails/%d", storage.Pool, ctId))
+		}
+	}
+
+	for _, mountPoint := range mountPoints {
+		sylveDir := filepath.Join(mountPoint, ".sylve")
+		if err := os.MkdirAll(sylveDir, 0755); err != nil {
+			return fmt.Errorf("failed_to_create_.sylve_directory: %w", err)
+		}
+
+		jailJsonPath := filepath.Join(sylveDir, "jail.json")
+		jailJsonData, err := json.MarshalIndent(jail, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed_to_marshal_jail_to_json: %w", err)
+		}
+
+		if err := os.WriteFile(jailJsonPath, jailJsonData, 0644); err != nil {
+			return fmt.Errorf("failed_to_write_jail_json_file: %w", err)
+		}
 	}
 
 	return nil

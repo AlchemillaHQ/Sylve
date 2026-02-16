@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -38,6 +39,12 @@ func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) er
 			"start_order":   bootOrder,
 			"start_at_boot": startAtBoot,
 		}).Error
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after boot order update")
+	}
+
 	return err
 }
 
@@ -102,6 +109,11 @@ func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 		Error
 	if err != nil {
 		return fmt.Errorf("failed_to_update_fstab_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after fstab update")
 	}
 
 	return nil
@@ -172,6 +184,11 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 		return fmt.Errorf("failed_to_update_devfs_rules_in_db: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after devfs rules update")
+	}
+
 	return nil
 }
 
@@ -217,6 +234,11 @@ func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
 		Update("additional_options", options).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_update_additional_options_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after additional options update")
 	}
 
 	return nil
@@ -340,6 +362,11 @@ func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
 		return fmt.Errorf("failed_to_update_allowed_options_in_db: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after allowed options update")
+	}
+
 	return nil
 }
 
@@ -401,6 +428,11 @@ func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
 			"metadata_env":  env,
 		}).Error; err != nil {
 		return fmt.Errorf("failed_to_update_metadata_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after metadata update")
 	}
 
 	return nil
@@ -645,6 +677,11 @@ func (s *Service) ModifyLifecycleHooks(ctId uint, hooks jailServiceInterfaces.Ho
 
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed_to_commit_hook_updates: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after network update")
 	}
 
 	return nil

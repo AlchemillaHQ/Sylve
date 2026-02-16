@@ -78,6 +78,11 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 		return fmt.Errorf("failed to update jail memory in database: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after memory update")
+	}
+
 	return nil
 }
 
@@ -189,6 +194,11 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		}
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after CPU update")
+	}
+
 	return nil
 }
 
@@ -281,6 +291,11 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 
 	if err := s.DB.Save(&jail).Error; err != nil {
 		return fmt.Errorf("failed to update jail resource limits in database: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after memory update")
 	}
 
 	return nil

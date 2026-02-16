@@ -109,14 +109,7 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 	}
 
 	cleanedPrestartCfg := s.RemoveSylveAdditionsFromHook(string(preStartCfg))
-	if err != nil {
-		return err
-	}
-
 	cleanedStartCfg := s.RemoveSylveAdditionsFromHook(string(startCfg))
-	if err != nil {
-		return err
-	}
 
 	if err := os.WriteFile(preStartPath, []byte(cleanedPrestartCfg), 0755); err != nil {
 		return err
@@ -194,6 +187,11 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 		if err := s.SaveJailConfig(ctId, newCfg); err != nil {
 			return err
 		}
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after network (inheritance) update")
 	}
 
 	return nil
@@ -425,7 +423,6 @@ func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
 		return err
 	}
 
-	// Reload jail after deletion and sync
 	var jail jailModels.Jail
 	if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jail).Error; err != nil {
 		return err
@@ -703,6 +700,11 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 
 	if err := s.SaveJailConfig(ctId, newCfg); err != nil {
 		return err
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after network update")
 	}
 
 	return nil
