@@ -3,6 +3,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { storage } from '$lib';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import { watch } from 'runed';
 
 	interface Props {
 		name: string;
@@ -37,12 +38,13 @@
 		}));
 	});
 
-	$effect(() => {
-		if (node) {
+	watch(
+		() => node,
+		() => {
 			storage.hostname = node;
 			refetch = true;
 		}
-	});
+	);
 </script>
 
 <div class="flex flex-col gap-4 p-4">

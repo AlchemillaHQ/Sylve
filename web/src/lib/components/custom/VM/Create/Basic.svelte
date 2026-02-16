@@ -3,6 +3,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { storage } from '$lib';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import { watch } from 'runed';
 
 	interface Props {
 		name: string;
@@ -35,16 +36,17 @@
 		}));
 	});
 
-	$effect(() => {
-		if (node) {
+	watch(
+		() => node,
+		() => {
 			storage.hostname = node;
 			refetch = true;
 		}
-	});
+	);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 {hosts.length > 0 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}">
 		{#if hosts.length > 0}
 			<CustomComboBox
 				bind:open={host.combobox.open}

@@ -177,7 +177,7 @@
 
 {#if loading.throbber}
 	<Throbber />
-{:else if storage.hostname && storage.token && !loading.throbber && !loading.login}
+{:else if storage.token && !loading.throbber && !loading.login}
 	{#if initialized === null}
 		<Throbber />
 	{:else if initialized === false || rebooted === false}

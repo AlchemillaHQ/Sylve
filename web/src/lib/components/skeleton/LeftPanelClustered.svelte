@@ -14,6 +14,7 @@
 	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 
 	let openIds = $state(new Set<string>(['datacenter']));
 
@@ -153,7 +154,6 @@
 		return node?.nodeUUID ?? null;
 	});
 
-	// $inspect(activeNodeId);
 	watch(
 		() => activeNodeId,
 		(nodeId, prevNodeId) => {
@@ -161,6 +161,35 @@
 				reload.leftPanel = true;
 				reload.auditLog = true;
 			}
+		}
+	);
+
+	watch(
+		() => storage.hostname,
+		(hostname, prevHostname) => {
+			if (!hostname || hostname === prevHostname) {
+				return;
+			}
+
+			const parts = page.url.pathname.split('/').filter(Boolean);
+			if (parts.length === 0) {
+				return;
+			}
+
+			const currentNodeLabel = parts[0];
+			const isNodeRoute = cluster.current.some(
+				(node) => (node.hostname || node.nodeUUID) === currentNodeLabel
+			);
+
+			if (!isNodeRoute || currentNodeLabel === hostname) {
+				return;
+			}
+
+			parts[0] = hostname;
+			const nextPath = `/${parts.join('/')}`;
+			const nextUrl = `${nextPath}${page.url.search}${page.url.hash}`;
+
+			goto(nextUrl, { replaceState: true });
 		}
 	);
 </script>

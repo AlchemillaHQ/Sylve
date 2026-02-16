@@ -315,7 +315,6 @@
 							{:else if value === 'network' && networkObjects.current && networkSwitches.current && vms.current}
 								<Network
 									switches={networkSwitches.current}
-									vms={vms.current}
 									networkObjects={networkObjects.current}
 									bind:switch={modal.network.switch}
 									bind:mac={modal.network.mac}
