@@ -13,6 +13,7 @@
 	import { DomainState } from '$lib/types/vm/vm';
 	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
+	import { page } from '$app/state';
 
 	let openIds = $state(new Set<string>(['datacenter']));
 
@@ -142,6 +143,18 @@
 			}
 		}
 	});
+
+	const activeNodeId = $derived.by(() => {
+		const path = page.url.pathname;
+		const parts = path.split('/').filter(Boolean);
+		const nodeLabel = parts[0];
+
+		const node = cluster.current.find((n) => (n.hostname || n.nodeUUID) === nodeLabel);
+
+		return node?.nodeUUID ?? null;
+	});
+
+	$inspect(activeNodeId);
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">

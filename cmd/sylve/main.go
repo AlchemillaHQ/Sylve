@@ -35,6 +35,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -118,6 +119,9 @@ func main() {
 			logger.L.Info().Msg("Not initializing RAFT")
 		}
 	}
+
+	replicationService := replication.NewService(d, aS, zS.(*zfs.Service).GZFS, cS.(*cluster.Service))
+	go replicationService.Run(qCtx)
 
 	go aS.ClearExpiredJWTTokens()
 
