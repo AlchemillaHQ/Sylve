@@ -1,4 +1,5 @@
 BINARY_NAME := sylve
+BACKUP_BINARY_NAME := sylve-backup
 BIN_DIR := bin
 
 .PHONY: all build clean run depcheck
@@ -11,6 +12,7 @@ build: build-depcheck
 	cp -rf web/build/* internal/assets/web-files
 	mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/$(BINARY_NAME) cmd/sylve/main.go
+	go build -o $(BIN_DIR)/$(BACKUP_BINARY_NAME) cmd/sylve-backup/main.go
 
 clean:
 	rm -rf $(BIN_DIR)

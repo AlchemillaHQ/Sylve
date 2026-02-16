@@ -50,23 +50,57 @@ type Service struct {
 }
 
 type request struct {
-	Version int    `json:"version"`
-	Action  string `json:"action"`
-	Token   string `json:"token"`
-	Dataset string `json:"dataset,omitempty"`
-	Force   bool   `json:"force,omitempty"`
+	Version           int    `json:"version"`
+	Action            string `json:"action"`
+	Token             string `json:"token"`
+	Dataset           string `json:"dataset,omitempty"`
+	Prefix            string `json:"prefix,omitempty"`
+	Limit             int    `json:"limit,omitempty"`
+	Force             bool   `json:"force,omitempty"`
+	BaseSnapshot      string `json:"baseSnapshot,omitempty"`
+	TargetSnapshot    string `json:"targetSnapshot,omitempty"`
+	WithIntermediates bool   `json:"withIntermediates,omitempty"`
 }
 
 type response struct {
-	OK        bool       `json:"ok"`
-	Error     string     `json:"error,omitempty"`
-	Snapshots []SnapInfo `json:"snapshots,omitempty"`
+	OK             bool                   `json:"ok"`
+	Error          string                 `json:"error,omitempty"`
+	Snapshots      []SnapInfo             `json:"snapshots,omitempty"`
+	Datasets       []DatasetInfo          `json:"datasets,omitempty"`
+	Events         []ReplicationEventInfo `json:"events,omitempty"`
+	TargetSnapshot string                 `json:"targetSnapshot,omitempty"`
 }
 
 type SnapInfo struct {
 	Name      string `json:"name"`
 	GUID      string `json:"guid"`
 	CreateTXG string `json:"createtxg"`
+}
+
+type DatasetInfo struct {
+	Name            string `json:"name"`
+	GUID            string `json:"guid"`
+	Type            string `json:"type"`
+	CreationUnix    int64  `json:"creationUnix"`
+	UsedBytes       uint64 `json:"usedBytes"`
+	ReferencedBytes uint64 `json:"referencedBytes"`
+	AvailableBytes  uint64 `json:"availableBytes"`
+	Mountpoint      string `json:"mountpoint"`
+}
+
+type ReplicationEventInfo struct {
+	ID                 uint       `json:"id"`
+	Direction          string     `json:"direction"`
+	RemoteAddress      string     `json:"remoteAddress"`
+	SourceDataset      string     `json:"sourceDataset"`
+	DestinationDataset string     `json:"destinationDataset"`
+	BaseSnapshot       string     `json:"baseSnapshot"`
+	TargetSnapshot     string     `json:"targetSnapshot"`
+	Mode               string     `json:"mode"`
+	Status             string     `json:"status"`
+	Error              string     `json:"error"`
+	StartedAt          time.Time  `json:"startedAt"`
+	CompletedAt        *time.Time `json:"completedAt"`
 }
 
 type Plan struct {
@@ -111,25 +145,40 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
-func (s *Service) syncListener(ctx context.Context) error {
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
+func (s *Service) RunStandalone(ctx context.Context, port int) error {
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("invalid_listener_port")
+	}
 
+	if err := s.ensureListener(ctx, port); err != nil {
 		return err
 	}
 
-	shouldRun := c.Enabled && c.RaftPort > 0
-	if !shouldRun {
+	<-ctx.Done()
+	return s.stopListener()
+}
+
+func (s *Service) syncListener(ctx context.Context) error {
+	var c clusterModels.Cluster
+	if err := s.DB.Order("id ASC").First(&c).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return s.stopListener()
+		}
+		return err
+	}
+
+	if !c.Enabled || c.RaftPort <= 0 {
 		return s.stopListener()
 	}
 
+	return s.ensureListener(ctx, c.RaftPort)
+}
+
+func (s *Service) ensureListener(ctx context.Context, port int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.listener != nil && s.port == c.RaftPort {
+	if s.listener != nil && s.port == port {
 		return nil
 	}
 
@@ -143,17 +192,17 @@ func (s *Service) syncListener(ctx context.Context) error {
 		return err
 	}
 
-	addr := fmt.Sprintf(":%d", c.RaftPort)
+	addr := fmt.Sprintf(":%d", port)
 	listener, err := quic.ListenAddr(addr, tlsConf, nil)
 	if err != nil {
 		return err
 	}
 
 	s.listener = listener
-	s.port = c.RaftPort
+	s.port = port
 
 	go s.acceptLoop(ctx, listener)
-	logger.L.Info().Int("udp_port", c.RaftPort).Msg("Replication QUIC Listener started")
+	logger.L.Info().Int("udp_port", port).Msg("Replication QUIC Listener started")
 
 	return nil
 }
@@ -185,17 +234,19 @@ func (s *Service) acceptLoop(ctx context.Context, listener *quic.Listener) {
 }
 
 func (s *Service) handleConn(conn *quic.Conn) {
+	remoteAddr := conn.RemoteAddr().String()
+
 	for {
 		stream, err := conn.AcceptStream(context.Background())
 		if err != nil {
 			return
 		}
 
-		go s.handleStream(stream)
+		go s.handleStream(stream, remoteAddr)
 	}
 }
 
-func (s *Service) handleStream(stream *quic.Stream) {
+func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 	defer stream.Close()
 
 	reader := bufio.NewReader(stream)
@@ -235,18 +286,93 @@ func (s *Service) handleStream(stream *quic.Stream) {
 		}
 
 		_ = writeJSONLine(stream, response{OK: true, Snapshots: snaps})
+	case "datasets":
+		datasets, err := s.listDatasets(context.Background(), req.Prefix)
+		if err != nil {
+			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
+			return
+		}
+
+		_ = writeJSONLine(stream, response{OK: true, Datasets: datasets})
+	case "status":
+		events, err := s.listReplicationEvents(req.Limit)
+		if err != nil {
+			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
+			return
+		}
+
+		_ = writeJSONLine(stream, response{OK: true, Events: events})
 	case "receive":
 		if req.Dataset == "" {
 			_ = writeJSONLine(stream, response{OK: false, Error: "dataset_required"})
 			return
 		}
 
-		if err := s.receiveStream(context.Background(), reader, req.Dataset, req.Force); err != nil {
+		event := s.beginReplicationEvent(
+			"receive",
+			remoteAddr,
+			"",
+			req.Dataset,
+			"",
+			"",
+			"push",
+		)
+
+		err := s.receiveStream(context.Background(), reader, req.Dataset, req.Force)
+		s.completeReplicationEvent(event, err)
+		if err != nil {
 			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
 			return
 		}
 
 		_ = writeJSONLine(stream, response{OK: true})
+	case "send":
+		if req.Dataset == "" {
+			_ = writeJSONLine(stream, response{OK: false, Error: "dataset_required"})
+			return
+		}
+
+		targetSnapshot, err := s.resolveTargetSnapshot(context.Background(), req.Dataset, req.TargetSnapshot)
+		if err != nil {
+			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
+			return
+		}
+
+		baseSnapshot := normalizeSnapshotName(req.Dataset, req.BaseSnapshot)
+		if baseSnapshot != "" && baseSnapshot == targetSnapshot {
+			_ = writeJSONLine(stream, response{OK: false, Error: "base_equals_target_snapshot"})
+			return
+		}
+
+		mode := "full"
+		if baseSnapshot != "" {
+			if req.WithIntermediates {
+				mode = "incremental_intermediates"
+			} else {
+				mode = "incremental"
+			}
+		}
+
+		event := s.beginReplicationEvent(
+			"send",
+			remoteAddr,
+			req.Dataset,
+			"",
+			baseSnapshot,
+			targetSnapshot,
+			mode,
+		)
+
+		if err := writeJSONLine(stream, response{OK: true, TargetSnapshot: targetSnapshot}); err != nil {
+			s.completeReplicationEvent(event, err)
+			return
+		}
+
+		err = s.sendDataset(context.Background(), targetSnapshot, baseSnapshot, req.WithIntermediates, stream)
+		s.completeReplicationEvent(event, err)
+		if err != nil {
+			logger.L.Warn().Err(err).Str("remote", remoteAddr).Msg("replication_send_failed")
+		}
 	default:
 		_ = writeJSONLine(stream, response{OK: false, Error: "unknown_action"})
 	}
@@ -274,6 +400,212 @@ func (s *Service) listSnapshots(ctx context.Context, dataset string) ([]SnapInfo
 	}
 
 	return out, nil
+}
+
+func (s *Service) listDatasets(ctx context.Context, prefix string) ([]DatasetInfo, error) {
+	cmd := exec.CommandContext(
+		ctx,
+		"zfs",
+		"list",
+		"-H",
+		"-p",
+		"-o",
+		"name,guid,type,creation,used,refer,avail,mountpoint",
+		"-t",
+		"filesystem,volume",
+	)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("zfs_list_datasets_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	datasets := make([]DatasetInfo, 0, len(lines))
+
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		fields := strings.Split(line, "\t")
+		if len(fields) < 8 {
+			continue
+		}
+
+		name := fields[0]
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
+		creation, _ := strconv.ParseInt(fields[3], 10, 64)
+		used, _ := strconv.ParseUint(fields[4], 10, 64)
+		refer, _ := strconv.ParseUint(fields[5], 10, 64)
+		avail, _ := strconv.ParseUint(fields[6], 10, 64)
+
+		datasets = append(datasets, DatasetInfo{
+			Name:            name,
+			GUID:            fields[1],
+			Type:            fields[2],
+			CreationUnix:    creation,
+			UsedBytes:       used,
+			ReferencedBytes: refer,
+			AvailableBytes:  avail,
+			Mountpoint:      fields[7],
+		})
+	}
+
+	sort.Slice(datasets, func(i, j int) bool {
+		return datasets[i].Name < datasets[j].Name
+	})
+
+	return datasets, nil
+}
+
+func (s *Service) listReplicationEvents(limit int) ([]ReplicationEventInfo, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	var rows []clusterModels.BackupReplicationEvent
+	if err := s.DB.Order("started_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]ReplicationEventInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReplicationEventInfo{
+			ID:                 row.ID,
+			Direction:          row.Direction,
+			RemoteAddress:      row.RemoteAddress,
+			SourceDataset:      row.SourceDataset,
+			DestinationDataset: row.DestinationDataset,
+			BaseSnapshot:       row.BaseSnapshot,
+			TargetSnapshot:     row.TargetSnapshot,
+			Mode:               row.Mode,
+			Status:             row.Status,
+			Error:              row.Error,
+			StartedAt:          row.StartedAt,
+			CompletedAt:        row.CompletedAt,
+		})
+	}
+
+	return out, nil
+}
+
+func (s *Service) beginReplicationEvent(
+	direction string,
+	remoteAddress string,
+	sourceDataset string,
+	destinationDataset string,
+	baseSnapshot string,
+	targetSnapshot string,
+	mode string,
+) *clusterModels.BackupReplicationEvent {
+	if s.DB == nil {
+		return nil
+	}
+
+	event := &clusterModels.BackupReplicationEvent{
+		Direction:          direction,
+		RemoteAddress:      remoteAddress,
+		SourceDataset:      sourceDataset,
+		DestinationDataset: destinationDataset,
+		BaseSnapshot:       baseSnapshot,
+		TargetSnapshot:     targetSnapshot,
+		Mode:               mode,
+		Status:             "running",
+		StartedAt:          time.Now().UTC(),
+	}
+
+	if err := s.DB.Create(event).Error; err != nil {
+		logger.L.Debug().Err(err).Msg("failed_to_create_replication_event")
+		return nil
+	}
+
+	return event
+}
+
+func (s *Service) completeReplicationEvent(event *clusterModels.BackupReplicationEvent, runErr error) {
+	if event == nil || s.DB == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	updates := map[string]any{
+		"completed_at": &now,
+		"error":        "",
+		"status":       "success",
+	}
+
+	if runErr != nil {
+		updates["status"] = "failed"
+		updates["error"] = runErr.Error()
+	}
+
+	if err := s.DB.Model(&clusterModels.BackupReplicationEvent{}).Where("id = ?", event.ID).Updates(updates).Error; err != nil {
+		logger.L.Debug().Err(err).Msg("failed_to_update_replication_event")
+	}
+}
+
+func (s *Service) resolveTargetSnapshot(ctx context.Context, dataset, targetSnapshot string) (string, error) {
+	snaps, err := s.listSnapshots(ctx, dataset)
+	if err != nil {
+		return "", err
+	}
+	if len(snaps) == 0 {
+		return "", fmt.Errorf("no_source_snapshots")
+	}
+
+	if targetSnapshot == "" {
+		return snaps[len(snaps)-1].Name, nil
+	}
+
+	targetSnapshot = normalizeSnapshotName(dataset, targetSnapshot)
+	for _, snap := range snaps {
+		if snap.Name == targetSnapshot {
+			return targetSnapshot, nil
+		}
+	}
+
+	return "", fmt.Errorf("target_snapshot_not_found")
+}
+
+func normalizeSnapshotName(dataset, snapshot string) string {
+	snapshot = strings.TrimSpace(snapshot)
+	if snapshot == "" {
+		return ""
+	}
+
+	if strings.Contains(snapshot, "@") {
+		return snapshot
+	}
+
+	return fmt.Sprintf("%s@%s", dataset, snapshot)
+}
+
+func (s *Service) sendDataset(
+	ctx context.Context,
+	targetSnapshot string,
+	baseSnapshot string,
+	withIntermediates bool,
+	out io.Writer,
+) error {
+	if baseSnapshot == "" {
+		return s.sendSnapshot(ctx, targetSnapshot, out)
+	}
+
+	if withIntermediates {
+		return s.sendIncrementalWithIntermediates(ctx, baseSnapshot, targetSnapshot, out)
+	}
+
+	return s.sendIncremental(ctx, baseSnapshot, targetSnapshot, out)
 }
 
 func (s *Service) serverTLSConfig() (*tls.Config, error) {

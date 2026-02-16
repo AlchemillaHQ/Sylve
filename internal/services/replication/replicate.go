@@ -143,6 +143,207 @@ func (s *Service) ReplicateDatasetToNode(
 	return plan, nil
 }
 
+func (s *Service) PullDatasetFromNode(
+	ctx context.Context,
+	srcDataset string,
+	dstDataset string,
+	target string,
+	targetSnapshot string,
+	force bool,
+	withIntermediates bool,
+) (*Plan, error) {
+	if srcDataset == "" || dstDataset == "" || target == "" {
+		return nil, fmt.Errorf("src_dataset_dst_dataset_and_target_are_required")
+	}
+
+	endpoint, err := s.resolvePeerEndpoint(target)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteSnaps, err := s.fetchRemoteSnapshots(ctx, endpoint, srcDataset)
+	if err != nil {
+		return nil, err
+	}
+	if len(remoteSnaps) == 0 {
+		return nil, fmt.Errorf("no_remote_snapshots")
+	}
+
+	targetName := normalizeSnapshotName(srcDataset, targetSnapshot)
+	if targetName == "" {
+		targetName = remoteSnaps[len(remoteSnaps)-1].Name
+	}
+
+	targetIndex := -1
+	for i, snap := range remoteSnaps {
+		if snap.Name == targetName {
+			targetIndex = i
+			break
+		}
+	}
+	if targetIndex == -1 {
+		return nil, fmt.Errorf("target_snapshot_not_found")
+	}
+
+	localSnaps, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeSnapshot, false, dstDataset)
+	if err != nil && !isDatasetMissingErr(err) {
+		return nil, fmt.Errorf("destination_snapshots: %w", err)
+	}
+
+	localByGUID := make(map[string]*gzfs.Dataset, len(localSnaps))
+	for _, snap := range localSnaps {
+		localByGUID[snap.GUID] = snap
+	}
+
+	var baseLocal *gzfs.Dataset
+	for _, remoteSnap := range remoteSnaps[:targetIndex+1] {
+		if localSnap, ok := localByGUID[remoteSnap.GUID]; ok {
+			baseLocal = localSnap
+		}
+	}
+
+	plan := &Plan{
+		SourceDataset:      srcDataset,
+		DestinationDataset: dstDataset,
+		Endpoint:           endpoint,
+		TargetSnapshot:     targetName,
+	}
+
+	if baseLocal != nil {
+		plan.BaseSnapshot = baseLocal.Name
+		if baseLocal.Name == targetName {
+			plan.Mode = "noop"
+			plan.Noop = true
+			return plan, nil
+		}
+	}
+
+	token, err := s.clusterToken()
+	if err != nil {
+		return nil, err
+	}
+
+	conn, stream, err := s.openStream(ctx, endpoint, request{
+		Version:           1,
+		Action:            "send",
+		Token:             token,
+		Dataset:           srcDataset,
+		TargetSnapshot:    targetName,
+		BaseSnapshot:      plan.BaseSnapshot,
+		WithIntermediates: withIntermediates,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.CloseWithError(0, "done")
+
+	if err := stream.Close(); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(stream)
+	var resp response
+	if err := readJSONLine(reader, maxHeaderBytes, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, errors.New(resp.Error)
+	}
+	if resp.TargetSnapshot != "" {
+		plan.TargetSnapshot = resp.TargetSnapshot
+	}
+
+	if plan.BaseSnapshot == "" {
+		plan.Mode = "pull_full"
+	} else if withIntermediates {
+		plan.Mode = "pull_incremental_intermediates"
+	} else {
+		plan.Mode = "pull_incremental"
+	}
+
+	if err := s.receiveStream(ctx, reader, dstDataset, force); err != nil {
+		return nil, err
+	}
+
+	return plan, nil
+}
+
+func (s *Service) ListTargetDatasets(ctx context.Context, target string, prefix string) ([]DatasetInfo, error) {
+	endpoint, err := s.resolvePeerEndpoint(target)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := s.clusterToken()
+	if err != nil {
+		return nil, err
+	}
+
+	conn, stream, err := s.openStream(ctx, endpoint, request{
+		Version: 1,
+		Action:  "datasets",
+		Token:   token,
+		Prefix:  prefix,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.CloseWithError(0, "done")
+
+	if err := stream.Close(); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(stream)
+	var resp response
+	if err := readJSONLine(reader, maxHeaderBytes, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, errors.New(resp.Error)
+	}
+
+	return resp.Datasets, nil
+}
+
+func (s *Service) ListTargetStatus(ctx context.Context, target string, limit int) ([]ReplicationEventInfo, error) {
+	endpoint, err := s.resolvePeerEndpoint(target)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := s.clusterToken()
+	if err != nil {
+		return nil, err
+	}
+
+	conn, stream, err := s.openStream(ctx, endpoint, request{
+		Version: 1,
+		Action:  "status",
+		Token:   token,
+		Limit:   limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.CloseWithError(0, "done")
+
+	if err := stream.Close(); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(stream)
+	var resp response
+	if err := readJSONLine(reader, maxHeaderBytes, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, errors.New(resp.Error)
+	}
+
+	return resp.Events, nil
+}
+
 func (s *Service) fetchRemoteSnapshots(ctx context.Context, endpoint, dataset string) ([]SnapInfo, error) {
 	token, err := s.clusterToken()
 	if err != nil {
@@ -310,4 +511,13 @@ func (s *Service) sendIncrementalWithIntermediates(
 	}
 
 	return nil
+}
+
+func isDatasetMissingErr(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "dataset does not exist") || strings.Contains(msg, "not found")
 }
