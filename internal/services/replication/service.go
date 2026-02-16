@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -82,13 +83,13 @@ func NewService(
 	db *gorm.DB,
 	auth serviceInterfaces.AuthServiceInterface,
 	gzfsClient *gzfs.Client,
-	clusterService *cluster.Service,
+	cluster *cluster.Service,
 ) *Service {
 	return &Service{
 		DB:      db,
 		Auth:    auth,
 		GZFS:    gzfsClient,
-		Cluster: clusterService,
+		Cluster: cluster,
 	}
 }
 
@@ -113,6 +114,10 @@ func (s *Service) Run(ctx context.Context) {
 func (s *Service) syncListener(ctx context.Context) error {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
 		return err
 	}
 
@@ -148,7 +153,7 @@ func (s *Service) syncListener(ctx context.Context) error {
 	s.port = c.RaftPort
 
 	go s.acceptLoop(ctx, listener)
-	logger.L.Info().Int("udp_port", c.RaftPort).Msg("replication_quic_listener_started")
+	logger.L.Info().Int("udp_port", c.RaftPort).Msg("Replication QUIC Listener started")
 
 	return nil
 }

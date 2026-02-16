@@ -35,7 +35,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -92,6 +91,7 @@ func main() {
 	smbS := serviceRegistry.SambaService
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
+	rS := serviceRegistry.ReplicationService
 
 	uS.RegisterJobs()
 	zS.RegisterJobs()
@@ -120,9 +120,7 @@ func main() {
 		}
 	}
 
-	replicationService := replication.NewService(d, aS, zS.(*zfs.Service).GZFS, cS.(*cluster.Service))
-	go replicationService.Run(qCtx)
-
+	go rS.Run(qCtx)
 	go aS.ClearExpiredJWTTokens()
 
 	gin.SetMode(gin.ReleaseMode)

@@ -37,6 +37,7 @@ type Service struct {
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
 	return &Service{
 		DB:          db,
+		Raft:        nil,
 		AuthService: authService,
 	}
 }

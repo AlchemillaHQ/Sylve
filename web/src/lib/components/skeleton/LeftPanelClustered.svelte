@@ -84,7 +84,7 @@
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'mdi--server' : 'mdi:server-off',
+					icon: isActive ? 'mdi--server' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? mergedChildren : []
 				};
