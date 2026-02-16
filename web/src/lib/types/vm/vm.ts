@@ -212,6 +212,7 @@ export const QGAInfoSchema = z.object({
 });
 
 export type VM = z.infer<typeof VMSchema>;
+export type VMCPUPinning = z.infer<typeof VMCPUPinningSchema>;
 export type VMStorage = z.infer<typeof VMStorageSchema>;
 export type VMNetwork = z.infer<typeof VMNetworkSchema>;
 export type VMDomain = z.infer<typeof VMDomainSchema>;

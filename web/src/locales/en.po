@@ -7285,3 +7285,7 @@ msgstr "VM - Reboot"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Description"
 msgstr "VM - Update Description"
+
+#: src/lib/components/custom/Cluster/Create.svelte
+msgid "Login required after initializing cluster"
+msgstr "Login required after initializing cluster"

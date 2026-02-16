@@ -23,6 +23,7 @@
 	import { watch } from 'runed';
 
 	interface Data {
+		hostname: string;
 		basicInfo: BasicInfo;
 		cpuInfo: CPUInfo;
 		cpuInfoHistorical: CPUInfoHistorical;
@@ -183,9 +184,9 @@
 	});
 
 	watch(
-		() => storage.visible,
-		() => {
-			if (storage.visible) {
+		[() => storage.visible, () => data.hostname],
+		([visible, hostname], [prevViisible, prevHostname]) => {
+			if (visible || hostname !== prevHostname) {
 				basicInfo.refetch();
 				cpuInfo.refetch();
 				ramInfo.refetch();
@@ -207,7 +208,7 @@
 				<Card.Root class="w-full gap-0 p-0">
 					<Card.Header class="p-4 pb-0">
 						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-							{basicInfo.current.hostname}
+							{data.hostname}
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="p-4 pt-2.5">
@@ -232,10 +233,10 @@
 										{'RAM Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(ramInfo.current.usedPercent, 2)}% of ${bytesToHumanReadable(ramInfo.current.total)}`}
+										{`${floatToNDecimals(ramInfo.current?.usedPercent || 0, 2)}% of ${bytesToHumanReadable(ramInfo.current?.total || 0)}`}
 									</p>
 								</div>
-								<Progress value={ramInfo.current.usedPercent || 0} max={100} class="h-2 w-full" />
+								<Progress value={ramInfo.current?.usedPercent || 0} max={100} class="h-2 w-full" />
 							</div>
 							<div>
 								<div class="flex w-full justify-between pb-1">

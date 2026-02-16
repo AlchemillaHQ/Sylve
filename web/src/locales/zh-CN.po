@@ -6414,3 +6414,7 @@ msgstr ""
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM - Update Description"
 msgstr ""
+
+#: src/lib/components/custom/Cluster/Create.svelte
+msgid "Login required after initializing cluster"
+msgstr ""

@@ -6,8 +6,10 @@ import { getPoolsDiskUsage } from '$lib/api/zfs/pool';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
-export async function load() {
+export async function load({ params }) {
     const cacheDuration = SEVEN_DAYS;
+    const hostname = params.node;
+
     const [
         basicInfo,
         cpuInfo,
@@ -35,6 +37,7 @@ export async function load() {
     ]);
 
     return {
+        hostname,
         basicInfo,
         cpuInfo,
         cpuInfoHistorical,
