@@ -39,6 +39,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
@@ -78,6 +79,7 @@ func RegisterRoutes(r *gin.Engine,
 	sambaService *samba.Service,
 	jailService *jail.Service,
 	clusterService *cluster.Service,
+	replicationService *replication.Service,
 	fsm *clusterModels.FSMDispatcher,
 	db *gorm.DB,
 ) {
@@ -419,6 +421,31 @@ func RegisterRoutes(r *gin.Engine,
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
+	}
+
+	clusterBackups := cluster.Group("/backups")
+	{
+		targets := clusterBackups.Group("/targets")
+		{
+			targets.GET("", clusterHandlers.BackupTargets(clusterService))
+			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService))
+			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService))
+			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService))
+			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(clusterService, replicationService))
+			targets.GET("/:id/status", clusterHandlers.BackupTargetStatus(clusterService, replicationService))
+		}
+
+		jobs := clusterBackups.Group("/jobs")
+		{
+			jobs.GET("", clusterHandlers.BackupJobs(clusterService))
+			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
+			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
+			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
+			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, replicationService))
+		}
+
+		clusterBackups.GET("/events", clusterHandlers.BackupEvents(replicationService))
+		clusterBackups.POST("/pull", clusterHandlers.PullBackupDataset(clusterService, replicationService))
 	}
 
 	vnc := api.Group("/vnc")

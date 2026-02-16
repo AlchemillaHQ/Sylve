@@ -26,7 +26,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/replication"
 	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"gorm.io/gorm"
@@ -227,17 +226,13 @@ func newRuntime(configPath string, listenPortOverride int) (*backupRuntime, erro
 	}
 
 	authService := auth.NewAuthService(database)
-	clusterService, ok := cluster.NewClusterService(database, authService).(*cluster.Service)
-	if !ok {
-		return nil, fmt.Errorf("failed_to_create_cluster_service")
-	}
 
 	gz := gzfs.NewClient(gzfs.Options{
 		Sudo:               false,
 		ZDBCacheTTLSeconds: 0,
 	})
 
-	repl := replication.NewService(database, authService, gz, clusterService)
+	repl := replication.NewService(database, authService, gz, nil)
 
 	return &backupRuntime{
 		cfg:         cfg,

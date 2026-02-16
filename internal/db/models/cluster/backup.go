@@ -8,10 +8,53 @@
 
 package clusterModels
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+const (
+	BackupJobModeDataset = "dataset"
+	BackupJobModeJails   = "jails"
+)
+
+type BackupTarget struct {
+	ID          uint        `gorm:"primaryKey" json:"id"`
+	Name        string      `gorm:"uniqueIndex;not null" json:"name"`
+	Endpoint    string      `gorm:"not null" json:"endpoint"`
+	Description string      `json:"description"`
+	Enabled     bool        `gorm:"default:true" json:"enabled"`
+	CreatedAt   time.Time   `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time   `gorm:"autoUpdateTime" json:"updatedAt"`
+	Jobs        []BackupJob `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+type BackupJob struct {
+	ID                 uint         `gorm:"primaryKey" json:"id"`
+	Name               string       `gorm:"not null" json:"name"`
+	TargetID           uint         `gorm:"index;not null" json:"targetId"`
+	Target             BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
+	Mode               string       `gorm:"default:dataset;index" json:"mode"`
+	SourceDataset      string       `json:"sourceDataset"`
+	JailRootDataset    string       `json:"jailRootDataset"`
+	DestinationDataset string       `gorm:"not null" json:"destinationDataset"`
+	CronExpr           string       `gorm:"not null" json:"cronExpr"`
+	Force              bool         `json:"force"`
+	WithIntermediates  bool         `json:"withIntermediates"`
+	Enabled            bool         `gorm:"default:true;index" json:"enabled"`
+	LastRunAt          *time.Time   `json:"lastRunAt"`
+	NextRunAt          *time.Time   `gorm:"index" json:"nextRunAt"`
+	LastStatus         string       `gorm:"index" json:"lastStatus"`
+	LastError          string       `gorm:"type:text" json:"lastError"`
+	CreatedAt          time.Time    `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt          time.Time    `gorm:"autoUpdateTime" json:"updatedAt"`
+}
 
 type BackupReplicationEvent struct {
 	ID                 uint       `gorm:"primaryKey" json:"id"`
+	JobID              *uint      `gorm:"index" json:"jobId"`
 	Direction          string     `gorm:"index" json:"direction"`
 	RemoteAddress      string     `json:"remoteAddress"`
 	SourceDataset      string     `json:"sourceDataset"`
@@ -25,4 +68,59 @@ type BackupReplicationEvent struct {
 	CompletedAt        *time.Time `json:"completedAt"`
 	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
+func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if target.ID == 0 {
+			var next uint
+			if err := tx.
+				Table("backup_targets").
+				Select("COALESCE(MAX(id), 0) + 1").
+				Scan(&next).Error; err != nil {
+				return err
+			}
+			target.ID = next
+		}
+
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"name", "endpoint", "description", "enabled", "updated_at",
+			}),
+		}).Create(target).Error
+	})
+}
+
+func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if job.ID == 0 {
+			var next uint
+			if err := tx.
+				Table("backup_jobs").
+				Select("COALESCE(MAX(id), 0) + 1").
+				Scan(&next).Error; err != nil {
+				return err
+			}
+			job.ID = next
+		}
+
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"name",
+				"target_id",
+				"mode",
+				"source_dataset",
+				"jail_root_dataset",
+				"destination_dataset",
+				"cron_expr",
+				"force",
+				"with_intermediates",
+				"enabled",
+				"next_run_at",
+				"updated_at",
+			}),
+		}).Create(job).Error
+	})
 }

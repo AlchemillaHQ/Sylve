@@ -33,6 +33,22 @@
 				label: 'Cluster',
 				icon: 'carbon--assembly-cluster',
 				href: '/datacenter/cluster'
+			},
+			{
+				label: 'Backups',
+				icon: 'mdi--backup-restore',
+				children: [
+					{
+						label: 'Targets',
+						icon: 'mdi--server-network',
+						href: '/datacenter/backups/targets'
+					},
+					{
+						label: 'Jobs',
+						icon: 'mdi--calendar-sync',
+						href: '/datacenter/backups/jobs'
+					}
+				]
 			}
 			// {
 			// 	label: 'Storage',

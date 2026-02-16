@@ -34,6 +34,18 @@ func (s *Service) ReplicateDatasetToNode(
 	force bool,
 	withIntermediates bool,
 ) (*Plan, error) {
+	return s.replicateDatasetToNode(ctx, srcDataset, dstDataset, target, force, withIntermediates, nil)
+}
+
+func (s *Service) replicateDatasetToNode(
+	ctx context.Context,
+	srcDataset string,
+	dstDataset string,
+	target string,
+	force bool,
+	withIntermediates bool,
+	jobID *uint,
+) (*Plan, error) {
 	if srcDataset == "" || dstDataset == "" || target == "" {
 		return nil, fmt.Errorf("src_dataset_dst_dataset_and_target_are_required")
 	}
@@ -61,7 +73,10 @@ func (s *Service) ReplicateDatasetToNode(
 
 	remoteSnaps, err := s.fetchRemoteSnapshots(ctx, endpoint, dstDataset)
 	if err != nil {
-		return nil, err
+		if !isDatasetMissingErr(err) {
+			return nil, err
+		}
+		remoteSnaps = []SnapInfo{}
 	}
 
 	remoteByGUID := make(map[string]struct{}, len(remoteSnaps))
@@ -107,9 +122,37 @@ func (s *Service) ReplicateDatasetToNode(
 	}
 	defer conn.CloseWithError(0, "done")
 
+	mode := "full"
+	baseSnapshotName := ""
+	if base != nil {
+		baseSnapshotName = base.Name
+		if withIntermediates {
+			mode = "incremental_intermediates"
+		} else {
+			mode = "incremental"
+		}
+	}
+	event := s.beginReplicationEvent(
+		"send",
+		endpoint,
+		srcDataset,
+		dstDataset,
+		baseSnapshotName,
+		targetSnapshot.Name,
+		mode,
+		jobID,
+	)
+	defer func() {
+		if r := recover(); r != nil {
+			s.completeReplicationEvent(event, fmt.Errorf("panic: %v", r))
+			panic(r)
+		}
+	}()
+
 	if base == nil {
 		plan.Mode = "full"
 		if err := s.sendSnapshot(ctx, targetSnapshot.Name, stream); err != nil {
+			s.completeReplicationEvent(event, err)
 			return nil, err
 		}
 	} else {
@@ -117,28 +160,35 @@ func (s *Service) ReplicateDatasetToNode(
 		if withIntermediates {
 			plan.Mode = "incremental_intermediates"
 			if err := s.sendIncrementalWithIntermediates(ctx, base.Name, targetSnapshot.Name, stream); err != nil {
+				s.completeReplicationEvent(event, err)
 				return nil, err
 			}
 		} else {
 			plan.Mode = "incremental"
 			if err := s.sendIncremental(ctx, base.Name, targetSnapshot.Name, stream); err != nil {
+				s.completeReplicationEvent(event, err)
 				return nil, err
 			}
 		}
 	}
 
 	if err := stream.Close(); err != nil {
+		s.completeReplicationEvent(event, err)
 		return nil, err
 	}
 
 	reader := bufio.NewReader(stream)
 	var resp response
 	if err := readJSONLine(reader, maxHeaderBytes, &resp); err != nil {
+		s.completeReplicationEvent(event, err)
 		return nil, err
 	}
 	if !resp.OK {
-		return nil, errors.New(resp.Error)
+		runErr := errors.New(resp.Error)
+		s.completeReplicationEvent(event, runErr)
+		return nil, runErr
 	}
+	s.completeReplicationEvent(event, nil)
 
 	return plan, nil
 }

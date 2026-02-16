@@ -47,6 +47,9 @@ type Service struct {
 	mu       sync.Mutex
 	listener *quic.Listener
 	port     int
+
+	jobMu       sync.Mutex
+	runningJobs map[uint]struct{}
 }
 
 type request struct {
@@ -90,6 +93,7 @@ type DatasetInfo struct {
 
 type ReplicationEventInfo struct {
 	ID                 uint       `json:"id"`
+	JobID              *uint      `json:"jobId,omitempty"`
 	Direction          string     `json:"direction"`
 	RemoteAddress      string     `json:"remoteAddress"`
 	SourceDataset      string     `json:"sourceDataset"`
@@ -120,10 +124,11 @@ func NewService(
 	cluster *cluster.Service,
 ) *Service {
 	return &Service{
-		DB:      db,
-		Auth:    auth,
-		GZFS:    gzfsClient,
-		Cluster: cluster,
+		DB:          db,
+		Auth:        auth,
+		GZFS:        gzfsClient,
+		Cluster:     cluster,
+		runningJobs: make(map[uint]struct{}),
 	}
 }
 
@@ -295,7 +300,7 @@ func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 
 		_ = writeJSONLine(stream, response{OK: true, Datasets: datasets})
 	case "status":
-		events, err := s.listReplicationEvents(req.Limit)
+		events, err := s.listReplicationEvents(req.Limit, nil)
 		if err != nil {
 			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
 			return
@@ -316,6 +321,7 @@ func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 			"",
 			"",
 			"push",
+			nil,
 		)
 
 		err := s.receiveStream(context.Background(), reader, req.Dataset, req.Force)
@@ -361,6 +367,7 @@ func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 			baseSnapshot,
 			targetSnapshot,
 			mode,
+			nil,
 		)
 
 		if err := writeJSONLine(stream, response{OK: true, TargetSnapshot: targetSnapshot}); err != nil {
@@ -465,7 +472,7 @@ func (s *Service) listDatasets(ctx context.Context, prefix string) ([]DatasetInf
 	return datasets, nil
 }
 
-func (s *Service) listReplicationEvents(limit int) ([]ReplicationEventInfo, error) {
+func (s *Service) listReplicationEvents(limit int, jobID *uint) ([]ReplicationEventInfo, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -474,7 +481,11 @@ func (s *Service) listReplicationEvents(limit int) ([]ReplicationEventInfo, erro
 	}
 
 	var rows []clusterModels.BackupReplicationEvent
-	if err := s.DB.Order("started_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+	q := s.DB.Order("started_at DESC").Limit(limit)
+	if jobID != nil && *jobID > 0 {
+		q = q.Where("job_id = ?", *jobID)
+	}
+	if err := q.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
@@ -482,6 +493,7 @@ func (s *Service) listReplicationEvents(limit int) ([]ReplicationEventInfo, erro
 	for _, row := range rows {
 		out = append(out, ReplicationEventInfo{
 			ID:                 row.ID,
+			JobID:              row.JobID,
 			Direction:          row.Direction,
 			RemoteAddress:      row.RemoteAddress,
 			SourceDataset:      row.SourceDataset,
@@ -507,6 +519,7 @@ func (s *Service) beginReplicationEvent(
 	baseSnapshot string,
 	targetSnapshot string,
 	mode string,
+	jobID *uint,
 ) *clusterModels.BackupReplicationEvent {
 	if s.DB == nil {
 		return nil
@@ -514,6 +527,7 @@ func (s *Service) beginReplicationEvent(
 
 	event := &clusterModels.BackupReplicationEvent{
 		Direction:          direction,
+		JobID:              jobID,
 		RemoteAddress:      remoteAddress,
 		SourceDataset:      sourceDataset,
 		DestinationDataset: destinationDataset,
@@ -666,6 +680,9 @@ func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, 
 	if dest == "" {
 		return fmt.Errorf("destination_dataset_is_empty")
 	}
+	if err := ensureDatasetParent(ctx, dest); err != nil {
+		return err
+	}
 
 	args := []string{"recv"}
 	if force {
@@ -680,6 +697,44 @@ func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, 
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("zfs_recv_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	return nil
+}
+
+func ensureDatasetParent(ctx context.Context, dataset string) error {
+	name := strings.TrimSpace(dataset)
+	if name == "" {
+		return fmt.Errorf("destination_dataset_is_empty")
+	}
+
+	lastSlash := strings.LastIndex(name, "/")
+	if lastSlash <= 0 {
+		return nil
+	}
+
+	parent := name[:lastSlash]
+	checkCmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", parent)
+	var checkErr bytes.Buffer
+	checkCmd.Stderr = &checkErr
+	if err := checkCmd.Run(); err == nil {
+		return nil
+	} else {
+		stderr := strings.TrimSpace(checkErr.String())
+		if !isDatasetMissingErr(err) && !isDatasetMissingErr(fmt.Errorf("%s", stderr)) {
+			return fmt.Errorf("check_destination_parent_failed: %w: %s", err, stderr)
+		}
+	}
+
+	createCmd := exec.CommandContext(ctx, "zfs", "create", "-p", parent)
+	var createErr bytes.Buffer
+	createCmd.Stderr = &createErr
+	if err := createCmd.Run(); err != nil {
+		stderr := strings.ToLower(strings.TrimSpace(createErr.String()))
+		if strings.Contains(stderr, "dataset already exists") {
+			return nil
+		}
+		return fmt.Errorf("create_destination_parent_failed: %w: %s", err, strings.TrimSpace(createErr.String()))
 	}
 
 	return nil

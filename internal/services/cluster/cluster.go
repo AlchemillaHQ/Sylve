@@ -173,6 +173,78 @@ func (s *Service) backfillPreClusterState() error {
 		}
 	}
 
+	{
+		var targets []clusterModels.BackupTarget
+		if err := s.DB.Order("id ASC").Find(&targets).Error; err != nil {
+			return fmt.Errorf("scan_existing_backup_targets: %w", err)
+		}
+
+		for _, t := range targets {
+			payloadStruct := struct {
+				ID          uint   `json:"id"`
+				Name        string `json:"name"`
+				Endpoint    string `json:"endpoint"`
+				Description string `json:"description"`
+				Enabled     bool   `json:"enabled"`
+			}{
+				ID:          t.ID,
+				Name:        t.Name,
+				Endpoint:    t.Endpoint,
+				Description: t.Description,
+				Enabled:     t.Enabled,
+			}
+
+			data, _ := json.Marshal(payloadStruct)
+			cmd := clusterModels.Command{Type: "backup_target", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_backup_target id=%d: %w", t.ID, err)
+			}
+		}
+	}
+
+	{
+		var jobs []clusterModels.BackupJob
+		if err := s.DB.Order("id ASC").Find(&jobs).Error; err != nil {
+			return fmt.Errorf("scan_existing_backup_jobs: %w", err)
+		}
+
+		for _, j := range jobs {
+			payloadStruct := struct {
+				ID                 uint       `json:"id"`
+				Name               string     `json:"name"`
+				TargetID           uint       `json:"targetId"`
+				Mode               string     `json:"mode"`
+				SourceDataset      string     `json:"sourceDataset"`
+				JailRootDataset    string     `json:"jailRootDataset"`
+				DestinationDataset string     `json:"destinationDataset"`
+				CronExpr           string     `json:"cronExpr"`
+				Force              bool       `json:"force"`
+				WithIntermediates  bool       `json:"withIntermediates"`
+				Enabled            bool       `json:"enabled"`
+				NextRunAt          *time.Time `json:"nextRunAt"`
+			}{
+				ID:                 j.ID,
+				Name:               j.Name,
+				TargetID:           j.TargetID,
+				Mode:               j.Mode,
+				SourceDataset:      j.SourceDataset,
+				JailRootDataset:    j.JailRootDataset,
+				DestinationDataset: j.DestinationDataset,
+				CronExpr:           j.CronExpr,
+				Force:              j.Force,
+				WithIntermediates:  j.WithIntermediates,
+				Enabled:            j.Enabled,
+				NextRunAt:          j.NextRunAt,
+			}
+
+			data, _ := json.Marshal(payloadStruct)
+			cmd := clusterModels.Command{Type: "backup_job", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_backup_job id=%d: %w", j.ID, err)
+			}
+		}
+	}
+
 	if err := s.Raft.Barrier(10 * time.Second).Error(); err != nil {
 		return fmt.Errorf("barrier_after_backfill: %w", err)
 	}

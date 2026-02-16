@@ -75,8 +75,10 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 // ClusterSnapshot represents the state that will be snapshotted/restored
 type ClusterSnapshot struct {
-	Notes   []ClusterNote   `json:"notes"`
-	Options []ClusterOption `json:"options"`
+	Notes         []ClusterNote   `json:"notes"`
+	Options       []ClusterOption `json:"options"`
+	BackupTargets []BackupTarget  `json:"backupTargets"`
+	BackupJobs    []BackupJob     `json:"backupJobs"`
 	// We can add more tables here as needed
 }
 
@@ -88,6 +90,12 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		return nil, err
 	}
 	if err := f.DB.Find(&snap.Options).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.BackupTargets).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
 		return nil, err
 	}
 	return &snap, nil
@@ -107,17 +115,27 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			batch int
 		}
 
-		sets := []restoreSet{
+		deleteSets := []restoreSet{
+			{"backup_jobs", snap.BackupJobs, 500},
+			{"backup_targets", snap.BackupTargets, 200},
 			{"cluster_notes", snap.Notes, 500},
 			{"cluster_options", snap.Options, 100},
-			// We can add more tables here as needed
 		}
 
-		for _, s := range sets {
+		createSets := []restoreSet{
+			{"backup_targets", snap.BackupTargets, 200},
+			{"backup_jobs", snap.BackupJobs, 500},
+			{"cluster_notes", snap.Notes, 500},
+			{"cluster_options", snap.Options, 100},
+		}
+
+		for _, s := range deleteSets {
 			if err := tx.Exec("DELETE FROM " + s.table).Error; err != nil {
 				return err
 			}
+		}
 
+		for _, s := range createSets {
 			val := reflect.ValueOf(s.data)
 			if val.Kind() == reflect.Slice && val.Len() > 0 {
 				if err := tx.CreateInBatches(s.data, s.batch).Error; err != nil {
@@ -184,4 +202,67 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 		return nil
 	})
+
+	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "create", "update":
+			var target BackupTarget
+			if err := json.Unmarshal(raw, &target); err != nil {
+				return err
+			}
+			return upsertBackupTarget(db, &target)
+		case "delete":
+			var payload struct {
+				ID uint `json:"id"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+
+			if payload.ID == 0 {
+				return nil
+			}
+
+			if err := db.Delete(&BackupJob{}, "target_id = ?", payload.ID).Error; err != nil {
+				return err
+			}
+			return db.Delete(&BackupTarget{}, payload.ID).Error
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("backup_job", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "create", "update":
+			var job BackupJob
+			if err := json.Unmarshal(raw, &job); err != nil {
+				return err
+			}
+			if job.Mode == "" {
+				job.Mode = BackupJobModeDataset
+			}
+			if !validBackupJobMode(job.Mode) {
+				return fmt.Errorf("invalid_backup_job_mode")
+			}
+			return upsertBackupJob(db, &job)
+		case "delete":
+			var payload struct {
+				ID uint `json:"id"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			if payload.ID == 0 {
+				return nil
+			}
+			return db.Delete(&BackupJob{}, payload.ID).Error
+		default:
+			return nil
+		}
+	})
+}
+
+func validBackupJobMode(mode string) bool {
+	return mode == BackupJobModeDataset || mode == BackupJobModeJails
 }

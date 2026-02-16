@@ -35,6 +35,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/network"
+	replicationService "github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -121,6 +122,7 @@ func main() {
 	}
 
 	go rS.Run(qCtx)
+	go rS.(*replicationService.Service).StartBackupScheduler(qCtx)
 	go aS.ClearExpiredJWTTokens()
 
 	gin.SetMode(gin.ReleaseMode)
@@ -147,6 +149,7 @@ func main() {
 		smbS.(*samba.Service),
 		jS.(*jail.Service),
 		cS.(*cluster.Service),
+		rS.(*replicationService.Service),
 		fsm,
 		d,
 	)
