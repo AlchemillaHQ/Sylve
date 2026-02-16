@@ -148,13 +148,21 @@
 		const path = page.url.pathname;
 		const parts = path.split('/').filter(Boolean);
 		const nodeLabel = parts[0];
-
 		const node = cluster.current.find((n) => (n.hostname || n.nodeUUID) === nodeLabel);
 
 		return node?.nodeUUID ?? null;
 	});
 
-	$inspect(activeNodeId);
+	// $inspect(activeNodeId);
+	watch(
+		() => activeNodeId,
+		(nodeId, prevNodeId) => {
+			if (nodeId !== prevNodeId) {
+				reload.leftPanel = true;
+				reload.auditLog = true;
+			}
+		}
+	);
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">
