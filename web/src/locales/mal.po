@@ -7603,3 +7603,10 @@ msgstr ""
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Run On Node"
 msgstr ""
+
+#~ msgid "Cluster - Notes"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster Notes"
+msgstr ""

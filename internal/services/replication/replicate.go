@@ -269,9 +269,11 @@ func (s *Service) PullDatasetFromNode(
 	}
 
 	var baseLocal *gzfs.Dataset
+	var baseRemote SnapInfo
 	for _, remoteSnap := range remoteSnaps[:targetIndex+1] {
 		if localSnap, ok := localByGUID[remoteSnap.GUID]; ok {
 			baseLocal = localSnap
+			baseRemote = remoteSnap
 		}
 	}
 
@@ -283,8 +285,8 @@ func (s *Service) PullDatasetFromNode(
 	}
 
 	if baseLocal != nil {
-		plan.BaseSnapshot = baseLocal.Name
-		if baseLocal.Name == targetName {
+		plan.BaseSnapshot = baseRemote.Name
+		if baseRemote.Name == targetName {
 			plan.Mode = "noop"
 			plan.Noop = true
 			return plan, nil

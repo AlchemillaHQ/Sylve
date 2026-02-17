@@ -23,10 +23,14 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let notes = resource(
 		() => 'cluster-notes',
 		async () => {
-			return (await getNotes()) as Note[];
+			const notes = await getNotes();
+			updateCache('cluster-notes', notes);
+			return notes;
 		},
 		{
 			initialValue: data.notes
@@ -79,7 +83,7 @@
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
 			const response = await editNote(selectedId, modalState.title, modalState.content);
-			console.log(response);
+			reload = true;
 			if (response.status === 'success') {
 				toast.success('Note updated', { position: 'bottom-center' });
 				handleNote(undefined, false, true);

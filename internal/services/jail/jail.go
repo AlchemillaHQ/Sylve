@@ -1257,7 +1257,6 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		return
 	}
 
-	// Transaction was already committed after database operations
 	return nil
 }
 
@@ -1363,21 +1362,23 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 		return fmt.Errorf("invalid_description")
 	}
 
-	jail, err := s.GetJail(id)
-	if err != nil {
-		return err
-	}
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Where("id = ?", id).
+		Update("description", description).Error; err != nil {
 
-	jail.Description = description
+		logger.L.Error().Err(err).
+			Msg("update_jail_description: failed to update jail description")
 
-	if err := s.DB.Save(&jail).Error; err != nil {
-		logger.L.Error().Err(err).Msg("update_jail_description: failed to update jail description")
 		return fmt.Errorf("failed_to_update_jail_description: %w", err)
 	}
 
-	err = s.WriteJailJSON(jail.CTID)
-	if err != nil {
-		logger.L.Error().Err(err).Msg("Failed to write jail JSON after description update")
+	var ctid uint
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Select("ct_id").
+		Where("id = ?", id).
+		Take(&ctid).Error; err == nil {
+
+		_ = s.WriteJailJSON(ctid)
 	}
 
 	return nil

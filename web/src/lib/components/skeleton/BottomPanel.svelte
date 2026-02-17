@@ -83,6 +83,7 @@
 		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',
 		'/api/system/basic-settings/services/jails/toggle': 'Toggle - Jails',
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
+		'/api/cluster/notes': 'Cluster Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster': 'Cluster'
 	});

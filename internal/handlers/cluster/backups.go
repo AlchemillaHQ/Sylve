@@ -81,6 +81,11 @@ func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 
 func CreateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		var req backupTargetRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -89,11 +94,6 @@ func CreateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -123,6 +123,11 @@ func CreateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 
 func UpdateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -142,11 +147,6 @@ func UpdateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -176,6 +176,11 @@ func UpdateBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 
 func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -184,11 +189,6 @@ func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 				Error:   "invalid_target_id",
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -234,6 +234,11 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 
 func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		var req backupJobRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -242,11 +247,6 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -283,6 +283,11 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 
 func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -302,11 +307,6 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -343,6 +343,11 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 
 func DeleteBackupJob(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -351,11 +356,6 @@ func DeleteBackupJob(cS *cluster.Service) gin.HandlerFunc {
 				Error:   "invalid_job_id",
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
@@ -655,6 +655,11 @@ func BackupEvents(rS *replication.Service) gin.HandlerFunc {
 
 func PullBackupDataset(cS *cluster.Service, rS *replication.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
 		var req backupPullRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -663,11 +668,6 @@ func PullBackupDataset(cS *cluster.Service, rS *replication.Service) gin.Handler
 				Error:   err.Error(),
 				Data:    nil,
 			})
-			return
-		}
-
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
 			return
 		}
 
