@@ -14,6 +14,7 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { BackupEvent, BackupJob, BackupTarget } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
@@ -26,6 +27,7 @@
 	interface Data {
 		targets: BackupTarget[];
 		jobs: BackupJob[];
+		nodes: ClusterNode[];
 	}
 
 	let { data }: { data: Data } = $props();
@@ -49,6 +51,7 @@
 		},
 		{ initialValue: data.jobs }
 	);
+	let nodes = $state(data.nodes);
 
 	let reload = $state(false);
 	watch(
@@ -75,6 +78,7 @@
 		edit: false,
 		name: '',
 		targetId: 0,
+		runnerNodeId: '',
 		mode: 'dataset' as 'dataset' | 'jails',
 		sourceDataset: '',
 		jailRootDataset: 'zroot/sylve/jails',
@@ -88,9 +92,24 @@
 
 	let events = $state<BackupEvent[]>([]);
 	let loadingEvents = $state(false);
+	let nodeNameById = $derived.by(() => {
+		const out: Record<string, string> = {};
+		for (const node of nodes) {
+			out[node.nodeUUID] = node.hostname;
+		}
+		return out;
+	});
 
 	const jobColumns: Column[] = [
 		{ field: 'name', title: 'Name' },
+		{
+			field: 'runnerNodeId',
+			title: 'Run On',
+			formatter: (cell: CellComponent) => {
+				const value = String(cell.getValue() || '');
+				return nodeNameById[value] || value || '-';
+			}
+		},
 		{ field: 'mode', title: 'Mode' },
 		{ field: 'sourceDataset', title: 'Source' },
 		{ field: 'destinationDataset', title: 'Destination' },
@@ -137,12 +156,14 @@
 			enabled: target.enabled,
 			lastRunAt: '',
 			lastStatus: '',
+			runnerNodeId: '',
 			children: jobs.current
 				.filter((job) => job.targetId === target.id)
 				.map((job) => ({
 					id: job.id,
 					kind: 'job',
 					name: job.name,
+					runnerNodeId: job.runnerNodeId || '',
 					mode: job.mode,
 					sourceDataset:
 						job.mode === 'jails'
@@ -172,6 +193,7 @@
 		jobModal.edit = false;
 		jobModal.name = '';
 		jobModal.targetId = targets.current[0]?.id ?? 0;
+		jobModal.runnerNodeId = nodes[0]?.nodeUUID ?? '';
 		jobModal.mode = 'dataset';
 		jobModal.sourceDataset = '';
 		jobModal.jailRootDataset = 'zroot/sylve/jails';
@@ -196,6 +218,7 @@
 		jobModal.edit = true;
 		jobModal.name = job.name;
 		jobModal.targetId = job.targetId;
+		jobModal.runnerNodeId = job.runnerNodeId || nodes[0]?.nodeUUID || '';
 		jobModal.mode = (job.mode as 'dataset' | 'jails') || 'dataset';
 		jobModal.sourceDataset = job.sourceDataset || '';
 		jobModal.jailRootDataset = job.jailRootDataset || 'zroot/sylve/jails';
@@ -210,6 +233,7 @@
 		const payload: BackupJobInput = {
 			name: jobModal.name,
 			targetId: Number(jobModal.targetId),
+			runnerNodeId: jobModal.runnerNodeId,
 			mode: jobModal.mode,
 			sourceDataset: jobModal.mode === 'dataset' ? jobModal.sourceDataset : '',
 			jailRootDataset: jobModal.mode === 'jails' ? jobModal.jailRootDataset : '',
@@ -280,7 +304,12 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
-		<Button onclick={openCreateJob} size="sm" class="h-6" disabled={targets.current.length === 0}>
+		<Button
+			onclick={openCreateJob}
+			size="sm"
+			class="h-6"
+			disabled={targets.current.length === 0 || nodes.length === 0}
+		>
 			<div class="flex items-center">
 				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
 				<span>New Job</span>
@@ -370,6 +399,15 @@
 				<select class="border-input h-9 rounded-md border px-2" bind:value={jobModal.mode}>
 					<option value="dataset">Dataset</option>
 					<option value="jails">Jails</option>
+				</select>
+			</div>
+
+			<div class="col-span-2 grid gap-1">
+				<label class="text-sm font-medium">Run On Node</label>
+				<select class="border-input h-9 rounded-md border px-2" bind:value={jobModal.runnerNodeId}>
+					{#each nodes as node}
+						<option value={node.nodeUUID}>{node.hostname} ({node.api})</option>
+					{/each}
 				</select>
 			</div>
 

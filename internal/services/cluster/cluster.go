@@ -213,6 +213,7 @@ func (s *Service) backfillPreClusterState() error {
 				ID                 uint       `json:"id"`
 				Name               string     `json:"name"`
 				TargetID           uint       `json:"targetId"`
+				RunnerNodeID       string     `json:"runnerNodeId"`
 				Mode               string     `json:"mode"`
 				SourceDataset      string     `json:"sourceDataset"`
 				JailRootDataset    string     `json:"jailRootDataset"`
@@ -226,6 +227,7 @@ func (s *Service) backfillPreClusterState() error {
 				ID:                 j.ID,
 				Name:               j.Name,
 				TargetID:           j.TargetID,
+				RunnerNodeID:       j.RunnerNodeID,
 				Mode:               j.Mode,
 				SourceDataset:      j.SourceDataset,
 				JailRootDataset:    j.JailRootDataset,

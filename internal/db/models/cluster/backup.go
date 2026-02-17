@@ -9,6 +9,7 @@
 package clusterModels
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -36,6 +37,7 @@ type BackupJob struct {
 	Name               string       `gorm:"not null" json:"name"`
 	TargetID           uint         `gorm:"index;not null" json:"targetId"`
 	Target             BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
+	RunnerNodeID       string       `gorm:"index" json:"runnerNodeId"`
 	Mode               string       `gorm:"default:dataset;index" json:"mode"`
 	SourceDataset      string       `json:"sourceDataset"`
 	JailRootDataset    string       `json:"jailRootDataset"`
@@ -71,56 +73,39 @@ type BackupReplicationEvent struct {
 }
 
 func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if target.ID == 0 {
-			var next uint
-			if err := tx.
-				Table("backup_targets").
-				Select("COALESCE(MAX(id), 0) + 1").
-				Scan(&next).Error; err != nil {
-				return err
-			}
-			target.ID = next
-		}
+	if target.ID == 0 {
+		return fmt.Errorf("backup_target_id_required")
+	}
 
-		return tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"name", "endpoint", "description", "enabled", "updated_at",
-			}),
-		}).Create(target).Error
-	})
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"name", "endpoint", "description", "enabled", "updated_at",
+		}),
+	}).Create(target).Error
 }
 
 func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if job.ID == 0 {
-			var next uint
-			if err := tx.
-				Table("backup_jobs").
-				Select("COALESCE(MAX(id), 0) + 1").
-				Scan(&next).Error; err != nil {
-				return err
-			}
-			job.ID = next
-		}
+	if job.ID == 0 {
+		return fmt.Errorf("backup_job_id_required")
+	}
 
-		return tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"name",
-				"target_id",
-				"mode",
-				"source_dataset",
-				"jail_root_dataset",
-				"destination_dataset",
-				"cron_expr",
-				"force",
-				"with_intermediates",
-				"enabled",
-				"next_run_at",
-				"updated_at",
-			}),
-		}).Create(job).Error
-	})
+	return db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"name",
+			"target_id",
+			"runner_node_id",
+			"mode",
+			"source_dataset",
+			"jail_root_dataset",
+			"destination_dataset",
+			"cron_expr",
+			"force",
+			"with_intermediates",
+			"enabled",
+			"next_run_at",
+			"updated_at",
+		}),
+	}).Create(job).Error
 }

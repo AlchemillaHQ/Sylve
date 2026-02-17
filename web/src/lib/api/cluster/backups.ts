@@ -24,6 +24,7 @@ export type BackupTargetInput = {
 export type BackupJobInput = {
 	name: string;
 	targetId: number;
+	runnerNodeId: string;
 	mode: 'dataset' | 'jails';
 	sourceDataset?: string;
 	jailRootDataset?: string;

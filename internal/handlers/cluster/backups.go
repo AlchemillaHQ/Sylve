@@ -10,14 +10,20 @@ package clusterHandlers
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/replication"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
 )
@@ -32,6 +38,7 @@ type backupTargetRequest struct {
 type backupJobRequest struct {
 	Name               string `json:"name" binding:"required,min=2"`
 	TargetID           uint   `json:"targetId" binding:"required"`
+	RunnerNodeID       string `json:"runnerNodeId"`
 	Mode               string `json:"mode" binding:"required"`
 	SourceDataset      string `json:"sourceDataset"`
 	JailRootDataset    string `json:"jailRootDataset"`
@@ -246,6 +253,7 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 		err := cS.ProposeBackupJobCreate(cluster.BackupJobInput{
 			Name:               req.Name,
 			TargetID:           req.TargetID,
+			RunnerNodeID:       req.RunnerNodeID,
 			Mode:               req.Mode,
 			SourceDataset:      req.SourceDataset,
 			JailRootDataset:    req.JailRootDataset,
@@ -305,6 +313,7 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 		err = cS.ProposeBackupJobUpdate(uint(id64), cluster.BackupJobInput{
 			Name:               req.Name,
 			TargetID:           req.TargetID,
+			RunnerNodeID:       req.RunnerNodeID,
 			Mode:               req.Mode,
 			SourceDataset:      req.SourceDataset,
 			JailRootDataset:    req.JailRootDataset,
@@ -482,7 +491,41 @@ func RunBackupJobNow(cS *cluster.Service, rS *replication.Service) gin.HandlerFu
 			return
 		}
 
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+		job, err := cS.GetBackupJobByID(uint(id64))
+		if err != nil {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "backup_job_not_found",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		localNodeID := ""
+		if detail := cS.Detail(); detail != nil {
+			localNodeID = strings.TrimSpace(detail.NodeID)
+		}
+
+		runnerNodeID := strings.TrimSpace(job.RunnerNodeID)
+		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
+			body, statusCode, err := forwardBackupJobRunToRunner(cS, uint(id64), runnerNodeID)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "backup_job_remote_run_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.Data(statusCode, "application/json", body)
+			return
+		}
+
+		// Backward compatibility for legacy jobs without runner pinning.
+		if runnerNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
@@ -490,7 +533,7 @@ func RunBackupJobNow(cS *cluster.Service, rS *replication.Service) gin.HandlerFu
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Minute)
 		defer cancel()
 
-		if err := rS.RunBackupJobByID(ctx, uint(id64)); err != nil {
+		if err := rS.RunBackupJobByID(ctx, job.ID); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "backup_job_run_failed",
@@ -506,6 +549,73 @@ func RunBackupJobNow(cS *cluster.Service, rS *replication.Service) gin.HandlerFu
 			Data:    nil,
 		})
 	}
+}
+
+func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID string) ([]byte, int, error) {
+	nodes, err := cS.Nodes()
+	if err != nil {
+		return nil, 0, fmt.Errorf("list_cluster_nodes_failed: %w", err)
+	}
+
+	var targetAPI string
+	for _, node := range nodes {
+		if strings.TrimSpace(node.NodeUUID) == runnerNodeID {
+			targetAPI = strings.TrimSpace(node.API)
+			break
+		}
+	}
+
+	if targetAPI == "" {
+		if cS.Raft != nil {
+			fut := cS.Raft.GetConfiguration()
+			if err := fut.Error(); err == nil {
+				for _, server := range fut.Configuration().Servers {
+					if string(server.ID) != runnerNodeID {
+						continue
+					}
+
+					host, _, err := net.SplitHostPort(string(server.Address))
+					if err != nil {
+						host = string(server.Address)
+					}
+
+					targetAPI = net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port))
+					break
+				}
+			}
+		}
+	}
+
+	if targetAPI == "" {
+		return nil, 0, fmt.Errorf("backup_runner_node_not_found")
+	}
+
+	hostname, err := utils.GetSystemHostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "cluster"
+	}
+
+	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	if err != nil {
+		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	runURL := fmt.Sprintf("https://%s/api/cluster/backups/jobs/%d/run", targetAPI, jobID)
+	body, statusCode, err := utils.HTTPPostJSONRead(runURL, map[string]any{}, map[string]string{
+		"Accept":          "application/json",
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	})
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	var parsed internal.APIResponse[any]
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, statusCode, fmt.Errorf("invalid_runner_response")
+	}
+
+	return body, statusCode, nil
 }
 
 func BackupEvents(rS *replication.Service) gin.HandlerFunc {

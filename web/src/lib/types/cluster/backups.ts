@@ -15,6 +15,7 @@ export const BackupJobSchema = z.object({
 	name: z.string(),
 	targetId: z.number(),
 	target: BackupTargetSchema.optional(),
+	runnerNodeId: z.string().optional().default(''),
 	mode: z.string(),
 	sourceDataset: z.string().optional().default(''),
 	jailRootDataset: z.string().optional().default(''),

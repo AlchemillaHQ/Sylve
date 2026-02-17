@@ -42,11 +42,8 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 		return nil
 	}
 
-	if s.Cluster != nil && s.Cluster.Raft != nil && s.Cluster.Raft.State() != raft.Leader {
-		return nil
-	}
-
 	now := time.Now().UTC()
+	localNodeID := s.localNodeID()
 	var jobs []clusterModels.BackupJob
 	if err := s.DB.Preload("Target").Where("enabled = ?", true).Find(&jobs).Error; err != nil {
 		return err
@@ -54,6 +51,9 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 
 	for i := range jobs {
 		job := jobs[i]
+		if !s.isLocalBackupJobRunner(&job, localNodeID) {
+			continue
+		}
 
 		nextAt, err := nextRunTime(job.CronExpr, now)
 		if err != nil {
@@ -104,6 +104,10 @@ func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool)
 	var job clusterModels.BackupJob
 	if err := s.DB.Preload("Target").First(&job, jobID).Error; err != nil {
 		return err
+	}
+
+	if !s.isLocalBackupJobRunner(&job, s.localNodeID()) {
+		return fmt.Errorf("backup_job_not_assigned_to_this_node")
 	}
 
 	if !manual && !job.Enabled {
@@ -225,4 +229,35 @@ func (s *Service) releaseJob(jobID uint) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	delete(s.runningJobs, jobID)
+}
+
+func (s *Service) localNodeID() string {
+	if s.Cluster == nil {
+		return ""
+	}
+	detail := s.Cluster.Detail()
+	if detail == nil {
+		return ""
+	}
+	return strings.TrimSpace(detail.NodeID)
+}
+
+func (s *Service) isLocalBackupJobRunner(job *clusterModels.BackupJob, localNodeID string) bool {
+	if job == nil {
+		return false
+	}
+
+	runner := strings.TrimSpace(job.RunnerNodeID)
+	if runner == "" {
+		if s.Cluster != nil && s.Cluster.Raft != nil {
+			return s.Cluster.Raft.State() == raft.Leader
+		}
+		return true
+	}
+
+	if localNodeID == "" {
+		return false
+	}
+
+	return localNodeID == runner
 }

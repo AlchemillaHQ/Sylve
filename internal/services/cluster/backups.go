@@ -9,8 +9,10 @@
 package cluster
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"time"
@@ -18,6 +20,8 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/robfig/cron/v3"
 )
+
+var maxSafeJSInt = big.NewInt(9007199254740991)
 
 type BackupTargetInput struct {
 	Name        string `json:"name"`
@@ -29,6 +33,7 @@ type BackupTargetInput struct {
 type BackupJobInput struct {
 	Name               string `json:"name"`
 	TargetID           uint   `json:"targetId"`
+	RunnerNodeID       string `json:"runnerNodeId"`
 	Mode               string `json:"mode"`
 	SourceDataset      string `json:"sourceDataset"`
 	JailRootDataset    string `json:"jailRootDataset"`
@@ -76,6 +81,12 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 	if s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
+
+	id, err := s.newRaftObjectID("backup_targets")
+	if err != nil {
+		return fmt.Errorf("new_backup_target_id_failed: %w", err)
+	}
+	target.ID = id
 
 	data, err := json.Marshal(target)
 	if err != nil {
@@ -183,7 +194,16 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 }
 
 func (s *Service) ProposeBackupJobCreate(input BackupJobInput, bypassRaft bool) error {
-	job, err := s.buildBackupJob(0, input)
+	id := uint(0)
+	var err error
+	if !bypassRaft {
+		id, err = s.newRaftObjectID("backup_jobs")
+		if err != nil {
+			return fmt.Errorf("new_backup_job_id_failed: %w", err)
+		}
+	}
+
+	job, err := s.buildBackupJob(id, input)
 	if err != nil {
 		return err
 	}
@@ -218,15 +238,11 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 		return err
 	}
 
-	enabled := false
-	if input.Enabled != nil {
-		enabled = *input.Enabled
-	}
-
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
 			"name":                job.Name,
 			"target_id":           job.TargetID,
+			"runner_node_id":      job.RunnerNodeID,
 			"mode":                job.Mode,
 			"source_dataset":      job.SourceDataset,
 			"jail_root_dataset":   job.JailRootDataset,
@@ -234,7 +250,7 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 			"cron_expr":           job.CronExpr,
 			"force":               job.Force,
 			"with_intermediates":  job.WithIntermediates,
-			"enabled":             enabled,
+			"enabled":             job.Enabled,
 			"next_run_at":         job.NextRunAt,
 		}).Error
 	}
@@ -300,6 +316,19 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		return nil, fmt.Errorf("destination_dataset_required")
 	}
 
+	runnerNodeID := strings.TrimSpace(input.RunnerNodeID)
+	if runnerNodeID == "" {
+		if detail := s.Detail(); detail != nil {
+			runnerNodeID = strings.TrimSpace(detail.NodeID)
+		}
+	}
+
+	if runnerNodeID != "" {
+		if !s.backupRunnerNodeExists(runnerNodeID) {
+			return nil, fmt.Errorf("backup_runner_node_not_found")
+		}
+	}
+
 	mode := strings.TrimSpace(strings.ToLower(input.Mode))
 	if mode == "" {
 		mode = clusterModels.BackupJobModeDataset
@@ -320,7 +349,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 
 	now := time.Now().UTC()
 	next := schedule.Next(now)
-	enabled := false
+	enabled := true
 
 	if input.Enabled != nil {
 		enabled = *input.Enabled
@@ -334,6 +363,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		ID:                 id,
 		Name:               strings.TrimSpace(input.Name),
 		TargetID:           input.TargetID,
+		RunnerNodeID:       runnerNodeID,
 		Mode:               mode,
 		SourceDataset:      strings.TrimSpace(input.SourceDataset),
 		JailRootDataset:    strings.TrimSpace(input.JailRootDataset),
@@ -402,4 +432,46 @@ func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {
 	}
 
 	return nil
+}
+
+func (s *Service) backupRunnerNodeExists(nodeID string) bool {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false
+	}
+
+	if detail := s.Detail(); detail != nil && strings.TrimSpace(detail.NodeID) == nodeID {
+		return true
+	}
+
+	var count int64
+	if err := s.DB.Model(&clusterModels.ClusterNode{}).Where("node_uuid = ?", nodeID).Count(&count).Error; err != nil {
+		return false
+	}
+
+	return count > 0
+}
+
+func (s *Service) newRaftObjectID(table string) (uint, error) {
+	for attempts := 0; attempts < 16; attempts++ {
+		n, err := rand.Int(rand.Reader, maxSafeJSInt)
+		if err != nil {
+			return 0, err
+		}
+
+		id := uint(n.Uint64())
+		if id == 0 {
+			continue
+		}
+
+		var count int64
+		if err := s.DB.Table(table).Where("id = ?", id).Count(&count).Error; err != nil {
+			return 0, err
+		}
+		if count == 0 {
+			return id, nil
+		}
+	}
+
+	return 0, fmt.Errorf("unable_to_allocate_unique_id")
 }
