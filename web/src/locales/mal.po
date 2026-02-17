@@ -965,10 +965,12 @@ msgid "Login required after cluster reset"
 msgstr "ക്ലസ്റ്റർ പുനഃസജ്ജമാക്കിയ ശേഷം ലോഗിൻ ആവശ്യമാണ്"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Note updated"
 msgstr "കുറിപ്പ് അപ്‌ഡേറ്റ് ചെയ്തു"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to update note"
 msgstr "കുറിപ്പ് അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
@@ -7592,4 +7594,12 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network updated successfully"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On Node"
 msgstr ""

@@ -937,10 +937,12 @@ msgid "Login required after cluster reset"
 msgstr "集群重置后需要登录"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Note updated"
 msgstr "附注已更新"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to update note"
 msgstr "附注更新失败"
 
@@ -6773,4 +6775,12 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network updated successfully"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On Node"
 msgstr ""

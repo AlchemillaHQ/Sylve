@@ -456,7 +456,11 @@ func (s *Service) openStream(ctx context.Context, endpoint string, req request) 
 		return nil, nil, err
 	}
 
-	conn, err := quic.DialAddr(ctx, endpoint, tlsConf, nil)
+	quicConfig := &quic.Config{
+		MaxIdleTimeout: 4 * time.Hour,
+	}
+
+	conn, err := quic.DialAddr(ctx, endpoint, tlsConf, quicConfig)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -529,9 +533,25 @@ func (s *Service) sendSnapshot(ctx context.Context, snapshot string, out io.Writ
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	if err := s.GZFS.ZFS.SendSnapshot(ctx, snapshot, out); err != nil {
+	// Wrap writer with progress tracking
+	progressOut := newProgressWriter(out, snapshot, "send")
+	logger.L.Debug().Str("snapshot", snapshot).Msg("starting_zfs_send")
+
+	if err := s.GZFS.ZFS.SendSnapshot(ctx, snapshot, progressOut); err != nil {
+		logger.L.Debug().
+			Str("snapshot", snapshot).
+			Int64("bytes_sent", progressOut.BytesWritten()).
+			Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+			Err(err).
+			Msg("zfs_send_failed")
 		return fmt.Errorf("zfs_send_failed: %w", err)
 	}
+
+	logger.L.Debug().
+		Str("snapshot", snapshot).
+		Int64("bytes_sent", progressOut.BytesWritten()).
+		Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+		Msg("zfs_send_completed")
 
 	return nil
 }
@@ -544,9 +564,30 @@ func (s *Service) sendIncremental(ctx context.Context, baseSnapshot, targetSnaps
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	if err := s.GZFS.ZFS.SendIncremental(ctx, baseSnapshot, targetSnapshot, out); err != nil {
+	// Wrap writer with progress tracking
+	progressOut := newProgressWriter(out, targetSnapshot, "send_incremental")
+	logger.L.Debug().
+		Str("base_snapshot", baseSnapshot).
+		Str("target_snapshot", targetSnapshot).
+		Msg("starting_zfs_incremental_send")
+
+	if err := s.GZFS.ZFS.SendIncremental(ctx, baseSnapshot, targetSnapshot, progressOut); err != nil {
+		logger.L.Debug().
+			Str("base_snapshot", baseSnapshot).
+			Str("target_snapshot", targetSnapshot).
+			Int64("bytes_sent", progressOut.BytesWritten()).
+			Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+			Err(err).
+			Msg("zfs_incremental_send_failed")
 		return fmt.Errorf("zfs_incremental_send_failed: %w", err)
 	}
+
+	logger.L.Debug().
+		Str("base_snapshot", baseSnapshot).
+		Str("target_snapshot", targetSnapshot).
+		Int64("bytes_sent", progressOut.BytesWritten()).
+		Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+		Msg("zfs_incremental_send_completed")
 
 	return nil
 }
@@ -564,9 +605,30 @@ func (s *Service) sendIncrementalWithIntermediates(
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	if err := s.GZFS.ZFS.SendIncrementalWithIntermediates(ctx, baseSnapshot, targetSnapshot, out); err != nil {
+	// Wrap writer with progress tracking
+	progressOut := newProgressWriter(out, targetSnapshot, "send_incremental_intermediates")
+	logger.L.Debug().
+		Str("base_snapshot", baseSnapshot).
+		Str("target_snapshot", targetSnapshot).
+		Msg("starting_zfs_incremental_send_with_intermediates")
+
+	if err := s.GZFS.ZFS.SendIncrementalWithIntermediates(ctx, baseSnapshot, targetSnapshot, progressOut); err != nil {
+		logger.L.Debug().
+			Str("base_snapshot", baseSnapshot).
+			Str("target_snapshot", targetSnapshot).
+			Int64("bytes_sent", progressOut.BytesWritten()).
+			Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+			Err(err).
+			Msg("zfs_incremental_send_intermediates_failed")
 		return fmt.Errorf("zfs_incremental_send_intermediates_failed: %w", err)
 	}
+
+	logger.L.Debug().
+		Str("base_snapshot", baseSnapshot).
+		Str("target_snapshot", targetSnapshot).
+		Int64("bytes_sent", progressOut.BytesWritten()).
+		Float64("mb_sent", float64(progressOut.BytesWritten())/(1024*1024)).
+		Msg("zfs_incremental_send_intermediates_completed")
 
 	return nil
 }

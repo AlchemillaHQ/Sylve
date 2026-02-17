@@ -74,6 +74,13 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			continue
 		}
 
+		// Update next_run_at immediately before launching to prevent duplicate triggers
+		nextRunAt := nextAt
+		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextRunAt).Error; err != nil {
+			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_next_run_at")
+			continue
+		}
+
 		jobID := job.ID
 		go func() {
 			runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
@@ -99,7 +106,11 @@ func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool)
 	if !s.acquireJob(jobID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
-	defer s.releaseJob(jobID)
+	logger.L.Debug().Uint("job_id", jobID).Msg("backup_job_acquired")
+	defer func() {
+		s.releaseJob(jobID)
+		logger.L.Debug().Uint("job_id", jobID).Msg("backup_job_released")
+	}()
 
 	var job clusterModels.BackupJob
 	if err := s.DB.Preload("Target").First(&job, jobID).Error; err != nil {
@@ -142,6 +153,7 @@ func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool)
 		runErr = fmt.Errorf("invalid_backup_job_mode")
 	}
 
+	logger.L.Debug().Uint("job_id", job.ID).Err(runErr).Msg("backup_job_completed")
 	s.updateBackupJobResult(&job, runErr)
 	return runErr
 }

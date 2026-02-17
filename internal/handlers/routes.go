@@ -420,6 +420,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
+		clusterNotes.PUT("/:id", clusterHandlers.UpdateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
 	}
 

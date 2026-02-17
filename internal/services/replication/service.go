@@ -117,6 +117,104 @@ type Plan struct {
 	Noop               bool   `json:"noop"`
 }
 
+// progressReader wraps an io.Reader and logs progress at debug level
+type progressReader struct {
+	inner         io.Reader
+	bytesRead     int64
+	lastLogBytes  int64
+	lastLogTime   time.Time
+	logThreshold  int64 // bytes between logs
+	timeThreshold time.Duration
+	dataset       string
+	operation     string
+}
+
+func newProgressReader(r io.Reader, dataset, operation string) *progressReader {
+	return &progressReader{
+		inner:         r,
+		lastLogTime:   time.Now(),
+		logThreshold:  10 * 1024 * 1024, // 10MB
+		timeThreshold: 30 * time.Second,
+		dataset:       dataset,
+		operation:     operation,
+	}
+}
+
+func (p *progressReader) Read(buf []byte) (int, error) {
+	n, err := p.inner.Read(buf)
+	p.bytesRead += int64(n)
+
+	now := time.Now()
+	bytesSinceLog := p.bytesRead - p.lastLogBytes
+	timeSinceLog := now.Sub(p.lastLogTime)
+
+	if bytesSinceLog >= p.logThreshold || timeSinceLog >= p.timeThreshold {
+		logger.L.Debug().
+			Str("dataset", p.dataset).
+			Str("operation", p.operation).
+			Int64("bytes_transferred", p.bytesRead).
+			Float64("mb_transferred", float64(p.bytesRead)/(1024*1024)).
+			Msg("replication_progress")
+		p.lastLogBytes = p.bytesRead
+		p.lastLogTime = now
+	}
+
+	return n, err
+}
+
+func (p *progressReader) BytesRead() int64 {
+	return p.bytesRead
+}
+
+// progressWriter wraps an io.Writer and logs progress at debug level
+type progressWriter struct {
+	inner         io.Writer
+	bytesWritten  int64
+	lastLogBytes  int64
+	lastLogTime   time.Time
+	logThreshold  int64
+	timeThreshold time.Duration
+	dataset       string
+	operation     string
+}
+
+func newProgressWriter(w io.Writer, dataset, operation string) *progressWriter {
+	return &progressWriter{
+		inner:         w,
+		lastLogTime:   time.Now(),
+		logThreshold:  10 * 1024 * 1024, // 10MB
+		timeThreshold: 30 * time.Second,
+		dataset:       dataset,
+		operation:     operation,
+	}
+}
+
+func (p *progressWriter) Write(buf []byte) (int, error) {
+	n, err := p.inner.Write(buf)
+	p.bytesWritten += int64(n)
+
+	now := time.Now()
+	bytesSinceLog := p.bytesWritten - p.lastLogBytes
+	timeSinceLog := now.Sub(p.lastLogTime)
+
+	if bytesSinceLog >= p.logThreshold || timeSinceLog >= p.timeThreshold {
+		logger.L.Debug().
+			Str("dataset", p.dataset).
+			Str("operation", p.operation).
+			Int64("bytes_transferred", p.bytesWritten).
+			Float64("mb_transferred", float64(p.bytesWritten)/(1024*1024)).
+			Msg("replication_progress")
+		p.lastLogBytes = p.bytesWritten
+		p.lastLogTime = now
+	}
+
+	return n, err
+}
+
+func (p *progressWriter) BytesWritten() int64 {
+	return p.bytesWritten
+}
+
 func NewService(
 	db *gorm.DB,
 	auth serviceInterfaces.AuthServiceInterface,
@@ -197,8 +295,12 @@ func (s *Service) ensureListener(ctx context.Context, port int) error {
 		return err
 	}
 
+	quicConfig := &quic.Config{
+		MaxIdleTimeout: 4 * 24 * time.Hour,
+	}
+
 	addr := fmt.Sprintf(":%d", port)
-	listener, err := quic.ListenAddr(addr, tlsConf, nil)
+	listener, err := quic.ListenAddr(addr, tlsConf, quicConfig)
 	if err != nil {
 		return err
 	}
@@ -686,9 +788,26 @@ func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, 
 	if err := s.clearResumableReceiveState(ctx, dest); err != nil {
 		return err
 	}
-	if err := s.GZFS.ZFS.ReceiveStream(ctx, in, dest, force); err != nil {
+
+	// Wrap reader with progress tracking
+	progressIn := newProgressReader(in, dest, "receive")
+	logger.L.Debug().Str("dataset", dest).Bool("force", force).Msg("starting_zfs_receive")
+
+	if err := s.GZFS.ZFS.ReceiveStream(ctx, progressIn, dest, force); err != nil {
+		logger.L.Debug().
+			Str("dataset", dest).
+			Int64("bytes_received", progressIn.BytesRead()).
+			Float64("mb_received", float64(progressIn.BytesRead())/(1024*1024)).
+			Err(err).
+			Msg("zfs_receive_failed")
 		return fmt.Errorf("zfs_recv_failed: %w", err)
 	}
+
+	logger.L.Debug().
+		Str("dataset", dest).
+		Int64("bytes_received", progressIn.BytesRead()).
+		Float64("mb_received", float64(progressIn.BytesRead())/(1024*1024)).
+		Msg("zfs_receive_completed")
 
 	return nil
 }

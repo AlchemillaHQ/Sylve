@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createNote, deleteNote, getNotes } from '$lib/api/cluster/notes';
+	import { createNote, deleteNote, editNote, getNotes } from '$lib/api/cluster/notes';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -78,17 +78,17 @@
 	async function saveNote() {
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
-			// const response = await editDCNote(selectedId, modalState.title, modalState.content);
-			// queryClient.refetchQueries('cluster-notes');
-			// if (response.status === 'success') {
-			// 	toast.success('Note updated', { position: 'bottom-center' });
-			// 	handleNote(undefined, false, true);
-			// } else {
-			// 	handleAPIError(response);
-			// 	toast.error('Failed to update note', {
-			// 		position: 'bottom-center'
-			// 	});
-			// }
+			const response = await editNote(selectedId, modalState.title, modalState.content);
+			console.log(response);
+			if (response.status === 'success') {
+				toast.success('Note updated', { position: 'bottom-center' });
+				handleNote(undefined, false, true);
+			} else {
+				handleAPIError(response);
+				toast.error('Failed to update note', {
+					position: 'bottom-center'
+				});
+			}
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
 			reload = true;

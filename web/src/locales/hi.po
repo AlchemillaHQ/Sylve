@@ -923,10 +923,12 @@ msgid "No response"
 msgstr "कोई प्रतिक्रिया नहीं"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Note updated"
 msgstr "नोट अपडेट किया गया"
 
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 msgid "Failed to update note"
 msgstr "नोट अपडेट करने में विफल रहा"
 
@@ -7608,4 +7610,12 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Network updated successfully"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run On Node"
 msgstr ""
