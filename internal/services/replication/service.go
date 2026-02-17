@@ -683,20 +683,11 @@ func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, 
 	if err := ensureDatasetParent(ctx, dest); err != nil {
 		return err
 	}
-
-	args := []string{"recv"}
-	if force {
-		args = append(args, "-F")
+	if err := s.clearResumableReceiveState(ctx, dest); err != nil {
+		return err
 	}
-	args = append(args, dest)
-
-	cmd := exec.CommandContext(ctx, "zfs", args...)
-	cmd.Stdin = in
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zfs_recv_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	if err := s.GZFS.ZFS.ReceiveStream(ctx, in, dest, force); err != nil {
+		return fmt.Errorf("zfs_recv_failed: %w", err)
 	}
 
 	return nil
@@ -737,5 +728,39 @@ func ensureDatasetParent(ctx context.Context, dataset string) error {
 		return fmt.Errorf("create_destination_parent_failed: %w: %s", err, strings.TrimSpace(createErr.String()))
 	}
 
+	return nil
+}
+
+func (s *Service) clearResumableReceiveState(ctx context.Context, dataset string) error {
+	name := strings.TrimSpace(dataset)
+	if name == "" {
+		return fmt.Errorf("destination_dataset_is_empty")
+	}
+
+	prop, err := s.GZFS.ZFS.GetProperty(ctx, name, "receive_resume_token")
+	if err != nil {
+		if isDatasetMissingErr(err) {
+			return nil
+		}
+		return fmt.Errorf("check_receive_resume_token_failed: %w", err)
+	}
+
+	token := strings.TrimSpace(prop.Value)
+	if token == "" || token == "-" {
+		return nil
+	}
+
+	abortCmd := exec.CommandContext(ctx, "zfs", "recv", "-A", name)
+	var abortErr bytes.Buffer
+	abortCmd.Stderr = &abortErr
+	if err := abortCmd.Run(); err != nil {
+		stderr := strings.ToLower(strings.TrimSpace(abortErr.String()))
+		if strings.Contains(stderr, "does not have any resumable receive state") {
+			return nil
+		}
+		return fmt.Errorf("abort_resumable_receive_failed: %w: %s", err, strings.TrimSpace(abortErr.String()))
+	}
+
+	logger.L.Warn().Str("dataset", name).Msg("cleared_stale_resumable_receive_state")
 	return nil
 }

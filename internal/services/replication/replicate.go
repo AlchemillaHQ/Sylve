@@ -10,13 +10,11 @@ package replication
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,6 +60,14 @@ func (s *Service) replicateDatasetToNode(
 		return nil, fmt.Errorf("source_snapshots: %w", err)
 	}
 
+	remoteSnaps, err := s.fetchRemoteSnapshots(ctx, endpoint, dstDataset)
+	if err != nil {
+		if !isDatasetMissingErr(err) {
+			return nil, err
+		}
+		remoteSnaps = []SnapInfo{}
+	}
+
 	// For backup jobs, always create a new snapshot on each run
 	// For manual replications, only create if none exist
 	shouldCreateSnapshot := len(localSnaps) == 0 || jobID != nil
@@ -95,14 +101,6 @@ func (s *Service) replicateDatasetToNode(
 	})
 
 	targetSnapshot := localSnaps[len(localSnaps)-1]
-
-	remoteSnaps, err := s.fetchRemoteSnapshots(ctx, endpoint, dstDataset)
-	if err != nil {
-		if !isDatasetMissingErr(err) {
-			return nil, err
-		}
-		remoteSnaps = []SnapInfo{}
-	}
 
 	remoteByGUID := make(map[string]struct{}, len(remoteSnaps))
 	for _, snap := range remoteSnaps {
@@ -531,13 +529,8 @@ func (s *Service) sendSnapshot(ctx context.Context, snapshot string, out io.Writ
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	cmd := exec.CommandContext(ctx, "zfs", "send", snapshot)
-	cmd.Stdout = out
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zfs_send_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	if err := s.GZFS.ZFS.SendSnapshot(ctx, snapshot, out); err != nil {
+		return fmt.Errorf("zfs_send_failed: %w", err)
 	}
 
 	return nil
@@ -551,13 +544,8 @@ func (s *Service) sendIncremental(ctx context.Context, baseSnapshot, targetSnaps
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	cmd := exec.CommandContext(ctx, "zfs", "send", "-i", baseSnapshot, targetSnapshot)
-	cmd.Stdout = out
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zfs_incremental_send_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	if err := s.GZFS.ZFS.SendIncremental(ctx, baseSnapshot, targetSnapshot, out); err != nil {
+		return fmt.Errorf("zfs_incremental_send_failed: %w", err)
 	}
 
 	return nil
@@ -576,13 +564,8 @@ func (s *Service) sendIncrementalWithIntermediates(
 		return fmt.Errorf("output_writer_is_nil")
 	}
 
-	cmd := exec.CommandContext(ctx, "zfs", "send", "-I", baseSnapshot, targetSnapshot)
-	cmd.Stdout = out
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("zfs_incremental_send_intermediates_failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	if err := s.GZFS.ZFS.SendIncrementalWithIntermediates(ctx, baseSnapshot, targetSnapshot, out); err != nil {
+		return fmt.Errorf("zfs_incremental_send_intermediates_failed: %w", err)
 	}
 
 	return nil
