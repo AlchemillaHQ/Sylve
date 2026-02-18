@@ -12,3 +12,6 @@ import "embed"
 
 //go:embed all:web-files
 var SvelteKitFiles embed.FS
+
+//go:embed all:zelta
+var ZeltaFiles embed.FS
