@@ -1,0 +1,51 @@
+type: object
+required:
+  - shellspec_name
+  - describe_desc
+  - output_dir
+  - test_list
+properties:
+  shellspec_name:
+    type: string
+    description: Name for the generated ShellSpec file
+  describe_desc:
+    type: string
+    description: Description for the Describe block
+  output_dir:
+    type: string
+    description: Directory for generated test files
+  skip_if_list:
+    type: array
+    description: Condition to skip test generation
+    items:
+      type: object
+      required:
+        - condition
+      properties:
+        condition:
+          type: string
+  test_list:
+    type: array
+    items:
+      type: object
+      required:
+        - test_name
+        - it_desc
+        - when_command
+      properties:
+        setup_scripts:
+          type: array
+          description: Scripts to source/run before executing when_command to set up environment
+          items:
+            type: string
+            description: Path to script file (relative to test directory or absolute)
+        test_name:
+          type: string
+        it_desc:
+          type: string
+        when_command:
+          type: string
+        allow_no_output:
+          type: boolean
+          description: If true, skip validation that command produces output
+          default: false

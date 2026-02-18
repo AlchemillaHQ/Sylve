@@ -1,0 +1,22 @@
+# ACTION	# REMOTE	# COMMAND	# ARGUMENTS	# VARIABLES
+# zelta-cmds.tsv		# fixed command	# fixed arguments	# array maps
+# Format:
+# ACTION: Which command to construct
+# REMOTE: Remote (ssh) prefix for SEND, RECV, DEFAULT, or blank for none 
+# COMMAND: First part of the command.
+# ARGS: Hardcoded arguments.
+# VARS: List of options provided from a referenced associative array.
+#
+CHECK	DEFAULT	zfs list	-Ho name	ds
+LIST	DEFAULT	zfs list	-Hpr -t all -Screatetxg -o	props flags ds
+PROPS	DEFAULT	zfs get	-Hpr -s local,none -t filesystem,volume -o name,property,value	flags props ds
+CREATE	DEFAULT	zfs create	-vupo canmount=noauto	ds
+SNAP	DEFAULT	zfs snapshot	-r	flags ds_snap
+MATCH		zelta ipc-run match	--time --log-mode=text --log-level=2 -Hpo relname,match,srcnext,srclast,tgtlast	flags
+MATCH_ORIGIN		zelta ipc-run match	--log-mode=text --log-level=2 -Hpo relname,match
+CLONE	DEFAULT	zfs clone	-p -o readonly=off	flags ds_snap ds
+SEND	SEND	zfs send	-P	flags intr_snap ds_snap
+RECV	RECV	zfs recv	-v	flags origin ds
+SYNC	DEFAULT			zfs_send zfs_recv
+RENAME	DEFAULT	zfs rename	-fp	old_ds new_ds
+BACKUP		zelta backup		flags source target

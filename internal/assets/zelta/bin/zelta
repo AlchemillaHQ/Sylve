@@ -1,0 +1,348 @@
+#!/bin/sh
+
+# zelta - Zelta shell wrapper
+#
+# Initialize the environment for Zelta subcommands
+
+ZELTA_VERSION="Zelta 1.1.0"
+
+zelta_usage() {
+	exec >&2
+	if [ -n "$1" ] ; then
+		echo "unrecognized command: '$1'"
+		case "$1" in
+		list)      echo did you mean "'zelta match'?" ;;
+		send)      echo did you mean "'zelta backup'?" ;;
+		rollback)  echo did you mean "'zelta revert'?" ;;
+		esac
+	fi
+	cat << EOF
+usage: zelta command [OPTIONS]
+
+Where 'command' is one of the following:
+
+  match                      Compare datasets
+  backup                     Sync ZFS datasets
+  policy                     Run configured replication jobs
+  clone                      Clone ZFS datasets
+  revert                     Rename and clone a dataset in-place
+  rotate                     Recover sync continuity
+
+  version                    Show version information
+
+Each endpoint is in the form: [user@host:]pool[/dataset/][@snap]
+
+For complete documentation:  zelta help
+                             zelta help [<topic>]
+                             zelta help options
+                             https://zelta.space
+EOF
+	exit 1
+}
+
+# For "zelta help" run man
+zelta_man() {
+
+	_man_section=8
+	case $1 in
+		'')					_manpage=zelta ;;
+		options)				_manpage=zelta-$1
+							_man_section=7 ;;
+		# Legacy symlinks (from Zelta pre-1.0)
+		zmatch)					_manpage=zelta-match ;;
+		zpull|zpush)				_manpage=zelta-backup ;;
+		*)					_manpage=zelta-$1 ;;
+	esac
+	if [ -d "$ZELTA_DOC" ] ; then
+		man -M "$ZELTA_DOC" $_man_section $_manpage
+	else
+		man $_man_section $_manpage
+	fi
+}
+
+
+zelta_init() {
+	AWK="${ZELTA_AWK:-${AWK:-awk}}"
+	ZELTA_VERB="${zelta_verb}"
+
+	: ${ZELTA_ETC:="/usr/local/etc/zelta"}	# Dir for the default env and policy
+	: ${ZELTA_ENV:="$ZELTA_ETC/zelta.env"}	# Edit this file to change command defaults
+
+	ZELTA_HOSTNAME="${HOSTNAME:-$(hostname)}"
+	: "${ZELTA_HOSTNAME:=localhost}"
+
+	# Read zelta.env prepending ZELTA_ prefix when necessary
+	if [ -r "$ZELTA_ENV" ]; then
+		_env_settings=$($AWK -F= '
+		BEGIN {
+			InvalidEnv["ZELTA_AWK"] = 1
+			InvalidEnv["ZELTA_ETC"] = 1
+			InvalidEnv["ZELTA_ENV"] = 1
+			STDERR = "/dev/stderr"
+		}
+		/^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+		{
+			sub(/^[[:space:]]+/,"")
+			if ($1 !~ /^ZELTA_/) $0 = "ZELTA_" $0
+			if ($1 in InvalidEnv) {
+				print "warning: " $1 " ignored; it must be exported prior to zelta.env" > STDERR
+				next
+			}
+			sub(/[[:space:]]*#.*$/, "")
+			sub(/=/, ":=")
+			printf ": ${%s}\n", $0
+		}
+		' "$ZELTA_ENV")
+
+		eval "$_env_settings"
+	fi
+
+	# Debian/Ubuntu awk bug workaround
+	if [ -z "$ZELTA_AWK" ]; then
+		_awk_ver=$(awk -V 2>/dev/null | head -n 1)
+		case "$_awk_ver" in
+		*"GNU Awk 5.2.1"*)
+			if command -v mawk >/dev/null 2>&1; then
+				_good_awk=mawk
+			elif command -v original-awk >/dev/null 2>&1; then
+				_good_awk=original-awk
+			else
+				cat >&2 <<-EOF
+				warning: GNU Awk 5.2.1 has a serious memory bug; upgrade gawk or install original-awk/mawk:
+				  Ubuntu/Debian: apt install mawk
+				EOF
+			fi
+			if [ -n "$_good_awk" ] ; then
+				 [ "${ZELTA_LOG_LEVEL:-0}" -ge 4 ] && echo "warning: 'gawk' bug detected, using '"$_good_awk"'" >&2
+				export AWK="$_good_awk" ZELTA_AWK="$_good_awk"
+			fi
+			;;
+		esac
+	fi
+
+	# Verb-specific defaults
+	case "$zelta_verb" in
+		clone)	: ${ZELTA_SEND_INTR:="0"}
+			;;
+		revert)	ZELTA_SEND_INTR="0"
+			ZELTA_SNAP_MODE="0"
+			;;
+		rotate)	: ${ZELTA_SEND_INTR:="0"}
+			;;
+		sync)	: ${ZELTA_SEND_INTR:="0"}
+			;;
+	esac
+
+
+
+	: ${ZELTA_SHARE:="/usr/local/share/zelta"}	# Dir for helper scripts
+	: ${ZELTA_CONFIG:="$ZELTA_ETC/zelta.conf"}	# YAML for "zelta policy"
+
+	# Zelta defaults:
+	: ${ZELTA_LOG_LEVEL:="2"}
+	: ${ZELTA_LOG_COMMAND:="zelta ipc-log"}
+	: ${ZELTA_TIME_COMMAND:="time -p"}
+	: ${ZELTA_SH_COMMAND_PREFIX:="{"}
+	: ${ZELTA_SH_COMMAND_SUFFIX:="; }"}
+#	: ${ZELTA_SNAP_COMMAND:="date -u +%Y-%m-%d_%H.%M.%S"}
+	: ${ZELTA_SNAP_NAME:="$(date -u +zelta_%Y-%m-%d_%H.%M.%S)"}
+	: ${ZELTA_SNAP_MODE:="IF_NEEDED"}
+	: ${ZELTA_SYNC_DIRECTION:="PULL"}
+	: ${ZELTA_CHECK_TIME:=""}
+
+	# `zfs list` defaults
+	: ${ZELTA_LIST_WRITTEN:="1"}
+
+	# Safety options
+	: ${ZELTA_CREATE_PARENT:="1"}
+	: ${ZELTA_RESUME:="1"}
+
+	# `zfs send` defaults
+	: ${ZELTA_SEND_DEFAULT:="-L -c -e"}
+	: ${ZELTA_SEND_RAW:="--raw"}
+	: ${ZELTA_SEND_NEW:="-p"}
+	: ${ZELTA_SEND_INTR:="1"}
+	: ${ZELTA_SEND_REPLICATE:="--raw -s -R"}
+
+	# `zfs recv` defaults
+	: ${ZELTA_RECV_DEFAULT:=""}
+	: ${ZELTA_RECV_TOP:="-o readonly=on"}
+	: ${ZELTA_RECV_FS:="-u -x mountpoint -o canmount=noauto"}
+	: ${ZELTA_RECV_VOL:=""}
+	: ${ZELTA_RECV_PARTIAL:="-s"}
+
+	# `zfs clone` defaults
+	: ${ZELTA_CLONE_DEFAULT:="-po readonly=off"}
+
+	# `zelta match` defaults
+	: ${ZELTA_KEEP_SNAP_NUM:="100"}
+	: ${ZELTA_KEEP_SNAP_DAYS:="90"}
+
+	# Remote (ssh) options
+	: ${ZELTA_REMOTE_COMMAND:="ssh"}
+	: ${ZELTA_REMOTE_DEFAULT:="${ZELTA_REMOTE_COMMAND} -n"}
+	: ${ZELTA_REMOTE_SEND:="${ZELTA_REMOTE_DEFAULT}"}
+	: ${ZELTA_REMOTE_RECV:="${ZELTA_REMOTE_COMMAND}"}
+
+	export AWK ZELTA_VERSION ZELTA_HOSTNAME ZELTA_VERB ZELTA_SHARE ZELTA_ETC ZELTA_ENV ZELTA_CONFIG
+	export ZELTA_LOG_MODE ZELTA_LOG_LEVEL ZELTA_LOG_COMMAND
+}
+
+zelta_export() {
+	export AWK $(set | $AWK -F= '/^ZELTA_.*=/{print $1}')
+}
+
+# Load awk common functions plus the verb utility
+zelta_run_awk() {
+	_verb="$1"
+	_yule="$AWK -f $ZELTA_SHARE/zelta-color.awk"
+	shift
+	if [ -z "$ZELTA_LOG_MODE" ] && [ -n "$ZELTA_YULE" ] ; then
+		$AWK -f "$ZELTA_SHARE/zelta-common.awk" -f "$ZELTA_SHARE/zelta-$_verb.awk" -- "$@" |$_yule
+	else
+		$AWK -f "$ZELTA_SHARE/zelta-common.awk" -f "$ZELTA_SHARE/zelta-$_verb.awk" -- "$@"
+	fi
+}
+
+zelta_args() {
+	if [ -n "$1" ]; then
+		if _opts=$(zelta_run_awk "args" "$@") ; then
+			[ -n "$_opts" ] && eval export "$_opts"
+		else
+			export ZELTA_USAGE="1"
+		fi
+	fi
+}
+
+zelta_log() {
+	: ${max_log_level:=${ZELTA_LOG_LEVEL:-2}}
+	# Bourne handles stderr/stdout reporting more reliably and portably than some awks, so
+	# this function is used for the default LOG_MODE. STDERR messages are retained even when
+	# selecting another, like LOG_MODE=json. To disable STDERR noise, use `zelta VERB -qq ...`
+	_fd=3
+	_fd_term=4
+	_sep="$(printf '\034')"
+	if [ -n "$ZELTA_LOG_FILE" ] ; then
+		#_fd=" >> '${ZELTA_LOG_FILE}'"
+		exec 3>>"$ZELTA_LOG_FILE"
+		exec 4>&3
+	else
+		exec 3>&2
+		exec 4>&1
+	fi
+	case "$ZELTA_LOG_MODE" in
+	'')    _term="1" ;;
+	text)  unset ZELTA_LOG_PREFIX
+	       _term="1" ;;
+	esac
+	while IFS="$_sep" read log_level log_message; do
+		: ${log_level:=${log_level:-2}}
+		# If no log_level is given, treat it as a "notice"
+		case "$log_level" in
+		*[!0-9]*)	log_message="${log_level}${log_message:+ }${log_message}"
+				log_level=2
+				;;
+		esac
+		if [ -z "$log_message" ] ; then
+			log_message="missing log message"
+		else
+			log_message="${ZELTA_LOG_PREFIX}${log_message}"
+		fi
+		if [ "$log_level" -gt "$max_log_level" ] ; then
+			# Log level hasn't been met, skip
+			continue
+		elif [ -n "$_term" ] && [ "$log_level" = 2 ] ; then
+			# "Notice" is regular stdout on a term
+			printf '%s\n' "$log_message" >&${_fd_term}
+		elif [ -n "$_term" ] && [ "$log_level" = 3 ] ; then
+			# "Info" is regular stderr on a term
+			printf '%s\n' "$log_message" >&${_fd}
+		else
+			case "$log_level" in
+			1)	log_prefix="warning: " ;;
+			2)	log_prefix="notice: " ;;
+			3)	log_prefix="info: " ;;
+			4)	log_prefix="debug: " ;;
+			*)	log_prefix="error: " ;;
+			esac
+			printf '%s\n' "${log_prefix}${log_message}" >&${_fd}
+		fi
+	done
+	exit
+}
+
+# Try script name or legacy symlink name as command, else he verb to the first argument.
+script_name="${0##*/}"
+case "$script_name" in
+'zelta')
+	if [ -n "$1" ] ; then
+		zelta_verb="$1";
+		shift
+	else
+		zelta_usage
+	fi
+	;;
+*)
+	zelta_verb="$script_name"
+	;;
+esac
+
+case "$zelta_verb" in
+ipc-log)	zelta_log
+		;;
+ipc-run)
+		# For internal calls. Environment is pre-set.
+		export ZELTA_VERB="$1"
+		zelta_verb="$1"
+		shift
+		;;
+policy)		# Don't export defaults or zelta.env so we can override them with policy
+		export ZELTA_POLICY_LOG_MODE="$ZELTA_LOG_MODE"
+		export ZELTA_POLICY_LOG_COMMAND="$ZELTA_LOG_COMMAND"
+		export ZELTA_POLICY_LOG_LEVEL="$ZELTA_LOG_LEVEL"
+		zelta_init "$@"
+		;;
+*)
+		# Standard public-facing command; load defaults.
+		zelta_init "$@"
+		zelta_export
+		;;
+esac
+
+# Sanitize and load arguments into variables
+zelta_args "$@"
+
+case $zelta_verb in
+	# zelta-match.awk
+	zmatch |\
+	prune |\
+	match)		zelta_run_awk "match" ;;
+	# zelta-backup.awk
+	clone |\
+	replicate |\
+	revert |\
+	rotate |\
+	sync |\
+	zpull |\
+	zpush |\
+	backup)		zelta_run_awk "backup" ;;
+	zp |\
+	policy)		zelta_run_awk "policy" ;;
+	# Utilities
+	zeport)		zelta_run_awk "report" ;;
+	# Time
+	time)		"$@" | sh -c "time -p cat" ;;
+	# Info
+	--help|\
+	-V|\
+	--version |\
+	version)	echo $ZELTA_VERSION ;;
+	''|-?|usage)	zelta_usage ;;
+	help)		zelta_man "$@" ;;
+	*)		# Try zelta-VERB.awk
+			if [ -r "$ZELTA_SHARE/zelta-$zelta_verb.awk" ]; then
+				zelta_run_awk "$zelta_verb"
+			else
+				zelta_usage "$zelta_verb"
+			fi ;;
+esac

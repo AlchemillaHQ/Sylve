@@ -1,0 +1,33 @@
+output_dir: tmp
+shellspec_name: "050_zelta_revert_spec"
+describe_desc: "Test revert"
+skip_if_list:
+  - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+
+test_list:
+  - test_name: snapshot
+    it_desc: take a snapshot of tree before changes - %{when_command}
+    when_command: zelta snapshot --snap-name "manual_test" "$SANDBOX_ZELTA_SRC_EP"
+
+  - test_name: add_and_remove_src_datasets
+    setup_scripts:
+      - "test/test_helper.sh"
+    allow_no_output: true
+    it_desc: add and remove src datasets - %{when_command}
+    when_command: add_tree_delta
+
+  - test_name: backup_after_delta
+    it_desc: backup after deltas - %{when_command}
+    when_command: zelta backup "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+  - test_name: snapshot_again
+    it_desc: take a snapshot of tree after changes - %{when_command}
+    when_command: zelta snapshot --snap-name "another_test" "$SANDBOX_ZELTA_SRC_EP"
+
+  - test_name: revert
+    it_desc: revert to last snapshot - %{when_command}
+    when_command: zelta revert "$SANDBOX_ZELTA_SRC_EP"@manual_test
+
+  - test_name: rotate_after_revert
+    it_desc: rotates after divergence - %{when_command}
+    when_command: zelta rotate "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
