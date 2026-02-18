@@ -44,7 +44,14 @@ export interface CreateData {
         };
     };
 }
-
+export const JailStorageSchema = z.object({
+    id: z.number().int(),
+    jid: z.number().int(),
+    pool: z.string(),
+    guid: z.string(),
+    name: z.string(),
+    isBase: z.boolean()
+});
 export const SimpleJailSchema = z.object({
     id: z.number().int(),
     name: z.string(),
@@ -91,13 +98,7 @@ const JailBaseSchema = SimpleJailSchema.extend({
     inheritIPv4: z.boolean(),
     inheritIPv6: z.boolean(),
     networks: z.array(NetworkSchema).optional().default([]),
-    createdAt: z.string(),
-    resourceLimits: z.boolean().optional().default(false),
-    cores: z.number().int(),
-    memory: z.number().int(),
-    updatedAt: z.string(),
-    startedAt: z.string().nullable(),
-    stoppedAt: z.string().nullable(),
+    storages: z.array(JailStorageSchema).optional().default([]),
     type: z.enum(['freebsd', 'linux']),
     fstab: z.string(),
     devfsRuleset: z.string(),
@@ -188,6 +189,7 @@ export interface ExecPhaseState {
 
 export type SimpleJail = z.infer<typeof SimpleJailSchema>;
 export type Jail = z.infer<typeof JailSchema>;
+export type JailStorage = z.infer<typeof JailStorageSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailHook = z.infer<typeof JailHookSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;

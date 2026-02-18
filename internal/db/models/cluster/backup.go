@@ -18,7 +18,7 @@ import (
 
 const (
 	BackupJobModeDataset = "dataset"
-	BackupJobModeJails   = "jails"
+	BackupJobModeJail    = "jail"
 )
 
 type BackupTarget struct {

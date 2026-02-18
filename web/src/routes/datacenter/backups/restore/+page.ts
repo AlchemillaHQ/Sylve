@@ -1,0 +1,17 @@
+import { listBackupTargets } from '$lib/api/cluster/backups';
+import { getNodes } from '$lib/api/cluster/cluster';
+import type { BackupTarget } from '$lib/types/cluster/backups';
+import type { ClusterNode } from '$lib/types/cluster/cluster';
+import { cachedFetch } from '$lib/utils/http';
+
+export async function load() {
+    const [targets, nodes] = await Promise.all([
+        cachedFetch('backup-targets', async () => listBackupTargets(), 1000),
+        cachedFetch('cluster-nodes', async () => getNodes(), 1000)
+    ]);
+
+    return {
+        targets: targets as BackupTarget[],
+        nodes: nodes as ClusterNode[]
+    };
+}

@@ -15,11 +15,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	replicationServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/replication"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
 )
+
+func (s *Service) RegisterJobs() {
+	db.QueueRegisterJSON("replication-backup-job-run", func(ctx context.Context, payload replicationServiceInterfaces.BackupJobRunPayload) error {
+		if err := s.runBackupJobByID(ctx, payload.JobID, payload.Manual); err != nil {
+			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_run_failed")
+		}
+		return nil
+	})
+}
 
 func (s *Service) StartBackupScheduler(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -81,21 +92,32 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			continue
 		}
 
-		jobID := job.ID
-		go func() {
-			runCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
-			defer cancel()
-			if err := s.runBackupJobByID(runCtx, jobID, false); err != nil {
-				logger.L.Warn().Err(err).Uint("job_id", jobID).Msg("backup_job_run_failed")
-			}
-		}()
+		enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = db.EnqueueJSON(enqueueCtx, "replication-backup-job-run", replicationServiceInterfaces.BackupJobRunPayload{
+			JobID:  job.ID,
+			Manual: false,
+		})
+		cancel()
+
+		if err != nil {
+			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_enqueue_backup_job")
+		}
 	}
 
 	return nil
 }
 
+// RunBackupJobByID enqueues a manual backup job run via the queue system.
+// This is the public API for triggering backup jobs from handlers.
 func (s *Service) RunBackupJobByID(ctx context.Context, jobID uint) error {
-	return s.runBackupJobByID(ctx, jobID, true)
+	if jobID == 0 {
+		return fmt.Errorf("invalid_job_id")
+	}
+
+	return db.EnqueueJSON(ctx, "replication-backup-job-run", replicationServiceInterfaces.BackupJobRunPayload{
+		JobID:  jobID,
+		Manual: true,
+	})
 }
 
 func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool) error {
@@ -147,7 +169,7 @@ func (s *Service) runBackupJobByID(ctx context.Context, jobID uint, manual bool)
 			job.WithIntermediates,
 			&job.ID,
 		)
-	case clusterModels.BackupJobModeJails:
+	case clusterModels.BackupJobModeJail:
 		runErr = s.runJailBackupJob(ctx, &job)
 	default:
 		runErr = fmt.Errorf("invalid_backup_job_mode")

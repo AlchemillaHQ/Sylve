@@ -643,3 +643,22 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMore
 
 	return nil
 }
+
+func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName string, destroyMoreRecent bool) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	dataset, err := s.GZFS.ZFS.Get(ctx, snapshotName, false)
+	if err != nil {
+		return fmt.Errorf("snapshot_not_found: %v", err)
+	}
+
+	err = dataset.Rollback(ctx, destroyMoreRecent)
+	if err != nil {
+		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
+	}
+
+	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "rollback")
+
+	return nil
+}

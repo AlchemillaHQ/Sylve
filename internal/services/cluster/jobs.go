@@ -11,8 +11,10 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -45,7 +47,63 @@ type curInfo struct {
 	diskUsage float64
 }
 
-func (s *Service) fetchCPUInfo(host string, port int, clusterToken, clusterKey string) (int, float64, bool) {
+/*
+This is used to gauge whether we actually write about the cluster node to db or not,
+to prevent unnecessary churn DB writes if nothing significant has changed.
+*/
+const usageThreshold = 5.0
+
+func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
+	status := "offline"
+	if cur.healthOK {
+		status = "online"
+	}
+
+	if ex.Status != status {
+		return true
+	}
+
+	if ex.API != cur.api {
+		return true
+	}
+
+	hostname := cur.canonHost
+	if hostname == "" {
+		hostname = cur.rawHost
+	}
+
+	if ex.Hostname != hostname {
+		return true
+	}
+
+	if cur.cpu > 0 && ex.CPU != cur.cpu {
+		return true
+	}
+
+	if cur.memory > 0 && ex.Memory != cur.memory {
+		return true
+	}
+
+	if cur.disk > 0 && ex.Disk != cur.disk {
+		return true
+	}
+
+	if math.Abs(ex.CPUUsage-cur.cpuUsage) >= usageThreshold {
+		return true
+	}
+
+	if math.Abs(ex.MemoryUsage-cur.memUsage) >= usageThreshold {
+		return true
+	}
+
+	if math.Abs(ex.DiskUsage-cur.diskUsage) >= usageThreshold {
+		return true
+	}
+
+	return false
+}
+
+func (s *Service) fetchCPUInfo(host string, port int, clusterToken string) (int, float64, bool) {
 	url := fmt.Sprintf("https://%s:%d/api/info/cpu", host, port)
 
 	body, _, err := utils.HTTPGetJSONRead(
@@ -75,7 +133,7 @@ func (s *Service) fetchCPUInfo(host string, port int, clusterToken, clusterKey s
 	return cores, usage, true
 }
 
-func (s *Service) fetchRAMInfo(host string, port int, clusterToken, clusterKey string) (uint64, float64, bool) {
+func (s *Service) fetchRAMInfo(host string, port int, clusterToken string) (uint64, float64, bool) {
 	url := fmt.Sprintf("https://%s:%d/api/info/ram", host, port)
 
 	body, _, err := utils.HTTPGetJSONRead(
@@ -106,7 +164,7 @@ type PoolDisksUsageResponse struct {
 	Usage float64 `json:"usage"`
 }
 
-func (s *Service) fetchDiskInfo(host string, port int, clusterToken, clusterKey string) (uint64, float64, bool) {
+func (s *Service) fetchDiskInfo(host string, port int, clusterToken string) (uint64, float64, bool) {
 	url := fmt.Sprintf("https://%s:%d/api/zfs/pools/disks-usage", host, port)
 
 	body, _, err := utils.HTTPGetJSONRead(
@@ -144,11 +202,11 @@ func (s *Service) fetchDiskInfo(host string, port int, clusterToken, clusterKey 
 func (s *Service) fetchCanonicalHostnameAndCPU(host string, port int, clusterToken, clusterKey, selfHostname string) (string, bool, int, float64, bool) {
 	if utils.IsLocalIP(host) {
 		hostname := selfHostname
-		cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken, clusterKey)
+		cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken)
 		return hostname, true, cpuCores, usage, okCPU
 	}
 	canon, ok := s.fetchCanonicalHostnameWithToken(host, port, clusterToken, clusterKey)
-	cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken, clusterKey)
+	cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken)
 	return canon, ok, cpuCores, usage, okCPU
 }
 
@@ -215,44 +273,85 @@ func (s *Service) PopulateClusterNodes() error {
 	cfg := fut.Configuration()
 
 	current := make(map[string]curInfo, len(cfg.Servers))
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
 	for _, server := range cfg.Servers {
-		uuid := string(server.ID)
-		addr := string(server.Address)
+		wg.Add(1)
+		go func(serverID, serverAddr string) {
+			defer wg.Done()
 
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			host = addr
-		}
-		api := fmt.Sprintf("%s:%d", host, config.ParsedConfig.Port)
+			uuid := serverID
+			addr := serverAddr
 
-		canon, okHealth, cores, cpuUsage, okCPU :=
-			s.fetchCanonicalHostnameAndCPU(host, config.ParsedConfig.Port, clusterToken, clusterKey, selfHostname)
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
+			api := fmt.Sprintf("%s:%d", host, config.ParsedConfig.Port)
+			port := config.ParsedConfig.Port
 
-		memBytes, memUsedPct, okRAM := s.fetchRAMInfo(host, config.ParsedConfig.Port, clusterToken, clusterKey)
-		diskBytes, diskUsedPct, okDisk := s.fetchDiskInfo(host, config.ParsedConfig.Port, clusterToken, clusterKey)
+			// Parallelize fetches within each node
+			var nodeWg sync.WaitGroup
+			var canon string
+			var okHealth bool
+			var cores int
+			var cpuUsage float64
+			var okCPU bool
+			var memBytes uint64
+			var memUsedPct float64
+			var okRAM bool
+			var diskBytes uint64
+			var diskUsedPct float64
+			var okDisk bool
 
-		ci := curInfo{
-			nodeUUID:  uuid,
-			api:       api,
-			canonHost: canon,
-			rawHost:   host,
-			healthOK:  okHealth,
-		}
-		if okCPU {
-			ci.cpu = cores
-			ci.cpuUsage = cpuUsage
-		}
-		if okRAM {
-			ci.memory = memBytes
-			ci.memUsage = memUsedPct
-		}
-		if okDisk {
-			ci.disk = diskBytes
-			ci.diskUsage = diskUsedPct
-		}
+			nodeWg.Add(3)
 
-		current[uuid] = ci
+			go func() {
+				defer nodeWg.Done()
+				canon, okHealth, cores, cpuUsage, okCPU =
+					s.fetchCanonicalHostnameAndCPU(host, port, clusterToken, clusterKey, selfHostname)
+			}()
+
+			go func() {
+				defer nodeWg.Done()
+				memBytes, memUsedPct, okRAM = s.fetchRAMInfo(host, port, clusterToken)
+			}()
+
+			go func() {
+				defer nodeWg.Done()
+				diskBytes, diskUsedPct, okDisk = s.fetchDiskInfo(host, port, clusterToken)
+			}()
+
+			nodeWg.Wait()
+
+			ci := curInfo{
+				nodeUUID:  uuid,
+				api:       api,
+				canonHost: canon,
+				rawHost:   host,
+				healthOK:  okHealth,
+			}
+			if okCPU {
+				ci.cpu = cores
+				ci.cpuUsage = cpuUsage
+			}
+			if okRAM {
+				ci.memory = memBytes
+				ci.memUsage = memUsedPct
+			}
+			if okDisk {
+				ci.disk = diskBytes
+				ci.diskUsage = diskUsedPct
+			}
+
+			mu.Lock()
+			current[uuid] = ci
+			mu.Unlock()
+		}(string(server.ID), string(server.Address))
 	}
+
+	wg.Wait()
 
 	writeOnce := func() error {
 		return s.DB.Transaction(func(tx *gorm.DB) error {
@@ -269,6 +368,14 @@ func (s *Service) PopulateClusterNodes() error {
 				status := "offline"
 				if cur.healthOK {
 					status = "online"
+				}
+
+				// Skip update if node exists and hasn't changed significantly
+				if ex, exists := exByUUID[cur.nodeUUID]; exists {
+					if !hasSignificantChange(cur, ex) {
+						delete(exByUUID, cur.nodeUUID)
+						continue
+					}
 				}
 
 				insertRow := clusterModels.ClusterNode{

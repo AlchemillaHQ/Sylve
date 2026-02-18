@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -27,6 +28,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	replicationServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/replication"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/quic-go/quic-go"
@@ -611,6 +613,125 @@ func (s *Service) listReplicationEvents(limit int, jobID *uint) ([]ReplicationEv
 	}
 
 	return out, nil
+}
+
+func (s *Service) ListLocalBackupEventsPaginated(
+	page int,
+	size int,
+	sortField, sortDir string,
+	jobID uint,
+	search string,
+) (*replicationServiceInterfaces.BackupEventsResponse, error) {
+	if size <= 0 {
+		size = 25
+	}
+	if page <= 0 {
+		page = 1
+	}
+
+	var total int64
+	countQ := s.DB.Model(&clusterModels.BackupReplicationEvent{})
+	if jobID > 0 {
+		countQ = countQ.Where("job_id = ?", jobID)
+	}
+	if search != "" {
+		searchPattern := "%" + search + "%"
+		countQ = countQ.Where(
+			"source_dataset ILIKE ? OR destination_dataset ILIKE ? OR base_snapshot ILIKE ? OR target_snapshot ILIKE ? OR status ILIKE ? OR error ILIKE ?",
+			searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+		)
+	}
+	if err := countQ.Count(&total).Error; err != nil {
+		return nil, fmt.Errorf("failed to count backup events: %w", err)
+	}
+
+	lastPage := int(math.Ceil(float64(total) / float64(size)))
+
+	allowed := map[string]bool{
+		"id":                  true,
+		"job_id":              true,
+		"direction":           true,
+		"source_dataset":      true,
+		"destination_dataset": true,
+		"base_snapshot":       true,
+		"target_snapshot":     true,
+		"mode":                true,
+		"status":              true,
+		"started_at":          true,
+		"completed_at":        true,
+	}
+
+	field := "started_at"
+	direction := "DESC"
+
+	// Normalize camelCase to snake_case for common fields
+	normalized := strings.ToLower(sortField)
+	fieldMap := map[string]string{
+		"startedat":          "started_at",
+		"completedat":        "completed_at",
+		"sourcedataset":      "source_dataset",
+		"destinationdataset": "destination_dataset",
+		"basesnapshot":       "base_snapshot",
+		"targetsnapshot":     "target_snapshot",
+		"jobid":              "job_id",
+	}
+
+	if mapped, ok := fieldMap[normalized]; ok {
+		normalized = mapped
+	}
+
+	if allowed[normalized] {
+		field = normalized
+		dir := strings.ToUpper(sortDir)
+		if dir == "ASC" || dir == "DESC" {
+			direction = dir
+		} else {
+			direction = "ASC"
+		}
+	}
+
+	orderExpr := fmt.Sprintf("%s %s", field, direction)
+	offset := (page - 1) * size
+
+	var rows []clusterModels.BackupReplicationEvent
+	q := s.DB.Order(orderExpr).Offset(offset).Limit(size)
+	if jobID > 0 {
+		q = q.Where("job_id = ?", jobID)
+	}
+	if search != "" {
+		searchPattern := "%" + search + "%"
+		q = q.Where(
+			"source_dataset ILIKE ? OR destination_dataset ILIKE ? OR base_snapshot ILIKE ? OR target_snapshot ILIKE ? OR status ILIKE ? OR error ILIKE ?",
+			searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+		)
+	}
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch backup events: %w", err)
+	}
+
+	out := make([]replicationServiceInterfaces.BackupEventInfo, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, replicationServiceInterfaces.BackupEventInfo{
+			ID:                 row.ID,
+			JobID:              row.JobID,
+			Direction:          row.Direction,
+			RemoteAddress:      row.RemoteAddress,
+			SourceDataset:      row.SourceDataset,
+			DestinationDataset: row.DestinationDataset,
+			BaseSnapshot:       row.BaseSnapshot,
+			TargetSnapshot:     row.TargetSnapshot,
+			Mode:               row.Mode,
+			Status:             row.Status,
+			Error:              row.Error,
+			StartedAt:          row.StartedAt,
+			CompletedAt:        row.CompletedAt,
+		})
+	}
+
+	return &replicationServiceInterfaces.BackupEventsResponse{
+		LastPage: lastPage,
+		Data:     out,
+	}, nil
 }
 
 func (s *Service) beginReplicationEvent(

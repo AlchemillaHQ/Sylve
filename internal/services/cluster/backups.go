@@ -333,7 +333,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 	if mode == "" {
 		mode = clusterModels.BackupJobModeDataset
 	}
-	if mode != clusterModels.BackupJobModeDataset && mode != clusterModels.BackupJobModeJails {
+	if mode != clusterModels.BackupJobModeDataset && mode != clusterModels.BackupJobModeJail {
 		return nil, fmt.Errorf("invalid_mode")
 	}
 
@@ -381,7 +381,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		job.JailRootDataset = ""
 	}
 
-	if mode == clusterModels.BackupJobModeJails {
+	if mode == clusterModels.BackupJobModeJail {
 		if job.JailRootDataset == "" {
 			job.JailRootDataset = "zroot/sylve/jails"
 		}

@@ -96,6 +96,7 @@ func main() {
 
 	uS.RegisterJobs()
 	zS.RegisterJobs()
+	rS.RegisterJobs()
 
 	go sysS.StartDevdParser(qCtx)
 	go sysS.DevdEventsCleaner(qCtx)

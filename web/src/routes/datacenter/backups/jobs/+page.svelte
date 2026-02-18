@@ -2,7 +2,6 @@
 	import {
 		createBackupJob,
 		deleteBackupJob,
-		getBackupEvents,
 		listBackupJobs,
 		listBackupTargets,
 		runBackupJob,
@@ -12,17 +11,23 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { BackupEvent, BackupJob, BackupTarget } from '$lib/types/cluster/backups';
+	import type { BackupJob, BackupTarget } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { convertDbTime } from '$lib/utils/time';
+	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import Icon from '@iconify/svelte';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { renderWithIcon } from '$lib/utils/table';
+	import { getJails } from '$lib/api/jail/jail';
+	import { storage } from '$lib';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -32,6 +37,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let targets = resource(
 		() => 'backup-targets',
 		async () => {
@@ -42,6 +48,7 @@
 		{ initialValue: data.targets }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let jobs = resource(
 		() => 'backup-jobs',
 		async () => {
@@ -51,15 +58,28 @@
 		},
 		{ initialValue: data.jobs }
 	);
-	let nodes = $state(data.nodes);
 
+	let jails = resource(
+		() => 'jails',
+		async () => {
+			const res = await getJails();
+			updateCache('jail-list', res);
+			return res;
+		},
+		{ initialValue: [] }
+	);
+
+	// svelte-ignore state_referenced_locally
+	let nodes = $state(data.nodes);
 	let reload = $state(false);
+
 	watch(
 		() => reload,
 		(value) => {
 			if (value) {
 				jobs.refetch();
 				targets.refetch();
+				jails.refetch();
 				reload = false;
 			}
 		}
@@ -67,31 +87,43 @@
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
-	let selectedJobId = $derived(
-		activeRows !== null && activeRows.length === 1 && typeof activeRows[0].id === 'number'
-			? activeRows[0].id
-			: 0
-	);
+	let selectedJobId = $derived.by(() => {
+		if (activeRows !== null && activeRows.length === 1) {
+			const row = activeRows[0];
+			if ('id' in row && typeof row.id === 'number') {
+				return row.id;
+			}
+		}
+		return 0;
+	});
 
 	let jobModal = $state({
 		open: false,
 		edit: false,
 		name: '',
-		targetId: 0,
+		targetId: '',
 		runnerNodeId: '',
-		mode: 'dataset' as 'dataset' | 'jails',
+		mode: 'dataset' as 'dataset' | 'jail',
 		sourceDataset: '',
-		jailRootDataset: 'zroot/sylve/jails',
+		selectedJailId: '',
 		destinationDataset: '',
 		cronExpr: '0 * * * *',
 		force: false,
 		withIntermediates: true,
 		enabled: true
 	});
-	let deleteModalOpen = $state(false);
 
-	let events = $state<BackupEvent[]>([]);
-	let loadingEvents = $state(false);
+	watch(
+		[() => jobModal.mode, () => jobModal.runnerNodeId],
+		([mode, runnerNodeId], [prevMode, prevRunnerNodeId]) => {
+			if (mode === 'jail' && runnerNodeId !== '') {
+				storage.hostname = nodes.find((n) => n.nodeUUID === runnerNodeId)?.hostname || '';
+				jails.refetch();
+			}
+		}
+	);
+
+	let deleteModalOpen = $state(false);
 	let nodeNameById = $derived.by(() => {
 		const out: Record<string, string> = {};
 		for (const node of nodes) {
@@ -100,25 +132,66 @@
 		return out;
 	});
 
+	let targetNameById = $derived.by(() => {
+		const out: Record<number, string> = {};
+		for (const target of targets.current) {
+			out[target.id] = target.name;
+		}
+		return out;
+	});
+
 	const jobColumns: Column[] = [
+		{ field: 'id', title: 'ID', visible: false },
+		{
+			field: 'enabled',
+			title: 'Status',
+			formatter: (cell: CellComponent) =>
+				cell.getValue()
+					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+		},
+		{
+			field: 'mode',
+			title: 'Mode',
+			formatter: (cell: CellComponent) => {
+				const value = cell.getValue();
+
+				let v = { name: '', icon: '' };
+
+				switch (value) {
+					case 'jail':
+						v = { name: 'Jail', icon: 'hugeicons:prison' };
+						break;
+					case 'dataset':
+						v = { name: 'Dataset', icon: 'mdi:database' };
+						break;
+					default:
+						v = { name: String(value), icon: 'mdi:help' };
+				}
+
+				return renderWithIcon(v.icon, v.name);
+			}
+		},
 		{ field: 'name', title: 'Name' },
 		{
+			field: 'targetId',
+			title: 'Target',
+			formatter: (cell: CellComponent) => {
+				const value = Number(cell.getValue());
+				return targetNameById[value] || String(value);
+			}
+		},
+		{
 			field: 'runnerNodeId',
-			title: 'Run On',
+			title: 'Node',
 			formatter: (cell: CellComponent) => {
 				const value = String(cell.getValue() || '');
 				return nodeNameById[value] || value || '-';
 			}
 		},
-		{ field: 'mode', title: 'Mode' },
 		{ field: 'sourceDataset', title: 'Source' },
 		{ field: 'destinationDataset', title: 'Destination' },
 		{ field: 'cronExpr', title: 'Schedule' },
-		{
-			field: 'enabled',
-			title: 'Enabled',
-			formatter: (cell: CellComponent) => (cell.getValue() ? 'Yes' : 'No')
-		},
 		{
 			field: 'lastRunAt',
 			title: 'Last Run',
@@ -127,76 +200,76 @@
 				return value ? convertDbTime(value) : '-';
 			}
 		},
-		{ field: 'lastStatus', title: 'Last Status' }
-	];
-
-	const eventColumns: Column[] = [
-		{ field: 'id', title: 'ID' },
-		{ field: 'status', title: 'Status' },
-		{ field: 'direction', title: 'Direction' },
-		{ field: 'sourceDataset', title: 'Source' },
-		{ field: 'destinationDataset', title: 'Destination' },
 		{
-			field: 'startedAt',
-			title: 'Started',
-			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
-		},
-		{ field: 'error', title: 'Error' }
+			field: 'lastStatus',
+			title: 'Last Status',
+			formatter: (cell: CellComponent) => {
+				const value = cell.getValue();
+				if (value === 'completed') {
+					return '<span class="text-green-500">Completed</span>';
+				} else if (value === 'failed') {
+					return '<span class="text-red-500">Failed</span>';
+				} else if (value === 'running') {
+					return '<span class="text-yellow-500">Running</span>';
+				}
+				return value || '-';
+			}
+		}
 	];
 
-	let jobsTableData = $derived.by(() => {
-		const rows: Row[] = targets.current.map((target) => ({
-			id: `target-${target.id}`,
-			kind: 'target',
-			name: target.name,
-			mode: '',
-			sourceDataset: '',
-			destinationDataset: '',
-			cronExpr: '',
-			enabled: target.enabled,
-			lastRunAt: '',
-			lastStatus: '',
-			runnerNodeId: '',
-			children: jobs.current
-				.filter((job) => job.targetId === target.id)
-				.map((job) => ({
-					id: job.id,
-					kind: 'job',
-					name: job.name,
-					runnerNodeId: job.runnerNodeId || '',
-					mode: job.mode,
-					sourceDataset:
-						job.mode === 'jails'
-							? job.jailRootDataset || 'zroot/sylve/jails'
-							: job.sourceDataset || '',
-					destinationDataset: job.destinationDataset,
-					cronExpr: job.cronExpr,
-					enabled: job.enabled,
-					lastRunAt: job.lastRunAt,
-					lastStatus: job.lastStatus || ''
-				}))
-		}));
-
-		return {
-			rows,
-			columns: jobColumns
-		};
+	let tableData = $derived({
+		rows: jobs.current.map((job) => ({
+			id: job.id,
+			name: job.name,
+			targetId: job.targetId,
+			runnerNodeId: job.runnerNodeId || '',
+			mode: job.mode,
+			sourceDataset: job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || '',
+			destinationDataset: job.destinationDataset,
+			cronExpr: job.cronExpr,
+			enabled: job.enabled,
+			lastRunAt: job.lastRunAt,
+			lastStatus: job.lastStatus || ''
+		})),
+		columns: jobColumns
 	});
 
-	let eventsTableData = $derived({
-		rows: events.map((event) => ({ id: event.id, ...event })),
-		columns: eventColumns
-	});
+	let targetOptions = $derived([
+		...targets.current.map((target) => ({
+			value: String(target.id),
+			label: target.name
+		}))
+	]);
+
+	let nodeOptions = $derived([
+		{ value: '', label: 'Select a node' },
+		...nodes.map((node) => ({
+			value: node.nodeUUID,
+			label: node.hostname
+		}))
+	]);
+
+	let modeOptions = [
+		{ value: 'dataset', label: 'Single Dataset' },
+		{ value: 'jail', label: 'Jail' }
+	];
+
+	let jailOptions = $derived([
+		...jails.current.map((jail) => ({
+			value: String(jail.id),
+			label: jail.name
+		}))
+	]);
 
 	function resetJobModal() {
 		jobModal.open = false;
 		jobModal.edit = false;
 		jobModal.name = '';
-		jobModal.targetId = targets.current[0]?.id ?? 0;
+		jobModal.targetId = targets.current[0]?.id ? String(targets.current[0].id) : '';
 		jobModal.runnerNodeId = nodes[0]?.nodeUUID ?? '';
 		jobModal.mode = 'dataset';
 		jobModal.sourceDataset = '';
-		jobModal.jailRootDataset = 'zroot/sylve/jails';
+		jobModal.selectedJailId = '';
 		jobModal.destinationDataset = '';
 		jobModal.cronExpr = '0 * * * *';
 		jobModal.force = false;
@@ -217,11 +290,19 @@
 		jobModal.open = true;
 		jobModal.edit = true;
 		jobModal.name = job.name;
-		jobModal.targetId = job.targetId;
+		jobModal.targetId = String(job.targetId);
 		jobModal.runnerNodeId = job.runnerNodeId || nodes[0]?.nodeUUID || '';
-		jobModal.mode = (job.mode as 'dataset' | 'jails') || 'dataset';
+		jobModal.mode = (job.mode as 'dataset' | 'jail') || 'dataset';
 		jobModal.sourceDataset = job.sourceDataset || '';
-		jobModal.jailRootDataset = job.jailRootDataset || 'zroot/sylve/jails';
+		// Try to find the jail by matching the jailRootDataset
+		if (job.mode === 'jail' && job.jailRootDataset) {
+			const matchingJail = jails.current.find((j) =>
+				j.storages?.some((s) => !s.isBase && `${s.pool}/${s.name}` === job.jailRootDataset)
+			);
+			jobModal.selectedJailId = matchingJail ? String(matchingJail.id) : '';
+		} else {
+			jobModal.selectedJailId = '';
+		}
 		jobModal.destinationDataset = job.destinationDataset;
 		jobModal.cronExpr = job.cronExpr;
 		jobModal.force = job.force;
@@ -230,13 +311,46 @@
 	}
 
 	async function saveJob() {
+		if (!jobModal.name.trim()) {
+			toast.error('Name is required', { position: 'bottom-center' });
+			return;
+		}
+		if (!jobModal.targetId) {
+			toast.error('Target is required', { position: 'bottom-center' });
+			return;
+		}
+		if (!jobModal.destinationDataset.trim()) {
+			toast.error('Destination dataset is required', { position: 'bottom-center' });
+			return;
+		}
+		if (jobModal.mode === 'dataset' && !jobModal.sourceDataset.trim()) {
+			toast.error('Source dataset is required for dataset mode', { position: 'bottom-center' });
+			return;
+		}
+		if (jobModal.mode === 'jail' && !jobModal.selectedJailId) {
+			toast.error('Jail selection is required for jail mode', { position: 'bottom-center' });
+			return;
+		}
+
+		// Get jail dataset if in jail mode
+		let jailDataset = '';
+		if (jobModal.mode === 'jail' && jobModal.selectedJailId) {
+			const selectedJail = jails.current.find((j) => j.id === Number(jobModal.selectedJailId));
+			if (selectedJail) {
+				const rootStorage = selectedJail.storages?.find((s) => !s.isBase);
+				if (rootStorage) {
+					jailDataset = `${rootStorage.pool}/${rootStorage.name}`;
+				}
+			}
+		}
+
 		const payload: BackupJobInput = {
 			name: jobModal.name,
 			targetId: Number(jobModal.targetId),
 			runnerNodeId: jobModal.runnerNodeId,
 			mode: jobModal.mode,
 			sourceDataset: jobModal.mode === 'dataset' ? jobModal.sourceDataset : '',
-			jailRootDataset: jobModal.mode === 'jails' ? jobModal.jailRootDataset : '',
+			jailRootDataset: jobModal.mode === 'jail' ? jailDataset : '',
 			destinationDataset: jobModal.destinationDataset,
 			cronExpr: jobModal.cronExpr,
 			force: jobModal.force,
@@ -270,6 +384,7 @@
 			toast.success('Backup job deleted', { position: 'bottom-center' });
 			reload = true;
 			deleteModalOpen = false;
+			activeRows = null;
 			return;
 		}
 
@@ -282,23 +397,43 @@
 		const response = await runBackupJob(selectedJobId);
 		if (response.status === 'success') {
 			toast.success('Backup job started', { position: 'bottom-center' });
-			await refreshEvents();
+			reload = true;
 			return;
 		}
 
 		handleAPIError(response);
 		toast.error('Failed to run job', { position: 'bottom-center' });
 	}
-
-	async function refreshEvents() {
-		loadingEvents = true;
-		try {
-			events = await getBackupEvents(200, selectedJobId || undefined);
-		} finally {
-			loadingEvents = false;
-		}
-	}
 </script>
+
+{#snippet button(type: string)}
+	{#if type === 'edit' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={openEditJob} size="sm" variant="outline" class="h-6">
+			<div class="flex items-center">
+				<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
+				<span>Edit</span>
+			</div>
+		</Button>
+	{/if}
+
+	{#if type === 'delete' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6">
+			<div class="flex items-center">
+				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+				<span>Delete</span>
+			</div>
+		</Button>
+	{/if}
+
+	{#if type === 'run' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={triggerJob} size="sm" variant="outline" class="h-6">
+			<div class="flex items-center">
+				<Icon icon="mdi:play" class="mr-1 h-4 w-4" />
+				<span>Run Now</span>
+			</div>
+		</Button>
+	{/if}
+{/snippet}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
@@ -312,150 +447,161 @@
 		>
 			<div class="flex items-center">
 				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
-				<span>New Job</span>
+				<span>New</span>
 			</div>
 		</Button>
 
-		<Button onclick={openEditJob} size="sm" variant="outline" class="h-6" disabled={!selectedJobId}>
+		{@render button('edit')}
+		{@render button('delete')}
+		{@render button('run')}
+
+		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
 			<div class="flex items-center">
-				<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
-				<span>Edit</span>
+				<Icon icon="mdi:refresh" class="mr-1 h-4 w-4" />
+				<span>Refresh</span>
 			</div>
-		</Button>
-
-		<Button
-			onclick={() => (deleteModalOpen = true)}
-			size="sm"
-			variant="outline"
-			class="h-6"
-			disabled={!selectedJobId}
-		>
-			<div class="flex items-center">
-				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
-				<span>Delete</span>
-			</div>
-		</Button>
-
-		<Button onclick={triggerJob} size="sm" variant="outline" class="h-6" disabled={!selectedJobId}>
-			<div class="flex items-center">
-				<Icon icon="mdi:play" class="mr-1 h-4 w-4" />
-				<span>Run Now</span>
-			</div>
-		</Button>
-
-		<Button onclick={refreshEvents} size="sm" variant="outline" class="ml-auto h-6">
-			{loadingEvents ? 'Loading Events...' : 'Refresh Events'}
 		</Button>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<div class="h-[50%] min-h-[240px] border-b">
-			<TreeTable
-				data={jobsTableData}
-				name="backup-jobs-tree-tt"
-				bind:query
-				bind:parentActiveRow={activeRows}
-				multipleSelect={false}
-			/>
-		</div>
-
-		<div class="h-[50%] overflow-hidden p-2">
-			<div class="flex h-full flex-col overflow-hidden rounded-md border">
-				<div class="border-b px-2 py-1 text-sm font-medium">Job Runs / Replication Events</div>
-				<TreeTable
-					data={eventsTableData}
-					name="backup-job-events-tt"
-					multipleSelect={false}
-					customPlaceholder="No backup events loaded"
-				/>
-			</div>
-		</div>
+		<TreeTable
+			data={tableData}
+			name="backup-jobs-tt"
+			bind:query
+			bind:parentActiveRow={activeRows}
+			multipleSelect={false}
+		/>
 	</div>
 </div>
 
 <Dialog.Root bind:open={jobModal.open}>
 	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
 		<Dialog.Header>
-			<Dialog.Title>{jobModal.edit ? 'Edit Backup Job' : 'New Backup Job'}</Dialog.Title>
+			<Dialog.Title>
+				<div class="flex items-center gap-2">
+					<Icon icon={jobModal.edit ? 'mdi:note-edit' : 'mdi:calendar-sync'} class="h-5 w-5" />
+					<span>{jobModal.edit ? 'Edit Backup Job' : 'New Backup Job'}</span>
+				</div>
+			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="grid grid-cols-2 gap-3 py-2">
-			<div class="col-span-2 grid gap-1">
-				<label class="text-sm font-medium">Name</label>
-				<input class="border-input h-9 rounded-md border px-2" bind:value={jobModal.name} />
-			</div>
+		<div class="grid gap-4 py-0">
+			<CustomValueInput
+				label="Name"
+				placeholder="daily-backup"
+				bind:value={jobModal.name}
+				classes="space-y-1"
+			/>
 
-			<div class="grid gap-1">
-				<label class="text-sm font-medium">Target</label>
-				<select class="border-input h-9 rounded-md border px-2" bind:value={jobModal.targetId}>
-					{#each targets.current as target}
-						<option value={target.id}>{target.name} ({target.endpoint})</option>
-					{/each}
-				</select>
-			</div>
+			<div class="grid grid-cols-3 gap-4">
+				<SimpleSelect
+					label="Target"
+					placeholder="Select target"
+					options={targetOptions}
+					bind:value={jobModal.targetId}
+					onChange={() => {}}
+				/>
 
-			<div class="grid gap-1">
-				<label class="text-sm font-medium">Mode</label>
-				<select class="border-input h-9 rounded-md border px-2" bind:value={jobModal.mode}>
-					<option value="dataset">Dataset</option>
-					<option value="jails">Jails</option>
-				</select>
-			</div>
+				<SimpleSelect
+					label="Run On Node"
+					placeholder="Select node"
+					options={nodeOptions}
+					bind:value={jobModal.runnerNodeId}
+					onChange={() => {}}
+				/>
 
-			<div class="col-span-2 grid gap-1">
-				<label class="text-sm font-medium">Run On Node</label>
-				<select class="border-input h-9 rounded-md border px-2" bind:value={jobModal.runnerNodeId}>
-					{#each nodes as node}
-						<option value={node.nodeUUID}>{node.hostname} ({node.api})</option>
-					{/each}
-				</select>
-			</div>
-
-			{#if jobModal.mode === 'dataset'}
-				<div class="col-span-2 grid gap-1">
-					<label class="text-sm font-medium">Source Dataset</label>
-					<input
-						class="border-input h-9 rounded-md border px-2"
-						bind:value={jobModal.sourceDataset}
-					/>
-				</div>
-			{:else}
-				<div class="col-span-2 grid gap-1">
-					<label class="text-sm font-medium">Jail Root Dataset</label>
-					<input
-						class="border-input h-9 rounded-md border px-2"
-						bind:value={jobModal.jailRootDataset}
-					/>
-				</div>
-			{/if}
-
-			<div class="col-span-2 grid gap-1">
-				<label class="text-sm font-medium">Destination Dataset (on target)</label>
-				<input
-					class="border-input h-9 rounded-md border px-2"
-					bind:value={jobModal.destinationDataset}
+				<SimpleSelect
+					label="Mode"
+					placeholder="Select mode"
+					options={modeOptions}
+					bind:value={jobModal.mode}
+					onChange={() => {}}
 				/>
 			</div>
 
-			<div class="grid gap-1">
-				<label class="text-sm font-medium">Cron (5-field)</label>
-				<input class="border-input h-9 rounded-md border px-2" bind:value={jobModal.cronExpr} />
-			</div>
-		</div>
+			<div class="grid grid-cols-2 gap-4">
+				{#if jobModal.mode === 'dataset'}
+					<CustomValueInput
+						label="Source Dataset"
+						placeholder="zroot/data"
+						bind:value={jobModal.sourceDataset}
+						classes="space-y-1"
+					/>
+				{:else}
+					<SimpleSelect
+						label="Jail"
+						placeholder={jails.current.length === 0 ? 'No jails available' : 'Select jail'}
+						options={jailOptions}
+						bind:value={jobModal.selectedJailId}
+						onChange={() => {}}
+						disabled={jails.current.length === 0}
+					/>
+				{/if}
 
-		<div class="flex items-end gap-4 pb-1 text-sm">
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={jobModal.force} />
-				Force recv
-			</label>
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={jobModal.withIntermediates} />
-				With intermediates
-			</label>
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={jobModal.enabled} />
-				Enabled
-			</label>
+				<CustomValueInput
+					label="Destination Dataset (on target)"
+					placeholder="backup/server1"
+					bind:value={jobModal.destinationDataset}
+					classes="space-y-1"
+				/>
+			</div>
+
+			<CustomValueInput
+				label="Schedule (Cron, 5-field)"
+				placeholder="0 * * * *"
+				bind:value={jobModal.cronExpr}
+				classes="space-y-1"
+			/>
+
+			<div class="grid grid-cols-3 gap-1">
+				<CustomCheckbox
+					label="Enabled"
+					bind:checked={jobModal.enabled}
+					classes="flex items-center gap-2"
+				/>
+				<CustomCheckbox
+					label="Force receive"
+					bind:checked={jobModal.force}
+					classes="flex items-center gap-2"
+				/>
+				<CustomCheckbox
+					label="With intermediates"
+					bind:checked={jobModal.withIntermediates}
+					classes="flex items-center gap-2"
+				/>
+			</div>
+
+			<div class="rounded-md bg-muted p-3 text-sm">
+				<p class="font-medium">Job Summary:</p>
+				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
+					{#if jobModal.mode === 'jail'}
+						{@const selectedJail = jails.current.find(
+							(j) => j.id === Number(jobModal.selectedJailId)
+						)}
+						<li>
+							Jail <code class="rounded bg-background px-1"
+								>{selectedJail?.name || '(not selected)'}</code
+							> will be backed up
+						</li>
+					{:else}
+						<li>
+							Dataset <code class="rounded bg-background px-1"
+								>{jobModal.sourceDataset || '(not set)'}</code
+							> will be backed up
+						</li>
+					{/if}
+					<li>
+						Snapshots will be sent to <code class="rounded bg-background px-1"
+							>{jobModal.destinationDataset || '(not set)'}</code
+						>
+					</li>
+					<li>
+						Schedule: <code class="rounded bg-background px-1"
+							>{cronToHuman(jobModal.cronExpr) || '(not set)'}</code
+						>
+					</li>
+				</ul>
+			</div>
 		</div>
 
 		<Dialog.Footer>

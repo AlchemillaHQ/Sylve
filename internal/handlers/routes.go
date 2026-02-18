@@ -433,6 +433,7 @@ func RegisterRoutes(r *gin.Engine,
 			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService))
 			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService))
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(clusterService, replicationService))
+			targets.GET("/:id/snapshots", clusterHandlers.BackupTargetSnapshots(clusterService, replicationService))
 			targets.GET("/:id/status", clusterHandlers.BackupTargetStatus(clusterService, replicationService))
 		}
 
@@ -446,7 +447,8 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		clusterBackups.GET("/events", clusterHandlers.BackupEvents(replicationService))
-		clusterBackups.POST("/pull", clusterHandlers.PullBackupDataset(clusterService, replicationService))
+		clusterBackups.GET("/events/remote", clusterHandlers.BackupEventsRemote(replicationService))
+		clusterBackups.POST("/pull", clusterHandlers.PullBackupDataset(clusterService, replicationService, zfsService))
 	}
 
 	vnc := api.Group("/vnc")

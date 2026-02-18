@@ -75,6 +75,7 @@
 	});
 
 	let hash = $state('');
+	let reload = $state(false);
 
 	onMount(async () => {
 		hash = await sha256(storage.token || '', 1);
@@ -88,6 +89,7 @@
 				name={'smb-audit-log-tt'}
 				data={table}
 				ajaxURL="/api/samba/audit-logs?hash={hash}"
+				bind:reload
 			/>
 		{/if}
 	</div>

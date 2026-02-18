@@ -419,6 +419,17 @@ func (s *Service) ListTargetStatus(ctx context.Context, target string, limit int
 	return resp.Events, nil
 }
 
+// ListTargetSnapshots lists snapshots for a dataset on a remote target.
+// Used for restore operations to see available backup points.
+func (s *Service) ListTargetSnapshots(ctx context.Context, target string, dataset string) ([]SnapInfo, error) {
+	endpoint, err := s.resolvePeerEndpoint(target)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.fetchRemoteSnapshots(ctx, endpoint, dataset)
+}
+
 func (s *Service) fetchRemoteSnapshots(ctx context.Context, endpoint, dataset string) ([]SnapInfo, error) {
 	token, err := s.clusterToken()
 	if err != nil {

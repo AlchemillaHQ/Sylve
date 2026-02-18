@@ -444,6 +444,10 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 		logger.L.Error().Err(err).Msg("vm: storage_detach: failed_to_remove_storage_xml")
 	}
 
+	if err := s.DB.Delete(&storage).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_storage_record: %w", err)
+	}
+
 	if storage.DatasetID != nil {
 		var dataset vmModels.VMStorageDataset
 		if err := s.DB.First(&dataset, "id = ?", *storage.DatasetID).Error; err != nil {
@@ -453,10 +457,6 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 		if err := s.DB.Delete(&dataset).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_storage_dataset_record: %w", err)
 		}
-	}
-
-	if err := s.DB.Delete(&storage).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_storage_record: %w", err)
 	}
 
 	return nil

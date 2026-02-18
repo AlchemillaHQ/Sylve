@@ -45,6 +45,7 @@
 		reload = $bindable()
 	}: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
 		columnWidths: {},
 		expandedRows: {}

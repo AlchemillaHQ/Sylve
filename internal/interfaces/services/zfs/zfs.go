@@ -67,6 +67,7 @@ type ZfsServiceInterface interface {
 	DeletePeriodicSnapshot(guid string) error
 	StartSnapshotScheduler(ctx context.Context)
 	RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error
+	RollbackSnapshotByName(ctx context.Context, snapshotName string, destroyMoreRecent bool) error
 
 	PoolFromDataset(ctx context.Context, name string) (string, error)
 	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
