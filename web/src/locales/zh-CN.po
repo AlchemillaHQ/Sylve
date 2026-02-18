@@ -6016,6 +6016,7 @@ msgstr "{0} 切换失败"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Jail"
 msgstr "Jail"
 
@@ -6532,7 +6533,6 @@ msgstr ""
 msgid "Direction"
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source Dataset"
 msgstr ""
@@ -6655,6 +6655,7 @@ msgstr ""
 msgid "Mode"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source"
 msgstr ""
@@ -6886,9 +6887,8 @@ msgstr ""
 #~ msgid "Snapshot Name"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/restore/+page.svelte
-msgid "Select a backup target"
-msgstr ""
+#~ msgid "Select a backup target"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Please select a backup target first"
@@ -7079,4 +7079,11 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Success"
+msgstr ""
+
+#~ msgid "No active backup jobs configured for this target - showing all datasets"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/restore/+page.svelte
+msgid "No backup jobs found for this target"
 msgstr ""

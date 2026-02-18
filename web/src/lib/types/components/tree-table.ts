@@ -15,6 +15,7 @@ export interface Column {
     formatter?:
     | ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
     | string;
+    minWidth?: number | string;
 }
 
 export interface TreeTableState {

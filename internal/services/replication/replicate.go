@@ -102,6 +102,31 @@ func (s *Service) replicateDatasetToNode(
 
 	targetSnapshot := localSnaps[len(localSnaps)-1]
 
+	// Debug: log local snapshots
+	logger.L.Debug().
+		Str("src_dataset", srcDataset).
+		Str("dst_dataset", dstDataset).
+		Int("local_count", len(localSnaps)).
+		Int("remote_count", len(remoteSnaps)).
+		Msg("replication_snapshot_comparison_start")
+
+	for i, snap := range localSnaps {
+		logger.L.Debug().
+			Int("index", i).
+			Str("name", snap.Name).
+			Str("guid", snap.GUID).
+			Str("createtxg", snap.CreateTXG).
+			Msg("local_snapshot")
+	}
+	for i, snap := range remoteSnaps {
+		logger.L.Debug().
+			Int("index", i).
+			Str("name", snap.Name).
+			Str("guid", snap.GUID).
+			Str("createtxg", snap.CreateTXG).
+			Msg("remote_snapshot")
+	}
+
 	remoteByGUID := make(map[string]struct{}, len(remoteSnaps))
 	for _, snap := range remoteSnaps {
 		remoteByGUID[snap.GUID] = struct{}{}
@@ -110,8 +135,47 @@ func (s *Service) replicateDatasetToNode(
 	var base *gzfs.Dataset
 	for _, snap := range localSnaps {
 		if _, ok := remoteByGUID[snap.GUID]; ok {
+			logger.L.Debug().
+				Str("name", snap.Name).
+				Str("guid", snap.GUID).
+				Msg("found_common_snapshot")
 			base = snap
 		}
+	}
+
+	if base == nil {
+		logger.L.Debug().Msg("no_common_snapshot_found_will_send_full")
+		// If remote has snapshots but we found no common base, this is problematic
+		// A full send will fail because destination already has data
+		if len(remoteSnaps) > 0 {
+			logger.L.Warn().
+				Str("src_dataset", srcDataset).
+				Str("dst_dataset", dstDataset).
+				Int("local_snapshots", len(localSnaps)).
+				Int("remote_snapshots", len(remoteSnaps)).
+				Msg("remote_has_snapshots_but_no_common_base_found_full_send_will_likely_fail")
+
+			// Log all GUIDs for debugging
+			localGUIDs := make([]string, 0, len(localSnaps))
+			for _, s := range localSnaps {
+				localGUIDs = append(localGUIDs, s.GUID)
+			}
+			remoteGUIDs := make([]string, 0, len(remoteSnaps))
+			for _, s := range remoteSnaps {
+				remoteGUIDs = append(remoteGUIDs, s.GUID)
+			}
+			logger.L.Debug().
+				Strs("local_guids", localGUIDs).
+				Strs("remote_guids", remoteGUIDs).
+				Msg("guid_comparison_for_debugging")
+		}
+	} else {
+		logger.L.Debug().
+			Str("base_name", base.Name).
+			Str("base_guid", base.GUID).
+			Str("target_name", targetSnapshot.Name).
+			Str("target_guid", targetSnapshot.GUID).
+			Msg("will_send_incremental")
 	}
 
 	plan := &Plan{
@@ -119,6 +183,24 @@ func (s *Service) replicateDatasetToNode(
 		DestinationDataset: dstDataset,
 		Endpoint:           endpoint,
 		TargetSnapshot:     targetSnapshot.Name,
+	}
+
+	// Early check: if remote has snapshots but we have no common base,
+	// a full send will fail. Error out now with a helpful message.
+	// Unless force is true, in which case we'll destroy remote snapshots first.
+	if base == nil && len(remoteSnaps) > 0 {
+		if !force {
+			return nil, fmt.Errorf(
+				"cannot_replicate: destination '%s' has %d existing snapshot(s) but no common snapshot found with source '%s'. "+
+					"This usually means source snapshots were deleted or the datasets have diverged. "+
+					"Options: 1) Restore a matching snapshot on source, 2) Enable 'force' mode to destroy destination and start fresh (data loss warning)",
+				dstDataset, len(remoteSnaps), srcDataset,
+			)
+		}
+		logger.L.Warn().
+			Str("dst_dataset", dstDataset).
+			Int("remote_snapshots", len(remoteSnaps)).
+			Msg("force_mode_enabled_will_destroy_destination_snapshots")
 	}
 
 	if base != nil && base.GUID == targetSnapshot.GUID {
@@ -134,11 +216,12 @@ func (s *Service) replicateDatasetToNode(
 	}
 
 	conn, stream, err := s.openStream(ctx, endpoint, request{
-		Version: 1,
-		Action:  "receive",
-		Token:   token,
-		Dataset: dstDataset,
-		Force:   force,
+		Version:  1,
+		Action:   "receive",
+		Token:    token,
+		Dataset:  dstDataset,
+		Force:    force,
+		FullSend: base == nil,
 	})
 	if err != nil {
 		return nil, err
@@ -165,17 +248,13 @@ func (s *Service) replicateDatasetToNode(
 		mode,
 		jobID,
 	)
-	defer func() {
-		if r := recover(); r != nil {
-			s.completeReplicationEvent(event, fmt.Errorf("panic: %v", r))
-			panic(r)
-		}
-	}()
+	completer := s.newEventCompleter(event)
+	defer completer.Ensure()
 
 	if base == nil {
 		plan.Mode = "full"
 		if err := s.sendSnapshot(ctx, targetSnapshot.Name, stream); err != nil {
-			s.completeReplicationEvent(event, err)
+			completer.Complete(err)
 			return nil, err
 		}
 	} else {
@@ -183,35 +262,35 @@ func (s *Service) replicateDatasetToNode(
 		if withIntermediates {
 			plan.Mode = "incremental_intermediates"
 			if err := s.sendIncrementalWithIntermediates(ctx, base.Name, targetSnapshot.Name, stream); err != nil {
-				s.completeReplicationEvent(event, err)
+				completer.Complete(err)
 				return nil, err
 			}
 		} else {
 			plan.Mode = "incremental"
 			if err := s.sendIncremental(ctx, base.Name, targetSnapshot.Name, stream); err != nil {
-				s.completeReplicationEvent(event, err)
+				completer.Complete(err)
 				return nil, err
 			}
 		}
 	}
 
 	if err := stream.Close(); err != nil {
-		s.completeReplicationEvent(event, err)
+		completer.Complete(err)
 		return nil, err
 	}
 
 	reader := bufio.NewReader(stream)
 	var resp response
 	if err := readJSONLine(reader, maxHeaderBytes, &resp); err != nil {
-		s.completeReplicationEvent(event, err)
+		completer.Complete(err)
 		return nil, err
 	}
 	if !resp.OK {
 		runErr := errors.New(resp.Error)
-		s.completeReplicationEvent(event, runErr)
+		completer.Complete(runErr)
 		return nil, runErr
 	}
-	s.completeReplicationEvent(event, nil)
+	completer.Complete(nil)
 
 	return plan, nil
 }
@@ -336,7 +415,8 @@ func (s *Service) PullDatasetFromNode(
 		plan.Mode = "pull_incremental"
 	}
 
-	if err := s.receiveStream(ctx, reader, dstDataset, force); err != nil {
+	fullSend := plan.BaseSnapshot == ""
+	if err := s.receiveStream(ctx, reader, dstDataset, force, fullSend); err != nil {
 		return nil, err
 	}
 

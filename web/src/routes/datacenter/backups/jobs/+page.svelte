@@ -59,19 +59,34 @@
 		{ initialValue: data.jobs }
 	);
 
-	let jails = resource(
-		() => 'jails',
-		async () => {
+	let jails = $state<any[]>([]);
+	let jailsLoading = $state(false);
+
+	async function loadJails() {
+		if (jails.length > 0 || jailsLoading) return;
+		jailsLoading = true;
+		try {
 			const res = await getJails();
 			updateCache('jail-list', res);
-			return res;
-		},
-		{ initialValue: [] }
-	);
+			jails = res;
+		} finally {
+			jailsLoading = false;
+		}
+	}
 
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 	let reload = $state(false);
+
+	watch(
+		() => jobs.current,
+		(currentJobs) => {
+			const hasJailJobs = currentJobs.some((job) => job.mode === 'jail');
+			if (hasJailJobs && jails.length === 0 && !jailsLoading) {
+				loadJails();
+			}
+		}
+	);
 
 	watch(
 		() => reload,
@@ -79,7 +94,9 @@
 			if (value) {
 				jobs.refetch();
 				targets.refetch();
-				jails.refetch();
+				if (jails.length > 0) {
+					loadJails();
+				}
 				reload = false;
 			}
 		}
@@ -114,11 +131,11 @@
 	});
 
 	watch(
-		[() => jobModal.mode, () => jobModal.runnerNodeId],
-		([mode, runnerNodeId], [prevMode, prevRunnerNodeId]) => {
-			if (mode === 'jail' && runnerNodeId !== '') {
+		[() => jobModal.mode, () => jobModal.runnerNodeId, () => jobModal.open],
+		([mode, runnerNodeId, open], [prevMode, prevRunnerNodeId, prevOpen]) => {
+			if (open && mode === 'jail' && runnerNodeId !== '') {
 				storage.hostname = nodes.find((n) => n.nodeUUID === runnerNodeId)?.hostname || '';
-				jails.refetch();
+				loadJails();
 			}
 		}
 	);
@@ -143,14 +160,6 @@
 	const jobColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
-			field: 'enabled',
-			title: 'Status',
-			formatter: (cell: CellComponent) =>
-				cell.getValue()
-					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
-					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
-		},
-		{
 			field: 'mode',
 			title: 'Mode',
 			formatter: (cell: CellComponent) => {
@@ -171,6 +180,14 @@
 
 				return renderWithIcon(v.icon, v.name);
 			}
+		},
+		{
+			field: 'enabled',
+			title: 'Status',
+			formatter: (cell: CellComponent) =>
+				cell.getValue()
+					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 		},
 		{ field: 'name', title: 'Name' },
 		{
@@ -217,6 +234,24 @@
 		}
 	];
 
+	function getSource(mode: string, dataset: string): string {
+		// For jail mode, try to resolve the jail name if jails are loaded
+		if (mode === 'jail' && jails.length > 0 && dataset) {
+			const jail = jails.find((j: any) => {
+				const baseStorage = j.storages?.find((s: any) => s.isBase);
+				if (baseStorage) {
+					const jailDataset = `${baseStorage.pool}/sylve/jails/${j.ctId}`;
+					return jailDataset === dataset;
+				}
+				return false;
+			});
+			if (jail) {
+				return jail.name;
+			}
+		}
+		return dataset || '';
+	}
+
 	let tableData = $derived({
 		rows: jobs.current.map((job) => ({
 			id: job.id,
@@ -224,7 +259,10 @@
 			targetId: job.targetId,
 			runnerNodeId: job.runnerNodeId || '',
 			mode: job.mode,
-			sourceDataset: job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || '',
+			sourceDataset: getSource(
+				job.mode,
+				job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || ''
+			),
 			destinationDataset: job.destinationDataset,
 			cronExpr: job.cronExpr,
 			enabled: job.enabled,
@@ -255,7 +293,7 @@
 	];
 
 	let jailOptions = $derived([
-		...jails.current.map((jail) => ({
+		...jails.map((jail) => ({
 			value: String(jail.id),
 			label: jail.name
 		}))
@@ -282,7 +320,7 @@
 		jobModal.open = true;
 	}
 
-	function openEditJob() {
+	async function openEditJob() {
 		if (!selectedJobId) return;
 		const job = jobs.current.find((j) => j.id === selectedJobId);
 		if (!job) return;
@@ -294,15 +332,26 @@
 		jobModal.runnerNodeId = job.runnerNodeId || nodes[0]?.nodeUUID || '';
 		jobModal.mode = (job.mode as 'dataset' | 'jail') || 'dataset';
 		jobModal.sourceDataset = job.sourceDataset || '';
-		// Try to find the jail by matching the jailRootDataset
-		if (job.mode === 'jail' && job.jailRootDataset) {
-			const matchingJail = jails.current.find((j) =>
-				j.storages?.some((s) => !s.isBase && `${s.pool}/${s.name}` === job.jailRootDataset)
-			);
-			jobModal.selectedJailId = matchingJail ? String(matchingJail.id) : '';
+
+		// Load jails if in jail mode
+		if (job.mode === 'jail') {
+			await loadJails();
+			// Try to find the jail by matching the jailRootDataset
+			if (job.jailRootDataset) {
+				const matchingJail = jails.find((j: any) => {
+					const baseStorage = j.storages?.find((s: any) => s.isBase);
+					if (baseStorage) {
+						const jailDataset = `${baseStorage.pool}/sylve/jails/${j.ctId}`;
+						return jailDataset === job.jailRootDataset;
+					}
+					return false;
+				});
+				jobModal.selectedJailId = matchingJail ? String(matchingJail.id) : '';
+			}
 		} else {
 			jobModal.selectedJailId = '';
 		}
+
 		jobModal.destinationDataset = job.destinationDataset;
 		jobModal.cronExpr = job.cronExpr;
 		jobModal.force = job.force;
@@ -335,11 +384,11 @@
 		// Get jail dataset if in jail mode
 		let jailDataset = '';
 		if (jobModal.mode === 'jail' && jobModal.selectedJailId) {
-			const selectedJail = jails.current.find((j) => j.id === Number(jobModal.selectedJailId));
+			const selectedJail = jails.find((j: any) => j.id === Number(jobModal.selectedJailId));
 			if (selectedJail) {
-				const rootStorage = selectedJail.storages?.find((s) => !s.isBase);
-				if (rootStorage) {
-					jailDataset = `${rootStorage.pool}/${rootStorage.name}`;
+				const baseStorage = selectedJail.storages?.find((s: any) => s.isBase);
+				if (baseStorage) {
+					jailDataset = `${baseStorage.pool}/sylve/jails/${selectedJail.ctId}`;
 				}
 			}
 		}
@@ -530,11 +579,11 @@
 				{:else}
 					<SimpleSelect
 						label="Jail"
-						placeholder={jails.current.length === 0 ? 'No jails available' : 'Select jail'}
+						placeholder={jails.length === 0 ? 'No jails available' : 'Select jail'}
 						options={jailOptions}
 						bind:value={jobModal.selectedJailId}
 						onChange={() => {}}
-						disabled={jails.current.length === 0}
+						disabled={jails.length === 0}
 					/>
 				{/if}
 
@@ -575,9 +624,7 @@
 				<p class="font-medium">Job Summary:</p>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 					{#if jobModal.mode === 'jail'}
-						{@const selectedJail = jails.current.find(
-							(j) => j.id === Number(jobModal.selectedJailId)
-						)}
+						{@const selectedJail = jails.find((j: any) => j.id === Number(jobModal.selectedJailId))}
 						<li>
 							Jail <code class="rounded bg-background px-1"
 								>{selectedJail?.name || '(not selected)'}</code

@@ -33,8 +33,16 @@ func (s *Service) RegisterJobs() {
 }
 
 func (s *Service) StartBackupScheduler(ctx context.Context) {
+	// Clean up any stale "running" events from previous process crashes or restarts
+	// Events older than 15 minutes that are still "running" are marked as interrupted
+	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_replication_events")
+	}
+
 	ticker := time.NewTicker(30 * time.Second)
+	cleanupTicker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
+	defer cleanupTicker.Stop()
 
 	for {
 		select {
@@ -43,6 +51,11 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 		case <-ticker.C:
 			if err := s.runBackupSchedulerTick(ctx); err != nil {
 				logger.L.Warn().Err(err).Msg("backup_scheduler_tick_failed")
+			}
+		case <-cleanupTicker.C:
+			// Periodically clean up stale events that have been "running" for too long
+			if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
+				logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")
 			}
 		}
 	}

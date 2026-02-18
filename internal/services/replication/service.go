@@ -62,6 +62,7 @@ type request struct {
 	Prefix            string `json:"prefix,omitempty"`
 	Limit             int    `json:"limit,omitempty"`
 	Force             bool   `json:"force,omitempty"`
+	FullSend          bool   `json:"fullSend,omitempty"`
 	BaseSnapshot      string `json:"baseSnapshot,omitempty"`
 	TargetSnapshot    string `json:"targetSnapshot,omitempty"`
 	WithIntermediates bool   `json:"withIntermediates,omitempty"`
@@ -427,9 +428,11 @@ func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 			"push",
 			nil,
 		)
+		completer := s.newEventCompleter(event)
+		defer completer.Ensure()
 
-		err := s.receiveStream(context.Background(), reader, req.Dataset, req.Force)
-		s.completeReplicationEvent(event, err)
+		err := s.receiveStream(context.Background(), reader, req.Dataset, req.Force, req.FullSend)
+		completer.Complete(err)
 		if err != nil {
 			_ = writeJSONLine(stream, response{OK: false, Error: err.Error()})
 			return
@@ -473,14 +476,16 @@ func (s *Service) handleStream(stream *quic.Stream, remoteAddr string) {
 			mode,
 			nil,
 		)
+		sendCompleter := s.newEventCompleter(event)
+		defer sendCompleter.Ensure()
 
 		if err := writeJSONLine(stream, response{OK: true, TargetSnapshot: targetSnapshot}); err != nil {
-			s.completeReplicationEvent(event, err)
+			sendCompleter.Complete(err)
 			return
 		}
 
 		err = s.sendDataset(context.Background(), targetSnapshot, baseSnapshot, req.WithIntermediates, stream)
-		s.completeReplicationEvent(event, err)
+		sendCompleter.Complete(err)
 		if err != nil {
 			logger.L.Warn().Err(err).Str("remote", remoteAddr).Msg("replication_send_failed")
 		}
@@ -775,20 +780,117 @@ func (s *Service) completeReplicationEvent(event *clusterModels.BackupReplicatio
 	}
 
 	now := time.Now().UTC()
-	updates := map[string]any{
-		"completed_at": &now,
-		"error":        "",
-		"status":       "success",
-	}
+	status := "success"
+	errMsg := ""
 
 	if runErr != nil {
-		updates["status"] = "failed"
-		updates["error"] = runErr.Error()
+		status = "failed"
+		errMsg = runErr.Error()
+	}
+
+	updates := map[string]any{
+		"completed_at": &now,
+		"error":        errMsg,
+		"status":       status,
 	}
 
 	if err := s.DB.Model(&clusterModels.BackupReplicationEvent{}).Where("id = ?", event.ID).Updates(updates).Error; err != nil {
-		logger.L.Debug().Err(err).Msg("failed_to_update_replication_event")
+		logger.L.Warn().Err(err).Uint("event_id", event.ID).Str("status", status).Msg("failed_to_update_replication_event")
+	} else {
+		logger.L.Debug().Uint("event_id", event.ID).Str("status", status).Str("error", errMsg).Msg("replication_event_completed")
 	}
+}
+
+// eventCompleter wraps an event and ensures it's completed exactly once.
+// Use this with defer to guarantee event completion even on unexpected errors.
+type eventCompleter struct {
+	service   *Service
+	event     *clusterModels.BackupReplicationEvent
+	completed bool
+	finalErr  error
+}
+
+func (s *Service) newEventCompleter(event *clusterModels.BackupReplicationEvent) *eventCompleter {
+	return &eventCompleter{
+		service: s,
+		event:   event,
+	}
+}
+
+// Complete marks the event as completed with the given error. Only the first call takes effect.
+func (ec *eventCompleter) Complete(err error) {
+	if ec.completed {
+		return
+	}
+	ec.completed = true
+	ec.finalErr = err
+	ec.service.completeReplicationEvent(ec.event, err)
+}
+
+// Ensure is called in a defer to guarantee the event is completed.
+// If Complete was never called, it marks the event as failed with an interrupted error.
+func (ec *eventCompleter) Ensure() {
+	if ec.completed {
+		return
+	}
+	ec.Complete(fmt.Errorf("replication_interrupted"))
+}
+
+// CleanupStaleEvents marks any "running" events older than the threshold as interrupted.
+// This should be called on service startup to handle events from crashed/restarted processes.
+func (s *Service) CleanupStaleEvents(ctx context.Context, maxAge time.Duration) error {
+	if s.DB == nil {
+		return nil
+	}
+
+	threshold := time.Now().UTC().Add(-maxAge)
+	now := time.Now().UTC()
+
+	result := s.DB.Model(&clusterModels.BackupReplicationEvent{}).
+		Where("status = ? AND started_at < ?", "running", threshold).
+		Updates(map[string]any{
+			"status":       "interrupted",
+			"error":        "process_restart_or_crash",
+			"completed_at": &now,
+		})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	if result.RowsAffected > 0 {
+		logger.L.Info().Int64("count", result.RowsAffected).Msg("cleaned_up_stale_replication_events")
+	}
+
+	return nil
+}
+
+// ForceCleanupAllStaleEvents marks ALL "running" events as interrupted regardless of age.
+// Use this for manual cleanup when events are stuck.
+func (s *Service) ForceCleanupAllStaleEvents(ctx context.Context) (int64, error) {
+	if s.DB == nil {
+		return 0, nil
+	}
+
+	now := time.Now().UTC()
+
+	result := s.DB.Model(&clusterModels.BackupReplicationEvent{}).
+		Where("status = ?", "running").
+		Updates(map[string]any{
+			"status":       "interrupted",
+			"error":        "force_cleanup",
+			"completed_at": &now,
+		})
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	if result.RowsAffected > 0 {
+		logger.L.Info().Int64("count", result.RowsAffected).Msg("force_cleaned_up_running_events")
+	}
+
+	return result.RowsAffected, nil
 }
 
 func (s *Service) resolveTargetSnapshot(ctx context.Context, dataset, targetSnapshot string) (string, error) {
@@ -896,7 +998,7 @@ func writeJSONLine(w io.Writer, v any) error {
 	return err
 }
 
-func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, force bool) error {
+func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, force bool, fullSend bool) error {
 	if in == nil {
 		return fmt.Errorf("input_reader_is_nil")
 	}
@@ -910,18 +1012,39 @@ func (s *Service) receiveStream(ctx context.Context, in io.Reader, dest string, 
 		return err
 	}
 
+	// Only destroy destination snapshots for FULL sends with force mode.
+	// For incremental sends, we need the existing snapshots as the base!
+	if force && fullSend {
+		if err := s.destroyDestinationSnapshots(ctx, dest); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", dest).Msg("failed_to_destroy_destination_snapshots")
+			// Don't return error - zfs recv might still succeed
+		}
+	}
+
 	// Wrap reader with progress tracking
 	progressIn := newProgressReader(in, dest, "receive")
-	logger.L.Debug().Str("dataset", dest).Bool("force", force).Msg("starting_zfs_receive")
+	logger.L.Debug().Str("dataset", dest).Bool("force", force).Bool("fullSend", fullSend).Msg("starting_zfs_receive")
 
 	if err := s.GZFS.ZFS.ReceiveStream(ctx, progressIn, dest, force); err != nil {
+		errMsg := err.Error()
+		bytesRx := progressIn.BytesRead()
+
 		logger.L.Debug().
 			Str("dataset", dest).
-			Int64("bytes_received", progressIn.BytesRead()).
-			Float64("mb_received", float64(progressIn.BytesRead())/(1024*1024)).
+			Int64("bytes_received", bytesRx).
+			Float64("mb_received", float64(bytesRx)/(1024*1024)).
 			Err(err).
 			Msg("zfs_receive_failed")
-		return fmt.Errorf("zfs_recv_failed: %w", err)
+
+		// Detect common issues and provide helpful context
+		if strings.Contains(errMsg, "destination has snapshots") {
+			return fmt.Errorf("recv_failed: destination '%s' has existing snapshots - this usually means a full send was attempted when incremental should have been used. Check that source and destination have matching snapshot GUIDs. Original error: %w", dest, err)
+		}
+		if strings.Contains(errMsg, "destination") && strings.Contains(errMsg, "exists") {
+			return fmt.Errorf("recv_failed: destination '%s' exists - use force flag or ensure incremental send from a common snapshot. Original error: %w", dest, err)
+		}
+
+		return fmt.Errorf("recv_failed: %w", err)
 	}
 
 	logger.L.Debug().
@@ -1002,5 +1125,68 @@ func (s *Service) clearResumableReceiveState(ctx context.Context, dataset string
 	}
 
 	logger.L.Warn().Str("dataset", name).Msg("cleared_stale_resumable_receive_state")
+	return nil
+}
+
+// destroyDestinationSnapshots removes all snapshots from the destination dataset.
+// This is used in force mode to allow a full send to overwrite existing data.
+func (s *Service) destroyDestinationSnapshots(ctx context.Context, dataset string) error {
+	name := strings.TrimSpace(dataset)
+	if name == "" {
+		return fmt.Errorf("dataset_is_empty")
+	}
+
+	// List snapshots for this specific dataset
+	listCmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", name)
+	var listStderr bytes.Buffer
+	listCmd.Stderr = &listStderr
+
+	output, err := listCmd.Output()
+	if err != nil {
+		stderr := strings.TrimSpace(listStderr.String())
+		if isDatasetMissingErr(err) || isDatasetMissingErr(fmt.Errorf("%s", stderr)) {
+			return nil // Dataset doesn't exist, nothing to destroy
+		}
+		return fmt.Errorf("list_snapshots_failed: %w: %s", err, stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var snapshots []string
+	for _, line := range lines {
+		snap := strings.TrimSpace(line)
+		// Only include snapshots that are direct children of the dataset
+		if snap != "" && strings.HasPrefix(snap, name+"@") {
+			snapshots = append(snapshots, snap)
+		}
+	}
+
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	logger.L.Warn().
+		Str("dataset", name).
+		Int("count", len(snapshots)).
+		Strs("snapshots", snapshots).
+		Msg("destroying_destination_snapshots_for_force_receive")
+
+	for _, snap := range snapshots {
+		destroyCmd := exec.CommandContext(ctx, "zfs", "destroy", snap)
+		var destroyStderr bytes.Buffer
+		destroyCmd.Stderr = &destroyStderr
+
+		if err := destroyCmd.Run(); err != nil {
+			stderr := strings.TrimSpace(destroyStderr.String())
+			logger.L.Warn().
+				Err(err).
+				Str("snapshot", snap).
+				Str("stderr", stderr).
+				Msg("failed_to_destroy_snapshot")
+			// Continue trying to destroy other snapshots
+		} else {
+			logger.L.Debug().Str("snapshot", snap).Msg("destroyed_snapshot")
+		}
+	}
+
 	return nil
 }

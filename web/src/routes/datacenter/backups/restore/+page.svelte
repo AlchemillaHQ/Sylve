@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		getBackupTargetDatasets,
 		getBackupTargetSnapshots,
 		listBackupTargets,
 		pullFromBackupTarget,
@@ -12,39 +11,60 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import type { BackupDataset, BackupSnapshot, BackupTarget } from '$lib/types/cluster/backups';
+	import type { BackupJob, BackupSnapshot, BackupTarget } from '$lib/types/cluster/backups';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import humanFormat from 'human-format';
 	import Icon from '@iconify/svelte';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import { onMount } from 'svelte';
+	import { getJails } from '$lib/api/jail/jail';
+	import { renderWithIcon } from '$lib/utils/table';
+	import { snapNameToDate } from '$lib/utils/time';
 
 	interface Data {
 		targets: BackupTarget[];
 		nodes: ClusterNode[];
+		jobs: BackupJob[];
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
+	// svelte-ignore state_referenced_locally
+	let jobs = $state(data.jobs);
 
 	// svelte-ignore state_referenced_locally
 	let targets = resource(
-		() => 'backup-targets-restore',
+		() => 'backup-targets',
 		async () => {
 			const res = await listBackupTargets();
-			updateCache('backup-targets-restore', res);
+			updateCache('backup-targets', res);
 			return res;
 		},
 		{ initialValue: data.targets }
 	);
 
+	let jails = $state<any[]>([]);
+	let jailsLoading = $state(false);
+
+	async function loadJails() {
+		if (jails.length > 0 || jailsLoading) return;
+		jailsLoading = true;
+		try {
+			const res = await getJails();
+			updateCache('jail-list', res);
+			jails = res;
+		} finally {
+			jailsLoading = false;
+		}
+	}
+
 	let selectedTargetId = $state('');
-	let datasetPrefix = $state('');
 	let tableRows = $state<Row[]>([]);
 	let loadingDatasets = $state(false);
 
@@ -79,27 +99,29 @@
 				const row = cell.getRow().getData();
 				const value = cell.getValue() as string;
 				if (row.rowType === 'snapshot') {
-					return `<span class="icon-[mdi--camera] mr-1 h-4 w-4 inline-block align-middle"></span>${value}`;
+					return renderWithIcon('mdi:camera', value);
+				} else if (row.rowType === 'jail') {
+					return renderWithIcon('hugeicons:prison', value);
 				} else if (row.rowType === 'filesystem') {
-					return `<span class="icon-[mdi--folder] mr-1 h-4 w-4 inline-block align-middle text-green-500"></span>${value}`;
+					return renderWithIcon('mdi:folder', value, 'text-green-500');
 				} else if (row.rowType === 'volume') {
-					return `<span class="icon-[mdi--harddisk] mr-1 h-4 w-4 inline-block align-middle text-purple-500"></span>${value}`;
+					return renderWithIcon('mdi:harddisk', value, 'text-purple-500');
 				}
 				return value;
-			}
+			},
+			minWidth: 300
 		},
 		{
 			field: 'rowType',
 			title: 'Type',
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
-				if (value === 'snapshot') {
-					return '<span class="text-blue-500">Snapshot</span>';
-				} else if (value === 'filesystem') {
-					return '<span class="text-green-500">Filesystem</span>';
-				} else if (value === 'volume') {
-					return '<span class="text-purple-500">Volume</span>';
+				if (value === 'jail') {
+					return renderWithIcon('hugeicons:prison', 'Jail');
+				} else if (value === 'snapshot') {
+					return '-';
 				}
+
 				return value || '-';
 			}
 		},
@@ -116,12 +138,14 @@
 		},
 		{
 			field: 'guid',
-			title: 'GUID'
+			title: 'GUID',
+			visible: false
 		},
 		{
 			field: 'createtxg',
 			title: 'TXG',
-			formatter: (cell: CellComponent) => cell.getValue() || '-'
+			formatter: (cell: CellComponent) => cell.getValue() || '-',
+			visible: false
 		}
 	];
 
@@ -131,7 +155,6 @@
 	});
 
 	let targetOptions = $derived([
-		{ value: '', label: 'Select a backup target' },
 		...targets.current
 			.filter((t) => t.enabled)
 			.map((target) => ({
@@ -140,7 +163,6 @@
 			}))
 	]);
 
-	// Derive selected row info
 	let selectedDataset = $derived.by(() => {
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
@@ -171,41 +193,67 @@
 		tableRows = [];
 
 		try {
-			const datasets = await getBackupTargetDatasets(parseInt(selectedTargetId), datasetPrefix);
-			const filteredDatasets = datasets.filter(
-				(d) => d.type === 'filesystem' || d.type === 'volume'
-			);
+			const targetJobs = jobs.filter((job) => job.targetId === parseInt(selectedTargetId));
 
-			// Build rows with children (snapshots)
+			if (targetJobs.length === 0) {
+				toast.info('No backup jobs found for this target', { position: 'bottom-center' });
+				loadingDatasets = false;
+				return;
+			}
+
+			// Load jails if any job is in jail mode
+			const hasJailJobs = targetJobs.some((job) => job.mode === 'jail');
+			if (hasJailJobs && jails.length === 0) {
+				await loadJails();
+			}
+
+			const uniqueDatasets = [...new Set(targetJobs.map((job) => job.destinationDataset))];
 			const rows: Row[] = [];
 
-			for (const dataset of filteredDatasets) {
+			for (const datasetName of uniqueDatasets) {
+				// Find the job for this dataset to check if it's a jail
+				const job = targetJobs.find((j) => j.destinationDataset === datasetName);
+				let displayName = datasetName;
+
+				// If it's a jail job, try to resolve the jail name
+				if (job?.mode === 'jail' && job.jailRootDataset && jails.length > 0) {
+					const jail = jails.find((j: any) => {
+						const baseStorage = j.storages?.find((s: any) => s.isBase);
+						if (baseStorage) {
+							const jailDataset = `${baseStorage.pool}/sylve/jails/${j.ctId}`;
+							return jailDataset === job.jailRootDataset;
+						}
+						return false;
+					});
+					if (jail) {
+						displayName = jail.name;
+					}
+				}
+
 				const row: Row = {
-					id: `dataset-${dataset.guid}`,
-					name: dataset.name,
-					displayName: dataset.name,
-					rowType: dataset.type,
-					size: dataset.usedBytes,
-					guid: dataset.guid,
+					id: `dataset-${datasetName}`,
+					name: datasetName,
+					displayName: displayName,
+					rowType: job?.mode === 'jail' ? 'jail' : 'filesystem',
+					size: 0,
+					guid: '',
 					createtxg: '',
 					children: []
 				};
 
-				// Fetch snapshots for this dataset
 				try {
-					const snaps = await getBackupTargetSnapshots(parseInt(selectedTargetId), dataset.name);
+					const snaps = await getBackupTargetSnapshots(parseInt(selectedTargetId), datasetName);
 					row.children = snaps.map((snap, i) => {
-						// Extract snapshot name after @
 						const snapName = snap.name.includes('@') ? snap.name.split('@')[1] : snap.name;
 						return {
 							id: `snap-${snap.guid}-${i}`,
 							name: snap.name,
-							displayName: snapName,
+							displayName: snapNameToDate(snapName),
 							rowType: 'snapshot',
 							size: 0,
 							guid: snap.guid,
 							createtxg: snap.createtxg,
-							parentDataset: dataset.name
+							parentDataset: datasetName
 						};
 					});
 				} catch {
@@ -293,6 +341,21 @@
 			restoreModal.loading = false;
 		}
 	}
+
+	onMount(() => {
+		if (targets.current.length > 0) {
+			selectedTargetId = String(targets.current[0].id);
+		}
+	});
+
+	watch(
+		() => selectedTargetId,
+		(curr, prevId) => {
+			if (curr !== undefined && curr !== '') {
+				refreshDatasets();
+			}
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col">
