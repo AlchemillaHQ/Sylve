@@ -1,0 +1,16 @@
+output_dir: tmp
+shellspec_name: "060_zelta_clone_spec"
+describe_desc: "Test clone"
+skip_if_list:
+  - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+
+test_list:
+  - test_name: clone_sub2
+    it_desc: zelta clone sub2 - %{when_command}
+    when_command: zelta clone "$SANDBOX_ZELTA_SRC_EP/sub2" "$SANDBOX_ZELTA_SRC_EP/copy_of_sub2"
+
+  - test_name: zfs_list_for_clone
+    setup_scripts:
+      - "test/test_helper.sh"
+    it_desc: verifies the clone - %{when_command}
+    when_command: src_exec zfs list -ro name,origin $SANDBOX_ZELTA_SRC_DS/copy_of_sub2
