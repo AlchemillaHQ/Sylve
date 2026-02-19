@@ -4,6 +4,7 @@
 		deleteBackupTarget,
 		listBackupTargets,
 		updateBackupTarget,
+		validateBackupTarget,
 		type BackupTargetInput
 	} from '$lib/api/cluster/backups';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -64,11 +65,15 @@
 		open: false,
 		edit: false,
 		name: '',
-		endpoint: '',
+		sshHost: '',
+		sshPort: 22,
+		sshKey: '',
+		backupRoot: '',
 		description: '',
 		enabled: true
 	});
 	let deleteModalOpen = $state(false);
+	let validating = $state(false);
 
 	const targetColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
@@ -81,7 +86,9 @@
 					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 		},
 		{ field: 'name', title: 'Name' },
-		{ field: 'endpoint', title: 'Endpoint' },
+		{ field: 'sshHost', title: 'SSH Host' },
+		{ field: 'sshPort', title: 'Port' },
+		{ field: 'backupRoot', title: 'Backup Root' },
 		{ field: 'description', title: 'Description' },
 		{
 			field: 'createdAt',
@@ -97,7 +104,9 @@
 		rows: targets.current.map((target) => ({
 			id: target.id,
 			name: target.name,
-			endpoint: target.endpoint,
+			sshHost: target.sshHost,
+			sshPort: target.sshPort || 22,
+			backupRoot: target.backupRoot,
 			description: target.description || '',
 			enabled: target.enabled,
 			createdAt: target.createdAt
@@ -109,7 +118,10 @@
 		targetModal.open = false;
 		targetModal.edit = false;
 		targetModal.name = '';
-		targetModal.endpoint = '';
+		targetModal.sshHost = '';
+		targetModal.sshPort = 22;
+		targetModal.sshKey = '';
+		targetModal.backupRoot = '';
 		targetModal.description = '';
 		targetModal.enabled = true;
 	}
@@ -127,7 +139,10 @@
 		targetModal.open = true;
 		targetModal.edit = true;
 		targetModal.name = target.name;
-		targetModal.endpoint = target.endpoint;
+		targetModal.sshHost = target.sshHost;
+		targetModal.sshPort = target.sshPort || 22;
+		targetModal.sshKey = '';
+		targetModal.backupRoot = target.backupRoot;
 		targetModal.description = target.description || '';
 		targetModal.enabled = target.enabled;
 	}
@@ -137,14 +152,21 @@
 			toast.error('Name is required', { position: 'bottom-center' });
 			return;
 		}
-		if (!targetModal.endpoint.trim()) {
-			toast.error('Endpoint is required', { position: 'bottom-center' });
+		if (!targetModal.sshHost.trim()) {
+			toast.error('SSH Host is required', { position: 'bottom-center' });
+			return;
+		}
+		if (!targetModal.backupRoot.trim()) {
+			toast.error('Backup Root is required', { position: 'bottom-center' });
 			return;
 		}
 
 		const payload: BackupTargetInput = {
 			name: targetModal.name,
-			endpoint: targetModal.endpoint,
+			sshHost: targetModal.sshHost,
+			sshPort: targetModal.sshPort || 22,
+			sshKey: targetModal.sshKey || undefined,
+			backupRoot: targetModal.backupRoot,
 			description: targetModal.description,
 			enabled: targetModal.enabled
 		};
@@ -182,6 +204,24 @@
 		handleAPIError(response);
 		toast.error('Failed to delete target', { position: 'bottom-center' });
 	}
+
+	async function validateTarget() {
+		if (!selectedTargetId) return;
+		validating = true;
+		try {
+			const response = await validateBackupTarget(selectedTargetId);
+			if (response.status === 'success') {
+				toast.success('Target connectivity validated', { position: 'bottom-center' });
+			} else {
+				handleAPIError(response);
+				toast.error('Validation failed', { position: 'bottom-center' });
+			}
+		} catch {
+			toast.error('Validation failed', { position: 'bottom-center' });
+		} finally {
+			validating = false;
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
@@ -190,6 +230,15 @@
 			<div class="flex items-center">
 				<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
 				<span>Edit</span>
+			</div>
+		</Button>
+	{/if}
+
+	{#if type === 'validate' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={validateTarget} size="sm" variant="outline" class="h-6" disabled={validating}>
+			<div class="flex items-center">
+				<Icon icon="mdi:connection" class="mr-1 h-4 w-4" />
+				<span>{validating ? 'Validating...' : 'Validate'}</span>
 			</div>
 		</Button>
 	{/if}
@@ -216,6 +265,7 @@
 		</Button>
 
 		{@render button('edit')}
+		{@render button('validate')}
 		{@render button('delete')}
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
@@ -256,10 +306,39 @@
 				classes="space-y-1"
 			/>
 
+			<div class="grid grid-cols-3 gap-3">
+				<div class="col-span-2">
+					<CustomValueInput
+						label="SSH Host"
+						placeholder="root@192.168.1.100"
+						bind:value={targetModal.sshHost}
+						classes="space-y-1"
+					/>
+				</div>
+				<CustomValueInput
+					label="SSH Port"
+					placeholder="22"
+					bind:value={targetModal.sshPort}
+					type="number"
+					classes="space-y-1"
+				/>
+			</div>
+
+			<div class="space-y-1">
+				<label class="text-sm font-medium"
+					>SSH Private Key {targetModal.edit ? '(leave empty to keep existing)' : ''}</label
+				>
+				<textarea
+					class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+					placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+					bind:value={targetModal.sshKey}
+				></textarea>
+			</div>
+
 			<CustomValueInput
-				label="Endpoint"
-				placeholder="192.168.1.100:7444"
-				bind:value={targetModal.endpoint}
+				label="Backup Root"
+				placeholder="tank/Backups"
+				bind:value={targetModal.backupRoot}
 				classes="space-y-1"
 			/>
 

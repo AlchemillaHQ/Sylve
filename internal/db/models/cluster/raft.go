@@ -218,10 +218,13 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			// Use Updates with map to properly handle boolean false values
 			return db.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(map[string]any{
-				"name":        target.Name,
-				"endpoint":    target.Endpoint,
-				"description": target.Description,
-				"enabled":     target.Enabled,
+				"name":         target.Name,
+				"ssh_host":     target.SSHHost,
+				"ssh_port":     target.SSHPort,
+				"ssh_key_path": target.SSHKeyPath,
+				"backup_root":  target.BackupRoot,
+				"description":  target.Description,
+				"enabled":      target.Enabled,
 			}).Error
 		case "delete":
 			var payload struct {
@@ -233,6 +236,16 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 			if payload.ID == 0 {
 				return nil
+			}
+
+			var jobIDs []uint
+			if err := db.Model(&BackupJob{}).Where("target_id = ?", payload.ID).Pluck("id", &jobIDs).Error; err != nil {
+				return err
+			}
+			if len(jobIDs) > 0 {
+				if err := db.Where("job_id IN ?", jobIDs).Delete(&BackupEvent{}).Error; err != nil {
+					return err
+				}
 			}
 
 			if err := db.Delete(&BackupJob{}, "target_id = ?", payload.ID).Error; err != nil {
@@ -271,17 +284,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			// Use Updates with map to properly handle boolean false values
 			return db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-				"name":                job.Name,
-				"target_id":           job.TargetID,
-				"mode":                job.Mode,
-				"source_dataset":      job.SourceDataset,
-				"jail_root_dataset":   job.JailRootDataset,
-				"destination_dataset": job.DestinationDataset,
-				"cron_expr":           job.CronExpr,
-				"force":               job.Force,
-				"with_intermediates":  job.WithIntermediates,
-				"enabled":             job.Enabled,
-				"next_run_at":         job.NextRunAt,
+				"name":              job.Name,
+				"target_id":         job.TargetID,
+				"runner_node_id":    job.RunnerNodeID,
+				"mode":              job.Mode,
+				"source_dataset":    job.SourceDataset,
+				"jail_root_dataset": job.JailRootDataset,
+				"dest_suffix":       job.DestSuffix,
+				"prune_keep_last":   job.PruneKeepLast,
+				"prune_target":      job.PruneTarget,
+				"cron_expr":         job.CronExpr,
+				"enabled":           job.Enabled,
+				"next_run_at":       job.NextRunAt,
 			}).Error
 		case "delete":
 			var payload struct {
@@ -292,6 +306,9 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			if payload.ID == 0 {
 				return nil
+			}
+			if err := db.Where("job_id = ?", payload.ID).Delete(&BackupEvent{}).Error; err != nil {
+				return err
 			}
 			return db.Delete(&BackupJob{}, payload.ID).Error
 		default:

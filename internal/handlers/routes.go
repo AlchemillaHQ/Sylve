@@ -39,10 +39,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
 )
 
@@ -79,7 +79,7 @@ func RegisterRoutes(r *gin.Engine,
 	sambaService *samba.Service,
 	jailService *jail.Service,
 	clusterService *cluster.Service,
-	replicationService *replication.Service,
+	zeltaService *zelta.Service,
 	fsm *clusterModels.FSMDispatcher,
 	db *gorm.DB,
 ) {
@@ -429,12 +429,10 @@ func RegisterRoutes(r *gin.Engine,
 		targets := clusterBackups.Group("/targets")
 		{
 			targets.GET("", clusterHandlers.BackupTargets(clusterService))
-			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService))
-			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService))
+			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
+			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
 			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService))
-			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(clusterService, replicationService))
-			targets.GET("/:id/snapshots", clusterHandlers.BackupTargetSnapshots(clusterService, replicationService))
-			targets.GET("/:id/status", clusterHandlers.BackupTargetStatus(clusterService, replicationService))
+			targets.POST("/:id/validate", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
 		}
 
 		jobs := clusterBackups.Group("/jobs")
@@ -443,12 +441,13 @@ func RegisterRoutes(r *gin.Engine,
 			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
 			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
 			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
-			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, replicationService))
+			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
+			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
+			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
 		}
 
-		clusterBackups.GET("/events", clusterHandlers.BackupEvents(replicationService))
-		clusterBackups.GET("/events/remote", clusterHandlers.BackupEventsRemote(replicationService))
-		clusterBackups.POST("/pull", clusterHandlers.PullBackupDataset(clusterService, replicationService, zfsService))
+		clusterBackups.GET("/events", clusterHandlers.BackupEvents(zeltaService))
+		clusterBackups.GET("/events/remote", clusterHandlers.BackupEventsRemote(zeltaService))
 	}
 
 	vnc := api.Group("/vnc")

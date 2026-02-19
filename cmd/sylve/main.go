@@ -35,10 +35,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	replicationService "github.com/alchemillahq/sylve/internal/services/replication"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	sysU "github.com/alchemillahq/sylve/pkg/system"
@@ -92,11 +92,11 @@ func main() {
 	smbS := serviceRegistry.SambaService
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
-	rS := serviceRegistry.ReplicationService
+	zeltaS := serviceRegistry.ZeltaService
 
 	uS.RegisterJobs()
 	zS.RegisterJobs()
-	rS.RegisterJobs()
+	zeltaS.RegisterJobs()
 
 	go sysS.StartDevdParser(qCtx)
 	go sysS.DevdEventsCleaner(qCtx)
@@ -122,8 +122,11 @@ func main() {
 		}
 	}
 
-	go rS.Run(qCtx)
-	go rS.(*replicationService.Service).StartBackupScheduler(qCtx)
+	if err := zelta.EnsureZeltaInstalled(); err != nil {
+		logger.L.Error().Err(err).Msg("Failed to install Zelta")
+	}
+
+	go zeltaS.StartBackupScheduler(qCtx)
 	go aS.ClearExpiredJWTTokens()
 
 	gin.SetMode(gin.ReleaseMode)
@@ -150,7 +153,7 @@ func main() {
 		smbS.(*samba.Service),
 		jS.(*jail.Service),
 		cS.(*cluster.Service),
-		rS.(*replicationService.Service),
+		zeltaS,
 		fsm,
 		d,
 	)

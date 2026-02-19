@@ -21,6 +21,8 @@ func Fixups(db *gorm.DB) error {
 	return nil
 }
 
+func PreMigrationFixups(db *gorm.DB) {}
+
 func runNetworkDeltaMigration(db *gorm.DB) {
 	const name = "network_interface_delta_migration_2"
 

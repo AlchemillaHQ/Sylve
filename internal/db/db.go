@@ -60,6 +60,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	db.Exec("PRAGMA journal_mode = WAL")
 	db.Exec("PRAGMA synchronous = NORMAL")
 
+	PreMigrationFixups(db)
+
 	err = db.AutoMigrate(
 		&models.BasicSettings{},
 
@@ -124,7 +126,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ClusterNote{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupJob{},
-		&clusterModels.BackupReplicationEvent{},
+		&clusterModels.BackupEvent{},
 
 		&models.Migrations{},
 	)

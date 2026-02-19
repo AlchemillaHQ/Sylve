@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net"
 	"strings"
 	"time"
 
@@ -23,25 +22,31 @@ import (
 
 var maxSafeJSInt = big.NewInt(9007199254740991)
 
+// BackupTargetInput represents the input for creating/updating a Zelta backup target.
 type BackupTargetInput struct {
 	Name        string `json:"name"`
-	Endpoint    string `json:"endpoint"`
+	SSHHost     string `json:"sshHost"`    // user@host
+	SSHPort     int    `json:"sshPort"`    // SSH port (default 22)
+	SSHKey      string `json:"sshKey"`     // raw private key content (only for create/update, not stored in DB)
+	SSHKeyPath  string `json:"sshKeyPath"` // path to private key on host
+	BackupRoot  string `json:"backupRoot"` // target pool/dataset prefix
 	Description string `json:"description"`
 	Enabled     bool   `json:"enabled"`
 }
 
+// BackupJobInput represents the input for creating/updating a backup job.
 type BackupJobInput struct {
-	Name               string `json:"name"`
-	TargetID           uint   `json:"targetId"`
-	RunnerNodeID       string `json:"runnerNodeId"`
-	Mode               string `json:"mode"`
-	SourceDataset      string `json:"sourceDataset"`
-	JailRootDataset    string `json:"jailRootDataset"`
-	DestinationDataset string `json:"destinationDataset"`
-	CronExpr           string `json:"cronExpr"`
-	Force              bool   `json:"force"`
-	WithIntermediates  bool   `json:"withIntermediates"`
-	Enabled            *bool  `json:"enabled"`
+	Name            string `json:"name"`
+	TargetID        uint   `json:"targetId"`
+	RunnerNodeID    string `json:"runnerNodeId"`
+	Mode            string `json:"mode"`
+	SourceDataset   string `json:"sourceDataset"`
+	JailRootDataset string `json:"jailRootDataset"`
+	DestSuffix      string `json:"destSuffix"` // appended to target's BackupRoot
+	PruneKeepLast   int    `json:"pruneKeepLast"`
+	PruneTarget     bool   `json:"pruneTarget"`
+	CronExpr        string `json:"cronExpr"`
+	Enabled         *bool  `json:"enabled"`
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
@@ -69,9 +74,16 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 
 	target := clusterModels.BackupTarget{
 		Name:        strings.TrimSpace(input.Name),
-		Endpoint:    normalizeEndpoint(input.Endpoint),
+		SSHHost:     strings.TrimSpace(input.SSHHost),
+		SSHPort:     input.SSHPort,
+		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
+		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
+	}
+
+	if target.SSHPort == 0 {
+		target.SSHPort = 22
 	}
 
 	if bypassRaft {
@@ -111,17 +123,27 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 	target := clusterModels.BackupTarget{
 		ID:          id,
 		Name:        strings.TrimSpace(input.Name),
-		Endpoint:    normalizeEndpoint(input.Endpoint),
+		SSHHost:     strings.TrimSpace(input.SSHHost),
+		SSHPort:     input.SSHPort,
+		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
+		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
 	}
 
+	if target.SSHPort == 0 {
+		target.SSHPort = 22
+	}
+
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", id).Updates(map[string]any{
-			"name":        target.Name,
-			"endpoint":    target.Endpoint,
-			"description": target.Description,
-			"enabled":     target.Enabled,
+			"name":         target.Name,
+			"ssh_host":     target.SSHHost,
+			"ssh_port":     target.SSHPort,
+			"ssh_key_path": target.SSHKeyPath,
+			"backup_root":  target.BackupRoot,
+			"description":  target.Description,
+			"enabled":      target.Enabled,
 		}).Error
 	}
 
@@ -147,6 +169,15 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 	}
 
 	if bypassRaft {
+		var jobIDs []uint
+		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("target_id = ?", id).Pluck("id", &jobIDs).Error; err != nil {
+			return err
+		}
+		if len(jobIDs) > 0 {
+			if err := s.DB.Where("job_id IN ?", jobIDs).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
+				return err
+			}
+		}
 		if err := s.DB.Delete(&clusterModels.BackupJob{}, "target_id = ?", id).Error; err != nil {
 			return err
 		}
@@ -240,18 +271,18 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
-			"name":                job.Name,
-			"target_id":           job.TargetID,
-			"runner_node_id":      job.RunnerNodeID,
-			"mode":                job.Mode,
-			"source_dataset":      job.SourceDataset,
-			"jail_root_dataset":   job.JailRootDataset,
-			"destination_dataset": job.DestinationDataset,
-			"cron_expr":           job.CronExpr,
-			"force":               job.Force,
-			"with_intermediates":  job.WithIntermediates,
-			"enabled":             job.Enabled,
-			"next_run_at":         job.NextRunAt,
+			"name":              job.Name,
+			"target_id":         job.TargetID,
+			"runner_node_id":    job.RunnerNodeID,
+			"mode":              job.Mode,
+			"source_dataset":    job.SourceDataset,
+			"jail_root_dataset": job.JailRootDataset,
+			"dest_suffix":       job.DestSuffix,
+			"prune_keep_last":   job.PruneKeepLast,
+			"prune_target":      job.PruneTarget,
+			"cron_expr":         job.CronExpr,
+			"enabled":           job.Enabled,
+			"next_run_at":       job.NextRunAt,
 		}).Error
 	}
 
@@ -277,6 +308,9 @@ func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
 	}
 
 	if bypassRaft {
+		if err := s.DB.Where("job_id = ?", id).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
+			return err
+		}
 		return s.DB.Delete(&clusterModels.BackupJob{}, id).Error
 	}
 
@@ -310,10 +344,6 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 
 	if strings.TrimSpace(input.Name) == "" {
 		return nil, fmt.Errorf("name_required")
-	}
-
-	if strings.TrimSpace(input.DestinationDataset) == "" {
-		return nil, fmt.Errorf("destination_dataset_required")
 	}
 
 	runnerNodeID := strings.TrimSpace(input.RunnerNodeID)
@@ -360,18 +390,22 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 	}
 
 	job := &clusterModels.BackupJob{
-		ID:                 id,
-		Name:               strings.TrimSpace(input.Name),
-		TargetID:           input.TargetID,
-		RunnerNodeID:       runnerNodeID,
-		Mode:               mode,
-		SourceDataset:      strings.TrimSpace(input.SourceDataset),
-		JailRootDataset:    strings.TrimSpace(input.JailRootDataset),
-		DestinationDataset: strings.TrimSpace(input.DestinationDataset),
-		CronExpr:           cronExpr,
-		Force:              input.Force,
-		WithIntermediates:  input.WithIntermediates,
-		Enabled:            enabled,
+		ID:              id,
+		Name:            strings.TrimSpace(input.Name),
+		TargetID:        input.TargetID,
+		RunnerNodeID:    runnerNodeID,
+		Mode:            mode,
+		SourceDataset:   strings.TrimSpace(input.SourceDataset),
+		JailRootDataset: strings.TrimSpace(input.JailRootDataset),
+		DestSuffix:      strings.TrimSpace(input.DestSuffix),
+		PruneKeepLast:   input.PruneKeepLast,
+		PruneTarget:     input.PruneTarget,
+		CronExpr:        cronExpr,
+		Enabled:         enabled,
+	}
+
+	if job.PruneKeepLast < 0 {
+		return nil, fmt.Errorf("invalid_prune_keep_last")
 	}
 
 	if mode == clusterModels.BackupJobModeDataset {
@@ -400,20 +434,21 @@ func validateBackupTargetInput(input BackupTargetInput) error {
 		return fmt.Errorf("name_required")
 	}
 
-	endpoint := normalizeEndpoint(input.Endpoint)
-	if endpoint == "" {
-		return fmt.Errorf("endpoint_required")
+	if strings.TrimSpace(input.SSHHost) == "" {
+		return fmt.Errorf("ssh_host_required")
 	}
 
-	if _, _, err := net.SplitHostPort(endpoint); err != nil {
-		return fmt.Errorf("invalid_endpoint")
+	if strings.TrimSpace(input.BackupRoot) == "" {
+		return fmt.Errorf("backup_root_required")
+	}
+
+	// Basic validation: SSH host should contain @ for user@host format, or just be a hostname
+	sshHost := strings.TrimSpace(input.SSHHost)
+	if strings.Contains(sshHost, " ") || strings.Contains(sshHost, ":") {
+		return fmt.Errorf("invalid_ssh_host: should be user@host or just hostname")
 	}
 
 	return nil
-}
-
-func normalizeEndpoint(endpoint string) string {
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(endpoint, "https://"), "http://"))
 }
 
 func (s *Service) applyRaftCommand(cmd clusterModels.Command) error {

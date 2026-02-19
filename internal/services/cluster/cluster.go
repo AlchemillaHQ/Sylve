@@ -183,13 +183,19 @@ func (s *Service) backfillPreClusterState() error {
 			payloadStruct := struct {
 				ID          uint   `json:"id"`
 				Name        string `json:"name"`
-				Endpoint    string `json:"endpoint"`
+				SSHHost     string `json:"sshHost"`
+				SSHPort     int    `json:"sshPort"`
+				SSHKeyPath  string `json:"sshKeyPath"`
+				BackupRoot  string `json:"backupRoot"`
 				Description string `json:"description"`
 				Enabled     bool   `json:"enabled"`
 			}{
 				ID:          t.ID,
 				Name:        t.Name,
-				Endpoint:    t.Endpoint,
+				SSHHost:     t.SSHHost,
+				SSHPort:     t.SSHPort,
+				SSHKeyPath:  t.SSHKeyPath,
+				BackupRoot:  t.BackupRoot,
 				Description: t.Description,
 				Enabled:     t.Enabled,
 			}
@@ -210,33 +216,33 @@ func (s *Service) backfillPreClusterState() error {
 
 		for _, j := range jobs {
 			payloadStruct := struct {
-				ID                 uint       `json:"id"`
-				Name               string     `json:"name"`
-				TargetID           uint       `json:"targetId"`
-				RunnerNodeID       string     `json:"runnerNodeId"`
-				Mode               string     `json:"mode"`
-				SourceDataset      string     `json:"sourceDataset"`
-				JailRootDataset    string     `json:"jailRootDataset"`
-				DestinationDataset string     `json:"destinationDataset"`
-				CronExpr           string     `json:"cronExpr"`
-				Force              bool       `json:"force"`
-				WithIntermediates  bool       `json:"withIntermediates"`
-				Enabled            bool       `json:"enabled"`
-				NextRunAt          *time.Time `json:"nextRunAt"`
+				ID              uint       `json:"id"`
+				Name            string     `json:"name"`
+				TargetID        uint       `json:"targetId"`
+				RunnerNodeID    string     `json:"runnerNodeId"`
+				Mode            string     `json:"mode"`
+				SourceDataset   string     `json:"sourceDataset"`
+				JailRootDataset string     `json:"jailRootDataset"`
+				DestSuffix      string     `json:"destSuffix"`
+				PruneKeepLast   int        `json:"pruneKeepLast"`
+				PruneTarget     bool       `json:"pruneTarget"`
+				CronExpr        string     `json:"cronExpr"`
+				Enabled         bool       `json:"enabled"`
+				NextRunAt       *time.Time `json:"nextRunAt"`
 			}{
-				ID:                 j.ID,
-				Name:               j.Name,
-				TargetID:           j.TargetID,
-				RunnerNodeID:       j.RunnerNodeID,
-				Mode:               j.Mode,
-				SourceDataset:      j.SourceDataset,
-				JailRootDataset:    j.JailRootDataset,
-				DestinationDataset: j.DestinationDataset,
-				CronExpr:           j.CronExpr,
-				Force:              j.Force,
-				WithIntermediates:  j.WithIntermediates,
-				Enabled:            j.Enabled,
-				NextRunAt:          j.NextRunAt,
+				ID:              j.ID,
+				Name:            j.Name,
+				TargetID:        j.TargetID,
+				RunnerNodeID:    j.RunnerNodeID,
+				Mode:            j.Mode,
+				SourceDataset:   j.SourceDataset,
+				JailRootDataset: j.JailRootDataset,
+				DestSuffix:      j.DestSuffix,
+				PruneKeepLast:   j.PruneKeepLast,
+				PruneTarget:     j.PruneTarget,
+				CronExpr:        j.CronExpr,
+				Enabled:         j.Enabled,
+				NextRunAt:       j.NextRunAt,
 			}
 
 			data, _ := json.Marshal(payloadStruct)

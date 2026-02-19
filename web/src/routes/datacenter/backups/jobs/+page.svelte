@@ -4,6 +4,8 @@
 		deleteBackupJob,
 		listBackupJobs,
 		listBackupTargets,
+		listBackupJobSnapshots,
+		restoreBackupJob,
 		runBackupJob,
 		updateBackupJob,
 		type BackupJobInput
@@ -17,7 +19,7 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { BackupJob, BackupTarget } from '$lib/types/cluster/backups';
+	import type { BackupJob, BackupTarget, SnapshotInfo } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
@@ -123,10 +125,10 @@
 		mode: 'dataset' as 'dataset' | 'jail',
 		sourceDataset: '',
 		selectedJailId: '',
-		destinationDataset: '',
+		destSuffix: '',
+		pruneKeepLast: '0',
+		pruneTarget: false,
 		cronExpr: '0 * * * *',
-		force: false,
-		withIntermediates: true,
 		enabled: true
 	});
 
@@ -141,6 +143,16 @@
 	);
 
 	let deleteModalOpen = $state(false);
+
+	let restoreModal = $state({
+		open: false,
+		loading: false,
+		restoring: false,
+		snapshots: [] as SnapshotInfo[],
+		selectedSnapshot: '',
+		error: ''
+	});
+
 	let nodeNameById = $derived.by(() => {
 		const out: Record<string, string> = {};
 		for (const node of nodes) {
@@ -207,7 +219,15 @@
 			}
 		},
 		{ field: 'sourceDataset', title: 'Source' },
-		{ field: 'destinationDataset', title: 'Destination' },
+		{ field: 'destSuffix', title: 'Dest Suffix' },
+		{
+			field: 'pruneKeepLast',
+			title: 'Prune',
+			formatter: (cell: CellComponent) => {
+				const value = Number(cell.getValue() || 0);
+				return value > 0 ? `Keep ${value}` : 'Off';
+			}
+		},
 		{ field: 'cronExpr', title: 'Schedule' },
 		{
 			field: 'lastRunAt',
@@ -263,7 +283,9 @@
 				job.mode,
 				job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || ''
 			),
-			destinationDataset: job.destinationDataset,
+			destSuffix: job.destSuffix || '',
+			pruneKeepLast: job.pruneKeepLast || 0,
+			pruneTarget: job.pruneTarget || false,
 			cronExpr: job.cronExpr,
 			enabled: job.enabled,
 			lastRunAt: job.lastRunAt,
@@ -308,10 +330,10 @@
 		jobModal.mode = 'dataset';
 		jobModal.sourceDataset = '';
 		jobModal.selectedJailId = '';
-		jobModal.destinationDataset = '';
+		jobModal.destSuffix = '';
+		jobModal.pruneKeepLast = '0';
+		jobModal.pruneTarget = false;
 		jobModal.cronExpr = '0 * * * *';
-		jobModal.force = false;
-		jobModal.withIntermediates = true;
 		jobModal.enabled = true;
 	}
 
@@ -352,10 +374,10 @@
 			jobModal.selectedJailId = '';
 		}
 
-		jobModal.destinationDataset = job.destinationDataset;
+		jobModal.destSuffix = job.destSuffix || '';
+		jobModal.pruneKeepLast = String(job.pruneKeepLast ?? 0);
+		jobModal.pruneTarget = !!job.pruneTarget;
 		jobModal.cronExpr = job.cronExpr;
-		jobModal.force = job.force;
-		jobModal.withIntermediates = job.withIntermediates;
 		jobModal.enabled = job.enabled;
 	}
 
@@ -368,8 +390,8 @@
 			toast.error('Target is required', { position: 'bottom-center' });
 			return;
 		}
-		if (!jobModal.destinationDataset.trim()) {
-			toast.error('Destination dataset is required', { position: 'bottom-center' });
+		if (!jobModal.destSuffix.trim() && jobModal.mode === 'dataset') {
+			toast.error('Destination suffix is required', { position: 'bottom-center' });
 			return;
 		}
 		if (jobModal.mode === 'dataset' && !jobModal.sourceDataset.trim()) {
@@ -378,6 +400,12 @@
 		}
 		if (jobModal.mode === 'jail' && !jobModal.selectedJailId) {
 			toast.error('Jail selection is required for jail mode', { position: 'bottom-center' });
+			return;
+		}
+
+		const pruneKeepLast = Number.parseInt(jobModal.pruneKeepLast || '0', 10);
+		if (Number.isNaN(pruneKeepLast) || pruneKeepLast < 0) {
+			toast.error('Prune keep value must be 0 or greater', { position: 'bottom-center' });
 			return;
 		}
 
@@ -400,10 +428,10 @@
 			mode: jobModal.mode,
 			sourceDataset: jobModal.mode === 'dataset' ? jobModal.sourceDataset : '',
 			jailRootDataset: jobModal.mode === 'jail' ? jailDataset : '',
-			destinationDataset: jobModal.destinationDataset,
+			destSuffix: jobModal.destSuffix,
+			pruneKeepLast,
+			pruneTarget: jobModal.pruneTarget,
 			cronExpr: jobModal.cronExpr,
-			force: jobModal.force,
-			withIntermediates: jobModal.withIntermediates,
 			enabled: jobModal.enabled
 		};
 
@@ -453,6 +481,51 @@
 		handleAPIError(response);
 		toast.error('Failed to run job', { position: 'bottom-center' });
 	}
+
+	async function openRestoreModal() {
+		if (!selectedJobId) return;
+		restoreModal.open = true;
+		restoreModal.loading = true;
+		restoreModal.snapshots = [];
+		restoreModal.selectedSnapshot = '';
+		restoreModal.error = '';
+		restoreModal.restoring = false;
+
+		try {
+			const snaps = await listBackupJobSnapshots(selectedJobId);
+			restoreModal.snapshots = snaps;
+			if (snaps.length > 0) {
+				restoreModal.selectedSnapshot = snaps[snaps.length - 1].shortName;
+			}
+		} catch (e: any) {
+			restoreModal.error = e?.message || 'Failed to load snapshots';
+		} finally {
+			restoreModal.loading = false;
+		}
+	}
+
+	async function triggerRestore() {
+		if (!selectedJobId || !restoreModal.selectedSnapshot) return;
+		restoreModal.restoring = true;
+
+		try {
+			const response = await restoreBackupJob(selectedJobId, restoreModal.selectedSnapshot);
+			if (response.status === 'success') {
+				toast.success('Restore job started — check events for progress', {
+					position: 'bottom-center'
+				});
+				restoreModal.open = false;
+				reload = true;
+				return;
+			}
+			handleAPIError(response);
+			toast.error('Failed to start restore', { position: 'bottom-center' });
+		} catch (e: any) {
+			toast.error(e?.message || 'Failed to start restore', { position: 'bottom-center' });
+		} finally {
+			restoreModal.restoring = false;
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
@@ -482,6 +555,15 @@
 			</div>
 		</Button>
 	{/if}
+
+	{#if type === 'restore' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={openRestoreModal} size="sm" variant="outline" class="h-6">
+			<div class="flex items-center">
+				<Icon icon="mdi:backup-restore" class="mr-1 h-4 w-4" />
+				<span>Restore</span>
+			</div>
+		</Button>
+	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
@@ -503,6 +585,7 @@
 		{@render button('edit')}
 		{@render button('delete')}
 		{@render button('run')}
+		{@render button('restore')}
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
 			<div class="flex items-center">
@@ -588,9 +671,9 @@
 				{/if}
 
 				<CustomValueInput
-					label="Destination Dataset (on target)"
-					placeholder="backup/server1"
-					bind:value={jobModal.destinationDataset}
+					label="Destination Suffix (appended to target's backup root)"
+					placeholder="server1/data"
+					bind:value={jobModal.destSuffix}
 					classes="space-y-1"
 				/>
 			</div>
@@ -602,23 +685,25 @@
 				classes="space-y-1"
 			/>
 
-			<div class="grid grid-cols-3 gap-1">
-				<CustomCheckbox
-					label="Enabled"
-					bind:checked={jobModal.enabled}
-					classes="flex items-center gap-2"
-				/>
-				<CustomCheckbox
-					label="Force receive"
-					bind:checked={jobModal.force}
-					classes="flex items-center gap-2"
-				/>
-				<CustomCheckbox
-					label="With intermediates"
-					bind:checked={jobModal.withIntermediates}
-					classes="flex items-center gap-2"
-				/>
-			</div>
+			<CustomValueInput
+				label="Keep Last Snapshots (0 disables pruning)"
+				placeholder="20"
+				type="number"
+				bind:value={jobModal.pruneKeepLast}
+				classes="space-y-1"
+			/>
+
+			<CustomCheckbox
+				label="Also prune on target"
+				bind:checked={jobModal.pruneTarget}
+				classes="flex items-center gap-2"
+			/>
+
+			<CustomCheckbox
+				label="Enabled"
+				bind:checked={jobModal.enabled}
+				classes="flex items-center gap-2"
+			/>
 
 			<div class="rounded-md bg-muted p-3 text-sm">
 				<p class="font-medium">Job Summary:</p>
@@ -638,13 +723,25 @@
 						</li>
 					{/if}
 					<li>
-						Snapshots will be sent to <code class="rounded bg-background px-1"
-							>{jobModal.destinationDataset || '(not set)'}</code
+						Destination suffix: <code class="rounded bg-background px-1"
+							>{jobModal.destSuffix || '(auto)'}</code
 						>
 					</li>
 					<li>
 						Schedule: <code class="rounded bg-background px-1"
 							>{cronToHuman(jobModal.cronExpr) || '(not set)'}</code
+						>
+					</li>
+					<li>
+						Pruning: <code class="rounded bg-background px-1"
+							>{Number.parseInt(jobModal.pruneKeepLast || '0', 10) > 0
+								? `Keep last ${Number.parseInt(jobModal.pruneKeepLast || '0', 10)} snapshots`
+								: 'Disabled'}</code
+						>
+					</li>
+					<li>
+						Target prune: <code class="rounded bg-background px-1"
+							>{jobModal.pruneTarget ? 'Enabled' : 'Disabled'}</code
 						>
 					</li>
 				</ul>
@@ -670,3 +767,114 @@
 		}
 	}}
 />
+
+<Dialog.Root bind:open={restoreModal.open}>
+	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
+		<Dialog.Header>
+			<Dialog.Title>
+				<div class="flex items-center gap-2">
+					<Icon icon="mdi:backup-restore" class="h-5 w-5" />
+					<span>Restore from Backup</span>
+				</div>
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="grid gap-4 py-0">
+			{#if restoreModal.loading}
+				<div class="flex items-center justify-center py-8">
+					<Icon icon="mdi:loading" class="h-6 w-6 animate-spin text-muted-foreground" />
+					<span class="ml-2 text-muted-foreground">Loading snapshots from remote target...</span>
+				</div>
+			{:else if restoreModal.error}
+				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500">
+					<p class="font-medium">Failed to load snapshots</p>
+					<p class="mt-1">{restoreModal.error}</p>
+				</div>
+			{:else if restoreModal.snapshots.length === 0}
+				<div class="rounded-md bg-muted p-4 text-center text-sm text-muted-foreground">
+					No snapshots found on the backup target. Run a backup first.
+				</div>
+			{:else}
+				<div class="max-h-72 overflow-auto rounded-md border">
+					<table class="w-full text-sm">
+						<thead class="sticky top-0 bg-muted">
+							<tr>
+								<th class="w-8 p-2"></th>
+								<th class="p-2 text-left font-medium">Snapshot</th>
+								<th class="p-2 text-left font-medium">Date</th>
+								<th class="p-2 text-right font-medium">Used</th>
+								<th class="p-2 text-right font-medium">Refer</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each [...restoreModal.snapshots].reverse() as snap}
+								<tr
+									class="cursor-pointer border-t transition-colors hover:bg-accent {restoreModal.selectedSnapshot ===
+									snap.shortName
+										? 'bg-accent'
+										: ''}"
+									onclick={() => (restoreModal.selectedSnapshot = snap.shortName)}
+								>
+									<td class="p-2 text-center">
+										{#if restoreModal.selectedSnapshot === snap.shortName}
+											<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
+										{:else}
+											<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
+										{/if}
+									</td>
+									<td class="p-2 font-mono text-xs">{snap.shortName}</td>
+									<td class="p-2 text-xs text-muted-foreground">
+										{snap.creation ? new Date(snap.creation).toLocaleString() : '-'}
+									</td>
+									<td class="p-2 text-right text-xs">{snap.used}</td>
+									<td class="p-2 text-right text-xs">{snap.refer}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+
+				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
+					<p class="font-medium text-yellow-600 dark:text-yellow-400">
+						<Icon icon="mdi:alert" class="mr-1 inline h-4 w-4" />
+						Restore Warning
+					</p>
+					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
+						<li>
+							The current dataset will be renamed to <code class="rounded bg-background px-1"
+								>.pre-restore</code
+							>
+						</li>
+						<li>
+							Data from <code class="rounded bg-background px-1"
+								>{restoreModal.selectedSnapshot}</code
+							> will be restored in its place
+						</li>
+						<li>No data is deleted on the backup target — all snapshots remain available</li>
+						<li>
+							You can delete the <code class="rounded bg-background px-1">.pre-restore</code> dataset
+							later to reclaim space
+						</li>
+					</ul>
+				</div>
+			{/if}
+		</div>
+
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (restoreModal.open = false)}>Cancel</Button>
+			<Button
+				onclick={triggerRestore}
+				disabled={!restoreModal.selectedSnapshot || restoreModal.restoring || restoreModal.loading}
+				variant="destructive"
+			>
+				{#if restoreModal.restoring}
+					<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
+					Restoring...
+				{:else}
+					<Icon icon="mdi:backup-restore" class="mr-1 h-4 w-4" />
+					Restore
+				{/if}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>

@@ -1,16 +1,12 @@
 import {
-    BackupDatasetSchema,
     BackupEventSchema,
     BackupJobSchema,
-    BackupPlanSchema,
-    BackupSnapshotSchema,
     BackupTargetSchema,
-    type BackupDataset,
+    SnapshotInfoSchema,
     type BackupEvent,
     type BackupJob,
-    type BackupPlan,
-    type BackupSnapshot,
-    type BackupTarget
+    type BackupTarget,
+    type SnapshotInfo
 } from '$lib/types/cluster/backups';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { apiRequest } from '$lib/utils/http';
@@ -18,7 +14,10 @@ import { z } from 'zod/v4';
 
 export type BackupTargetInput = {
     name: string;
-    endpoint: string;
+    sshHost: string;
+    sshPort: number;
+    sshKey?: string;
+    backupRoot: string;
     description?: string;
     enabled: boolean;
 };
@@ -30,22 +29,11 @@ export type BackupJobInput = {
     mode: 'dataset' | 'jail';
     sourceDataset?: string;
     jailRootDataset?: string;
-    destinationDataset: string;
+    destSuffix?: string;
+    pruneKeepLast: number;
+    pruneTarget: boolean;
     cronExpr: string;
-    force: boolean;
-    withIntermediates: boolean;
     enabled: boolean;
-};
-
-export type BackupPullInput = {
-    targetId: number;
-    runnerNodeId?: string;
-    sourceDataset: string;
-    destinationDataset: string;
-    snapshot?: string;
-    force: boolean;
-    withIntermediates: boolean;
-    rollback?: boolean;
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
@@ -62,6 +50,10 @@ export async function updateBackupTarget(id: number, input: BackupTargetInput): 
 
 export async function deleteBackupTarget(id: number): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/targets/${id}`, APIResponseSchema, 'DELETE');
+}
+
+export async function validateBackupTarget(id: number): Promise<APIResponse> {
+    return await apiRequest(`/cluster/backups/targets/${id}/validate`, APIResponseSchema, 'POST', {});
 }
 
 export async function listBackupJobs(): Promise<BackupJob[]> {
@@ -84,31 +76,6 @@ export async function runBackupJob(id: number): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
 }
 
-export async function getBackupTargetDatasets(id: number, prefix?: string): Promise<BackupDataset[]> {
-    const q = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
-    return await apiRequest(
-        `/cluster/backups/targets/${id}/datasets${q}`,
-        z.array(BackupDatasetSchema),
-        'GET'
-    );
-}
-
-export async function getBackupTargetSnapshots(id: number, dataset: string): Promise<BackupSnapshot[]> {
-    return await apiRequest(
-        `/cluster/backups/targets/${id}/snapshots?dataset=${encodeURIComponent(dataset)}`,
-        z.array(BackupSnapshotSchema),
-        'GET'
-    );
-}
-
-export async function getBackupTargetStatus(id: number, limit: number = 50): Promise<BackupEvent[]> {
-    return await apiRequest(
-        `/cluster/backups/targets/${id}/status?limit=${limit}`,
-        z.array(BackupEventSchema),
-        'GET'
-    );
-}
-
 export async function getBackupEvents(limit: number = 200, jobId?: number): Promise<BackupEvent[]> {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
@@ -118,6 +85,10 @@ export async function getBackupEvents(limit: number = 200, jobId?: number): Prom
     return await apiRequest(`/cluster/backups/events?${params.toString()}`, z.array(BackupEventSchema), 'GET');
 }
 
-export async function pullFromBackupTarget(input: BackupPullInput): Promise<BackupPlan> {
-    return await apiRequest('/cluster/backups/pull', BackupPlanSchema, 'POST', input);
+export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInfo[]> {
+    return await apiRequest(`/cluster/backups/jobs/${jobId}/snapshots`, z.array(SnapshotInfoSchema), 'GET');
+}
+
+export async function restoreBackupJob(jobId: number, snapshot: string): Promise<APIResponse> {
+    return await apiRequest(`/cluster/backups/jobs/${jobId}/restore`, APIResponseSchema, 'POST', { snapshot });
 }

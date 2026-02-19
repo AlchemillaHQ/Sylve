@@ -61,22 +61,6 @@
 		return [
 			{ field: 'id', title: 'ID', visible: false },
 			{
-				field: 'direction',
-				title: 'Direction',
-				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					let v = { name: '', icon: '' };
-
-					if (value === 'send') {
-						v = { name: 'Send', icon: 'mdi:upload' };
-					} else if (value === 'receive') {
-						v = { name: 'Receive', icon: 'mdi:download' };
-					}
-
-					return renderWithIcon(v.icon, v.name);
-				}
-			},
-			{
 				field: 'status',
 				title: 'Status',
 				formatter: (cell: CellComponent) => {
@@ -117,9 +101,7 @@
 					return renderWithIcon('material-symbols:files', value);
 				}
 			},
-			{ field: 'destinationDataset', title: 'Destination Dataset' },
-			{ field: 'baseSnapshot', title: 'Base Snapshot' },
-			{ field: 'targetSnapshot', title: 'Target Snapshot' },
+			{ field: 'targetEndpoint', title: 'Target' },
 			{ field: 'mode', title: 'Mode' },
 			{
 				field: 'startedAt',

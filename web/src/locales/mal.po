@@ -1557,6 +1557,7 @@ msgstr ""
 
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Date"
 msgstr "തീയതി"
 
@@ -1577,6 +1578,7 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -2175,8 +2177,6 @@ msgid "Select Type"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Endpoint"
 msgstr ""
 
@@ -3206,6 +3206,7 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Enabled"
@@ -3221,11 +3222,14 @@ msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Disabled"
 msgstr "പ്രവർത്തനരഹിതമാക്കി"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
 msgstr ""
 
@@ -4168,6 +4172,7 @@ msgid "Share"
 msgstr "പങ്കിടുക"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target"
@@ -6362,6 +6367,7 @@ msgstr "ആനുകാലിക സ്നാപ്പ്ഷോട്ട് ഇ�
 #~ msgstr ""
 
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Used"
 msgstr "ഉപയോഗിച്ചത്"
 
@@ -7348,17 +7354,15 @@ msgstr ""
 #~ msgid "Available"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Direction"
-msgstr ""
+#~ msgid "Direction"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source Dataset"
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Destination Dataset"
-msgstr ""
+#~ msgid "Destination Dataset"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Completed"
@@ -7479,9 +7483,8 @@ msgstr ""
 msgid "Source"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination"
-msgstr ""
+#~ msgid "Destination"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Schedule"
@@ -7553,9 +7556,8 @@ msgstr ""
 #~ msgid "Jail Root Dataset"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination Dataset (on target)"
-msgstr ""
+#~ msgid "Destination Dataset (on target)"
+#~ msgstr ""
 
 #~ msgid "Cron (5-field)"
 #~ msgstr ""
@@ -7586,9 +7588,8 @@ msgstr ""
 msgid "Cluster Notes"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Endpoint is required"
-msgstr ""
+#~ msgid "Endpoint is required"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -7620,9 +7621,8 @@ msgstr ""
 msgid "Target is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination dataset is required"
-msgstr ""
+#~ msgid "Destination dataset is required"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source dataset is required for dataset mode"
@@ -7647,13 +7647,11 @@ msgstr ""
 msgid "Schedule (Cron, 5-field)"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Force receive"
-msgstr ""
+#~ msgid "Force receive"
+#~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "With intermediates"
-msgstr ""
+#~ msgid "With intermediates"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Job Summary:"
@@ -7666,9 +7664,8 @@ msgstr ""
 msgid "Dataset <0/> will be backed up"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Snapshots will be sent to <0/>"
-msgstr ""
+#~ msgid "Snapshots will be sent to <0/>"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Schedule: <0/>"
@@ -7678,17 +7675,15 @@ msgstr ""
 msgid "Events"
 msgstr ""
 
-#: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Base Snapshot"
-msgstr ""
+#~ msgid "Base Snapshot"
+#~ msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Target Snapshot"
-msgstr ""
+#~ msgid "Target Snapshot"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "All Jobs"
@@ -7717,8 +7712,10 @@ msgstr ""
 msgid "Failed to load datasets from target"
 msgstr ""
 
-#~ msgid "Failed to load snapshots"
-#~ msgstr ""
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to load snapshots"
+msgstr ""
 
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Failed to restore from backup target"
@@ -7772,6 +7769,7 @@ msgstr ""
 #~ msgid "Select a dataset above to see available snapshots"
 #~ msgstr ""
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Restore from Backup"
 msgstr ""
@@ -7881,13 +7879,11 @@ msgstr ""
 msgid "No jails available"
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Send"
-msgstr ""
+#~ msgid "Send"
+#~ msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Receive"
-msgstr ""
+#~ msgid "Receive"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Failed"
@@ -7902,4 +7898,160 @@ msgstr ""
 
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "No backup jobs found for this target"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH Host"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup Root"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH Host is required"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup Root is required"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Target connectivity validated"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validation failed"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validating..."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validate"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH Port"
+msgstr ""
+
+#. placeholder {0}: targetModal.edit ? '(leave empty to keep existing)' : ''
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH Private Key {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Dest Suffix"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination suffix is required"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination Suffix (appended to target's backup root)"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination suffix: <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore job started — check events for progress"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to start restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading snapshots from remote target..."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No snapshots found on the backup target. Run a backup first."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Snapshot"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Refer"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "<0/> Restore Warning"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "The current dataset will be renamed to <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Data from <0/> will be restored in its place"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No data is deleted on the backup target — all snapshots remain available"
+msgstr ""
+
+#~ msgid "You can delete the <0/> dataset later to reclaim space"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "<0/> Restoring..."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "<0/> Restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid ""
+"You can delete the <0/> dataset\n"
+"later to reclaim space"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Prune"
+msgstr ""
+
+#. placeholder {0}: value
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Off"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Prune keep value must be 0 or greater"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep Last Snapshots (0 disables pruning)"
+msgstr ""
+
+#. placeholder {0}: Number.parseInt(jobModal.pruneKeepLast || '0', 10)
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep last {0} snapshots"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Pruning: <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Also prune on target"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Target prune: <0/>"
 msgstr ""

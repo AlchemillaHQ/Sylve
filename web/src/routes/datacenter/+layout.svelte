@@ -52,11 +52,6 @@
 						label: 'Events',
 						icon: 'mdi--history',
 						href: '/datacenter/backups/events'
-					},
-					{
-						label: 'Restore',
-						icon: 'mdi--restore',
-						href: '/datacenter/backups/restore'
 					}
 				]
 			}
