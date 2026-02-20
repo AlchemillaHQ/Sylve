@@ -8,6 +8,7 @@
 	import type { Jail, ExecPhaseKey, ExecPhaseState } from '$lib/types/jail/jail';
 	import { ExecPhaseDefs } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -31,7 +32,7 @@
 
 	function scriptsFromJail(currentJail: Jail): Record<ExecPhaseKey, ExecPhaseState> {
 		const scripts = emptyScripts();
-		for (const hook of currentJail.hooks || []) {
+		for (const hook of currentJail.jailHooks || []) {
 			if (hook.phase in scripts) {
 				const key = hook.phase as ExecPhaseKey;
 				scripts[key] = {
@@ -43,11 +44,7 @@
 		return scripts;
 	}
 
-	let execScripts = $state<Record<ExecPhaseKey, ExecPhaseState>>(scriptsFromJail(jail));
-
-	$effect(() => {
-		execScripts = scriptsFromJail(jail);
-	});
+	let execScripts = $derived<Record<ExecPhaseKey, ExecPhaseState>>(scriptsFromJail(jail));
 
 	function reset() {
 		execScripts = scriptsFromJail(jail);
@@ -130,7 +127,8 @@
 						/>
 
 						<div class="text-muted-foreground text-[9px] leading-snug">
-							The above script will run during {phase.label}, ensure they are valid for the host or jail
+							The above script will run during {phase.label}, ensure they are valid for the host or
+							jail
 						</div>
 					{/if}
 				</div>

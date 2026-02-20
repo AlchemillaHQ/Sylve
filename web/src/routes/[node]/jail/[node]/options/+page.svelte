@@ -112,7 +112,7 @@
 				id: generateNanoId('lifecycleHooks'),
 				property: 'Lifecycle Hooks',
 				value: (() => {
-					const hooks = jail?.current.hooks || [];
+					const hooks = jail?.current.jailHooks || [];
 					const enabledHooks = hooks.filter(
 						(hook) => hook.enabled && hook.script && hook.script.trim() !== ''
 					);

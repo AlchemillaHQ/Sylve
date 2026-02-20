@@ -7263,10 +7263,8 @@ msgstr "Failed to save lifecycle hooks"
 msgid "Lifecycle hooks saved"
 msgstr "Lifecycle hooks saved"
 
-#. placeholder {0}: phase.label
-#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
-msgid "The above script will run during {0}, ensure they are valid for the host or jail"
-msgstr "The above script will run during {0}, ensure they are valid for the host or jail"
+#~ msgid "The above script will run during {0}, ensure they are valid for the host or jail"
+#~ msgstr "The above script will run during {0}, ensure they are valid for the host or jail"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 msgid "VM must be shut off to attach network"
@@ -8116,3 +8114,12 @@ msgstr "Backup root not found on target"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Destination Suffix"
 msgstr "Destination Suffix"
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid ""
+"The above script will run during {0}, ensure they are valid for the host or\n"
+"jail"
+msgstr ""
+"The above script will run during {0}, ensure they are valid for the host or\n"
+"jail"
