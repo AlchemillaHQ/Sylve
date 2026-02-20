@@ -166,8 +166,6 @@ func (s *Service) backfillPreClusterState() error {
 			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
 				return fmt.Errorf("apply_synth_set_options id=%d: %w", o.ID, err)
 			}
-
-			break
 		}
 	}
 
@@ -487,7 +485,7 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey st
 		return fmt.Errorf("add_voter_failed: %w", err)
 	}
 
-	return nil
+	return s.ResyncClusterState()
 }
 
 func (s *Service) MarkClustered() error {
