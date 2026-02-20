@@ -109,22 +109,20 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 
 func (s *Service) waitUntilLeader(timeout time.Duration) (bool, raft.ServerAddress, error) {
 	deadline := time.Now().Add(timeout)
-
-	if s.Raft.State() == raft.Leader {
-		return true, s.Raft.Leader(), nil
-	}
-	if addr := s.Raft.Leader(); addr != "" {
-		return false, addr, nil
-	}
+	var lastKnownLeader raft.ServerAddress
 
 	for time.Now().Before(deadline) {
 		if s.Raft.State() == raft.Leader {
 			return true, s.Raft.Leader(), nil
 		}
 		if addr := s.Raft.Leader(); addr != "" {
-			return false, addr, nil
+			lastKnownLeader = addr
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+
+	if lastKnownLeader != "" {
+		return false, lastKnownLeader, fmt.Errorf("timeout waiting to become leader")
 	}
 
 	return false, "", fmt.Errorf("timeout waiting for leader election")
@@ -379,6 +377,18 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 	}
 
 	if err := s.DB.Exec("DELETE FROM cluster_options").Error; err != nil {
+		return err
+	}
+
+	if err := s.DB.Exec("DELETE FROM backup_events").Error; err != nil {
+		return err
+	}
+
+	if err := s.DB.Exec("DELETE FROM backup_jobs").Error; err != nil {
+		return err
+	}
+
+	if err := s.DB.Exec("DELETE FROM backup_targets").Error; err != nil {
 		return err
 	}
 
