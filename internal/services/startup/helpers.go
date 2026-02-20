@@ -437,16 +437,23 @@ add path 'bpf*' unhide
 }
 
 func ensureServiceRunning(service string) error {
-	_, enableErr := utils.RunCommand("/usr/sbin/service", service, "enable")
-	if enableErr != nil {
-		return fmt.Errorf("could not enable service %s: %w", service, enableErr)
+	if _, err := utils.RunCommand("/usr/sbin/service", service, "enable"); err != nil {
+		return fmt.Errorf("could not enable service %s: %w", service, err)
 	}
 
-	_, startErr := utils.RunCommand("/usr/sbin/service", service, "start")
+	_, statusErr := utils.RunCommand("/usr/sbin/service", service, "status")
+	if statusErr == nil {
+		return nil
+	}
+
+	output, startErr := utils.RunCommand("/usr/sbin/service", service, "start")
 	if startErr != nil {
-		if !strings.Contains(startErr.Error(), "already running") {
-			return fmt.Errorf("could not start service %s: %w", service, startErr)
+		// Check in case the start command actually worked but returned a non-zero exit code (some services do this, apparently?)
+		if _, finalStatusErr := utils.RunCommand("/usr/sbin/service", service, "status"); finalStatusErr == nil {
+			return nil
 		}
+
+		return fmt.Errorf("could not start service %s: %w (output: %s)", service, startErr, output)
 	}
 
 	return nil
