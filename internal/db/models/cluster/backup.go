@@ -28,12 +28,53 @@ type BackupTarget struct {
 	SSHHost     string      `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
 	SSHPort     int         `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
 	SSHKeyPath  string      `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // path to private key on host filesystem
-	BackupRoot  string      `gorm:"column:backup_root;" json:"backupRoot"`     // target pool/dataset prefix (e.g., tank/Backups)
+	SSHKey      string      `gorm:"column:ssh_key;type:text" json:"-"`
+	BackupRoot  string      `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
 	Description string      `json:"description"`
 	Enabled     bool        `gorm:"default:true" json:"enabled"`
 	CreatedAt   time.Time   `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt   time.Time   `gorm:"autoUpdateTime" json:"updatedAt"`
 	Jobs        []BackupJob `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+}
+
+type BackupTargetReplicationPayload struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	SSHHost     string `json:"sshHost"`
+	SSHPort     int    `json:"sshPort"`
+	SSHKeyPath  string `json:"sshKeyPath"`
+	SSHKey      string `json:"sshKey"`
+	BackupRoot  string `json:"backupRoot"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+}
+
+func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicationPayload {
+	return BackupTargetReplicationPayload{
+		ID:          target.ID,
+		Name:        target.Name,
+		SSHHost:     target.SSHHost,
+		SSHPort:     target.SSHPort,
+		SSHKeyPath:  target.SSHKeyPath,
+		SSHKey:      target.SSHKey,
+		BackupRoot:  target.BackupRoot,
+		Description: target.Description,
+		Enabled:     target.Enabled,
+	}
+}
+
+func (p BackupTargetReplicationPayload) ToModel() BackupTarget {
+	return BackupTarget{
+		ID:          p.ID,
+		Name:        p.Name,
+		SSHHost:     p.SSHHost,
+		SSHPort:     p.SSHPort,
+		SSHKeyPath:  p.SSHKeyPath,
+		SSHKey:      p.SSHKey,
+		BackupRoot:  p.BackupRoot,
+		Description: p.Description,
+		Enabled:     p.Enabled,
+	}
 }
 
 // ZeltaEndpoint returns the Zelta-formatted endpoint string: user@host:pool/dataset
@@ -92,7 +133,7 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"name", "ssh_host", "ssh_port", "ssh_key_path", "backup_root",
+			"name", "ssh_host", "ssh_port", "ssh_key_path", "ssh_key", "backup_root",
 			"description", "enabled", "updated_at",
 		}),
 	}).Create(target).Error

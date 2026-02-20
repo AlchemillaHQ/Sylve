@@ -176,27 +176,7 @@ func (s *Service) backfillPreClusterState() error {
 		}
 
 		for _, t := range targets {
-			payloadStruct := struct {
-				ID          uint   `json:"id"`
-				Name        string `json:"name"`
-				SSHHost     string `json:"sshHost"`
-				SSHPort     int    `json:"sshPort"`
-				SSHKeyPath  string `json:"sshKeyPath"`
-				BackupRoot  string `json:"backupRoot"`
-				Description string `json:"description"`
-				Enabled     bool   `json:"enabled"`
-			}{
-				ID:          t.ID,
-				Name:        t.Name,
-				SSHHost:     t.SSHHost,
-				SSHPort:     t.SSHPort,
-				SSHKeyPath:  t.SSHKeyPath,
-				BackupRoot:  t.BackupRoot,
-				Description: t.Description,
-				Enabled:     t.Enabled,
-			}
-
-			data, _ := json.Marshal(payloadStruct)
+			data, _ := json.Marshal(clusterModels.BackupTargetToReplicationPayload(t))
 			cmd := clusterModels.Command{Type: "backup_target", Action: "create", Data: data}
 			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
 				return fmt.Errorf("apply_synth_create_backup_target id=%d: %w", t.ID, err)
@@ -463,7 +443,7 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey st
 	for _, srv := range conf.Servers {
 		if srv.ID == sid {
 			if srv.Address == saddr && srv.Suffrage == raft.Voter {
-				return nil
+				return s.ResyncClusterState()
 			}
 
 			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
@@ -519,4 +499,10 @@ func (s *Service) MarkDeclustered() error {
 	}
 
 	return nil
+}
+
+func (s *Service) ListBackupTargetsForSync() ([]clusterModels.BackupTarget, error) {
+	var targets []clusterModels.BackupTarget
+	err := s.DB.Order("id ASC").Find(&targets).Error
+	return targets, err
 }

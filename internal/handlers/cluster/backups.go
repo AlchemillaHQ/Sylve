@@ -138,6 +138,7 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			Name:        req.Name,
 			SSHHost:     req.SSHHost,
 			SSHPort:     sshPort,
+			SSHKey:      req.SSHKey,
 			SSHKeyPath:  sshKeyPath,
 			BackupRoot:  req.BackupRoot,
 			Description: req.Description,
@@ -244,10 +245,16 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			return
 		}
 
+		sshKeyData := strings.TrimSpace(req.SSHKey)
+		if sshKeyData == "" {
+			sshKeyData = existing.SSHKey
+		}
+
 		err = cS.ProposeBackupTargetUpdate(uint(id64), cluster.BackupTargetInput{
 			Name:        req.Name,
 			SSHHost:     req.SSHHost,
 			SSHPort:     sshPort,
+			SSHKey:      sshKeyData,
 			SSHKeyPath:  sshKeyPath,
 			BackupRoot:  req.BackupRoot,
 			Description: req.Description,

@@ -77,6 +77,7 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 		SSHHost:     strings.TrimSpace(input.SSHHost),
 		SSHPort:     input.SSHPort,
 		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
+		SSHKey:      strings.TrimSpace(input.SSHKey),
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
@@ -100,7 +101,7 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 	}
 	target.ID = id
 
-	data, err := json.Marshal(target)
+	data, err := json.Marshal(clusterModels.BackupTargetToReplicationPayload(target))
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
 	}
@@ -126,6 +127,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 		SSHHost:     strings.TrimSpace(input.SSHHost),
 		SSHPort:     input.SSHPort,
 		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
+		SSHKey:      strings.TrimSpace(input.SSHKey),
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
@@ -141,6 +143,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 			"ssh_host":     target.SSHHost,
 			"ssh_port":     target.SSHPort,
 			"ssh_key_path": target.SSHKeyPath,
+			"ssh_key":      target.SSHKey,
 			"backup_root":  target.BackupRoot,
 			"description":  target.Description,
 			"enabled":      target.Enabled,
@@ -151,7 +154,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 		return fmt.Errorf("raft_not_initialized")
 	}
 
-	data, err := json.Marshal(target)
+	data, err := json.Marshal(clusterModels.BackupTargetToReplicationPayload(target))
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
 	}

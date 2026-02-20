@@ -17,6 +17,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
@@ -156,7 +157,7 @@ func CreateCluster(as *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.Hand
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/join [post]
-func JoinCluster(aS *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
+func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req JoinClusterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -225,6 +226,16 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.Handle
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_accepting_bad_leader_response",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "error_reconciling_backup_target_ssh_keys",
 				Error:   err.Error(),
 				Data:    nil,
 			})
@@ -334,7 +345,7 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /cluster/resync-state [post]
-func ResyncClusterState(cS *cluster.Service) gin.HandlerFunc {
+func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if err := cS.ResyncClusterState(); err != nil {
 			if strings.HasPrefix(err.Error(), "not_leader;") {
@@ -350,6 +361,16 @@ func ResyncClusterState(cS *cluster.Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_resyncing_cluster_state",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "error_reconciling_backup_target_ssh_keys",
 				Error:   err.Error(),
 				Data:    nil,
 			})

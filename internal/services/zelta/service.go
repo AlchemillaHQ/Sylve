@@ -83,6 +83,61 @@ func SaveSSHKey(targetID uint, keyData string) (string, error) {
 	return keyPath, nil
 }
 
+func ensureSSHKeyFileAtPath(keyPath, keyData string) error {
+	trimmed := strings.TrimSpace(keyData)
+	if keyPath == "" || trimmed == "" {
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
+		return fmt.Errorf("create_ssh_key_parent_dir: %w", err)
+	}
+
+	if err := os.WriteFile(keyPath, []byte(trimmed+"\n"), 0600); err != nil {
+		return fmt.Errorf("write_ssh_key: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) ReconcileBackupTargetSSHKeys() error {
+	if s.Cluster == nil {
+		return nil
+	}
+
+	targets, err := s.Cluster.ListBackupTargetsForSync()
+	if err != nil {
+		return err
+	}
+
+	for _, target := range targets {
+		keyData := strings.TrimSpace(target.SSHKey)
+		if keyData == "" {
+			continue
+		}
+
+		path := strings.TrimSpace(target.SSHKeyPath)
+		if path == "" {
+			generatedPath, genErr := SaveSSHKey(target.ID, keyData)
+			if genErr != nil {
+				return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, genErr)
+			}
+
+			if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", generatedPath).Error; err != nil {
+				return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
+			}
+
+			continue
+		}
+
+		if err := ensureSSHKeyFileAtPath(path, keyData); err != nil {
+			return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
+		}
+	}
+
+	return nil
+}
+
 func RemoveSSHKey(targetID uint) {
 	sshDir, err := GetSSHKeyDir()
 	if err != nil {
@@ -161,6 +216,10 @@ func (s *Service) Run(ctx context.Context) {
 
 // StartBackupScheduler runs the cron-based backup scheduler.
 func (s *Service) StartBackupScheduler(ctx context.Context) {
+	if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_ssh_keys")
+	}
+
 	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
 	}
@@ -263,6 +322,12 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		return fmt.Errorf("backup_job_already_running")
 	}
 	defer s.releaseJob(job.ID)
+
+	if err := ensureSSHKeyFileAtPath(strings.TrimSpace(job.Target.SSHKeyPath), strings.TrimSpace(job.Target.SSHKey)); err != nil {
+		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+		s.updateBackupJobResult(job, runErr)
+		return runErr
+	}
 
 	if !job.Target.Enabled {
 		runErr := fmt.Errorf("backup_target_disabled")
