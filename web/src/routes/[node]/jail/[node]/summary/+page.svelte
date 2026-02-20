@@ -65,9 +65,10 @@
 		}
 	});
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${ctId}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getJailById(ctId, 'ctid');
 			updateCache(key, result);
 			return result;
@@ -77,6 +78,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const jState = resource(
 		() => `jail-${ctId}-state`,
 		async (key, prevKey, { signal }) => {
@@ -89,6 +91,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const logs = resource(
 		() => `jail-${ctId}-logs`,
 		async (key, prevKey, { signal }) => {
@@ -101,6 +104,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
@@ -112,6 +116,7 @@
 		{ initialValue: data.stats }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
 		() => `cpu-info`,
 		async (key, prevKey, { signal }) => {
@@ -124,6 +129,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const ramInfo = resource(
 		() => `ram-info`,
 		async (key, prevKey, { signal }) => {

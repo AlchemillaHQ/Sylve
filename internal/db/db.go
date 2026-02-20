@@ -52,9 +52,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error getting sql database handle: %v", err)
 	}
 
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
-
 	db.Exec("PRAGMA foreign_keys = OFF")
 	db.Exec("PRAGMA busy_timeout = 5000")
 	db.Exec("PRAGMA journal_mode = WAL")
@@ -136,6 +133,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	}
 
 	db.Exec("PRAGMA foreign_keys = ON")
+
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(2)
 
 	err = setupInitUsers(db, cfg)
 	if err != nil {

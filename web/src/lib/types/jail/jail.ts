@@ -52,6 +52,7 @@ export const JailStorageSchema = z.object({
     name: z.string(),
     isBase: z.boolean()
 });
+
 export const SimpleJailSchema = z.object({
     id: z.number().int(),
     name: z.string(),
@@ -91,7 +92,7 @@ export const JailHookSchema = z.object({
     script: z.string()
 });
 
-const JailBaseSchema = SimpleJailSchema.extend({
+export const JailSchema = SimpleJailSchema.extend({
     description: z.string().nullable(),
     startAtBoot: z.boolean(),
     startOrder: z.number().int(),
@@ -104,30 +105,14 @@ const JailBaseSchema = SimpleJailSchema.extend({
     devfsRuleset: z.string(),
     additionalOptions: z.string(),
     allowedOptions: z.array(z.string()).default([]),
-    hooks: z
-        .array(JailHookSchema)
-        .nullable()
-        .optional()
-        .transform((value) => value ?? []),
+    jailHooks: z.array(JailHookSchema).nullable().default([]),
     metadataMeta: z.string(),
-    metadataEnv: z.string()
+    metadataEnv: z.string(),
+    cores: z.number(),
+    memory: z.number(),
+    startedAt: z.string().nullable(),
+    stoppedAt: z.string().nullable(),
 });
-
-export const JailSchema = z.preprocess((input) => {
-    if (input && typeof input === 'object' && !Array.isArray(input)) {
-        const payload = { ...(input as Record<string, unknown>) };
-        if (payload.hooks == null) {
-            if (Array.isArray(payload.JailHooks)) {
-                payload.hooks = payload.JailHooks;
-            } else if (Array.isArray(payload.jailHooks)) {
-                payload.hooks = payload.jailHooks;
-            }
-        }
-        return payload;
-    }
-
-    return input;
-}, JailBaseSchema);
 
 export const JailStateSchema = z.object({
     ctId: z.number().int(),

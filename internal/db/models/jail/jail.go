@@ -113,6 +113,7 @@ const (
 )
 
 type JailHooks struct {
+	ID      uint          `json:"id" gorm:"primaryKey"`
 	JailID  uint          `json:"jid" gorm:"column:jid;index"`
 	Phase   JailHookPhase `json:"phase" gorm:"column:phase;index"`
 	Enabled bool          `json:"enabled"`
@@ -150,7 +151,7 @@ type Jail struct {
 	CleanEnvironment  bool        `json:"cleanEnvironment"`
 	AdditionalOptions string      `json:"additionalOptions"`
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
-	JailHooks         []JailHooks `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	JailHooks         []JailHooks `json:"jailHooks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
 	Storages []Storage   `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 	Networks []Network   `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
