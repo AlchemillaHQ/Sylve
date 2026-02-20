@@ -86,18 +86,11 @@
 					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 		},
 		{ field: 'name', title: 'Name' },
-		{ field: 'sshHost', title: 'SSH Host' },
-		{ field: 'sshPort', title: 'Port' },
+		{ field: 'sshHost', title: 'SSH Host', visible: false },
+		{ field: 'sshPort', title: 'Port', visible: false },
+		{ field: 'target', title: 'Target' },
 		{ field: 'backupRoot', title: 'Backup Root' },
-		{ field: 'description', title: 'Description' },
-		{
-			field: 'createdAt',
-			title: 'Created',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				return value ? convertDbTime(value) : '-';
-			}
-		}
+		{ field: 'description', title: 'Description' }
 	];
 
 	let tableData = $derived({
@@ -106,8 +99,9 @@
 			name: target.name,
 			sshHost: target.sshHost,
 			sshPort: target.sshPort || 22,
+			target: `${target.sshHost}:${target.sshPort || 22}`,
 			backupRoot: target.backupRoot,
-			description: target.description || '',
+			description: target.description || '-',
 			enabled: target.enabled,
 			createdAt: target.createdAt
 		})),
@@ -185,9 +179,13 @@
 		}
 
 		handleAPIError(response);
-		toast.error(targetModal.edit ? 'Failed to update target' : 'Failed to create target', {
-			position: 'bottom-center'
-		});
+		if (response.error?.includes('backup_root_not_found')) {
+			toast.error('Backup root not found on target', { position: 'bottom-center' });
+		} else {
+			toast.error(targetModal.edit ? 'Failed to update target' : 'Failed to create target', {
+				position: 'bottom-center'
+			});
+		}
 	}
 
 	async function removeTarget() {
@@ -225,20 +223,20 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'edit' && activeRows !== null && activeRows.length === 1}
-		<Button onclick={openEditTarget} size="sm" variant="outline" class="h-6">
-			<div class="flex items-center">
-				<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
-				<span>Edit</span>
-			</div>
-		</Button>
-	{/if}
-
 	{#if type === 'validate' && activeRows !== null && activeRows.length === 1}
 		<Button onclick={validateTarget} size="sm" variant="outline" class="h-6" disabled={validating}>
 			<div class="flex items-center">
 				<Icon icon="mdi:connection" class="mr-1 h-4 w-4" />
 				<span>{validating ? 'Validating...' : 'Validate'}</span>
+			</div>
+		</Button>
+	{/if}
+
+	{#if type === 'edit' && activeRows !== null && activeRows.length === 1}
+		<Button onclick={openEditTarget} size="sm" variant="outline" class="h-6">
+			<div class="flex items-center">
+				<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
+				<span>Edit</span>
 			</div>
 		</Button>
 	{/if}
@@ -265,8 +263,8 @@
 		</Button>
 
 		{@render button('edit')}
-		{@render button('validate')}
 		{@render button('delete')}
+		{@render button('validate')}
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
 			<div class="flex items-center">
@@ -325,14 +323,14 @@
 			</div>
 
 			<div class="space-y-1">
-				<label class="text-sm font-medium"
-					>SSH Private Key {targetModal.edit ? '(leave empty to keep existing)' : ''}</label
-				>
-				<textarea
-					class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+				<CustomValueInput
+					label="SSH Private Key {targetModal.edit ? '(leave empty to keep existing)' : ''}"
 					placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
 					bind:value={targetModal.sshKey}
-				></textarea>
+					type="textarea"
+					classes="space-y-1"
+					textAreaClasses="min-h-[80px]! max-h-[200px]!"
+				/>
 			</div>
 
 			<CustomValueInput

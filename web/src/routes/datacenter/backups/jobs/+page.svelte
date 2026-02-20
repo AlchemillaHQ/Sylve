@@ -671,8 +671,8 @@
 				{/if}
 
 				<CustomValueInput
-					label="Destination Suffix (appended to target's backup root)"
-					placeholder="server1/data"
+					label="Destination Suffix"
+					placeholder="server1/data (appended to target's backup root)"
 					bind:value={jobModal.destSuffix}
 					classes="space-y-1"
 				/>

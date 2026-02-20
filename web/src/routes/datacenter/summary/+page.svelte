@@ -28,6 +28,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let nodes = resource(
 		() => 'cluster-nodes',
 		async (key, prevKey, { signal }) => {
@@ -40,6 +41,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let clusterDetails = resource(
 		() => 'cluster-details',
 		async (key, prevKey, { signal }) => {
@@ -52,6 +54,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let cpuInfo = resource(
 		() => 'cpu-info',
 		async (key, prevKey, { signal }) => {
@@ -64,6 +67,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let ramInfo = resource(
 		() => 'ram-info',
 		async (key, prevKey, { signal }) => {
@@ -76,6 +80,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let diskInfo = resource(
 		() => 'total-disk-usage',
 		async (key, prevKey, { signal }) => {

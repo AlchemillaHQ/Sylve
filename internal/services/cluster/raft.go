@@ -188,6 +188,11 @@ func (s *Service) ResetRaftNode() error {
 		nodeId := s.Detail().NodeID
 
 		leaderAddr := s.Raft.Leader()
+
+		if leaderAddr == "" {
+			return fmt.Errorf("no_leader_found_manual_reset_required")
+		}
+
 		host, _, err := net.SplitHostPort(string(leaderAddr))
 		if err != nil {
 			return fmt.Errorf("failed_to_split_leader_address: %v", err)

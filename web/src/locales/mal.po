@@ -986,7 +986,6 @@ msgid "Failed to create note"
 msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
 msgstr "സൃഷ്ടിച്ചത്"
@@ -4175,6 +4174,7 @@ msgstr "പങ്കിടുക"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Target"
 msgstr "ലക്ഷ്യം"
 
@@ -7952,9 +7952,8 @@ msgstr ""
 msgid "Destination suffix is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination Suffix (appended to target's backup root)"
-msgstr ""
+#~ msgid "Destination Suffix (appended to target's backup root)"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Destination suffix: <0/>"
@@ -8054,4 +8053,12 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target prune: <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup root not found on target"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination Suffix"
 msgstr ""

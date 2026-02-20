@@ -988,7 +988,6 @@ msgid "Failed to create note"
 msgstr "Failed to create note"
 
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
 msgstr "Created"
@@ -4191,6 +4190,7 @@ msgstr "Share"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Target"
 msgstr "Target"
 
@@ -8004,9 +8004,8 @@ msgstr "Dest Suffix"
 msgid "Destination suffix is required"
 msgstr "Destination suffix is required"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination Suffix (appended to target's backup root)"
-msgstr "Destination Suffix (appended to target's backup root)"
+#~ msgid "Destination Suffix (appended to target's backup root)"
+#~ msgstr "Destination Suffix (appended to target's backup root)"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Destination suffix: <0/>"
@@ -8109,3 +8108,11 @@ msgstr "Also prune on target"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target prune: <0/>"
 msgstr "Target prune: <0/>"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup root not found on target"
+msgstr "Backup root not found on target"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination Suffix"
+msgstr "Destination Suffix"

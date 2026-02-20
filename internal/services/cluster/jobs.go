@@ -128,7 +128,7 @@ func (s *Service) fetchCPUInfo(host string, port int, clusterToken string) (int,
 		return 0, 0, false
 	}
 
-	cores := int(resp.Data.PhysicalCores)
+	cores := int(resp.Data.LogicalCores)
 	usage := resp.Data.Usage
 	return cores, usage, true
 }
