@@ -324,6 +324,47 @@ func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Resync Cluster State
+// @Description Replays current cluster-backed state through Raft and forces a snapshot from the leader
+// @Tags Cluster
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /cluster/resync-state [post]
+func ResyncClusterState(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := cS.ResyncClusterState(); err != nil {
+			if strings.HasPrefix(err.Error(), "not_leader;") {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "not_leader",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "error_resyncing_cluster_state",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "cluster_state_resynced",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Remove Peer
 // @Description Remove a peer from the cluster
 // @Tags Cluster

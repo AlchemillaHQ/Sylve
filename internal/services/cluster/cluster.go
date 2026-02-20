@@ -258,6 +258,27 @@ func (s *Service) backfillPreClusterState() error {
 	return nil
 }
 
+func (s *Service) ResyncClusterState() error {
+	if s.Raft == nil {
+		return errors.New("raft_not_initialized")
+	}
+
+	if s.Raft.State() != raft.Leader {
+		addr, id := s.Raft.LeaderWithID()
+		return fmt.Errorf("not_leader; leader_addr=%s; leader_id=%s", string(addr), string(id))
+	}
+
+	if err := s.backfillPreClusterState(); err != nil {
+		return fmt.Errorf("state_backfill_failed: %w", err)
+	}
+
+	if err := s.Raft.Snapshot().Error(); err != nil && !errors.Is(err, raft.ErrNothingNewToSnapshot) {
+		return fmt.Errorf("raft_snapshot_failed: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
