@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
@@ -72,12 +73,14 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 		return err
 	}
 
+	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+
 	target := clusterModels.BackupTarget{
 		Name:        strings.TrimSpace(input.Name),
 		SSHHost:     strings.TrimSpace(input.SSHHost),
 		SSHPort:     input.SSHPort,
 		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
-		SSHKey:      strings.TrimSpace(input.SSHKey),
+		SSHKey:      resolvedSSHKey,
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
@@ -121,13 +124,15 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 		return err
 	}
 
+	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+
 	target := clusterModels.BackupTarget{
 		ID:          id,
 		Name:        strings.TrimSpace(input.Name),
 		SSHHost:     strings.TrimSpace(input.SSHHost),
 		SSHPort:     input.SSHPort,
 		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
-		SSHKey:      strings.TrimSpace(input.SSHKey),
+		SSHKey:      resolvedSSHKey,
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
 		Enabled:     input.Enabled,
@@ -512,4 +517,23 @@ func (s *Service) newRaftObjectID(table string) (uint, error) {
 	}
 
 	return 0, fmt.Errorf("unable_to_allocate_unique_id")
+}
+
+func resolveSSHKeyMaterial(sshKey, sshKeyPath string) string {
+	trimmedKey := strings.TrimSpace(sshKey)
+	if trimmedKey != "" {
+		return trimmedKey
+	}
+
+	trimmedPath := strings.TrimSpace(sshKeyPath)
+	if trimmedPath == "" {
+		return ""
+	}
+
+	raw, err := os.ReadFile(trimmedPath)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(string(raw))
 }
