@@ -199,6 +199,7 @@ func (s *Service) backfillPreClusterState() error {
 				Mode            string     `json:"mode"`
 				SourceDataset   string     `json:"sourceDataset"`
 				JailRootDataset string     `json:"jailRootDataset"`
+				FriendlySrc     string     `json:"friendlySrc"`
 				DestSuffix      string     `json:"destSuffix"`
 				PruneKeepLast   int        `json:"pruneKeepLast"`
 				PruneTarget     bool       `json:"pruneTarget"`
@@ -213,6 +214,7 @@ func (s *Service) backfillPreClusterState() error {
 				Mode:            j.Mode,
 				SourceDataset:   j.SourceDataset,
 				JailRootDataset: j.JailRootDataset,
+				FriendlySrc:     j.FriendlySrc,
 				DestSuffix:      j.DestSuffix,
 				PruneKeepLast:   j.PruneKeepLast,
 				PruneTarget:     j.PruneTarget,

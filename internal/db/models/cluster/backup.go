@@ -93,9 +93,10 @@ type BackupJob struct {
 	TargetID        uint         `gorm:"index;not null" json:"targetId"`
 	Target          BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
 	RunnerNodeID    string       `gorm:"index" json:"runnerNodeId"`
-	Mode            string       `gorm:"default:dataset;index" json:"mode"`    // "dataset" or "jail"
-	SourceDataset   string       `json:"sourceDataset"`                        // for mode=dataset
-	JailRootDataset string       `json:"jailRootDataset"`                      // for mode=jail
+	Mode            string       `gorm:"default:dataset;index" json:"mode"` // "dataset" or "jail"
+	SourceDataset   string       `json:"sourceDataset"`                     // for mode=dataset
+	JailRootDataset string       `json:"jailRootDataset"`                   // for mode=jail
+	FriendlySrc     string       `gorm:"column:friendly_src" json:"friendlySrc"`
 	DestSuffix      string       `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
 	PruneKeepLast   int          `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
 	PruneTarget     bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
@@ -153,6 +154,7 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"mode",
 			"source_dataset",
 			"jail_root_dataset",
+			"friendly_src",
 			"dest_suffix",
 			"prune_keep_last",
 			"prune_target",

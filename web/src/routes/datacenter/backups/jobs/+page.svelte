@@ -279,10 +279,12 @@
 			targetId: job.targetId,
 			runnerNodeId: job.runnerNodeId || '',
 			mode: job.mode,
-			sourceDataset: getSource(
-				job.mode,
-				job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || ''
-			),
+			sourceDataset:
+				job.friendlySrc ||
+				getSource(
+					job.mode,
+					job.mode === 'jail' ? job.jailRootDataset || '' : job.sourceDataset || ''
+				),
 			destSuffix: job.destSuffix || '',
 			pruneKeepLast: job.pruneKeepLast || 0,
 			pruneTarget: job.pruneTarget || false,

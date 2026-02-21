@@ -309,6 +309,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				"mode":              job.Mode,
 				"source_dataset":    job.SourceDataset,
 				"jail_root_dataset": job.JailRootDataset,
+				"friendly_src":      job.FriendlySrc,
 				"dest_suffix":       job.DestSuffix,
 				"prune_keep_last":   job.PruneKeepLast,
 				"prune_target":      job.PruneTarget,

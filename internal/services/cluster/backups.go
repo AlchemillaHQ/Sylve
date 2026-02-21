@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/robfig/cron/v3"
 )
 
@@ -285,6 +287,7 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 			"mode":              job.Mode,
 			"source_dataset":    job.SourceDataset,
 			"jail_root_dataset": job.JailRootDataset,
+			"friendly_src":      job.FriendlySrc,
 			"dest_suffix":       job.DestSuffix,
 			"prune_keep_last":   job.PruneKeepLast,
 			"prune_target":      job.PruneTarget,
@@ -405,6 +408,7 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		Mode:            mode,
 		SourceDataset:   strings.TrimSpace(input.SourceDataset),
 		JailRootDataset: strings.TrimSpace(input.JailRootDataset),
+		FriendlySrc:     "",
 		DestSuffix:      strings.TrimSpace(input.DestSuffix),
 		PruneKeepLast:   input.PruneKeepLast,
 		PruneTarget:     input.PruneTarget,
@@ -430,11 +434,59 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		job.SourceDataset = ""
 	}
 
+	job.FriendlySrc = s.resolveBackupJobFriendlySource(job.Mode, job.SourceDataset, job.JailRootDataset)
+
 	if !next.IsZero() {
 		job.NextRunAt = &next
 	}
 
 	return job, nil
+}
+
+func (s *Service) resolveBackupJobFriendlySource(mode, sourceDataset, jailRootDataset string) string {
+	if mode == clusterModels.BackupJobModeDataset {
+		return strings.TrimSpace(sourceDataset)
+	}
+
+	jailDataset := strings.TrimSpace(jailRootDataset)
+	if jailDataset == "" {
+		return ""
+	}
+
+	ctID, ok := parseJailCTIDFromDataset(jailDataset)
+	if !ok {
+		return jailDataset
+	}
+
+	var jail jailModels.Jail
+	if err := s.DB.Select("name").Where("ct_id = ?", ctID).First(&jail).Error; err == nil {
+		name := strings.TrimSpace(jail.Name)
+		if name != "" {
+			return name
+		}
+	}
+
+	return jailDataset
+}
+
+func parseJailCTIDFromDataset(dataset string) (uint, bool) {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return 0, false
+	}
+
+	idx := strings.LastIndex(dataset, "/")
+	if idx < 0 || idx == len(dataset)-1 {
+		return 0, false
+	}
+
+	ctIDRaw := strings.TrimSpace(dataset[idx+1:])
+	ctID, err := strconv.ParseUint(ctIDRaw, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return uint(ctID), true
 }
 
 func validateBackupTargetInput(input BackupTargetInput) error {

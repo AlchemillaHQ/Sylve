@@ -22,6 +22,7 @@ export const BackupJobSchema = z.object({
     mode: z.enum(['dataset', 'jail']),
     sourceDataset: z.string().optional().default(''),
     jailRootDataset: z.string().optional().default(''),
+    friendlySrc: z.string().optional().default(''),
     destSuffix: z.string().optional().default(''),
     pruneKeepLast: z.number().int().nonnegative().default(0),
     pruneTarget: z.boolean().default(false),
