@@ -230,6 +230,8 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshKeyData = existing.SSHKey
 		}
 
+		req.SSHKeyPath = sshKeyPath
+		req.SSHKey = sshKeyData
 		req.ID = uint(id64)
 
 		err = cS.ProposeBackupTargetUpdate(req, cS.Raft == nil)

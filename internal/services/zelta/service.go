@@ -103,6 +103,40 @@ func ensureSSHKeyFileAtPath(keyPath, keyData string) error {
 	return nil
 }
 
+func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.BackupTarget) error {
+	if target == nil {
+		return fmt.Errorf("backup_target_required")
+	}
+
+	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
+	keyData := strings.TrimSpace(target.SSHKey)
+	if keyData == "" {
+		return nil
+	}
+
+	if target.SSHKeyPath == "" {
+		generatedPath, err := SaveSSHKey(target.ID, keyData)
+		if err != nil {
+			return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
+		}
+
+		target.SSHKeyPath = generatedPath
+		if s != nil && s.DB != nil && target.ID != 0 {
+			if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", generatedPath).Error; err != nil {
+				return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
+			}
+		}
+
+		return nil
+	}
+
+	if err := ensureSSHKeyFileAtPath(target.SSHKeyPath, keyData); err != nil {
+		return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
+	}
+
+	return nil
+}
+
 func (s *Service) ReconcileBackupTargetSSHKeys() error {
 	if s.Cluster == nil {
 		return nil
@@ -113,28 +147,9 @@ func (s *Service) ReconcileBackupTargetSSHKeys() error {
 		return err
 	}
 
-	for _, target := range targets {
-		keyData := strings.TrimSpace(target.SSHKey)
-		if keyData == "" {
-			continue
-		}
-
-		path := strings.TrimSpace(target.SSHKeyPath)
-		if path == "" {
-			generatedPath, genErr := SaveSSHKey(target.ID, keyData)
-			if genErr != nil {
-				return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, genErr)
-			}
-
-			if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", generatedPath).Error; err != nil {
-				return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
-			}
-
-			continue
-		}
-
-		if err := ensureSSHKeyFileAtPath(path, keyData); err != nil {
-			return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
+	for i := range targets {
+		if err := s.ensureBackupTargetSSHKeyMaterialized(&targets[i]); err != nil {
+			return err
 		}
 	}
 
@@ -364,7 +379,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		fmt.Println("StopBeforeBackup is checked for job", job.ID)
 	}
 
-	if err := ensureSSHKeyFileAtPath(strings.TrimSpace(job.Target.SSHKeyPath), strings.TrimSpace(job.Target.SSHKey)); err != nil {
+	if err := s.ensureBackupTargetSSHKeyMaterialized(&job.Target); err != nil {
 		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 		s.updateBackupJobResult(job, runErr)
 		return runErr

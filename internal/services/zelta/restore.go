@@ -47,6 +47,9 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	if target.SSHHost == "" {
 		return nil, fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
 	}
+	if err := s.ensureBackupTargetSSHKeyMaterialized(&target); err != nil {
+		return nil, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
 
 	remoteDataset := remoteDatasetForJob(job)
 	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
@@ -101,6 +104,9 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		return fmt.Errorf("backup_job_already_running")
 	}
 	defer s.releaseJob(job.ID)
+	if err := s.ensureBackupTargetSSHKeyMaterialized(&job.Target); err != nil {
+		return fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
 
 	sourceDataset := strings.TrimSpace(job.SourceDataset)
 	if job.Mode == clusterModels.BackupJobModeJail {

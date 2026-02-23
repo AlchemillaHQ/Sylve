@@ -710,6 +710,9 @@ func (s *Service) getRestoreTarget(targetID uint) (clusterModels.BackupTarget, e
 	if !target.Enabled {
 		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_disabled")
 	}
+	if err := s.ensureBackupTargetSSHKeyMaterialized(&target); err != nil {
+		return clusterModels.BackupTarget{}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
 	return target, nil
 }
 
