@@ -76,3 +76,9 @@ func shouldAutoRotateBackupErrorCode(code string) bool {
 		return false
 	}
 }
+
+func shouldRenameTargetAfterRotateFailure(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "target is not a replica of the source") ||
+		strings.Contains(lower, "to perform a full backup, rename the target dataset or sync to an empty target")
+}

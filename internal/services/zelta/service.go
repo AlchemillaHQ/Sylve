@@ -183,6 +183,31 @@ func (s *Service) Rotate(ctx context.Context, target *clusterModels.BackupTarget
 	return s.RotateWithTarget(ctx, target, sourceDataset, destSuffix)
 }
 
+// RenameTargetDatasetForBootstrap preserves an existing non-replica target dataset
+// by renaming it out of the way so a fresh full backup can proceed.
+func (s *Service) RenameTargetDatasetForBootstrap(ctx context.Context, target *clusterModels.BackupTarget, destSuffix string) (string, string, error) {
+	currentDataset := strings.TrimSpace(target.BackupRoot)
+	suffix := strings.TrimSpace(destSuffix)
+	if suffix != "" {
+		currentDataset = currentDataset + "/" + suffix
+	}
+	if currentDataset == "" {
+		return "", "", fmt.Errorf("target_dataset_required")
+	}
+
+	renamedDataset := fmt.Sprintf("%s.pre_sylve_%d", currentDataset, time.Now().UTC().UnixNano())
+
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "rename", currentDataset, renamedDataset)
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		return currentDataset, renamedDataset, fmt.Errorf("target_dataset_rename_failed: %s: %w", strings.TrimSpace(output), err)
+	}
+
+	return currentDataset, renamedDataset, nil
+}
+
 // backupJobPayload is the goqite queue payload for a backup job.
 type backupJobPayload struct {
 	JobID uint `json:"job_id"`
@@ -427,7 +452,46 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		rotateOutput, rotateErr := s.Rotate(ctx, &job.Target, sourceDataset, destSuffix)
 		output = appendOutput(output, rotateOutput)
 		if rotateErr != nil {
-			runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
+			if shouldRenameTargetAfterRotateFailure(rotateOutput) {
+				fromDataset, renamedDataset, renameErr := s.RenameTargetDatasetForBootstrap(ctx, &job.Target, destSuffix)
+				if renameErr != nil {
+					output = appendOutput(output, fmt.Sprintf("auto_rename_target_failed: %s", renameErr))
+					runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
+				} else {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", sourceDataset).
+						Str("from_dataset", fromDataset).
+						Str("renamed_dataset", renamedDataset).
+						Msg("backup_auto_target_renamed_for_bootstrap")
+					output = appendOutput(output, fmt.Sprintf("auto_renamed_target_dataset: %s -> %s", fromDataset, renamedDataset))
+
+					retryOutput, retryErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
+					output = appendOutput(output, retryOutput)
+					runErr = retryErr
+					if runErr == nil {
+						retryOutcome := classifyBackupOutput(retryOutput)
+						if code := retryOutcome.errorCode(); code != "" {
+							runErr = fmt.Errorf(code)
+						} else if retryOutcome == backupOutputUpToDate {
+							logger.L.Info().
+								Uint("job_id", job.ID).
+								Str("source", sourceDataset).
+								Str("target", event.TargetEndpoint).
+								Msg("backup_up_to_date_noop_after_target_rename")
+						}
+					}
+					if runErr == nil {
+						logger.L.Info().
+							Uint("job_id", job.ID).
+							Str("source", sourceDataset).
+							Str("target", event.TargetEndpoint).
+							Msg("backup_completed_after_target_rename")
+					}
+				}
+			} else {
+				runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
+			}
 		} else {
 			logger.L.Info().
 				Uint("job_id", job.ID).
