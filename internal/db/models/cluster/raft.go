@@ -303,19 +303,20 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			}
 			// Use Updates with map to properly handle boolean false values
 			return db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-				"name":              job.Name,
-				"target_id":         job.TargetID,
-				"runner_node_id":    job.RunnerNodeID,
-				"mode":              job.Mode,
-				"source_dataset":    job.SourceDataset,
-				"jail_root_dataset": job.JailRootDataset,
-				"friendly_src":      job.FriendlySrc,
-				"dest_suffix":       job.DestSuffix,
-				"prune_keep_last":   job.PruneKeepLast,
-				"prune_target":      job.PruneTarget,
-				"cron_expr":         job.CronExpr,
-				"enabled":           job.Enabled,
-				"next_run_at":       job.NextRunAt,
+				"name":               job.Name,
+				"target_id":          job.TargetID,
+				"runner_node_id":     job.RunnerNodeID,
+				"mode":               job.Mode,
+				"source_dataset":     job.SourceDataset,
+				"jail_root_dataset":  job.JailRootDataset,
+				"friendly_src":       job.FriendlySrc,
+				"dest_suffix":        job.DestSuffix,
+				"prune_keep_last":    job.PruneKeepLast,
+				"prune_target":       job.PruneTarget,
+				"stop_before_backup": job.StopBeforeBackup,
+				"cron_expr":          job.CronExpr,
+				"enabled":            job.Enabled,
+				"next_run_at":        job.NextRunAt,
 			}).Error
 		case "delete":
 			var payload struct {

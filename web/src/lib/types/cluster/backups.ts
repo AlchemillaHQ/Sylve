@@ -26,6 +26,7 @@ export const BackupJobSchema = z.object({
     destSuffix: z.string().optional().default(''),
     pruneKeepLast: z.number().int().nonnegative().default(0),
     pruneTarget: z.boolean().default(false),
+    stopBeforeBackup: z.boolean().default(false),
     cronExpr: z.string(),
     enabled: z.boolean().default(true),
     lastRunAt: z.string().nullable().optional(),

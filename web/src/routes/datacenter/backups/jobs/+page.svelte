@@ -129,7 +129,8 @@
 		pruneKeepLast: '0',
 		pruneTarget: false,
 		cronExpr: '0 * * * *',
-		enabled: true
+		enabled: true,
+		stopBeforeBackup: false
 	});
 
 	watch(
@@ -219,7 +220,11 @@
 			}
 		},
 		{ field: 'sourceDataset', title: 'Source' },
-		{ field: 'destSuffix', title: 'Dest Suffix' },
+		{
+			field: 'destSuffix',
+			title: 'Dest Suffix',
+			formatter: (cell: CellComponent) => cell.getValue() || '-'
+		},
 		{
 			field: 'pruneKeepLast',
 			title: 'Prune',
@@ -335,6 +340,7 @@
 		jobModal.destSuffix = '';
 		jobModal.pruneKeepLast = '0';
 		jobModal.pruneTarget = false;
+		jobModal.stopBeforeBackup = false;
 		jobModal.cronExpr = '0 * * * *';
 		jobModal.enabled = true;
 	}
@@ -379,6 +385,7 @@
 		jobModal.destSuffix = job.destSuffix || '';
 		jobModal.pruneKeepLast = String(job.pruneKeepLast ?? 0);
 		jobModal.pruneTarget = !!job.pruneTarget;
+		jobModal.stopBeforeBackup = !!job.stopBeforeBackup;
 		jobModal.cronExpr = job.cronExpr;
 		jobModal.enabled = job.enabled;
 	}
@@ -434,7 +441,8 @@
 			pruneKeepLast,
 			pruneTarget: jobModal.pruneTarget,
 			cronExpr: jobModal.cronExpr,
-			enabled: jobModal.enabled
+			enabled: jobModal.enabled,
+			stopBeforeBackup: jobModal.stopBeforeBackup
 		};
 
 		const response = jobModal.edit
@@ -609,7 +617,7 @@
 </div>
 
 <Dialog.Root bind:open={jobModal.open}>
-	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
+	<Dialog.Content class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5">
 		<Dialog.Header>
 			<Dialog.Title>
 				<div class="flex items-center gap-2">
@@ -680,32 +688,42 @@
 				/>
 			</div>
 
-			<CustomValueInput
-				label="Schedule (Cron, 5-field)"
-				placeholder="0 * * * *"
-				bind:value={jobModal.cronExpr}
-				classes="space-y-1"
-			/>
+			<div class="grid grid-cols-2 gap-4">
+				<CustomValueInput
+					label="Schedule (Cron, 5-field)"
+					placeholder="0 * * * *"
+					bind:value={jobModal.cronExpr}
+					classes="space-y-1"
+				/>
 
-			<CustomValueInput
-				label="Keep Last Snapshots (0 disables pruning)"
-				placeholder="20"
-				type="number"
-				bind:value={jobModal.pruneKeepLast}
-				classes="space-y-1"
-			/>
+				<CustomValueInput
+					label="Keep Last Snapshots (0 disables pruning)"
+					placeholder="20"
+					type="number"
+					bind:value={jobModal.pruneKeepLast}
+					classes="space-y-1"
+				/>
+			</div>
 
-			<CustomCheckbox
-				label="Also prune on target"
-				bind:checked={jobModal.pruneTarget}
-				classes="flex items-center gap-2"
-			/>
+			<div class="flex flex-row gap-4">
+				<CustomCheckbox
+					label="Enabled"
+					bind:checked={jobModal.enabled}
+					classes="flex items-center gap-2"
+				/>
 
-			<CustomCheckbox
-				label="Enabled"
-				bind:checked={jobModal.enabled}
-				classes="flex items-center gap-2"
-			/>
+				<CustomCheckbox
+					label="Prune on target"
+					bind:checked={jobModal.pruneTarget}
+					classes="flex items-center gap-2"
+				/>
+
+				<CustomCheckbox
+					label="Stop before backup"
+					bind:checked={jobModal.stopBeforeBackup}
+					classes="flex items-center gap-2"
+				/>
+			</div>
 
 			<div class="rounded-md bg-muted p-3 text-sm">
 				<p class="font-medium">Job Summary:</p>
@@ -725,11 +743,6 @@
 						</li>
 					{/if}
 					<li>
-						Destination suffix: <code class="rounded bg-background px-1"
-							>{jobModal.destSuffix || '(auto)'}</code
-						>
-					</li>
-					<li>
 						Schedule: <code class="rounded bg-background px-1"
 							>{cronToHuman(jobModal.cronExpr) || '(not set)'}</code
 						>
@@ -744,6 +757,11 @@
 					<li>
 						Target prune: <code class="rounded bg-background px-1"
 							>{jobModal.pruneTarget ? 'Enabled' : 'Disabled'}</code
+						>
+					</li>
+					<li>
+						Stop before backup: <code class="rounded bg-background px-1"
+							>{jobModal.stopBeforeBackup ? 'Enabled' : 'Disabled'}</code
 						>
 					</li>
 				</ul>

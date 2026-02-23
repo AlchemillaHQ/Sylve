@@ -88,26 +88,27 @@ func (t *BackupTarget) ZeltaEndpoint(suffix string) string {
 
 // BackupJob represents a scheduled Zelta replication job.
 type BackupJob struct {
-	ID              uint         `gorm:"primaryKey" json:"id"`
-	Name            string       `gorm:"not null" json:"name"`
-	TargetID        uint         `gorm:"index;not null" json:"targetId"`
-	Target          BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
-	RunnerNodeID    string       `gorm:"index" json:"runnerNodeId"`
-	Mode            string       `gorm:"default:dataset;index" json:"mode"` // "dataset" or "jail"
-	SourceDataset   string       `json:"sourceDataset"`                     // for mode=dataset
-	JailRootDataset string       `json:"jailRootDataset"`                   // for mode=jail
-	FriendlySrc     string       `gorm:"column:friendly_src" json:"friendlySrc"`
-	DestSuffix      string       `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
-	PruneKeepLast   int          `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
-	PruneTarget     bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
-	CronExpr        string       `gorm:"not null" json:"cronExpr"`
-	Enabled         bool         `gorm:"default:true;index" json:"enabled"`
-	LastRunAt       *time.Time   `json:"lastRunAt"`
-	NextRunAt       *time.Time   `gorm:"index" json:"nextRunAt"`
-	LastStatus      string       `gorm:"index" json:"lastStatus"`
-	LastError       string       `gorm:"type:text" json:"lastError"`
-	CreatedAt       time.Time    `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt       time.Time    `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID               uint         `gorm:"primaryKey" json:"id"`
+	Name             string       `gorm:"not null" json:"name"`
+	TargetID         uint         `gorm:"index;not null" json:"targetId"`
+	Target           BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
+	RunnerNodeID     string       `gorm:"index" json:"runnerNodeId"`
+	Mode             string       `gorm:"default:dataset;index" json:"mode"` // "dataset" or "jail"
+	SourceDataset    string       `json:"sourceDataset"`                     // for mode=dataset
+	JailRootDataset  string       `json:"jailRootDataset"`                   // for mode=jail
+	FriendlySrc      string       `gorm:"column:friendly_src" json:"friendlySrc"`
+	DestSuffix       string       `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
+	PruneKeepLast    int          `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
+	PruneTarget      bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
+	StopBeforeBackup bool         `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
+	CronExpr         string       `gorm:"not null" json:"cronExpr"`
+	Enabled          bool         `gorm:"default:true;index" json:"enabled"`
+	LastRunAt        *time.Time   `json:"lastRunAt"`
+	NextRunAt        *time.Time   `gorm:"index" json:"nextRunAt"`
+	LastStatus       string       `gorm:"index" json:"lastStatus"`
+	LastError        string       `gorm:"type:text" json:"lastError"`
+	CreatedAt        time.Time    `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt        time.Time    `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 // BackupEvent records the result of a Zelta backup run.
@@ -158,6 +159,7 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"dest_suffix",
 			"prune_keep_last",
 			"prune_target",
+			"stop_before_backup",
 			"cron_expr",
 			"enabled",
 			"next_run_at",

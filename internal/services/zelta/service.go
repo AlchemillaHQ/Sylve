@@ -326,6 +326,10 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 	defer s.releaseJob(job.ID)
 
+	if job.StopBeforeBackup {
+		fmt.Println("StopBeforeBackup is checked for job", job.ID)
+	}
+
 	if err := ensureSSHKeyFileAtPath(strings.TrimSpace(job.Target.SSHKeyPath), strings.TrimSpace(job.Target.SSHKey)); err != nil {
 		runErr := fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 		s.updateBackupJobResult(job, runErr)

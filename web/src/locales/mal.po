@@ -3206,6 +3206,7 @@ msgstr ""
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Enabled"
@@ -3220,6 +3221,7 @@ msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -7953,9 +7955,8 @@ msgstr ""
 #~ msgid "Destination Suffix (appended to target's backup root)"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination suffix: <0/>"
-msgstr ""
+#~ msgid "Destination suffix: <0/>"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore job started — check events for progress"
@@ -8045,9 +8046,8 @@ msgstr ""
 msgid "Pruning: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Also prune on target"
-msgstr ""
+#~ msgid "Also prune on target"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target prune: <0/>"
@@ -8066,4 +8066,16 @@ msgstr ""
 msgid ""
 "The above script will run during {0}, ensure they are valid for the host or\n"
 "jail"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Prune on target"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Stop before backup"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Stop before backup: <0/>"
 msgstr ""

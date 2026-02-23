@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -27,28 +28,19 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-type backupTargetRequest struct {
-	Name        string `json:"name" binding:"required,min=2"`
-	SSHHost     string `json:"sshHost" binding:"required,min=3"`
-	SSHPort     int    `json:"sshPort"`
-	SSHKey      string `json:"sshKey"`
-	BackupRoot  string `json:"backupRoot" binding:"required,min=2"`
-	Description string `json:"description"`
-	Enabled     bool   `json:"enabled"`
-}
-
 type backupJobRequest struct {
-	Name            string `json:"name" binding:"required,min=2"`
-	TargetID        uint   `json:"targetId" binding:"required"`
-	RunnerNodeID    string `json:"runnerNodeId"`
-	Mode            string `json:"mode" binding:"required"`
-	SourceDataset   string `json:"sourceDataset"`
-	JailRootDataset string `json:"jailRootDataset"`
-	DestSuffix      string `json:"destSuffix"`
-	PruneKeepLast   int    `json:"pruneKeepLast"`
-	PruneTarget     bool   `json:"pruneTarget"`
-	CronExpr        string `json:"cronExpr" binding:"required"`
-	Enabled         *bool  `json:"enabled"`
+	Name             string `json:"name" binding:"required,min=2"`
+	TargetID         uint   `json:"targetId" binding:"required"`
+	RunnerNodeID     string `json:"runnerNodeId"`
+	Mode             string `json:"mode" binding:"required"`
+	SourceDataset    string `json:"sourceDataset"`
+	JailRootDataset  string `json:"jailRootDataset"`
+	DestSuffix       string `json:"destSuffix"`
+	PruneKeepLast    int    `json:"pruneKeepLast"`
+	PruneTarget      bool   `json:"pruneTarget"`
+	StopBeforeBackup bool   `json:"stopBeforeBackup"`
+	CronExpr         string `json:"cronExpr" binding:"required"`
+	Enabled          *bool  `json:"enabled"`
 }
 
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
@@ -79,7 +71,7 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			return
 		}
 
-		var req backupTargetRequest
+		var req clusterServiceInterfaces.BackupTargetReq
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -95,10 +87,8 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshPort = 22
 		}
 
-		// If SSH key content is provided, save it to disk
 		sshKeyPath := ""
 		if strings.TrimSpace(req.SSHKey) != "" {
-			// Use a temporary ID for the file name; it will be updated after creation in DB
 			tmpID := uint(time.Now().UnixNano() % 1000000)
 			path, err := zelta.SaveSSHKey(tmpID, req.SSHKey)
 			if err != nil {
@@ -113,7 +103,6 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshKeyPath = path
 		}
 
-		// Validate the target connectivity
 		testTarget := &clusterModels.BackupTarget{
 			SSHHost:    strings.TrimSpace(req.SSHHost),
 			SSHPort:    sshPort,
@@ -134,16 +123,10 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			return
 		}
 
-		err := cS.ProposeBackupTargetCreate(cluster.BackupTargetInput{
-			Name:        req.Name,
-			SSHHost:     req.SSHHost,
-			SSHPort:     sshPort,
-			SSHKey:      req.SSHKey,
-			SSHKeyPath:  sshKeyPath,
-			BackupRoot:  req.BackupRoot,
-			Description: req.Description,
-			Enabled:     req.Enabled,
-		}, cS.Raft == nil)
+		req.SSHKeyPath = sshKeyPath
+
+		err := cS.ProposeBackupTargetCreate(req, cS.Raft == nil)
+
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -180,7 +163,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			return
 		}
 
-		var req backupTargetRequest
+		var req clusterServiceInterfaces.BackupTargetReq
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -196,7 +179,6 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshPort = 22
 		}
 
-		// Get existing target to preserve SSH key path if not updating
 		existing, err := cS.GetBackupTargetByID(uint(id64))
 		if err != nil {
 			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
@@ -210,7 +192,6 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 
 		sshKeyPath := existing.SSHKeyPath
 		if strings.TrimSpace(req.SSHKey) != "" {
-			// Update the SSH key
 			path, err := zelta.SaveSSHKey(uint(id64), req.SSHKey)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -224,7 +205,6 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshKeyPath = path
 		}
 
-		// Validate the updated target
 		testTarget := &clusterModels.BackupTarget{
 			SSHHost:    strings.TrimSpace(req.SSHHost),
 			SSHPort:    sshPort,
@@ -250,16 +230,9 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			sshKeyData = existing.SSHKey
 		}
 
-		err = cS.ProposeBackupTargetUpdate(uint(id64), cluster.BackupTargetInput{
-			Name:        req.Name,
-			SSHHost:     req.SSHHost,
-			SSHPort:     sshPort,
-			SSHKey:      sshKeyData,
-			SSHKeyPath:  sshKeyPath,
-			BackupRoot:  req.BackupRoot,
-			Description: req.Description,
-			Enabled:     req.Enabled,
-		}, cS.Raft == nil)
+		req.ID = uint(id64)
+
+		err = cS.ProposeBackupTargetUpdate(req, cS.Raft == nil)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -402,17 +375,18 @@ func CreateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		err := cS.ProposeBackupJobCreate(cluster.BackupJobInput{
-			Name:            req.Name,
-			TargetID:        req.TargetID,
-			RunnerNodeID:    req.RunnerNodeID,
-			Mode:            req.Mode,
-			SourceDataset:   req.SourceDataset,
-			JailRootDataset: req.JailRootDataset,
-			DestSuffix:      req.DestSuffix,
-			PruneKeepLast:   req.PruneKeepLast,
-			PruneTarget:     req.PruneTarget,
-			CronExpr:        req.CronExpr,
-			Enabled:         req.Enabled,
+			Name:             req.Name,
+			TargetID:         req.TargetID,
+			RunnerNodeID:     req.RunnerNodeID,
+			Mode:             req.Mode,
+			SourceDataset:    req.SourceDataset,
+			JailRootDataset:  req.JailRootDataset,
+			DestSuffix:       req.DestSuffix,
+			PruneKeepLast:    req.PruneKeepLast,
+			PruneTarget:      req.PruneTarget,
+			StopBeforeBackup: req.StopBeforeBackup,
+			CronExpr:         req.CronExpr,
+			Enabled:          req.Enabled,
 		}, cS.Raft == nil)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -462,17 +436,18 @@ func UpdateBackupJob(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		err = cS.ProposeBackupJobUpdate(uint(id64), cluster.BackupJobInput{
-			Name:            req.Name,
-			TargetID:        req.TargetID,
-			RunnerNodeID:    req.RunnerNodeID,
-			Mode:            req.Mode,
-			SourceDataset:   req.SourceDataset,
-			JailRootDataset: req.JailRootDataset,
-			DestSuffix:      req.DestSuffix,
-			PruneKeepLast:   req.PruneKeepLast,
-			PruneTarget:     req.PruneTarget,
-			CronExpr:        req.CronExpr,
-			Enabled:         req.Enabled,
+			Name:             req.Name,
+			TargetID:         req.TargetID,
+			RunnerNodeID:     req.RunnerNodeID,
+			Mode:             req.Mode,
+			SourceDataset:    req.SourceDataset,
+			JailRootDataset:  req.JailRootDataset,
+			DestSuffix:       req.DestSuffix,
+			PruneKeepLast:    req.PruneKeepLast,
+			PruneTarget:      req.PruneTarget,
+			StopBeforeBackup: req.StopBeforeBackup,
+			CronExpr:         req.CronExpr,
+			Enabled:          req.Enabled,
 		}, cS.Raft == nil)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{

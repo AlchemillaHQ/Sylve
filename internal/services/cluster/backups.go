@@ -20,36 +20,28 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/robfig/cron/v3"
 )
 
 var maxSafeJSInt = big.NewInt(9007199254740991)
 
-// BackupTargetInput represents the input for creating/updating a Zelta backup target.
-type BackupTargetInput struct {
-	Name        string `json:"name"`
-	SSHHost     string `json:"sshHost"`    // user@host
-	SSHPort     int    `json:"sshPort"`    // SSH port (default 22)
-	SSHKey      string `json:"sshKey"`     // raw private key content (only for create/update, not stored in DB)
-	SSHKeyPath  string `json:"sshKeyPath"` // path to private key on host
-	BackupRoot  string `json:"backupRoot"` // target pool/dataset prefix
-	Description string `json:"description"`
-	Enabled     bool   `json:"enabled"`
-}
-
 // BackupJobInput represents the input for creating/updating a backup job.
 type BackupJobInput struct {
-	Name            string `json:"name"`
-	TargetID        uint   `json:"targetId"`
-	RunnerNodeID    string `json:"runnerNodeId"`
-	Mode            string `json:"mode"`
-	SourceDataset   string `json:"sourceDataset"`
-	JailRootDataset string `json:"jailRootDataset"`
-	DestSuffix      string `json:"destSuffix"` // appended to target's BackupRoot
-	PruneKeepLast   int    `json:"pruneKeepLast"`
-	PruneTarget     bool   `json:"pruneTarget"`
-	CronExpr        string `json:"cronExpr"`
-	Enabled         *bool  `json:"enabled"`
+	Name             string `json:"name"`
+	TargetID         uint   `json:"targetId"`
+	RunnerNodeID     string `json:"runnerNodeId"`
+	Mode             string `json:"mode"`
+	SourceDataset    string `json:"sourceDataset"`
+	JailRootDataset  string `json:"jailRootDataset"`
+	DestSuffix       string `json:"destSuffix"` // appended to target's BackupRoot
+	PruneKeepLast    int    `json:"pruneKeepLast"`
+	PruneTarget      bool   `json:"pruneTarget"`
+	StopBeforeBackup bool   `json:"stopBeforeBackup"`
+	CronExpr         string `json:"cronExpr"`
+	Enabled          *bool  `json:"enabled"`
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
@@ -70,7 +62,7 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 	return &target, nil
 }
 
-func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft bool) error {
+func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
 	if err := validateBackupTargetInput(input); err != nil {
 		return err
 	}
@@ -85,7 +77,7 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 		SSHKey:      resolvedSSHKey,
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
-		Enabled:     input.Enabled,
+		Enabled:     utils.PtrToBool(input.Enabled),
 	}
 
 	if target.SSHPort == 0 {
@@ -118,10 +110,11 @@ func (s *Service) ProposeBackupTargetCreate(input BackupTargetInput, bypassRaft 
 	})
 }
 
-func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, bypassRaft bool) error {
-	if id == 0 {
+func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
+	if input.ID == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
+
 	if err := validateBackupTargetInput(input); err != nil {
 		return err
 	}
@@ -129,7 +122,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 
 	target := clusterModels.BackupTarget{
-		ID:          id,
+		ID:          input.ID,
 		Name:        strings.TrimSpace(input.Name),
 		SSHHost:     strings.TrimSpace(input.SSHHost),
 		SSHPort:     input.SSHPort,
@@ -137,7 +130,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 		SSHKey:      resolvedSSHKey,
 		BackupRoot:  strings.TrimSpace(input.BackupRoot),
 		Description: strings.TrimSpace(input.Description),
-		Enabled:     input.Enabled,
+		Enabled:     utils.PtrToBool(input.Enabled),
 	}
 
 	if target.SSHPort == 0 {
@@ -145,7 +138,7 @@ func (s *Service) ProposeBackupTargetUpdate(id uint, input BackupTargetInput, by
 	}
 
 	if bypassRaft {
-		return s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", id).Updates(map[string]any{
+		return s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", input.ID).Updates(map[string]any{
 			"name":         target.Name,
 			"ssh_host":     target.SSHHost,
 			"ssh_port":     target.SSHPort,
@@ -281,19 +274,20 @@ func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRa
 
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", id).Updates(map[string]any{
-			"name":              job.Name,
-			"target_id":         job.TargetID,
-			"runner_node_id":    job.RunnerNodeID,
-			"mode":              job.Mode,
-			"source_dataset":    job.SourceDataset,
-			"jail_root_dataset": job.JailRootDataset,
-			"friendly_src":      job.FriendlySrc,
-			"dest_suffix":       job.DestSuffix,
-			"prune_keep_last":   job.PruneKeepLast,
-			"prune_target":      job.PruneTarget,
-			"cron_expr":         job.CronExpr,
-			"enabled":           job.Enabled,
-			"next_run_at":       job.NextRunAt,
+			"name":               job.Name,
+			"target_id":          job.TargetID,
+			"runner_node_id":     job.RunnerNodeID,
+			"mode":               job.Mode,
+			"source_dataset":     job.SourceDataset,
+			"jail_root_dataset":  job.JailRootDataset,
+			"friendly_src":       job.FriendlySrc,
+			"dest_suffix":        job.DestSuffix,
+			"prune_keep_last":    job.PruneKeepLast,
+			"prune_target":       job.PruneTarget,
+			"stop_before_backup": job.StopBeforeBackup,
+			"cron_expr":          job.CronExpr,
+			"enabled":            job.Enabled,
+			"next_run_at":        job.NextRunAt,
 		}).Error
 	}
 
@@ -401,19 +395,20 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 	}
 
 	job := &clusterModels.BackupJob{
-		ID:              id,
-		Name:            strings.TrimSpace(input.Name),
-		TargetID:        input.TargetID,
-		RunnerNodeID:    runnerNodeID,
-		Mode:            mode,
-		SourceDataset:   strings.TrimSpace(input.SourceDataset),
-		JailRootDataset: strings.TrimSpace(input.JailRootDataset),
-		FriendlySrc:     "",
-		DestSuffix:      strings.TrimSpace(input.DestSuffix),
-		PruneKeepLast:   input.PruneKeepLast,
-		PruneTarget:     input.PruneTarget,
-		CronExpr:        cronExpr,
-		Enabled:         enabled,
+		ID:               id,
+		Name:             strings.TrimSpace(input.Name),
+		TargetID:         input.TargetID,
+		RunnerNodeID:     runnerNodeID,
+		Mode:             mode,
+		SourceDataset:    strings.TrimSpace(input.SourceDataset),
+		JailRootDataset:  strings.TrimSpace(input.JailRootDataset),
+		FriendlySrc:      "",
+		DestSuffix:       strings.TrimSpace(input.DestSuffix),
+		PruneKeepLast:    input.PruneKeepLast,
+		PruneTarget:      input.PruneTarget,
+		StopBeforeBackup: input.StopBeforeBackup,
+		CronExpr:         cronExpr,
+		Enabled:          enabled,
 	}
 
 	if job.PruneKeepLast < 0 {
@@ -464,6 +459,8 @@ func (s *Service) resolveBackupJobFriendlySource(mode, sourceDataset, jailRootDa
 		if name != "" {
 			return name
 		}
+	} else {
+		logger.L.Err(err).Msg("failed_to_lookup_jail_for_backup_job_friendly_source")
 	}
 
 	return jailDataset
@@ -489,7 +486,7 @@ func parseJailCTIDFromDataset(dataset string) (uint, bool) {
 	return uint(ctID), true
 }
 
-func validateBackupTargetInput(input BackupTargetInput) error {
+func validateBackupTargetInput(input clusterServiceInterfaces.BackupTargetReq) error {
 	if strings.TrimSpace(input.Name) == "" {
 		return fmt.Errorf("name_required")
 	}
@@ -502,7 +499,6 @@ func validateBackupTargetInput(input BackupTargetInput) error {
 		return fmt.Errorf("backup_root_required")
 	}
 
-	// Basic validation: SSH host should contain @ for user@host format, or just be a hostname
 	sshHost := strings.TrimSpace(input.SSHHost)
 	if strings.Contains(sshHost, " ") || strings.Contains(sshHost, ":") {
 		return fmt.Errorf("invalid_ssh_host: should be user@host or just hostname")

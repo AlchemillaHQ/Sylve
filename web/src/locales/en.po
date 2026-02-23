@@ -3208,6 +3208,7 @@ msgstr "VNC"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Enabled"
@@ -3222,6 +3223,7 @@ msgstr "Enabled"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8005,9 +8007,8 @@ msgstr "Destination suffix is required"
 #~ msgid "Destination Suffix (appended to target's backup root)"
 #~ msgstr "Destination Suffix (appended to target's backup root)"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Destination suffix: <0/>"
-msgstr "Destination suffix: <0/>"
+#~ msgid "Destination suffix: <0/>"
+#~ msgstr "Destination suffix: <0/>"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore job started — check events for progress"
@@ -8099,9 +8100,8 @@ msgstr "Keep last {0} snapshots"
 msgid "Pruning: <0/>"
 msgstr "Pruning: <0/>"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Also prune on target"
-msgstr "Also prune on target"
+#~ msgid "Also prune on target"
+#~ msgstr "Also prune on target"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Target prune: <0/>"
@@ -8123,3 +8123,15 @@ msgid ""
 msgstr ""
 "The above script will run during {0}, ensure they are valid for the host or\n"
 "jail"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Prune on target"
+msgstr "Prune on target"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Stop before backup"
+msgstr "Stop before backup"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Stop before backup: <0/>"
+msgstr "Stop before backup: <0/>"
