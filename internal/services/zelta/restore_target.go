@@ -274,8 +274,34 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return restoreErr
 	}
 
+	var ctId uint
+
 	_, existErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", destinationDataset)
 	if existErr == nil {
+		var err error
+
+		ctId, err = s.Jail.GetJailCTIDFromDataset(destinationDataset)
+		if err == nil {
+			logger.L.Info().
+				Uint("ct_id", ctId).
+				Str("dataset", destinationDataset).
+				Msg("stopping_jail_before_restore")
+
+			if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
+				logger.L.Warn().
+					Uint("ct_id", ctId).
+					Err(err).
+					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
+			}
+
+			time.Sleep(2 * time.Second) // give it some time to stop before we destroy
+		} else {
+			logger.L.Warn().
+				Str("dataset", destinationDataset).
+				Err(err).
+				Msg("failed_to_get_jail_ctid_from_existing_dataset_before_restore_continuing_anyway")
+		}
+
 		_, destroyErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", destinationDataset)
 		if destroyErr != nil {
 			_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
@@ -312,6 +338,14 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		Str("snapshot", snapshot).
 		Str("dataset", destinationDataset).
 		Msg("target_dataset_restore_completed")
+
+	err := s.Jail.JailAction(int(ctId), "start")
+	if err != nil {
+		logger.L.Warn().
+			Uint("ct_id", ctId).
+			Err(err).
+			Msg("failed_to_start_jail_after_restore_continuing_anyway")
+	}
 
 	return nil
 }

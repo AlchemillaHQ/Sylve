@@ -152,6 +152,27 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 
 	var restoreErr error
 	var output string
+	var ctId uint
+
+	if job.Mode == clusterModels.BackupJobModeJail {
+		var err error
+
+		ctId, err = s.Jail.GetJailCTIDFromDataset(sourceDataset)
+		if err == nil {
+			logger.L.Info().
+				Uint("ct_id", ctId).
+				Str("dataset", sourceDataset).
+				Msg("stopping_jail_before_restore")
+
+			if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
+				logger.L.Warn().
+					Uint("ct_id", ctId).
+					Str("dataset", sourceDataset).
+					Err(err).
+					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
+			}
+		}
+	}
 
 	// Step 1: Clean up any previous restore temp dataset
 	_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
@@ -223,6 +244,16 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
+	}
+
+	if job.Mode == clusterModels.BackupJobModeJail && ctId != 0 {
+		err := s.Jail.JailAction(int(ctId), "start")
+		if err != nil {
+			logger.L.Warn().
+				Uint("ct_id", ctId).
+				Err(err).
+				Msg("failed_to_start_jail_after_restore_continuing_anyway")
+		}
 	}
 
 	s.finalizeRestoreEvent(&event, nil, output)
