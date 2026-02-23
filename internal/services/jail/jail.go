@@ -1330,7 +1330,7 @@ func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, de
 	}
 
 	if deleteRootFS {
-		if jail.Storages != nil && len(jail.Storages) > 0 {
+		if len(jail.Storages) > 0 {
 			for _, storage := range jail.Storages {
 				if storage.IsBase {
 					dataset, err := s.GZFS.ZFS.Get(ctx, fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId), true)
@@ -1342,7 +1342,7 @@ func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, de
 						continue
 					}
 
-					if err := dataset.Destroy(ctx, false, false); err != nil {
+					if err := dataset.Destroy(ctx, true, false); err != nil {
 						return fmt.Errorf("failed_to_destroy_storage_dataset: %w", err)
 					}
 				}

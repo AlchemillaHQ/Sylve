@@ -11,6 +11,7 @@ package jail
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -71,4 +72,22 @@ func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetJailCTIDFromDataset(dataset string) (uint, error) {
+	dataset = strings.TrimRight(dataset, "/")
+	parts := strings.Split(dataset, "/")
+
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid_dataset_format: %s", dataset)
+	}
+
+	ctidStr := parts[len(parts)-1]
+	n, err := strconv.ParseUint(ctidStr, 10, 32)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed_to_parse_ctid '%s': %w", ctidStr, err)
+	}
+
+	return uint(n), nil
 }

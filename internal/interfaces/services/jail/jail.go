@@ -116,6 +116,9 @@ type EditJailNetworkRequest struct {
 }
 
 type JailServiceInterface interface {
+	JailAction(ctid int, action string) error
+	GetJailCTIDFromDataset(dataset string) (uint, error)
+
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
 	WatchNetworkObjectChanges() error

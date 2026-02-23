@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -32,6 +33,7 @@ import (
 type Service struct {
 	DB      *gorm.DB
 	Cluster *cluster.Service
+	Jail    jailServiceInterfaces.JailServiceInterface
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -39,10 +41,11 @@ type Service struct {
 
 var SSHKeyDirectory string
 
-func NewService(db *gorm.DB, clusterService *cluster.Service) *Service {
+func NewService(db *gorm.DB, clusterService *cluster.Service, jailService jailServiceInterfaces.JailServiceInterface) *Service {
 	return &Service{
 		DB:          db,
 		Cluster:     clusterService,
+		Jail:        jailService,
 		runningJobs: make(map[uint]struct{}),
 	}
 }
@@ -429,11 +432,33 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		return strings.TrimSpace(current) + "\n" + next
 	}
 
+	var ctId uint
+
+	if job.StopBeforeBackup {
+		if job.Mode == clusterModels.BackupJobModeJail {
+			var err error
+
+			ctId, err = s.Jail.GetJailCTIDFromDataset(job.JailRootDataset)
+			if err != nil {
+				runErr := fmt.Errorf("failed_to_get_jail_ctid: %w", err)
+				s.updateBackupJobResult(job, runErr)
+				return runErr
+			}
+
+			err = s.Jail.JailAction(int(ctId), "stop")
+			if err != nil {
+				runErr := fmt.Errorf("failed_to_stop_jail: %w", err)
+				s.updateBackupJobResult(job, runErr)
+				return runErr
+			}
+		}
+	}
+
 	output, runErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
 	if runErr == nil {
 		outcome := classifyBackupOutput(output)
 		if code := outcome.errorCode(); code != "" {
-			runErr = fmt.Errorf(code)
+			runErr = errors.New(code)
 		} else if outcome == backupOutputUpToDate {
 			logger.L.Info().
 				Uint("job_id", job.ID).
@@ -442,6 +467,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				Msg("backup_up_to_date_noop")
 		}
 	}
+
 	if runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
 		logger.L.Info().
 			Uint("job_id", job.ID).
@@ -473,7 +499,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 					if runErr == nil {
 						retryOutcome := classifyBackupOutput(retryOutput)
 						if code := retryOutcome.errorCode(); code != "" {
-							runErr = fmt.Errorf(code)
+							runErr = errors.New(code)
 						} else if retryOutcome == backupOutputUpToDate {
 							logger.L.Info().
 								Uint("job_id", job.ID).
@@ -506,7 +532,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			if runErr == nil {
 				retryOutcome := classifyBackupOutput(retryOutput)
 				if code := retryOutcome.errorCode(); code != "" {
-					runErr = fmt.Errorf(code)
+					runErr = errors.New(code)
 				} else if retryOutcome == backupOutputUpToDate {
 					logger.L.Info().
 						Uint("job_id", job.ID).
@@ -524,6 +550,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			}
 		}
 	}
+
 	if runErr == nil && job.PruneKeepLast > 0 {
 		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
 		output = appendOutput(output, pruneOutput)
@@ -569,6 +596,21 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 	}
 
+	if job.StopBeforeBackup {
+		if job.Mode == clusterModels.BackupJobModeJail {
+			if ctId == 0 {
+				runErr = fmt.Errorf("invalid_jail_ctid_for_restart")
+				s.updateBackupJobResult(job, runErr)
+				return runErr
+			}
+
+			if err := s.Jail.JailAction(int(ctId), "start"); err != nil {
+				logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_restart_jail_after_backup")
+				output = appendOutput(output, fmt.Sprintf("failed_to_restart_jail: %s", err))
+			}
+		}
+	}
+
 	now := time.Now().UTC()
 	event.CompletedAt = &now
 	event.Output = output
@@ -578,8 +620,8 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	} else {
 		event.Status = "success"
 	}
-	s.DB.Save(&event)
 
+	s.DB.Save(&event)
 	s.updateBackupJobResult(job, runErr)
 
 	logger.L.Info().

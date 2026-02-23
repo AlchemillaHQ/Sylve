@@ -1585,6 +1585,7 @@ msgstr "This action cannot be undone. This will permanently delete"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Cancel"
@@ -1790,6 +1791,7 @@ msgid "Dataset"
 msgstr "Dataset"
 
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Select dataset"
 msgstr "Select dataset"
 
@@ -4194,6 +4196,7 @@ msgstr "Share"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -7417,8 +7420,9 @@ msgstr "Jobs"
 msgid "Source Dataset"
 msgstr "Source Dataset"
 
-#~ msgid "Destination Dataset"
-#~ msgstr "Destination Dataset"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination Dataset"
+msgstr "Destination Dataset"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Completed"
@@ -7676,8 +7680,9 @@ msgstr "Single Dataset"
 msgid "Target is required"
 msgstr "Target is required"
 
-#~ msgid "Destination dataset is required"
-#~ msgstr "Destination dataset is required"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination dataset is required"
+msgstr "Destination dataset is required"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source dataset is required for dataset mode"
@@ -7686,6 +7691,7 @@ msgstr "Source dataset is required for dataset mode"
 #~ msgid "Backup jobs automatically send ZFS snapshots to a backup target on a schedule."
 #~ msgstr "Backup jobs automatically send ZFS snapshots to a backup target on a schedule."
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Select target"
 msgstr "Select target"
@@ -8014,9 +8020,12 @@ msgstr "Destination suffix is required"
 #~ msgstr "Destination suffix: <0/>"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore job started — check events for progress"
 msgstr "Restore job started — check events for progress"
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed to start restore"
@@ -8031,6 +8040,7 @@ msgid "No snapshots found on the backup target. Run a backup first."
 msgstr "No snapshots found on the backup target. Run a backup first."
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Snapshot"
 msgstr "Snapshot"
 
@@ -8038,6 +8048,7 @@ msgstr "Snapshot"
 msgid "Refer"
 msgstr "Refer"
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "<0/> Restore Warning"
 msgstr "<0/> Restore Warning"
@@ -8058,9 +8069,11 @@ msgstr "No data is deleted on the backup target — all snapshots remain availab
 #~ msgstr "You can delete the <0/> dataset later to reclaim space"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "<0/> Restoring..."
 msgstr "<0/> Restoring..."
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "<0/> Restore"
 msgstr "<0/> Restore"
@@ -8142,3 +8155,67 @@ msgstr "Stop before backup: <0/>"
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Backup Target Diverged"
 msgstr "Backup Target Diverged"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No backup targets available"
+msgstr "No backup targets available"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to load target datasets"
+msgstr "Failed to load target datasets"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to load dataset details"
+msgstr "Failed to load dataset details"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore From Target"
+msgstr "Restore From Target"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore From Target Dataset"
+msgstr "Restore From Target Dataset"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Dataset on Target"
+msgstr "Dataset on Target"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading datasets..."
+msgstr "Loading datasets..."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No restorable datasets found"
+msgstr "No restorable datasets found"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading snapshots..."
+msgstr "Loading snapshots..."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No snapshots found"
+msgstr "No snapshots found"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select snapshot"
+msgstr "Select snapshot"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Detected Jail Metadata"
+msgstr "Detected Jail Metadata"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Name: <0/>"
+msgstr "Name: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "CT ID: <0/>"
+msgstr "CT ID: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Base Pool: <0/>"
+msgstr "Base Pool: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "The destination dataset will be replaced if it already exists."
+msgstr "The destination dataset will be replaced if it already exists."

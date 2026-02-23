@@ -18,6 +18,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -32,13 +33,15 @@ type Service struct {
 	Raft        *raft.Raft
 	Transport   *raft.NetworkTransport
 	AuthService serviceInterfaces.AuthServiceInterface
+	JailService jailServiceInterfaces.JailServiceInterface
 }
 
-func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
+func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
 	return &Service{
 		DB:          db,
 		Raft:        nil,
 		AuthService: authService,
+		JailService: jailService,
 	}
 }
 
