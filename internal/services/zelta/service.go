@@ -389,9 +389,15 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 	output, runErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
 	if runErr == nil {
-		lowerOutput := strings.ToLower(output)
-		if strings.Contains(lowerOutput, "target diverged") || strings.Contains(lowerOutput, "no snapshot; target diverged") {
-			runErr = fmt.Errorf("backup_target_diverged")
+		outcome := classifyBackupOutput(output)
+		if code := outcome.errorCode(); code != "" {
+			runErr = fmt.Errorf(code)
+		} else if outcome == backupOutputUpToDate {
+			logger.L.Info().
+				Uint("job_id", job.ID).
+				Str("source", sourceDataset).
+				Str("target", event.TargetEndpoint).
+				Msg("backup_up_to_date_noop")
 		}
 	}
 	if runErr == nil && job.PruneKeepLast > 0 {
