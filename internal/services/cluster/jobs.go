@@ -45,6 +45,8 @@ type curInfo struct {
 
 	disk      uint64
 	diskUsage float64
+
+	guestIDs []uint
 }
 
 /*
@@ -74,6 +76,23 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 
 	if ex.Hostname != hostname {
 		return true
+	}
+
+	if len(cur.guestIDs) != len(ex.GuestIDs) {
+		return true
+	}
+
+	if len(cur.guestIDs) > 0 {
+		currentMap := make(map[uint]struct{}, len(cur.guestIDs))
+		for _, id := range cur.guestIDs {
+			currentMap[id] = struct{}{}
+		}
+
+		for _, id := range ex.GuestIDs {
+			if _, exists := currentMap[id]; !exists {
+				return true
+			}
+		}
 	}
 
 	if cur.cpu > 0 && ex.CPU != cur.cpu {
@@ -240,6 +259,49 @@ func (s *Service) fetchCanonicalHostnameWithToken(host string, port int, cluster
 	return "", false
 }
 
+func (s *Service) fetchResourceIds(host string, port int, clusterToken string) ([]uint, error) {
+	var resourceIDs []uint
+
+	endpoints := []string{"vm", "jail"}
+
+	for _, endpoint := range endpoints {
+		url := fmt.Sprintf("https://%s:%d/api/%s/simple", host, port, endpoint)
+
+		body, _, err := utils.HTTPGetJSONRead(
+			url,
+			map[string]string{
+				"Accept":          "application/json",
+				"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+			},
+		)
+		if err != nil {
+			continue
+		}
+
+		var resp struct {
+			Status string `json:"status"`
+			Data   []struct {
+				RID  uint `json:"rid"`
+				CTID uint `json:"ctId"`
+			} `json:"data"`
+		}
+
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+
+		for _, item := range resp.Data {
+			if item.RID > 0 {
+				resourceIDs = append(resourceIDs, item.RID)
+			} else if item.CTID > 0 {
+				resourceIDs = append(resourceIDs, item.CTID)
+			}
+		}
+	}
+
+	return resourceIDs, nil
+}
+
 func (s *Service) PopulateClusterNodes() error {
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
@@ -304,8 +366,9 @@ func (s *Service) PopulateClusterNodes() error {
 			var diskBytes uint64
 			var diskUsedPct float64
 			var okDisk bool
+			var guestIDs []uint
 
-			nodeWg.Add(3)
+			nodeWg.Add(4)
 
 			go func() {
 				defer nodeWg.Done()
@@ -323,6 +386,14 @@ func (s *Service) PopulateClusterNodes() error {
 				diskBytes, diskUsedPct, okDisk = s.fetchDiskInfo(host, port, clusterToken)
 			}()
 
+			go func() {
+				defer nodeWg.Done()
+				ids, err := s.fetchResourceIds(host, port, clusterToken)
+				if err == nil {
+					guestIDs = ids
+				}
+			}()
+
 			nodeWg.Wait()
 
 			ci := curInfo{
@@ -331,15 +402,19 @@ func (s *Service) PopulateClusterNodes() error {
 				canonHost: canon,
 				rawHost:   host,
 				healthOK:  okHealth,
+				guestIDs:  guestIDs,
 			}
+
 			if okCPU {
 				ci.cpu = cores
 				ci.cpuUsage = cpuUsage
 			}
+
 			if okRAM {
 				ci.memory = memBytes
 				ci.memUsage = memUsedPct
 			}
+
 			if okDisk {
 				ci.disk = diskBytes
 				ci.diskUsage = diskUsedPct
@@ -370,7 +445,6 @@ func (s *Service) PopulateClusterNodes() error {
 					status = "online"
 				}
 
-				// Skip update if node exists and hasn't changed significantly
 				if ex, exists := exByUUID[cur.nodeUUID]; exists {
 					if !hasSignificantChange(cur, ex) {
 						delete(exByUUID, cur.nodeUUID)
@@ -394,6 +468,7 @@ func (s *Service) PopulateClusterNodes() error {
 					MemoryUsage: cur.memUsage,
 					Disk:        cur.disk,
 					DiskUsage:   cur.diskUsage,
+					GuestIDs:    cur.guestIDs,
 				}
 
 				updates := map[string]any{
