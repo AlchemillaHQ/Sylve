@@ -232,4 +232,5 @@
 <span class="icon-[mdi--check-circle-outline]"></span>
 <span class="icon-[mdi--close-circle-outline]"></span>
 <span class="icon-[mdi--progress-clock]"></span>
+<span class="icon-[game-icons--divergence]"></span>
 -->

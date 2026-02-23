@@ -7488,9 +7488,8 @@ msgstr ""
 #~ msgid "Pull"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Delete selected backup target?"
-msgstr ""
+#~ msgid "Delete selected backup target?"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8098,4 +8097,8 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Stop before backup: <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup Target Diverged"
 msgstr ""

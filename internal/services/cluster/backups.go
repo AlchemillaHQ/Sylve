@@ -375,18 +375,25 @@ func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.
 		return nil, fmt.Errorf("invalid_mode")
 	}
 
-	cronExpr := strings.TrimSpace(input.CronExpr)
-	if cronExpr == "" {
-		return nil, fmt.Errorf("cron_expr_required")
-	}
+	var schedule cron.Schedule
 
-	schedule, err := cron.ParseStandard(cronExpr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid_cron_expr")
+	cronExpr := strings.TrimSpace(input.CronExpr)
+
+	if cronExpr != "" {
+		var err error
+
+		schedule, err = cron.ParseStandard(cronExpr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid_cron_expr")
+		}
 	}
 
 	now := time.Now().UTC()
-	next := schedule.Next(now)
+	var next time.Time
+	if schedule != nil {
+		next = schedule.Next(now)
+	}
+
 	enabled := true
 
 	if input.Enabled != nil {

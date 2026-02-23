@@ -119,9 +119,27 @@
 			{
 				field: 'error',
 				title: 'Error',
+				copyOnClick: true,
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
-					return value ? `<span class="text-red-500">${value}</span>` : '-';
+					let v = '';
+					let icon = '';
+					if (value) {
+						switch (value) {
+							case 'backup_target_diverged':
+								v = 'Backup Target Diverged';
+								icon = 'game-icons:divergence';
+								break;
+							default:
+								v = value;
+								icon = 'mdi:alert-circle-outline';
+						}
+					} else {
+						v = '';
+						icon = 'mdi:check-circle-outline';
+					}
+
+					return renderWithIcon(icon, v, value ? 'text-red-500' : 'text-green-500');
 				}
 			}
 		];

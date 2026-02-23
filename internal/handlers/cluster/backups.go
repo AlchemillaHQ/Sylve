@@ -39,7 +39,7 @@ type backupJobRequest struct {
 	PruneKeepLast    int    `json:"pruneKeepLast"`
 	PruneTarget      bool   `json:"pruneTarget"`
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`
-	CronExpr         string `json:"cronExpr" binding:"required"`
+	CronExpr         string `json:"cronExpr"`
 	Enabled          *bool  `json:"enabled"`
 }
 

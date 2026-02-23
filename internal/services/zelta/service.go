@@ -286,7 +286,7 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 	now := time.Now().UTC()
 	localNodeID := s.localNodeID()
 	var jobs []clusterModels.BackupJob
-	if err := s.DB.Preload("Target").Where("enabled = ?", true).Find(&jobs).Error; err != nil {
+	if err := s.DB.Preload("Target").Where("enabled = ? AND COALESCE(cron_expr, '') != ''", true).Find(&jobs).Error; err != nil {
 		return err
 	}
 

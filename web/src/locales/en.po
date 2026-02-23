@@ -8138,3 +8138,7 @@ msgstr "Stop before backup"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Stop before backup: <0/>"
 msgstr "Stop before backup: <0/>"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup Target Diverged"
+msgstr "Backup Target Diverged"
