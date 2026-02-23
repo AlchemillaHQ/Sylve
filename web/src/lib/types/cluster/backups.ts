@@ -58,7 +58,23 @@ export const SnapshotInfoSchema = z.object({
     refer: z.string()
 });
 
+export const BackupTargetDatasetInfoSchema = z.object({
+    name: z.string(),
+    suffix: z.string().default(''),
+    snapshotCount: z.number().int().nonnegative().default(0),
+    kind: z.enum(['dataset', 'jail']).default('dataset'),
+    jailCtId: z.number().int().nonnegative().optional()
+});
+
+export const BackupJailMetadataInfoSchema = z.object({
+    ctId: z.number().int().nonnegative(),
+    name: z.string().default(''),
+    basePool: z.string().default('')
+});
+
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
 export type BackupJob = z.infer<typeof BackupJobSchema>;
 export type BackupEvent = z.infer<typeof BackupEventSchema>;
 export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
+export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
+export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;

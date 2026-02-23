@@ -335,6 +335,213 @@ func ValidateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFun
 	}
 }
 
+func BackupTargetDatasets(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		defer cancel()
+
+		datasets, err := zS.ListRemoteTargetDatasets(ctx, uint(id64))
+		if err != nil {
+			c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "list_target_datasets_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]zelta.BackupTargetDatasetInfo]{
+			Status:  "success",
+			Message: "target_datasets_listed",
+			Data:    datasets,
+		})
+	}
+}
+
+func BackupTargetDatasetSnapshots(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		dataset := strings.TrimSpace(c.Query("dataset"))
+		if dataset == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "remote_dataset_required",
+				Error:   "dataset query parameter is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		defer cancel()
+
+		snapshots, err := zS.ListRemoteTargetDatasetSnapshots(ctx, uint(id64), dataset)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "list_snapshots_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]zelta.SnapshotInfo]{
+			Status:  "success",
+			Message: "snapshots_listed",
+			Data:    snapshots,
+		})
+	}
+}
+
+func BackupTargetDatasetJailMetadata(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		dataset := strings.TrimSpace(c.Query("dataset"))
+		if dataset == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "remote_dataset_required",
+				Error:   "dataset query parameter is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		defer cancel()
+
+		meta, err := zS.GetRemoteTargetJailMetadata(ctx, uint(id64), dataset)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "read_jail_metadata_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*zelta.BackupJailMetadataInfo]{
+			Status:  "success",
+			Message: "jail_metadata_read",
+			Data:    meta,
+		})
+	}
+}
+
+func RestoreBackupTargetDataset(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		var req struct {
+			RemoteDataset      string `json:"remoteDataset"`
+			Snapshot           string `json:"snapshot"`
+			DestinationDataset string `json:"destinationDataset"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if strings.TrimSpace(req.RemoteDataset) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "remote_dataset_required",
+				Error:   "remoteDataset is required",
+				Data:    nil,
+			})
+			return
+		}
+		if strings.TrimSpace(req.Snapshot) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "snapshot_required",
+				Error:   "snapshot is required",
+				Data:    nil,
+			})
+			return
+		}
+		if strings.TrimSpace(req.DestinationDataset) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "destination_dataset_required",
+				Error:   "destinationDataset is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.EnqueueRestoreFromTarget(c.Request.Context(), uint(id64), req.RemoteDataset, req.Snapshot, req.DestinationDataset); err != nil {
+			status := http.StatusBadRequest
+			msg := "restore_enqueue_failed"
+			if strings.Contains(err.Error(), "already_running") {
+				status = http.StatusConflict
+				msg = "backup_job_already_running"
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: msg,
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "restore_job_started",
+			Data:    nil,
+		})
+	}
+}
+
 func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobs, err := cS.ListBackupJobs()

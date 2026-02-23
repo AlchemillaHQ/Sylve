@@ -237,6 +237,7 @@ func (s *Service) RegisterJobs() {
 	})
 
 	s.registerRestoreJob()
+	s.registerRestoreFromTargetJob()
 }
 
 // Run is a no-op for interface compatibility (Zelta doesn't need a listener).

@@ -2,10 +2,14 @@
 	import {
 		createBackupJob,
 		deleteBackupJob,
+		getBackupTargetJailMetadata,
 		listBackupJobs,
 		listBackupTargets,
 		listBackupJobSnapshots,
+		listBackupTargetDatasets,
+		listBackupTargetDatasetSnapshots,
 		restoreBackupJob,
+		restoreBackupFromTarget,
 		runBackupJob,
 		updateBackupJob,
 		type BackupJobInput
@@ -19,7 +23,13 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { BackupJob, BackupTarget, SnapshotInfo } from '$lib/types/cluster/backups';
+	import type {
+		BackupJailMetadataInfo,
+		BackupJob,
+		BackupTarget,
+		BackupTargetDatasetInfo,
+		SnapshotInfo
+	} from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
@@ -151,6 +161,22 @@
 		restoring: false,
 		snapshots: [] as SnapshotInfo[],
 		selectedSnapshot: '',
+		error: ''
+	});
+
+	let restoreTargetModal = $state({
+		open: false,
+		loadingDatasets: false,
+		loadingSnapshots: false,
+		loadingMetadata: false,
+		restoring: false,
+		targetId: '',
+		dataset: '',
+		snapshot: '',
+		destinationDataset: '',
+		datasets: [] as BackupTargetDatasetInfo[],
+		snapshots: [] as SnapshotInfo[],
+		jailMetadata: null as BackupJailMetadataInfo | null,
 		error: ''
 	});
 
@@ -307,6 +333,23 @@
 			label: target.name
 		}))
 	]);
+
+	let restoreTargetDatasetOptions = $derived(
+		restoreTargetModal.datasets.map((dataset) => ({
+			value: dataset.name,
+			label:
+				dataset.kind === 'jail' && dataset.jailCtId
+					? `${dataset.suffix || dataset.name} (jail ${dataset.jailCtId})`
+					: dataset.suffix || dataset.name
+		}))
+	);
+
+	let restoreTargetSnapshotOptions = $derived(
+		[...restoreTargetModal.snapshots].reverse().map((snapshot) => ({
+			value: snapshot.shortName,
+			label: snapshot.shortName
+		}))
+	);
 
 	let nodeOptions = $derived([
 		{ value: '', label: 'Select a node' },
@@ -536,6 +579,147 @@
 			restoreModal.restoring = false;
 		}
 	}
+
+	function resetRestoreTargetModal() {
+		restoreTargetModal.open = false;
+		restoreTargetModal.loadingDatasets = false;
+		restoreTargetModal.loadingSnapshots = false;
+		restoreTargetModal.loadingMetadata = false;
+		restoreTargetModal.restoring = false;
+		restoreTargetModal.targetId = '';
+		restoreTargetModal.dataset = '';
+		restoreTargetModal.snapshot = '';
+		restoreTargetModal.destinationDataset = '';
+		restoreTargetModal.datasets = [];
+		restoreTargetModal.snapshots = [];
+		restoreTargetModal.jailMetadata = null;
+		restoreTargetModal.error = '';
+	}
+
+	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
+		if (!target) return '';
+		const jailMatch = dataset.match(/\/jails\/(\d+)(?:$|\/)/);
+		if (!jailMatch) return '';
+		const ctid = jailMatch[1];
+		const pool = target.backupRoot.split('/')[0] || '';
+		if (!pool) return '';
+		return `${pool}/sylve/jails/${ctid}`;
+	}
+
+	async function openRestoreFromTargetModal() {
+		restoreTargetModal.open = true;
+		restoreTargetModal.error = '';
+		restoreTargetModal.targetId = targetOptions[0]?.value || '';
+		restoreTargetModal.dataset = '';
+		restoreTargetModal.snapshot = '';
+		restoreTargetModal.destinationDataset = '';
+		restoreTargetModal.datasets = [];
+		restoreTargetModal.snapshots = [];
+		restoreTargetModal.jailMetadata = null;
+
+		if (!restoreTargetModal.targetId) {
+			restoreTargetModal.error = 'No backup targets available';
+			return;
+		}
+
+		await onRestoreTargetTargetChange();
+	}
+
+	async function onRestoreTargetTargetChange() {
+		const targetId = Number.parseInt(restoreTargetModal.targetId || '0', 10);
+		if (!targetId) return;
+
+		restoreTargetModal.loadingDatasets = true;
+		restoreTargetModal.error = '';
+		restoreTargetModal.dataset = '';
+		restoreTargetModal.snapshot = '';
+		restoreTargetModal.destinationDataset = '';
+		restoreTargetModal.datasets = [];
+		restoreTargetModal.snapshots = [];
+		restoreTargetModal.jailMetadata = null;
+
+		try {
+			const datasets = await listBackupTargetDatasets(targetId);
+			restoreTargetModal.datasets = datasets;
+			if (datasets.length > 0) {
+				restoreTargetModal.dataset = datasets[0].name;
+				await onRestoreTargetDatasetChange();
+			}
+		} catch (e: any) {
+			restoreTargetModal.error = e?.message || 'Failed to load target datasets';
+		} finally {
+			restoreTargetModal.loadingDatasets = false;
+		}
+	}
+
+	async function onRestoreTargetDatasetChange() {
+		const targetId = Number.parseInt(restoreTargetModal.targetId || '0', 10);
+		const dataset = restoreTargetModal.dataset;
+		if (!targetId || !dataset) return;
+
+		restoreTargetModal.loadingSnapshots = true;
+		restoreTargetModal.loadingMetadata = true;
+		restoreTargetModal.error = '';
+		restoreTargetModal.snapshot = '';
+		restoreTargetModal.snapshots = [];
+		restoreTargetModal.jailMetadata = null;
+
+		const selectedTarget = targets.current.find((t) => t.id === targetId);
+		restoreTargetModal.destinationDataset = inferJailDestinationDataset(selectedTarget, dataset);
+
+		try {
+			const [snapshots, metadata] = await Promise.all([
+				listBackupTargetDatasetSnapshots(targetId, dataset),
+				getBackupTargetJailMetadata(targetId, dataset)
+			]);
+			restoreTargetModal.snapshots = snapshots;
+			if (snapshots.length > 0) {
+				restoreTargetModal.snapshot = snapshots[snapshots.length - 1].shortName;
+			}
+
+			restoreTargetModal.jailMetadata = metadata;
+			if (metadata?.basePool && metadata?.ctId) {
+				restoreTargetModal.destinationDataset = `${metadata.basePool}/sylve/jails/${metadata.ctId}`;
+			}
+		} catch (e: any) {
+			restoreTargetModal.error = e?.message || 'Failed to load dataset details';
+		} finally {
+			restoreTargetModal.loadingSnapshots = false;
+			restoreTargetModal.loadingMetadata = false;
+		}
+	}
+
+	async function triggerRestoreFromTarget() {
+		const targetId = Number.parseInt(restoreTargetModal.targetId || '0', 10);
+		if (!targetId || !restoreTargetModal.dataset || !restoreTargetModal.snapshot) return;
+		if (!restoreTargetModal.destinationDataset.trim()) {
+			toast.error('Destination dataset is required', { position: 'bottom-center' });
+			return;
+		}
+
+		restoreTargetModal.restoring = true;
+		try {
+			const response = await restoreBackupFromTarget(targetId, {
+				remoteDataset: restoreTargetModal.dataset,
+				snapshot: restoreTargetModal.snapshot,
+				destinationDataset: restoreTargetModal.destinationDataset.trim()
+			});
+			if (response.status === 'success') {
+				toast.success('Restore job started — check events for progress', {
+					position: 'bottom-center'
+				});
+				restoreTargetModal.open = false;
+				reload = true;
+				return;
+			}
+			handleAPIError(response);
+			toast.error('Failed to start restore', { position: 'bottom-center' });
+		} catch (e: any) {
+			toast.error(e?.message || 'Failed to start restore', { position: 'bottom-center' });
+		} finally {
+			restoreTargetModal.restoring = false;
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
@@ -589,6 +773,19 @@
 			<div class="flex items-center">
 				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
 				<span>New</span>
+			</div>
+		</Button>
+
+		<Button
+			onclick={openRestoreFromTargetModal}
+			size="sm"
+			variant="outline"
+			class="h-6"
+			disabled={targets.current.length === 0}
+		>
+			<div class="flex items-center">
+				<Icon icon="mdi:database-sync-outline" class="mr-1 h-4 w-4" />
+				<span>Restore From Target</span>
 			</div>
 		</Button>
 
@@ -892,6 +1089,129 @@
 					Restoring...
 				{:else}
 					<Icon icon="mdi:backup-restore" class="mr-1 h-4 w-4" />
+					Restore
+				{/if}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={restoreTargetModal.open}>
+	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
+		<Dialog.Header>
+			<Dialog.Title>
+				<div class="flex items-center gap-2">
+					<Icon icon="mdi:database-sync-outline" class="h-5 w-5" />
+					<span>Restore From Target Dataset</span>
+				</div>
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="grid gap-4 py-0">
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<SimpleSelect
+					label="Target"
+					placeholder="Select target"
+					options={targetOptions}
+					bind:value={restoreTargetModal.targetId}
+					onChange={onRestoreTargetTargetChange}
+				/>
+
+				<SimpleSelect
+					label="Dataset on Target"
+					placeholder={restoreTargetModal.loadingDatasets
+						? 'Loading datasets...'
+						: restoreTargetModal.datasets.length === 0
+							? 'No restorable datasets found'
+							: 'Select dataset'}
+					options={restoreTargetDatasetOptions}
+					bind:value={restoreTargetModal.dataset}
+					onChange={onRestoreTargetDatasetChange}
+					disabled={restoreTargetModal.loadingDatasets || restoreTargetModal.datasets.length === 0}
+				/>
+			</div>
+
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<SimpleSelect
+					label="Snapshot"
+					placeholder={restoreTargetModal.loadingSnapshots
+						? 'Loading snapshots...'
+						: restoreTargetModal.snapshots.length === 0
+							? 'No snapshots found'
+							: 'Select snapshot'}
+					options={restoreTargetSnapshotOptions}
+					bind:value={restoreTargetModal.snapshot}
+					onChange={() => {}}
+					disabled={restoreTargetModal.loadingSnapshots || restoreTargetModal.snapshots.length === 0}
+				/>
+
+				<CustomValueInput
+					label="Destination Dataset"
+					placeholder="zroot/sylve/jails/105"
+					bind:value={restoreTargetModal.destinationDataset}
+					classes="space-y-1"
+				/>
+			</div>
+
+			{#if restoreTargetModal.jailMetadata}
+				<div class="rounded-md border bg-muted/40 p-3 text-sm">
+					<p class="font-medium">Detected Jail Metadata</p>
+					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
+						<div>
+							Name:
+							<code class="rounded bg-background px-1"
+								>{restoreTargetModal.jailMetadata.name || '-'}</code
+							>
+						</div>
+						<div>
+							CT ID:
+							<code class="rounded bg-background px-1">{restoreTargetModal.jailMetadata.ctId}</code>
+						</div>
+						<div>
+							Base Pool:
+							<code class="rounded bg-background px-1"
+								>{restoreTargetModal.jailMetadata.basePool || '-'}</code
+							>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if restoreTargetModal.error}
+				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
+					{restoreTargetModal.error}
+				</div>
+			{/if}
+
+			<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
+				<p class="font-medium text-yellow-600 dark:text-yellow-400">
+					<Icon icon="mdi:alert" class="mr-1 inline h-4 w-4" />
+					Restore Warning
+				</p>
+				<p class="mt-2 text-muted-foreground">
+					The destination dataset will be replaced if it already exists.
+				</p>
+			</div>
+		</div>
+
+		<Dialog.Footer>
+			<Button variant="outline" onclick={resetRestoreTargetModal}>Cancel</Button>
+			<Button
+				onclick={triggerRestoreFromTarget}
+				disabled={restoreTargetModal.restoring ||
+					restoreTargetModal.loadingDatasets ||
+					restoreTargetModal.loadingSnapshots ||
+					!restoreTargetModal.targetId ||
+					!restoreTargetModal.dataset ||
+					!restoreTargetModal.snapshot ||
+					!restoreTargetModal.destinationDataset.trim()}
+				variant="destructive"
+			>
+				{#if restoreTargetModal.restoring}
+					<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
+					Restoring...
+				{:else}
+					<Icon icon="mdi:database-sync-outline" class="mr-1 h-4 w-4" />
 					Restore
 				{/if}
 			</Button>

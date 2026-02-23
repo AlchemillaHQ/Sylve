@@ -1,10 +1,14 @@
 import {
+    BackupJailMetadataInfoSchema,
     BackupEventSchema,
     BackupJobSchema,
+    BackupTargetDatasetInfoSchema,
     BackupTargetSchema,
     SnapshotInfoSchema,
+    type BackupJailMetadataInfo,
     type BackupEvent,
     type BackupJob,
+    type BackupTargetDatasetInfo,
     type BackupTarget,
     type SnapshotInfo
 } from '$lib/types/cluster/backups';
@@ -35,6 +39,12 @@ export type BackupJobInput = {
     stopBeforeBackup: boolean;
     cronExpr: string;
     enabled: boolean;
+};
+
+export type RestoreFromTargetInput = {
+    remoteDataset: string;
+    snapshot: string;
+    destinationDataset: string;
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
@@ -92,4 +102,24 @@ export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInf
 
 export async function restoreBackupJob(jobId: number, snapshot: string): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/jobs/${jobId}/restore`, APIResponseSchema, 'POST', { snapshot });
+}
+
+export async function listBackupTargetDatasets(targetId: number): Promise<BackupTargetDatasetInfo[]> {
+    return await apiRequest(`/cluster/backups/targets/${targetId}/datasets`, z.array(BackupTargetDatasetInfoSchema), 'GET');
+}
+
+export async function listBackupTargetDatasetSnapshots(targetId: number, dataset: string): Promise<SnapshotInfo[]> {
+    const params = new URLSearchParams();
+    params.set('dataset', dataset);
+    return await apiRequest(`/cluster/backups/targets/${targetId}/datasets/snapshots?${params.toString()}`, z.array(SnapshotInfoSchema), 'GET');
+}
+
+export async function getBackupTargetJailMetadata(targetId: number, dataset: string): Promise<BackupJailMetadataInfo | null> {
+    const params = new URLSearchParams();
+    params.set('dataset', dataset);
+    return await apiRequest(`/cluster/backups/targets/${targetId}/datasets/jail-metadata?${params.toString()}`, BackupJailMetadataInfoSchema.nullable(), 'GET');
+}
+
+export async function restoreBackupFromTarget(targetId: number, input: RestoreFromTargetInput): Promise<APIResponse> {
+    return await apiRequest(`/cluster/backups/targets/${targetId}/restore`, APIResponseSchema, 'POST', input);
 }
