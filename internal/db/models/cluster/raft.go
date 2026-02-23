@@ -79,7 +79,6 @@ type ClusterSnapshot struct {
 	Options       []ClusterOption                  `json:"options"`
 	BackupTargets []BackupTargetReplicationPayload `json:"backupTargets"`
 	BackupJobs    []BackupJob                      `json:"backupJobs"`
-	BackupEvents  []BackupEvent                    `json:"backupEvents"`
 	// We can add more tables here as needed
 }
 
@@ -102,9 +101,6 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 		snap.BackupTargets = append(snap.BackupTargets, BackupTargetToReplicationPayload(t))
 	}
 	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
-		return nil, err
-	}
-	if err := f.DB.Order("id ASC").Find(&snap.BackupEvents).Error; err != nil {
 		return nil, err
 	}
 	return &snap, nil
@@ -130,7 +126,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 
 		deleteSets := []restoreSet{
-			{"backup_events", snap.BackupEvents, 1000},
 			{"backup_jobs", snap.BackupJobs, 500},
 			{"backup_targets", backupTargets, 200},
 			{"cluster_notes", snap.Notes, 500},
@@ -140,7 +135,6 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		createSets := []restoreSet{
 			{"backup_targets", backupTargets, 200},
 			{"backup_jobs", snap.BackupJobs, 500},
-			{"backup_events", snap.BackupEvents, 1000},
 			{"cluster_notes", snap.Notes, 500},
 			{"cluster_options", snap.Options, 100},
 		}
