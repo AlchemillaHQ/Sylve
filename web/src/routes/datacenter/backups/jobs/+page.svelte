@@ -776,23 +776,23 @@
 			</div>
 		</Button>
 
-		<Button
-			onclick={openRestoreFromTargetModal}
-			size="sm"
-			variant="outline"
-			class="h-6"
-			disabled={targets.current.length === 0}
-		>
-			<div class="flex items-center">
-				<Icon icon="mdi:database-sync-outline" class="mr-1 h-4 w-4" />
-				<span>Restore From Target</span>
-			</div>
-		</Button>
-
 		{@render button('edit')}
 		{@render button('delete')}
 		{@render button('run')}
 		{@render button('restore')}
+
+		<Button
+			onclick={openRestoreFromTargetModal}
+			size="sm"
+			variant="outline"
+			class="h-6 ml-auto"
+			disabled={targets.current.length === 0}
+		>
+			<div class="flex items-center">
+				<Icon icon="mdi:database-sync-outline" class="mr-1 h-4 w-4" />
+				<span>OOB Restore</span>
+			</div>
+		</Button>
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
 			<div class="flex items-center">
@@ -1142,7 +1142,8 @@
 					options={restoreTargetSnapshotOptions}
 					bind:value={restoreTargetModal.snapshot}
 					onChange={() => {}}
-					disabled={restoreTargetModal.loadingSnapshots || restoreTargetModal.snapshots.length === 0}
+					disabled={restoreTargetModal.loadingSnapshots ||
+						restoreTargetModal.snapshots.length === 0}
 				/>
 
 				<CustomValueInput

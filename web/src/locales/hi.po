@@ -8128,9 +8128,8 @@ msgstr ""
 msgid "Failed to load dataset details"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Restore From Target"
-msgstr ""
+#~ msgid "Restore From Target"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore From Target Dataset"
@@ -8178,4 +8177,8 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "The destination dataset will be replaced if it already exists."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "OOB Restore"
 msgstr ""
