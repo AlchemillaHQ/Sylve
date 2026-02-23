@@ -115,19 +115,24 @@
 		}
 	);
 
-	watch([() => restoreTargetModal.datasets, () => restoreTargetModal.open], ([datasets, isOpen]) => {
-		if (!isOpen) return;
-		if (datasets.length === 0) {
-			restoreTargetModal.dataset = '';
-			return;
+	watch(
+		[() => restoreTargetModal.datasets, () => restoreTargetModal.open],
+		([datasets, isOpen]) => {
+			if (!isOpen) return;
+			if (datasets.length === 0) {
+				restoreTargetModal.dataset = '';
+				return;
+			}
+
+			const hasCurrentSelection = datasets.some(
+				(dataset) => dataset.name === restoreTargetModal.dataset
+			);
+			if (hasCurrentSelection) return;
+
+			restoreTargetModal.dataset = datasets[0].name;
+			void onRestoreTargetDatasetChange();
 		}
-
-		const hasCurrentSelection = datasets.some((dataset) => dataset.name === restoreTargetModal.dataset);
-		if (hasCurrentSelection) return;
-
-		restoreTargetModal.dataset = datasets[0].name;
-		void onRestoreTargetDatasetChange();
-	});
+	);
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -430,8 +435,10 @@
 		return formatRestoreSnapshotDate(selected);
 	});
 
-	let selectedRestoreSnapshot = $derived.by(() =>
-		restoreModal.snapshots.find((snapshot) => snapshot.name === restoreModal.selectedSnapshot) || null
+	let selectedRestoreSnapshot = $derived.by(
+		() =>
+			restoreModal.snapshots.find((snapshot) => snapshot.name === restoreModal.selectedSnapshot) ||
+			null
 	);
 
 	let restoreModalHasOutOfBandSnapshots = $derived.by(() =>
@@ -758,7 +765,9 @@
 		try {
 			const datasets = await listBackupTargetDatasets(targetId);
 			restoreTargetModal.datasets = datasets;
-			let preferredDatasets = datasets.filter((dataset) => (dataset.lineage || 'active') === 'active');
+			let preferredDatasets = datasets.filter(
+				(dataset) => (dataset.lineage || 'active') === 'active'
+			);
 
 			if (preferredDatasets.length === 0) {
 				preferredDatasets = datasets;
@@ -1139,7 +1148,9 @@
 				</div>
 			{:else}
 				{#if restoreModalHasOutOfBandSnapshots}
-					<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
+					<div
+						class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700"
+					>
 						Some backups are from out-of-band lineages. Regular prune count applies to the current
 						lineage only.
 					</div>
@@ -1180,8 +1191,7 @@
 										<span
 											class={`inline-flex items-center rounded-md border px-2 py-0.5 ${snapshotLineageClasses(
 												snap
-											)}`}
-											>{snapshotLineageLabel(snap)}</span
+											)}`}>{snapshotLineageLabel(snap)}</span
 										>
 									</td>
 									<td class="p-2 text-right text-xs text-muted-foreground"

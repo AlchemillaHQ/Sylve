@@ -17,6 +17,7 @@ import isEmail from 'validator/lib/isEmail';
 import isMACAddress from 'validator/lib/isMACAddress';
 import isURL from 'validator/lib/isURL';
 import { Mnemonic } from './vendor/mnemonic';
+import humanFormat from 'human-format';
 
 export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): string {
     if (firstOnly) {
@@ -550,4 +551,18 @@ export function escapeHTML(str: string): string {
 export function parseNumberOrZero(value: string): number {
     const num = Number(value);
     return isNaN(num) ? 0 : num;
+}
+
+export function humanFormatBytes(input: unknown, decimals = 2): string {
+    const bytes = Number(input);
+
+    if (!Number.isFinite(bytes) || bytes < 0) {
+        return '0 B';
+    }
+
+    try {
+        return humanFormat(bytes, { unit: 'B', decimals });
+    } catch {
+        return '0 B';
+    }
 }

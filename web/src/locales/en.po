@@ -1562,7 +1562,6 @@ msgstr "Baseline"
 
 #: src/lib/components/custom/Charts/Bar.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Date"
 msgstr "Date"
 
@@ -8040,7 +8039,6 @@ msgid "No snapshots found on the backup target. Run a backup first."
 msgstr "No snapshots found on the backup target. Run a backup first."
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Snapshot"
 msgstr "Snapshot"
 
@@ -8057,13 +8055,11 @@ msgstr "<0/> Restore Warning"
 msgid "The current dataset will be renamed to <0/>"
 msgstr "The current dataset will be renamed to <0/>"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Data from <0/> will be restored in its place"
-msgstr "Data from <0/> will be restored in its place"
+#~ msgid "Data from <0/> will be restored in its place"
+#~ msgstr "Data from <0/> will be restored in its place"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "No data is deleted on the backup target — all snapshots remain available"
-msgstr "No data is deleted on the backup target — all snapshots remain available"
+#~ msgid "No data is deleted on the backup target — all snapshots remain available"
+#~ msgstr "No data is deleted on the backup target — all snapshots remain available"
 
 #~ msgid "You can delete the <0/> dataset later to reclaim space"
 #~ msgstr "You can delete the <0/> dataset later to reclaim space"
@@ -8222,3 +8218,64 @@ msgstr "The destination dataset will be replaced if it already exists."
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "OOB Restore"
 msgstr "OOB Restore"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Current"
+msgstr "Current"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "OOB lineage"
+msgstr "OOB lineage"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "System preserved"
+msgstr "System preserved"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Out of band"
+msgstr "Out of band"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid ""
+"Some backups are from out-of-band lineages. Regular prune count applies to the current\n"
+"lineage only."
+msgstr ""
+"Some backups are from out-of-band lineages. Regular prune count applies to the current\n"
+"lineage only."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup Date"
+msgstr "Backup Date"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Lineage"
+msgstr "Lineage"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Data from <0/> will be restored"
+msgstr "Data from <0/> will be restored"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "This snapshot is from <0/> and may not be counted by active-lineage prune."
+msgstr "This snapshot is from <0/> and may not be counted by active-lineage prune."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No deletion on target, all snapshots remain available"
+msgstr "No deletion on target, all snapshots remain available"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid ""
+"Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
+"active lineage only."
+msgstr ""
+"Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
+"active lineage only."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Selected backup date: <0/>"
+msgstr "Selected backup date: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Selected snapshot lineage: <0/>"
+msgstr "Selected snapshot lineage: <0/>"
