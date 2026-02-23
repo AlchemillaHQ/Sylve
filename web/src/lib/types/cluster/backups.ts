@@ -53,14 +53,20 @@ export const BackupEventSchema = z.object({
 export const SnapshotInfoSchema = z.object({
     name: z.string(),
     shortName: z.string(),
+    dataset: z.string().optional().default(''),
     creation: z.string(),
     used: z.string(),
-    refer: z.string()
+    refer: z.string(),
+    lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
+    outOfBand: z.boolean().optional().default(false)
 });
 
 export const BackupTargetDatasetInfoSchema = z.object({
     name: z.string(),
     suffix: z.string().default(''),
+    baseSuffix: z.string().optional().default(''),
+    lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
+    outOfBand: z.boolean().optional().default(false),
     snapshotCount: z.number().int().nonnegative().default(0),
     kind: z.enum(['dataset', 'jail']).default('dataset'),
     jailCtId: z.number().int().nonnegative().optional()

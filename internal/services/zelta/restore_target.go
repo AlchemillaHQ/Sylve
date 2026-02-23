@@ -37,6 +37,9 @@ type restoreFromTargetPayload struct {
 type BackupTargetDatasetInfo struct {
 	Name          string `json:"name"` // full remote dataset path
 	Suffix        string `json:"suffix"`
+	BaseSuffix    string `json:"baseSuffix"`
+	Lineage       string `json:"lineage"` // "active" | "rotated" | "preserved" | "other"
+	OutOfBand     bool   `json:"outOfBand"`
 	SnapshotCount int    `json:"snapshotCount"`
 	Kind          string `json:"kind"` // "dataset" | "jail"
 	JailCTID      uint   `json:"jailCtId,omitempty"`
@@ -94,16 +97,44 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		}
 
 		suffix := relativeDatasetSuffix(target.BackupRoot, dataset)
-		kind, jailCTID := inferRestoreDatasetKind(suffix)
+		lineage, outOfBand, baseSuffix := classifyDatasetLineage(suffix)
+		kind, jailCTID := inferRestoreDatasetKind(baseSuffix)
+		if kind != clusterModels.BackupJobModeJail {
+			kind, jailCTID = inferRestoreDatasetKind(suffix)
+		}
 
 		datasets = append(datasets, BackupTargetDatasetInfo{
 			Name:          dataset,
 			Suffix:        suffix,
+			BaseSuffix:    baseSuffix,
+			Lineage:       lineage,
+			OutOfBand:     outOfBand,
 			SnapshotCount: snapCount,
 			Kind:          kind,
 			JailCTID:      jailCTID,
 		})
 	}
+
+	sort.Slice(datasets, func(i, j int) bool {
+		left := datasets[i]
+		right := datasets[j]
+
+		if left.BaseSuffix != right.BaseSuffix {
+			return left.BaseSuffix < right.BaseSuffix
+		}
+
+		leftRank := datasetLineageRank(left.Lineage)
+		rightRank := datasetLineageRank(right.Lineage)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+
+		if left.SnapshotCount != right.SnapshotCount {
+			return left.SnapshotCount > right.SnapshotCount
+		}
+
+		return left.Suffix < right.Suffix
+	})
 
 	return datasets, nil
 }
@@ -122,7 +153,7 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
-	return s.listRemoteSnapshotsForDataset(ctx, &target, remoteDataset)
+	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
@@ -167,7 +198,7 @@ func (s *Service) EnqueueRestoreFromTarget(ctx context.Context, targetID uint, r
 		return fmt.Errorf("destination_dataset_required")
 	}
 
-	snapshot, err := normalizeSnapshotName(snapshot)
+	remoteDataset, snapshot, err := parseRestoreSnapshotInput(snapshot, remoteDataset)
 	if err != nil {
 		return err
 	}
@@ -235,6 +266,12 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	if !strings.HasPrefix(snapshot, "@") {
 		snapshot = "@" + snapshot
 	}
+
+	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, target, remoteDataset, snapshot)
+	if err != nil {
+		return fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
+	}
+	remoteDataset = resolvedRemoteDataset
 
 	remoteEndpoint := target.SSHHost + ":" + remoteDataset + snapshot
 	restorePath := destinationDataset + ".restoring"
@@ -340,12 +377,14 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		Str("dataset", destinationDataset).
 		Msg("target_dataset_restore_completed")
 
-	err := s.Jail.JailAction(int(ctId), "start")
-	if err != nil {
-		logger.L.Warn().
-			Uint("ct_id", ctId).
-			Err(err).
-			Msg("failed_to_start_jail_after_restore_continuing_anyway")
+	if ctId != 0 {
+		err := s.Jail.JailAction(int(ctId), "start")
+		if err != nil {
+			logger.L.Warn().
+				Uint("ct_id", ctId).
+				Err(err).
+				Msg("failed_to_start_jail_after_restore_continuing_anyway")
+		}
 	}
 
 	return nil
@@ -420,6 +459,9 @@ func (s *Service) listRemoteSnapshotsWithLineage(ctx context.Context, target *cl
 			if key == "" {
 				continue
 			}
+			lineage, outOfBand, _ := classifyDatasetLineage(relativeDatasetSuffix(target.BackupRoot, dataset))
+			snapshot.Lineage = lineage
+			snapshot.OutOfBand = outOfBand
 			if _, exists := seen[key]; exists {
 				continue
 			}
@@ -466,11 +508,23 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 		return nil, fmt.Errorf("remote_dataset_required")
 	}
 
+	remoteSuffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
+	_, _, baseSuffix := classifyDatasetLineage(remoteSuffix)
+	if strings.TrimSpace(baseSuffix) == "" {
+		baseSuffix = remoteSuffix
+	}
+
 	parent := remoteDataset
 	leaf := remoteDataset
 	if idx := strings.LastIndex(remoteDataset, "/"); idx > 0 {
 		parent = remoteDataset[:idx]
 		leaf = remoteDataset[idx+1:]
+	}
+	baseLeaf := leaf
+	if idx := strings.LastIndex(baseSuffix, "/"); idx >= 0 && idx+1 < len(baseSuffix) {
+		baseLeaf = baseSuffix[idx+1:]
+	} else if strings.TrimSpace(baseSuffix) != "" {
+		baseLeaf = baseSuffix
 	}
 
 	output, err := s.runTargetZFSList(ctx, target, "-t", "filesystem", "-d", "1", "-Hp", "-o", "name", parent)
@@ -478,7 +532,6 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 		return []string{remoteDataset}, nil
 	}
 
-	prefix := leaf + "_zelta_"
 	results := make([]string, 0)
 	seen := make(map[string]struct{})
 
@@ -505,7 +558,12 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 		}
 
 		suffix := strings.TrimPrefix(dataset, parent+"/")
-		if strings.HasPrefix(suffix, prefix) {
+		switch {
+		case suffix == baseLeaf:
+			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+"_zelta_"):
+			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
 			add(dataset)
 		}
 	}
@@ -538,8 +596,10 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 
 		fullName := fields[0]
 		shortName := ""
+		datasetName := ""
 		if idx := strings.Index(fullName, "@"); idx >= 0 {
 			shortName = fullName[idx:]
+			datasetName = strings.TrimSpace(fullName[:idx])
 		}
 
 		creation := fields[1]
@@ -550,6 +610,7 @@ func parseSnapshotInfoOutput(output string) []SnapshotInfo {
 		snapshots = append(snapshots, SnapshotInfo{
 			Name:      fullName,
 			ShortName: shortName,
+			Dataset:   datasetName,
 			Creation:  creation,
 			Used:      fields[2],
 			Refer:     fields[3],
@@ -686,8 +747,8 @@ func normalizeSnapshotName(snapshot string) (string, error) {
 }
 
 func datasetWithinRoot(root, dataset string) bool {
-	root = strings.TrimSpace(root)
-	dataset = strings.TrimSpace(dataset)
+	root = normalizeDatasetPath(root)
+	dataset = normalizeDatasetPath(dataset)
 	if root == "" || dataset == "" {
 		return false
 	}
@@ -698,12 +759,67 @@ func datasetWithinRoot(root, dataset string) bool {
 }
 
 func relativeDatasetSuffix(root, dataset string) string {
-	root = strings.TrimSpace(root)
-	dataset = strings.TrimSpace(dataset)
+	root = normalizeDatasetPath(root)
+	dataset = normalizeDatasetPath(dataset)
 	if dataset == root {
 		return ""
 	}
 	return strings.TrimPrefix(dataset, root+"/")
+}
+
+func normalizeDatasetPath(dataset string) string {
+	dataset = strings.TrimSpace(dataset)
+	for strings.HasSuffix(dataset, "/") {
+		dataset = strings.TrimSuffix(dataset, "/")
+	}
+	return dataset
+}
+
+func classifyDatasetLineage(suffix string) (string, bool, string) {
+	suffix = normalizeDatasetPath(suffix)
+	if suffix == "" {
+		return "active", false, ""
+	}
+
+	parts := strings.Split(suffix, "/")
+	leaf := parts[len(parts)-1]
+	dir := ""
+	if len(parts) > 1 {
+		dir = strings.Join(parts[:len(parts)-1], "/")
+	}
+
+	baseLeaf := leaf
+	lineage := "active"
+
+	if idx := strings.Index(leaf, ".pre_sylve_"); idx > 0 {
+		lineage = "preserved"
+		baseLeaf = leaf[:idx]
+	} else if idx := strings.Index(leaf, "_zelta_"); idx > 0 {
+		lineage = "rotated"
+		baseLeaf = leaf[:idx]
+	} else if strings.Contains(leaf, ".pre_") {
+		lineage = "other"
+	}
+
+	baseSuffix := baseLeaf
+	if dir != "" {
+		baseSuffix = dir + "/" + baseLeaf
+	}
+
+	return lineage, lineage != "active", baseSuffix
+}
+
+func datasetLineageRank(lineage string) int {
+	switch strings.ToLower(strings.TrimSpace(lineage)) {
+	case "active":
+		return 0
+	case "rotated":
+		return 1
+	case "preserved":
+		return 2
+	default:
+		return 3
+	}
 }
 
 func inferRestoreDatasetKind(suffix string) (string, uint) {
@@ -712,15 +828,37 @@ func inferRestoreDatasetKind(suffix string) (string, uint) {
 		if parts[i] != "jails" {
 			continue
 		}
-		raw := strings.TrimSpace(parts[i+1])
-		if raw == "" {
-			continue
-		}
-		if id, err := strconv.ParseUint(raw, 10, 64); err == nil && id > 0 {
+		if id := extractDatasetCTID(parts[i+1]); id > 0 {
 			return clusterModels.BackupJobModeJail, uint(id)
 		}
 	}
 	return clusterModels.BackupJobModeDataset, 0
+}
+
+func extractDatasetCTID(raw string) uint64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+
+	cutAt := len(raw)
+	if idx := strings.Index(raw, "_"); idx >= 0 && idx < cutAt {
+		cutAt = idx
+	}
+	if idx := strings.Index(raw, "."); idx >= 0 && idx < cutAt {
+		cutAt = idx
+	}
+
+	base := strings.TrimSpace(raw[:cutAt])
+	if base == "" {
+		return 0
+	}
+
+	id, err := strconv.ParseUint(base, 10, 64)
+	if err != nil || id == 0 {
+		return 0
+	}
+	return id
 }
 
 func restoreLockIDFromDestination(dataset string) uint {

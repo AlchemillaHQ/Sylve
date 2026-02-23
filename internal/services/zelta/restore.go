@@ -22,11 +22,14 @@ import (
 
 // SnapshotInfo represents a single ZFS snapshot on the backup target.
 type SnapshotInfo struct {
-	Name      string `json:"name"`      // full dataset@snap name
-	ShortName string `json:"shortName"` // just the @snap portion
-	Creation  string `json:"creation"`  // creation timestamp
-	Used      string `json:"used"`      // space used
-	Refer     string `json:"refer"`     // referenced size
+	Name      string `json:"name"`                // full dataset@snap name
+	ShortName string `json:"shortName"`           // just the @snap portion
+	Dataset   string `json:"dataset"`             // dataset portion (without @snap)
+	Creation  string `json:"creation"`            // creation timestamp
+	Used      string `json:"used"`                // space used
+	Refer     string `json:"refer"`               // referenced size
+	Lineage   string `json:"lineage,omitempty"`   // "active" | "rotated" | "preserved" | "other"
+	OutOfBand bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
 }
 
 const restoreJobQueueName = "zelta-restore-run"

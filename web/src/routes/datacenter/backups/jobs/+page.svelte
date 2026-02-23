@@ -40,6 +40,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
 	import { storage } from '$lib';
+	import { humanFormatBytes } from '$lib/utils/string';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -89,6 +90,8 @@
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 	let reload = $state(false);
+	let showOutOfBandTargetDatasets = $state(false);
+	let showPreservedTargetDatasets = $state(false);
 
 	watch(
 		() => jobs.current,
@@ -111,6 +114,35 @@
 				}
 				reload = false;
 			}
+		}
+	);
+
+	watch(
+		[
+			() => showOutOfBandTargetDatasets,
+			() => showPreservedTargetDatasets,
+			() => restoreTargetModal.datasets,
+			() => restoreTargetModal.open
+		],
+		([, , datasets, isOpen]) => {
+			if (!isOpen) return;
+
+			const visible = datasets.filter((dataset) => {
+				const lineage = dataset.lineage || 'active';
+				if (lineage === 'preserved') return showPreservedTargetDatasets;
+				if (lineage === 'active') return true;
+				return showOutOfBandTargetDatasets;
+			});
+
+			if (visible.length === 0) return;
+
+			const hasCurrentSelection = visible.some(
+				(dataset) => dataset.name === restoreTargetModal.dataset
+			);
+			if (hasCurrentSelection) return;
+
+			restoreTargetModal.dataset = visible[0].name;
+			void onRestoreTargetDatasetChange();
 		}
 	);
 
@@ -334,21 +366,142 @@
 		}))
 	]);
 
+	function formatLineageLabel(lineage: string, outOfBand: boolean): string {
+		switch (lineage) {
+			case 'active':
+				return 'Current';
+			case 'rotated':
+				return 'OOB lineage';
+			case 'preserved':
+				return 'System preserved';
+			default:
+				return outOfBand ? 'Out of band' : 'Current';
+		}
+	}
+
+	function formatSnapshotCount(count: number): string {
+		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;
+	}
+
+	function formatLineageMarker(dataset: BackupTargetDatasetInfo): string {
+		const suffix = dataset.suffix || dataset.name;
+		const leaf = suffix.split('/').pop() || suffix;
+
+		if ((dataset.lineage || 'active') === 'rotated') {
+			const marker = leaf.split('_zelta_')[1] || '';
+			return marker ? marker.replace(/_/g, ' ') : '';
+		}
+
+		if ((dataset.lineage || 'active') === 'preserved') {
+			const marker = leaf.split('.pre_sylve_')[1] || '';
+			return marker ? `id ${marker.slice(-8)}` : '';
+		}
+
+		return '';
+	}
+
+	function formatRestoreTargetDatasetLabel(dataset: BackupTargetDatasetInfo): string {
+		const base = dataset.baseSuffix || dataset.suffix || dataset.name;
+		const lineage = formatLineageLabel(dataset.lineage || 'active', !!dataset.outOfBand);
+		const lineageMarker = formatLineageMarker(dataset);
+		const lineageSummary = lineageMarker ? `${lineage} ${lineageMarker}` : lineage;
+
+		if (dataset.kind === 'jail' && dataset.jailCtId) {
+			return `jails/${dataset.jailCtId} (${lineageSummary}, ${formatSnapshotCount(dataset.snapshotCount)})`;
+		}
+
+		return `${base} (${lineageSummary}, ${formatSnapshotCount(dataset.snapshotCount)})`;
+	}
+
+	let visibleRestoreTargetDatasets = $derived.by(() => {
+		const datasets = restoreTargetModal.datasets;
+		return datasets.filter((dataset) => {
+			const lineage = dataset.lineage || 'active';
+			if (lineage === 'preserved') return showPreservedTargetDatasets;
+			if (lineage === 'active') return true;
+			return showOutOfBandTargetDatasets;
+		});
+	});
+
+	let hasOutOfBandTargetDatasets = $derived.by(() =>
+		restoreTargetModal.datasets.some((dataset) => {
+			const lineage = dataset.lineage || 'active';
+			return lineage !== 'active' && lineage !== 'preserved';
+		})
+	);
+
+	let hasPreservedTargetDatasets = $derived.by(() =>
+		restoreTargetModal.datasets.some((dataset) => (dataset.lineage || 'active') === 'preserved')
+	);
+
 	let restoreTargetDatasetOptions = $derived(
-		restoreTargetModal.datasets.map((dataset) => ({
+		visibleRestoreTargetDatasets.map((dataset) => ({
 			value: dataset.name,
-			label:
-				dataset.kind === 'jail' && dataset.jailCtId
-					? `${dataset.suffix || dataset.name} (jail ${dataset.jailCtId})`
-					: dataset.suffix || dataset.name
+			label: formatRestoreTargetDatasetLabel(dataset)
 		}))
 	);
 
 	let restoreTargetSnapshotOptions = $derived(
 		[...restoreTargetModal.snapshots].reverse().map((snapshot) => ({
-			value: snapshot.shortName,
-			label: snapshot.shortName
+			value: snapshot.name || snapshot.shortName,
+			label: `${formatRestoreSnapshotDate(snapshot)}${snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active' ? ` (${snapshotLineageLabel(snapshot)})` : ''}`
 		}))
+	);
+
+	function formatRestoreSnapshotDate(snapshot: SnapshotInfo): string {
+		if (!snapshot.creation) return '-';
+		const date = new Date(snapshot.creation);
+		if (Number.isNaN(date.getTime())) {
+			return snapshot.creation;
+		}
+		return date.toLocaleString();
+	}
+
+	let selectedRestoreSnapshotDate = $derived.by(() => {
+		if (!restoreModal.selectedSnapshot) return '';
+		const selected = restoreModal.snapshots.find(
+			(snapshot) => snapshot.name === restoreModal.selectedSnapshot
+		);
+		if (!selected) return '';
+		return formatRestoreSnapshotDate(selected);
+	});
+
+	let selectedRestoreSnapshot = $derived.by(() =>
+		restoreModal.snapshots.find((snapshot) => snapshot.name === restoreModal.selectedSnapshot) || null
+	);
+
+	let restoreModalHasOutOfBandSnapshots = $derived.by(() =>
+		restoreModal.snapshots.some(
+			(snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active'
+		)
+	);
+
+	function snapshotLineageLabel(snapshot: SnapshotInfo): string {
+		return formatLineageLabel(snapshot.lineage || 'active', !!snapshot.outOfBand);
+	}
+
+	function snapshotLineageClasses(snapshot: SnapshotInfo): string {
+		const lineage = snapshot.lineage || 'active';
+		if (lineage === 'active' && !snapshot.outOfBand) {
+			return 'border-green-500/20 bg-green-500/10 text-green-600';
+		}
+		if (lineage === 'preserved') {
+			return 'border-orange-500/20 bg-orange-500/10 text-orange-600';
+		}
+		return 'border-blue-500/20 bg-blue-500/10 text-blue-600';
+	}
+
+	let selectedRestoreTargetSnapshot = $derived.by(
+		() =>
+			restoreTargetModal.snapshots.find(
+				(snapshot) => (snapshot.name || snapshot.shortName) === restoreTargetModal.snapshot
+			) || null
+	);
+
+	let restoreTargetModalHasOutOfBandSnapshots = $derived.by(() =>
+		restoreTargetModal.snapshots.some(
+			(snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active'
+		)
 	);
 
 	let nodeOptions = $derived([
@@ -594,6 +747,8 @@
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
 		restoreTargetModal.error = '';
+		showOutOfBandTargetDatasets = false;
+		showPreservedTargetDatasets = false;
 	}
 
 	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
@@ -609,6 +764,8 @@
 	async function openRestoreFromTargetModal() {
 		restoreTargetModal.open = true;
 		restoreTargetModal.error = '';
+		showOutOfBandTargetDatasets = false;
+		showPreservedTargetDatasets = false;
 		restoreTargetModal.targetId = targetOptions[0]?.value || '';
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
@@ -628,6 +785,8 @@
 	async function onRestoreTargetTargetChange() {
 		const targetId = Number.parseInt(restoreTargetModal.targetId || '0', 10);
 		if (!targetId) return;
+		showOutOfBandTargetDatasets = false;
+		showPreservedTargetDatasets = false;
 
 		restoreTargetModal.loadingDatasets = true;
 		restoreTargetModal.error = '';
@@ -641,8 +800,25 @@
 		try {
 			const datasets = await listBackupTargetDatasets(targetId);
 			restoreTargetModal.datasets = datasets;
-			if (datasets.length > 0) {
-				restoreTargetModal.dataset = datasets[0].name;
+			let preferredDatasets = datasets.filter((dataset) => (dataset.lineage || 'active') === 'active');
+
+			if (preferredDatasets.length === 0) {
+				preferredDatasets = datasets.filter((dataset) => (dataset.lineage || 'active') !== 'preserved');
+				if (preferredDatasets.length > 0) {
+					showOutOfBandTargetDatasets = true;
+				}
+			}
+
+			if (preferredDatasets.length === 0) {
+				preferredDatasets = datasets;
+				if (preferredDatasets.length > 0) {
+					showOutOfBandTargetDatasets = true;
+					showPreservedTargetDatasets = true;
+				}
+			}
+
+			if (preferredDatasets.length > 0) {
+				restoreTargetModal.dataset = preferredDatasets[0].name;
 				await onRestoreTargetDatasetChange();
 			}
 		} catch (e: any) {
@@ -674,7 +850,7 @@
 			]);
 			restoreTargetModal.snapshots = snapshots;
 			if (snapshots.length > 0) {
-				restoreTargetModal.snapshot = snapshots[snapshots.length - 1].shortName;
+				restoreTargetModal.snapshot = snapshots[snapshots.length - 1].name;
 			}
 
 			restoreTargetModal.jailMetadata = metadata;
@@ -1012,13 +1188,20 @@
 					No snapshots found on the backup target. Run a backup first.
 				</div>
 			{:else}
+				{#if restoreModalHasOutOfBandSnapshots}
+					<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
+						Some backups are from out-of-band lineages. Regular prune count applies to the current
+						lineage only.
+					</div>
+				{/if}
+
 				<div class="max-h-72 overflow-auto rounded-md border">
 					<table class="w-full text-sm">
 						<thead class="sticky top-0 bg-muted">
 							<tr>
 								<th class="w-8 p-2"></th>
-								<th class="p-2 text-left font-medium">Snapshot</th>
-								<th class="p-2 text-left font-medium">Date</th>
+								<th class="p-2 text-left font-medium">Backup Date</th>
+								<th class="p-2 text-left font-medium">Lineage</th>
 								<th class="p-2 text-right font-medium">Used</th>
 								<th class="p-2 text-right font-medium">Refer</th>
 							</tr>
@@ -1031,6 +1214,7 @@
 										? 'bg-accent'
 										: ''}"
 									onclick={() => (restoreModal.selectedSnapshot = snap.name)}
+									title={snap.name}
 								>
 									<td class="p-2 text-center">
 										{#if restoreModal.selectedSnapshot === snap.name}
@@ -1039,12 +1223,23 @@
 											<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
 										{/if}
 									</td>
-									<td class="p-2 font-mono text-xs">{snap.name}</td>
-									<td class="p-2 text-xs text-muted-foreground">
-										{snap.creation ? new Date(snap.creation).toLocaleString() : '-'}
+									<td class="p-2 text-xs text-muted-foreground"
+										>{formatRestoreSnapshotDate(snap)}</td
+									>
+									<td class="p-2 text-xs">
+										<span
+											class={`inline-flex items-center rounded-md border px-2 py-0.5 ${snapshotLineageClasses(
+												snap
+											)}`}
+											>{snapshotLineageLabel(snap)}</span
+										>
 									</td>
-									<td class="p-2 text-right text-xs">{snap.used}</td>
-									<td class="p-2 text-right text-xs">{snap.refer}</td>
+									<td class="p-2 text-right text-xs text-muted-foreground"
+										>{humanFormatBytes(snap.used)}</td
+									>
+									<td class="p-2 text-right text-xs text-muted-foreground"
+										>{humanFormatBytes(snap.refer)}</td
+									>
 								</tr>
 							{/each}
 						</tbody>
@@ -1064,10 +1259,17 @@
 						</li>
 						<li>
 							Data from <code class="rounded bg-background px-1"
-								>{restoreModal.selectedSnapshot}</code
-							> will be restored in its place
+								>{selectedRestoreSnapshotDate || restoreModal.selectedSnapshot}</code
+							> will be restored
 						</li>
-						<li>No data is deleted on the backup target — all snapshots remain available</li>
+						{#if selectedRestoreSnapshot && (selectedRestoreSnapshot.outOfBand || selectedRestoreSnapshot.lineage !== 'active')}
+							<li>
+								This snapshot is from <code class="rounded bg-background px-1"
+									>{snapshotLineageLabel(selectedRestoreSnapshot)}</code
+								> and may not be counted by active-lineage prune.
+							</li>
+						{/if}
+						<li>No deletion on target, all snapshots remain available</li>
 						<li>
 							You can delete the <code class="rounded bg-background px-1">.pre-restore</code> dataset
 							later to reclaim space
@@ -1121,15 +1323,41 @@
 					label="Dataset on Target"
 					placeholder={restoreTargetModal.loadingDatasets
 						? 'Loading datasets...'
-						: restoreTargetModal.datasets.length === 0
+						: visibleRestoreTargetDatasets.length === 0
 							? 'No restorable datasets found'
 							: 'Select dataset'}
 					options={restoreTargetDatasetOptions}
 					bind:value={restoreTargetModal.dataset}
 					onChange={onRestoreTargetDatasetChange}
-					disabled={restoreTargetModal.loadingDatasets || restoreTargetModal.datasets.length === 0}
+					disabled={restoreTargetModal.loadingDatasets || visibleRestoreTargetDatasets.length === 0}
 				/>
 			</div>
+
+			{#if hasOutOfBandTargetDatasets || hasPreservedTargetDatasets}
+				<div class="flex flex-wrap gap-4">
+					{#if hasOutOfBandTargetDatasets}
+						<CustomCheckbox
+							label="Show out-of-band lineages"
+							bind:checked={showOutOfBandTargetDatasets}
+							classes="flex items-center gap-2"
+						/>
+					{/if}
+					{#if hasPreservedTargetDatasets}
+						<CustomCheckbox
+							label="Show system-preserved datasets"
+							bind:checked={showPreservedTargetDatasets}
+							classes="flex items-center gap-2"
+						/>
+					{/if}
+				</div>
+			{/if}
+
+			{#if restoreTargetModalHasOutOfBandSnapshots}
+				<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
+					This dataset has multiple snapshot lineages. Prune counts on active jobs only apply to
+					the current lineage.
+				</div>
+			{/if}
 
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 				<SimpleSelect
@@ -1189,9 +1417,25 @@
 					<Icon icon="mdi:alert" class="mr-1 inline h-4 w-4" />
 					Restore Warning
 				</p>
-				<p class="mt-2 text-muted-foreground">
-					The destination dataset will be replaced if it already exists.
-				</p>
+				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
+					<li>The destination dataset will be replaced if it already exists.</li>
+					{#if selectedRestoreTargetSnapshot}
+						<li>
+							Selected backup date:
+							<code class="rounded bg-background px-1"
+								>{formatRestoreSnapshotDate(selectedRestoreTargetSnapshot)}</code
+							>
+						</li>
+						{#if selectedRestoreTargetSnapshot.outOfBand || selectedRestoreTargetSnapshot.lineage !== 'active'}
+							<li>
+								Selected snapshot lineage:
+								<code class="rounded bg-background px-1"
+									>{snapshotLineageLabel(selectedRestoreTargetSnapshot)}</code
+								>
+							</li>
+						{/if}
+					{/if}
+				</ul>
 			</div>
 		</div>
 
