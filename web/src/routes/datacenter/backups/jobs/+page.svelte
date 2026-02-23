@@ -90,8 +90,6 @@
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 	let reload = $state(false);
-	let showOutOfBandTargetDatasets = $state(false);
-	let showPreservedTargetDatasets = $state(false);
 
 	watch(
 		() => jobs.current,
@@ -117,34 +115,19 @@
 		}
 	);
 
-	watch(
-		[
-			() => showOutOfBandTargetDatasets,
-			() => showPreservedTargetDatasets,
-			() => restoreTargetModal.datasets,
-			() => restoreTargetModal.open
-		],
-		([, , datasets, isOpen]) => {
-			if (!isOpen) return;
-
-			const visible = datasets.filter((dataset) => {
-				const lineage = dataset.lineage || 'active';
-				if (lineage === 'preserved') return showPreservedTargetDatasets;
-				if (lineage === 'active') return true;
-				return showOutOfBandTargetDatasets;
-			});
-
-			if (visible.length === 0) return;
-
-			const hasCurrentSelection = visible.some(
-				(dataset) => dataset.name === restoreTargetModal.dataset
-			);
-			if (hasCurrentSelection) return;
-
-			restoreTargetModal.dataset = visible[0].name;
-			void onRestoreTargetDatasetChange();
+	watch([() => restoreTargetModal.datasets, () => restoreTargetModal.open], ([datasets, isOpen]) => {
+		if (!isOpen) return;
+		if (datasets.length === 0) {
+			restoreTargetModal.dataset = '';
+			return;
 		}
-	);
+
+		const hasCurrentSelection = datasets.some((dataset) => dataset.name === restoreTargetModal.dataset);
+		if (hasCurrentSelection) return;
+
+		restoreTargetModal.dataset = datasets[0].name;
+		void onRestoreTargetDatasetChange();
+	});
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -413,26 +396,7 @@
 		return `${base} (${lineageSummary}, ${formatSnapshotCount(dataset.snapshotCount)})`;
 	}
 
-	let visibleRestoreTargetDatasets = $derived.by(() => {
-		const datasets = restoreTargetModal.datasets;
-		return datasets.filter((dataset) => {
-			const lineage = dataset.lineage || 'active';
-			if (lineage === 'preserved') return showPreservedTargetDatasets;
-			if (lineage === 'active') return true;
-			return showOutOfBandTargetDatasets;
-		});
-	});
-
-	let hasOutOfBandTargetDatasets = $derived.by(() =>
-		restoreTargetModal.datasets.some((dataset) => {
-			const lineage = dataset.lineage || 'active';
-			return lineage !== 'active' && lineage !== 'preserved';
-		})
-	);
-
-	let hasPreservedTargetDatasets = $derived.by(() =>
-		restoreTargetModal.datasets.some((dataset) => (dataset.lineage || 'active') === 'preserved')
-	);
+	let visibleRestoreTargetDatasets = $derived.by(() => restoreTargetModal.datasets);
 
 	let restoreTargetDatasetOptions = $derived(
 		visibleRestoreTargetDatasets.map((dataset) => ({
@@ -747,8 +711,6 @@
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
 		restoreTargetModal.error = '';
-		showOutOfBandTargetDatasets = false;
-		showPreservedTargetDatasets = false;
 	}
 
 	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
@@ -764,8 +726,6 @@
 	async function openRestoreFromTargetModal() {
 		restoreTargetModal.open = true;
 		restoreTargetModal.error = '';
-		showOutOfBandTargetDatasets = false;
-		showPreservedTargetDatasets = false;
 		restoreTargetModal.targetId = targetOptions[0]?.value || '';
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
@@ -785,8 +745,6 @@
 	async function onRestoreTargetTargetChange() {
 		const targetId = Number.parseInt(restoreTargetModal.targetId || '0', 10);
 		if (!targetId) return;
-		showOutOfBandTargetDatasets = false;
-		showPreservedTargetDatasets = false;
 
 		restoreTargetModal.loadingDatasets = true;
 		restoreTargetModal.error = '';
@@ -803,18 +761,7 @@
 			let preferredDatasets = datasets.filter((dataset) => (dataset.lineage || 'active') === 'active');
 
 			if (preferredDatasets.length === 0) {
-				preferredDatasets = datasets.filter((dataset) => (dataset.lineage || 'active') !== 'preserved');
-				if (preferredDatasets.length > 0) {
-					showOutOfBandTargetDatasets = true;
-				}
-			}
-
-			if (preferredDatasets.length === 0) {
 				preferredDatasets = datasets;
-				if (preferredDatasets.length > 0) {
-					showOutOfBandTargetDatasets = true;
-					showPreservedTargetDatasets = true;
-				}
 			}
 
 			if (preferredDatasets.length > 0) {
@@ -850,7 +797,10 @@
 			]);
 			restoreTargetModal.snapshots = snapshots;
 			if (snapshots.length > 0) {
-				restoreTargetModal.snapshot = snapshots[snapshots.length - 1].name;
+				const latest = snapshots[snapshots.length - 1];
+				restoreTargetModal.snapshot = latest.name || latest.shortName;
+			} else {
+				restoreTargetModal.snapshot = '';
 			}
 
 			restoreTargetModal.jailMetadata = metadata;
@@ -1333,29 +1283,10 @@
 				/>
 			</div>
 
-			{#if hasOutOfBandTargetDatasets || hasPreservedTargetDatasets}
-				<div class="flex flex-wrap gap-4">
-					{#if hasOutOfBandTargetDatasets}
-						<CustomCheckbox
-							label="Show out-of-band lineages"
-							bind:checked={showOutOfBandTargetDatasets}
-							classes="flex items-center gap-2"
-						/>
-					{/if}
-					{#if hasPreservedTargetDatasets}
-						<CustomCheckbox
-							label="Show system-preserved datasets"
-							bind:checked={showPreservedTargetDatasets}
-							classes="flex items-center gap-2"
-						/>
-					{/if}
-				</div>
-			{/if}
-
 			{#if restoreTargetModalHasOutOfBandSnapshots}
 				<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
-					This dataset has multiple snapshot lineages. Prune counts on active jobs only apply to
-					the current lineage.
+					Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the
+					active lineage only.
 				</div>
 			{/if}
 
