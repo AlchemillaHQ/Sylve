@@ -178,6 +178,11 @@ func (s *Service) Match(ctx context.Context, target *clusterModels.BackupTarget,
 	return s.MatchWithTarget(ctx, target, sourceDataset, destSuffix)
 }
 
+// Rotate runs zelta rotate to preserve diverged target history and rebase backups.
+func (s *Service) Rotate(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
+	return s.RotateWithTarget(ctx, target, sourceDataset, destSuffix)
+}
+
 // backupJobPayload is the goqite queue payload for a backup job.
 type backupJobPayload struct {
 	JobID uint `json:"job_id"`
@@ -387,6 +392,17 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		Str("target", event.TargetEndpoint).
 		Msg("starting_zelta_backup")
 
+	appendOutput := func(current, next string) string {
+		next = strings.TrimSpace(next)
+		if next == "" {
+			return current
+		}
+		if strings.TrimSpace(current) == "" {
+			return next
+		}
+		return strings.TrimSpace(current) + "\n" + next
+	}
+
 	output, runErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
 	if runErr == nil {
 		outcome := classifyBackupOutput(output)
@@ -400,15 +416,52 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				Msg("backup_up_to_date_noop")
 		}
 	}
-	if runErr == nil && job.PruneKeepLast > 0 {
-		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
-		if strings.TrimSpace(pruneOutput) != "" {
-			if strings.TrimSpace(output) == "" {
-				output = pruneOutput
-			} else {
-				output = strings.TrimSpace(output) + "\n" + strings.TrimSpace(pruneOutput)
+	if runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
+		logger.L.Info().
+			Uint("job_id", job.ID).
+			Str("source", sourceDataset).
+			Str("target", event.TargetEndpoint).
+			Str("reason", runErr.Error()).
+			Msg("backup_auto_rotate_starting")
+
+		rotateOutput, rotateErr := s.Rotate(ctx, &job.Target, sourceDataset, destSuffix)
+		output = appendOutput(output, rotateOutput)
+		if rotateErr != nil {
+			runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
+		} else {
+			logger.L.Info().
+				Uint("job_id", job.ID).
+				Str("source", sourceDataset).
+				Str("target", event.TargetEndpoint).
+				Msg("backup_auto_rotate_completed")
+
+			retryOutput, retryErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
+			output = appendOutput(output, retryOutput)
+			runErr = retryErr
+			if runErr == nil {
+				retryOutcome := classifyBackupOutput(retryOutput)
+				if code := retryOutcome.errorCode(); code != "" {
+					runErr = fmt.Errorf(code)
+				} else if retryOutcome == backupOutputUpToDate {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", sourceDataset).
+						Str("target", event.TargetEndpoint).
+						Msg("backup_up_to_date_noop_after_rotate")
+				}
+			}
+			if runErr == nil {
+				logger.L.Info().
+					Uint("job_id", job.ID).
+					Str("source", sourceDataset).
+					Str("target", event.TargetEndpoint).
+					Msg("backup_completed_after_rotate")
 			}
 		}
+	}
+	if runErr == nil && job.PruneKeepLast > 0 {
+		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
+		output = appendOutput(output, pruneOutput)
 
 		if pruneErr != nil {
 			logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Msg("backup_prune_scan_failed")
@@ -424,13 +477,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 		if job.PruneTarget {
 			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
-			if strings.TrimSpace(targetPruneOutput) != "" {
-				if strings.TrimSpace(output) == "" {
-					output = targetPruneOutput
-				} else {
-					output = strings.TrimSpace(output) + "\n" + strings.TrimSpace(targetPruneOutput)
-				}
-			}
+			output = appendOutput(output, targetPruneOutput)
 
 			if targetPruneErr != nil {
 				logger.L.Warn().Err(targetPruneErr).Uint("job_id", job.ID).Msg("backup_prune_target_scan_failed")

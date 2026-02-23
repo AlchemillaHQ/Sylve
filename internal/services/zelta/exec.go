@@ -178,6 +178,12 @@ func (s *Service) MatchWithTarget(ctx context.Context, target *clusterModels.Bac
 	return runZeltaWithEnv(ctx, extraEnv, "match", sourceDataset, zeltaEndpoint)
 }
 
+func (s *Service) RotateWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
+	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
+	extraEnv := s.buildZeltaEnv(target)
+	return runZeltaWithEnv(ctx, extraEnv, "rotate", "--json", sourceDataset, zeltaEndpoint)
+}
+
 func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string, keepLast int) ([]string, string, error) {
 	if keepLast < 0 {
 		return nil, "", fmt.Errorf("invalid_prune_keep_last")

@@ -13,6 +13,11 @@ import "strings"
 type backupOutputKind string
 
 const (
+	backupErrorSourceMissing         = "backup_source_missing"
+	backupErrorSourceSnapshotMissing = "backup_source_snapshot_missing"
+	backupErrorTargetLocalWrites     = "backup_target_has_local_writes"
+	backupErrorTargetDiverged        = "backup_target_diverged"
+
 	backupOutputUnknown                   backupOutputKind = "unknown"
 	backupOutputUpToDate                  backupOutputKind = "up_to_date"
 	backupOutputBlockedNoSource           backupOutputKind = "blocked_no_source"
@@ -49,16 +54,25 @@ func classifyBackupOutput(output string) backupOutputKind {
 func (k backupOutputKind) errorCode() string {
 	switch k {
 	case backupOutputBlockedNoSource:
-		return "backup_source_missing"
+		return backupErrorSourceMissing
 	case backupOutputBlockedNoSourceSnapshot:
-		return "backup_source_snapshot_missing"
+		return backupErrorSourceSnapshotMissing
 	case backupOutputBlockedTargetLocalWrites:
-		return "backup_target_has_local_writes"
+		return backupErrorTargetLocalWrites
 	case backupOutputBlockedNoSnapshotDiverged,
 		backupOutputBlockedNoCommonSnapshot,
 		backupOutputBlockedTargetDiverged:
-		return "backup_target_diverged"
+		return backupErrorTargetDiverged
 	default:
 		return ""
+	}
+}
+
+func shouldAutoRotateBackupErrorCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case backupErrorTargetDiverged, backupErrorTargetLocalWrites:
+		return true
+	default:
+		return false
 	}
 }
