@@ -33,8 +33,9 @@ const restoreJobQueueName = "zelta-restore-run"
 
 // restoreJobPayload is the goqite queue payload for a restore job.
 type restoreJobPayload struct {
-	JobID    uint   `json:"job_id"`
-	Snapshot string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
+	JobID         uint   `json:"job_id"`
+	Snapshot      string `json:"snapshot"` // e.g. "@zelta_2026-02-18_12.00.00"
+	RemoteDataset string `json:"remote_dataset,omitempty"`
 }
 
 // ListRemoteSnapshots SSHs to the backup target and lists snapshots for a job's destination dataset.
@@ -44,21 +45,8 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 		return nil, fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
 	}
 
-	destSuffix := strings.TrimSpace(job.DestSuffix)
-	if destSuffix == "" {
-		sourceDataset := job.SourceDataset
-		if job.Mode == clusterModels.BackupJobModeJail {
-			sourceDataset = job.JailRootDataset
-		}
-		destSuffix = autoDestSuffix(sourceDataset)
-	}
-
-	remoteDataset := target.BackupRoot
-	if destSuffix != "" {
-		remoteDataset = remoteDataset + "/" + destSuffix
-	}
-
-	return s.listRemoteSnapshotsForDataset(ctx, &target, remoteDataset)
+	remoteDataset := remoteDatasetForJob(job)
+	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
 }
 
 // EnqueueRestoreJob enqueues a restore job for async execution via goqite.
@@ -72,15 +60,19 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 		return fmt.Errorf("snapshot_required")
 	}
 
-	// Ensure snapshot starts with @
-	if !strings.HasPrefix(snapshot, "@") {
-		snapshot = "@" + snapshot
-	}
-
 	// Verify job exists
 	var job clusterModels.BackupJob
 	if err := s.DB.Preload("Target").First(&job, jobID).Error; err != nil {
 		return err
+	}
+
+	defaultRemoteDataset := remoteDatasetForJob(&job)
+	remoteDataset, normalizedSnapshot, err := parseRestoreSnapshotInput(snapshot, defaultRemoteDataset)
+	if err != nil {
+		return err
+	}
+	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
 	if !s.acquireJob(jobID) {
@@ -89,8 +81,9 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 	s.releaseJob(jobID)
 
 	return db.EnqueueJSON(ctx, restoreJobQueueName, restoreJobPayload{
-		JobID:    jobID,
-		Snapshot: snapshot,
+		JobID:         jobID,
+		Snapshot:      normalizedSnapshot,
+		RemoteDataset: remoteDataset,
 	})
 }
 
@@ -100,7 +93,7 @@ func (s *Service) EnqueueRestoreJob(ctx context.Context, jobID uint, snapshot st
 //  3. Ensure parent dataset exists (for fresh systems)
 //  4. Rename temp → original path
 //  5. Fix ZFS properties (mountpoint, readonly, canmount) and mount
-func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJob, snapshot string) error {
+func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJob, snapshot string, remoteDataset string) error {
 	if !s.acquireJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
@@ -114,15 +107,12 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		return fmt.Errorf("source_dataset_required")
 	}
 
-	destSuffix := strings.TrimSpace(job.DestSuffix)
-	if destSuffix == "" {
-		destSuffix = autoDestSuffix(sourceDataset)
+	if strings.TrimSpace(remoteDataset) == "" {
+		remoteDataset = remoteDatasetForJob(job)
 	}
-
-	// The remote dataset on the backup target
-	remoteDataset := job.Target.BackupRoot
-	if destSuffix != "" {
-		remoteDataset = remoteDataset + "/" + destSuffix
+	remoteDataset = strings.TrimSpace(remoteDataset)
+	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
 	// Build the remote source endpoint with snapshot suffix:
@@ -310,11 +300,59 @@ func (s *Service) registerRestoreJob() {
 			return fmt.Errorf("backup_job_not_found: %w", err)
 		}
 
-		if err := s.runRestoreJob(ctx, &job, payload.Snapshot); err != nil {
+		if err := s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset); err != nil {
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_restore_job_failed")
 			return err
 		}
 
 		return nil
 	})
+}
+
+func remoteDatasetForJob(job *clusterModels.BackupJob) string {
+	destSuffix := strings.TrimSpace(job.DestSuffix)
+	if destSuffix == "" {
+		sourceDataset := job.SourceDataset
+		if job.Mode == clusterModels.BackupJobModeJail {
+			sourceDataset = job.JailRootDataset
+		}
+		destSuffix = autoDestSuffix(sourceDataset)
+	}
+
+	remoteDataset := strings.TrimSpace(job.Target.BackupRoot)
+	if destSuffix != "" {
+		remoteDataset = remoteDataset + "/" + destSuffix
+	}
+	return remoteDataset
+}
+
+func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (string, string, error) {
+	raw := strings.TrimSpace(snapshotInput)
+	if raw == "" {
+		return "", "", fmt.Errorf("snapshot_required")
+	}
+
+	if idx := strings.LastIndex(raw, "@"); idx > 0 {
+		remoteDataset := strings.TrimSpace(raw[:idx])
+		snapshot := strings.TrimSpace(raw[idx:])
+		if remoteDataset == "" {
+			return "", "", fmt.Errorf("remote_dataset_required")
+		}
+		if snapshot == "@" {
+			return "", "", fmt.Errorf("snapshot_required")
+		}
+		return remoteDataset, snapshot, nil
+	}
+
+	snapshot := raw
+	if !strings.HasPrefix(snapshot, "@") {
+		snapshot = "@" + snapshot
+	}
+
+	defaultRemoteDataset = strings.TrimSpace(defaultRemoteDataset)
+	if defaultRemoteDataset == "" {
+		return "", "", fmt.Errorf("remote_dataset_required")
+	}
+
+	return defaultRemoteDataset, snapshot, nil
 }

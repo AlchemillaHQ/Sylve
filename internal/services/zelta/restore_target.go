@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -388,6 +389,133 @@ func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clu
 	}
 
 	return parseSnapshotInfoOutput(output), nil
+}
+
+func (s *Service) listRemoteSnapshotsWithLineage(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
+	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+
+	combined := make([]SnapshotInfo, 0)
+	seen := make(map[string]struct{})
+
+	for i, dataset := range lineageDatasets {
+		snapshots, snapErr := s.listRemoteSnapshotsForDataset(ctx, target, dataset)
+		if snapErr != nil {
+			if i == 0 {
+				return nil, snapErr
+			}
+
+			logger.L.Warn().
+				Err(snapErr).
+				Str("dataset", dataset).
+				Str("base_dataset", remoteDataset).
+				Msg("failed_to_list_lineage_snapshots_for_sibling_dataset")
+			continue
+		}
+
+		for _, snapshot := range snapshots {
+			key := strings.TrimSpace(snapshot.Name)
+			if key == "" {
+				continue
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			combined = append(combined, snapshot)
+		}
+	}
+
+	sort.Slice(combined, func(i, j int) bool {
+		ti, okI := parseSnapshotCreationTime(combined[i].Creation)
+		tj, okJ := parseSnapshotCreationTime(combined[j].Creation)
+		if okI && okJ && !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		if okI != okJ {
+			return okI
+		}
+		return combined[i].Name < combined[j].Name
+	})
+
+	return combined, nil
+}
+
+func parseSnapshotCreationTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t, true
+	}
+
+	if epoch, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return time.Unix(epoch, 0).UTC(), true
+	}
+
+	return time.Time{}, false
+}
+
+func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]string, error) {
+	remoteDataset = strings.TrimSpace(remoteDataset)
+	if remoteDataset == "" {
+		return nil, fmt.Errorf("remote_dataset_required")
+	}
+
+	parent := remoteDataset
+	leaf := remoteDataset
+	if idx := strings.LastIndex(remoteDataset, "/"); idx > 0 {
+		parent = remoteDataset[:idx]
+		leaf = remoteDataset[idx+1:]
+	}
+
+	output, err := s.runTargetZFSList(ctx, target, "-t", "filesystem", "-d", "1", "-Hp", "-o", "name", parent)
+	if err != nil {
+		return []string{remoteDataset}, nil
+	}
+
+	prefix := leaf + "_zelta_"
+	results := make([]string, 0)
+	seen := make(map[string]struct{})
+
+	add := func(dataset string) {
+		dataset = strings.TrimSpace(dataset)
+		if dataset == "" {
+			return
+		}
+		if _, ok := seen[dataset]; ok {
+			return
+		}
+		seen[dataset] = struct{}{}
+		results = append(results, dataset)
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		dataset := strings.TrimSpace(line)
+		if dataset == "" {
+			continue
+		}
+		if dataset == remoteDataset {
+			add(dataset)
+			continue
+		}
+
+		suffix := strings.TrimPrefix(dataset, parent+"/")
+		if strings.HasPrefix(suffix, prefix) {
+			add(dataset)
+		}
+	}
+
+	if len(results) == 0 {
+		return []string{remoteDataset}, nil
+	}
+
+	sort.Strings(results)
+	return results, nil
 }
 
 func parseSnapshotInfoOutput(output string) []SnapshotInfo {

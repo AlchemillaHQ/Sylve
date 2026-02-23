@@ -548,7 +548,7 @@
 			const snaps = await listBackupJobSnapshots(selectedJobId);
 			restoreModal.snapshots = snaps;
 			if (snaps.length > 0) {
-				restoreModal.selectedSnapshot = snaps[snaps.length - 1].shortName;
+				restoreModal.selectedSnapshot = snaps[snaps.length - 1].name;
 			}
 		} catch (e: any) {
 			restoreModal.error = e?.message || 'Failed to load snapshots';
@@ -1027,19 +1027,19 @@
 							{#each [...restoreModal.snapshots].reverse() as snap}
 								<tr
 									class="cursor-pointer border-t transition-colors hover:bg-accent {restoreModal.selectedSnapshot ===
-									snap.shortName
+									snap.name
 										? 'bg-accent'
 										: ''}"
-									onclick={() => (restoreModal.selectedSnapshot = snap.shortName)}
+									onclick={() => (restoreModal.selectedSnapshot = snap.name)}
 								>
 									<td class="p-2 text-center">
-										{#if restoreModal.selectedSnapshot === snap.shortName}
+										{#if restoreModal.selectedSnapshot === snap.name}
 											<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
 										{:else}
 											<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
 										{/if}
 									</td>
-									<td class="p-2 font-mono text-xs">{snap.shortName}</td>
+									<td class="p-2 font-mono text-xs">{snap.name}</td>
 									<td class="p-2 text-xs text-muted-foreground">
 										{snap.creation ? new Date(snap.creation).toLocaleString() : '-'}
 									</td>

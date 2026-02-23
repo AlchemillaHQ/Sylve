@@ -638,7 +638,8 @@ func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *
 		keepCount = 1
 	}
 
-	snapshots, err := s.ListRemoteSnapshots(ctx, job)
+	remoteDataset := remoteDatasetForJob(job)
+	snapshots, err := s.listRemoteSnapshotsForDataset(ctx, &job.Target, remoteDataset)
 	if err != nil {
 		return nil, err
 	}
