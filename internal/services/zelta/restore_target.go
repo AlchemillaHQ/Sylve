@@ -153,18 +153,7 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
-	snapshots, err := s.listRemoteSnapshotsForDataset(ctx, &target, remoteDataset)
-	if err != nil {
-		return nil, err
-	}
-
-	lineage, outOfBand, _ := classifyDatasetLineage(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
-	for idx := range snapshots {
-		snapshots[idx].Lineage = lineage
-		snapshots[idx].OutOfBand = outOfBand
-	}
-
-	return snapshots, nil
+	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {

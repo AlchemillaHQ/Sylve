@@ -39,13 +39,24 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
+	import { getDetails } from '$lib/api/cluster/cluster';
 	import { storage } from '$lib';
 	import { humanFormatBytes } from '$lib/utils/string';
+	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 
 	interface Data {
 		targets: BackupTarget[];
 		jobs: BackupJob[];
 		nodes: ClusterNode[];
+	}
+
+	interface RestoreTargetDatasetGroup {
+		baseSuffix: string;
+		label: string;
+		representativeDataset: string;
+		kind: 'dataset' | 'jail';
+		jailCtId: number;
+		totalSnapshots: number;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -115,25 +126,6 @@
 		}
 	);
 
-	watch(
-		[() => restoreTargetModal.datasets, () => restoreTargetModal.open],
-		([datasets, isOpen]) => {
-			if (!isOpen) return;
-			if (datasets.length === 0) {
-				restoreTargetModal.dataset = '';
-				return;
-			}
-
-			const hasCurrentSelection = datasets.some(
-				(dataset) => dataset.name === restoreTargetModal.dataset
-			);
-			if (hasCurrentSelection) return;
-
-			restoreTargetModal.dataset = datasets[0].name;
-			void onRestoreTargetDatasetChange();
-		}
-	);
-
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let selectedJobId = $derived.by(() => {
@@ -189,8 +181,10 @@
 		loadingDatasets: false,
 		loadingSnapshots: false,
 		loadingMetadata: false,
+		loadingCluster: false,
 		restoring: false,
 		targetId: '',
+		restoreNodeId: '',
 		dataset: '',
 		snapshot: '',
 		destinationDataset: '',
@@ -199,6 +193,7 @@
 		jailMetadata: null as BackupJailMetadataInfo | null,
 		error: ''
 	});
+	let restoreClusterDetails = $state<ClusterDetails | null>(null);
 
 	let nodeNameById = $derived.by(() => {
 		const out: Record<string, string> = {};
@@ -371,41 +366,137 @@
 		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;
 	}
 
-	function formatLineageMarker(dataset: BackupTargetDatasetInfo): string {
-		const suffix = dataset.suffix || dataset.name;
-		const leaf = suffix.split('/').pop() || suffix;
-
-		if ((dataset.lineage || 'active') === 'rotated') {
-			const marker = leaf.split('_zelta_')[1] || '';
-			return marker ? marker.replace(/_/g, ' ') : '';
-		}
-
-		if ((dataset.lineage || 'active') === 'preserved') {
-			const marker = leaf.split('.pre_sylve_')[1] || '';
-			return marker ? `id ${marker.slice(-8)}` : '';
-		}
-
-		return '';
+	function snapshotLineageMarker(snapshot: SnapshotInfo): 'CURR' | 'OOB' | 'INT' {
+		const lineage = snapshot.lineage || 'active';
+		if (lineage === 'preserved') return 'INT';
+		if (lineage === 'active' && !snapshot.outOfBand) return 'CURR';
+		return 'OOB';
 	}
 
-	function formatRestoreTargetDatasetLabel(dataset: BackupTargetDatasetInfo): string {
-		const base = dataset.baseSuffix || dataset.suffix || dataset.name;
-		const lineage = formatLineageLabel(dataset.lineage || 'active', !!dataset.outOfBand);
-		const lineageMarker = formatLineageMarker(dataset);
-		const lineageSummary = lineageMarker ? `${lineage} ${lineageMarker}` : lineage;
-
-		if (dataset.kind === 'jail' && dataset.jailCtId) {
-			return `jails/${dataset.jailCtId} (${lineageSummary}, ${formatSnapshotCount(dataset.snapshotCount)})`;
+	function snapshotLineageIcon(snapshot: SnapshotInfo): {
+		icon: string;
+		className: string;
+		title: string;
+	} {
+		const marker = snapshotLineageMarker(snapshot);
+		if (marker === 'CURR') {
+			return {
+				icon: 'mdi:check-circle-outline',
+				className: 'text-green-600',
+				title: 'Current lineage'
+			};
 		}
-
-		return `${base} (${lineageSummary}, ${formatSnapshotCount(dataset.snapshotCount)})`;
+		if (marker === 'INT') {
+			return {
+				icon: 'mdi:archive-outline',
+				className: 'text-orange-600',
+				title: 'System-preserved lineage'
+			};
+		}
+		return {
+			icon: 'mdi:source-branch',
+			className: 'text-blue-600',
+			title: 'Out-of-band lineage'
+		};
 	}
 
-	let visibleRestoreTargetDatasets = $derived.by(() => restoreTargetModal.datasets);
+	function datasetLineageRank(lineage: string): number {
+		switch (lineage || 'active') {
+			case 'active':
+				return 0;
+			case 'rotated':
+				return 1;
+			case 'preserved':
+				return 2;
+			default:
+				return 3;
+		}
+	}
+
+	function pickRepresentativeDataset(datasets: BackupTargetDatasetInfo[]): BackupTargetDatasetInfo | null {
+		if (datasets.length === 0) return null;
+		const ranked = [...datasets].sort((left, right) => {
+			const rankDiff =
+				datasetLineageRank(left.lineage || 'active') -
+				datasetLineageRank(right.lineage || 'active');
+			if (rankDiff !== 0) return rankDiff;
+			if ((left.snapshotCount || 0) !== (right.snapshotCount || 0)) {
+				return (right.snapshotCount || 0) - (left.snapshotCount || 0);
+			}
+			return left.name.localeCompare(right.name);
+		});
+		return ranked[0];
+	}
+
+	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
+		return `${group.label} (${formatSnapshotCount(group.totalSnapshots)})`;
+	}
+
+	let restoreTargetDatasetGroups = $derived.by(() => {
+		const groups = new Map<
+			string,
+			{
+				baseSuffix: string;
+				datasets: BackupTargetDatasetInfo[];
+				kind: 'dataset' | 'jail';
+				jailCtId: number;
+				totalSnapshots: number;
+			}
+		>();
+
+		for (const dataset of restoreTargetModal.datasets) {
+			const baseSuffix = dataset.baseSuffix || dataset.suffix || dataset.name;
+			const key = baseSuffix || dataset.name;
+			const existing = groups.get(key);
+			if (!existing) {
+				groups.set(key, {
+					baseSuffix: key,
+					datasets: [dataset],
+					kind: dataset.kind || 'dataset',
+					jailCtId: dataset.jailCtId || 0,
+					totalSnapshots: dataset.snapshotCount || 0
+				});
+				continue;
+			}
+
+			existing.datasets.push(dataset);
+			existing.totalSnapshots += dataset.snapshotCount || 0;
+			if (existing.kind !== 'jail' && dataset.kind === 'jail') {
+				existing.kind = 'jail';
+			}
+			if (!existing.jailCtId && dataset.jailCtId) {
+				existing.jailCtId = dataset.jailCtId;
+			}
+		}
+
+		const out: RestoreTargetDatasetGroup[] = [];
+		for (const grouped of groups.values()) {
+			const representative = pickRepresentativeDataset(grouped.datasets);
+			if (!representative) continue;
+
+			const displayBase =
+				grouped.kind === 'jail' && grouped.jailCtId > 0
+					? `jails/${grouped.jailCtId}`
+					: grouped.baseSuffix;
+
+			out.push({
+				baseSuffix: grouped.baseSuffix,
+				label: displayBase,
+				representativeDataset: representative.name,
+				kind: grouped.kind,
+				jailCtId: grouped.jailCtId,
+				totalSnapshots: grouped.totalSnapshots
+			});
+		}
+
+		return out.sort((left, right) => left.baseSuffix.localeCompare(right.baseSuffix));
+	});
+
+	let visibleRestoreTargetDatasets = $derived.by(() => restoreTargetDatasetGroups);
 
 	let restoreTargetDatasetOptions = $derived(
 		visibleRestoreTargetDatasets.map((dataset) => ({
-			value: dataset.name,
+			value: dataset.representativeDataset,
 			label: formatRestoreTargetDatasetLabel(dataset)
 		}))
 	);
@@ -413,7 +504,7 @@
 	let restoreTargetSnapshotOptions = $derived(
 		[...restoreTargetModal.snapshots].reverse().map((snapshot) => ({
 			value: snapshot.name || snapshot.shortName,
-			label: `${formatRestoreSnapshotDate(snapshot)}${snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active' ? ` (${snapshotLineageLabel(snapshot)})` : ''}`
+			label: `${formatRestoreSnapshotDate(snapshot)} [${snapshotLineageMarker(snapshot)}]`
 		}))
 	);
 
@@ -451,17 +542,6 @@
 		return formatLineageLabel(snapshot.lineage || 'active', !!snapshot.outOfBand);
 	}
 
-	function snapshotLineageClasses(snapshot: SnapshotInfo): string {
-		const lineage = snapshot.lineage || 'active';
-		if (lineage === 'active' && !snapshot.outOfBand) {
-			return 'border-green-500/20 bg-green-500/10 text-green-600';
-		}
-		if (lineage === 'preserved') {
-			return 'border-orange-500/20 bg-orange-500/10 text-orange-600';
-		}
-		return 'border-blue-500/20 bg-blue-500/10 text-blue-600';
-	}
-
 	let selectedRestoreTargetSnapshot = $derived.by(
 		() =>
 			restoreTargetModal.snapshots.find(
@@ -474,6 +554,24 @@
 			(snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active'
 		)
 	);
+
+	let restoreNodeOptions = $derived.by(() => {
+		const detailsNodes = restoreClusterDetails?.nodes || [];
+		if (detailsNodes.length > 0) {
+			return detailsNodes.map((node) => {
+				const hostname = nodeNameById[node.id] || node.id;
+				return {
+					value: node.id,
+					label: node.isLeader ? `${hostname} (Leader)` : hostname
+				};
+			});
+		}
+
+		return nodes.map((node) => ({
+			value: node.nodeUUID,
+			label: node.hostname
+		}));
+	});
 
 	let nodeOptions = $derived([
 		{ value: '', label: 'Select a node' },
@@ -659,6 +757,70 @@
 		toast.error('Failed to run job', { position: 'bottom-center' });
 	}
 
+	function parseGuestIDFromDatasetPath(dataset: string): number {
+		const match = dataset.match(/\/jails\/(\d+)(?:$|[/.])/);
+		if (!match) return 0;
+		const parsed = Number.parseInt(match[1], 10);
+		if (Number.isNaN(parsed) || parsed <= 0) return 0;
+		return parsed;
+	}
+
+	function nodeLabelByID(nodeId: string): string {
+		return nodeNameById[nodeId] || nodeId;
+	}
+
+	async function loadRestoreClusterDetails(): Promise<ClusterDetails | null> {
+		restoreTargetModal.loadingCluster = true;
+		try {
+			const details = await getDetails();
+			restoreClusterDetails = details;
+			return details;
+		} catch (e: any) {
+			toast.error(e?.message || 'Failed to load cluster details', { position: 'bottom-center' });
+			return null;
+		} finally {
+			restoreTargetModal.loadingCluster = false;
+		}
+	}
+
+	async function ensureGuestIDPlacementForRestore(
+		guestID: number,
+		restoreNodeID: string
+	): Promise<boolean> {
+		if (guestID <= 0) return true;
+
+		let details: ClusterDetails;
+		try {
+			details = await getDetails();
+			restoreClusterDetails = details;
+		} catch (e: any) {
+			toast.error(e?.message || 'Failed to validate cluster guest placement', {
+				position: 'bottom-center'
+			});
+			return false;
+		}
+
+		const registeredOn = details.nodes.filter((node) =>
+			(node.guestIds || []).includes(guestID)
+		);
+		if (registeredOn.length === 0) return true;
+
+		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
+		if (conflicts.length === 0 && registeredOn.length === 1) {
+			return true;
+		}
+
+		const conflictLabels =
+			conflicts.length > 0
+				? conflicts.map((node) => nodeLabelByID(node.id)).join(', ')
+				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
+
+		toast.error(`Jail ${guestID} already exists on ${conflictLabels}.`, {
+			position: 'bottom-center'
+		});
+		return false;
+	}
+
 	async function openRestoreModal() {
 		if (!selectedJobId) return;
 		restoreModal.open = true;
@@ -686,6 +848,26 @@
 		restoreModal.restoring = true;
 
 		try {
+			const selectedJob = jobs.current.find((job) => job.id === selectedJobId) || null;
+			if (selectedJob?.mode === 'jail') {
+				const guestID =
+					parseGuestIDFromDatasetPath(selectedJob.jailRootDataset || '') ||
+					parseGuestIDFromDatasetPath(selectedJob.sourceDataset || '');
+
+				if (guestID > 0) {
+					const details = restoreClusterDetails || (await loadRestoreClusterDetails());
+					const restoreNodeID =
+						(selectedJob.runnerNodeId || '').trim() ||
+						(details?.leaderId || '').trim() ||
+						(details?.nodeId || '').trim();
+
+					if (!(await ensureGuestIDPlacementForRestore(guestID, restoreNodeID))) {
+						restoreModal.restoring = false;
+						return;
+					}
+				}
+			}
+
 			const response = await restoreBackupJob(selectedJobId, restoreModal.selectedSnapshot);
 			if (response.status === 'success') {
 				toast.success('Restore job started — check events for progress', {
@@ -709,8 +891,10 @@
 		restoreTargetModal.loadingDatasets = false;
 		restoreTargetModal.loadingSnapshots = false;
 		restoreTargetModal.loadingMetadata = false;
+		restoreTargetModal.loadingCluster = false;
 		restoreTargetModal.restoring = false;
 		restoreTargetModal.targetId = '';
+		restoreTargetModal.restoreNodeId = '';
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
@@ -718,6 +902,7 @@
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
 		restoreTargetModal.error = '';
+		restoreClusterDetails = null;
 	}
 
 	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
@@ -734,12 +919,21 @@
 		restoreTargetModal.open = true;
 		restoreTargetModal.error = '';
 		restoreTargetModal.targetId = targetOptions[0]?.value || '';
+		restoreTargetModal.restoreNodeId = '';
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
+		restoreClusterDetails = null;
+
+		const details = await loadRestoreClusterDetails();
+		if (details?.nodeId) {
+			restoreTargetModal.restoreNodeId = details.nodeId;
+		} else {
+			restoreTargetModal.restoreNodeId = nodes[0]?.nodeUUID || '';
+		}
 
 		if (!restoreTargetModal.targetId) {
 			restoreTargetModal.error = 'No backup targets available';
@@ -765,16 +959,30 @@
 		try {
 			const datasets = await listBackupTargetDatasets(targetId);
 			restoreTargetModal.datasets = datasets;
-			let preferredDatasets = datasets.filter(
-				(dataset) => (dataset.lineage || 'active') === 'active'
-			);
-
-			if (preferredDatasets.length === 0) {
-				preferredDatasets = datasets;
+			const groupedByBase = new Map<string, BackupTargetDatasetInfo[]>();
+			for (const dataset of datasets) {
+				const key = dataset.baseSuffix || dataset.suffix || dataset.name;
+				if (!groupedByBase.has(key)) {
+					groupedByBase.set(key, []);
+				}
+				groupedByBase.get(key)!.push(dataset);
 			}
 
-			if (preferredDatasets.length > 0) {
-				restoreTargetModal.dataset = preferredDatasets[0].name;
+			const representatives: BackupTargetDatasetInfo[] = [];
+			for (const group of groupedByBase.values()) {
+				const representative = pickRepresentativeDataset(group);
+				if (representative) {
+					representatives.push(representative);
+				}
+			}
+			representatives.sort((left, right) => {
+				const leftKey = left.baseSuffix || left.suffix || left.name;
+				const rightKey = right.baseSuffix || right.suffix || right.name;
+				return leftKey.localeCompare(rightKey);
+			});
+
+			if (representatives.length > 0) {
+				restoreTargetModal.dataset = representatives[0].name;
 				await onRestoreTargetDatasetChange();
 			}
 		} catch (e: any) {
@@ -831,13 +1039,32 @@
 			toast.error('Destination dataset is required', { position: 'bottom-center' });
 			return;
 		}
+		if (!restoreTargetModal.restoreNodeId.trim()) {
+			toast.error('Restore node is required', { position: 'bottom-center' });
+			return;
+		}
 
 		restoreTargetModal.restoring = true;
 		try {
+			const guestID =
+				restoreTargetModal.jailMetadata?.ctId ||
+				parseGuestIDFromDatasetPath(restoreTargetModal.destinationDataset);
+			if (guestID > 0) {
+				const allowed = await ensureGuestIDPlacementForRestore(
+					guestID,
+					restoreTargetModal.restoreNodeId.trim()
+				);
+				if (!allowed) {
+					restoreTargetModal.restoring = false;
+					return;
+				}
+			}
+
 			const response = await restoreBackupFromTarget(targetId, {
 				remoteDataset: restoreTargetModal.dataset,
 				snapshot: restoreTargetModal.snapshot,
-				destinationDataset: restoreTargetModal.destinationDataset.trim()
+				destinationDataset: restoreTargetModal.destinationDataset.trim(),
+				restoreNodeId: restoreTargetModal.restoreNodeId.trim()
 			});
 			if (response.status === 'success') {
 				toast.success('Restore job started — check events for progress', {
@@ -1162,7 +1389,6 @@
 							<tr>
 								<th class="w-8 p-2"></th>
 								<th class="p-2 text-left font-medium">Backup Date</th>
-								<th class="p-2 text-left font-medium">Lineage</th>
 								<th class="p-2 text-right font-medium">Used</th>
 								<th class="p-2 text-right font-medium">Refer</th>
 							</tr>
@@ -1185,15 +1411,18 @@
 										{/if}
 									</td>
 									<td class="p-2 text-xs text-muted-foreground"
-										>{formatRestoreSnapshotDate(snap)}</td
+										><span class="inline-flex items-center gap-1">
+											{#if snapshotLineageMarker(snap) !== 'CURR'}
+												{@const lineageIcon = snapshotLineageIcon(snap)}
+												<Icon
+													icon={lineageIcon.icon}
+													class={`h-3.5 w-3.5 ${lineageIcon.className}`}
+													title={`${snapshotLineageLabel(snap)} (${snapshotLineageMarker(snap)})`}
+												/>
+											{/if}
+											<span>{formatRestoreSnapshotDate(snap)}</span>
+										</span></td
 									>
-									<td class="p-2 text-xs">
-										<span
-											class={`inline-flex items-center rounded-md border px-2 py-0.5 ${snapshotLineageClasses(
-												snap
-											)}`}>{snapshotLineageLabel(snap)}</span
-										>
-									</td>
 									<td class="p-2 text-right text-xs text-muted-foreground"
 										>{humanFormatBytes(snap.used)}</td
 									>
@@ -1270,13 +1499,26 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
 				<SimpleSelect
 					label="Target"
 					placeholder="Select target"
 					options={targetOptions}
 					bind:value={restoreTargetModal.targetId}
 					onChange={onRestoreTargetTargetChange}
+				/>
+
+				<SimpleSelect
+					label="Restore On Node"
+					placeholder={restoreTargetModal.loadingCluster
+						? 'Loading nodes...'
+						: restoreNodeOptions.length === 0
+							? 'No cluster nodes found'
+							: 'Select restore node'}
+					options={restoreNodeOptions}
+					bind:value={restoreTargetModal.restoreNodeId}
+					onChange={() => {}}
+					disabled={restoreTargetModal.loadingCluster || restoreNodeOptions.length === 0}
 				/>
 
 				<SimpleSelect
@@ -1295,8 +1537,10 @@
 
 			{#if restoreTargetModalHasOutOfBandSnapshots}
 				<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
-					Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the
-					active lineage only.
+					This backup set includes non-active lineages. Snapshot markers show lineage as
+					<code class="rounded bg-background px-1">CURR</code>,
+					<code class="rounded bg-background px-1">OOB</code>, and
+					<code class="rounded bg-background px-1">INT</code>.
 				</div>
 			{/if}
 
@@ -1387,7 +1631,9 @@
 				disabled={restoreTargetModal.restoring ||
 					restoreTargetModal.loadingDatasets ||
 					restoreTargetModal.loadingSnapshots ||
+					restoreTargetModal.loadingCluster ||
 					!restoreTargetModal.targetId ||
+					!restoreTargetModal.restoreNodeId ||
 					!restoreTargetModal.dataset ||
 					!restoreTargetModal.snapshot ||
 					!restoreTargetModal.destinationDataset.trim()}

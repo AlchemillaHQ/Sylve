@@ -462,7 +462,7 @@ func BackupTargetDatasetJailMetadata(zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
-func RestoreBackupTargetDataset(zS *zelta.Service) gin.HandlerFunc {
+func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {
@@ -479,6 +479,7 @@ func RestoreBackupTargetDataset(zS *zelta.Service) gin.HandlerFunc {
 			RemoteDataset      string `json:"remoteDataset"`
 			Snapshot           string `json:"snapshot"`
 			DestinationDataset string `json:"destinationDataset"`
+			RestoreNodeID      string `json:"restoreNodeId"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -515,6 +516,57 @@ func RestoreBackupTargetDataset(zS *zelta.Service) gin.HandlerFunc {
 				Error:   "destinationDataset is required",
 				Data:    nil,
 			})
+			return
+		}
+
+		localNodeID := ""
+		if detail := cS.Detail(); detail != nil {
+			localNodeID = strings.TrimSpace(detail.NodeID)
+		}
+
+		restoreNodeID := strings.TrimSpace(req.RestoreNodeID)
+		if restoreNodeID == "" {
+			restoreNodeID = localNodeID
+		}
+
+		guestID := extractGuestIDFromDatasetPath(req.DestinationDataset)
+		if guestID > 0 {
+			if err := validateGuestIDRestorePlacement(cS, guestID, restoreNodeID); err != nil {
+				status := http.StatusConflict
+				message := "restore_guest_id_conflict"
+				if strings.Contains(err.Error(), "load_cluster_details_failed") {
+					status = http.StatusInternalServerError
+					message = "restore_precheck_failed"
+				}
+
+				c.JSON(status, internal.APIResponse[any]{
+					Status:  "error",
+					Message: message,
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+		}
+
+		if restoreNodeID != "" && localNodeID != "" && restoreNodeID != localNodeID {
+			body, statusCode, err := forwardBackupTargetRestoreToNode(cS, uint(id64), restoreNodeID, map[string]any{
+				"remoteDataset":      strings.TrimSpace(req.RemoteDataset),
+				"snapshot":           strings.TrimSpace(req.Snapshot),
+				"destinationDataset": strings.TrimSpace(req.DestinationDataset),
+				"restoreNodeId":      restoreNodeID,
+			})
+			if err != nil {
+				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "restore_remote_node_forward_failed",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.Data(statusCode, "application/json", body)
 			return
 		}
 
@@ -788,42 +840,9 @@ func RunBackupJobNow(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 }
 
 func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID string) ([]byte, int, error) {
-	nodes, err := cS.Nodes()
+	targetAPI, err := resolveClusterNodeAPI(cS, runnerNodeID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list_cluster_nodes_failed: %w", err)
-	}
-
-	var targetAPI string
-	for _, node := range nodes {
-		if strings.TrimSpace(node.NodeUUID) == runnerNodeID {
-			targetAPI = strings.TrimSpace(node.API)
-			break
-		}
-	}
-
-	if targetAPI == "" {
-		if cS.Raft != nil {
-			fut := cS.Raft.GetConfiguration()
-			if err := fut.Error(); err == nil {
-				for _, server := range fut.Configuration().Servers {
-					if string(server.ID) != runnerNodeID {
-						continue
-					}
-
-					host, _, err := net.SplitHostPort(string(server.Address))
-					if err != nil {
-						host = string(server.Address)
-					}
-
-					targetAPI = net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port))
-					break
-				}
-			}
-		}
-	}
-
-	if targetAPI == "" {
-		return nil, 0, fmt.Errorf("backup_runner_node_not_found")
+		return nil, 0, err
 	}
 
 	hostname, err := utils.GetSystemHostname()
@@ -847,6 +866,171 @@ func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID s
 	}
 
 	return body, statusCode, nil
+}
+
+func forwardBackupTargetRestoreToNode(cS *cluster.Service, targetID uint, restoreNodeID string, payload map[string]any) ([]byte, int, error) {
+	targetAPI, err := resolveClusterNodeAPI(cS, restoreNodeID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	hostname, err := utils.GetSystemHostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "cluster"
+	}
+
+	clusterToken, err := cS.AuthService.CreateClusterJWT(0, hostname, "", "")
+	if err != nil {
+		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	restoreURL := fmt.Sprintf("https://%s/api/cluster/backups/targets/%d/restore", targetAPI, targetID)
+	body, statusCode, err := utils.HTTPPostJSONRead(restoreURL, payload, map[string]string{
+		"Accept":          "application/json",
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	})
+	if err != nil {
+		return nil, statusCode, err
+	}
+
+	return body, statusCode, nil
+}
+
+func resolveClusterNodeAPI(cS *cluster.Service, nodeID string) (string, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return "", fmt.Errorf("restore_runner_node_not_found")
+	}
+
+	nodes, err := cS.Nodes()
+	if err != nil {
+		return "", fmt.Errorf("list_cluster_nodes_failed: %w", err)
+	}
+
+	var targetAPI string
+	for _, node := range nodes {
+		if strings.TrimSpace(node.NodeUUID) == nodeID {
+			targetAPI = strings.TrimSpace(node.API)
+			break
+		}
+	}
+
+	if targetAPI == "" {
+		if cS.Raft != nil {
+			fut := cS.Raft.GetConfiguration()
+			if err := fut.Error(); err == nil {
+				for _, server := range fut.Configuration().Servers {
+					if string(server.ID) != nodeID {
+						continue
+					}
+
+					host, _, err := net.SplitHostPort(string(server.Address))
+					if err != nil {
+						host = string(server.Address)
+					}
+
+					targetAPI = net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port))
+					break
+				}
+			}
+		}
+	}
+
+	if targetAPI == "" {
+		return "", fmt.Errorf("backup_runner_node_not_found")
+	}
+
+	return targetAPI, nil
+}
+
+func extractGuestIDFromDatasetPath(dataset string) uint {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return 0
+	}
+
+	parts := strings.Split(strings.Trim(dataset, "/"), "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "jails" {
+			continue
+		}
+
+		raw := strings.TrimSpace(parts[idx+1])
+		if raw == "" {
+			continue
+		}
+
+		cutAt := len(raw)
+		if split := strings.IndexAny(raw, "._"); split > 0 && split < cutAt {
+			cutAt = split
+		}
+		raw = strings.TrimSpace(raw[:cutAt])
+		if raw == "" {
+			continue
+		}
+
+		guestID, err := strconv.ParseUint(raw, 10, 64)
+		if err == nil && guestID > 0 {
+			return uint(guestID)
+		}
+	}
+
+	return 0
+}
+
+func containsGuestID(guestIDs []uint, guestID uint) bool {
+	if guestID == 0 {
+		return false
+	}
+	for _, existing := range guestIDs {
+		if existing == guestID {
+			return true
+		}
+	}
+	return false
+}
+
+func validateGuestIDRestorePlacement(cS *cluster.Service, guestID uint, restoreNodeID string) error {
+	if cS == nil || guestID == 0 {
+		return nil
+	}
+
+	details, err := cS.GetClusterDetails()
+	if err != nil {
+		return fmt.Errorf("load_cluster_details_failed: %w", err)
+	}
+	if details == nil {
+		return nil
+	}
+
+	restoreNodeID = strings.TrimSpace(restoreNodeID)
+
+	matches := make([]string, 0)
+	conflicts := make([]string, 0)
+	for _, node := range details.Nodes {
+		nodeID := strings.TrimSpace(node.ID)
+		if nodeID == "" || !containsGuestID(node.GuestIDs, guestID) {
+			continue
+		}
+		matches = append(matches, nodeID)
+		if restoreNodeID == "" || nodeID != restoreNodeID {
+			conflicts = append(conflicts, nodeID)
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil
+	}
+
+	if len(conflicts) > 0 {
+		return fmt.Errorf("guest_id_%d_already_registered_on_other_nodes: %s", guestID, strings.Join(conflicts, ","))
+	}
+	if len(matches) > 1 {
+		return fmt.Errorf("guest_id_%d_registered_on_multiple_nodes: %s", guestID, strings.Join(matches, ","))
+	}
+
+	return nil
 }
 
 func BackupEvents(zS *zelta.Service) gin.HandlerFunc {
@@ -1025,6 +1209,45 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 		if runnerNodeID == "" && cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
+		}
+
+		if job.Mode == clusterModels.BackupJobModeJail {
+			guestID := extractGuestIDFromDatasetPath(job.JailRootDataset)
+			if guestID == 0 {
+				guestID = extractGuestIDFromDatasetPath(job.SourceDataset)
+			}
+
+			restoreNodeID := runnerNodeID
+			if restoreNodeID == "" {
+				if cS.Raft != nil {
+					_, leaderID := cS.Raft.LeaderWithID()
+					restoreNodeID = strings.TrimSpace(string(leaderID))
+				}
+				if restoreNodeID == "" {
+					if detail := cS.Detail(); detail != nil {
+						restoreNodeID = strings.TrimSpace(detail.NodeID)
+					}
+				}
+			}
+
+			if guestID > 0 {
+				if err := validateGuestIDRestorePlacement(cS, guestID, restoreNodeID); err != nil {
+					status := http.StatusConflict
+					message := "restore_guest_id_conflict"
+					if strings.Contains(err.Error(), "load_cluster_details_failed") {
+						status = http.StatusInternalServerError
+						message = "restore_precheck_failed"
+					}
+
+					c.JSON(status, internal.APIResponse[any]{
+						Status:  "error",
+						Message: message,
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
 		}
 
 		if err := zS.EnqueueRestoreJob(c.Request.Context(), job.ID, req.Snapshot); err != nil {

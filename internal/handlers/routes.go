@@ -437,7 +437,7 @@ func RegisterRoutes(r *gin.Engine,
 			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
 			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
 			targets.GET("/:id/datasets/jail-metadata", clusterHandlers.BackupTargetDatasetJailMetadata(zeltaService))
-			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(zeltaService))
+			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(clusterService, zeltaService))
 		}
 
 		jobs := clusterBackups.Group("/jobs")
