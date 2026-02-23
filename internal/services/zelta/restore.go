@@ -115,6 +115,12 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
+	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, &job.Target, remoteDataset, snapshot)
+	if err != nil {
+		return fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
+	}
+	remoteDataset = resolvedRemoteDataset
+
 	// Build the remote source endpoint with snapshot suffix:
 	// e.g. root@192.168.180.1:zroot/sylve-backups/jails/105@zelta_2026-02-18_12.00.00
 	remoteEndpoint := job.Target.SSHHost + ":" + remoteDataset + snapshot
@@ -355,4 +361,76 @@ func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (stri
 	}
 
 	return defaultRemoteDataset, snapshot, nil
+}
+
+func (s *Service) resolveRemoteDatasetForSnapshot(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	preferredDataset string,
+	snapshot string,
+) (string, error) {
+	preferredDataset = strings.TrimSpace(preferredDataset)
+	snapshot = strings.TrimSpace(snapshot)
+	if preferredDataset == "" {
+		return "", fmt.Errorf("remote_dataset_required")
+	}
+	if snapshot == "" || snapshot == "@" {
+		return "", fmt.Errorf("snapshot_required")
+	}
+	if !strings.HasPrefix(snapshot, "@") {
+		snapshot = "@" + snapshot
+	}
+
+	if !datasetWithinRoot(target.BackupRoot, preferredDataset) {
+		return "", fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	lineageSnapshots, err := s.listRemoteSnapshotsWithLineage(ctx, target, preferredDataset)
+	if err != nil {
+		return "", err
+	}
+	if len(lineageSnapshots) == 0 {
+		return "", fmt.Errorf("snapshot_not_found_on_target")
+	}
+
+	preferredFullName := preferredDataset + snapshot
+	for _, info := range lineageSnapshots {
+		if strings.TrimSpace(info.Name) == preferredFullName {
+			return preferredDataset, nil
+		}
+	}
+
+	resolvedDataset := ""
+	for _, info := range lineageSnapshots {
+		if strings.TrimSpace(info.ShortName) != snapshot {
+			continue
+		}
+		dataset := snapshotDatasetName(info.Name)
+		if dataset == "" {
+			continue
+		}
+		// listRemoteSnapshotsWithLineage returns oldest→newest; last match wins.
+		resolvedDataset = dataset
+	}
+
+	if resolvedDataset == "" {
+		return "", fmt.Errorf("snapshot_not_found_on_target")
+	}
+	if !datasetWithinRoot(target.BackupRoot, resolvedDataset) {
+		return "", fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	return resolvedDataset, nil
+}
+
+func snapshotDatasetName(fullSnapshotName string) string {
+	fullSnapshotName = strings.TrimSpace(fullSnapshotName)
+	if fullSnapshotName == "" {
+		return ""
+	}
+	idx := strings.LastIndex(fullSnapshotName, "@")
+	if idx <= 0 {
+		return ""
+	}
+	return strings.TrimSpace(fullSnapshotName[:idx])
 }
