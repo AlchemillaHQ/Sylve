@@ -19,8 +19,7 @@ export default defineConfig({
     optimizeDeps: {
         esbuildOptions: {
             target: 'esnext'
-        },
-        exclude: ['xterm', 'Xterm.svelte', '@battlefieldduck/xterm-svelte']
+        }
     },
     build: {
         target: 'esnext'
