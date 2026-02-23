@@ -176,14 +176,17 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("target_id = ?", id).Pluck("id", &jobIDs).Error; err != nil {
 			return err
 		}
+
 		if len(jobIDs) > 0 {
 			if err := s.DB.Where("job_id IN ?", jobIDs).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
 				return err
 			}
 		}
+
 		if err := s.DB.Delete(&clusterModels.BackupJob{}, "target_id = ?", id).Error; err != nil {
 			return err
 		}
+
 		return s.DB.Delete(&clusterModels.BackupTarget{}, id).Error
 	}
 

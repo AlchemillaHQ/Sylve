@@ -17,7 +17,6 @@
 	import type { BackupTarget } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { convertDbTime } from '$lib/utils/time';
 	import Icon from '@iconify/svelte';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -72,6 +71,7 @@
 		description: '',
 		enabled: true
 	});
+
 	let deleteModalOpen = $state(false);
 	let validating = $state(false);
 
@@ -242,7 +242,15 @@
 	{/if}
 
 	{#if type === 'delete' && activeRows !== null && activeRows.length === 1}
-		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6">
+		<Button
+			onclick={() => {
+				targetModal.name = targets.current.find((t) => t.id === selectedTargetId)?.name || '';
+				deleteModalOpen = true;
+			}}
+			size="sm"
+			variant="outline"
+			class="h-6"
+		>
 			<div class="flex items-center">
 				<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
 				<span>Delete</span>
@@ -288,10 +296,38 @@
 <Dialog.Root bind:open={targetModal.open}>
 	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
 		<Dialog.Header>
-			<Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Icon icon={targetModal.edit ? 'mdi:note-edit' : 'mdi:server-network'} class="h-5 w-5" />
 					<span>{targetModal.edit ? 'Edit Backup Target' : 'New Backup Target'}</span>
+				</div>
+				<div class="flex items-center gap-0.5">
+					<Button
+						size="sm"
+						variant="link"
+						title={'Reset'}
+						class="h-4 {targetModal.edit ? '' : 'hidden'}"
+						onclick={() => {
+							if (targetModal.edit) {
+								openEditTarget();
+							}
+						}}
+					>
+						<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+						<span class="sr-only">{'Reset'}</span>
+					</Button>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							resetTargetModal();
+						}}
+					>
+						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="sr-only">{'Close'}</span>
+					</Button>
 				</div>
 			</Dialog.Title>
 		</Dialog.Header>
@@ -363,7 +399,7 @@
 
 <AlertDialog
 	open={deleteModalOpen}
-	customTitle="Delete selected backup target?"
+	names={{ parent: 'backup target', element: targetModal.name || '' }}
 	actions={{
 		onConfirm: async () => {
 			await removeTarget();

@@ -259,13 +259,12 @@
 	</div>
 
 	{#if clustered}
-		<div class="px-4">
+		<div class="px-4 pb-4">
 			<Card.Root class="gap-2">
 				<Card.Header>
 					<Card.Title>
 						<div class="flex items-center gap-2">
 							<span class="icon-[fa7-solid--hexagon-nodes] min-h-4 min-w-4"></span>
-
 							<span>Nodes</span>
 						</div>
 					</Card.Title>

@@ -269,9 +269,7 @@ func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		zelta.RemoveSSHKey(uint(id64))
 		err = cS.ProposeBackupTargetDelete(uint(id64), cS.Raft == nil)
-
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
@@ -281,6 +279,8 @@ func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 			})
 			return
 		}
+
+		zelta.RemoveSSHKey(uint(id64))
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
