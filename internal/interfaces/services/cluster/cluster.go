@@ -26,6 +26,7 @@ type RaftNode struct {
 	Address  string `json:"address"`
 	Suffrage string `json:"suffrage"`
 	IsLeader bool   `json:"isLeader"`
+	GuestIDs []uint `json:"guestIds"`
 }
 
 type ClusterDetails struct {

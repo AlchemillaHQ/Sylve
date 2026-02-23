@@ -99,11 +99,19 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 		id := string(srv.ID)
 		addr := string(srv.Address)
 
+		var node clusterModels.ClusterNode
+		err := s.DB.Select("guest_ids").Where("node_uuid = ?", id).First(&node).Error
+
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("failed to query guest ids for node %s: %w", id, err)
+		}
+
 		out.Nodes = append(out.Nodes, clusterServiceInterfaces.RaftNode{
 			ID:       id,
 			Address:  addr,
 			Suffrage: suffrageStr(srv.Suffrage),
 			IsLeader: id == string(leaderID) || addr == string(leaderAddr),
+			GuestIDs: node.GuestIDs,
 		})
 	}
 

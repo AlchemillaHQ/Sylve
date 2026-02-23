@@ -476,6 +476,18 @@ func (s *Service) PopulateClusterNodes() error {
 					"status":     status,
 					"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
 				}
+
+				safeGuestIDs := cur.guestIDs
+				if safeGuestIDs == nil {
+					safeGuestIDs = make([]uint, 0)
+				}
+
+				if b, err := json.Marshal(safeGuestIDs); err == nil {
+					updates["guest_ids"] = string(b)
+				} else {
+					updates["guest_ids"] = "[]"
+				}
+
 				if cur.canonHost != "" {
 					updates["hostname"] = cur.canonHost
 				}
