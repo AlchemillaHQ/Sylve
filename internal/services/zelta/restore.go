@@ -218,6 +218,13 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	// Step 6: Fix ZFS properties for the restored dataset
 	s.fixRestoredProperties(ctx, sourceDataset)
 
+	// Step 7: If this is a jail dataset, reconcile jail metadata/config from restored jail.json.
+	if err := s.reconcileRestoredJailFromDataset(ctx, sourceDataset); err != nil {
+		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
+
 	s.finalizeRestoreEvent(&event, nil, output)
 
 	logger.L.Info().

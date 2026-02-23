@@ -298,6 +298,13 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	}
 
 	s.fixRestoredProperties(ctx, destinationDataset)
+
+	if err := s.reconcileRestoredJailFromDataset(ctx, destinationDataset); err != nil {
+		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
+
 	s.finalizeRestoreEvent(&event, nil, output)
 
 	logger.L.Info().
