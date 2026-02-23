@@ -1039,6 +1039,12 @@
 			toast.error('Destination dataset is required', { position: 'bottom-center' });
 			return;
 		}
+		if (!restoreTargetModal.destinationDataset.trim().includes('/')) {
+			toast.error('Destination dataset must be fully qualified (for example: zroot/yyy)', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 		if (!restoreTargetModal.restoreNodeId.trim()) {
 			toast.error('Restore node is required', { position: 'bottom-center' });
 			return;

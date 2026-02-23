@@ -103,6 +103,55 @@ func ensureSSHKeyFileAtPath(keyPath, keyData string) error {
 	return nil
 }
 
+func recoverDefaultSSHKeyPath(targetID uint) (string, error) {
+	if targetID == 0 {
+		return "", nil
+	}
+
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve_ssh_key_dir: %w", err)
+	}
+
+	path := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", targetID))
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", nil
+	}
+
+	return path, nil
+}
+
+func recoverSingleSSHKeyPathCandidate() (string, error) {
+	sshDir, err := GetSSHKeyDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve_ssh_key_dir: %w", err)
+	}
+
+	entries, err := os.ReadDir(sshDir)
+	if err != nil {
+		return "", nil
+	}
+
+	candidates := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasPrefix(name, "target-") || !strings.HasSuffix(name, "_id") {
+			continue
+		}
+		candidates = append(candidates, filepath.Join(sshDir, name))
+	}
+
+	if len(candidates) != 1 {
+		return "", nil
+	}
+
+	return candidates[0], nil
+}
+
 func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.BackupTarget) error {
 	if target == nil {
 		return fmt.Errorf("backup_target_required")
@@ -110,7 +159,41 @@ func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.Bac
 
 	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
 	keyData := strings.TrimSpace(target.SSHKey)
+
 	if keyData == "" {
+		if target.SSHKeyPath == "" {
+			recoveredPath, err := recoverDefaultSSHKeyPath(target.ID)
+			if err != nil {
+				return fmt.Errorf("recover_target_ssh_key_path id=%d: %w", target.ID, err)
+			}
+			if recoveredPath != "" {
+				target.SSHKeyPath = recoveredPath
+				if s != nil && s.DB != nil && target.ID != 0 {
+					if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", recoveredPath).Error; err != nil {
+						return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
+					}
+				}
+			}
+
+			if target.SSHKeyPath == "" && s != nil && s.DB != nil {
+				var targetCount int64
+				if err := s.DB.Model(&clusterModels.BackupTarget{}).Count(&targetCount).Error; err == nil && targetCount == 1 {
+					recoveredSinglePath, recErr := recoverSingleSSHKeyPathCandidate()
+					if recErr != nil {
+						return fmt.Errorf("recover_target_ssh_key_path id=%d: %w", target.ID, recErr)
+					}
+					if recoveredSinglePath != "" {
+						target.SSHKeyPath = recoveredSinglePath
+						if target.ID != 0 {
+							if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", recoveredSinglePath).Error; err != nil {
+								return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
+							}
+						}
+					}
+				}
+			}
+		}
+
 		return nil
 	}
 

@@ -190,17 +190,20 @@ func (s *Service) EnqueueRestoreFromTarget(ctx context.Context, targetID uint, r
 	}
 
 	remoteDataset = strings.TrimSpace(remoteDataset)
-	destinationDataset = strings.TrimSpace(destinationDataset)
 	if remoteDataset == "" {
 		return fmt.Errorf("remote_dataset_required")
-	}
-	if destinationDataset == "" {
-		return fmt.Errorf("destination_dataset_required")
 	}
 
 	remoteDataset, snapshot, err := parseRestoreSnapshotInput(snapshot, remoteDataset)
 	if err != nil {
 		return err
+	}
+	destinationDataset = normalizeRestoreDestinationDataset(destinationDataset)
+	if destinationDataset == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+	if !isValidRestoreDestinationDataset(destinationDataset) {
+		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
 	}
 
 	target, err := s.getRestoreTarget(targetID)
@@ -257,9 +260,30 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	defer s.releaseJob(payload.LockID)
 
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
-	destinationDataset := strings.TrimSpace(payload.DestinationDataset)
+	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
+	if destinationDataset == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+	if !isValidRestoreDestinationDataset(destinationDataset) {
+		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
+	}
 	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+	destinationRoot := destinationDataset
+	if idx := strings.Index(destinationRoot, "/"); idx > 0 {
+		destinationRoot = destinationRoot[:idx]
+	}
+	if strings.TrimSpace(destinationRoot) == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+	rootCheckOut, rootCheckErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", destinationRoot)
+	if rootCheckErr != nil {
+		return fmt.Errorf(
+			"destination_dataset_pool_missing: cannot find destination root '%s': %s",
+			destinationRoot,
+			strings.TrimSpace(rootCheckOut),
+		)
 	}
 
 	snapshot := strings.TrimSpace(payload.Snapshot)
@@ -301,6 +325,11 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	extraEnv = append(extraEnv, "ZELTA_RECV_TOP=no")
 	output, restoreErr = runZeltaWithEnv(ctx, extraEnv, "backup", "--json", remoteEndpoint, restorePath)
 	if restoreErr != nil {
+		logger.L.Warn().
+			Err(restoreErr).
+			Str("restore_path", restorePath).
+			Str("zelta_output", output).
+			Msg("target_restore_pull_failed")
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
 	}
@@ -776,6 +805,22 @@ func normalizeDatasetPath(dataset string) string {
 		dataset = strings.TrimSuffix(dataset, "/")
 	}
 	return dataset
+}
+
+func normalizeRestoreDestinationDataset(destinationDataset string) string {
+	destinationDataset = strings.TrimLeft(strings.TrimSpace(destinationDataset), "/")
+	return normalizeDatasetPath(destinationDataset)
+}
+
+func isValidRestoreDestinationDataset(destinationDataset string) bool {
+	destinationDataset = normalizeDatasetPath(destinationDataset)
+	if destinationDataset == "" {
+		return false
+	}
+	if !strings.Contains(destinationDataset, "/") {
+		return false
+	}
+	return !strings.Contains(destinationDataset, "@")
 }
 
 func classifyDatasetLineage(suffix string) (string, bool, string) {
