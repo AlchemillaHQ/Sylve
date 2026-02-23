@@ -886,21 +886,23 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 
 // buildZeltaEnv returns the environment variables for a Zelta invocation targeting a specific host.
 func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
-	sshCmd := "ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
-	sshRecv := "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+	sshBase := "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 	if target.SSHPort != 0 && target.SSHPort != 22 {
 		portArg := fmt.Sprintf(" -p %d", target.SSHPort)
-		sshCmd += portArg
-		sshRecv += portArg
+		sshBase += portArg
 	}
 	if target.SSHKeyPath != "" {
 		keyArg := fmt.Sprintf(" -i %s", target.SSHKeyPath)
-		sshCmd += keyArg
-		sshRecv += keyArg
+		sshBase += keyArg
 	}
+	sshDefault := sshBase + " -n"
+	sshSend := sshDefault
+	sshRecv := sshBase
 
 	return []string{
-		"ZELTA_REMOTE_SEND=" + sshCmd,
+		"ZELTA_REMOTE_COMMAND=" + sshBase,
+		"ZELTA_REMOTE_DEFAULT=" + sshDefault,
+		"ZELTA_REMOTE_SEND=" + sshSend,
 		"ZELTA_REMOTE_RECV=" + sshRecv,
 		"ZELTA_LOG_MODE=json",
 		"ZELTA_LOG_LEVEL=2",
