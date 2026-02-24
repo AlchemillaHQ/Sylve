@@ -10,6 +10,7 @@ package clusterHandlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
 )
 
 type backupJobRequest struct {
@@ -1066,6 +1068,47 @@ func BackupEvents(zS *zelta.Service) gin.HandlerFunc {
 			Status:  "success",
 			Message: "backup_events_listed",
 			Data:    events,
+		})
+	}
+}
+
+func BackupEventByID(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_event_id",
+				Error:   "invalid_event_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		event, err := zS.GetLocalBackupEvent(uint(id64))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "backup_event_not_found",
+					Error:   "backup_event_not_found",
+					Data:    nil,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "get_backup_event_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*clusterModels.BackupEvent]{
+			Status:  "success",
+			Message: "backup_event_fetched",
+			Data:    event,
 		})
 	}
 }

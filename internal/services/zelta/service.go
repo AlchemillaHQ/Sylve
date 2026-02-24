@@ -804,6 +804,31 @@ func (s *Service) ListLocalBackupEvents(limit int, jobID uint) ([]clusterModels.
 	return events, nil
 }
 
+func (s *Service) GetLocalBackupEvent(id uint) (*clusterModels.BackupEvent, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("invalid_event_id")
+	}
+
+	var event clusterModels.BackupEvent
+	if err := s.DB.First(&event, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &event, nil
+}
+
+func (s *Service) AppendBackupEventOutput(eventID uint, chunk string) error {
+	trimmed := strings.TrimSpace(chunk)
+	if eventID == 0 || trimmed == "" {
+		return nil
+	}
+
+	appendChunk := trimmed + "\n"
+	return s.DB.Model(&clusterModels.BackupEvent{}).
+		Where("id = ?", eventID).
+		Update("output", gorm.Expr("COALESCE(output, '') || ?", appendChunk)).Error
+}
+
 // ListLocalBackupEventsPaginated returns paginated backup events.
 func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sortDir string, jobID uint, search string) (*BackupEventsResponse, error) {
 	if page < 1 {

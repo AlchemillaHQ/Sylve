@@ -9,14 +9,17 @@
 package zelta
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -131,12 +134,26 @@ func zeltaShareDir() string {
 }
 
 func runZeltaWithEnv(ctx context.Context, extraEnv []string, args ...string) (string, error) {
+	return runZeltaWithEnvStreaming(ctx, extraEnv, nil, args...)
+}
+
+func runZeltaWithEnvStreaming(
+	ctx context.Context,
+	extraEnv []string,
+	onLine func(string),
+	args ...string,
+) (string, error) {
 	bin := zeltaBinPath()
 	cmd := exec.CommandContext(ctx, bin, args...)
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("prepare_zelta_stdout_pipe_failed: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return "", fmt.Errorf("prepare_zelta_stderr_pipe_failed: %w", err)
+	}
 
 	zeltaInstallDir, err := GetZeltaInstallDir()
 	if err != nil {
@@ -156,14 +173,75 @@ func runZeltaWithEnv(ctx context.Context, extraEnv []string, args ...string) (st
 
 	logger.L.Debug().Str("bin", bin).Strs("args", args).Msg("exec_zelta_with_env")
 
-	err = cmd.Run()
-	output := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
-
-	if err != nil {
-		return output, fmt.Errorf("zelta_failed: %s: %s", err, output)
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("start_zelta_failed: %w", err)
 	}
 
-	return output, nil
+	var outputMu sync.Mutex
+	var callbackMu sync.Mutex
+	var output bytes.Buffer
+
+	appendLine := func(line string) {
+		cleaned := strings.TrimRight(line, "\r\n")
+
+		outputMu.Lock()
+		if output.Len() > 0 {
+			output.WriteByte('\n')
+		}
+		output.WriteString(cleaned)
+		outputMu.Unlock()
+
+		if onLine != nil {
+			callbackMu.Lock()
+			onLine(cleaned)
+			callbackMu.Unlock()
+		}
+	}
+
+	readPipe := func(reader io.Reader) error {
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
+		for scanner.Scan() {
+			appendLine(scanner.Text())
+		}
+		return scanner.Err()
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		if readErr := readPipe(stdout); readErr != nil {
+			errCh <- readErr
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		if readErr := readPipe(stderr); readErr != nil {
+			errCh <- readErr
+		}
+	}()
+
+	waitErr := cmd.Wait()
+	wg.Wait()
+	close(errCh)
+
+	for readErr := range errCh {
+		if readErr != nil && waitErr == nil {
+			waitErr = readErr
+		}
+	}
+
+	finalOutput := strings.TrimSpace(output.String())
+
+	if waitErr != nil {
+		return finalOutput, fmt.Errorf("zelta_failed: %s: %s", waitErr, finalOutput)
+	}
+
+	return finalOutput, nil
 }
 
 func (s *Service) BackupWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {

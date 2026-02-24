@@ -322,8 +322,23 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
 
 	extraEnv := s.buildZeltaEnv(target)
-	extraEnv = append(extraEnv, "ZELTA_RECV_TOP=no")
-	output, restoreErr = runZeltaWithEnv(ctx, extraEnv, "backup", "--json", remoteEndpoint, restorePath)
+	extraEnv = append(extraEnv, "ZELTA_RECV_TOP=no", "ZELTA_LOG_LEVEL=3")
+	output, restoreErr = runZeltaWithEnvStreaming(
+		ctx,
+		extraEnv,
+		func(line string) {
+			if err := s.AppendBackupEventOutput(event.ID, line); err != nil {
+				logger.L.Warn().
+					Uint("event_id", event.ID).
+					Err(err).
+					Msg("append_restore_event_output_failed")
+			}
+		},
+		"backup",
+		"--json",
+		remoteEndpoint,
+		restorePath,
+	)
 	if restoreErr != nil {
 		logger.L.Warn().
 			Err(restoreErr).

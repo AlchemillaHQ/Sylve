@@ -97,6 +97,10 @@ export async function getBackupEvents(limit: number = 200, jobId?: number): Prom
     return await apiRequest(`/cluster/backups/events?${params.toString()}`, z.array(BackupEventSchema), 'GET');
 }
 
+export async function getBackupEvent(id: number): Promise<BackupEvent> {
+    return await apiRequest(`/cluster/backups/events/${id}`, BackupEventSchema, 'GET');
+}
+
 export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInfo[]> {
     return await apiRequest(`/cluster/backups/jobs/${jobId}/snapshots`, z.array(SnapshotInfoSchema), 'GET');
 }

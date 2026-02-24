@@ -194,9 +194,25 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	extraEnv := s.buildZeltaEnv(&job.Target)
 	extraEnv = append(extraEnv,
 		"ZELTA_RECV_TOP=no",
+		"ZELTA_LOG_LEVEL=3",
 	)
 
-	output, restoreErr = runZeltaWithEnv(ctx, extraEnv, "backup", "--json", remoteEndpoint, restorePath)
+	output, restoreErr = runZeltaWithEnvStreaming(
+		ctx,
+		extraEnv,
+		func(line string) {
+			if err := s.AppendBackupEventOutput(event.ID, line); err != nil {
+				logger.L.Warn().
+					Uint("event_id", event.ID).
+					Err(err).
+					Msg("append_restore_event_output_failed")
+			}
+		},
+		"backup",
+		"--json",
+		remoteEndpoint,
+		restorePath,
+	)
 
 	logger.L.Info().
 		Str("zelta_output", output).
