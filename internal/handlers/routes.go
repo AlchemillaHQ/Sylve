@@ -430,6 +430,7 @@ func RegisterRoutes(r *gin.Engine,
 		targets := clusterBackups.Group("/targets")
 		{
 			targets.GET("", clusterHandlers.BackupTargets(clusterService))
+
 			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
 			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
 			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService))

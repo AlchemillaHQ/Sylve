@@ -198,7 +198,7 @@
 							<Table.Cell class="text-wrap px-4 py-2">{convertDbTime(record.ended)}</Table.Cell>
 							<Table.Cell class="text-wrap px-4 py-2">{record.node}</Table.Cell>
 							<Table.Cell class="text-wrap px-4 py-2"
-								>{`${record.user}@${record.authType}`}</Table.Cell
+								>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
 							>
 							<Table.Cell class="text-wrap px-4 py-2" title={JSON.stringify(record.action.body)}
 								>{record.resolvedAction}</Table.Cell

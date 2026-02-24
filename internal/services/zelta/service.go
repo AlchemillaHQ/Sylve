@@ -13,15 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -37,6 +33,13 @@ var (
 	replicationSizeRegex = regexp.MustCompile(`"replicationSize"\s*:\s*"?([0-9]+)"?`)
 	syncingSizeRegex     = regexp.MustCompile(`syncing:\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\b`)
 )
+
+// backupJobPayload is the goqite queue payload for a backup job
+type backupJobPayload struct {
+	JobID uint `json:"job_id"`
+}
+
+const backupJobQueueName = "zelta-backup-run"
 
 type Service struct {
 	DB      *gorm.DB
@@ -55,7 +58,10 @@ type BackupEventProgress struct {
 	ProgressPercent *float64                   `json:"progressPercent"`
 }
 
-var SSHKeyDirectory string
+type BackupEventsResponse struct {
+	LastPage int                         `json:"last_page"`
+	Data     []clusterModels.BackupEvent `json:"data"`
+}
 
 func NewService(db *gorm.DB, clusterService *cluster.Service, jailService jailServiceInterfaces.JailServiceInterface) *Service {
 	return &Service{
@@ -66,226 +72,6 @@ func NewService(db *gorm.DB, clusterService *cluster.Service, jailService jailSe
 	}
 }
 
-func GetSSHKeyDir() (string, error) {
-	if SSHKeyDirectory != "" {
-		return SSHKeyDirectory, nil
-	}
-
-	data, err := config.GetDataPath()
-	if err != nil {
-		return "", fmt.Errorf("get_data_path_failed: %w", err)
-	}
-
-	if data != "" {
-		SSHKeyDirectory = filepath.Join(data, "ssh")
-	}
-
-	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
-		return "", fmt.Errorf("create_ssh_key_dir: %w", err)
-	}
-
-	return SSHKeyDirectory, nil
-}
-
-func SaveSSHKey(targetID uint, keyData string) (string, error) {
-	sshDir, err := GetSSHKeyDir()
-	if err != nil {
-		return "", err
-	}
-
-	keyPath := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", targetID))
-	content := strings.TrimSpace(keyData) + "\n"
-	if err := os.WriteFile(keyPath, []byte(content), 0600); err != nil {
-		return "", fmt.Errorf("write_ssh_key: %w", err)
-	}
-
-	return keyPath, nil
-}
-
-func ensureSSHKeyFileAtPath(keyPath, keyData string) error {
-	trimmed := strings.TrimSpace(keyData)
-	if keyPath == "" || trimmed == "" {
-		return nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
-		return fmt.Errorf("create_ssh_key_parent_dir: %w", err)
-	}
-
-	if err := os.WriteFile(keyPath, []byte(trimmed+"\n"), 0600); err != nil {
-		return fmt.Errorf("write_ssh_key: %w", err)
-	}
-
-	return nil
-}
-
-func recoverDefaultSSHKeyPath(targetID uint) (string, error) {
-	if targetID == 0 {
-		return "", nil
-	}
-
-	sshDir, err := GetSSHKeyDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve_ssh_key_dir: %w", err)
-	}
-
-	path := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", targetID))
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", nil
-	}
-
-	return path, nil
-}
-
-func recoverSingleSSHKeyPathCandidate() (string, error) {
-	sshDir, err := GetSSHKeyDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve_ssh_key_dir: %w", err)
-	}
-
-	entries, err := os.ReadDir(sshDir)
-	if err != nil {
-		return "", nil
-	}
-
-	candidates := make([]string, 0)
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := strings.TrimSpace(entry.Name())
-		if !strings.HasPrefix(name, "target-") || !strings.HasSuffix(name, "_id") {
-			continue
-		}
-		candidates = append(candidates, filepath.Join(sshDir, name))
-	}
-
-	if len(candidates) != 1 {
-		return "", nil
-	}
-
-	return candidates[0], nil
-}
-
-func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.BackupTarget) error {
-	if target == nil {
-		return fmt.Errorf("backup_target_required")
-	}
-
-	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
-	keyData := strings.TrimSpace(target.SSHKey)
-
-	if keyData == "" {
-		if target.SSHKeyPath == "" {
-			recoveredPath, err := recoverDefaultSSHKeyPath(target.ID)
-			if err != nil {
-				return fmt.Errorf("recover_target_ssh_key_path id=%d: %w", target.ID, err)
-			}
-			if recoveredPath != "" {
-				target.SSHKeyPath = recoveredPath
-				if s != nil && s.DB != nil && target.ID != 0 {
-					if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", recoveredPath).Error; err != nil {
-						return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
-					}
-				}
-			}
-
-			if target.SSHKeyPath == "" && s != nil && s.DB != nil {
-				var targetCount int64
-				if err := s.DB.Model(&clusterModels.BackupTarget{}).Count(&targetCount).Error; err == nil && targetCount == 1 {
-					recoveredSinglePath, recErr := recoverSingleSSHKeyPathCandidate()
-					if recErr != nil {
-						return fmt.Errorf("recover_target_ssh_key_path id=%d: %w", target.ID, recErr)
-					}
-					if recoveredSinglePath != "" {
-						target.SSHKeyPath = recoveredSinglePath
-						if target.ID != 0 {
-							if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", recoveredSinglePath).Error; err != nil {
-								return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
-							}
-						}
-					}
-				}
-			}
-		}
-
-		return nil
-	}
-
-	if target.SSHKeyPath == "" {
-		generatedPath, err := SaveSSHKey(target.ID, keyData)
-		if err != nil {
-			return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
-		}
-
-		target.SSHKeyPath = generatedPath
-		if s != nil && s.DB != nil && target.ID != 0 {
-			if err := s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", target.ID).Update("ssh_key_path", generatedPath).Error; err != nil {
-				return fmt.Errorf("persist_target_ssh_key_path id=%d: %w", target.ID, err)
-			}
-		}
-
-		return nil
-	}
-
-	if err := ensureSSHKeyFileAtPath(target.SSHKeyPath, keyData); err != nil {
-		return fmt.Errorf("materialize_target_ssh_key id=%d: %w", target.ID, err)
-	}
-
-	return nil
-}
-
-func (s *Service) ReconcileBackupTargetSSHKeys() error {
-	if s.Cluster == nil {
-		return nil
-	}
-
-	targets, err := s.Cluster.ListBackupTargetsForSync()
-	if err != nil {
-		return err
-	}
-
-	for i := range targets {
-		if err := s.ensureBackupTargetSSHKeyMaterialized(&targets[i]); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func RemoveSSHKey(targetID uint) {
-	sshDir, err := GetSSHKeyDir()
-	if err != nil {
-		logger.L.Warn().Err(err).Uint("target_id", targetID).Msg("failed_to_get_ssh_key_dir_for_removal")
-		return
-	}
-
-	keyPath := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", targetID))
-	_ = os.Remove(keyPath)
-}
-
-func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error {
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-d", "0", target.BackupRoot)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
-	if err != nil {
-		sshArgs2 := s.buildSSHArgs(target)
-		sshArgs2 = append(sshArgs2, target.SSHHost, "zfs", "version")
-		output2, err2 := utils.RunCommandWithContext(ctx, "ssh", sshArgs2...)
-		if err2 != nil {
-			return fmt.Errorf("ssh_connection_failed: %s: %s", err2, output2)
-		}
-		return fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target (but SSH connection works): %s", target.BackupRoot, output)
-	}
-
-	_ = output
-	return nil
-}
-
-// Backup runs a zelta backup from source to the target endpoint.
 func (s *Service) Backup(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	return s.BackupWithTarget(ctx, target, sourceDataset, destSuffix)
 }
@@ -318,18 +104,16 @@ func (s *Service) backupWithEventProgress(
 	)
 }
 
-// Match runs zelta match to compare source and target datasets.
 func (s *Service) Match(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	return s.MatchWithTarget(ctx, target, sourceDataset, destSuffix)
 }
 
-// Rotate runs zelta rotate to preserve diverged target history and rebase backups.
 func (s *Service) Rotate(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	return s.RotateWithTarget(ctx, target, sourceDataset, destSuffix)
 }
 
 // RenameTargetDatasetForBootstrap preserves an existing non-replica target dataset
-// by renaming it out of the way so a fresh full backup can proceed.
+// by renaming it out of the way so a fresh full backup can proceed
 func (s *Service) RenameTargetDatasetForBootstrap(ctx context.Context, target *clusterModels.BackupTarget, destSuffix string) (string, string, error) {
 	currentDataset := strings.TrimSpace(target.BackupRoot)
 	suffix := strings.TrimSpace(destSuffix)
@@ -353,14 +137,6 @@ func (s *Service) RenameTargetDatasetForBootstrap(ctx context.Context, target *c
 	return currentDataset, renamedDataset, nil
 }
 
-// backupJobPayload is the goqite queue payload for a backup job.
-type backupJobPayload struct {
-	JobID uint `json:"job_id"`
-}
-
-const backupJobQueueName = "zelta-backup-run"
-
-// RegisterJobs registers the backup job queue handler with goqite.
 func (s *Service) RegisterJobs() {
 	db.QueueRegisterJSON(backupJobQueueName, func(ctx context.Context, payload backupJobPayload) error {
 		if payload.JobID == 0 {
@@ -385,12 +161,10 @@ func (s *Service) RegisterJobs() {
 	s.registerRestoreFromTargetJob()
 }
 
-// Run is a no-op for interface compatibility (Zelta doesn't need a listener).
 func (s *Service) Run(ctx context.Context) {
 	<-ctx.Done()
 }
 
-// StartBackupScheduler runs the cron-based backup scheduler.
 func (s *Service) StartBackupScheduler(ctx context.Context) {
 	if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
 		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_ssh_keys")
@@ -476,13 +250,11 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 	return nil
 }
 
-// EnqueueBackupJob enqueues a backup job for async execution via goqite.
 func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 	if jobID == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
 
-	// Verify job exists before enqueuing.
 	var job clusterModels.BackupJob
 	if err := s.DB.Preload("Target").First(&job, jobID).Error; err != nil {
 		return err
@@ -491,7 +263,8 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 	if !s.acquireJob(jobID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
-	s.releaseJob(jobID) // Release immediately; the queue handler will re-acquire.
+
+	s.releaseJob(jobID)
 
 	return db.EnqueueJSON(ctx, backupJobQueueName, backupJobPayload{JobID: jobID})
 }
@@ -500,6 +273,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	if !s.acquireJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
+
 	defer s.releaseJob(job.ID)
 
 	if job.StopBeforeBackup {
@@ -790,7 +564,7 @@ func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *
 
 	deleteCount := len(snapshots) - keepCount
 	candidates := make([]string, 0, deleteCount)
-	for i := 0; i < deleteCount; i++ {
+	for i := range deleteCount {
 		name := strings.TrimSpace(snapshots[i].Name)
 		if !isValidZFSSnapshotName(name) {
 			continue
@@ -804,6 +578,7 @@ func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *
 func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error) {
 	now := time.Now().UTC()
 	next := (*time.Time)(nil)
+
 	if job.Enabled {
 		if n, err := nextRunTime(job.CronExpr, now); err == nil {
 			next = &n
@@ -848,7 +623,6 @@ func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr e
 	}
 }
 
-// ListLocalBackupEvents returns recent backup events.
 func (s *Service) ListLocalBackupEvents(limit int, jobID uint) ([]clusterModels.BackupEvent, error) {
 	if limit <= 0 {
 		limit = 200
@@ -890,99 +664,6 @@ func (s *Service) AppendBackupEventOutput(eventID uint, chunk string) error {
 	return s.DB.Model(&clusterModels.BackupEvent{}).
 		Where("id = ?", eventID).
 		Update("output", gorm.Expr("COALESCE(output, '') || ?", appendChunk)).Error
-}
-
-func parseHumanSizeBytes(numStr, unitStr, suffixStr string) (uint64, bool) {
-	num, err := strconv.ParseFloat(strings.TrimSpace(numStr), 64)
-	if err != nil || num < 0 {
-		return 0, false
-	}
-
-	unit := strings.ToUpper(strings.TrimSpace(unitStr))
-	suffix := strings.TrimSpace(suffixStr)
-	base := 1000.0
-	if strings.EqualFold(suffix, "i") || strings.EqualFold(suffix, "iB") {
-		base = 1024.0
-	}
-
-	var power float64
-	switch unit {
-	case "":
-		power = 0
-	case "K":
-		power = 1
-	case "M":
-		power = 2
-	case "G":
-		power = 3
-	case "T":
-		power = 4
-	case "P":
-		power = 5
-	case "E":
-		power = 6
-	default:
-		return 0, false
-	}
-
-	val := num * math.Pow(base, power)
-	if val < 0 || val > math.MaxUint64 {
-		return 0, false
-	}
-
-	return uint64(math.Round(val)), true
-}
-
-func parseTotalBytesFromOutput(output string) *uint64 {
-	if strings.TrimSpace(output) == "" {
-		return nil
-	}
-
-	matches := replicationSizeRegex.FindAllStringSubmatch(output, -1)
-	if len(matches) > 0 {
-		last := matches[len(matches)-1]
-		if len(last) >= 2 {
-			if parsed, err := strconv.ParseUint(last[1], 10, 64); err == nil {
-				return &parsed
-			}
-		}
-	}
-
-	matches = syncingSizeRegex.FindAllStringSubmatch(output, -1)
-	if len(matches) > 0 {
-		last := matches[len(matches)-1]
-		if len(last) >= 4 {
-			if parsed, ok := parseHumanSizeBytes(last[1], last[2], last[3]); ok {
-				return &parsed
-			}
-		}
-	}
-
-	return nil
-}
-
-func zfsDatasetUsedBytes(ctx context.Context, dataset string) (*uint64, error) {
-	path := strings.TrimSpace(dataset)
-	if path == "" {
-		return nil, nil
-	}
-
-	out, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-Hp", "-o", "used", path)
-	if err != nil {
-		return nil, err
-	}
-
-	line := strings.TrimSpace(strings.Split(strings.TrimSpace(out), "\n")[0])
-	if line == "" || line == "-" {
-		return nil, nil
-	}
-
-	parsed, err := strconv.ParseUint(line, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	return &parsed, nil
 }
 
 func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupEventProgress, error) {
@@ -1029,7 +710,6 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 	return out, nil
 }
 
-// ListLocalBackupEventsPaginated returns paginated backup events.
 func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sortDir string, jobID uint, search string) (*BackupEventsResponse, error) {
 	if page < 1 {
 		page = 1
@@ -1085,7 +765,6 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 	}, nil
 }
 
-// CleanupStaleEvents marks old "running" events as interrupted.
 func (s *Service) CleanupStaleEvents(_ context.Context, maxAge time.Duration) error {
 	cutoff := time.Now().UTC().Add(-maxAge)
 	return s.DB.Model(&clusterModels.BackupEvent{}).
@@ -1097,19 +776,6 @@ func (s *Service) CleanupStaleEvents(_ context.Context, maxAge time.Duration) er
 		}).Error
 }
 
-// buildSSHArgs builds the common SSH arguments for a target.
-func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
-	args := []string{"-n", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"}
-	if target.SSHPort != 0 && target.SSHPort != 22 {
-		args = append(args, "-p", fmt.Sprintf("%d", target.SSHPort))
-	}
-	if target.SSHKeyPath != "" {
-		args = append(args, "-i", target.SSHKeyPath)
-	}
-	return args
-}
-
-// buildZeltaEnv returns the environment variables for a Zelta invocation targeting a specific host.
 func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
 	sshBase := "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 	if target.SSHPort != 0 && target.SSHPort != 22 {
@@ -1132,19 +798,6 @@ func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
 		"ZELTA_LOG_MODE=json",
 		"ZELTA_LOG_LEVEL=2",
 	}
-}
-
-func setEnvValue(env []string, key, value string) []string {
-	prefix := key + "="
-	out := make([]string, 0, len(env)+1)
-	for _, entry := range env {
-		if strings.HasPrefix(entry, prefix) {
-			continue
-		}
-		out = append(out, entry)
-	}
-	out = append(out, prefix+value)
-	return out
 }
 
 func (s *Service) acquireJob(jobID uint) bool {
@@ -1204,31 +857,4 @@ func nextRunTime(cronExpr string, now time.Time) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return schedule.Next(now), nil
-}
-
-// BackupEventsResponse is the paginated response for backup events.
-type BackupEventsResponse struct {
-	LastPage int                         `json:"last_page"`
-	Data     []clusterModels.BackupEvent `json:"data"`
-}
-
-// autoDestSuffix derives a destination suffix from the source dataset when the user hasn't set one.
-//
-//   - Jails:    ".../jails/105"             → "jails/105"
-//   - VMs:      ".../virtual-machines/100"  → "virtual-machines/100"
-//   - Other:    "zroot/sylve/mydata"        → "zroot-sylve-mydata"
-func autoDestSuffix(source string) string {
-	parts := strings.Split(source, "/")
-
-	// Walk backwards looking for a known prefix segment.
-	for i := len(parts) - 1; i >= 0; i-- {
-		switch parts[i] {
-		case "jails", "virtual-machines":
-			// Return from this segment onward: jails/105, virtual-machines/100, etc.
-			return strings.Join(parts[i:], "/")
-		}
-	}
-
-	// Fallback: full source path with "/" replaced by "-".
-	return strings.ReplaceAll(source, "/", "-")
 }

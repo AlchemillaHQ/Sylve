@@ -230,7 +230,40 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 	return &job, nil
 }
 
-func (s *Service) ProposeBackupJobCreate(input BackupJobInput, bypassRaft bool) error {
+/*
+backupJobRequest
+type BackupJobReq struct {
+	Name             string `json:"name" binding:"required,min=2"`
+	TargetID         uint   `json:"targetId" binding:"required"`
+	RunnerNodeID     string `json:"runnerNodeId"`
+	Mode             string `json:"mode" binding:"required"`
+	SourceDataset    string `json:"sourceDataset"`
+	JailRootDataset  string `json:"jailRootDataset"`
+	DestSuffix       string `json:"destSuffix"`
+	PruneKeepLast    int    `json:"pruneKeepLast"`
+	PruneTarget      bool   `json:"pruneTarget"`
+	StopBeforeBackup bool   `json:"stopBeforeBackup"`
+	CronExpr         string `json:"cronExpr"`
+	Enabled          *bool  `json:"enabled"`
+}
+
+		err := cS.ProposeBackupJobCreate(cluster.BackupJobInput{
+			Name:             req.Name,
+			TargetID:         req.TargetID,
+			RunnerNodeID:     req.RunnerNodeID,
+			Mode:             req.Mode,
+			SourceDataset:    req.SourceDataset,
+			JailRootDataset:  req.JailRootDataset,
+			DestSuffix:       req.DestSuffix,
+			PruneKeepLast:    req.PruneKeepLast,
+			PruneTarget:      req.PruneTarget,
+			StopBeforeBackup: req.StopBeforeBackup,
+			CronExpr:         req.CronExpr,
+			Enabled:          req.Enabled,
+		}, cS.Raft == nil)
+*/
+
+func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
 	id := uint(0)
 	var err error
 	if !bypassRaft {
@@ -265,7 +298,7 @@ func (s *Service) ProposeBackupJobCreate(input BackupJobInput, bypassRaft bool) 
 	})
 }
 
-func (s *Service) ProposeBackupJobUpdate(id uint, input BackupJobInput, bypassRaft bool) error {
+func (s *Service) ProposeBackupJobUpdate(id uint, input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_job_id")
 	}
@@ -340,7 +373,7 @@ func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
 	})
 }
 
-func (s *Service) buildBackupJob(id uint, input BackupJobInput) (*clusterModels.BackupJob, error) {
+func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJobReq) (*clusterModels.BackupJob, error) {
 	if input.TargetID == 0 {
 		return nil, fmt.Errorf("target_id_required")
 	}

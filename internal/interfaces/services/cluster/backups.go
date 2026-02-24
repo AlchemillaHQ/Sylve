@@ -11,3 +11,18 @@ type BackupTargetReq struct {
 	Description string `json:"description"`
 	Enabled     *bool  `json:"enabled"`
 }
+
+type BackupJobReq struct {
+	Name             string `json:"name" binding:"required,min=2"`
+	TargetID         uint   `json:"targetId" binding:"required"`
+	RunnerNodeID     string `json:"runnerNodeId"`
+	Mode             string `json:"mode" binding:"required"`
+	SourceDataset    string `json:"sourceDataset"`
+	JailRootDataset  string `json:"jailRootDataset"`
+	DestSuffix       string `json:"destSuffix"`
+	PruneKeepLast    int    `json:"pruneKeepLast"`
+	PruneTarget      bool   `json:"pruneTarget"`
+	StopBeforeBackup bool   `json:"stopBeforeBackup"`
+	CronExpr         string `json:"cronExpr"`
+	Enabled          *bool  `json:"enabled"`
+}
