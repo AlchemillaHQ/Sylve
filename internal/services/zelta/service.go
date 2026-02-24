@@ -555,7 +555,11 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
-	s.DB.Create(&event)
+	if err := s.DB.Create(&event).Error; err != nil {
+		runErr := fmt.Errorf("create_backup_event_failed: %w", err)
+		s.updateBackupJobResult(job, runErr)
+		return runErr
+	}
 
 	logger.L.Info().
 		Uint("job_id", job.ID).
@@ -575,6 +579,19 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	var ctId uint
+	var output string
+	var runErr error
+
+	defer func() {
+		s.finalizeBackupEvent(&event, runErr, output)
+		s.updateBackupJobResult(job, runErr)
+
+		logger.L.Info().
+			Uint("job_id", job.ID).
+			Str("status", event.Status).
+			Err(runErr).
+			Msg("zelta_backup_completed")
+	}()
 
 	if job.StopBeforeBackup {
 		if job.Mode == clusterModels.BackupJobModeJail {
@@ -582,21 +599,21 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 			ctId, err = s.Jail.GetJailCTIDFromDataset(job.JailRootDataset)
 			if err != nil {
-				runErr := fmt.Errorf("failed_to_get_jail_ctid: %w", err)
-				s.updateBackupJobResult(job, runErr)
+				runErr = fmt.Errorf("failed_to_get_jail_ctid: %w", err)
+				output = appendOutput(output, runErr.Error())
 				return runErr
 			}
 
 			err = s.Jail.JailAction(int(ctId), "stop")
 			if err != nil {
-				runErr := fmt.Errorf("failed_to_stop_jail: %w", err)
-				s.updateBackupJobResult(job, runErr)
+				runErr = fmt.Errorf("failed_to_stop_jail: %w", err)
+				output = appendOutput(output, runErr.Error())
 				return runErr
 			}
 		}
 	}
 
-	output, runErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
+	output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
 	if runErr == nil {
 		outcome := classifyBackupOutput(output)
 		if code := outcome.errorCode(); code != "" {
@@ -742,7 +759,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		if job.Mode == clusterModels.BackupJobModeJail {
 			if ctId == 0 {
 				runErr = fmt.Errorf("invalid_jail_ctid_for_restart")
-				s.updateBackupJobResult(job, runErr)
+				output = appendOutput(output, runErr.Error())
 				return runErr
 			}
 
@@ -752,25 +769,6 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			}
 		}
 	}
-
-	now := time.Now().UTC()
-	event.CompletedAt = &now
-	event.Output = output
-	if runErr != nil {
-		event.Status = "failed"
-		event.Error = runErr.Error()
-	} else {
-		event.Status = "success"
-	}
-
-	s.DB.Save(&event)
-	s.updateBackupJobResult(job, runErr)
-
-	logger.L.Info().
-		Uint("job_id", job.ID).
-		Str("status", event.Status).
-		Err(runErr).
-		Msg("zelta_backup_completed")
 
 	return runErr
 }
@@ -826,6 +824,27 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 
 	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
+	}
+}
+
+func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr error, output string) {
+	if event == nil || event.ID == 0 {
+		return
+	}
+
+	now := time.Now().UTC()
+	event.CompletedAt = &now
+	event.Output = output
+	if runErr != nil {
+		event.Status = "failed"
+		event.Error = runErr.Error()
+	} else {
+		event.Status = "success"
+		event.Error = ""
+	}
+
+	if err := s.DB.Save(event).Error; err != nil {
+		logger.L.Warn().Err(err).Uint("event_id", event.ID).Msg("failed_to_finalize_backup_event")
 	}
 }
 
