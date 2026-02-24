@@ -170,6 +170,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 	}
 
+	if err := s.System.ReconcilePreparedPPTDevices(); err != nil {
+		return fmt.Errorf("failed to reconcile prepared passthrough devices: %w", err)
+	}
+
 	if err := s.System.SyncPPTDevices(); err != nil {
 		return fmt.Errorf("failed to sync passthrough devices: %w", err)
 	}

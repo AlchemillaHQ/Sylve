@@ -38,7 +38,9 @@ type SystemServiceInterface interface {
 	CopyOrMoveFilesOrFolders(pairs [][2]string, move bool) error
 
 	SyncPPTDevices() error
+	ReconcilePreparedPPTDevices() error
 	GetPPTDevices() ([]models.PassedThroughIDs, error)
 	AddPPTDevice(domain string, id string) error
+	PreparePPTDevice(domain string, id string) error
 	RemovePPTDevice(id string) error
 }

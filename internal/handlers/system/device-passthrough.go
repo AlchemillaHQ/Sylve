@@ -133,6 +133,50 @@ func AddPPTDevice(systemService *system.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Prepare Passed Through Device
+// @Description Add a device to loader.conf for passthrough on next boot
+// @Tags System
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body AddPassthroughDeviceRequest true "Device ID"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /system/ppt-devices/prepare [post]
+func PreparePPTDevice(systemService *system.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request AddPassthroughDeviceRequest
+
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "bad_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := systemService.PreparePPTDevice(request.Domain, request.DeviceID); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "device_prepared",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Remove Passed Through Device
 // @Description Remove a device from the passed through devices db
 // @Tags System
