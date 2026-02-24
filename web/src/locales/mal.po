@@ -8362,3 +8362,21 @@ msgstr ""
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Progress"
 msgstr ""
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Prepare passthrough for <b>{0}</b> by <b>{1}</b>? This updates /boot/loader.conf and applies after reboot."
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Prepare Passthrough"
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device prepared for passthrough. Reboot required."
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to prepare device for passthrough"
+msgstr ""

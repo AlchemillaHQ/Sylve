@@ -111,6 +111,8 @@
 		modalState.action = 'remove';
 		modalState.remove.id = id;
 	}
+
+	$inspect(activeRow);
 </script>
 
 {#snippet button(type: string)}
@@ -140,8 +142,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<span class="icon-[wpf--clock] mr-1 h-4 w-4"></span>
-
+					<span class="icon-[mdi--clock] mr-1 h-4 w-4"></span>
 					<span>Prepare Passthrough</span>
 				</div>
 			</Button>

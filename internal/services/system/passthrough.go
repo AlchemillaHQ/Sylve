@@ -156,7 +156,65 @@ func readLoaderConf() ([]string, os.FileMode, error) {
 	return lines, perm, nil
 }
 
-func writeLoaderConf(lines []string, perm os.FileMode) error {
+func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
+	settings, err := s.GetBasicSettings()
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to fetch basic settings for loader config: %w", err)
+	}
+
+	hasVirtualization := slices.Contains(settings.Services, models.Virtualization)
+
+	vmmFound := false
+	pptFound := false
+
+	for i, line := range lines {
+		key, _, ok := parseLoaderConfAssignment(line)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "vmm_load":
+			vmmFound = true
+			if hasVirtualization {
+				lines[i] = `vmm_load="YES"`
+			}
+		case "ppt_load":
+			pptFound = true
+			lines[i] = `ppt_load="YES"`
+		}
+	}
+
+	needsVmm := hasVirtualization && !vmmFound
+	needsPpt := !pptFound
+
+	if needsVmm || needsPpt {
+		var newLines []string
+		for _, line := range lines {
+			key, _, ok := parseLoaderConfAssignment(line)
+			if ok && key == loaderConfKey {
+				if needsVmm {
+					newLines = append(newLines, `vmm_load="YES"`)
+					needsVmm = false
+				}
+				if needsPpt {
+					newLines = append(newLines, `ppt_load="YES"`)
+					needsPpt = false
+				}
+			}
+			newLines = append(newLines, line)
+		}
+
+		if needsVmm {
+			newLines = append(newLines, `vmm_load="YES"`)
+		}
+		if needsPpt {
+			newLines = append(newLines, `ppt_load="YES"`)
+		}
+
+		lines = newLines
+	}
+
 	out := ""
 	if len(lines) > 0 {
 		out = strings.Join(lines, "\n") + "\n"
@@ -235,7 +293,7 @@ func (s *Service) addLoaderPPTDevice(id string) error {
 
 	ids = append(ids, id)
 	lines = rewriteLoaderPPTIDs(lines, ids)
-	return writeLoaderConf(lines, perm)
+	return s.writeLoaderConf(lines, perm)
 }
 
 func (s *Service) removeLoaderPPTDevice(id string) error {
@@ -256,7 +314,7 @@ func (s *Service) removeLoaderPPTDevice(id string) error {
 	}
 
 	lines = rewriteLoaderPPTIDs(lines, filtered)
-	return writeLoaderConf(lines, perm)
+	return s.writeLoaderConf(lines, perm)
 }
 
 func (s *Service) getLoaderPPTDevices() ([]string, error) {
@@ -305,7 +363,7 @@ func (s *Service) SyncPPTDevices() error {
 	}
 
 	lines = rewriteLoaderPPTIDs(lines, parts)
-	return writeLoaderConf(lines, perm)
+	return s.writeLoaderConf(lines, perm)
 }
 
 func (s *Service) ReconcilePreparedPPTDevices() error {
