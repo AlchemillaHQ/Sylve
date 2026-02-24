@@ -552,6 +552,8 @@ msgstr "Minimize"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -916,6 +918,7 @@ msgstr "Action"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -4195,6 +4198,7 @@ msgstr "Share"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -6353,6 +6357,7 @@ msgstr "Unknown VM"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Started"
 msgstr "Started"
 
@@ -7424,6 +7429,7 @@ msgid "Destination Dataset"
 msgstr "Destination Dataset"
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Completed"
 msgstr "Completed"
 
@@ -7531,11 +7537,13 @@ msgstr "Snapshot (optional)"
 #~ msgstr "Delete selected backup target?"
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr "Mode"
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source"
@@ -8331,3 +8339,86 @@ msgstr "This backup set includes non-active lineages. Snapshot markers show line
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
 msgstr "Destination dataset must be fully qualified (for example: zroot/yyy)"
+
+#. placeholder {0}: jailMatch[1]
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Jail {0}"
+msgstr "Jail {0}"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load event progress"
+msgstr "Failed to load event progress"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Interrupted"
+msgstr "Interrupted"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "View Progress"
+msgstr "View Progress"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Event Progress <0/>"
+msgstr "Event Progress <0/>"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Loading progress..."
+msgstr "Loading progress..."
+
+#~ msgid "Status:"
+#~ msgstr "Status:"
+
+#~ msgid "Mode:"
+#~ msgstr "Mode:"
+
+#~ msgid "Source:"
+#~ msgstr "Source:"
+
+#~ msgid "Target:"
+#~ msgstr "Target:"
+
+#~ msgid "Started:"
+#~ msgstr "Started:"
+
+#~ msgid "Completed:"
+#~ msgstr "Completed:"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Transfer"
+msgstr "Transfer"
+
+#~ msgid "Moved:"
+#~ msgstr "Moved:"
+
+#~ msgid "Total:"
+#~ msgstr "Total:"
+
+#~ msgid "Progress:"
+#~ msgstr "Progress:"
+
+#~ msgid "Waiting for transfer metrics..."
+#~ msgstr "Waiting for transfer metrics..."
+
+#~ msgid "Last update:"
+#~ msgstr "Last update:"
+
+#~ msgid "Live Output"
+#~ msgstr "Live Output"
+
+#~ msgid "No output yet..."
+#~ msgstr "No output yet..."
+
+#~ msgid "Tracking:"
+#~ msgstr "Tracking:"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Moved"
+msgstr "Moved"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Total"
+msgstr "Total"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Progress"
+msgstr "Progress"

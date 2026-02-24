@@ -44,8 +44,12 @@
 			}
 
 			const result = await getSimpleVMs();
-			updateCache(key, result);
-			return result;
+			if (Array.isArray(result)) {
+				updateCache(key, result);
+				return result;
+			}
+
+			return [];
 		},
 		{
 			initialValue: [] as SimpleVm[]
@@ -60,8 +64,12 @@
 			}
 
 			const result = await getSimpleJails();
-			updateCache(key, result);
-			return result;
+			if (Array.isArray(result)) {
+				updateCache(key, result);
+				return result;
+			}
+
+			return [];
 		},
 		{
 			initialValue: [] as SimpleJail[]
@@ -163,7 +171,7 @@
 		<ul>
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item}
-					<TreeView {item} onToggle={toggleCategory} {openCategories} />
+					<TreeView {item} onToggle={toggleCategory} />
 				{/each}
 			</ScrollArea>
 		</ul>

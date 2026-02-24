@@ -550,6 +550,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -914,6 +916,7 @@ msgstr "പ്രവർത്തനം"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -4179,6 +4182,7 @@ msgstr "പങ്കിടുക"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -6315,6 +6319,7 @@ msgstr "അജ്ഞാത VM"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Started"
 msgstr "ആരംഭിച്ചു"
 
@@ -7372,6 +7377,7 @@ msgid "Destination Dataset"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Completed"
 msgstr ""
 
@@ -7479,11 +7485,13 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Source"
@@ -8270,4 +8278,87 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
+msgstr ""
+
+#. placeholder {0}: jailMatch[1]
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Jail {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load event progress"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Interrupted"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "View Progress"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Event Progress <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Loading progress..."
+msgstr ""
+
+#~ msgid "Status:"
+#~ msgstr ""
+
+#~ msgid "Mode:"
+#~ msgstr ""
+
+#~ msgid "Source:"
+#~ msgstr ""
+
+#~ msgid "Target:"
+#~ msgstr ""
+
+#~ msgid "Started:"
+#~ msgstr ""
+
+#~ msgid "Completed:"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Transfer"
+msgstr ""
+
+#~ msgid "Moved:"
+#~ msgstr ""
+
+#~ msgid "Total:"
+#~ msgstr ""
+
+#~ msgid "Progress:"
+#~ msgstr ""
+
+#~ msgid "Waiting for transfer metrics..."
+#~ msgstr ""
+
+#~ msgid "Last update:"
+#~ msgstr ""
+
+#~ msgid "Live Output"
+#~ msgstr ""
+
+#~ msgid "No output yet..."
+#~ msgstr ""
+
+#~ msgid "Tracking:"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Moved"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Total"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Progress"
 msgstr ""

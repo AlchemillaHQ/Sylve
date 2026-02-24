@@ -148,6 +148,45 @@
 		return { icon, label };
 	}
 
+	function eventStatusMeta(status: string | null | undefined): {
+		icon: string;
+		label: string;
+		className: string;
+	} {
+		switch ((status || '').toLowerCase()) {
+			case 'success':
+				return {
+					icon: 'mdi:check-circle-outline',
+					label: 'Success',
+					className: 'text-green-500'
+				};
+			case 'failed':
+				return {
+					icon: 'mdi:close-circle-outline',
+					label: 'Failed',
+					className: 'text-red-500'
+				};
+			case 'interrupted':
+				return {
+					icon: 'mdi:alert-circle-outline',
+					label: 'Interrupted',
+					className: 'text-orange-500'
+				};
+			case 'running':
+				return {
+					icon: 'mdi:progress-clock',
+					label: 'Running',
+					className: 'text-yellow-500'
+				};
+			default:
+				return {
+					icon: 'mdi:help-circle-outline',
+					label: status || '-',
+					className: 'text-muted-foreground'
+				};
+		}
+	}
+
 	function selectedRowId(): number {
 		if (!activeRows || activeRows.length !== 1) return 0;
 		const parsed = Number(activeRows[0].id);
@@ -221,11 +260,7 @@
 		const moved = current.movedBytes;
 		const total = current.totalBytes;
 		return (
-			moved !== null &&
-			moved !== undefined &&
-			total !== null &&
-			total !== undefined &&
-			total > 0
+			moved !== null && moved !== undefined && total !== null && total !== undefined && total > 0
 		);
 	});
 
@@ -278,18 +313,8 @@
 				title: 'Status',
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
-					switch (value) {
-						case 'success':
-							return renderWithIcon('mdi:check-circle-outline', 'Success', 'text-green-500');
-						case 'failed':
-							return renderWithIcon('mdi:close-circle-outline', 'Failed', 'text-red-500');
-						case 'interrupted':
-							return renderWithIcon('mdi:alert-circle-outline', 'Interrupted', 'text-orange-500');
-						case 'running':
-							return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
-						default:
-							return value || '-';
-					}
+					const meta = eventStatusMeta(value);
+					return renderWithIcon(meta.icon, meta.label, meta.className);
 				}
 			},
 			{
@@ -381,19 +406,17 @@
 	<div class="flex h-10 w-full items-center border-b p-2">
 		<div class="flex items-center gap-2">
 			<Search bind:query />
-
-			<div class="w-48 shrink-0">
-				<SimpleSelect
-					placeholder="Filter by job"
-					options={jobOptions}
-					bind:value={filterJobId}
-					onChange={() => (reload = true)}
-					classes={{
-						parent: 'w-full',
-						trigger: '!h-6.5 text-sm'
-					}}
-				/>
-			</div>
+            
+			<SimpleSelect
+				placeholder="Filter by job"
+				options={jobOptions}
+				bind:value={filterJobId}
+				onChange={() => (reload = true)}
+				classes={{
+					parent: 'w-full',
+					trigger: '!h-6.5 text-sm'
+				}}
+			/>
 
 			{#if selectedRunningEventId > 0}
 				<Button onclick={openProgressModal} size="sm" variant="outline" class="h-6 shrink-0">
@@ -434,17 +457,33 @@
 <Dialog.Root bind:open={progressModal.open}>
 	<Dialog.Content class="w-[min(640px,95vw)] p-5">
 		<Dialog.Header>
-			<Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:chart-line" class="h-5 w-5" />
-					<span>
-						Event Progress
-						{#if progressEvent.current?.event}
-							#{progressEvent.current.event.id}
-						{:else if progressEventId > 0}
-							#{progressEventId}
-						{/if}
-					</span>
+					<div class="flex items-center gap-2">
+						<Icon icon="mdi:chart-line" class="h-5 w-5" />
+						<span>
+							Event Progress
+							{#if progressEvent.current?.event}
+								#{progressEvent.current.event.id}
+							{:else if progressEventId > 0}
+								#{progressEventId}
+							{/if}
+						</span>
+					</div>
+				</div>
+				<div class="flex items-center gap-0.5">
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							progressModal.open = false;
+						}}
+					>
+						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="sr-only">{'Close'}</span>
+					</Button>
 				</div>
 			</Dialog.Title>
 		</Dialog.Header>
@@ -457,62 +496,86 @@
 			{@const event = progressEvent.current.event}
 			{@const source = compactEventEndpoint(event.sourceDataset, jails, true)}
 			{@const target = compactEventEndpoint(event.targetEndpoint, jails, false)}
+			{@const status = eventStatusMeta(event.status)}
 			<div class="grid gap-4 py-2 text-sm">
-				<div class="grid gap-1.5">
-					<p>
-						<span class="font-medium">Status:</span>
-						<code class="ml-1 rounded bg-background px-1 py-0.5">{event.status || '-'}</code>
-					</p>
-					<p>
-						<span class="font-medium">Mode:</span>
-						<code class="ml-1 rounded bg-background px-1 py-0.5">{event.mode || '-'}</code>
-					</p>
-					<p><span class="font-medium">Source:</span> {source.label || '-'}</p>
-					<p><span class="font-medium">Target:</span> {target.label || '-'}</p>
-					<p>
-						<span class="font-medium">Started:</span>
-						{convertDbTime(event.startedAt)}
-					</p>
-					<p>
-						<span class="font-medium">Completed:</span>
-						{event.completedAt ? convertDbTime(event.completedAt) : '-'}
-					</p>
+				<div class="overflow-hidden rounded-md border bg-background">
+					<table class="w-full text-sm">
+						<tbody>
+							<tr class="border-b">
+								<td class="p-2 text-muted-foreground">Status</td>
+								<td class="p-2 text-right">
+									<span class={`inline-flex items-center gap-1 ${status.className}`}>
+										<Icon icon={status.icon} class="h-4 w-4" />
+										<span>{status.label}</span>
+									</span>
+								</td>
+							</tr>
+							<tr class="border-b">
+								<td class="p-2 text-muted-foreground">Mode</td>
+								<td class="p-2 text-right">{event.mode || '-'}</td>
+							</tr>
+							<tr class="border-b">
+								<td class="p-2 text-muted-foreground">Source</td>
+								<td class="p-2 text-right">{source.label || '-'}</td>
+							</tr>
+							<tr class="border-b">
+								<td class="p-2 text-muted-foreground">Target</td>
+								<td class="p-2 text-right">{target.label || '-'}</td>
+							</tr>
+							<tr class="border-b">
+								<td class="p-2 text-muted-foreground">Started</td>
+								<td class="p-2 text-right">{convertDbTime(event.startedAt)}</td>
+							</tr>
+							<tr>
+								<td class="p-2 text-muted-foreground">Completed</td>
+								<td class="p-2 text-right">
+									{event.completedAt ? convertDbTime(event.completedAt) : '-'}
+								</td>
+							</tr>
+						</tbody>
+					</table>
 				</div>
 
 				<div class="rounded-md border bg-muted/20 p-3">
 					<div class="mb-2 flex items-center justify-between text-sm">
 						<p class="font-medium">Transfer</p>
-						<code class="rounded bg-background px-1 py-0.5">{progressPercentLabel}</code>
+					</div>
+
+					<div class="mb-3 overflow-hidden rounded-md border bg-background">
+						<table class="w-full text-sm">
+							<tbody>
+								<tr class="border-b">
+									<td class="p-2 text-muted-foreground">Moved</td>
+									<td class="p-2 text-right">
+										{#if progressEvent.current.movedBytes !== null && progressEvent.current.movedBytes !== undefined}
+											{humanFormatBytes(progressEvent.current.movedBytes)}
+										{:else}
+											-
+										{/if}
+									</td>
+								</tr>
+								<tr class="border-b">
+									<td class="p-2 text-muted-foreground">Total</td>
+									<td class="p-2 text-right">
+										{#if progressEvent.current.totalBytes !== null && progressEvent.current.totalBytes !== undefined}
+											{humanFormatBytes(progressEvent.current.totalBytes)}
+										{:else}
+											-
+										{/if}
+									</td>
+								</tr>
+								<tr>
+									<td class="p-2 text-muted-foreground">Progress</td>
+									<td class="p-2 text-right">
+										<code class="rounded bg-muted px-1 py-0.5">{progressPercentLabel}</code>
+									</td>
+								</tr>
+							</tbody>
+						</table>
 					</div>
 
 					<Progress value={progressNumber} max={100} class="h-2 w-full" />
-
-					<div class="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-						<p>
-							Moved:
-							{#if progressEvent.current.movedBytes !== null &&
-								progressEvent.current.movedBytes !== undefined}
-								{humanFormatBytes(progressEvent.current.movedBytes)}
-							{:else}
-								-
-							{/if}
-						</p>
-						<p>
-							Total:
-							{#if progressEvent.current.totalBytes !== null &&
-								progressEvent.current.totalBytes !== undefined}
-								{humanFormatBytes(progressEvent.current.totalBytes)}
-							{:else}
-								-
-							{/if}
-						</p>
-					</div>
 				</div>
-			</div>
-
-			<div class="mt-4 flex items-center justify-end gap-2">
-				<Button variant="outline" onclick={() => progressEvent.refetch()}>Refresh</Button>
-				<Button variant="outline" onclick={() => (progressModal.open = false)}>Close</Button>
 			</div>
 		{:else}
 			<p class="py-4 text-sm text-muted-foreground">Loading progress...</p>
