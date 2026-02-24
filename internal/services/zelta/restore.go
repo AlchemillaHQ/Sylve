@@ -192,10 +192,8 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	// dataset is writable. Setting RECV_TOP=no makes zelta treat it as falsy (0),
 	// which arr_join() skips. RECV_FS keeps its default flags.
 	extraEnv := s.buildZeltaEnv(&job.Target)
-	extraEnv = append(extraEnv,
-		"ZELTA_RECV_TOP=no",
-		"ZELTA_LOG_LEVEL=3",
-	)
+	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", "no")
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
 
 	output, restoreErr = runZeltaWithEnvStreaming(
 		ctx,

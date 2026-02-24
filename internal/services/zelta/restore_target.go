@@ -322,7 +322,8 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
 
 	extraEnv := s.buildZeltaEnv(target)
-	extraEnv = append(extraEnv, "ZELTA_RECV_TOP=no", "ZELTA_LOG_LEVEL=3")
+	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", "no")
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
 	output, restoreErr = runZeltaWithEnvStreaming(
 		ctx,
 		extraEnv,

@@ -274,6 +274,34 @@ func (s *Service) Backup(ctx context.Context, target *clusterModels.BackupTarget
 	return s.BackupWithTarget(ctx, target, sourceDataset, destSuffix)
 }
 
+func (s *Service) backupWithEventProgress(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	sourceDataset, destSuffix string,
+	eventID uint,
+) (string, error) {
+	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
+	extraEnv := s.buildZeltaEnv(target)
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+
+	return runZeltaWithEnvStreaming(
+		ctx,
+		extraEnv,
+		func(line string) {
+			if err := s.AppendBackupEventOutput(eventID, line); err != nil {
+				logger.L.Warn().
+					Uint("event_id", eventID).
+					Err(err).
+					Msg("append_backup_event_output_failed")
+			}
+		},
+		"backup",
+		"--json",
+		sourceDataset,
+		zeltaEndpoint,
+	)
+}
+
 // Match runs zelta match to compare source and target datasets.
 func (s *Service) Match(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	return s.MatchWithTarget(ctx, target, sourceDataset, destSuffix)
@@ -552,7 +580,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 	}
 
-	output, runErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
+	output, runErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
 	if runErr == nil {
 		outcome := classifyBackupOutput(output)
 		if code := outcome.errorCode(); code != "" {
@@ -591,7 +619,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 						Msg("backup_auto_target_renamed_for_bootstrap")
 					output = appendOutput(output, fmt.Sprintf("auto_renamed_target_dataset: %s -> %s", fromDataset, renamedDataset))
 
-					retryOutput, retryErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
+					retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
 					output = appendOutput(output, retryOutput)
 					runErr = retryErr
 					if runErr == nil {
@@ -624,7 +652,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				Str("target", event.TargetEndpoint).
 				Msg("backup_auto_rotate_completed")
 
-			retryOutput, retryErr := s.Backup(ctx, &job.Target, sourceDataset, destSuffix)
+			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
 			output = appendOutput(output, retryOutput)
 			runErr = retryErr
 			if runErr == nil {
@@ -932,6 +960,19 @@ func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
 		"ZELTA_LOG_MODE=json",
 		"ZELTA_LOG_LEVEL=2",
 	}
+}
+
+func setEnvValue(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	out = append(out, prefix+value)
+	return out
 }
 
 func (s *Service) acquireJob(jobID uint) bool {
