@@ -52,7 +52,12 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	}
 
 	remoteDataset := remoteDatasetForJob(job)
-	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+
+	return filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots), nil
 }
 
 // EnqueueRestoreJob enqueues a restore job for async execution via goqite.
@@ -442,4 +447,51 @@ func snapshotDatasetName(fullSnapshotName string) string {
 		return ""
 	}
 	return strings.TrimSpace(fullSnapshotName[:idx])
+}
+
+func filterSnapshotsForRestoreJob(
+	job *clusterModels.BackupJob,
+	backupRoot string,
+	snapshots []SnapshotInfo,
+) []SnapshotInfo {
+	if job == nil || len(snapshots) == 0 {
+		return snapshots
+	}
+
+	sourceDataset := strings.TrimSpace(job.JailRootDataset)
+	if sourceDataset == "" {
+		sourceDataset = strings.TrimSpace(job.SourceDataset)
+	}
+
+	expectedSuffix := normalizeDatasetPath(autoDestSuffix(sourceDataset))
+	kind, expectedCTID := inferRestoreDatasetKind(expectedSuffix)
+	if kind != clusterModels.BackupJobModeJail || expectedCTID == 0 {
+		return snapshots
+	}
+
+	filtered := make([]SnapshotInfo, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		dataset := snapshotDatasetName(snapshot.Name)
+		if dataset == "" {
+			dataset = strings.TrimSpace(snapshot.Dataset)
+		}
+		if dataset == "" || !datasetWithinRoot(backupRoot, dataset) {
+			continue
+		}
+
+		suffix := relativeDatasetSuffix(backupRoot, dataset)
+		_, _, baseSuffix := classifyDatasetLineage(suffix)
+		baseKind, baseCTID := inferRestoreDatasetKind(baseSuffix)
+		if baseKind != clusterModels.BackupJobModeJail || baseCTID != expectedCTID {
+			continue
+		}
+
+		filtered = append(filtered, snapshot)
+	}
+
+	if len(filtered) == 0 {
+		return snapshots
+	}
+
+	return filtered
 }

@@ -8248,9 +8248,8 @@ msgstr ""
 msgid "Backup Date"
 msgstr "Backup Date"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Lineage"
-msgstr "Lineage"
+#~ msgid "Lineage"
+#~ msgstr "Lineage"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Data from <0/> will be restored"
@@ -8264,13 +8263,12 @@ msgstr "This snapshot is from <0/> and may not be counted by active-lineage prun
 msgid "No deletion on target, all snapshots remain available"
 msgstr "No deletion on target, all snapshots remain available"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid ""
-"Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
-"active lineage only."
-msgstr ""
-"Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
-"active lineage only."
+#~ msgid ""
+#~ "Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
+#~ "active lineage only."
+#~ msgstr ""
+#~ "Selected dataset is from a non-active lineage. Prune counts on active jobs apply to the\n"
+#~ "active lineage only."
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Selected backup date: <0/>"
@@ -8279,3 +8277,57 @@ msgstr "Selected backup date: <0/>"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Selected snapshot lineage: <0/>"
 msgstr "Selected snapshot lineage: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Current lineage"
+msgstr "Current lineage"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "System-preserved lineage"
+msgstr "System-preserved lineage"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Out-of-band lineage"
+msgstr "Out-of-band lineage"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to load cluster details"
+msgstr "Failed to load cluster details"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to validate cluster guest placement"
+msgstr "Failed to validate cluster guest placement"
+
+#. placeholder {0}: guestID
+#. placeholder {1}: conflictLabels
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Jail {0} already exists on {1}."
+msgstr "Jail {0} already exists on {1}."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore node is required"
+msgstr "Restore node is required"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore On Node"
+msgstr "Restore On Node"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading nodes..."
+msgstr "Loading nodes..."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No cluster nodes found"
+msgstr "No cluster nodes found"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select restore node"
+msgstr "Select restore node"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "This backup set includes non-active lineages. Snapshot markers show lineage as <0/>, <1/>, and <2/>."
+msgstr "This backup set includes non-active lineages. Snapshot markers show lineage as <0/>, <1/>, and <2/>."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
+msgstr "Destination dataset must be fully qualified (for example: zroot/yyy)"

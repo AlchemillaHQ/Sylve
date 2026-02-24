@@ -413,7 +413,9 @@
 		}
 	}
 
-	function pickRepresentativeDataset(datasets: BackupTargetDatasetInfo[]): BackupTargetDatasetInfo | null {
+	function pickRepresentativeDataset(
+		datasets: BackupTargetDatasetInfo[]
+	): BackupTargetDatasetInfo | null {
 		if (datasets.length === 0) return null;
 		const ranked = [...datasets].sort((left, right) => {
 			const rankDiff =
@@ -800,9 +802,7 @@
 			return false;
 		}
 
-		const registeredOn = details.nodes.filter((node) =>
-			(node.guestIds || []).includes(guestID)
-		);
+		const registeredOn = details.nodes.filter((node) => (node.guestIDs || []).includes(guestID));
 		if (registeredOn.length === 0) return true;
 
 		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
@@ -1420,11 +1420,10 @@
 										><span class="inline-flex items-center gap-1">
 											{#if snapshotLineageMarker(snap) !== 'CURR'}
 												{@const lineageIcon = snapshotLineageIcon(snap)}
-												<Icon
-													icon={lineageIcon.icon}
-													class={`h-3.5 w-3.5 ${lineageIcon.className}`}
+												<span
+													class="h-3.5 w-3.5 icon ${lineageIcon.className}"
 													title={`${snapshotLineageLabel(snap)} (${snapshotLineageMarker(snap)})`}
-												/>
+												></span>
 											{/if}
 											<span>{formatRestoreSnapshotDate(snap)}</span>
 										</span></td

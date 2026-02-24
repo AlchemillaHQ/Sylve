@@ -168,7 +168,8 @@ export const SimpleVmSchema = z.object({
     name: z.string(),
     rid: z.number().int(),
     vncPort: z.number(),
-    state: DomainStateSchema
+    state: DomainStateSchema,
+    cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()]),
 });
 
 export const QGAOSInfoSchema = z.object({

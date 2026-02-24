@@ -17,6 +17,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let pptDevices = resource(
 		() => 'ppt-devices',
 		async () => {
@@ -29,6 +31,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let pciDevices = resource(
 		() => 'pci-devices',
 		async () => {

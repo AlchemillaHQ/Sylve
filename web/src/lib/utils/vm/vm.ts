@@ -3,6 +3,9 @@ import type { CreateData, SimpleVm, VM } from '$lib/types/vm/vm';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
+import {
+    type ClusterNode,
+} from '$lib/types/cluster/cluster';
 
 export function isValidCreateData(
     modal: CreateData,
@@ -132,6 +135,21 @@ export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]):
     const usedIds = [...vms.map((vm) => vm.rid), ...jails.map((jail) => jail.ctId)];
     if (usedIds.length === 0) return 100;
     return Math.max(...usedIds) + 1;
+}
+
+export function getNextGuestId(clusterNodes: ClusterNode[]): number {
+    let maxId = 0;
+
+    for (const node of clusterNodes) {
+        if (Array.isArray(node.guestIDs) && node.guestIDs.length > 0) {
+            const currentMax = Math.max(...node.guestIDs);
+            if (currentMax > maxId) {
+                maxId = currentMax;
+            }
+        }
+    }
+
+    return maxId === 0 ? 100 : maxId + 1;
 }
 
 export function generateCores(threadCount: number) {
