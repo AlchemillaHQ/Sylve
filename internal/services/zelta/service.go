@@ -12,8 +12,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +33,11 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	replicationSizeRegex = regexp.MustCompile(`"replicationSize"\s*:\s*"?([0-9]+)"?`)
+	syncingSizeRegex     = regexp.MustCompile(`syncing:\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\b`)
+)
+
 type Service struct {
 	DB      *gorm.DB
 	Cluster *cluster.Service
@@ -37,6 +45,14 @@ type Service struct {
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
+}
+
+type BackupEventProgress struct {
+	Event           *clusterModels.BackupEvent `json:"event"`
+	ProgressDataset string                     `json:"progressDataset"`
+	MovedBytes      *uint64                    `json:"movedBytes"`
+	TotalBytes      *uint64                    `json:"totalBytes"`
+	ProgressPercent *float64                   `json:"progressPercent"`
 }
 
 var SSHKeyDirectory string
@@ -855,6 +871,143 @@ func (s *Service) AppendBackupEventOutput(eventID uint, chunk string) error {
 	return s.DB.Model(&clusterModels.BackupEvent{}).
 		Where("id = ?", eventID).
 		Update("output", gorm.Expr("COALESCE(output, '') || ?", appendChunk)).Error
+}
+
+func parseHumanSizeBytes(numStr, unitStr, suffixStr string) (uint64, bool) {
+	num, err := strconv.ParseFloat(strings.TrimSpace(numStr), 64)
+	if err != nil || num < 0 {
+		return 0, false
+	}
+
+	unit := strings.ToUpper(strings.TrimSpace(unitStr))
+	suffix := strings.TrimSpace(suffixStr)
+	base := 1000.0
+	if strings.EqualFold(suffix, "i") || strings.EqualFold(suffix, "iB") {
+		base = 1024.0
+	}
+
+	var power float64
+	switch unit {
+	case "":
+		power = 0
+	case "K":
+		power = 1
+	case "M":
+		power = 2
+	case "G":
+		power = 3
+	case "T":
+		power = 4
+	case "P":
+		power = 5
+	case "E":
+		power = 6
+	default:
+		return 0, false
+	}
+
+	val := num * math.Pow(base, power)
+	if val < 0 || val > math.MaxUint64 {
+		return 0, false
+	}
+
+	return uint64(math.Round(val)), true
+}
+
+func parseTotalBytesFromOutput(output string) *uint64 {
+	if strings.TrimSpace(output) == "" {
+		return nil
+	}
+
+	matches := replicationSizeRegex.FindAllStringSubmatch(output, -1)
+	if len(matches) > 0 {
+		last := matches[len(matches)-1]
+		if len(last) >= 2 {
+			if parsed, err := strconv.ParseUint(last[1], 10, 64); err == nil {
+				return &parsed
+			}
+		}
+	}
+
+	matches = syncingSizeRegex.FindAllStringSubmatch(output, -1)
+	if len(matches) > 0 {
+		last := matches[len(matches)-1]
+		if len(last) >= 4 {
+			if parsed, ok := parseHumanSizeBytes(last[1], last[2], last[3]); ok {
+				return &parsed
+			}
+		}
+	}
+
+	return nil
+}
+
+func zfsDatasetUsedBytes(ctx context.Context, dataset string) (*uint64, error) {
+	path := strings.TrimSpace(dataset)
+	if path == "" {
+		return nil, nil
+	}
+
+	out, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-Hp", "-o", "used", path)
+	if err != nil {
+		return nil, err
+	}
+
+	line := strings.TrimSpace(strings.Split(strings.TrimSpace(out), "\n")[0])
+	if line == "" || line == "-" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseUint(line, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
+func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupEventProgress, error) {
+	event, err := s.GetLocalBackupEvent(id)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &BackupEventProgress{
+		Event:      event,
+		TotalBytes: parseTotalBytesFromOutput(event.Output),
+	}
+
+	if strings.EqualFold(event.Mode, "restore") {
+		progressDataset := strings.TrimSpace(event.TargetEndpoint)
+		if progressDataset != "" {
+			progressDataset += ".restoring"
+			out.ProgressDataset = progressDataset
+			movedBytes, movedErr := zfsDatasetUsedBytes(ctx, progressDataset)
+			if movedErr != nil {
+				logger.L.Debug().
+					Uint("event_id", id).
+					Str("dataset", progressDataset).
+					Err(movedErr).
+					Msg("restore_progress_dataset_query_failed")
+			} else {
+				out.MovedBytes = movedBytes
+			}
+		}
+	}
+
+	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 {
+		pct := (float64(*out.MovedBytes) / float64(*out.TotalBytes)) * 100
+		if pct < 0 {
+			pct = 0
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		rounded := math.Round(pct*100) / 100
+		out.ProgressPercent = &rounded
+	}
+
+	return out, nil
 }
 
 // ListLocalBackupEventsPaginated returns paginated backup events.

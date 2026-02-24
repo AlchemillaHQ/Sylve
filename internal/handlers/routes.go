@@ -454,6 +454,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterBackups.GET("/events", clusterHandlers.BackupEvents(zeltaService))
 		clusterBackups.GET("/events/remote", clusterHandlers.BackupEventsRemote(zeltaService))
 		clusterBackups.GET("/events/:id", clusterHandlers.BackupEventByID(zeltaService))
+		clusterBackups.GET("/events/:id/progress", clusterHandlers.BackupEventProgressByID(zeltaService))
 	}
 
 	vnc := api.Group("/vnc")

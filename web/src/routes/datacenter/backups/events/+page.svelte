@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { getBackupEvent, listBackupJobs } from '$lib/api/cluster/backups';
+	import { getBackupEventProgress, listBackupJobs } from '$lib/api/cluster/backups';
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { storage } from '$lib';
-	import type { BackupEvent, BackupJob } from '$lib/types/cluster/backups';
+	import type { BackupEvent, BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { humanFormatBytes, sha256 } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
@@ -38,6 +38,7 @@
 		open: false,
 		loading: false,
 		event: null as BackupEvent | null,
+		progress: null as BackupEventProgress | null,
 		error: ''
 	});
 
@@ -272,7 +273,17 @@
 		return parsed;
 	});
 
-	let progress = $derived.by(() => parseTransferProgress(progressModal.event?.output || ''));
+	let progress = $derived.by(() => {
+		const parsed = parseTransferProgress(progressModal.event?.output || '');
+		const backend = progressModal.progress;
+
+		return {
+			movedBytes: backend?.movedBytes ?? parsed.movedBytes,
+			totalBytes: backend?.totalBytes ?? parsed.totalBytes,
+			percent: backend?.progressPercent ?? parsed.percent,
+			lastMessage: parsed.lastMessage
+		};
+	});
 
 	function stopProgressPolling() {
 		if (progressPollInterval !== null) {
@@ -289,7 +300,9 @@
 		}
 
 		try {
-			progressModal.event = await getBackupEvent(eventId);
+			const progressData = await getBackupEventProgress(eventId);
+			progressModal.progress = progressData;
+			progressModal.event = progressData.event;
 			progressModal.error = '';
 
 			if (progressModal.event.status !== 'running') {
@@ -298,6 +311,7 @@
 			}
 		} catch (e: any) {
 			progressModal.error = e?.message || 'Failed to load event progress';
+			progressModal.progress = null;
 			stopProgressPolling();
 		} finally {
 			if (!silent) {
@@ -323,6 +337,7 @@
 
 		progressModal.open = true;
 		progressModal.error = '';
+		progressModal.progress = null;
 		await loadProgressEvent(eventId);
 
 		if (progressModal.event?.status === 'running') {
@@ -545,9 +560,17 @@
 					</p>
 				</div>
 
-				<div class="rounded-md border bg-muted/20 p-3">
-					<p class="mb-1 font-medium">Transfer</p>
-					{#if progress.movedBytes !== null || progress.totalBytes !== null}
+					<div class="rounded-md border bg-muted/20 p-3">
+						<p class="mb-1 font-medium">Transfer</p>
+						{#if progressModal.progress?.progressDataset}
+							<p>
+								<span class="font-medium">Tracking:</span>
+								<code class="ml-1 rounded bg-background px-1 py-0.5"
+									>{progressModal.progress.progressDataset}</code
+								>
+							</p>
+						{/if}
+						{#if progress.movedBytes !== null || progress.totalBytes !== null}
 						<p>
 							<span class="font-medium">Moved:</span>
 							{#if progress.movedBytes !== null}
@@ -568,12 +591,14 @@
 								-
 							{/if}
 						</p>
-						{#if progress.percent !== null}
-							<p>
-								<span class="font-medium">Progress:</span>
-								<code class="ml-1 rounded bg-background px-1 py-0.5">{progress.percent}%</code>
-							</p>
-						{/if}
+							{#if progress.percent !== null}
+								<p>
+									<span class="font-medium">Progress:</span>
+									<code class="ml-1 rounded bg-background px-1 py-0.5"
+										>{progress.percent.toFixed(2)}%</code
+									>
+								</p>
+							{/if}
 					{:else}
 						<p class="text-muted-foreground">Waiting for transfer metrics...</p>
 					{/if}

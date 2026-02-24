@@ -1,12 +1,14 @@
 import {
     BackupJailMetadataInfoSchema,
     BackupEventSchema,
+    BackupEventProgressSchema,
     BackupJobSchema,
     BackupTargetDatasetInfoSchema,
     BackupTargetSchema,
     SnapshotInfoSchema,
     type BackupJailMetadataInfo,
     type BackupEvent,
+    type BackupEventProgress,
     type BackupJob,
     type BackupTargetDatasetInfo,
     type BackupTarget,
@@ -99,6 +101,10 @@ export async function getBackupEvents(limit: number = 200, jobId?: number): Prom
 
 export async function getBackupEvent(id: number): Promise<BackupEvent> {
     return await apiRequest(`/cluster/backups/events/${id}`, BackupEventSchema, 'GET');
+}
+
+export async function getBackupEventProgress(id: number): Promise<BackupEventProgress> {
+    return await apiRequest(`/cluster/backups/events/${id}/progress`, BackupEventProgressSchema, 'GET');
 }
 
 export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInfo[]> {

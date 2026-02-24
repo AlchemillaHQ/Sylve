@@ -1113,6 +1113,47 @@ func BackupEventByID(zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
+func BackupEventProgressByID(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_event_id",
+				Error:   "invalid_event_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		progress, err := zS.GetBackupEventProgress(c.Request.Context(), uint(id64))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "backup_event_not_found",
+					Error:   "backup_event_not_found",
+					Data:    nil,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "get_backup_event_progress_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*zelta.BackupEventProgress]{
+			Status:  "success",
+			Message: "backup_event_progress_fetched",
+			Data:    progress,
+		})
+	}
+}
+
 func BackupEventsRemote(zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		pageStr := c.DefaultQuery("page", "1")

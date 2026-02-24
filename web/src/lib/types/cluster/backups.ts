@@ -50,6 +50,14 @@ export const BackupEventSchema = z.object({
     completedAt: z.string().nullable().optional()
 });
 
+export const BackupEventProgressSchema = z.object({
+    event: BackupEventSchema,
+    progressDataset: z.string().optional().default(''),
+    movedBytes: z.number().nullable().optional(),
+    totalBytes: z.number().nullable().optional(),
+    progressPercent: z.number().nullable().optional()
+});
+
 export const SnapshotInfoSchema = z.object({
     name: z.string(),
     shortName: z.string(),
@@ -81,6 +89,7 @@ export const BackupJailMetadataInfoSchema = z.object({
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
 export type BackupJob = z.infer<typeof BackupJobSchema>;
 export type BackupEvent = z.infer<typeof BackupEventSchema>;
+export type BackupEventProgress = z.infer<typeof BackupEventProgressSchema>;
 export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
 export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
 export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
