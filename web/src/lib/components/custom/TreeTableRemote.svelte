@@ -178,7 +178,9 @@
 
 			if ((column.getDefinition() as any).copyOnClick && value) {
 				navigator.clipboard.writeText(value.toString());
-				toast.success(`Copied ${value.toString()} to clipboard`, {
+				const truncated =
+					value.toString().length > 20 ? value.toString().slice(0, 20) + '...' : value.toString();
+				toast.success(`Copied "${truncated}" to clipboard`, {
 					duration: 2000,
 					position: 'bottom-center'
 				});
@@ -217,8 +219,8 @@
 	watch(
 		() => reload,
 		(newReload) => {
-			if (newReload && table && tableInitialized) {
-				table.setData(ajaxURL!, {
+			if (newReload) {
+				table?.setData(ajaxURL!, {
 					hash,
 					...extraParams,
 					search: query || ''

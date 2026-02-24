@@ -135,8 +135,7 @@
 								icon = 'mdi:alert-circle-outline';
 						}
 					} else {
-						v = '';
-						icon = 'mdi:check-circle-outline';
+						return '-';
 					}
 
 					return renderWithIcon(icon, v, value ? 'text-red-500' : 'text-green-500');
@@ -164,8 +163,6 @@
 			label: job.name
 		}))
 	]);
-
-	// 			{#key `${jails.length}-${filterJobId}`}
 </script>
 
 <div class="flex h-full w-full flex-col">
