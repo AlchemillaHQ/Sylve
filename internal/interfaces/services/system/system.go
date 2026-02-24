@@ -42,5 +42,6 @@ type SystemServiceInterface interface {
 	GetPPTDevices() ([]models.PassedThroughIDs, error)
 	AddPPTDevice(domain string, id string) error
 	PreparePPTDevice(domain string, id string) error
+	ImportPPTDevice(domain string, id string) error
 	RemovePPTDevice(id string) error
 }

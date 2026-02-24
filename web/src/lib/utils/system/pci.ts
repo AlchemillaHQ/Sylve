@@ -74,7 +74,7 @@ export function generateTableData(
                         'wpf:connected',
                         device,
                         'text-yellow-500',
-                        'This device state is not quite right, please check configuration in /boot/loader.conf'
+                        'This device is on ppt but not managed by Sylve yet. Import it to manage from here.'
                     );
                 }
 

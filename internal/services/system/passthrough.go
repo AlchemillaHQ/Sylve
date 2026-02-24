@@ -552,6 +552,64 @@ func (s *Service) PreparePPTDevice(domain string, id string) error {
 	return s.addLoaderPPTDevice(id)
 }
 
+func (s *Service) ImportPPTDevice(domain string, id string) error {
+	s.achMutex.Lock()
+	defer s.achMutex.Unlock()
+
+	intDomain, err := parseDomain(domain)
+	if err != nil {
+		return err
+	}
+
+	parts, err := parsePPTAddress(id)
+	if err != nil {
+		return err
+	}
+
+	pciDevices, err := pciconf.GetPCIDevices()
+	if err != nil {
+		return fmt.Errorf("getting PCI devices: %w", err)
+	}
+
+	device, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts)
+	if !found {
+		return fmt.Errorf("device ID %s not found in PCI devices", id)
+	}
+
+	if !strings.HasPrefix(device.Name, "ppt") {
+		return fmt.Errorf("device ID %s is not currently attached to ppt", id)
+	}
+
+	var existing models.PassedThroughIDs
+	if err := s.DB.Where("device_id = ?", id).First(&existing).Error; err == nil {
+		return nil
+	} else if err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("checking PassedThroughIDs: %w", err)
+	}
+
+	record := models.PassedThroughIDs{
+		DeviceID:  id,
+		Domain:    intDomain,
+		OldDriver: "",
+	}
+
+	if err := s.DB.Create(&record).Error; err != nil {
+		return fmt.Errorf("creating PassedThroughIDs: %w", err)
+	}
+
+	if intDomain == 0 {
+		if err := s.addLoaderPPTDevice(id); err != nil {
+			if rollbackErr := s.DB.Delete(&record).Error; rollbackErr != nil {
+				return fmt.Errorf("CRITICAL STATE MISMATCH: failed to update loader.conf (%v), and failed to revert DB insert for %s (%v)", err, id, rollbackErr)
+			}
+
+			return err
+		}
+	}
+
+	return s.SyncPPTDevices()
+}
+
 func (s *Service) RemovePPTDevice(id string) error {
 	s.achMutex.Lock()
 	defer s.achMutex.Unlock()

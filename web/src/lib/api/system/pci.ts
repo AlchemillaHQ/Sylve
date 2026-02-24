@@ -26,6 +26,13 @@ export async function preparePPTDevice(domain: string, deviceID: string): Promis
 	});
 }
 
+export async function importPPTDevice(domain: string, deviceID: string): Promise<APIResponse> {
+	return await apiRequest('/system/ppt-devices/import', APIResponseSchema, 'POST', {
+		domain,
+		deviceID
+	});
+}
+
 export async function removePPTDevice(deviceID: string): Promise<APIResponse> {
 	return await apiRequest(`/system/ppt-devices/${deviceID}`, APIResponseSchema, 'DELETE');
 }

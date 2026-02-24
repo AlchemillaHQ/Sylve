@@ -3,6 +3,7 @@
 		addPPTDevice,
 		getPCIDevices,
 		getPPTDevices,
+		importPPTDevice,
 		preparePPTDevice,
 		removePPTDevice
 	} from '$lib/api/system/pci';
@@ -103,6 +104,17 @@
 		modalState.add.deviceId = deviceId;
 	}
 
+	function importDevice(domain: string, deviceId: string) {
+		const device = activeRow ? activeRow[0].device : '';
+		const vendor = activeRow ? activeRow[0].vendor : '';
+
+		modalState.isOpen = true;
+		modalState.title = `Import <b>${device}</b> by <b>${vendor}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database.`;
+		modalState.action = 'import';
+		modalState.add.domain = domain;
+		modalState.add.deviceId = deviceId;
+	}
+
 	function removeDevice(id: number) {
 		const device = activeRow ? activeRow[0].device : '';
 		const vendor = activeRow ? activeRow[0].vendor : '';
@@ -148,6 +160,22 @@
 			</Button>
 		{/if}
 
+		{#if type === 'import-passthrough' && activeRow[0].name.startsWith('ppt') && !activeRow[0].pptId}
+			<Button
+				onclick={() =>
+					activeRow && importDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[wpf--connected] mr-1 h-4 w-4"></span>
+
+					<span>Import Passthrough</span>
+				</div>
+			</Button>
+		{/if}
+
 		{#if type === 'disable-passthrough' && activeRow[0].name.startsWith('ppt') && activeRow[0].pptId}
 			<Button
 				onclick={() => activeRow && removeDevice(Number(activeRow[0].pptId))}
@@ -171,6 +199,7 @@
 
 		{@render button('enable-passthrough')}
 		{@render button('prepare-passthrough')}
+		{@render button('import-passthrough')}
 		{@render button('disable-passthrough')}
 	</div>
 
@@ -215,6 +244,22 @@
 					});
 				} else {
 					toast.error('Failed to prepare device for passthrough', {
+						position: 'bottom-center'
+					});
+				}
+
+				modalState.isOpen = false;
+			}
+
+			if (modalState.action === 'import') {
+				const result = await importPPTDevice(modalState.add.domain, modalState.add.deviceId);
+				reload = true;
+				if (result.status === 'success') {
+					toast.success('Device imported into passthrough management', {
+						position: 'bottom-center'
+					});
+				} else {
+					toast.error('Failed to import device into passthrough management', {
 						position: 'bottom-center'
 					});
 				}

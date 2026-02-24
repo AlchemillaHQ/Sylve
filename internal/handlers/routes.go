@@ -250,6 +250,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
 		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
 		system.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
+		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
 		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
