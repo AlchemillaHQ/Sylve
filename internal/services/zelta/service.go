@@ -653,6 +653,9 @@ func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset 
 		if configuredSuffix == "" {
 			return sourceDataset
 		}
+		if configuredSuffix == sourceDataset || strings.HasSuffix(configuredSuffix, "/"+sourceDataset) {
+			return configuredSuffix
+		}
 		return configuredSuffix + "/" + sourceDataset
 	}
 
@@ -668,17 +671,69 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}
 
+	preferred = normalizeDatasetPath(preferred)
+	backupRoots := s.listEnabledBackupRoots()
+
+	sources := make([]string, 0)
+	seen := make(map[string]struct{})
+	addSource := func(dataset string) {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == "" {
+			return
+		}
+		if datasetWithinAnyRoot(dataset, backupRoots) {
+			return
+		}
+		if _, ok := seen[dataset]; ok {
+			return
+		}
+		seen[dataset] = struct{}{}
+		sources = append(sources, dataset)
+	}
+
+	vm, vmErr := s.findVMByRID(vmRID)
+	if vmErr != nil {
+		logger.L.Warn().
+			Uint("rid", vmRID).
+			Err(vmErr).
+			Msg("failed_to_lookup_vm_for_backup_source_resolution")
+	} else if vm != nil {
+		for _, storage := range vm.Storages {
+			pool := strings.TrimSpace(storage.Pool)
+			if pool == "" {
+				pool = strings.TrimSpace(storage.Dataset.Pool)
+			}
+			if pool == "" {
+				datasetName := normalizeDatasetPath(storage.Dataset.Name)
+				if idx := strings.Index(datasetName, "/"); idx > 0 {
+					pool = datasetName[:idx]
+				}
+			}
+			if pool == "" {
+				continue
+			}
+
+			addSource(fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, vmRID))
+		}
+	}
+
 	output, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-t", "filesystem", "-o", "name")
 	if err != nil {
-		preferred = normalizeDatasetPath(preferred)
-		if preferred == "" {
+		if len(sources) > 0 {
+			sort.Strings(sources)
+			if preferred != "" && !datasetWithinAnyRoot(preferred, backupRoots) {
+				if _, ok := seen[preferred]; !ok {
+					sources = append([]string{preferred}, sources...)
+				}
+			}
+			return sources, nil
+		}
+		if preferred == "" || datasetWithinAnyRoot(preferred, backupRoots) {
 			return nil, err
 		}
 		return []string{preferred}, nil
 	}
 
-	sources := make([]string, 0)
-	seen := make(map[string]struct{})
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		dataset := normalizeDatasetPath(line)
 		if dataset == "" {
@@ -692,16 +747,17 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 		if vmDatasetRoot(dataset) != dataset {
 			continue
 		}
-		if _, ok := seen[dataset]; ok {
-			continue
-		}
-		seen[dataset] = struct{}{}
-		sources = append(sources, dataset)
+
+		addSource(dataset)
 	}
 
-	preferred = normalizeDatasetPath(preferred)
 	if preferred != "" {
-		if _, ok := seen[preferred]; !ok {
+		if datasetWithinAnyRoot(preferred, backupRoots) {
+			logger.L.Warn().
+				Uint("rid", vmRID).
+				Str("dataset", preferred).
+				Msg("ignoring_vm_backup_source_inside_backup_root")
+		} else if _, ok := seen[preferred]; !ok {
 			sources = append([]string{preferred}, sources...)
 		} else {
 			sort.SliceStable(sources, func(i, j int) bool {
@@ -718,11 +774,61 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 	}
 
 	sort.Strings(sources)
-	if len(sources) == 0 && preferred != "" {
+	if len(sources) == 0 && preferred != "" && !datasetWithinAnyRoot(preferred, backupRoots) {
 		sources = append(sources, preferred)
+	}
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("vm_source_datasets_not_found")
 	}
 
 	return sources, nil
+}
+
+func (s *Service) listEnabledBackupRoots() []string {
+	if s == nil || s.DB == nil {
+		return []string{}
+	}
+
+	var rawRoots []string
+	if err := s.DB.
+		Model(&clusterModels.BackupTarget{}).
+		Where("enabled = ?", true).
+		Pluck("backup_root", &rawRoots).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("failed_to_list_backup_roots_for_vm_source_resolution")
+		return []string{}
+	}
+
+	seen := make(map[string]struct{}, len(rawRoots))
+	roots := make([]string, 0, len(rawRoots))
+	for _, root := range rawRoots {
+		normalized := normalizeDatasetPath(root)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		roots = append(roots, normalized)
+	}
+
+	sort.Strings(roots)
+	return roots
+}
+
+func datasetWithinAnyRoot(dataset string, roots []string) bool {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" || len(roots) == 0 {
+		return false
+	}
+
+	for _, root := range roots {
+		if datasetWithinRoot(root, dataset) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (s *Service) stopVMIfPresent(rid uint) error {
