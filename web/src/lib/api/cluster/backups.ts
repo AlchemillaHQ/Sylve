@@ -1,5 +1,6 @@
 import {
     BackupJailMetadataInfoSchema,
+    BackupVMMetadataInfoSchema,
     BackupEventSchema,
     BackupEventProgressSchema,
     BackupJobSchema,
@@ -7,6 +8,7 @@ import {
     BackupTargetSchema,
     SnapshotInfoSchema,
     type BackupJailMetadataInfo,
+    type BackupVMMetadataInfo,
     type BackupEvent,
     type BackupEventProgress,
     type BackupJob,
@@ -32,7 +34,7 @@ export type BackupJobInput = {
     name: string;
     targetId: number;
     runnerNodeId: string;
-    mode: 'dataset' | 'jail';
+    mode: 'dataset' | 'jail' | 'vm';
     sourceDataset?: string;
     jailRootDataset?: string;
     destSuffix?: string;
@@ -130,6 +132,12 @@ export async function getBackupTargetJailMetadata(targetId: number, dataset: str
     const params = new URLSearchParams();
     params.set('dataset', dataset);
     return await apiRequest(`/cluster/backups/targets/${targetId}/datasets/jail-metadata?${params.toString()}`, BackupJailMetadataInfoSchema.nullable(), 'GET');
+}
+
+export async function getBackupTargetVMMetadata(targetId: number, dataset: string): Promise<BackupVMMetadataInfo | null> {
+    const params = new URLSearchParams();
+    params.set('dataset', dataset);
+    return await apiRequest(`/cluster/backups/targets/${targetId}/datasets/vm-metadata?${params.toString()}`, BackupVMMetadataInfoSchema.nullable(), 'GET');
 }
 
 export async function restoreBackupFromTarget(targetId: number, input: RestoreFromTargetInput): Promise<APIResponse> {

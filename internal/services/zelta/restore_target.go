@@ -42,14 +42,21 @@ type BackupTargetDatasetInfo struct {
 	Lineage       string `json:"lineage"` // "active" | "rotated" | "preserved" | "other"
 	OutOfBand     bool   `json:"outOfBand"`
 	SnapshotCount int    `json:"snapshotCount"`
-	Kind          string `json:"kind"` // "dataset" | "jail"
+	Kind          string `json:"kind"` // "dataset" | "jail" | "vm"
 	JailCTID      uint   `json:"jailCtId,omitempty"`
+	VMRID         uint   `json:"vmRid,omitempty"`
 }
 
 type BackupJailMetadataInfo struct {
 	CTID     uint   `json:"ctId"`
 	Name     string `json:"name"`
 	BasePool string `json:"basePool"`
+}
+
+type BackupVMMetadataInfo struct {
+	RID   uint     `json:"rid"`
+	Name  string   `json:"name"`
+	Pools []string `json:"pools"`
 }
 
 func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) ([]BackupTargetDatasetInfo, error) {
@@ -99,9 +106,23 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 
 		suffix := relativeDatasetSuffix(target.BackupRoot, dataset)
 		lineage, outOfBand, baseSuffix := classifyDatasetLineage(suffix)
-		kind, jailCTID := inferRestoreDatasetKind(baseSuffix)
-		if kind != clusterModels.BackupJobModeJail {
-			kind, jailCTID = inferRestoreDatasetKind(suffix)
+		kind, guestID := inferRestoreDatasetKind(baseSuffix)
+		if kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM {
+			kind, guestID = inferRestoreDatasetKind(suffix)
+		}
+		if kind == clusterModels.BackupJobModeJail && guestID > 0 {
+			baseSuffix = fmt.Sprintf("jails/%d", guestID)
+		}
+		if kind == clusterModels.BackupJobModeVM && guestID > 0 {
+			baseSuffix = fmt.Sprintf("virtual-machines/%d", guestID)
+		}
+
+		jailCTID := uint(0)
+		vmRID := uint(0)
+		if kind == clusterModels.BackupJobModeJail {
+			jailCTID = guestID
+		} else if kind == clusterModels.BackupJobModeVM {
+			vmRID = guestID
 		}
 
 		datasets = append(datasets, BackupTargetDatasetInfo{
@@ -113,6 +134,7 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 			SnapshotCount: snapCount,
 			Kind:          kind,
 			JailCTID:      jailCTID,
+			VMRID:         vmRID,
 		})
 	}
 
@@ -178,6 +200,34 @@ func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint
 	}
 
 	info, err := s.readRemoteJailMetadata(ctx, &target, remoteDataset, fallbackCTID)
+	if err != nil {
+		return nil, err
+	}
+
+	return info, nil
+}
+
+func (s *Service) GetRemoteTargetVMMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupVMMetadataInfo, error) {
+	target, err := s.getRestoreTarget(targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	remoteDataset = strings.TrimSpace(remoteDataset)
+	if remoteDataset == "" {
+		return nil, fmt.Errorf("remote_dataset_required")
+	}
+	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	suffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
+	kind, fallbackRID := inferRestoreDatasetKind(suffix)
+	if kind != clusterModels.BackupJobModeVM {
+		return nil, nil
+	}
+
+	info, err := s.readRemoteVMMetadata(ctx, &target, remoteDataset, fallbackRID)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +317,119 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	defer s.releaseJob(payload.LockID)
 
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
+	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	restoreSuffix := relativeDatasetSuffix(target.BackupRoot, remoteDataset)
+	kind, vmRID := inferRestoreDatasetKind(restoreSuffix)
+	if kind == clusterModels.BackupJobModeVM && vmRID > 0 {
+		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
+	}
+
+	return s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true)
+}
+
+func (s *Service) runRestoreFromTargetVM(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	payload restoreFromTargetPayload,
+	jobID *uint,
+) error {
+	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
+	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
+	if destinationDataset == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+	if !isValidRestoreDestinationDataset(destinationDataset) {
+		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
+	}
+	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	restoreNetwork := true
+	if payload.RestoreNetwork != nil {
+		restoreNetwork = *payload.RestoreNetwork
+	}
+
+	_, remoteRID := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
+	if remoteRID == 0 {
+		return fmt.Errorf("vm_rid_missing")
+	}
+
+	destKind, destRID := inferRestoreDatasetKind(destinationDataset)
+	if destKind != clusterModels.BackupJobModeVM || destRID == 0 {
+		destRID = remoteRID
+	}
+
+	vmRoots, err := s.listRemoteVMRepresentativeRoots(ctx, target, remoteRID, remoteDataset)
+	if err != nil {
+		return fmt.Errorf("list_remote_vm_roots_failed: %w", err)
+	}
+	if len(vmRoots) == 0 {
+		return fmt.Errorf("remote_vm_roots_not_found")
+	}
+
+	restartVM := false
+	if existingVM, err := s.findVMByRID(destRID); err == nil && existingVM != nil {
+		restartVM = true
+		if err := s.stopVMIfPresent(destRID); err != nil {
+			return fmt.Errorf("failed_to_stop_vm_before_restore: %w", err)
+		}
+	}
+
+	primaryDestination := destinationDataset
+	if kind, _ := inferRestoreDatasetKind(primaryDestination); kind != clusterModels.BackupJobModeVM {
+		primaryDestination = destinationVMRootFromRemoteRoot(target.BackupRoot, vmRoots[0], destRID)
+	}
+
+	seenDestinations := make(map[string]struct{})
+	for _, remoteRoot := range vmRoots {
+		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
+		if localRoot == "" {
+			continue
+		}
+		if _, ok := seenDestinations[localRoot]; ok {
+			continue
+		}
+		seenDestinations[localRoot] = struct{}{}
+
+		runPayload := payload
+		runPayload.RemoteDataset = remoteRoot
+		runPayload.DestinationDataset = localRoot
+		disableNetworkRestore := false
+		runPayload.RestoreNetwork = &disableNetworkRestore
+
+		if err := s.runRestoreFromTargetSingleDataset(ctx, target, runPayload, jobID, false); err != nil {
+			return err
+		}
+	}
+
+	if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, primaryDestination, restoreNetwork); err != nil {
+		return fmt.Errorf("reconcile_restored_vm_failed: %w", err)
+	}
+
+	if restartVM {
+		if err := s.startVMIfPresent(destRID); err != nil {
+			logger.L.Warn().
+				Uint("rid", destRID).
+				Err(err).
+				Msg("failed_to_start_vm_after_restore_continuing_anyway")
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) runRestoreFromTargetSingleDataset(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	payload restoreFromTargetPayload,
+	jobID *uint,
+	reconcileJail bool,
+) error {
+	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
 	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
 	if destinationDataset == "" {
 		return fmt.Errorf("destination_dataset_required")
@@ -308,6 +471,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	restorePath := destinationDataset + ".restoring"
 
 	event := clusterModels.BackupEvent{
+		JobID:          jobID,
 		Mode:           "restore",
 		Status:         "running",
 		SourceDataset:  remoteEndpoint,
@@ -384,7 +548,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
 			}
 
-			time.Sleep(2 * time.Second) // give it some time to stop before we destroy
+			time.Sleep(2 * time.Second)
 		} else {
 			logger.L.Warn().
 				Str("dataset", destinationDataset).
@@ -415,14 +579,16 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 
 	s.fixRestoredProperties(ctx, destinationDataset)
 
-	restoreNetwork := true
-	if payload.RestoreNetwork != nil {
-		restoreNetwork = *payload.RestoreNetwork
-	}
-	if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, destinationDataset, restoreNetwork); err != nil {
-		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+	if reconcileJail {
+		restoreNetwork := true
+		if payload.RestoreNetwork != nil {
+			restoreNetwork = *payload.RestoreNetwork
+		}
+		if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, destinationDataset, restoreNetwork); err != nil {
+			restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+			return restoreErr
+		}
 	}
 
 	s.finalizeRestoreEvent(&event, nil, output)
@@ -446,6 +612,99 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 	return nil
 }
 
+func (s *Service) listRemoteVMRepresentativeRoots(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	vmRID uint,
+	preferred string,
+) ([]string, error) {
+	if vmRID == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+
+	output, err := s.runTargetZFSList(ctx, target, "-t", "filesystem", "-r", "-Hp", "-o", "name", target.BackupRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	bestByBase := make(map[string]string)
+	bestRank := make(map[string]int)
+
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		dataset := normalizeDatasetPath(line)
+		if dataset == "" {
+			continue
+		}
+
+		suffix := relativeDatasetSuffix(target.BackupRoot, dataset)
+		if vmDatasetRoot(suffix) != suffix {
+			continue
+		}
+
+		kind, rid := inferRestoreDatasetKind(suffix)
+		if kind != clusterModels.BackupJobModeVM || rid != vmRID {
+			continue
+		}
+
+		lineage, _, baseSuffix := classifyDatasetLineage(suffix)
+		baseSuffix = vmDatasetRoot(baseSuffix)
+		rank := datasetLineageRank(lineage)
+
+		if existing, ok := bestByBase[baseSuffix]; ok {
+			existingRank := bestRank[baseSuffix]
+			if rank > existingRank {
+				continue
+			}
+			if rank == existingRank && existing <= dataset {
+				continue
+			}
+		}
+
+		bestByBase[baseSuffix] = dataset
+		bestRank[baseSuffix] = rank
+	}
+
+	results := make([]string, 0, len(bestByBase))
+	for _, dataset := range bestByBase {
+		results = append(results, dataset)
+	}
+	sort.Strings(results)
+
+	preferred = normalizeDatasetPath(preferred)
+	if preferred != "" {
+		kind, rid := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, preferred))
+		if kind == clusterModels.BackupJobModeVM && rid == vmRID {
+			present := false
+			for _, dataset := range results {
+				if dataset == preferred {
+					present = true
+					break
+				}
+			}
+			if !present {
+				results = append([]string{preferred}, results...)
+			}
+		}
+	}
+
+	return results, nil
+}
+
+func destinationVMRootFromRemoteRoot(backupRoot, remoteRoot string, vmRID uint) string {
+	suffix := vmDatasetRoot(relativeDatasetSuffix(backupRoot, remoteRoot))
+	parts := strings.Split(suffix, "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" {
+			continue
+		}
+		if vmRID > 0 {
+			parts[idx+1] = strconv.FormatUint(uint64(vmRID), 10)
+		}
+		return normalizeRestoreDestinationDataset(strings.Join(parts[:idx+2], "/"))
+	}
+
+	return normalizeRestoreDestinationDataset(suffix)
+}
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost,
@@ -758,6 +1017,145 @@ func (s *Service) readRemoteJailMetadata(ctx context.Context, target *clusterMod
 	}, nil
 }
 
+func (s *Service) readRemoteVMMetadata(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+	fallbackRID uint,
+) (*BackupVMMetadataInfo, error) {
+	candidates := vmMetadataCandidateDatasets(dataset)
+	for _, candidate := range candidates {
+		metaRaw, err := s.readRemoteDatasetMetadataFile(ctx, target, candidate, ".sylve/vm.json")
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_read_remote_vm_metadata: %w", err)
+		}
+		if strings.TrimSpace(metaRaw) == "" {
+			continue
+		}
+
+		var payload struct {
+			RID      uint   `json:"rid"`
+			Name     string `json:"name"`
+			Storages []struct {
+				Pool string `json:"pool"`
+			} `json:"storages"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(metaRaw)), &payload); err != nil {
+			return nil, fmt.Errorf("invalid_remote_vm_metadata_json: %w", err)
+		}
+
+		rid := payload.RID
+		if rid == 0 {
+			rid = fallbackRID
+		}
+
+		seenPools := make(map[string]struct{})
+		pools := make([]string, 0, len(payload.Storages))
+		for _, storage := range payload.Storages {
+			pool := strings.TrimSpace(storage.Pool)
+			if pool == "" {
+				continue
+			}
+			if _, ok := seenPools[pool]; ok {
+				continue
+			}
+			seenPools[pool] = struct{}{}
+			pools = append(pools, pool)
+		}
+		sort.Strings(pools)
+
+		if rid == 0 && strings.TrimSpace(payload.Name) == "" && len(pools) == 0 {
+			continue
+		}
+
+		return &BackupVMMetadataInfo{
+			RID:   rid,
+			Name:  strings.TrimSpace(payload.Name),
+			Pools: pools,
+		}, nil
+	}
+
+	return nil, nil
+}
+
+func (s *Service) readRemoteDatasetMetadataFile(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+	relativeMetaPath string,
+) (string, error) {
+	mountedOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mounted", dataset)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
+	}
+	mountpointOut, err := s.runTargetSSH(ctx, target, "zfs", "get", "-H", "-o", "value", "mountpoint", dataset)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
+	}
+
+	mounted := strings.EqualFold(strings.TrimSpace(mountedOut), "yes")
+	mountpoint := strings.TrimSpace(mountpointOut)
+	if mountpoint == "" || mountpoint == "-" || mountpoint == "none" || mountpoint == "legacy" {
+		return "", nil
+	}
+
+	mountedByUs := false
+	if !mounted {
+		if _, err := s.runTargetSSH(ctx, target, "zfs", "mount", dataset); err != nil {
+			return "", fmt.Errorf("failed_to_mount_remote_dataset_for_metadata: %w", err)
+		}
+		mountedByUs = true
+	}
+	if mountedByUs {
+		defer func() {
+			_, _ = s.runTargetSSH(context.Background(), target, "zfs", "unmount", dataset)
+		}()
+	}
+
+	metaPath := strings.TrimSuffix(mountpoint, "/") + "/" + strings.TrimLeft(relativeMetaPath, "/")
+	metaRaw, err := s.runTargetSSH(ctx, target, "cat", metaPath)
+	if err != nil {
+		lower := strings.ToLower(strings.TrimSpace(metaRaw) + " " + err.Error())
+		if strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") {
+			return "", nil
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(metaRaw), nil
+}
+
+func vmMetadataCandidateDatasets(dataset string) []string {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return nil
+	}
+
+	out := []string{dataset}
+	root := vmDatasetRoot(dataset)
+	if root != "" && root != dataset {
+		out = append(out, root)
+	}
+	return out
+}
+
+func vmDatasetRoot(dataset string) string {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return ""
+	}
+
+	parts := strings.Split(dataset, "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" {
+			continue
+		}
+		return strings.Join(parts[:idx+2], "/")
+	}
+
+	return dataset
+}
+
 func (s *Service) getRestoreTarget(targetID uint) (clusterModels.BackupTarget, error) {
 	var target clusterModels.BackupTarget
 	if err := s.DB.First(&target, targetID).Error; err != nil {
@@ -900,17 +1298,21 @@ func datasetLineageRank(lineage string) int {
 func inferRestoreDatasetKind(suffix string) (string, uint) {
 	parts := strings.Split(strings.Trim(suffix, "/"), "/")
 	for i := 0; i+1 < len(parts); i++ {
-		if parts[i] != "jails" {
+		segment := strings.TrimSpace(parts[i])
+		if segment != "jails" && segment != "virtual-machines" {
 			continue
 		}
-		if id := extractDatasetCTID(parts[i+1]); id > 0 {
-			return clusterModels.BackupJobModeJail, uint(id)
+		if id := extractDatasetGuestID(parts[i+1]); id > 0 {
+			if segment == "jails" {
+				return clusterModels.BackupJobModeJail, uint(id)
+			}
+			return clusterModels.BackupJobModeVM, uint(id)
 		}
 	}
 	return clusterModels.BackupJobModeDataset, 0
 }
 
-func extractDatasetCTID(raw string) uint64 {
+func extractDatasetGuestID(raw string) uint64 {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0

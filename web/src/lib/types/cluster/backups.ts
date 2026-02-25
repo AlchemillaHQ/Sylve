@@ -19,7 +19,7 @@ export const BackupJobSchema = z.object({
     targetId: z.number(),
     target: BackupTargetSchema.optional(),
     runnerNodeId: z.string().optional().default(''),
-    mode: z.enum(['dataset', 'jail']),
+    mode: z.enum(['dataset', 'jail', 'vm']),
     sourceDataset: z.string().optional().default(''),
     jailRootDataset: z.string().optional().default(''),
     friendlySrc: z.string().optional().default(''),
@@ -76,14 +76,21 @@ export const BackupTargetDatasetInfoSchema = z.object({
     lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
     outOfBand: z.boolean().optional().default(false),
     snapshotCount: z.number().int().nonnegative().default(0),
-    kind: z.enum(['dataset', 'jail']).default('dataset'),
-    jailCtId: z.number().int().nonnegative().optional()
+    kind: z.enum(['dataset', 'jail', 'vm']).default('dataset'),
+    jailCtId: z.number().int().nonnegative().optional(),
+    vmRid: z.number().int().nonnegative().optional()
 });
 
 export const BackupJailMetadataInfoSchema = z.object({
     ctId: z.number().int().nonnegative(),
     name: z.string().default(''),
     basePool: z.string().default('')
+});
+
+export const BackupVMMetadataInfoSchema = z.object({
+    rid: z.number().int().nonnegative(),
+    name: z.string().default(''),
+    pools: z.array(z.string()).default([])
 });
 
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
@@ -93,3 +100,4 @@ export type BackupEventProgress = z.infer<typeof BackupEventProgressSchema>;
 export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
 export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
 export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
+export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;

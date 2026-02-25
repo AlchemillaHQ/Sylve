@@ -352,15 +352,16 @@ func resolveClusterNodeAPI(cS *cluster.Service, nodeID string) (string, error) {
 	return targetAPI, nil
 }
 
-func extractGuestIDFromDatasetPath(dataset string) uint {
+func extractGuestFromDatasetPath(dataset string) (string, uint) {
 	dataset = strings.TrimSpace(dataset)
 	if dataset == "" {
-		return 0
+		return "", 0
 	}
 
 	parts := strings.Split(strings.Trim(dataset, "/"), "/")
 	for idx := 0; idx+1 < len(parts); idx++ {
-		if parts[idx] != "jails" {
+		segment := strings.TrimSpace(parts[idx])
+		if segment != "jails" && segment != "virtual-machines" {
 			continue
 		}
 
@@ -380,11 +381,14 @@ func extractGuestIDFromDatasetPath(dataset string) uint {
 
 		guestID, err := strconv.ParseUint(raw, 10, 64)
 		if err == nil && guestID > 0 {
-			return uint(guestID)
+			if segment == "jails" {
+				return clusterModels.BackupJobModeJail, uint(guestID)
+			}
+			return clusterModels.BackupJobModeVM, uint(guestID)
 		}
 	}
 
-	return 0
+	return "", 0
 }
 
 func containsGuestID(guestIDs []uint, guestID uint) bool {
@@ -546,10 +550,10 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 			return
 		}
 
-		if job.Mode == clusterModels.BackupJobModeJail {
-			guestID := extractGuestIDFromDatasetPath(job.JailRootDataset)
+		if job.Mode == clusterModels.BackupJobModeJail || job.Mode == clusterModels.BackupJobModeVM {
+			_, guestID := extractGuestFromDatasetPath(job.JailRootDataset)
 			if guestID == 0 {
-				guestID = extractGuestIDFromDatasetPath(job.SourceDataset)
+				_, guestID = extractGuestFromDatasetPath(job.SourceDataset)
 			}
 
 			restoreNodeID := runnerNodeID

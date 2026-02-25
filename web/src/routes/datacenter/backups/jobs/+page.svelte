@@ -3,6 +3,7 @@
 		createBackupJob,
 		deleteBackupJob,
 		getBackupTargetJailMetadata,
+		getBackupTargetVMMetadata,
 		listBackupJobs,
 		listBackupTargets,
 		listBackupJobSnapshots,
@@ -28,6 +29,7 @@
 		BackupJob,
 		BackupTarget,
 		BackupTargetDatasetInfo,
+		BackupVMMetadataInfo,
 		SnapshotInfo
 	} from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
@@ -39,10 +41,12 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
+	import { getVMs } from '$lib/api/vm/vm';
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import { storage } from '$lib';
 	import { humanFormatBytes } from '$lib/utils/string';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
+	import type { VM } from '$lib/types/vm/vm';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -54,8 +58,9 @@
 		baseSuffix: string;
 		label: string;
 		representativeDataset: string;
-		kind: 'dataset' | 'jail';
+		kind: 'dataset' | 'jail' | 'vm';
 		jailCtId: number;
+		vmRid: number;
 		totalSnapshots: number;
 	}
 
@@ -85,9 +90,12 @@
 
 	let jails = $state<any[]>([]);
 	let jailsLoading = $state(false);
+	let vms = $state<VM[]>([]);
+	let vmsLoading = $state(false);
 
-	async function loadJails() {
-		if (jails.length > 0 || jailsLoading) return;
+	async function loadJails(force: boolean = false) {
+		if (jailsLoading) return;
+		if (!force && jails.length > 0) return;
 		jailsLoading = true;
 		try {
 			const res = await getJails();
@@ -95,6 +103,19 @@
 			jails = res;
 		} finally {
 			jailsLoading = false;
+		}
+	}
+
+	async function loadVMs(force: boolean = false) {
+		if (vmsLoading) return;
+		if (!force && vms.length > 0) return;
+		vmsLoading = true;
+		try {
+			const res = await getVMs();
+			updateCache('vm-list', res);
+			vms = res;
+		} finally {
+			vmsLoading = false;
 		}
 	}
 
@@ -106,8 +127,12 @@
 		() => jobs.current,
 		(currentJobs) => {
 			const hasJailJobs = currentJobs.some((job) => job.mode === 'jail');
+			const hasVMJobs = currentJobs.some((job) => job.mode === 'vm');
 			if (hasJailJobs && jails.length === 0 && !jailsLoading) {
 				loadJails();
+			}
+			if (hasVMJobs && vms.length === 0 && !vmsLoading) {
+				loadVMs();
 			}
 		}
 	);
@@ -119,7 +144,10 @@
 				jobs.refetch();
 				targets.refetch();
 				if (jails.length > 0) {
-					loadJails();
+					loadJails(true);
+				}
+				if (vms.length > 0) {
+					loadVMs(true);
 				}
 				reload = false;
 			}
@@ -144,9 +172,10 @@
 		name: '',
 		targetId: '',
 		runnerNodeId: '',
-		mode: 'dataset' as 'dataset' | 'jail',
+		mode: 'dataset' as 'dataset' | 'jail' | 'vm',
 		sourceDataset: '',
 		selectedJailId: '',
+		selectedVmId: '',
 		destSuffix: '',
 		pruneKeepLast: '0',
 		pruneTarget: false,
@@ -155,12 +184,58 @@
 		stopBeforeBackup: false
 	});
 
+	function vmStoragePools(vm: VM): string[] {
+		const pools = new Set<string>();
+		for (const storage of vm.storages || []) {
+			const pool = (storage.pool || storage.dataset?.pool || '').trim();
+			if (pool) {
+				pools.add(pool);
+			}
+		}
+		return [...pools];
+	}
+
+	function vmBaseDataset(vm: VM): string {
+		const pools = vmStoragePools(vm);
+		if (pools.length > 0) {
+			return `${pools[0]}/sylve/virtual-machines/${vm.rid}`;
+		}
+
+		for (const storage of vm.storages || []) {
+			const datasetName = storage.dataset?.name || '';
+			const match = datasetName.match(/^(.*\/virtual-machines\/\d+)(?:$|\/)/);
+			if (match) {
+				return match[1];
+			}
+		}
+
+		return '';
+	}
+
 	watch(
 		[() => jobModal.mode, () => jobModal.runnerNodeId, () => jobModal.open],
-		([mode, runnerNodeId, open], [prevMode, prevRunnerNodeId, prevOpen]) => {
-			if (open && mode === 'jail' && runnerNodeId !== '') {
-				storage.hostname = nodes.find((n) => n.nodeUUID === runnerNodeId)?.hostname || '';
-				loadJails();
+		([mode, runnerNodeId, open]) => {
+			if (!open || runnerNodeId === '') return;
+
+			storage.hostname = nodes.find((n) => n.nodeUUID === runnerNodeId)?.hostname || '';
+			if (mode === 'jail') {
+				loadJails(true);
+			}
+			if (mode === 'vm') {
+				loadVMs(true);
+			}
+		}
+	);
+
+	watch(
+		[() => jobModal.mode, () => jobModal.selectedVmId],
+		([mode, selectedVmId]) => {
+			if (mode !== 'vm' || !selectedVmId) return;
+			const selectedVM = vms.find((vm) => vm.id === Number(selectedVmId));
+			if (!selectedVM) return;
+			const dataset = vmBaseDataset(selectedVM);
+			if (dataset) {
+				jobModal.sourceDataset = dataset;
 			}
 		}
 	);
@@ -192,6 +267,7 @@
 		datasets: [] as BackupTargetDatasetInfo[],
 		snapshots: [] as SnapshotInfo[],
 		jailMetadata: null as BackupJailMetadataInfo | null,
+		vmMetadata: null as BackupVMMetadataInfo | null,
 		error: ''
 	});
 	let restoreClusterDetails = $state<ClusterDetails | null>(null);
@@ -225,6 +301,9 @@
 				switch (value) {
 					case 'jail':
 						v = { name: 'Jail', icon: 'hugeicons:prison' };
+						break;
+					case 'vm':
+						v = { name: 'VM', icon: 'mdi:desktop-tower-monitor' };
 						break;
 					case 'dataset':
 						v = { name: 'Dataset', icon: 'mdi:database' };
@@ -314,6 +393,15 @@
 			});
 			if (jail) {
 				return jail.name;
+			}
+		}
+		if (mode === 'vm' && vms.length > 0 && dataset) {
+			const parsed = parseGuestFromDatasetPath(dataset);
+			if (parsed.kind === 'vm' && parsed.id > 0) {
+				const vm = vms.find((entry) => entry.rid === parsed.id);
+				if (vm) {
+					return vm.name;
+				}
 			}
 		}
 		return dataset || '';
@@ -441,8 +529,9 @@
 			{
 				baseSuffix: string;
 				datasets: BackupTargetDatasetInfo[];
-				kind: 'dataset' | 'jail';
+				kind: 'dataset' | 'jail' | 'vm';
 				jailCtId: number;
+				vmRid: number;
 				totalSnapshots: number;
 			}
 		>();
@@ -457,6 +546,7 @@
 					datasets: [dataset],
 					kind: dataset.kind || 'dataset',
 					jailCtId: dataset.jailCtId || 0,
+					vmRid: dataset.vmRid || 0,
 					totalSnapshots: dataset.snapshotCount || 0
 				});
 				continue;
@@ -470,6 +560,12 @@
 			if (!existing.jailCtId && dataset.jailCtId) {
 				existing.jailCtId = dataset.jailCtId;
 			}
+			if (existing.kind !== 'vm' && dataset.kind === 'vm') {
+				existing.kind = 'vm';
+			}
+			if (!existing.vmRid && dataset.vmRid) {
+				existing.vmRid = dataset.vmRid;
+			}
 		}
 
 		const out: RestoreTargetDatasetGroup[] = [];
@@ -480,6 +576,8 @@
 			const displayBase =
 				grouped.kind === 'jail' && grouped.jailCtId > 0
 					? `jails/${grouped.jailCtId}`
+					: grouped.kind === 'vm' && grouped.vmRid > 0
+						? `virtual-machines/${grouped.vmRid}`
 					: grouped.baseSuffix;
 
 			out.push({
@@ -488,6 +586,7 @@
 				representativeDataset: representative.name,
 				kind: grouped.kind,
 				jailCtId: grouped.jailCtId,
+				vmRid: grouped.vmRid,
 				totalSnapshots: grouped.totalSnapshots
 			});
 		}
@@ -502,6 +601,21 @@
 			value: dataset.representativeDataset,
 			label: formatRestoreTargetDatasetLabel(dataset)
 		}))
+	);
+
+	let selectedRestoreTargetDatasetGroup = $derived.by(
+		() =>
+			visibleRestoreTargetDatasets.find(
+				(dataset) => dataset.representativeDataset === restoreTargetModal.dataset
+			) || null
+	);
+
+	let selectedRestoreTargetDatasetKind = $derived.by(
+		() => selectedRestoreTargetDatasetGroup?.kind || 'dataset'
+	);
+
+	let restoreTargetSupportsNetworkRestore = $derived.by(
+		() => selectedRestoreTargetDatasetKind === 'jail' || selectedRestoreTargetDatasetKind === 'vm'
 	);
 
 	let restoreTargetSnapshotOptions = $derived(
@@ -586,7 +700,8 @@
 
 	let modeOptions = [
 		{ value: 'dataset', label: 'Single Dataset' },
-		{ value: 'jail', label: 'Jail' }
+		{ value: 'jail', label: 'Jail' },
+		{ value: 'vm', label: 'Virtual Machine' }
 	];
 
 	let jailOptions = $derived([
@@ -595,6 +710,17 @@
 			label: jail.name
 		}))
 	]);
+
+	let vmOptions = $derived(
+		vms.map((vm) => {
+			const pools = vmStoragePools(vm);
+			const poolLabel = pools.length > 0 ? ` [${pools.join(', ')}]` : '';
+			return {
+				value: String(vm.id),
+				label: `${vm.name} (RID ${vm.rid})${poolLabel}`
+			};
+		})
+	);
 
 	function resetJobModal() {
 		jobModal.open = false;
@@ -605,6 +731,7 @@
 		jobModal.mode = 'dataset';
 		jobModal.sourceDataset = '';
 		jobModal.selectedJailId = '';
+		jobModal.selectedVmId = '';
 		jobModal.destSuffix = '';
 		jobModal.pruneKeepLast = '0';
 		jobModal.pruneTarget = false;
@@ -628,12 +755,15 @@
 		jobModal.name = job.name;
 		jobModal.targetId = String(job.targetId);
 		jobModal.runnerNodeId = job.runnerNodeId || nodes[0]?.nodeUUID || '';
-		jobModal.mode = (job.mode as 'dataset' | 'jail') || 'dataset';
+		storage.hostname = nodes.find((n) => n.nodeUUID === jobModal.runnerNodeId)?.hostname || '';
+		jobModal.mode = (job.mode as 'dataset' | 'jail' | 'vm') || 'dataset';
 		jobModal.sourceDataset = job.sourceDataset || '';
+		jobModal.selectedJailId = '';
+		jobModal.selectedVmId = '';
 
 		// Load jails if in jail mode
 		if (job.mode === 'jail') {
-			await loadJails();
+			await loadJails(true);
 			// Try to find the jail by matching the jailRootDataset
 			if (job.jailRootDataset) {
 				const matchingJail = jails.find((j: any) => {
@@ -646,8 +776,13 @@
 				});
 				jobModal.selectedJailId = matchingJail ? String(matchingJail.id) : '';
 			}
-		} else {
-			jobModal.selectedJailId = '';
+		} else if (job.mode === 'vm') {
+			await loadVMs(true);
+			const parsed = parseGuestFromDatasetPath(job.sourceDataset || '');
+			if (parsed.kind === 'vm' && parsed.id > 0) {
+				const matchingVM = vms.find((vm) => vm.rid === parsed.id);
+				jobModal.selectedVmId = matchingVM ? String(matchingVM.id) : '';
+			}
 		}
 
 		jobModal.destSuffix = job.destSuffix || '';
@@ -679,6 +814,10 @@
 			toast.error('Jail selection is required for jail mode', { position: 'bottom-center' });
 			return;
 		}
+		if (jobModal.mode === 'vm' && !jobModal.selectedVmId) {
+			toast.error('VM selection is required for VM mode', { position: 'bottom-center' });
+			return;
+		}
 
 		const pruneKeepLast = Number.parseInt(jobModal.pruneKeepLast || '0', 10);
 		if (Number.isNaN(pruneKeepLast) || pruneKeepLast < 0) {
@@ -698,12 +837,34 @@
 			}
 		}
 
+		let vmDataset = '';
+		if (jobModal.mode === 'vm' && jobModal.selectedVmId) {
+			const selectedVM = vms.find((vm) => vm.id === Number(jobModal.selectedVmId));
+			if (!selectedVM) {
+				toast.error('Selected VM was not found', { position: 'bottom-center' });
+				return;
+			}
+
+			vmDataset = vmBaseDataset(selectedVM);
+			if (!vmDataset) {
+				toast.error('Unable to resolve a VM dataset root for the selected VM', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+		}
+
 		const payload: BackupJobInput = {
 			name: jobModal.name,
 			targetId: Number(jobModal.targetId),
 			runnerNodeId: jobModal.runnerNodeId,
 			mode: jobModal.mode,
-			sourceDataset: jobModal.mode === 'dataset' ? jobModal.sourceDataset : '',
+			sourceDataset:
+				jobModal.mode === 'dataset'
+					? jobModal.sourceDataset
+					: jobModal.mode === 'vm'
+						? vmDataset
+						: '',
 			jailRootDataset: jobModal.mode === 'jail' ? jailDataset : '',
 			destSuffix: jobModal.destSuffix,
 			pruneKeepLast,
@@ -760,12 +921,27 @@
 		toast.error('Failed to run job', { position: 'bottom-center' });
 	}
 
-	function parseGuestIDFromDatasetPath(dataset: string): number {
-		const match = dataset.match(/\/jails\/(\d+)(?:$|[/.])/);
-		if (!match) return 0;
-		const parsed = Number.parseInt(match[1], 10);
-		if (Number.isNaN(parsed) || parsed <= 0) return 0;
-		return parsed;
+	function parseGuestFromDatasetPath(dataset: string): {
+		kind: 'dataset' | 'jail' | 'vm';
+		id: number;
+	} {
+		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|[/.])/);
+		if (jailMatch) {
+			const parsed = Number.parseInt(jailMatch[1], 10);
+			if (!Number.isNaN(parsed) && parsed > 0) {
+				return { kind: 'jail', id: parsed };
+			}
+		}
+
+		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/);
+		if (vmMatch) {
+			const parsed = Number.parseInt(vmMatch[1], 10);
+			if (!Number.isNaN(parsed) && parsed > 0) {
+				return { kind: 'vm', id: parsed };
+			}
+		}
+
+		return { kind: 'dataset', id: 0 };
 	}
 
 	function nodeLabelByID(nodeId: string): string {
@@ -788,7 +964,8 @@
 
 	async function ensureGuestIDPlacementForRestore(
 		guestID: number,
-		restoreNodeID: string
+		restoreNodeID: string,
+		kind: 'jail' | 'vm'
 	): Promise<boolean> {
 		if (guestID <= 0) return true;
 
@@ -816,7 +993,8 @@
 				? conflicts.map((node) => nodeLabelByID(node.id)).join(', ')
 				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
 
-		toast.error(`Jail ${guestID} already exists on ${conflictLabels}.`, {
+		const guestLabel = kind === 'vm' ? 'VM' : 'Jail';
+		toast.error(`${guestLabel} ${guestID} already exists on ${conflictLabels}.`, {
 			position: 'bottom-center'
 		});
 		return false;
@@ -850,10 +1028,13 @@
 
 		try {
 			const selectedJob = jobs.current.find((job) => job.id === selectedJobId) || null;
-			if (selectedJob?.mode === 'jail') {
-				const guestID =
-					parseGuestIDFromDatasetPath(selectedJob.jailRootDataset || '') ||
-					parseGuestIDFromDatasetPath(selectedJob.sourceDataset || '');
+			if (selectedJob?.mode === 'jail' || selectedJob?.mode === 'vm') {
+				const primaryDataset =
+					selectedJob.mode === 'jail'
+						? selectedJob.jailRootDataset || selectedJob.sourceDataset || ''
+						: selectedJob.sourceDataset || selectedJob.jailRootDataset || '';
+				const parsedGuest = parseGuestFromDatasetPath(primaryDataset);
+				const guestID = parsedGuest.id;
 
 				if (guestID > 0) {
 					const details = restoreClusterDetails || (await loadRestoreClusterDetails());
@@ -862,7 +1043,14 @@
 						(details?.leaderId || '').trim() ||
 						(details?.nodeId || '').trim();
 
-					if (!(await ensureGuestIDPlacementForRestore(guestID, restoreNodeID))) {
+					if (
+						parsedGuest.kind !== 'dataset' &&
+						!(await ensureGuestIDPlacementForRestore(
+							guestID,
+							restoreNodeID,
+							parsedGuest.kind
+						))
+					) {
 						restoreModal.restoring = false;
 						return;
 					}
@@ -903,18 +1091,38 @@
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
+		restoreTargetModal.vmMetadata = null;
 		restoreTargetModal.error = '';
 		restoreClusterDetails = null;
 	}
 
 	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
 		if (!target) return '';
-		const jailMatch = dataset.match(/\/jails\/(\d+)(?:$|\/)/);
+		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|\/)/);
 		if (!jailMatch) return '';
 		const ctid = jailMatch[1];
 		const pool = target.backupRoot.split('/')[0] || '';
 		if (!pool) return '';
 		return `${pool}/sylve/jails/${ctid}`;
+	}
+
+	function inferVMDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
+		if (!target) return '';
+		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|\/)/);
+		if (!vmMatch) return '';
+		const rid = vmMatch[1];
+
+		let pool = '';
+		const datasetPoolMatch = dataset.match(/(?:^|\/)([^/]+)\/sylve\/virtual-machines\/\d+(?:$|\/)/);
+		if (datasetPoolMatch) {
+			pool = datasetPoolMatch[1];
+		}
+		if (!pool) {
+			pool = target.backupRoot.split('/')[0] || '';
+		}
+		if (!pool) return '';
+
+		return `${pool}/sylve/virtual-machines/${rid}`;
 	}
 
 	async function openRestoreFromTargetModal() {
@@ -929,6 +1137,7 @@
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
+		restoreTargetModal.vmMetadata = null;
 		restoreClusterDetails = null;
 
 		const details = await loadRestoreClusterDetails();
@@ -958,6 +1167,7 @@
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
+		restoreTargetModal.vmMetadata = null;
 
 		try {
 			const datasets = await listBackupTargetDatasets(targetId);
@@ -1006,14 +1216,23 @@
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
+		restoreTargetModal.vmMetadata = null;
 
 		const selectedTarget = targets.current.find((t) => t.id === targetId);
-		restoreTargetModal.destinationDataset = inferJailDestinationDataset(selectedTarget, dataset);
+		const parsedSourceGuest = parseGuestFromDatasetPath(dataset);
+		if (parsedSourceGuest.kind === 'jail') {
+			restoreTargetModal.destinationDataset = inferJailDestinationDataset(selectedTarget, dataset);
+		} else if (parsedSourceGuest.kind === 'vm') {
+			restoreTargetModal.destinationDataset = inferVMDestinationDataset(selectedTarget, dataset);
+		} else {
+			restoreTargetModal.destinationDataset = '';
+		}
 
 		try {
-			const [snapshots, metadata] = await Promise.all([
+			const [snapshots, jailMetadata, vmMetadata] = await Promise.all([
 				listBackupTargetDatasetSnapshots(targetId, dataset),
-				getBackupTargetJailMetadata(targetId, dataset)
+				getBackupTargetJailMetadata(targetId, dataset),
+				getBackupTargetVMMetadata(targetId, dataset)
 			]);
 			restoreTargetModal.snapshots = snapshots;
 			if (snapshots.length > 0) {
@@ -1023,9 +1242,16 @@
 				restoreTargetModal.snapshot = '';
 			}
 
-			restoreTargetModal.jailMetadata = metadata;
-			if (metadata?.basePool && metadata?.ctId) {
-				restoreTargetModal.destinationDataset = `${metadata.basePool}/sylve/jails/${metadata.ctId}`;
+			restoreTargetModal.jailMetadata = jailMetadata;
+			restoreTargetModal.vmMetadata = vmMetadata;
+			if (jailMetadata?.basePool && jailMetadata?.ctId) {
+				restoreTargetModal.destinationDataset = `${jailMetadata.basePool}/sylve/jails/${jailMetadata.ctId}`;
+			}
+			if (vmMetadata?.rid) {
+				const pool = vmMetadata.pools?.[0] || selectedTarget?.backupRoot.split('/')[0] || '';
+				if (pool) {
+					restoreTargetModal.destinationDataset = `${pool}/sylve/virtual-machines/${vmMetadata.rid}`;
+				}
 			}
 		} catch (e: any) {
 			restoreTargetModal.error = e?.message || 'Failed to load dataset details';
@@ -1055,13 +1281,23 @@
 
 		restoreTargetModal.restoring = true;
 		try {
-			const guestID =
+			const destinationGuest = parseGuestFromDatasetPath(restoreTargetModal.destinationDataset);
+			const metadataGuest =
 				restoreTargetModal.jailMetadata?.ctId ||
-				parseGuestIDFromDatasetPath(restoreTargetModal.destinationDataset);
+				restoreTargetModal.vmMetadata?.rid ||
+				0;
+			const guestID = destinationGuest.id || metadataGuest;
+			const guestKind: 'jail' | 'vm' =
+				destinationGuest.kind === 'vm' ||
+				(destinationGuest.kind === 'dataset' && !!restoreTargetModal.vmMetadata?.rid)
+					? 'vm'
+					: 'jail';
+
 			if (guestID > 0) {
 				const allowed = await ensureGuestIDPlacementForRestore(
 					guestID,
-					restoreTargetModal.restoreNodeId.trim()
+					restoreTargetModal.restoreNodeId.trim(),
+					guestKind
 				);
 				if (!allowed) {
 					restoreTargetModal.restoring = false;
@@ -1238,7 +1474,7 @@
 						bind:value={jobModal.sourceDataset}
 						classes="space-y-1"
 					/>
-				{:else}
+				{:else if jobModal.mode === 'jail'}
 					<SimpleSelect
 						label="Jail"
 						placeholder={jails.length === 0 ? 'No jails available' : 'Select jail'}
@@ -1246,6 +1482,15 @@
 						bind:value={jobModal.selectedJailId}
 						onChange={() => {}}
 						disabled={jails.length === 0}
+					/>
+				{:else}
+					<SimpleSelect
+						label="Virtual Machine"
+						placeholder={vms.length === 0 ? 'No VMs available' : 'Select VM'}
+						options={vmOptions}
+						bind:value={jobModal.selectedVmId}
+						onChange={() => {}}
+						disabled={vms.length === 0}
 					/>
 				{/if}
 
@@ -1303,6 +1548,15 @@
 							Jail <code class="rounded bg-background px-1"
 								>{selectedJail?.name || '(not selected)'}</code
 							> will be backed up
+						</li>
+					{:else if jobModal.mode === 'vm'}
+						{@const selectedVM = vms.find((vm) => vm.id === Number(jobModal.selectedVmId))}
+						<li>
+							VM <code class="rounded bg-background px-1">{selectedVM?.name || '(not selected)'}</code>
+							will be backed up
+						</li>
+						<li>
+							RID: <code class="rounded bg-background px-1">{selectedVM?.rid || '(unknown)'}</code>
 						</li>
 					{:else}
 						<li>
@@ -1570,17 +1824,25 @@
 
 					<CustomValueInput
 						label="Destination Dataset"
-						placeholder="zroot/sylve/jails/105"
+						placeholder={selectedRestoreTargetDatasetKind === 'vm'
+							? 'zroot/sylve/virtual-machines/104'
+							: selectedRestoreTargetDatasetKind === 'jail'
+								? 'zroot/sylve/jails/105'
+								: 'pool/path'}
 						bind:value={restoreTargetModal.destinationDataset}
 						classes="space-y-1"
 					/>
 				</div>
 
-				<CustomCheckbox
-					label="Restore Jail Network Config"
-					bind:checked={restoreTargetModal.restoreNetwork}
-					classes="flex items-center gap-2"
-				/>
+				{#if restoreTargetSupportsNetworkRestore}
+					<CustomCheckbox
+						label={selectedRestoreTargetDatasetKind === 'vm'
+							? 'Restore VM Network Config'
+							: 'Restore Jail Network Config'}
+						bind:checked={restoreTargetModal.restoreNetwork}
+						classes="flex items-center gap-2"
+					/>
+				{/if}
 
 			{#if restoreTargetModal.jailMetadata}
 				<div class="rounded-md border bg-muted/40 p-3 text-sm">
@@ -1600,6 +1862,32 @@
 							Base Pool:
 							<code class="rounded bg-background px-1"
 								>{restoreTargetModal.jailMetadata.basePool || '-'}</code
+							>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			{#if restoreTargetModal.vmMetadata}
+				<div class="rounded-md border bg-muted/40 p-3 text-sm">
+					<p class="font-medium">Detected VM Metadata</p>
+					<div class="mt-2 grid grid-cols-1 gap-1 text-muted-foreground md:grid-cols-3">
+						<div>
+							Name:
+							<code class="rounded bg-background px-1"
+								>{restoreTargetModal.vmMetadata.name || '-'}</code
+							>
+						</div>
+						<div>
+							RID:
+							<code class="rounded bg-background px-1">{restoreTargetModal.vmMetadata.rid}</code>
+						</div>
+						<div>
+							Pools:
+							<code class="rounded bg-background px-1"
+								>{restoreTargetModal.vmMetadata.pools?.length
+									? restoreTargetModal.vmMetadata.pools.join(', ')
+									: '-'}</code
 							>
 						</div>
 					</div>

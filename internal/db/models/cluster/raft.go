@@ -333,5 +333,5 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 }
 
 func validBackupJobMode(mode string) bool {
-	return mode == BackupJobModeDataset || mode == BackupJobModeJail
+	return mode == BackupJobModeDataset || mode == BackupJobModeJail || mode == BackupJobModeVM
 }

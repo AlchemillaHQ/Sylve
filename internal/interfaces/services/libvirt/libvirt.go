@@ -83,6 +83,7 @@ type LibvirtServiceInterface interface {
 	GetVMXML(rid uint) (string, error)
 	IsDomainInactive(rid uint) (bool, error)
 	GetDomainState(rid int) (libvirt.DomainState, error)
+	WriteVMJson(rid uint) error
 
 	CheckVersion() error
 	IsVirtualizationEnabled() bool

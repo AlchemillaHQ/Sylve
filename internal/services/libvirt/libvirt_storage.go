@@ -45,10 +45,6 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 		return fmt.Errorf("pool_not_found: %s", storage.Pool)
 	}
 
-	if target.Free < uint64(storage.Size) {
-		return fmt.Errorf("insufficient_space_in_pool: %s", storage.Pool)
-	}
-
 	var datasets []*gzfs.Dataset
 
 	if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
@@ -80,6 +76,10 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 	var dataset *gzfs.Dataset
 
 	if len(datasets) == 0 {
+		if target.Free < uint64(storage.Size) {
+			return fmt.Errorf("insufficient_space_in_pool: %s", storage.Pool)
+		}
+
 		var recordSize string
 		if storage.RecordSize != 0 {
 			recordSize = strconv.Itoa(storage.RecordSize)
@@ -135,12 +135,20 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 		imagePath := filepath.Join(dataset.Mountpoint, fmt.Sprintf("%d.img", storage.ID))
 		if _, err := os.Stat(imagePath); err == nil {
 			logger.L.Info().Msgf("Disk image %s already exists, skipping creation", imagePath)
-			return nil
+		} else {
+			if err := utils.CreateOrTruncateFile(imagePath, storage.Size); err != nil {
+				_ = dataset.Destroy(ctx, true, false)
+				return fmt.Errorf("failed_to_create_or_truncate_image_file: %w", err)
+			}
 		}
+	}
 
-		if err := utils.CreateOrTruncateFile(imagePath, storage.Size); err != nil {
-			_ = dataset.Destroy(ctx, true, false)
-			return fmt.Errorf("failed_to_create_or_truncate_image_file: %w", err)
+	if storage.DatasetID != nil && *storage.DatasetID > 0 {
+		var existingDataset vmModels.VMStorageDataset
+		if err := s.DB.First(&existingDataset, "id = ?", *storage.DatasetID).Error; err == nil {
+			if strings.TrimSpace(existingDataset.Name) == strings.TrimSpace(dataset.Name) {
+				return nil
+			}
 		}
 	}
 

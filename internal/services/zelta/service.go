@@ -14,13 +14,16 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -47,6 +50,7 @@ type Service struct {
 	Cluster *cluster.Service
 	Jail    jailServiceInterfaces.JailServiceInterface
 	Network networkServiceInterfaces.NetworkServiceInterface
+	VM      libvirtServiceInterfaces.LibvirtServiceInterface
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -70,14 +74,38 @@ func NewService(
 	clusterService *cluster.Service,
 	jailService jailServiceInterfaces.JailServiceInterface,
 	networkService networkServiceInterfaces.NetworkServiceInterface,
+	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
 ) *Service {
 	return &Service{
 		DB:          db,
 		Cluster:     clusterService,
 		Jail:        jailService,
 		Network:     networkService,
+		VM:          vmService,
 		runningJobs: make(map[uint]struct{}),
 	}
+}
+
+func (s *Service) findVMByRID(rid uint) (*vmModels.VM, error) {
+	if s == nil || s.DB == nil || rid == 0 {
+		return nil, nil
+	}
+
+	var vm vmModels.VM
+	if err := s.DB.
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("CPUPinning").
+		Where("rid = ?", rid).
+		First(&vm).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &vm, nil
 }
 
 func (s *Service) Backup(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
@@ -323,6 +351,13 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			s.updateBackupJobResult(job, runErr)
 			return runErr
 		}
+	case clusterModels.BackupJobModeVM:
+		sourceDataset = strings.TrimSpace(job.SourceDataset)
+		if sourceDataset == "" {
+			runErr := fmt.Errorf("source_dataset_required")
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
 	default:
 		runErr := fmt.Errorf("invalid_backup_job_mode")
 		s.updateBackupJobResult(job, runErr)
@@ -331,11 +366,27 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 	event.SourceDataset = sourceDataset
 
-	destSuffix := strings.TrimSpace(job.DestSuffix)
-	if destSuffix == "" {
-		destSuffix = autoDestSuffix(sourceDataset)
+	vmRID := uint(0)
+	vmSourceDatasets := []string{}
+	if job.Mode == clusterModels.BackupJobModeVM {
+		_, parsedRID := inferRestoreDatasetKind(sourceDataset)
+		vmRID = parsedRID
+		if vmRID == 0 {
+			runErr := fmt.Errorf("invalid_vm_source_dataset")
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
+
+		sources, err := s.resolveVMBackupSourceDatasets(ctx, vmRID, sourceDataset)
+		if err != nil {
+			runErr := fmt.Errorf("resolve_vm_backup_sources_failed: %w", err)
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
+		vmSourceDatasets = sources
 	}
 
+	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
 	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
 	if err := s.DB.Create(&event).Error; err != nil {
 		runErr := fmt.Errorf("create_backup_event_failed: %w", err)
@@ -392,24 +443,48 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				output = appendOutput(output, runErr.Error())
 				return runErr
 			}
+		} else if job.Mode == clusterModels.BackupJobModeVM {
+			if vmRID == 0 {
+				runErr = fmt.Errorf("invalid_vm_rid_for_stop")
+				output = appendOutput(output, runErr.Error())
+				return runErr
+			}
+			if err := s.stopVMIfPresent(vmRID); err != nil {
+				runErr = fmt.Errorf("failed_to_stop_vm: %w", err)
+				output = appendOutput(output, runErr.Error())
+				return runErr
+			}
 		}
 	}
 
-	output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
-	if runErr == nil {
-		outcome := classifyBackupOutput(output)
-		if code := outcome.errorCode(); code != "" {
-			runErr = errors.New(code)
-		} else if outcome == backupOutputUpToDate {
-			logger.L.Info().
-				Uint("job_id", job.ID).
-				Str("source", sourceDataset).
-				Str("target", event.TargetEndpoint).
-				Msg("backup_up_to_date_noop")
+	if job.Mode == clusterModels.BackupJobModeVM {
+		for idx, vmSource := range vmSourceDatasets {
+			vmDestSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), vmSource)
+			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
+			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID)
+			output = appendOutput(output, partOutput)
+			if partErr != nil {
+				runErr = partErr
+				break
+			}
+		}
+	} else {
+		output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
+		if runErr == nil {
+			outcome := classifyBackupOutput(output)
+			if code := outcome.errorCode(); code != "" {
+				runErr = errors.New(code)
+			} else if outcome == backupOutputUpToDate {
+				logger.L.Info().
+					Uint("job_id", job.ID).
+					Str("source", sourceDataset).
+					Str("target", event.TargetEndpoint).
+					Msg("backup_up_to_date_noop")
+			}
 		}
 	}
 
-	if runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
+	if job.Mode != clusterModels.BackupJobModeVM && runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
 		logger.L.Info().
 			Uint("job_id", job.ID).
 			Str("source", sourceDataset).
@@ -492,7 +567,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 	}
 
-	if runErr == nil && job.PruneKeepLast > 0 {
+	if job.Mode != clusterModels.BackupJobModeVM && runErr == nil && job.PruneKeepLast > 0 {
 		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
 		output = appendOutput(output, pruneOutput)
 
@@ -549,10 +624,135 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_restart_jail_after_backup")
 				output = appendOutput(output, fmt.Sprintf("failed_to_restart_jail: %s", err))
 			}
+		} else if job.Mode == clusterModels.BackupJobModeVM {
+			if vmRID == 0 {
+				runErr = fmt.Errorf("invalid_vm_rid_for_restart")
+				output = appendOutput(output, runErr.Error())
+				return runErr
+			}
+			if err := s.startVMIfPresent(vmRID); err != nil {
+				logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_restart_vm_after_backup")
+				output = appendOutput(output, fmt.Sprintf("failed_to_restart_vm: %s", err))
+			}
 		}
 	}
 
 	return runErr
+}
+
+func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset string) string {
+	configuredSuffix = normalizeDatasetPath(configuredSuffix)
+	sourceDataset = normalizeDatasetPath(sourceDataset)
+
+	if mode == clusterModels.BackupJobModeVM {
+		if sourceDataset == "" {
+			return configuredSuffix
+		}
+		if configuredSuffix == "" {
+			return sourceDataset
+		}
+		return configuredSuffix + "/" + sourceDataset
+	}
+
+	if configuredSuffix != "" {
+		return configuredSuffix
+	}
+
+	return autoDestSuffix(sourceDataset)
+}
+
+func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint, preferred string) ([]string, error) {
+	if vmRID == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+
+	output, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-t", "filesystem", "-o", "name")
+	if err != nil {
+		preferred = normalizeDatasetPath(preferred)
+		if preferred == "" {
+			return nil, err
+		}
+		return []string{preferred}, nil
+	}
+
+	sources := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		dataset := normalizeDatasetPath(line)
+		if dataset == "" {
+			continue
+		}
+
+		kind, rid := inferRestoreDatasetKind(dataset)
+		if kind != clusterModels.BackupJobModeVM || rid != vmRID {
+			continue
+		}
+		if vmDatasetRoot(dataset) != dataset {
+			continue
+		}
+		if _, ok := seen[dataset]; ok {
+			continue
+		}
+		seen[dataset] = struct{}{}
+		sources = append(sources, dataset)
+	}
+
+	preferred = normalizeDatasetPath(preferred)
+	if preferred != "" {
+		if _, ok := seen[preferred]; !ok {
+			sources = append([]string{preferred}, sources...)
+		} else {
+			sort.SliceStable(sources, func(i, j int) bool {
+				if sources[i] == preferred {
+					return true
+				}
+				if sources[j] == preferred {
+					return false
+				}
+				return sources[i] < sources[j]
+			})
+			return sources, nil
+		}
+	}
+
+	sort.Strings(sources)
+	if len(sources) == 0 && preferred != "" {
+		sources = append(sources, preferred)
+	}
+
+	return sources, nil
+}
+
+func (s *Service) stopVMIfPresent(rid uint) error {
+	if rid == 0 || s.VM == nil {
+		return nil
+	}
+
+	vm, err := s.findVMByRID(rid)
+	if err != nil {
+		return err
+	}
+	if vm == nil {
+		return nil
+	}
+
+	return s.VM.LvVMAction(*vm, "stop")
+}
+
+func (s *Service) startVMIfPresent(rid uint) error {
+	if rid == 0 || s.VM == nil {
+		return nil
+	}
+
+	vm, err := s.findVMByRID(rid)
+	if err != nil {
+		return err
+	}
+	if vm == nil {
+		return nil
+	}
+
+	return s.VM.LvVMAction(*vm, "start")
 }
 
 func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int) ([]string, error) {

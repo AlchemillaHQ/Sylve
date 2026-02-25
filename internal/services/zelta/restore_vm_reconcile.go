@@ -1,0 +1,498 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package zelta
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
+	"gorm.io/gorm"
+)
+
+func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
+	dataset = normalizeRestoreDestinationDataset(dataset)
+	if dataset == "" {
+		return nil
+	}
+
+	kind, fallbackRID := inferRestoreDatasetKind(dataset)
+	if kind != clusterModels.BackupJobModeVM || fallbackRID == 0 {
+		return nil
+	}
+
+	restored, err := s.readLocalRestoredVMMetadata(ctx, dataset, fallbackRID)
+	if err != nil {
+		return err
+	}
+	if restored == nil {
+		return fmt.Errorf("restored_vm_metadata_not_found")
+	}
+	if restored.RID == 0 {
+		restored.RID = fallbackRID
+	}
+	if restored.RID == 0 {
+		return fmt.Errorf("restored_vm_rid_missing")
+	}
+
+	rid := restored.RID
+	if strings.TrimSpace(restored.Name) == "" {
+		restored.Name = fmt.Sprintf("vm-%d", rid)
+	}
+	if restored.CPUSockets < 1 {
+		restored.CPUSockets = 1
+	}
+	if restored.CPUCores < 1 {
+		restored.CPUCores = 1
+	}
+	if restored.CPUThreads < 1 {
+		restored.CPUThreads = 1
+	}
+	if restored.ShutdownWaitTime < 1 {
+		restored.ShutdownWaitTime = 10
+	}
+	if strings.TrimSpace(string(restored.TimeOffset)) == "" {
+		restored.TimeOffset = vmModels.TimeOffsetUTC
+	}
+
+	restored.ID = 0
+	restored.CreatedAt = restored.CreatedAt.UTC().AddDate(-1000, 0, 0)
+	restored.UpdatedAt = restored.UpdatedAt.UTC().AddDate(-1000, 0, 0)
+	restored.State = 0
+	restored.StartedAt = nil
+	restored.StoppedAt = nil
+	restored.CPUPinning = []vmModels.VMCPUPinning{}
+	restored.PCIDevices = []int{}
+
+	requiresSwitchSync := false
+	reconciledVMID := uint(0)
+
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
+		normalizedStorages, err := s.normalizeRestoredVMStorages(ctx, tx, rid, restored.Storages)
+		if err != nil {
+			return err
+		}
+
+		normalizedNetworks := []vmModels.Network{}
+		if restoreNetwork {
+			networks, switchSync, err := s.normalizeRestoredVMNetworks(tx, rid, restored.Networks)
+			if err != nil {
+				return err
+			}
+			normalizedNetworks = networks
+			requiresSwitchSync = requiresSwitchSync || switchSync
+		}
+
+		baseVM := vmModels.VM{
+			Name:                   strings.TrimSpace(restored.Name),
+			Description:            restored.Description,
+			RID:                    rid,
+			CPUSockets:             restored.CPUSockets,
+			CPUCores:               restored.CPUCores,
+			CPUThreads:             restored.CPUThreads,
+			RAM:                    restored.RAM,
+			TPMEmulation:           restored.TPMEmulation,
+			ShutdownWaitTime:       restored.ShutdownWaitTime,
+			Serial:                 restored.Serial,
+			VNCEnabled:             restored.VNCEnabled,
+			VNCPort:                restored.VNCPort,
+			VNCPassword:            restored.VNCPassword,
+			VNCResolution:          restored.VNCResolution,
+			VNCWait:                restored.VNCWait,
+			StartAtBoot:            restored.StartAtBoot,
+			StartOrder:             restored.StartOrder,
+			WoL:                    restored.WoL,
+			TimeOffset:             restored.TimeOffset,
+			ACPI:                   restored.ACPI,
+			APIC:                   restored.APIC,
+			CloudInitData:          restored.CloudInitData,
+			CloudInitMetaData:      restored.CloudInitMetaData,
+			CloudInitNetworkConfig: restored.CloudInitNetworkConfig,
+			IgnoreUMSR:             restored.IgnoreUMSR,
+			QemuGuestAgent:         restored.QemuGuestAgent,
+		}
+
+		var existing vmModels.VM
+		existingFound := true
+		if err := tx.Where("rid = ?", rid).First(&existing).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				existingFound = false
+			} else {
+				return fmt.Errorf("failed_to_lookup_existing_vm_by_rid: %w", err)
+			}
+		}
+
+		if existingFound {
+			if err := tx.Model(&existing).Select(
+				"Name",
+				"Description",
+				"CPUSockets",
+				"CPUCores",
+				"CPUThreads",
+				"RAM",
+				"TPMEmulation",
+				"ShutdownWaitTime",
+				"Serial",
+				"VNCEnabled",
+				"VNCPort",
+				"VNCPassword",
+				"VNCResolution",
+				"VNCWait",
+				"StartAtBoot",
+				"StartOrder",
+				"WoL",
+				"TimeOffset",
+				"ACPI",
+				"APIC",
+				"CloudInitData",
+				"CloudInitMetaData",
+				"CloudInitNetworkConfig",
+				"IgnoreUMSR",
+				"QemuGuestAgent",
+			).Updates(&baseVM).Error; err != nil {
+				return fmt.Errorf("failed_to_update_restored_vm_record: %w", err)
+			}
+			reconciledVMID = existing.ID
+		} else {
+			if err := tx.Create(&baseVM).Error; err != nil {
+				return fmt.Errorf("failed_to_create_restored_vm_record: %w", err)
+			}
+			reconciledVMID = baseVM.ID
+		}
+
+		if reconciledVMID == 0 {
+			return fmt.Errorf("restored_vm_id_missing")
+		}
+
+		if err := tx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.VMCPUPinning{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_restored_vm_cpu_pinning: %w", err)
+		}
+		if err := tx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.Network{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_restored_vm_networks: %w", err)
+		}
+		if err := tx.Where("vm_id = ?", reconciledVMID).Delete(&vmModels.Storage{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_restored_vm_storages: %w", err)
+		}
+
+		for _, storage := range normalizedStorages {
+			if storage.ID == 0 {
+				continue
+			}
+			var conflictCount int64
+			if err := tx.Model(&vmModels.Storage{}).
+				Where("id = ? AND vm_id <> ?", storage.ID, reconciledVMID).
+				Count(&conflictCount).Error; err != nil {
+				return fmt.Errorf("failed_to_validate_restored_vm_storage_id: %w", err)
+			}
+			if conflictCount > 0 {
+				return fmt.Errorf("restored_vm_storage_id_conflict: %d", storage.ID)
+			}
+		}
+
+		for i := range normalizedStorages {
+			normalizedStorages[i].VMID = reconciledVMID
+		}
+		if len(normalizedStorages) > 0 {
+			if err := tx.Create(&normalizedStorages).Error; err != nil {
+				return fmt.Errorf("failed_to_insert_restored_vm_storages: %w", err)
+			}
+		}
+
+		for i := range normalizedNetworks {
+			normalizedNetworks[i].ID = 0
+			normalizedNetworks[i].VMID = reconciledVMID
+		}
+		if len(normalizedNetworks) > 0 {
+			if err := tx.Create(&normalizedNetworks).Error; err != nil {
+				return fmt.Errorf("failed_to_insert_restored_vm_networks: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if requiresSwitchSync && s.Network != nil {
+		if err := s.Network.SyncStandardSwitches(nil, "sync"); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("rid", rid).
+				Msg("failed_to_sync_standard_switches_after_vm_restore_reconcile")
+		}
+	}
+
+	if s.VM != nil {
+		if err := s.VM.RemoveLvVm(rid); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("rid", rid).
+				Msg("failed_to_remove_existing_vm_domain_before_restore_reconcile")
+		}
+
+		cloudInitData := restored.CloudInitData
+		cloudInitMeta := restored.CloudInitMetaData
+		cloudInitNetwork := restored.CloudInitNetworkConfig
+		hadCloudInit := strings.TrimSpace(cloudInitData) != "" ||
+			strings.TrimSpace(cloudInitMeta) != "" ||
+			strings.TrimSpace(cloudInitNetwork) != ""
+
+		if hadCloudInit {
+			if err := s.DB.Model(&vmModels.VM{}).
+				Where("id = ?", reconciledVMID).
+				Updates(map[string]any{
+					"cloud_init_data":           "",
+					"cloud_init_meta_data":      "",
+					"cloud_init_network_config": "",
+				}).Error; err != nil {
+				return fmt.Errorf("failed_to_temporarily_clear_vm_cloud_init_before_domain_rebuild: %w", err)
+			}
+		}
+
+		if err := s.VM.CreateLvVm(int(reconciledVMID), ctx); err != nil {
+			return fmt.Errorf("failed_to_rebuild_restored_vm_domain: %w", err)
+		}
+
+		if hadCloudInit {
+			if err := s.DB.Model(&vmModels.VM{}).
+				Where("id = ?", reconciledVMID).
+				Updates(map[string]any{
+					"cloud_init_data":           cloudInitData,
+					"cloud_init_meta_data":      cloudInitMeta,
+					"cloud_init_network_config": cloudInitNetwork,
+				}).Error; err != nil {
+				return fmt.Errorf("failed_to_restore_vm_cloud_init_after_domain_rebuild: %w", err)
+			}
+		}
+
+		if err := s.VM.WriteVMJson(rid); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("rid", rid).
+				Msg("failed_to_write_vm_json_after_restore_reconcile")
+		}
+	}
+
+	logger.L.Info().
+		Uint("rid", rid).
+		Str("dataset", dataset).
+		Msg("restored_vm_reconciled")
+
+	return nil
+}
+
+func (s *Service) normalizeRestoredVMStorages(
+	ctx context.Context,
+	tx *gorm.DB,
+	rid uint,
+	storages []vmModels.Storage,
+) ([]vmModels.Storage, error) {
+	out := make([]vmModels.Storage, 0, len(storages))
+
+	for _, storage := range storages {
+		cleaned := vmModels.Storage{
+			ID:           storage.ID,
+			Type:         storage.Type,
+			Name:         strings.TrimSpace(storage.Name),
+			DownloadUUID: strings.TrimSpace(storage.DownloadUUID),
+			Pool:         strings.TrimSpace(storage.Pool),
+			Size:         storage.Size,
+			Emulation:    storage.Emulation,
+			RecordSize:   storage.RecordSize,
+			VolBlockSize: storage.VolBlockSize,
+			BootOrder:    storage.BootOrder,
+		}
+
+		if cleaned.Type == vmModels.VMStorageTypeDiskImage {
+			cleaned.DatasetID = nil
+			out = append(out, cleaned)
+			continue
+		}
+
+		if cleaned.Pool == "" {
+			return nil, fmt.Errorf("restored_vm_storage_pool_missing_for_id_%d", cleaned.ID)
+		}
+
+		var datasetName string
+		switch cleaned.Type {
+		case vmModels.VMStorageTypeRaw:
+			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", cleaned.Pool, rid, cleaned.ID)
+		case vmModels.VMStorageTypeZVol:
+			datasetName = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", cleaned.Pool, rid, cleaned.ID)
+		default:
+			return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
+		}
+
+		if _, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", datasetName); err != nil {
+			return nil, fmt.Errorf("restored_vm_storage_dataset_not_found: %s", datasetName)
+		}
+
+		guid, err := s.runLocalZFSGet(ctx, "guid", datasetName)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_read_restored_vm_storage_dataset_guid: %w", err)
+		}
+
+		storageDataset := vmModels.VMStorageDataset{
+			Pool: cleaned.Pool,
+			Name: datasetName,
+			GUID: strings.TrimSpace(guid),
+		}
+
+		var existing vmModels.VMStorageDataset
+		if err := tx.Where("name = ?", datasetName).First(&existing).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("failed_to_lookup_restored_vm_storage_dataset: %w", err)
+			}
+
+			if err := tx.Create(&storageDataset).Error; err != nil {
+				return nil, fmt.Errorf("failed_to_create_restored_vm_storage_dataset: %w", err)
+			}
+			cleaned.DatasetID = &storageDataset.ID
+		} else {
+			updates := map[string]any{
+				"pool": storageDataset.Pool,
+				"guid": storageDataset.GUID,
+			}
+			if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+				return nil, fmt.Errorf("failed_to_update_restored_vm_storage_dataset: %w", err)
+			}
+			cleaned.DatasetID = &existing.ID
+		}
+
+		out = append(out, cleaned)
+	}
+
+	return out, nil
+}
+
+func (s *Service) normalizeRestoredVMNetworks(
+	tx *gorm.DB,
+	rid uint,
+	networks []vmModels.Network,
+) ([]vmModels.Network, bool, error) {
+	if len(networks) == 0 {
+		return []vmModels.Network{}, false, nil
+	}
+
+	jailLike := make([]jailModels.Network, 0, len(networks))
+	emulationByName := make(map[string]string)
+
+	for idx, network := range networks {
+		name := fmt.Sprintf("restored-vm-%d-network-%d", rid, idx+1)
+		emulation := strings.TrimSpace(network.Emulation)
+		if emulation == "" {
+			emulation = "virtio"
+		}
+		emulationByName[name] = emulation
+
+		jailLike = append(jailLike, jailModels.Network{
+			Name:           name,
+			SwitchID:       network.SwitchID,
+			SwitchType:     network.SwitchType,
+			StandardSwitch: network.StandardSwitch,
+			ManualSwitch:   network.ManualSwitch,
+			MacID:          network.MacID,
+			MacAddressObj:  network.AddressObj,
+		})
+	}
+
+	normalized, requiresSwitchSync, err := s.normalizeRestoredJailNetworks(tx, rid, 0, jailLike)
+	if err != nil {
+		return nil, false, err
+	}
+
+	out := make([]vmModels.Network, 0, len(normalized))
+	for _, net := range normalized {
+		emulation := emulationByName[net.Name]
+		if emulation == "" {
+			emulation = "virtio"
+		}
+
+		out = append(out, vmModels.Network{
+			SwitchID:   net.SwitchID,
+			SwitchType: net.SwitchType,
+			MacID:      net.MacID,
+			Emulation:  emulation,
+		})
+	}
+
+	return out, requiresSwitchSync, nil
+}
+
+func (s *Service) readLocalRestoredVMMetadata(
+	ctx context.Context,
+	dataset string,
+	fallbackRID uint,
+) (*vmModels.VM, error) {
+	candidates := vmMetadataCandidateDatasets(dataset)
+	for _, candidate := range candidates {
+		metaRaw, err := s.readLocalDatasetMetadataFile(ctx, candidate, ".sylve/vm.json")
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(metaRaw) == "" {
+			continue
+		}
+
+		var restored vmModels.VM
+		if err := json.Unmarshal([]byte(metaRaw), &restored); err != nil {
+			return nil, fmt.Errorf("invalid_restored_vm_metadata_json: %w", err)
+		}
+		if restored.RID == 0 {
+			restored.RID = fallbackRID
+		}
+		return &restored, nil
+	}
+
+	return nil, nil
+}
+
+func (s *Service) readLocalDatasetMetadataFile(ctx context.Context, dataset string, relativeMetaPath string) (string, error) {
+	mountedOut, err := s.runLocalZFSGet(ctx, "mounted", dataset)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
+	}
+	mountpointOut, err := s.runLocalZFSGet(ctx, "mountpoint", dataset)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
+	}
+
+	mounted := strings.EqualFold(strings.TrimSpace(mountedOut), "yes")
+	mountPoint := strings.TrimSpace(mountpointOut)
+	if mountPoint == "" || mountPoint == "-" || mountPoint == "none" || mountPoint == "legacy" {
+		return "", nil
+	}
+
+	if !mounted {
+		if _, err := utils.RunCommandWithContext(ctx, "zfs", "mount", dataset); err != nil {
+			return "", fmt.Errorf("failed_to_mount_restored_dataset: %w", err)
+		}
+	}
+
+	metaPath := filepath.Join(strings.TrimSuffix(mountPoint, "/"), strings.TrimLeft(relativeMetaPath, "/"))
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed_to_read_restored_dataset_metadata_file: %w", err)
+	}
+
+	return strings.TrimSpace(string(raw)), nil
+}

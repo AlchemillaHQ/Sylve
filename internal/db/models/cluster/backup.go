@@ -19,6 +19,7 @@ import (
 const (
 	BackupJobModeDataset = "dataset"
 	BackupJobModeJail    = "jail"
+	BackupJobModeVM      = "vm"
 )
 
 // BackupTarget represents a remote ZFS host reachable via SSH for Zelta replication.

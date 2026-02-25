@@ -20,6 +20,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -404,7 +405,9 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 	if mode == "" {
 		mode = clusterModels.BackupJobModeDataset
 	}
-	if mode != clusterModels.BackupJobModeDataset && mode != clusterModels.BackupJobModeJail {
+	if mode != clusterModels.BackupJobModeDataset &&
+		mode != clusterModels.BackupJobModeJail &&
+		mode != clusterModels.BackupJobModeVM {
 		return nil, fmt.Errorf("invalid_mode")
 	}
 
@@ -472,6 +475,13 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		job.SourceDataset = ""
 	}
 
+	if mode == clusterModels.BackupJobModeVM {
+		if job.SourceDataset == "" {
+			return nil, fmt.Errorf("source_dataset_required")
+		}
+		job.JailRootDataset = ""
+	}
+
 	job.FriendlySrc = s.resolveBackupJobFriendlySource(job.Mode, job.SourceDataset, job.JailRootDataset)
 
 	if !next.IsZero() {
@@ -484,6 +494,30 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 func (s *Service) resolveBackupJobFriendlySource(mode, sourceDataset, jailRootDataset string) string {
 	if mode == clusterModels.BackupJobModeDataset {
 		return strings.TrimSpace(sourceDataset)
+	}
+
+	if mode == clusterModels.BackupJobModeVM {
+		vmDataset := strings.TrimSpace(sourceDataset)
+		if vmDataset == "" {
+			return ""
+		}
+
+		rid, ok := parseVMRIDFromDataset(vmDataset)
+		if !ok {
+			return vmDataset
+		}
+
+		var vm vmModels.VM
+		if err := s.DB.Select("name").Where("rid = ?", rid).First(&vm).Error; err == nil {
+			name := strings.TrimSpace(vm.Name)
+			if name != "" {
+				return name
+			}
+		} else {
+			logger.L.Err(err).Msg("failed_to_lookup_vm_for_backup_job_friendly_source")
+		}
+
+		return vmDataset
 	}
 
 	jailDataset := strings.TrimSpace(jailRootDataset)
@@ -527,6 +561,41 @@ func parseJailCTIDFromDataset(dataset string) (uint, bool) {
 	}
 
 	return uint(ctID), true
+}
+
+func parseVMRIDFromDataset(dataset string) (uint, bool) {
+	dataset = strings.TrimSpace(dataset)
+	if dataset == "" {
+		return 0, false
+	}
+
+	parts := strings.Split(strings.Trim(dataset, "/"), "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" {
+			continue
+		}
+
+		ridRaw := strings.TrimSpace(parts[idx+1])
+		if ridRaw == "" {
+			continue
+		}
+
+		cutAt := len(ridRaw)
+		if split := strings.IndexAny(ridRaw, "._"); split > 0 && split < cutAt {
+			cutAt = split
+		}
+		ridRaw = strings.TrimSpace(ridRaw[:cutAt])
+		if ridRaw == "" {
+			continue
+		}
+
+		rid, err := strconv.ParseUint(ridRaw, 10, 64)
+		if err == nil && rid > 0 {
+			return uint(rid), true
+		}
+	}
+
+	return 0, false
 }
 
 func validateBackupTargetInput(input clusterServiceInterfaces.BackupTargetReq) error {

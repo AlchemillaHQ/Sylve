@@ -445,6 +445,52 @@ func BackupTargetDatasetJailMetadata(zS *zelta.Service) gin.HandlerFunc {
 	}
 }
 
+func BackupTargetDatasetVMMetadata(zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_target_id",
+				Error:   "invalid_target_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		dataset := strings.TrimSpace(c.Query("dataset"))
+		if dataset == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "remote_dataset_required",
+				Error:   "dataset query parameter is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		defer cancel()
+
+		meta, err := zS.GetRemoteTargetVMMetadata(ctx, uint(id64), dataset)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "read_vm_metadata_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*zelta.BackupVMMetadataInfo]{
+			Status:  "success",
+			Message: "vm_metadata_read",
+			Data:    meta,
+		})
+	}
+}
+
 func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -517,7 +563,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			restoreNetwork = *req.RestoreNetwork
 		}
 
-		guestID := extractGuestIDFromDatasetPath(req.DestinationDataset)
+		_, guestID := extractGuestFromDatasetPath(req.DestinationDataset)
 		if guestID > 0 {
 			if err := validateGuestIDRestorePlacement(cS, guestID, restoreNodeID); err != nil {
 				status := http.StatusConflict

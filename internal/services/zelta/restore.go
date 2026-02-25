@@ -121,6 +121,10 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		return fmt.Errorf("source_dataset_required")
 	}
 
+	if job.Mode == clusterModels.BackupJobModeVM {
+		return s.runRestoreVMJob(ctx, job, snapshot, remoteDataset, sourceDataset)
+	}
+
 	if strings.TrimSpace(remoteDataset) == "" {
 		remoteDataset = remoteDatasetForJob(job)
 	}
@@ -291,6 +295,34 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	return nil
 }
 
+func (s *Service) runRestoreVMJob(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	snapshot string,
+	remoteDataset string,
+	sourceDataset string,
+) error {
+	if strings.TrimSpace(remoteDataset) == "" {
+		remoteDataset = remoteDatasetForJob(job)
+	}
+	remoteDataset = strings.TrimSpace(remoteDataset)
+	if !datasetWithinRoot(job.Target.BackupRoot, remoteDataset) {
+		return fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	restoreNetwork := true
+	payload := restoreFromTargetPayload{
+		TargetID:           job.TargetID,
+		RemoteDataset:      remoteDataset,
+		Snapshot:           strings.TrimSpace(snapshot),
+		DestinationDataset: normalizeRestoreDestinationDataset(sourceDataset),
+		RestoreNetwork:     &restoreNetwork,
+	}
+
+	jobID := job.ID
+	return s.runRestoreFromTargetVM(ctx, &job.Target, payload, &jobID)
+}
+
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
 // behaves like the original (not readonly, correct mountpoint, canmount=on).
 func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
@@ -350,7 +382,10 @@ func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 		if job.Mode == clusterModels.BackupJobModeJail {
 			sourceDataset = job.JailRootDataset
 		}
-		destSuffix = autoDestSuffix(sourceDataset)
+		destSuffix = normalizeDatasetPath(sourceDataset)
+		if job.Mode != clusterModels.BackupJobModeVM {
+			destSuffix = autoDestSuffix(sourceDataset)
+		}
 	}
 
 	remoteDataset := strings.TrimSpace(job.Target.BackupRoot)
@@ -478,8 +513,11 @@ func filterSnapshotsForRestoreJob(
 	}
 
 	expectedSuffix := normalizeDatasetPath(autoDestSuffix(sourceDataset))
-	kind, expectedCTID := inferRestoreDatasetKind(expectedSuffix)
-	if kind != clusterModels.BackupJobModeJail || expectedCTID == 0 {
+	if job.Mode == clusterModels.BackupJobModeVM {
+		expectedSuffix = normalizeDatasetPath(sourceDataset)
+	}
+	kind, expectedGuestID := inferRestoreDatasetKind(expectedSuffix)
+	if (kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM) || expectedGuestID == 0 {
 		return snapshots
 	}
 
@@ -495,8 +533,8 @@ func filterSnapshotsForRestoreJob(
 
 		suffix := relativeDatasetSuffix(backupRoot, dataset)
 		_, _, baseSuffix := classifyDatasetLineage(suffix)
-		baseKind, baseCTID := inferRestoreDatasetKind(baseSuffix)
-		if baseKind != clusterModels.BackupJobModeJail || baseCTID != expectedCTID {
+		baseKind, baseGuestID := inferRestoreDatasetKind(baseSuffix)
+		if baseKind != kind || baseGuestID != expectedGuestID {
 			continue
 		}
 
