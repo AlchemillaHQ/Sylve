@@ -528,32 +528,36 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return restoreErr
 	}
 
+	destinationKind, _ := inferRestoreDatasetKind(destinationDataset)
+	isJailDestination := destinationKind == clusterModels.BackupJobModeJail
+
 	var ctId uint
 
 	_, existErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", destinationDataset)
 	if existErr == nil {
-		var err error
-
-		ctId, err = s.Jail.GetJailCTIDFromDataset(destinationDataset)
-		if err == nil {
-			logger.L.Info().
-				Uint("ct_id", ctId).
-				Str("dataset", destinationDataset).
-				Msg("stopping_jail_before_restore")
-
-			if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
-				logger.L.Warn().
+		if isJailDestination {
+			var err error
+			ctId, err = s.Jail.GetJailCTIDFromDataset(destinationDataset)
+			if err == nil {
+				logger.L.Info().
 					Uint("ct_id", ctId).
-					Err(err).
-					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
-			}
+					Str("dataset", destinationDataset).
+					Msg("stopping_jail_before_restore")
 
-			time.Sleep(2 * time.Second)
-		} else {
-			logger.L.Warn().
-				Str("dataset", destinationDataset).
-				Err(err).
-				Msg("failed_to_get_jail_ctid_from_existing_dataset_before_restore_continuing_anyway")
+				if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
+					logger.L.Warn().
+						Uint("ct_id", ctId).
+						Err(err).
+						Msg("failed_to_stop_jail_before_restore_continuing_anyway")
+				}
+
+				time.Sleep(2 * time.Second)
+			} else {
+				logger.L.Warn().
+					Str("dataset", destinationDataset).
+					Err(err).
+					Msg("failed_to_get_jail_ctid_from_existing_dataset_before_restore_continuing_anyway")
+			}
 		}
 
 		_, destroyErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", destinationDataset)
@@ -599,7 +603,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		Str("dataset", destinationDataset).
 		Msg("target_dataset_restore_completed")
 
-	if ctId != 0 {
+	if isJailDestination && ctId != 0 {
 		err := s.Jail.JailAction(int(ctId), "start")
 		if err != nil {
 			logger.L.Warn().
@@ -616,7 +620,7 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
 	vmRID uint,
-	preferred string,
+	_ string,
 ) ([]string, error) {
 	if vmRID == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
@@ -629,6 +633,7 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 
 	bestByBase := make(map[string]string)
 	bestRank := make(map[string]int)
+	bestDepth := make(map[string]int)
 
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		dataset := normalizeDatasetPath(line)
@@ -647,10 +652,26 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 		}
 
 		lineage, _, baseSuffix := classifyDatasetLineage(suffix)
-		baseSuffix = vmDatasetRoot(baseSuffix)
+		baseRoot := vmDatasetRoot(baseSuffix)
+		baseSuffix = canonicalVMDatasetRoot(baseRoot, vmRID)
+		if baseSuffix == "" {
+			baseSuffix = baseRoot
+		}
 		rank := datasetLineageRank(lineage)
+		depth := len(strings.Split(suffix, "/"))
 
 		if existing, ok := bestByBase[baseSuffix]; ok {
+			existingDepth := bestDepth[baseSuffix]
+			if depth > existingDepth {
+				continue
+			}
+			if depth < existingDepth {
+				bestByBase[baseSuffix] = dataset
+				bestRank[baseSuffix] = rank
+				bestDepth[baseSuffix] = depth
+				continue
+			}
+
 			existingRank := bestRank[baseSuffix]
 			if rank > existingRank {
 				continue
@@ -662,6 +683,7 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 
 		bestByBase[baseSuffix] = dataset
 		bestRank[baseSuffix] = rank
+		bestDepth[baseSuffix] = depth
 	}
 
 	results := make([]string, 0, len(bestByBase))
@@ -670,40 +692,60 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	}
 	sort.Strings(results)
 
-	preferred = normalizeDatasetPath(preferred)
-	if preferred != "" {
-		kind, rid := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, preferred))
-		if kind == clusterModels.BackupJobModeVM && rid == vmRID {
-			present := false
-			for _, dataset := range results {
-				if dataset == preferred {
-					present = true
-					break
-				}
-			}
-			if !present {
-				results = append([]string{preferred}, results...)
-			}
-		}
-	}
-
 	return results, nil
 }
 
 func destinationVMRootFromRemoteRoot(backupRoot, remoteRoot string, vmRID uint) string {
-	suffix := vmDatasetRoot(relativeDatasetSuffix(backupRoot, remoteRoot))
-	parts := strings.Split(suffix, "/")
+	suffix := canonicalVMDatasetRoot(vmDatasetRoot(relativeDatasetSuffix(backupRoot, remoteRoot)), vmRID)
+	return normalizeRestoreDestinationDataset(suffix)
+}
+
+func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return ""
+	}
+
+	parts := strings.Split(dataset, "/")
+	vmIdx := -1
 	for idx := 0; idx+1 < len(parts); idx++ {
 		if parts[idx] != "virtual-machines" {
 			continue
 		}
-		if vmRID > 0 {
-			parts[idx+1] = strconv.FormatUint(uint64(vmRID), 10)
+		rid := extractDatasetGuestID(parts[idx+1])
+		if rid == 0 {
+			continue
 		}
-		return normalizeRestoreDestinationDataset(strings.Join(parts[:idx+2], "/"))
+		if vmRID > 0 && rid != uint64(vmRID) {
+			continue
+		}
+		vmIdx = idx
+	}
+	if vmIdx < 0 {
+		return dataset
 	}
 
-	return normalizeRestoreDestinationDataset(suffix)
+	ridPart := parts[vmIdx+1]
+	if vmRID > 0 {
+		ridPart = strconv.FormatUint(uint64(vmRID), 10)
+	} else if rid := extractDatasetGuestID(ridPart); rid > 0 {
+		ridPart = strconv.FormatUint(rid, 10)
+	}
+
+	for idx := vmIdx - 1; idx > 0; idx-- {
+		if parts[idx] != "sylve" {
+			continue
+		}
+		pool := strings.TrimSpace(parts[idx-1])
+		if pool == "" {
+			break
+		}
+		return normalizeDatasetPath(strings.Join([]string{pool, "sylve", "virtual-machines", ridPart}, "/"))
+	}
+
+	root := append([]string{}, parts[:vmIdx+2]...)
+	root[vmIdx+1] = ridPart
+	return normalizeDatasetPath(strings.Join(root, "/"))
 }
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
 	sshArgs := s.buildSSHArgs(target)

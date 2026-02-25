@@ -164,6 +164,7 @@
 
 	let modalState = $state({
 		isDeleteOpen: false,
+		forceDelete: false,
 		deleteMACs: true,
 		deleteRAWDisks: false,
 		deleteVolumes: false,
@@ -176,33 +177,56 @@
 		}
 	});
 
+	function openDeleteModal(forceDelete: boolean = false) {
+		modalState.forceDelete = forceDelete;
+		modalState.deleteMACs = true;
+		modalState.deleteRAWDisks = forceDelete;
+		modalState.deleteVolumes = forceDelete;
+		modalState.title = `${vm.current.name} (${vm.current.rid})`;
+		modalState.isDeleteOpen = true;
+	}
+
 	async function handleDelete() {
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
-		modalState.loading.title = 'Deleting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
+		modalState.loading.title = modalState.forceDelete
+			? 'Force Deleting Virtual Machine'
+			: 'Deleting Virtual Machine';
+		modalState.loading.description = modalState.forceDelete
+			? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
+			: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
 
 		await sleep(1000);
 		const result = await deleteVM(
 			vm.current.rid,
 			modalState.deleteMACs,
 			modalState.deleteRAWDisks,
-			modalState.deleteVolumes
+			modalState.deleteVolumes,
+			modalState.forceDelete
 		);
 		modalState.loading.open = false;
 		reload.leftPanel = true;
+		const wasForceDelete = modalState.forceDelete;
+		modalState.forceDelete = false;
 
 		if (result.status === 'error') {
-			toast.error('Error deleting VM', {
+			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
 			goto(`/${storage.hostname}/summary`);
-			toast.success('VM deleted', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
+				toast.warning('VM force deleted with warnings', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else {
+				toast.success(wasForceDelete ? 'VM force deleted' : 'VM deleted', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
 		}
 	}
 
@@ -325,11 +349,18 @@
 		return '';
 	});
 
+	let normalizedDomainStatus = $derived.by(() =>
+		String(domain.current?.status || '')
+			.trim()
+			.toLowerCase()
+	);
+	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
+
 	let activeGaView = $state('os');
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && domain.current.id == -1 && domain.current.status !== 'Running'}
+	{#if type === 'start' && domain.current.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
@@ -340,16 +371,22 @@
 		</Button>
 
 		<Button
-			onclick={() => {
-				modalState.isDeleteOpen = true;
-				modalState.title = `${vm.current.name} (${vm.current.rid})`;
-			}}
+			onclick={() => openDeleteModal(false)}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
 			<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 
 			{'Delete'}
+		</Button>
+	{:else if type === 'force-delete' && isDomainErrorState}
+		<Button
+			onclick={() => openDeleteModal(true)}
+			size="sm"
+			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
+		>
+			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
+			{'Force Delete'}
 		</Button>
 	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && domain.current.id !== -1 && domain.current.status === 'Running'}
 		<Button
@@ -381,6 +418,7 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{@render button('start')}
+		{@render button('force-delete')}
 		{@render button('reboot')}
 		{@render button('shutdown')}
 		{@render button('stop')}
@@ -661,39 +699,50 @@
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
 	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
 		<AlertDialogRaw.Header>
-			<AlertDialogRaw.Title>Are you sure?</AlertDialogRaw.Title>
+			<AlertDialogRaw.Title>{modalState.forceDelete ? 'Force Delete VM?' : 'Are you sure?'}</AlertDialogRaw.Title>
 			<AlertDialogRaw.Description>
-				{`This will permanently delete VM`}
+				{modalState.forceDelete
+					? `This will force delete VM`
+					: `This will permanently delete VM`}
 				<span class="font-semibold">{modalState?.title}.</span>
+				{#if modalState.forceDelete}
+					<div class="mt-2 text-sm">
+						Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM
+						network objects. Partial failures will be tolerated.
+					</div>
+				{:else}
+					<div class="flex flex-row space-x-4">
+						<CustomCheckbox
+							label="Delete MAC Object(s)"
+							bind:checked={modalState.deleteMACs}
+							classes="flex items-center gap-2 mt-4"
+						></CustomCheckbox>
 
-				<div class="flex flex-row space-x-4">
-					<CustomCheckbox
-						label="Delete MAC Object(s)"
-						bind:checked={modalState.deleteMACs}
-						classes="flex items-center gap-2 mt-4"
-					></CustomCheckbox>
+						<CustomCheckbox
+							label="Delete RAW Disk(s)"
+							bind:checked={modalState.deleteRAWDisks}
+							classes="flex items-center gap-2 mt-4"
+						></CustomCheckbox>
 
-					<CustomCheckbox
-						label="Delete RAW Disk(s)"
-						bind:checked={modalState.deleteRAWDisks}
-						classes="flex items-center gap-2 mt-4"
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label="Delete Volume(s)"
-						bind:checked={modalState.deleteVolumes}
-						classes="flex items-center gap-2 mt-4"
-					></CustomCheckbox>
-				</div>
+						<CustomCheckbox
+							label="Delete Volume(s)"
+							bind:checked={modalState.deleteVolumes}
+							classes="flex items-center gap-2 mt-4"
+						></CustomCheckbox>
+					</div>
+				{/if}
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
 		<AlertDialogRaw.Footer>
 			<AlertDialogRaw.Cancel
 				onclick={() => {
 					modalState.isDeleteOpen = false;
+					modalState.forceDelete = false;
 				}}>Cancel</AlertDialogRaw.Cancel
 			>
-			<AlertDialogRaw.Action onclick={handleDelete}>Continue</AlertDialogRaw.Action>
+			<AlertDialogRaw.Action onclick={handleDelete}
+				>{modalState.forceDelete ? 'Force Delete' : 'Continue'}</AlertDialogRaw.Action
+			>
 		</AlertDialogRaw.Footer>
 	</AlertDialogRaw.Content>
 </AlertDialogRaw.Root>

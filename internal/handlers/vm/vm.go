@@ -10,6 +10,7 @@ package libvirtHandlers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -269,6 +270,66 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 				Message: "invalid_vm_id_format",
 				Data:    nil,
 				Error:   "Virtual Machine ID must be a valid integer",
+			})
+			return
+		}
+
+		forceDelete := false
+		forceDeleteStr := strings.TrimSpace(c.DefaultQuery("force", "false"))
+		if forceDeleteStr != "" {
+			forceDelete, err = strconv.ParseBool(forceDeleteStr)
+			if err != nil {
+				c.JSON(400, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_force_param",
+					Error:   "invalid 'force' value: " + err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+		}
+
+		if forceDelete {
+			deleteMacs := true
+			deleteMacsStr := strings.TrimSpace(c.Query("deletemacs"))
+			if deleteMacsStr != "" {
+				parsedDeleteMacs, parseErr := strconv.ParseBool(deleteMacsStr)
+				if parseErr != nil {
+					c.JSON(400, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "invalid_deletemacs_param",
+						Error:   "invalid 'deletemacs' value: " + parseErr.Error(),
+						Data:    nil,
+					})
+					return
+				}
+				deleteMacs = parsedDeleteMacs
+			}
+
+			ctx := c.Request.Context()
+			warnings, removeErr := libvirtService.ForceRemoveVM(uint(vmInt), deleteMacs, ctx)
+			if removeErr != nil {
+				c.JSON(500, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_force_remove_vm",
+					Data:    nil,
+					Error:   "failed_to_force_remove_vm: " + removeErr.Error(),
+				})
+				return
+			}
+
+			message := "vm_force_removed"
+			if len(warnings) > 0 {
+				message = "vm_force_removed_with_warnings"
+			}
+
+			c.JSON(200, internal.APIResponse[map[string]any]{
+				Status:  "success",
+				Message: message,
+				Data: map[string]any{
+					"warnings": warnings,
+				},
+				Error: "",
 			})
 			return
 		}

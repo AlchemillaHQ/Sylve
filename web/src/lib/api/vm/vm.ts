@@ -73,10 +73,11 @@ export async function deleteVM(
     rid: number,
     deleteMacs: boolean,
     deleteRawDisks: boolean,
-    deleteVolumes: boolean
+    deleteVolumes: boolean,
+    forceDelete: boolean = false
 ): Promise<APIResponse> {
     return await apiRequest(
-        `/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}`,
+        `/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}&force=${forceDelete}`,
         APIResponseSchema,
         'DELETE'
     );
