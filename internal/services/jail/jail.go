@@ -70,6 +70,9 @@ func (s *Service) GetJails() ([]jailModels.Jail, error) {
 		Preload("Networks.IPv4Obj").
 		Preload("Networks.IPv4Obj.Entries").
 		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv4GwObj").
+		Preload("Networks.IPv4GwObj.Entries").
+		Preload("Networks.IPv4GwObj.Resolutions").
 		Preload("Networks.IPv6Obj").
 		Preload("Networks.IPv6Obj.Entries").
 		Preload("Networks.IPv6Obj.Resolutions").
@@ -95,6 +98,9 @@ func (s *Service) GetJail(id uint) (*jailModels.Jail, error) {
 		Preload("Networks.IPv4Obj").
 		Preload("Networks.IPv4Obj.Entries").
 		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv4GwObj").
+		Preload("Networks.IPv4GwObj.Entries").
+		Preload("Networks.IPv4GwObj.Resolutions").
 		Preload("Networks.IPv6Obj").
 		Preload("Networks.IPv6Obj.Entries").
 		Preload("Networks.IPv6Obj.Resolutions").
@@ -121,6 +127,9 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 		Preload("Networks.IPv4Obj").
 		Preload("Networks.IPv4Obj.Entries").
 		Preload("Networks.IPv4Obj.Resolutions").
+		Preload("Networks.IPv4GwObj").
+		Preload("Networks.IPv4GwObj.Entries").
+		Preload("Networks.IPv4GwObj.Resolutions").
 		Preload("Networks.IPv6Obj").
 		Preload("Networks.IPv6Obj.Entries").
 		Preload("Networks.IPv6Obj.Resolutions").

@@ -48,6 +48,7 @@ export type RestoreFromTargetInput = {
     snapshot: string;
     destinationDataset: string;
     restoreNodeId?: string;
+    restoreNetwork?: boolean;
 };
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {

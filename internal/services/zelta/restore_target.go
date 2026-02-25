@@ -32,6 +32,7 @@ type restoreFromTargetPayload struct {
 	Snapshot           string `json:"snapshot"`
 	DestinationDataset string `json:"destination_dataset"`
 	LockID             uint   `json:"lock_id"`
+	RestoreNetwork     *bool  `json:"restore_network,omitempty"`
 }
 
 type BackupTargetDatasetInfo struct {
@@ -184,7 +185,12 @@ func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint
 	return info, nil
 }
 
-func (s *Service) EnqueueRestoreFromTarget(ctx context.Context, targetID uint, remoteDataset, snapshot, destinationDataset string) error {
+func (s *Service) EnqueueRestoreFromTarget(
+	ctx context.Context,
+	targetID uint,
+	remoteDataset, snapshot, destinationDataset string,
+	restoreNetwork bool,
+) error {
 	if targetID == 0 {
 		return fmt.Errorf("invalid_target_id")
 	}
@@ -226,6 +232,7 @@ func (s *Service) EnqueueRestoreFromTarget(ctx context.Context, targetID uint, r
 		Snapshot:           snapshot,
 		DestinationDataset: destinationDataset,
 		LockID:             lockID,
+		RestoreNetwork:     &restoreNetwork,
 	})
 }
 
@@ -408,7 +415,11 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 
 	s.fixRestoredProperties(ctx, destinationDataset)
 
-	if err := s.reconcileRestoredJailFromDataset(ctx, destinationDataset); err != nil {
+	restoreNetwork := true
+	if payload.RestoreNetwork != nil {
+		restoreNetwork = *payload.RestoreNetwork
+	}
+	if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, destinationDataset, restoreNetwork); err != nil {
 		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr

@@ -463,6 +463,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			Snapshot           string `json:"snapshot"`
 			DestinationDataset string `json:"destinationDataset"`
 			RestoreNodeID      string `json:"restoreNodeId"`
+			RestoreNetwork     *bool  `json:"restoreNetwork"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -511,6 +512,10 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 		if restoreNodeID == "" {
 			restoreNodeID = localNodeID
 		}
+		restoreNetwork := true
+		if req.RestoreNetwork != nil {
+			restoreNetwork = *req.RestoreNetwork
+		}
 
 		guestID := extractGuestIDFromDatasetPath(req.DestinationDataset)
 		if guestID > 0 {
@@ -538,6 +543,7 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 				"snapshot":           strings.TrimSpace(req.Snapshot),
 				"destinationDataset": strings.TrimSpace(req.DestinationDataset),
 				"restoreNodeId":      restoreNodeID,
+				"restoreNetwork":     restoreNetwork,
 			})
 			if err != nil {
 				c.JSON(http.StatusBadGateway, internal.APIResponse[any]{
@@ -553,7 +559,14 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			return
 		}
 
-		if err := zS.EnqueueRestoreFromTarget(c.Request.Context(), uint(id64), req.RemoteDataset, req.Snapshot, req.DestinationDataset); err != nil {
+		if err := zS.EnqueueRestoreFromTarget(
+			c.Request.Context(),
+			uint(id64),
+			req.RemoteDataset,
+			req.Snapshot,
+			req.DestinationDataset,
+			restoreNetwork,
+		); err != nil {
 			status := http.StatusBadRequest
 			msg := "restore_enqueue_failed"
 			if strings.Contains(err.Error(), "already_running") {

@@ -188,6 +188,7 @@
 		dataset: '',
 		snapshot: '',
 		destinationDataset: '',
+		restoreNetwork: true,
 		datasets: [] as BackupTargetDatasetInfo[],
 		snapshots: [] as SnapshotInfo[],
 		jailMetadata: null as BackupJailMetadataInfo | null,
@@ -898,6 +899,7 @@
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
+		restoreTargetModal.restoreNetwork = true;
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
@@ -923,6 +925,7 @@
 		restoreTargetModal.dataset = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
+		restoreTargetModal.restoreNetwork = true;
 		restoreTargetModal.datasets = [];
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
@@ -1070,7 +1073,8 @@
 				remoteDataset: restoreTargetModal.dataset,
 				snapshot: restoreTargetModal.snapshot,
 				destinationDataset: restoreTargetModal.destinationDataset.trim(),
-				restoreNodeId: restoreTargetModal.restoreNodeId.trim()
+				restoreNodeId: restoreTargetModal.restoreNodeId.trim(),
+				restoreNetwork: restoreTargetModal.restoreNetwork
 			});
 			if (response.status === 'success') {
 				toast.success('Restore job started — check events for progress', {
@@ -1549,9 +1553,9 @@
 				</div>
 			{/if}
 
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-				<SimpleSelect
-					label="Snapshot"
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					<SimpleSelect
+						label="Snapshot"
 					placeholder={restoreTargetModal.loadingSnapshots
 						? 'Loading snapshots...'
 						: restoreTargetModal.snapshots.length === 0
@@ -1564,13 +1568,19 @@
 						restoreTargetModal.snapshots.length === 0}
 				/>
 
-				<CustomValueInput
-					label="Destination Dataset"
-					placeholder="zroot/sylve/jails/105"
-					bind:value={restoreTargetModal.destinationDataset}
-					classes="space-y-1"
+					<CustomValueInput
+						label="Destination Dataset"
+						placeholder="zroot/sylve/jails/105"
+						bind:value={restoreTargetModal.destinationDataset}
+						classes="space-y-1"
+					/>
+				</div>
+
+				<CustomCheckbox
+					label="Restore Jail Network Config"
+					bind:checked={restoreTargetModal.restoreNetwork}
+					classes="flex items-center gap-2"
 				/>
-			</div>
 
 			{#if restoreTargetModal.jailMetadata}
 				<div class="rounded-md border bg-muted/40 p-3 text-sm">

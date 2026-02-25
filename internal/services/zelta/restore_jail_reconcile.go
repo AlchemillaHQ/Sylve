@@ -35,6 +35,10 @@ type jailDevfsCleaner interface {
 }
 
 func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset string) error {
+	return s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true)
+}
+
+func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
 	dataset = strings.TrimSpace(dataset)
 	if dataset == "" {
 		return nil
@@ -60,7 +64,7 @@ func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset 
 		return fmt.Errorf("restored_jail_ctid_missing")
 	}
 
-	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restored)
+	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restored, restoreNetwork)
 	if err != nil {
 		return err
 	}
@@ -128,7 +132,12 @@ func (s *Service) runLocalZFSGet(ctx context.Context, property, dataset string) 
 	return strings.TrimSpace(output), nil
 }
 
-func (s *Service) upsertRestoredJailState(ctx context.Context, dataset string, restored *jailModels.Jail) (*jailModels.Jail, error) {
+func (s *Service) upsertRestoredJailState(
+	ctx context.Context,
+	dataset string,
+	restored *jailModels.Jail,
+	restoreNetwork bool,
+) (*jailModels.Jail, error) {
 	basePool := strings.TrimSpace(strings.Split(strings.TrimSpace(dataset), "/")[0])
 
 	datasetGUID := ""
@@ -241,15 +250,21 @@ func (s *Service) upsertRestoredJailState(ctx context.Context, dataset string, r
 
 		hooks := normalizeRestoredJailHooks(baseJail.ID, restored.JailHooks)
 		storages := normalizeRestoredJailStorages(baseJail.ID, restored.Storages, basePool, datasetGUID)
-		networks, requiresSwitchSync, err := s.normalizeRestoredJailNetworks(tx, ctid, baseJail.ID, restored.Networks)
-		if err != nil {
-			return err
-		}
-		requiresStandardSwitchSync = requiresStandardSwitchSync || requiresSwitchSync
+		var networks []jailModels.Network
+		requiresSwitchSync := false
+		if restoreNetwork {
+			var err error
+			networks, requiresSwitchSync, err = s.normalizeRestoredJailNetworks(tx, ctid, baseJail.ID, restored.Networks)
+			if err != nil {
+				return err
+			}
+			requiresStandardSwitchSync = requiresStandardSwitchSync || requiresSwitchSync
 
-		if err := tx.Where("jid = ?", baseJail.ID).Delete(&jailModels.Network{}).Error; err != nil {
-			return fmt.Errorf("failed_to_replace_restored_jail_networks: %w", err)
+			if err := tx.Where("jid = ?", baseJail.ID).Delete(&jailModels.Network{}).Error; err != nil {
+				return fmt.Errorf("failed_to_replace_restored_jail_networks: %w", err)
+			}
 		}
+
 		if err := tx.Where("jid = ?", baseJail.ID).Delete(&jailModels.JailHooks{}).Error; err != nil {
 			return fmt.Errorf("failed_to_replace_restored_jail_hooks: %w", err)
 		}
@@ -267,7 +282,7 @@ func (s *Service) upsertRestoredJailState(ctx context.Context, dataset string, r
 				return fmt.Errorf("failed_to_insert_restored_jail_storages: %w", err)
 			}
 		}
-		if len(networks) > 0 {
+		if restoreNetwork && len(networks) > 0 {
 			if err := tx.Create(&networks).Error; err != nil {
 				return fmt.Errorf("failed_to_insert_restored_jail_networks: %w", err)
 			}
@@ -583,9 +598,29 @@ func (s *Service) ensureRestoredStandardSwitch(
 		name := strings.TrimSpace(metadata.Name)
 		if name != "" {
 			var byName networkModels.StandardSwitch
-			err := tx.Where("name = ?", name).First(&byName).Error
+			err := tx.
+				Preload("Ports").
+				Preload("AddressObj").
+				Preload("AddressObj.Entries").
+				Preload("Address6Obj").
+				Preload("Address6Obj.Entries").
+				Preload("NetworkObj").
+				Preload("NetworkObj.Entries").
+				Preload("Network6Obj").
+				Preload("Network6Obj.Entries").
+				Preload("GatewayAddressObj").
+				Preload("GatewayAddressObj.Entries").
+				Preload("Gateway6AddressObj").
+				Preload("Gateway6AddressObj.Entries").
+				Where("name = ?", name).
+				First(&byName).Error
 			if err == nil {
-				return byName.ID, false, nil
+				if restoredStandardSwitchCompatible(&byName, metadata) {
+					return byName.ID, false, nil
+				}
+				// Respect operator-intent around switch naming collisions:
+				// if a switch with this name already exists but differs, skip this restored network.
+				return 0, false, nil
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_name: %w", err)
@@ -767,7 +802,12 @@ func (s *Service) ensureRestoredManualSwitch(
 			var byName networkModels.ManualSwitch
 			err := tx.Where("name = ?", name).First(&byName).Error
 			if err == nil {
-				return byName.ID, nil
+				metadataBridge := strings.TrimSpace(metadata.Bridge)
+				if metadataBridge == "" || strings.EqualFold(strings.TrimSpace(byName.Bridge), metadataBridge) {
+					return byName.ID, nil
+				}
+				// Name conflict with different characteristics: skip restoring this network.
+				return 0, nil
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_name: %w", err)
@@ -807,6 +847,127 @@ func (s *Service) ensureRestoredManualSwitch(
 	}
 
 	return 0, nil
+}
+
+func normalizeRestoredSwitchMTU(mtu int) int {
+	if mtu <= 0 {
+		return 1500
+	}
+	return mtu
+}
+
+func restoredObjectEntriesMatch(existing *networkModels.Object, metadata *networkModels.Object) bool {
+	if metadata == nil {
+		return true
+	}
+	if existing == nil {
+		return false
+	}
+	if strings.TrimSpace(metadata.Type) != "" && !strings.EqualFold(strings.TrimSpace(existing.Type), strings.TrimSpace(metadata.Type)) {
+		return false
+	}
+
+	metadataEntries := make([]string, 0, len(metadata.Entries))
+	for _, entry := range metadata.Entries {
+		value := strings.TrimSpace(entry.Value)
+		if value == "" {
+			continue
+		}
+		metadataEntries = append(metadataEntries, value)
+	}
+	if len(metadataEntries) == 0 {
+		return true
+	}
+
+	existingEntries := make(map[string]struct{}, len(existing.Entries))
+	for _, entry := range existing.Entries {
+		value := strings.TrimSpace(entry.Value)
+		if value == "" {
+			continue
+		}
+		existingEntries[value] = struct{}{}
+	}
+	for _, value := range metadataEntries {
+		if _, ok := existingEntries[value]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func restoredPortsCompatible(existing []networkModels.NetworkPort, metadata []networkModels.NetworkPort) bool {
+	if len(metadata) == 0 {
+		return true
+	}
+
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, port := range existing {
+		name := strings.ToLower(strings.TrimSpace(port.Name))
+		if name == "" {
+			continue
+		}
+		existingSet[name] = struct{}{}
+	}
+
+	for _, port := range metadata {
+		name := strings.ToLower(strings.TrimSpace(port.Name))
+		if name == "" {
+			continue
+		}
+		if _, ok := existingSet[name]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+func restoredStandardSwitchCompatible(existing *networkModels.StandardSwitch, metadata *networkModels.StandardSwitch) bool {
+	if existing == nil || metadata == nil {
+		return false
+	}
+
+	if strings.TrimSpace(metadata.BridgeName) != "" &&
+		!strings.EqualFold(strings.TrimSpace(existing.BridgeName), strings.TrimSpace(metadata.BridgeName)) {
+		return false
+	}
+	if normalizeRestoredSwitchMTU(existing.MTU) != normalizeRestoredSwitchMTU(metadata.MTU) {
+		return false
+	}
+	if existing.VLAN != metadata.VLAN {
+		return false
+	}
+	if existing.DisableIPv6 != metadata.DisableIPv6 ||
+		existing.Private != metadata.Private ||
+		existing.DefaultRoute != metadata.DefaultRoute ||
+		existing.DHCP != metadata.DHCP ||
+		existing.SLAAC != metadata.SLAAC {
+		return false
+	}
+
+	if !restoredPortsCompatible(existing.Ports, metadata.Ports) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.AddressObj, metadata.AddressObj) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.Address6Obj, metadata.Address6Obj) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.NetworkObj, metadata.NetworkObj) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.Network6Obj, metadata.Network6Obj) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.GatewayAddressObj, metadata.GatewayAddressObj) {
+		return false
+	}
+	if !restoredObjectEntriesMatch(existing.Gateway6AddressObj, metadata.Gateway6AddressObj) {
+		return false
+	}
+
+	return true
 }
 
 func (s *Service) ensureUniqueRestoredSwitchName(tx *gorm.DB, base string, ctid uint, index int, switchType string) (string, error) {
@@ -877,6 +1038,45 @@ func objectIDPtr(object *networkModels.Object) *uint {
 	return &id
 }
 
+func restoredNetworkObjectLooksLikeMetadata(existing *networkModels.Object, metadata *networkModels.Object) bool {
+	if existing == nil || metadata == nil {
+		return true
+	}
+
+	metadataName := strings.TrimSpace(metadata.Name)
+	if metadataName != "" && strings.EqualFold(strings.TrimSpace(existing.Name), metadataName) {
+		return true
+	}
+
+	metadataEntries := make(map[string]struct{}, len(metadata.Entries))
+	for _, entry := range metadata.Entries {
+		value := strings.TrimSpace(entry.Value)
+		if value == "" {
+			continue
+		}
+		metadataEntries[value] = struct{}{}
+	}
+	if len(metadataEntries) == 0 {
+		return metadataName == ""
+	}
+
+	existingEntries := make(map[string]struct{}, len(existing.Entries))
+	for _, entry := range existing.Entries {
+		value := strings.TrimSpace(entry.Value)
+		if value == "" {
+			continue
+		}
+		existingEntries[value] = struct{}{}
+	}
+	for value := range metadataEntries {
+		if _, ok := existingEntries[value]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (s *Service) ensureRestoredNetworkObject(tx *gorm.DB, existingID *uint, metadata *networkModels.Object, fallbackType, fallbackName string) (*networkModels.Object, error) {
 	desiredType := strings.TrimSpace(fallbackType)
 	if metadata != nil && strings.TrimSpace(metadata.Type) != "" {
@@ -888,10 +1088,12 @@ func (s *Service) ensureRestoredNetworkObject(tx *gorm.DB, existingID *uint, met
 		err := tx.Preload("Entries").Preload("Resolutions").First(&byID, *existingID).Error
 		if err == nil {
 			if desiredType == "" || strings.EqualFold(byID.Type, desiredType) {
-				if err := s.mergeRestoredNetworkObjectData(tx, &byID, metadata); err != nil {
-					return nil, err
+				if metadata == nil || restoredNetworkObjectLooksLikeMetadata(&byID, metadata) {
+					if err := s.mergeRestoredNetworkObjectData(tx, &byID, metadata); err != nil {
+						return nil, err
+					}
+					return &byID, nil
 				}
-				return &byID, nil
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("failed_to_lookup_network_object_by_id: %w", err)
