@@ -435,6 +435,11 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return fmt.Errorf("failed to define VM domain: %w", err)
 	}
 
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after creation")
+	}
+
 	return nil
 }
 
@@ -886,6 +891,11 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 
 	if err := s.DB.Save(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_save_vm_action_date: %w", err)
+	}
+
+	err := s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after setting action date")
 	}
 
 	return nil

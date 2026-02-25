@@ -273,7 +273,6 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
-
 		<div>
 			<Button
 				size="sm"
@@ -290,7 +289,9 @@
 			<Button
 				size="sm"
 				class="h-6"
-				onclick={() => window.open('https://github.com/sponsors/AlchemillaHQ/', '_blank')}
+				onclick={() => {
+					storage.openAbout = true;
+				}}
 				title="Sponsor"
 			>
 				<div class="flex items-center">

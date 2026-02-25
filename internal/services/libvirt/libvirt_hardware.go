@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -424,6 +425,11 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after CPU update")
+	}
+
 	return nil
 }
 
@@ -477,6 +483,11 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 
 	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after memory update")
 	}
 
 	return nil
@@ -555,6 +566,11 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after VNC update")
+	}
+
 	return nil
 }
 
@@ -612,6 +628,11 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 
 	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after passthrough update")
 	}
 
 	return nil

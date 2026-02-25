@@ -503,7 +503,7 @@
 				</Card.Root>
 			</div>
 
-			{#if gaInfo.current && domain.current.status === 'Running'}
+			{#if gaInfo.current}
 				<div class="space-y-4 px-4 pb-4">
 					<Card.Root class="w-full gap-0 p-4">
 						<Card.Header class="p-0">

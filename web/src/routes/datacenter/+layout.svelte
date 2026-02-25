@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { storage } from '$lib';
 	import TreeView from '$lib/components/custom/TreeView.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
@@ -73,16 +74,32 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Data Center</span>
-		<Button
-			size="sm"
-			class="h-6"
-			onclick={() => (window.location.href = 'https://github.com/AlchemillaHQ/Sylve')}
-		>
-			<div class="flex items-center">
-				<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
-				<span>Help</span>
-			</div>
-		</Button>
+		<div>
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
+				title="Discord"
+			>
+				<div class="flex items-center">
+					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
+					<span>Help</span>
+				</div>
+			</Button>
+
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => {
+					storage.openAbout = true;
+				}}
+				title="Sponsor"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--heart] h-5 w-5"></span>
+				</div>
+			</Button>
+		</div>
 	</div>
 
 	<Resizable.PaneGroup

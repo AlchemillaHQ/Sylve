@@ -108,6 +108,11 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 		return fmt.Errorf("failed_to_delete_network_record: %w", err)
 	}
 
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network detach")
+	}
+
 	return nil
 }
 
@@ -345,6 +350,11 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 
 	if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network attach")
 	}
 
 	return nil
@@ -605,6 +615,11 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 		return fmt.Errorf("failed_to_update_network_record: %w", err)
 	}
 
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after network update")
+	}
+
 	return nil
 }
 
@@ -650,6 +665,11 @@ func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 
 	if _, err := s.Conn.DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after MAC modification")
 	}
 
 	return nil

@@ -32,6 +32,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const vms = resource(
 		() => 'vm-list',
 		async (key) => {
@@ -44,6 +45,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pciDevices = resource(
 		() => 'pciDevices',
 		async (key) => {
@@ -56,6 +58,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pptDevices = resource(
 		() => 'pptDevices',
 		async (key) => {
@@ -68,6 +71,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.rid}`,
 		async (key) => {
@@ -112,7 +116,7 @@
 			cores: data.vm?.cpuCores || 0,
 			threads: data.vm?.cpuThreads || 0,
 			pinning: data.vm?.cpuPinning || ([] as VMCPUPinning[]),
-			vCPUs: 0,
+			vCPUs: (data.vm?.cpuSockets || 0) * (data.vm?.cpuCores || 0) * (data.vm?.cpuThreads || 0),
 			open: false,
 			pinnedCPUs:
 				data.vm?.cpuPinning?.map((pin) => {

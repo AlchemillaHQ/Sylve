@@ -24,6 +24,7 @@
 
 	let { data }: { data: Data } = $props();
 
+    // svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.vm.rid}`,
 		async (key) => {
@@ -37,7 +38,6 @@
 		}
 	);
 
-	// let vm: VM | null = $derived(results.data);
 	let reload = $state(false);
 
 	useInterval(() => 1000, {

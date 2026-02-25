@@ -9,7 +9,11 @@
 package libvirt
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -108,4 +112,43 @@ func (s *Service) IsVirtualizationEnabled() bool {
 	}
 
 	return true
+}
+
+func (s *Service) WriteVMJson(rid uint) error {
+	if rid == 0 {
+		return fmt.Errorf("invalid_resource_id")
+	}
+
+	vm, err := s.GetVMByRID(rid)
+	if err != nil {
+		return err
+	}
+
+	vmJsonData, err := json.MarshalIndent(vm, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_vm_to_json: %w", err)
+	}
+
+	processedPools := make(map[string]bool)
+
+	for _, storage := range vm.Storages {
+		if storage.Pool == "" || processedPools[storage.Pool] {
+			continue
+		}
+
+		sylveDir := fmt.Sprintf("/%s/sylve/virtual-machines/%d/.sylve", storage.Pool, rid)
+		vmJsonPath := filepath.Join(sylveDir, "vm.json")
+
+		if err := os.MkdirAll(sylveDir, 0755); err != nil {
+			return fmt.Errorf("failed_to_create_directory_%s: %w", sylveDir, err)
+		}
+
+		if err := os.WriteFile(vmJsonPath, vmJsonData, 0644); err != nil {
+			return fmt.Errorf("failed_to_write_vm_json_to_%s: %w", vmJsonPath, err)
+		}
+
+		processedPools[storage.Pool] = true
+	}
+
+	return nil
 }

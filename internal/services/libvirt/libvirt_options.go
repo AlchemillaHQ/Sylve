@@ -25,6 +25,12 @@ func (s *Service) ModifyWakeOnLan(rid uint, enabled bool) error {
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
 		Update("wo_l", enabled).Error
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after WoL modification")
+	}
+
 	return err
 }
 
@@ -36,6 +42,12 @@ func (s *Service) ModifyBootOrder(rid uint, startAtBoot bool, bootOrder int) err
 			"start_order":   bootOrder,
 			"start_at_boot": startAtBoot,
 		}).Error
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after boot order modification")
+	}
+
 	return err
 }
 
@@ -93,6 +105,7 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
+
 	if _, err := s.Conn.DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
@@ -102,6 +115,11 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 		Where("rid = ?", rid).
 		Update("time_offset", timeOffset).Error; err != nil {
 		return fmt.Errorf("failed_to_update_time_offset_in_db: %w", err)
+	}
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after time offset modification")
 	}
 
 	return nil
@@ -199,6 +217,11 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_update_serial_in_db: %w", err)
 	}
 
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after serial modification")
+	}
+
 	return nil
 }
 
@@ -207,6 +230,12 @@ func (s *Service) ModifyShutdownWaitTime(rid uint, waitTime int) error {
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
 		Update("shutdown_wait_time", waitTime).Error
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after shutdown wait time modification")
+	}
+
 	return err
 }
 
@@ -323,6 +352,12 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
 		Update("ignore_umsr", ignore).Error
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after ignore MSR modification")
+	}
+
 	return err
 }
 
@@ -429,6 +464,11 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_update_qemu_guest_agent_in_db: %w", err)
 	}
 
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after QEMU guest agent modification")
+	}
+
 	return nil
 }
 
@@ -529,6 +569,11 @@ func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
 		Update("tpm_emulation", enabled).Error
 	if err != nil {
 		return fmt.Errorf("failed_to_update_tpm_emulation_in_db: %w", err)
+	}
+
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after TPM emulation modification")
 	}
 
 	return nil

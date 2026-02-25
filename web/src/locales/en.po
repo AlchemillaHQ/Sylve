@@ -224,6 +224,7 @@ msgstr "Color Theme"
 #~ msgid "Language"
 #~ msgstr "Language"
 
+#: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
@@ -396,6 +397,7 @@ msgstr "Realm"
 msgid "PAM"
 msgstr "PAM"
 
+#: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Sylve"
@@ -3833,7 +3835,6 @@ msgstr "Start"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Running"
 msgstr "Running"
@@ -6941,7 +6942,9 @@ msgstr "Manage the devfs ruleset for this jail"
 msgid "Manage additional options for this jail"
 msgstr "Manage additional options for this jail"
 
+#: src/lib/components/custom/About.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -7191,6 +7194,7 @@ msgstr "The host console has been disconnected.<0/> Click the \"Reconnect\" butt
 #~ msgstr "Hel 1p"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
 msgid "Sponsor"
 msgstr "Sponsor"
 
@@ -8440,3 +8444,162 @@ msgstr "Device prepared for passthrough. Reboot required."
 #: src/routes/[node]/settings/device-passthrough/+page.svelte
 msgid "Failed to prepare device for passthrough"
 msgstr "Failed to prepare device for passthrough"
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Import <b>{0}</b> by <b>{1}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database."
+msgstr "Import <b>{0}</b> by <b>{1}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database."
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Import Passthrough"
+msgstr "Import Passthrough"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device imported into passthrough management"
+msgstr "Device imported into passthrough management"
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to import device into passthrough management"
+msgstr "Failed to import device into passthrough management"
+
+#~ msgid "About"
+#~ msgstr "About"
+
+#~ msgid "Because managing FreeBSD shouldn't require a PhD in dark magic."
+#~ msgstr "Because managing FreeBSD shouldn't require a PhD in dark magic."
+
+#~ msgid "Sylve is a lightweight virtualization platform built to give you a streamlined, <0>Proxmox-like experience tailored for FreeBSD</0>. Under the hood, we're seamlessly juggling <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>. It's powered by a Go backend and a SvelteKit frontend, because we like things fast."
+#~ msgstr "Sylve is a lightweight virtualization platform built to give you a streamlined, <0>Proxmox-like experience tailored for FreeBSD</0>. Under the hood, we're seamlessly juggling <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>. It's powered by a Go backend and a SvelteKit frontend, because we like things fast."
+
+#~ msgid "<0/> Under Active Construction 🚧"
+#~ msgstr "<0/> Under Active Construction 🚧"
+
+#~ msgid ""
+#~ "This project is still in heavy development. Expect breaking changes, missing boot order\n"
+#~ "configs, and occasional chaos. Also, <0>root access is strictly required</0>—we\n"
+#~ "need those sweet system privileges to do the heavy lifting!"
+#~ msgstr ""
+#~ "This project is still in heavy development. Expect breaking changes, missing boot order\n"
+#~ "configs, and occasional chaos. Also, <0>root access is strictly required</0>—we\n"
+#~ "need those sweet system privileges to do the heavy lifting!"
+
+#~ msgid "Proudly Sponsored By"
+#~ msgstr "Proudly Sponsored By"
+
+#: src/lib/components/custom/About.svelte
+msgid "FreeBSD Foundation"
+msgstr "FreeBSD Foundation"
+
+#: src/lib/components/custom/About.svelte
+msgid "Alchemilla"
+msgstr "Alchemilla"
+
+#: src/lib/components/custom/About.svelte
+msgid "IPTechnics"
+msgstr "IPTechnics"
+
+#~ msgid "<0/> GitHub"
+#~ msgstr "<0/> GitHub"
+
+#~ msgid "<0/> Discord"
+#~ msgstr "<0/> Discord"
+
+#~ msgid "Your Logo Here?"
+#~ msgstr "Your Logo Here?"
+
+#~ msgid "Want to join the hall of fame? Support our late-night coding sessions on <0>GitHub Sponsors</0>."
+#~ msgstr "Want to join the hall of fame? Support our late-night coding sessions on <0>GitHub Sponsors</0>."
+
+#~ msgid "Your Logo Here"
+#~ msgstr "Your Logo Here"
+
+#~ msgid "Support the development of Sylve and get your logo featured here. Visit <0>GitHub Sponsors</0> to learn more."
+#~ msgstr "Support the development of Sylve and get your logo featured here. Visit <0>GitHub Sponsors</0> to learn more."
+
+#~ msgid "Sylve is a lightweight virtualization platform providing a <0>Proxmox-like experience for FreeBSD</0>. It integrates <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3> through a high-performance Go backend and a modern SvelteKit frontend."
+#~ msgstr "Sylve is a lightweight virtualization platform providing a <0>Proxmox-like experience for FreeBSD</0>. It integrates <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3> through a high-performance Go backend and a modern SvelteKit frontend."
+
+#: src/lib/components/custom/About.svelte
+msgid "Sponsors"
+msgstr "Sponsors"
+
+#: src/lib/components/custom/About.svelte
+msgid "Join us"
+msgstr "Join us"
+
+#: src/lib/components/custom/About.svelte
+msgid "Support us on <0>GitHub</0>"
+msgstr "Support us on <0>GitHub</0>"
+
+#: src/lib/components/custom/About.svelte
+msgid "GitHub"
+msgstr "GitHub"
+
+#~ msgid "Sylve is a lightweight virtualization platform providing a <0>seamless experience for FreeBSD</0>. It integrates <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3> through a high-performance Go backend and a modern SvelteKit frontend."
+#~ msgstr "Sylve is a lightweight virtualization platform providing a <0>seamless experience for FreeBSD</0>. It integrates <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3> through a high-performance Go backend and a modern SvelteKit frontend."
+
+#~ msgid ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of <0>FreeBSD virtualization</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
+#~ "and a responsive SvelteKit frontend."
+#~ msgstr ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of <0>FreeBSD virtualization</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
+#~ "and a responsive SvelteKit frontend."
+
+#~ msgid ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
+#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
+#~ "and a responsive SvelteKit frontend."
+#~ msgstr ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
+#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
+#~ "and a responsive SvelteKit frontend."
+
+#~ msgid ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
+#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for Bhyve,\n"
+#~ "Jails, ZFS and more. Sylve simplifies complex infrastructure management through a\n"
+#~ "high-performance Go backend and a responsive SvelteKit frontend."
+#~ msgstr ""
+#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
+#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for Bhyve,\n"
+#~ "Jails, ZFS and more. Sylve simplifies complex infrastructure management through a\n"
+#~ "high-performance Go backend and a responsive SvelteKit frontend."
+
+#~ msgid ""
+#~ "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
+#~ "Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a\n"
+#~ "high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+#~ "infrastructure simple."
+#~ msgstr ""
+#~ "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
+#~ "Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a\n"
+#~ "high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+#~ "infrastructure simple."
+
+#: src/lib/components/custom/About.svelte
+msgid "Released under the <0>BSD 2-Clause License</0>"
+msgstr "Released under the <0>BSD 2-Clause License</0>"
+
+#: src/lib/components/custom/About.svelte
+msgid ""
+"Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
+"Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a\n"
+"high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+"infrastructure simple."
+msgstr ""
+"Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
+"Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a\n"
+"high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+"infrastructure simple."
+
+#~ msgid ""
+#~ "Sylve is a simple and lightweight control plane for the <0>FreeBSD ecosystem</0>,\n"
+#~ "unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by\n"
+#~ "a high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+#~ "infrastructure simple."
+#~ msgstr ""
+#~ "Sylve is a simple and lightweight control plane for the <0>FreeBSD ecosystem</0>,\n"
+#~ "unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by\n"
+#~ "a high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+#~ "infrastructure simple."

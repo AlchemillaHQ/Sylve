@@ -27,6 +27,7 @@
 	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings.js';
 	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
+	import About from '$lib/components/custom/About.svelte';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -137,12 +138,12 @@
 			loading.login = false;
 		} finally {
 			if (!isError) {
-				await sleep(2500);
+				await sleep(800);
 			}
 		}
 
 		loading.login = false;
-		await sleep(1500);
+		await sleep(800);
 		loading.throbber = false;
 		return;
 	}
@@ -209,6 +210,8 @@
 		<Login onLogin={handleLogin} loading={loading.login} />
 	</div>
 {/if}
+
+<About bind:open={storage.openAbout} />
 
 <style>
 	:global(#top-loader) {

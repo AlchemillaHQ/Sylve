@@ -28,15 +28,21 @@
 				const bus = Number(split[0]);
 				const deviceC = Number(split[1]);
 				const functionC = Number(split[2]);
-
 				for (const pciDevice of pciDevices) {
 					if (
 						pciDevice.bus === bus &&
 						pciDevice.device === deviceC &&
 						pciDevice.function === functionC
 					) {
+						let label = `${pciDevice.names.vendor} ${pciDevice.names.device}`;
+						if (label.length > 32) {
+							label = `${label.slice(0, 16)}...${label.slice(-16)}`;
+						}
+
+						label = `(${pciDevice.bus}/${pciDevice.device}/${pciDevice.function}) ${label}`;
+
 						options.push({
-							label: `${pciDevice.names.vendor} ${pciDevice.names.device}`,
+							label: label,
 							value: pptDevice.id.toString()
 						});
 					}
@@ -47,6 +53,7 @@
 		return options;
 	});
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		combobox: {
 			open: false,
@@ -80,12 +87,11 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full min-w-0 p-5  sm:max-w-3xl">
+	<Dialog.Content class="w-full min-w-0 p-5">
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<span class="icon-[mdi--video-input-hdmi] h-5 w-5"></span>
-
 					<span>PCI Devices</span>
 				</div>
 
@@ -131,8 +137,8 @@
 				disabled={false}
 				disallowEmpty={false}
 				multiple={true}
-				width="w-full "
-				commandClasses="max-w-3xl "
+				width="w-full"
+				commandClasses="max-w-full break-words"
 			/>
 		</div>
 		<Dialog.Footer class="flex justify-end">

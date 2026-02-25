@@ -521,7 +521,7 @@ func (s *Service) GetCloudInitISOPath(rid uint) (string, error) {
 }
 
 func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
-	if vm.Storages == nil || len(vm.Storages) == 0 {
+	if len(vm.Storages) == 0 {
 		return fmt.Errorf("need_storage_to_flash_cloud_init_disk")
 	} else if len(vm.Storages) > 2 {
 		return fmt.Errorf("too_many_storages_to_flash_cloud_init_disk")

@@ -327,6 +327,11 @@ func (s *Service) SyncVMDisks(rid uint) error {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
+	err = s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after disk sync")
+	}
+
 	return nil
 }
 
