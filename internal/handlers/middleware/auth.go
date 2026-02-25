@@ -48,48 +48,57 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 		}
 
 		if isWSAuthPath {
-			if authHex := c.Query("auth"); authHex != "" {
-				var wssAuth struct {
-					Hash     string `json:"hash"`
-					Hostname string `json:"hostname"`
-					Token    string `json:"token"`
-				}
+			authHex := c.Query("auth")
+			if authHex == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "missing_ws_auth"})
+				return
+			}
 
-				if data, err := hex.DecodeString(authHex); err == nil && json.Unmarshal(data, &wssAuth) == nil {
-					// 1) Try cluster JWT in wssAuth.Token
-					if wssAuth.Token != "" {
-						if claims, err := authService.VerifyClusterJWT(wssAuth.Token); err == nil {
-							c.Set("Token", wssAuth.Token)
-							c.Set("AuthScope", "wss-cluster")
-							c.Set("UserID", claims.UserID)
-							c.Set("Username", claims.Username)
-							c.Set("AuthType", claims.AuthType)
-							c.Next()
-							return
-						}
-					}
+			var wssAuth struct {
+				Hash     string `json:"hash"`
+				Hostname string `json:"hostname"`
+				Token    string `json:"token"`
+			}
 
-					// 2) Fallback: use hash -> local JWT
-					if wssAuth.Hash != "" {
-						if tok, err := authService.GetTokenBySHA256(wssAuth.Hash); err == nil {
-							if claims, err := authService.ValidateToken(tok); err == nil {
-								c.Set("Token", tok)
-								c.Set("AuthScope", "wss")
-								c.Set("UserID", claims.UserID)
-								c.Set("Username", claims.Username)
-								c.Set("AuthType", claims.AuthType)
-								c.Next()
-								return
-							}
-						}
-					}
-				}
-
+			data, err := hex.DecodeString(authHex)
+			if err != nil || json.Unmarshal(data, &wssAuth) != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_ws_auth"})
 				return
 			}
 
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "missing_ws_auth"})
+			if strings.TrimSpace(wssAuth.Hostname) == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_ws_auth"})
+				return
+			}
+
+			if wssAuth.Token != "" {
+				if claims, err := authService.VerifyClusterJWT(wssAuth.Token); err == nil {
+					c.Set("Token", wssAuth.Token)
+					c.Set("AuthScope", "wss-cluster")
+					c.Set("UserID", claims.UserID)
+					c.Set("Username", claims.Username)
+					c.Set("AuthType", claims.AuthType)
+					c.Next()
+					return
+				}
+			}
+
+			if wssAuth.Hash != "" {
+				if tok, err := authService.GetTokenBySHA256(wssAuth.Hash); err == nil {
+					if claims, err := authService.ValidateToken(tok); err == nil {
+						c.Set("Token", tok)
+						c.Set("AuthScope", "wss")
+						c.Set("UserID", claims.UserID)
+						c.Set("Username", claims.Username)
+						c.Set("AuthType", claims.AuthType)
+						authService.UpdateLastUsageTime(claims.UserID)
+						c.Next()
+						return
+					}
+				}
+			}
+
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_ws_auth"})
 			return
 		}
 

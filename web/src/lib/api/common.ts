@@ -42,22 +42,26 @@ api.interceptors.request.use(
 				config.headers['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
 			}
 
-			if (storage.hostname) {
-				if ((config.url === '/vm' || config.url === '/jail') && config.method === 'post') {
-					let data;
+			const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
+			const pathBasedHost =
+				routeHost !== '' && routeHost !== 'datacenter' && routeHost !== 'login' ? routeHost : '';
+			const fallbackHost = pathBasedHost || storage.hostname || '';
 
-					try {
-						data = config.data;
-						if (data.node) {
-							config.headers['X-Current-Hostname'] = `${storage.hostname}`;
-						}
-					} catch (e) {
-						adze.withEmoji.error('Error parsing request data:', e);
-						config.headers['X-Current-Hostname'] = `${storage.hostname}`;
+			if ((config.url === '/vm' || config.url === '/jail') && config.method?.toLowerCase() === 'post') {
+				try {
+					if (config.data?.node) {
+						config.headers['X-Current-Hostname'] = `${config.data.node}`;
+					} else if (fallbackHost) {
+						config.headers['X-Current-Hostname'] = `${fallbackHost}`;
 					}
-				} else {
-					config.headers['X-Current-Hostname'] = `${storage.hostname}`;
+				} catch (e) {
+					adze.withEmoji.error('Error parsing request data:', e);
+					if (fallbackHost) {
+						config.headers['X-Current-Hostname'] = `${fallbackHost}`;
+					}
 				}
+			} else if (fallbackHost) {
+				config.headers['X-Current-Hostname'] = `${fallbackHost}`;
 			}
 		}
 		return config;

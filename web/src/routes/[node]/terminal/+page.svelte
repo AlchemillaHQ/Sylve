@@ -121,16 +121,17 @@
 		terminal.open(terminalContainer);
 
 		const hash = await sha256(storage.token || '', 1);
-		const selectedHostname =
-			page.url.pathname.split('/').filter(Boolean)[0] || storage.hostname || '';
+		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
+		if (!selectedHostname) return;
 		const wsAuth = toHex(
 			JSON.stringify({
+				hash,
 				hostname: selectedHostname,
 				token: storage.clusterToken || ''
 			})
 		);
 
-		ws = new WebSocket(`/api/info/terminal?hash=${hash}&auth=${encodeURIComponent(wsAuth)}`);
+		ws = new WebSocket(`/api/info/terminal?auth=${encodeURIComponent(wsAuth)}`);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {

@@ -183,8 +183,8 @@
 		terminal.open(terminalContainer);
 
 		const hash = await sha256(storage.token || '', 1);
-		const selectedHostname =
-			page.url.pathname.split('/').filter(Boolean)[0] || storage.hostname || '';
+		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
+		if (!selectedHostname) return;
 		const wsAuth = toHex(
 			JSON.stringify({
 				hash,
@@ -193,7 +193,7 @@
 			})
 		);
 
-		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}&auth=${encodeURIComponent(wsAuth)}`);
+		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&auth=${encodeURIComponent(wsAuth)}`);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {
