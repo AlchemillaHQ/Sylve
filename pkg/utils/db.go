@@ -7,3 +7,11 @@
 // under sponsorship from the FreeBSD Foundation.
 
 package utils
+
+func GetVal(id *uint) uint {
+	if id == nil {
+		return 0
+	}
+
+	return *id
+}

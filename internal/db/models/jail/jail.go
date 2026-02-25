@@ -13,6 +13,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -29,8 +30,8 @@ type Network struct {
 	SwitchID   uint   `json:"switchId" gorm:"not null;index"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
 
-	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"-"`
-	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"-"`
+	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
+	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
 
 	MacID         *uint                 `json:"macId" gorm:"column:mac_id"`
 	MacAddressObj *networkModels.Object `json:"macObj" gorm:"foreignKey:MacID"`
@@ -55,20 +56,40 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	switch n.SwitchType {
 	case "standard":
 		var s networkModels.StandardSwitch
-		if err := tx.First(&s, n.SwitchID).Error; err != nil {
+		err := tx.Preload("AddressObj.Entries").
+			Preload("Address6Obj.Entries").
+			Preload("NetworkObj.Entries").
+			Preload("Network6Obj.Entries").
+			Preload("GatewayAddressObj.Entries").
+			Preload("Gateway6AddressObj.Entries").
+			First(&s, n.SwitchID).Error
+
+		if err != nil {
 			return fmt.Errorf("load standard switch %d: %w", n.SwitchID, err)
 		}
 		n.StandardSwitch = &s
+
 	case "manual":
 		var m networkModels.ManualSwitch
 		if err := tx.First(&m, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load manual switch %d: %w", n.SwitchID, err)
 		}
 		n.ManualSwitch = &m
+
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}
-	return nil
+
+	return tx.Preload("Entries").
+		Where("id IN ?", []uint{
+			utils.GetVal(n.MacID),
+			utils.GetVal(n.IPv4ID),
+			utils.GetVal(n.IPv4GwID),
+			utils.GetVal(n.IPv6ID),
+			utils.GetVal(n.IPv6GwID),
+		}).
+		Find(&[]networkModels.Object{}).
+		Error
 }
 
 type JailStats struct {
