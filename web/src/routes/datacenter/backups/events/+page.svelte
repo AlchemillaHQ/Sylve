@@ -138,7 +138,7 @@
 		if (jailName || /\/jails\/\d+(?:$|\/)/.test(endpoint.dataset)) {
 			icon = 'hugeicons:prison';
 		} else if (/\/virtual-machines\/\d+(?:$|\/)/.test(endpoint.dataset)) {
-			icon = 'mdi:desktop-tower-monitor';
+			icon = 'material-symbols:monitor-outline';
 		}
 
 		if (includeSnapshot && endpoint.snapshot) {
@@ -406,7 +406,7 @@
 	<div class="flex h-10 w-full items-center border-b p-2">
 		<div class="flex items-center gap-2">
 			<Search bind:query />
-            
+
 			<SimpleSelect
 				placeholder="Filter by job"
 				options={jobOptions}

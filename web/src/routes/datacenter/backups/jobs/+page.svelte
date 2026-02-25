@@ -227,18 +227,15 @@
 		}
 	);
 
-	watch(
-		[() => jobModal.mode, () => jobModal.selectedVmId],
-		([mode, selectedVmId]) => {
-			if (mode !== 'vm' || !selectedVmId) return;
-			const selectedVM = vms.find((vm) => vm.id === Number(selectedVmId));
-			if (!selectedVM) return;
-			const dataset = vmBaseDataset(selectedVM);
-			if (dataset) {
-				jobModal.sourceDataset = dataset;
-			}
+	watch([() => jobModal.mode, () => jobModal.selectedVmId], ([mode, selectedVmId]) => {
+		if (mode !== 'vm' || !selectedVmId) return;
+		const selectedVM = vms.find((vm) => vm.id === Number(selectedVmId));
+		if (!selectedVM) return;
+		const dataset = vmBaseDataset(selectedVM);
+		if (dataset) {
+			jobModal.sourceDataset = dataset;
 		}
-	);
+	});
 
 	let deleteModalOpen = $state(false);
 
@@ -303,7 +300,7 @@
 						v = { name: 'Jail', icon: 'hugeicons:prison' };
 						break;
 					case 'vm':
-						v = { name: 'VM', icon: 'mdi:desktop-tower-monitor' };
+						v = { name: 'VM', icon: 'material-symbols:monitor-outline' };
 						break;
 					case 'dataset':
 						v = { name: 'Dataset', icon: 'mdi:database' };
@@ -578,7 +575,7 @@
 					? `jails/${grouped.jailCtId}`
 					: grouped.kind === 'vm' && grouped.vmRid > 0
 						? `virtual-machines/${grouped.vmRid}`
-					: grouped.baseSuffix;
+						: grouped.baseSuffix;
 
 			out.push({
 				baseSuffix: grouped.baseSuffix,
@@ -1045,11 +1042,7 @@
 
 					if (
 						parsedGuest.kind !== 'dataset' &&
-						!(await ensureGuestIDPlacementForRestore(
-							guestID,
-							restoreNodeID,
-							parsedGuest.kind
-						))
+						!(await ensureGuestIDPlacementForRestore(guestID, restoreNodeID, parsedGuest.kind))
 					) {
 						restoreModal.restoring = false;
 						return;
@@ -1283,9 +1276,7 @@
 		try {
 			const destinationGuest = parseGuestFromDatasetPath(restoreTargetModal.destinationDataset);
 			const metadataGuest =
-				restoreTargetModal.jailMetadata?.ctId ||
-				restoreTargetModal.vmMetadata?.rid ||
-				0;
+				restoreTargetModal.jailMetadata?.ctId || restoreTargetModal.vmMetadata?.rid || 0;
 			const guestID = destinationGuest.id || metadataGuest;
 			const guestKind: 'jail' | 'vm' =
 				destinationGuest.kind === 'vm' ||
@@ -1552,7 +1543,9 @@
 					{:else if jobModal.mode === 'vm'}
 						{@const selectedVM = vms.find((vm) => vm.id === Number(jobModal.selectedVmId))}
 						<li>
-							VM <code class="rounded bg-background px-1">{selectedVM?.name || '(not selected)'}</code>
+							VM <code class="rounded bg-background px-1"
+								>{selectedVM?.name || '(not selected)'}</code
+							>
 							will be backed up
 						</li>
 						<li>
@@ -1807,9 +1800,9 @@
 				</div>
 			{/if}
 
-				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-					<SimpleSelect
-						label="Snapshot"
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<SimpleSelect
+					label="Snapshot"
 					placeholder={restoreTargetModal.loadingSnapshots
 						? 'Loading snapshots...'
 						: restoreTargetModal.snapshots.length === 0
@@ -1822,27 +1815,27 @@
 						restoreTargetModal.snapshots.length === 0}
 				/>
 
-					<CustomValueInput
-						label="Destination Dataset"
-						placeholder={selectedRestoreTargetDatasetKind === 'vm'
-							? 'zroot/sylve/virtual-machines/104'
-							: selectedRestoreTargetDatasetKind === 'jail'
-								? 'zroot/sylve/jails/105'
-								: 'pool/path'}
-						bind:value={restoreTargetModal.destinationDataset}
-						classes="space-y-1"
-					/>
-				</div>
+				<CustomValueInput
+					label="Destination Dataset"
+					placeholder={selectedRestoreTargetDatasetKind === 'vm'
+						? 'zroot/sylve/virtual-machines/104'
+						: selectedRestoreTargetDatasetKind === 'jail'
+							? 'zroot/sylve/jails/105'
+							: 'pool/path'}
+					bind:value={restoreTargetModal.destinationDataset}
+					classes="space-y-1"
+				/>
+			</div>
 
-				{#if restoreTargetSupportsNetworkRestore}
-					<CustomCheckbox
-						label={selectedRestoreTargetDatasetKind === 'vm'
-							? 'Restore VM Network Config'
-							: 'Restore Jail Network Config'}
-						bind:checked={restoreTargetModal.restoreNetwork}
-						classes="flex items-center gap-2"
-					/>
-				{/if}
+			{#if restoreTargetSupportsNetworkRestore}
+				<CustomCheckbox
+					label={selectedRestoreTargetDatasetKind === 'vm'
+						? 'Restore VM Network Config'
+						: 'Restore Jail Network Config'}
+					bind:checked={restoreTargetModal.restoreNetwork}
+					classes="flex items-center gap-2"
+				/>
+			{/if}
 
 			{#if restoreTargetModal.jailMetadata}
 				<div class="rounded-md border bg-muted/40 p-3 text-sm">

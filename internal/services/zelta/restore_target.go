@@ -375,7 +375,9 @@ func (s *Service) runRestoreFromTargetVM(
 	if existingVM, err := s.findVMByRID(destRID); err == nil && existingVM != nil {
 		restartVM = true
 		if err := s.stopVMIfPresent(destRID); err != nil {
-			return fmt.Errorf("failed_to_stop_vm_before_restore: %w", err)
+			if !strings.Contains(err.Error(), "domain is not running") {
+				return fmt.Errorf("failed_to_stop_vm_before_restore: %w", err)
+			}
 		}
 	}
 

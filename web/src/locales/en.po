@@ -3834,7 +3834,6 @@ msgstr "Start"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Running"
 msgstr "Running"
@@ -6901,6 +6900,7 @@ msgstr "Failed to toggle {0}"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -8212,6 +8212,7 @@ msgid "Detected Jail Metadata"
 msgstr "Detected Jail Metadata"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Name: <0/>"
 msgstr "Name: <0/>"
 
@@ -8310,11 +8311,8 @@ msgstr "Failed to load cluster details"
 msgid "Failed to validate cluster guest placement"
 msgstr "Failed to validate cluster guest placement"
 
-#. placeholder {0}: guestID
-#. placeholder {1}: conflictLabels
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Jail {0} already exists on {1}."
-msgstr "Jail {0} already exists on {1}."
+#~ msgid "Jail {0} already exists on {1}."
+#~ msgstr "Jail {0} already exists on {1}."
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore node is required"
@@ -8607,3 +8605,92 @@ msgstr ""
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore Jail Network Config"
 msgstr "Restore Jail Network Config"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Virtual Machine"
+msgstr "Virtual Machine"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "VM selection is required for VM mode"
+msgstr "VM selection is required for VM mode"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Selected VM was not found"
+msgstr "Selected VM was not found"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Unable to resolve a VM dataset root for the selected VM"
+msgstr "Unable to resolve a VM dataset root for the selected VM"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No VMs available"
+msgstr "No VMs available"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select VM"
+msgstr "Select VM"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "VM <0/> will be backed up"
+msgstr "VM <0/> will be backed up"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "RID: <0/>"
+msgstr "RID: <0/>"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore VM Network Config"
+msgstr "Restore VM Network Config"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Detected VM Metadata"
+msgstr "Detected VM Metadata"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Pools: <0/>"
+msgstr "Pools: <0/>"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Deleting Virtual Machine"
+msgstr "Force Deleting Virtual Machine"
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
+msgstr "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error force deleting VM"
+msgstr "Error force deleting VM"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM force deleted with warnings"
+msgstr "VM force deleted with warnings"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM force deleted"
+msgstr "VM force deleted"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Delete"
+msgstr "Force Delete"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Delete VM?"
+msgstr "Force Delete VM?"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "This will force delete VM"
+msgstr "This will force delete VM"
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid ""
+"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
+"network objects. Partial failures will be tolerated."
+msgstr ""
+"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
+"network objects. Partial failures will be tolerated."

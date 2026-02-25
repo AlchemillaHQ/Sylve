@@ -451,8 +451,10 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			}
 			if err := s.stopVMIfPresent(vmRID); err != nil {
 				runErr = fmt.Errorf("failed_to_stop_vm: %w", err)
-				output = appendOutput(output, runErr.Error())
-				return runErr
+				if !strings.Contains(runErr.Error(), "domain is not running") {
+					output = appendOutput(output, runErr.Error())
+					return runErr
+				}
 			}
 		}
 	}
