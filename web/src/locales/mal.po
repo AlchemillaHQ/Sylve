@@ -8519,3 +8519,7 @@ msgstr ""
 #~ "a high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
 #~ "infrastructure simple."
 #~ msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore Jail Network Config"
+msgstr ""

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
 )
@@ -92,8 +93,8 @@ type Network struct {
 	SwitchID   uint   `json:"switchId" gorm:"index;not null"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
 
-	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"-"`
-	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"-"`
+	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
+	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
 
 	Emulation string `json:"emulation"`
 	VMID      uint   `json:"vmId" gorm:"index"`
@@ -103,7 +104,27 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	switch n.SwitchType {
 	case "standard":
 		var s networkModels.StandardSwitch
-		if err := tx.First(&s, n.SwitchID).Error; err != nil {
+		if err := tx.
+			Preload("Ports").
+			Preload("AddressObj").
+			Preload("AddressObj.Entries").
+			Preload("AddressObj.Resolutions").
+			Preload("Address6Obj").
+			Preload("Address6Obj.Entries").
+			Preload("Address6Obj.Resolutions").
+			Preload("NetworkObj").
+			Preload("NetworkObj.Entries").
+			Preload("NetworkObj.Resolutions").
+			Preload("Network6Obj").
+			Preload("Network6Obj.Entries").
+			Preload("Network6Obj.Resolutions").
+			Preload("GatewayAddressObj").
+			Preload("GatewayAddressObj.Entries").
+			Preload("GatewayAddressObj.Resolutions").
+			Preload("Gateway6AddressObj").
+			Preload("Gateway6AddressObj.Entries").
+			Preload("Gateway6AddressObj.Resolutions").
+			First(&s, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load standard switch %d: %w", n.SwitchID, err)
 		}
 		n.StandardSwitch = &s
@@ -116,7 +137,13 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}
-	return nil
+
+	return tx.Preload("Entries").
+		Where("id IN ?", []uint{
+			utils.GetVal(n.MacID),
+		}).
+		Find(&[]networkModels.Object{}).
+		Error
 }
 
 type VMStats struct {

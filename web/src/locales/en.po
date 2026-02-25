@@ -8603,3 +8603,7 @@ msgstr ""
 #~ "unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by\n"
 #~ "a high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
 #~ "infrastructure simple."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore Jail Network Config"
+msgstr "Restore Jail Network Config"
