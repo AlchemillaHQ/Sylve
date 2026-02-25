@@ -56,15 +56,27 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	switch n.SwitchType {
 	case "standard":
 		var s networkModels.StandardSwitch
-		err := tx.Preload("AddressObj.Entries").
+		if err := tx.
+			Preload("Ports").
+			Preload("AddressObj").
+			Preload("AddressObj.Entries").
+			Preload("AddressObj.Resolutions").
+			Preload("Address6Obj").
 			Preload("Address6Obj.Entries").
+			Preload("Address6Obj.Resolutions").
+			Preload("NetworkObj").
 			Preload("NetworkObj.Entries").
+			Preload("NetworkObj.Resolutions").
+			Preload("Network6Obj").
 			Preload("Network6Obj.Entries").
+			Preload("Network6Obj.Resolutions").
+			Preload("GatewayAddressObj").
 			Preload("GatewayAddressObj.Entries").
+			Preload("GatewayAddressObj.Resolutions").
+			Preload("Gateway6AddressObj").
 			Preload("Gateway6AddressObj.Entries").
-			First(&s, n.SwitchID).Error
-
-		if err != nil {
+			Preload("Gateway6AddressObj.Resolutions").
+			First(&s, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load standard switch %d: %w", n.SwitchID, err)
 		}
 		n.StandardSwitch = &s

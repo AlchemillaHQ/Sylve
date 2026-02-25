@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -45,6 +46,7 @@ type Service struct {
 	DB      *gorm.DB
 	Cluster *cluster.Service
 	Jail    jailServiceInterfaces.JailServiceInterface
+	Network networkServiceInterfaces.NetworkServiceInterface
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -63,11 +65,17 @@ type BackupEventsResponse struct {
 	Data     []clusterModels.BackupEvent `json:"data"`
 }
 
-func NewService(db *gorm.DB, clusterService *cluster.Service, jailService jailServiceInterfaces.JailServiceInterface) *Service {
+func NewService(
+	db *gorm.DB,
+	clusterService *cluster.Service,
+	jailService jailServiceInterfaces.JailServiceInterface,
+	networkService networkServiceInterfaces.NetworkServiceInterface,
+) *Service {
 	return &Service{
 		DB:          db,
 		Cluster:     clusterService,
 		Jail:        jailService,
+		Network:     networkService,
 		runningJobs: make(map[uint]struct{}),
 	}
 }
