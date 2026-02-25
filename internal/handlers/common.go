@@ -10,6 +10,8 @@ package handlers
 
 import (
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -123,7 +126,93 @@ func ReverseProxyInsecure(c *gin.Context, backend string) {
 	c.Abort()
 }
 
-func EnsureCorrectHost(db *gorm.DB) gin.HandlerFunc {
+func resolveForwardClusterToken(c *gin.Context, authService *authService.Service) string {
+	token := strings.TrimSpace(c.GetString("Token"))
+	scope := strings.TrimSpace(c.GetString("AuthScope"))
+	if token != "" && (scope == "wss-cluster" || scope == "cluster") {
+		return token
+	}
+
+	if authService == nil {
+		return ""
+	}
+
+	userIDRaw, okUserID := c.Get("UserID")
+	usernameRaw, okUsername := c.Get("Username")
+	authTypeRaw, okAuthType := c.Get("AuthType")
+	if !okUserID || !okUsername || !okAuthType {
+		return ""
+	}
+
+	var userID uint
+	switch v := userIDRaw.(type) {
+	case uint:
+		userID = v
+	case float64:
+		userID = uint(v)
+	default:
+		return ""
+	}
+
+	username, ok := usernameRaw.(string)
+	if !ok || strings.TrimSpace(username) == "" {
+		return ""
+	}
+
+	authType, ok := authTypeRaw.(string)
+	if !ok {
+		authType = ""
+	}
+
+	clusterToken, err := authService.CreateClusterJWT(userID, username, authType, "")
+	if err != nil {
+		return ""
+	}
+
+	return clusterToken
+}
+
+func injectForwardClusterAuth(c *gin.Context, authService *authService.Service) {
+	clusterToken := resolveForwardClusterToken(c, authService)
+	if clusterToken == "" {
+		return
+	}
+
+	c.Request.Header.Set("X-Cluster-Token", fmt.Sprintf("Bearer %s", clusterToken))
+
+	authHex := c.Query("auth")
+	if authHex == "" {
+		return
+	}
+
+	var wsAuth struct {
+		Hash     string `json:"hash"`
+		Hostname string `json:"hostname"`
+		Token    string `json:"token"`
+	}
+
+	data, err := hex.DecodeString(authHex)
+	if err != nil {
+		return
+	}
+
+	if err := json.Unmarshal(data, &wsAuth); err != nil {
+		return
+	}
+
+	wsAuth.Token = clusterToken
+
+	encoded, err := json.Marshal(wsAuth)
+	if err != nil {
+		return
+	}
+
+	query := c.Request.URL.Query()
+	query.Set("auth", hex.EncodeToString(encoded))
+	c.Request.URL.RawQuery = query.Encode()
+}
+
+func EnsureCorrectHost(db *gorm.DB, authService *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var err error
 
@@ -151,6 +240,7 @@ func EnsureCorrectHost(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if node.Status == "online" {
+				injectForwardClusterAuth(c, authService)
 				ReverseProxyInsecure(c, fmt.Sprintf("https://%s", node.API))
 				return
 			}
