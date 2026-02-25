@@ -981,5 +981,10 @@ func (s *Service) UpdateDescription(rid uint, description string) error {
 		return fmt.Errorf("failed_to_update_vm_description: %w", err)
 	}
 
+	err := s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("failed to write VM JSON after description update")
+	}
+
 	return nil
 }
