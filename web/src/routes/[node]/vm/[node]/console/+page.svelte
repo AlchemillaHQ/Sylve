@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
@@ -53,11 +54,16 @@
 		}
 	);
 
-	const wssAuth = $state({
-		hash: data.hash,
-		hostname: storage.hostname || '',
-		token: storage.clusterToken || ''
-	});
+	function getWSSAuth() {
+		const selectedHostname =
+			page.url.pathname.split('/').filter(Boolean)[0] || storage.hostname || '';
+
+		return {
+			hash: data.hash,
+			hostname: selectedHostname,
+			token: storage.clusterToken || ''
+		};
+	}
 
 	function resolveInitialConsole(): ConsoleType {
 		const both = vm.current.vncEnabled && vm.current.serial;
@@ -150,7 +156,7 @@
 
 	let vncPath = $derived.by(() => {
 		return vm.current.vncEnabled
-			? `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(wssAuth))}`
+			? `/api/vnc/${encodeURIComponent(String(vm.current.vncPort))}?auth=${toHex(JSON.stringify(getWSSAuth()))}`
 			: '';
 	});
 
@@ -247,7 +253,7 @@
 
 		terminal.open(terminalContainer);
 
-		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}`;
+		const url = `/api/vm/console?rid=${vm.current.rid}&hash=${data.hash}&auth=${encodeURIComponent(toHex(JSON.stringify(getWSSAuth())))}`;
 		ws = new WebSocket(url);
 		ws.binaryType = 'arraybuffer';
 

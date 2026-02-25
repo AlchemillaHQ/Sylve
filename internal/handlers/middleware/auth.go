@@ -26,7 +26,10 @@ import (
 func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") || path == "/api/info/terminal"
+		isWSAuthPath := strings.HasPrefix(path, "/api/vnc/") ||
+			path == "/api/info/terminal" ||
+			path == "/api/vm/console" ||
+			path == "/api/jail/console"
 
 		if strings.HasPrefix(path, "/api/utilities/downloads/") &&
 			!strings.HasPrefix(path, "/api/utilities/downloads/bulk-delete") &&

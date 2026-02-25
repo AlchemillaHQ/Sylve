@@ -1,9 +1,10 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { storage } from '$lib';
 	import { getJailById, getJailStateById } from '$lib/api/jail/jail';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
-	import { sha256 } from '$lib/utils/string';
+	import { sha256, toHex } from '$lib/utils/string';
 	import adze from 'adze';
 	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
@@ -182,8 +183,17 @@
 		terminal.open(terminalContainer);
 
 		const hash = await sha256(storage.token || '', 1);
+		const selectedHostname =
+			page.url.pathname.split('/').filter(Boolean)[0] || storage.hostname || '';
+		const wsAuth = toHex(
+			JSON.stringify({
+				hash,
+				hostname: selectedHostname,
+				token: storage.clusterToken || ''
+			})
+		);
 
-		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}`);
+		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&hash=${hash}&auth=${encodeURIComponent(wsAuth)}`);
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {
