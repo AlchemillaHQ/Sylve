@@ -69,6 +69,7 @@ export const VMStorageSchema = z.object({
     name: z.string().optional(),
     type: z.enum(['raw', 'zvol', 'image']),
     uuid: z.string().optional(),
+    pool: z.string().optional().default(''),
     datasetId: z.number().int().nullable(),
     dataset: VMStorageDatasetSchema.nullable(),
     size: z.number().int(),

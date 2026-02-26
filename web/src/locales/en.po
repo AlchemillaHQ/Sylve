@@ -556,6 +556,12 @@ msgstr "Minimize"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -694,6 +700,8 @@ msgstr "Create Partitions"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -7632,9 +7640,8 @@ msgstr "New Backup Job"
 #~ msgid "Cron (5-field)"
 #~ msgstr "Cron (5-field)"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Delete selected backup job?"
-msgstr "Delete selected backup job?"
+#~ msgid "Delete selected backup job?"
+#~ msgstr "Delete selected backup job?"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
 msgid "Failed to update network"
@@ -8030,7 +8037,6 @@ msgstr "Destination suffix is required"
 #~ msgstr "Destination suffix: <0/>"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore job started — check events for progress"
 msgstr "Restore job started — check events for progress"
 
@@ -8110,9 +8116,8 @@ msgstr "Off"
 msgid "Prune keep value must be 0 or greater"
 msgstr "Prune keep value must be 0 or greater"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Keep Last Snapshots (0 disables pruning)"
-msgstr "Keep Last Snapshots (0 disables pruning)"
+#~ msgid "Keep Last Snapshots (0 disables pruning)"
+#~ msgstr "Keep Last Snapshots (0 disables pruning)"
 
 #. placeholder {0}: Number.parseInt(jobModal.pruneKeepLast || '0', 10)
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8231,22 +8236,17 @@ msgstr "The destination dataset will be replaced if it already exists."
 msgid "OOB Restore"
 msgstr "OOB Restore"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Current"
-msgstr "Current"
+#~ msgid "Current"
+#~ msgstr "Current"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "OOB lineage"
-msgstr "OOB lineage"
+#~ msgid "OOB lineage"
+#~ msgstr "OOB lineage"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "System preserved"
-msgstr "System preserved"
+#~ msgid "System preserved"
+#~ msgstr "System preserved"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Out of band"
-msgstr "Out of band"
+#~ msgid "Out of band"
+#~ msgstr "Out of band"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid ""
@@ -8705,3 +8705,11 @@ msgstr "Cluster Backup Target - Validate"
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Validating"
 msgstr "Validating"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore job started - check events for progress"
+msgstr "Restore job started - check events for progress"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep Last Snapshots"
+msgstr "Keep Last Snapshots"

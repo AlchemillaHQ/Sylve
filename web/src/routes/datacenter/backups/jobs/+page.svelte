@@ -47,6 +47,14 @@
 	import { humanFormatBytes } from '$lib/utils/string';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import type { VM } from '$lib/types/vm/vm';
+	import { vmBaseDataset, vmStoragePools } from '$lib/utils/vm/vm';
+	import {
+		formatRestoreSnapshotDate,
+		inferJailDestinationDataset,
+		inferVMDestinationDataset,
+		pickRepresentativeDataset,
+		snapshotLineageLabel
+	} from '$lib/utils/zfs';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -156,13 +164,18 @@
 
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
-	let selectedJobId = $derived.by(() => {
+	let selectedJob: BackupJob | null = $derived.by(() => {
 		if (activeRows !== null && activeRows.length === 1) {
 			const row = activeRows[0];
 			if ('id' in row && typeof row.id === 'number') {
-				return row.id;
+				return jobs.current.find((job) => job.id === row.id) || null;
 			}
 		}
+		return null;
+	});
+
+	let selectedJobId = $derived.by(() => {
+		if (selectedJob) return selectedJob.id;
 		return 0;
 	});
 
@@ -183,34 +196,6 @@
 		enabled: true,
 		stopBeforeBackup: false
 	});
-
-	function vmStoragePools(vm: VM): string[] {
-		const pools = new Set<string>();
-		for (const storage of vm.storages || []) {
-			const pool = (storage.pool || storage.dataset?.pool || '').trim();
-			if (pool) {
-				pools.add(pool);
-			}
-		}
-		return [...pools];
-	}
-
-	function vmBaseDataset(vm: VM): string {
-		const pools = vmStoragePools(vm);
-		if (pools.length > 0) {
-			return `${pools[0]}/sylve/virtual-machines/${vm.rid}`;
-		}
-
-		for (const storage of vm.storages || []) {
-			const datasetName = storage.dataset?.name || '';
-			const match = datasetName.match(/^(.*\/virtual-machines\/\d+)(?:$|\/)/);
-			if (match) {
-				return match[1];
-			}
-		}
-
-		return '';
-	}
 
 	watch(
 		[() => jobModal.mode, () => jobModal.runnerNodeId, () => jobModal.open],
@@ -435,23 +420,6 @@
 		}))
 	]);
 
-	function formatLineageLabel(lineage: string, outOfBand: boolean): string {
-		switch (lineage) {
-			case 'active':
-				return 'Current';
-			case 'rotated':
-				return 'OOB lineage';
-			case 'preserved':
-				return 'System preserved';
-			default:
-				return outOfBand ? 'Out of band' : 'Current';
-		}
-	}
-
-	function formatSnapshotCount(count: number): string {
-		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;
-	}
-
 	function snapshotLineageMarker(snapshot: SnapshotInfo): 'CURR' | 'OOB' | 'INT' {
 		const lineage = snapshot.lineage || 'active';
 		if (lineage === 'preserved') return 'INT';
@@ -486,34 +454,8 @@
 		};
 	}
 
-	function datasetLineageRank(lineage: string): number {
-		switch (lineage || 'active') {
-			case 'active':
-				return 0;
-			case 'rotated':
-				return 1;
-			case 'preserved':
-				return 2;
-			default:
-				return 3;
-		}
-	}
-
-	function pickRepresentativeDataset(
-		datasets: BackupTargetDatasetInfo[]
-	): BackupTargetDatasetInfo | null {
-		if (datasets.length === 0) return null;
-		const ranked = [...datasets].sort((left, right) => {
-			const rankDiff =
-				datasetLineageRank(left.lineage || 'active') -
-				datasetLineageRank(right.lineage || 'active');
-			if (rankDiff !== 0) return rankDiff;
-			if ((left.snapshotCount || 0) !== (right.snapshotCount || 0)) {
-				return (right.snapshotCount || 0) - (left.snapshotCount || 0);
-			}
-			return left.name.localeCompare(right.name);
-		});
-		return ranked[0];
+	function formatSnapshotCount(count: number): string {
+		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;
 	}
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
@@ -592,7 +534,6 @@
 	});
 
 	let visibleRestoreTargetDatasets = $derived.by(() => restoreTargetDatasetGroups);
-
 	let restoreTargetDatasetOptions = $derived(
 		visibleRestoreTargetDatasets.map((dataset) => ({
 			value: dataset.representativeDataset,
@@ -622,15 +563,6 @@
 		}))
 	);
 
-	function formatRestoreSnapshotDate(snapshot: SnapshotInfo): string {
-		if (!snapshot.creation) return '-';
-		const date = new Date(snapshot.creation);
-		if (Number.isNaN(date.getTime())) {
-			return snapshot.creation;
-		}
-		return date.toLocaleString();
-	}
-
 	let selectedRestoreSnapshotDate = $derived.by(() => {
 		if (!restoreModal.selectedSnapshot) return '';
 		const selected = restoreModal.snapshots.find(
@@ -651,10 +583,6 @@
 			(snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active'
 		)
 	);
-
-	function snapshotLineageLabel(snapshot: SnapshotInfo): string {
-		return formatLineageLabel(snapshot.lineage || 'active', !!snapshot.outOfBand);
-	}
 
 	let selectedRestoreTargetSnapshot = $derived.by(
 		() =>
@@ -1052,7 +980,7 @@
 
 			const response = await restoreBackupJob(selectedJobId, restoreModal.selectedSnapshot);
 			if (response.status === 'success') {
-				toast.success('Restore job started — check events for progress', {
+				toast.success('Restore job started - check events for progress', {
 					position: 'bottom-center'
 				});
 				restoreModal.open = false;
@@ -1087,35 +1015,6 @@
 		restoreTargetModal.vmMetadata = null;
 		restoreTargetModal.error = '';
 		restoreClusterDetails = null;
-	}
-
-	function inferJailDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
-		if (!target) return '';
-		const jailMatch = dataset.match(/(?:^|\/)jails\/(\d+)(?:$|\/)/);
-		if (!jailMatch) return '';
-		const ctid = jailMatch[1];
-		const pool = target.backupRoot.split('/')[0] || '';
-		if (!pool) return '';
-		return `${pool}/sylve/jails/${ctid}`;
-	}
-
-	function inferVMDestinationDataset(target: BackupTarget | undefined, dataset: string): string {
-		if (!target) return '';
-		const vmMatch = dataset.match(/(?:^|\/)virtual-machines\/(\d+)(?:$|\/)/);
-		if (!vmMatch) return '';
-		const rid = vmMatch[1];
-
-		let pool = '';
-		const datasetPoolMatch = dataset.match(/(?:^|\/)([^/]+)\/sylve\/virtual-machines\/\d+(?:$|\/)/);
-		if (datasetPoolMatch) {
-			pool = datasetPoolMatch[1];
-		}
-		if (!pool) {
-			pool = target.backupRoot.split('/')[0] || '';
-		}
-		if (!pool) return '';
-
-		return `${pool}/sylve/virtual-machines/${rid}`;
 	}
 
 	async function openRestoreFromTargetModal() {
@@ -1415,10 +1314,40 @@
 <Dialog.Root bind:open={jobModal.open}>
 	<Dialog.Content class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5">
 		<Dialog.Header>
-			<Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Icon icon={jobModal.edit ? 'mdi:note-edit' : 'mdi:calendar-sync'} class="h-5 w-5" />
 					<span>{jobModal.edit ? 'Edit Backup Job' : 'New Backup Job'}</span>
+				</div>
+
+				<div class="flex items-center gap-0.5">
+					<Button
+						size="sm"
+						variant="link"
+						title={'Reset'}
+						class="h-4 {jobModal.edit ? '' : 'hidden'}"
+						onclick={() => {
+							if (jobModal.edit) {
+								openEditJob();
+							}
+						}}
+					>
+						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">{'Reset'}</span>
+					</Button>
+
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							resetJobModal();
+						}}
+					>
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">{'Close'}</span>
+					</Button>
 				</div>
 			</Dialog.Title>
 		</Dialog.Header>
@@ -1502,8 +1431,8 @@
 				/>
 
 				<CustomValueInput
-					label="Keep Last Snapshots (0 disables pruning)"
-					placeholder="20"
+					label="Keep Last Snapshots"
+					placeholder="20 (0 to disable)"
 					type="number"
 					bind:value={jobModal.pruneKeepLast}
 					classes="space-y-1"
@@ -1593,7 +1522,7 @@
 
 <AlertDialog
 	open={deleteModalOpen}
-	customTitle="Delete selected backup job?"
+	names={{ parent: 'job', element: selectedJob?.name || '' }}
 	actions={{
 		onConfirm: async () => {
 			await removeJob();
@@ -1607,11 +1536,24 @@
 <Dialog.Root bind:open={restoreModal.open}>
 	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
 		<Dialog.Header>
-			<Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Icon icon="mdi:backup-restore" class="h-5 w-5" />
 					<span>Restore from Backup</span>
 				</div>
+
+				<Button
+					size="sm"
+					variant="link"
+					class="h-4"
+					title={'Close'}
+					onclick={() => {
+						restoreModal.open = false;
+					}}
+				>
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+					<span class="sr-only">{'Close'}</span>
+				</Button>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -1746,11 +1688,24 @@
 <Dialog.Root bind:open={restoreTargetModal.open}>
 	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
 		<Dialog.Header>
-			<Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<Icon icon="mdi:database-sync-outline" class="h-5 w-5" />
 					<span>Restore From Target Dataset</span>
 				</div>
+
+				<Button
+					size="sm"
+					variant="link"
+					class="h-4"
+					title={'Close'}
+					onclick={() => {
+						restoreTargetModal.open = false;
+					}}
+				>
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+					<span class="sr-only">{'Close'}</span>
+				</Button>
 			</Dialog.Title>
 		</Dialog.Header>
 

@@ -188,7 +188,36 @@ export function getVMIconByGaId(id: string): string {
         case 'rocky':
             return 'icon-[simple-icons--rockylinux]'
         default:
-            return ''
+            return 'icon-[carbon--unknown]'
+    }
+
+    return '';
+}
+
+export function vmStoragePools(vm: VM): string[] {
+    const pools = new Set<string>();
+    for (const storage of vm.storages || []) {
+        const pool = (storage.pool || storage.dataset?.pool || '').trim();
+        if (pool) {
+            pools.add(pool);
+        }
+    }
+
+    return [...pools];
+}
+
+export function vmBaseDataset(vm: VM): string {
+    const pools = vmStoragePools(vm);
+    if (pools.length > 0) {
+        return `${pools[0]}/sylve/virtual-machines/${vm.rid}`;
+    }
+
+    for (const storage of vm.storages || []) {
+        const datasetName = storage.dataset?.name || '';
+        const match = datasetName.match(/^(.*\/virtual-machines\/\d+)(?:$|\/)/);
+        if (match) {
+            return match[1];
+        }
     }
 
     return '';
