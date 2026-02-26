@@ -111,7 +111,6 @@ func (s *Service) IsVirtualizationEnabled() bool {
 		}
 	} else {
 		if !slices.Contains(basicSettings.Services, models.Virtualization) {
-			logger.L.Debug().Msg("Virtualization not enabled, skipping libvirt initialization")
 			return false
 		}
 	}
