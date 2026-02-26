@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -269,6 +271,10 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 			return fmt.Errorf("failed_to_rebuild_restored_vm_domain: %w", err)
 		}
 
+		if err := s.restoreVMRuntimeArtifactsFromDataset(ctx, dataset, rid); err != nil {
+			return fmt.Errorf("failed_to_restore_vm_runtime_artifacts: %w", err)
+		}
+
 		if hadCloudInit {
 			if err := s.DB.Model(&vmModels.VM{}).
 				Where("id = ?", reconciledVMID).
@@ -464,24 +470,105 @@ func (s *Service) readLocalRestoredVMMetadata(
 }
 
 func (s *Service) readLocalDatasetMetadataFile(ctx context.Context, dataset string, relativeMetaPath string) (string, error) {
+	raw, found, err := s.readLocalDatasetMetadataBytes(ctx, dataset, relativeMetaPath)
+	if err != nil || !found {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(raw)), nil
+}
+
+func (s *Service) restoreVMRuntimeArtifactsFromDataset(ctx context.Context, dataset string, rid uint) error {
+	if rid == 0 {
+		return nil
+	}
+
+	candidates := vmMetadataCandidateDatasets(dataset)
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	vmDir, err := config.GetVMsPath()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vms_path: %w", err)
+	}
+
+	configDir := filepath.Join(vmDir, strconv.Itoa(int(rid)))
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_vm_config_dir: %w", err)
+	}
+
+	artifactNames := []string{
+		fmt.Sprintf("%d_vars.fd", rid),
+		fmt.Sprintf("%d_tpm.log", rid),
+		fmt.Sprintf("%d_tpm.state", rid),
+	}
+
+	copied := make([]string, 0, len(artifactNames))
+	for _, artifactName := range artifactNames {
+		relativePath := filepath.Join(".sylve", artifactName)
+		artifactCopied := false
+
+		for _, candidate := range candidates {
+			data, found, readErr := s.readLocalDatasetMetadataBytes(ctx, candidate, relativePath)
+			if readErr != nil {
+				return fmt.Errorf("failed_to_read_vm_artifact_%s_from_%s: %w", artifactName, candidate, readErr)
+			}
+			if !found {
+				continue
+			}
+
+			dstPath := filepath.Join(configDir, artifactName)
+			if err := os.WriteFile(dstPath, data, 0644); err != nil {
+				return fmt.Errorf("failed_to_write_vm_artifact_%s: %w", artifactName, err)
+			}
+
+			artifactCopied = true
+			copied = append(copied, artifactName)
+			break
+		}
+
+		if !artifactCopied {
+			logger.L.Debug().
+				Uint("rid", rid).
+				Str("artifact", artifactName).
+				Msg("restored_vm_artifact_not_found_in_dataset_metadata")
+		}
+	}
+
+	if len(copied) > 0 {
+		logger.L.Info().
+			Uint("rid", rid).
+			Strs("artifacts", copied).
+			Msg("restored_vm_runtime_artifacts")
+	}
+
+	return nil
+}
+
+func (s *Service) readLocalDatasetMetadataBytes(
+	ctx context.Context,
+	dataset string,
+	relativeMetaPath string,
+) ([]byte, bool, error) {
 	mountedOut, err := s.runLocalZFSGet(ctx, "mounted", dataset)
 	if err != nil {
-		return "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
+		return nil, false, fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
 	}
 	mountpointOut, err := s.runLocalZFSGet(ctx, "mountpoint", dataset)
 	if err != nil {
-		return "", fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
+		return nil, false, fmt.Errorf("failed_to_read_dataset_mountpoint_property: %w", err)
 	}
 
 	mounted := strings.EqualFold(strings.TrimSpace(mountedOut), "yes")
 	mountPoint := strings.TrimSpace(mountpointOut)
 	if mountPoint == "" || mountPoint == "-" || mountPoint == "none" || mountPoint == "legacy" {
-		return "", nil
+		return nil, false, nil
 	}
 
 	if !mounted {
 		if _, err := utils.RunCommandWithContext(ctx, "zfs", "mount", dataset); err != nil {
-			return "", fmt.Errorf("failed_to_mount_restored_dataset: %w", err)
+			return nil, false, fmt.Errorf("failed_to_mount_restored_dataset: %w", err)
 		}
 	}
 
@@ -489,10 +576,10 @@ func (s *Service) readLocalDatasetMetadataFile(ctx context.Context, dataset stri
 	raw, err := os.ReadFile(metaPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
+			return nil, false, nil
 		}
-		return "", fmt.Errorf("failed_to_read_restored_dataset_metadata_file: %w", err)
+		return nil, false, fmt.Errorf("failed_to_read_restored_dataset_metadata_file: %w", err)
 	}
 
-	return strings.TrimSpace(string(raw)), nil
+	return raw, true, nil
 }

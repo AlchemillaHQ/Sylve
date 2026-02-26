@@ -229,10 +229,26 @@ func runZeltaWithEnvStreaming(
 	wg.Wait()
 	close(errCh)
 
+	nonBenignReadErrs := make([]error, 0, 2)
 	for readErr := range errCh {
-		if readErr != nil && waitErr == nil {
-			waitErr = readErr
+		if readErr == nil || waitErr != nil {
+			continue
 		}
+
+		if isBenignPipeReadError(readErr) {
+			logger.L.Debug().
+				Err(readErr).
+				Str("bin", bin).
+				Strs("args", args).
+				Msg("ignoring_benign_zelta_pipe_read_error")
+			continue
+		}
+
+		nonBenignReadErrs = append(nonBenignReadErrs, readErr)
+	}
+
+	if waitErr == nil && len(nonBenignReadErrs) > 0 {
+		waitErr = nonBenignReadErrs[0]
 	}
 
 	finalOutput := strings.TrimSpace(output.String())
@@ -242,6 +258,20 @@ func runZeltaWithEnvStreaming(
 	}
 
 	return finalOutput, nil
+}
+
+func isBenignPipeReadError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(err.Error()))
+	if lower == "" {
+		return false
+	}
+
+	return strings.Contains(lower, "file already closed") ||
+		strings.Contains(lower, "use of closed file")
 }
 
 func (s *Service) BackupWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
