@@ -11,6 +11,7 @@ package libvirt
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -141,6 +142,37 @@ func (s *Service) WriteVMJson(rid uint) error {
 		return fmt.Errorf("failed_to_marshal_vm_to_json: %w", err)
 	}
 
+	configDir, err := s.GetVMConfigDirectory(rid)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vm_config_directory: %w", err)
+	}
+
+	filesToCopy := []string{
+		fmt.Sprintf("%d_vars.fd", rid),
+		fmt.Sprintf("%d_tpm.log", rid),
+		fmt.Sprintf("%d_tpm.state", rid),
+	}
+
+	copyFile := func(src, dst string) error {
+		srcFile, err := os.Open(src)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		defer srcFile.Close()
+
+		dstFile, err := os.Create(dst)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		_, err = io.Copy(dstFile, srcFile)
+		return err
+	}
+
 	processedPools := make(map[string]bool)
 
 	for _, storage := range vm.Storages {
@@ -157,6 +189,15 @@ func (s *Service) WriteVMJson(rid uint) error {
 
 		if err := os.WriteFile(vmJsonPath, vmJsonData, 0644); err != nil {
 			return fmt.Errorf("failed_to_write_vm_json_to_%s: %w", vmJsonPath, err)
+		}
+
+		for _, filename := range filesToCopy {
+			srcPath := filepath.Join(configDir, filename)
+			dstPath := filepath.Join(sylveDir, filename)
+
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return fmt.Errorf("failed_to_copy_%s: %w", filename, err)
+			}
 		}
 
 		processedPools[storage.Pool] = true

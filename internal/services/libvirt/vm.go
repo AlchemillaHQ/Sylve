@@ -31,6 +31,10 @@ import (
 )
 
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
+	if !s.IsVirtualizationEnabled() {
+		return []vmModels.VM{}, nil
+	}
+
 	var vms []vmModels.VM
 	if err := s.DB.
 		Preload("CPUPinning").
@@ -66,6 +70,10 @@ func (s *Service) ListVMs() ([]vmModels.VM, error) {
 }
 
 func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) {
+	if !s.IsVirtualizationEnabled() {
+		return []libvirtServiceInterfaces.SimpleList{}, nil
+	}
+
 	var vms []vmModels.VM
 	if err := s.DB.
 		Model(&vmModels.VM{}).
