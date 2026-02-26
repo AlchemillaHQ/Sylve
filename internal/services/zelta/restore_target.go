@@ -336,6 +336,10 @@ func (s *Service) runRestoreFromTargetVM(
 	payload restoreFromTargetPayload,
 	jobID *uint,
 ) error {
+	if s.VM == nil || !s.VM.IsVirtualizationEnabled() {
+		return fmt.Errorf("virtualization_disabled")
+	}
+
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
 	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
 	if destinationDataset == "" {
@@ -385,7 +389,12 @@ func (s *Service) runRestoreFromTargetVM(
 	if kind, _ := inferRestoreDatasetKind(primaryDestination); kind != clusterModels.BackupJobModeVM {
 		primaryDestination = destinationVMRootFromRemoteRoot(target.BackupRoot, vmRoots[0], destRID)
 	}
+	if primaryDestination == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
 
+	candidateDestinations := make([]string, 0, len(vmRoots)+1)
+	candidateDestinations = append(candidateDestinations, primaryDestination)
 	seenDestinations := make(map[string]struct{})
 	for _, remoteRoot := range vmRoots {
 		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
@@ -396,6 +405,22 @@ func (s *Service) runRestoreFromTargetVM(
 			continue
 		}
 		seenDestinations[localRoot] = struct{}{}
+		candidateDestinations = append(candidateDestinations, localRoot)
+	}
+
+	if err := s.validateDestinationPoolsExist(ctx, candidateDestinations); err != nil {
+		return err
+	}
+
+	for _, remoteRoot := range vmRoots {
+		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
+		if localRoot == "" {
+			continue
+		}
+		if _, ok := seenDestinations[localRoot]; !ok {
+			continue
+		}
+		delete(seenDestinations, localRoot)
 
 		runPayload := payload
 		runPayload.RemoteDataset = remoteRoot
@@ -419,6 +444,42 @@ func (s *Service) runRestoreFromTargetVM(
 				Err(err).
 				Msg("failed_to_start_vm_after_restore_continuing_anyway")
 		}
+	}
+
+	return nil
+}
+
+func (s *Service) validateDestinationPoolsExist(ctx context.Context, datasets []string) error {
+	seenRoots := make(map[string]struct{})
+
+	for _, dataset := range datasets {
+		dataset = normalizeRestoreDestinationDataset(dataset)
+		if dataset == "" {
+			return fmt.Errorf("destination_dataset_required")
+		}
+
+		root := dataset
+		if idx := strings.Index(root, "/"); idx > 0 {
+			root = root[:idx]
+		}
+		root = strings.TrimSpace(root)
+		if root == "" {
+			return fmt.Errorf("destination_dataset_required")
+		}
+		if _, ok := seenRoots[root]; ok {
+			continue
+		}
+
+		rootCheckOut, rootCheckErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", root)
+		if rootCheckErr != nil {
+			return fmt.Errorf(
+				"destination_dataset_pool_missing: cannot find destination root '%s': %s",
+				root,
+				strings.TrimSpace(rootCheckOut),
+			)
+		}
+
+		seenRoots[root] = struct{}{}
 	}
 
 	return nil
