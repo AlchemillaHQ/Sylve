@@ -12,6 +12,7 @@ export interface Column {
     visible?: boolean;
     width?: number | string;
     copyOnClick?: boolean | ((row: Row) => boolean);
+    cellClick?: (e: UIEvent, cell: CellComponent) => void;
     formatter?:
     | ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
     | string;

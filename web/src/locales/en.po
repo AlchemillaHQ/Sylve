@@ -556,6 +556,8 @@ msgstr "Minimize"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -1549,6 +1551,7 @@ msgid "Leader Node"
 msgstr "Leader Node"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Copy"
 msgstr "Copy"
 
@@ -3843,6 +3846,7 @@ msgstr "Start"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Running"
 msgstr "Running"
 
@@ -7754,6 +7758,7 @@ msgstr "Schedule: <0/>"
 msgid "Events"
 msgstr "Events"
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore"
 msgstr "Restore"
@@ -7965,10 +7970,12 @@ msgstr "No jails available"
 #~ msgstr "Receive"
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed"
 msgstr "Failed"
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Success"
 msgstr "Success"
 
@@ -8720,3 +8727,35 @@ msgid ""
 msgstr ""
 "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
 "VM network objects. Partial failures will be tolerated."
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Error copied to clipboard"
+msgstr "Error copied to clipboard"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to copy error"
+msgstr "Failed to copy error"
+
+#~ msgid "Event Error"
+#~ msgstr "Event Error"
+
+#~ msgid "#{0} Error Details"
+#~ msgstr "#{0} Error Details"
+
+#~ msgid "#{0} Job - Error Details"
+#~ msgstr "#{0} Job - Error Details"
+
+#~ msgid "Event #{0}"
+#~ msgstr "Event #{0}"
+
+#. placeholder {0}: errorModal.id
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "#{0} Event - Error Details"
+msgstr "#{0} Event - Error Details"
+
+#~ msgid "Jail Backup"
+#~ msgstr "Jail Backup"
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup"
+msgstr "Backup"

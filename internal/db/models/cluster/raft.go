@@ -251,19 +251,14 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return nil
 			}
 
-			var jobIDs []uint
-			if err := db.Model(&BackupJob{}).Where("target_id = ?", payload.ID).Pluck("id", &jobIDs).Error; err != nil {
+			var jobCount int64
+			if err := db.Model(&BackupJob{}).Where("target_id = ?", payload.ID).Count(&jobCount).Error; err != nil {
 				return err
 			}
-			if len(jobIDs) > 0 {
-				if err := db.Where("job_id IN ?", jobIDs).Delete(&BackupEvent{}).Error; err != nil {
-					return err
-				}
+			if jobCount > 0 {
+				return fmt.Errorf("target_in_use_by_backup_jobs: %d", jobCount)
 			}
 
-			if err := db.Delete(&BackupJob{}, "target_id = ?", payload.ID).Error; err != nil {
-				return err
-			}
 			return db.Delete(&BackupTarget{}, payload.ID).Error
 		default:
 			return nil

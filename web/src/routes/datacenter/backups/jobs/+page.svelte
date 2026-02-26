@@ -288,7 +288,7 @@
 						v = { name: 'VM', icon: 'material-symbols:monitor-outline' };
 						break;
 					case 'dataset':
-						v = { name: 'Dataset', icon: 'mdi:database' };
+						v = { name: 'Dataset', icon: 'material-symbols:files' };
 						break;
 					default:
 						v = { name: String(value), icon: 'mdi:help' };
@@ -304,6 +304,22 @@
 				cell.getValue()
 					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
 					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+		},
+		{
+			field: 'lastStatus',
+			title: 'Last Status',
+			formatter: (cell: CellComponent) => {
+				const value = cell.getValue();
+				if (value === 'success') {
+					return renderWithIcon('mdi:check-circle', 'Success', 'text-green-500');
+				} else if (value === 'failed') {
+					return renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500');
+				} else if (value === 'running') {
+					return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
+				}
+
+				return value || '-';
+			}
 		},
 		{ field: 'name', title: 'Name' },
 		{
@@ -322,7 +338,35 @@
 				return nodeNameById[value] || value || '-';
 			}
 		},
-		{ field: 'sourceDataset', title: 'Source' },
+		{
+			field: 'sourceDataset',
+			title: 'Source',
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow().getData() as {
+					mode?: 'dataset' | 'jail' | 'vm';
+					sourceGuestId?: number;
+				};
+				const value = String(cell.getValue() || '');
+
+				if (row.mode === 'jail') {
+					const label =
+						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
+					return renderWithIcon('hugeicons:prison', label || '-');
+				}
+
+				if (row.mode === 'vm') {
+					const label =
+						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
+					return renderWithIcon('material-symbols:monitor-outline', label || '-');
+				}
+
+				if (row.mode === 'dataset') {
+					return renderWithIcon('material-symbols:files', value || '-');
+				}
+
+				return value || '-';
+			}
+		},
 		{
 			field: 'destSuffix',
 			title: 'Dest Suffix',
@@ -343,21 +387,6 @@
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
-			}
-		},
-		{
-			field: 'lastStatus',
-			title: 'Last Status',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				if (value === 'completed') {
-					return '<span class="text-green-500">Completed</span>';
-				} else if (value === 'failed') {
-					return '<span class="text-red-500">Failed</span>';
-				} else if (value === 'running') {
-					return '<span class="text-yellow-500">Running</span>';
-				}
-				return value || '-';
 			}
 		}
 	];
@@ -391,6 +420,11 @@
 
 	let tableData = $derived({
 		rows: jobs.current.map((job) => ({
+			sourceGuestId: parseGuestFromDatasetPath(
+				job.mode === 'jail'
+					? job.jailRootDataset || job.sourceDataset || ''
+					: job.sourceDataset || job.jailRootDataset || ''
+			).id,
 			id: job.id,
 			name: job.name,
 			targetId: job.targetId,

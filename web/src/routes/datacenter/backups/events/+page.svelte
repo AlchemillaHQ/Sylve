@@ -15,6 +15,7 @@
 	import Icon from '@iconify/svelte';
 	import { resource, useInterval } from 'runed';
 	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { getJails } from '$lib/api/jail/jail';
@@ -39,6 +40,28 @@
 		open: false,
 		error: ''
 	});
+
+	let errorModal = $state({
+		id: 0,
+		open: false,
+		error: ''
+	});
+
+	function openErrorModal(id: number, error: string) {
+		errorModal.id = id;
+		errorModal.error = error;
+		errorModal.open = true;
+	}
+
+	async function copyErrorFromModal() {
+		if (!errorModal.error) return;
+		try {
+			await navigator.clipboard.writeText(errorModal.error);
+			toast.success('Error copied to clipboard', { duration: 2000, position: 'bottom-center' });
+		} catch (_err) {
+			toast.error('Failed to copy error', { duration: 2000, position: 'bottom-center' });
+		}
+	}
 
 	async function loadJails() {
 		if (jails.length > 0 || jailsLoading) return;
@@ -320,7 +343,6 @@
 			{
 				field: 'sourceDataset',
 				title: 'Source',
-				copyOnClick: true,
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
 					if (!value) return '';
@@ -331,7 +353,6 @@
 			{
 				field: 'targetEndpoint',
 				title: 'Target',
-				copyOnClick: true,
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
 					if (!value) return '';
@@ -339,7 +360,21 @@
 					return renderWithIcon(compact.icon, compact.label);
 				}
 			},
-			{ field: 'mode', title: 'Mode' },
+			{
+				field: 'mode',
+				title: 'Mode',
+				formatter: (cell: CellComponent) => {
+					const value = cell.getValue();
+
+					if (value === 'restore') {
+						return renderWithIcon('ic:baseline-restore', 'Restore');
+					} else if (value === 'jail' || value === 'vm' || value === 'dataset') {
+						return renderWithIcon('material-symbols:backup-outline', `Backup`);
+					}
+
+					return value;
+				}
+			},
 			{
 				field: 'startedAt',
 				title: 'Started',
@@ -356,7 +391,13 @@
 			{
 				field: 'error',
 				title: 'Error',
-				copyOnClick: true,
+				cellClick: (_event: UIEvent, cell: CellComponent) => {
+					const row = cell.getRow().getData();
+					const id = row.id;
+					const value = String(cell.getValue() || '');
+					if (!value) return;
+					openErrorModal(id, value);
+				},
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
 					let v = '';
@@ -580,5 +621,42 @@
 		{:else}
 			<p class="py-4 text-sm text-muted-foreground">Loading progress...</p>
 		{/if}
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={errorModal.open}>
+	<Dialog.Content class="w-[min(760px,95vw)] h-[min(60vh,95vh)] p-5">
+		<Dialog.Header>
+			<Dialog.Title class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<Icon icon="mdi:alert-circle-outline" class="h-5 w-5 text-red-500" />
+					<span>#{errorModal.id} Event - Error Details</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							errorModal.open = false;
+						}}
+					>
+						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="sr-only">{'Close'}</span>
+					</Button>
+				</div>
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<div class="mt-3 max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
+			<pre class="whitespace-pre-wrap break-words text-sm">{errorModal.error || '-'}</pre>
+		</div>
+
+		<Dialog.Footer>
+			<Button onclick={copyErrorFromModal}>
+				<span>Copy</span>
+			</Button>
+		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

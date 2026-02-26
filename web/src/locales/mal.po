@@ -554,6 +554,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -1547,6 +1549,7 @@ msgid "Leader Node"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 msgid "Copy"
 msgstr ""
 
@@ -3831,6 +3834,7 @@ msgstr "ആരംഭിക്കുക"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Running"
 msgstr "പ്രവർത്തിക്കുന്നു"
 
@@ -7702,6 +7706,7 @@ msgstr ""
 msgid "Events"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore"
 msgstr ""
@@ -7913,10 +7918,12 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Failed"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Success"
 msgstr ""
 
@@ -8631,4 +8638,36 @@ msgstr ""
 msgid ""
 "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
 "VM network objects. Partial failures will be tolerated."
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Error copied to clipboard"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to copy error"
+msgstr ""
+
+#~ msgid "Event Error"
+#~ msgstr ""
+
+#~ msgid "#{0} Error Details"
+#~ msgstr ""
+
+#~ msgid "#{0} Job - Error Details"
+#~ msgstr ""
+
+#~ msgid "Event #{0}"
+#~ msgstr ""
+
+#. placeholder {0}: errorModal.id
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "#{0} Event - Error Details"
+msgstr ""
+
+#~ msgid "Jail Backup"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup"
 msgstr ""

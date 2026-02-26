@@ -233,4 +233,6 @@
 <span class="icon-[mdi--close-circle-outline]"></span>
 <span class="icon-[mdi--progress-clock]"></span>
 <span class="icon-[game-icons--divergence]"></span>
+<span class="icon-[ic--baseline-restore]"></span>
+<span class="icon-[material-symbols--backup-outline]"></span>
 -->
