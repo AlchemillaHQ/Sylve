@@ -697,37 +697,37 @@
 </div>
 
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>
-	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
+	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5 max-w-xl!">
 		<AlertDialogRaw.Header>
-			<AlertDialogRaw.Title>{modalState.forceDelete ? 'Force Delete VM?' : 'Are you sure?'}</AlertDialogRaw.Title>
+			<AlertDialogRaw.Title
+				>{modalState.forceDelete ? 'Force Delete VM?' : 'Are you sure?'}</AlertDialogRaw.Title
+			>
 			<AlertDialogRaw.Description>
-				{modalState.forceDelete
-					? `This will force delete VM`
-					: `This will permanently delete VM`}
+				{modalState.forceDelete ? `This will force delete VM` : `This will permanently delete VM`}
 				<span class="font-semibold">{modalState?.title}.</span>
 				{#if modalState.forceDelete}
 					<div class="mt-2 text-sm">
-						Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM
-						network objects. Partial failures will be tolerated.
+						Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
+						VM network objects. Partial failures will be tolerated.
 					</div>
 				{:else}
-					<div class="flex flex-row space-x-4">
+					<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
 						<CustomCheckbox
 							label="Delete MAC Object(s)"
 							bind:checked={modalState.deleteMACs}
-							classes="flex items-center gap-2 mt-4"
+							classes="flex items-center gap-2 mt-3"
 						></CustomCheckbox>
 
 						<CustomCheckbox
 							label="Delete RAW Disk(s)"
 							bind:checked={modalState.deleteRAWDisks}
-							classes="flex items-center gap-2 mt-4"
+							classes="flex items-center gap-2 mt-3"
 						></CustomCheckbox>
 
 						<CustomCheckbox
 							label="Delete Volume(s)"
 							bind:checked={modalState.deleteVolumes}
-							classes="flex items-center gap-2 mt-4"
+							classes="flex items-center gap-2 mt-3"
 						></CustomCheckbox>
 					</div>
 				{/if}

@@ -7786,11 +7786,10 @@ msgstr ""
 msgid "This will force delete VM"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid ""
-"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
-"network objects. Partial failures will be tolerated."
-msgstr ""
+#~ msgid ""
+#~ "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
+#~ "network objects. Partial failures will be tolerated."
+#~ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Cluster Backup Target"
@@ -7810,4 +7809,10 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Keep Last Snapshots"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid ""
+"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
+"VM network objects. Partial failures will be tolerated."
 msgstr ""
