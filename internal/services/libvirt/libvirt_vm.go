@@ -358,6 +358,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 }
 
 func (s *Service) CreateLvVm(id int, ctx context.Context) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
@@ -444,6 +448,10 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 }
 
 func (s *Service) RemoveLvVm(rid uint) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
@@ -487,6 +495,10 @@ func (s *Service) RemoveLvVm(rid uint) error {
 }
 
 func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error) {
+	if err := s.requireConnection(); err != nil {
+		return nil, err
+	}
+
 	var dom libvirtServiceInterfaces.LvDomain
 
 	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
@@ -650,6 +662,10 @@ func (s *Service) StopTPM(rid uint) error {
 }
 
 func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	if vm.PCIDevices == nil || len(vm.PCIDevices) == 0 {
 		return nil
 	}
@@ -687,6 +703,10 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 }
 
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 

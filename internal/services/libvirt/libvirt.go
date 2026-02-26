@@ -86,6 +86,10 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 }
 
 func (s *Service) CheckVersion() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	_, err := s.Conn.ConnectGetLibVersion()
 	if err != nil {
 		return err
@@ -112,6 +116,14 @@ func (s *Service) IsVirtualizationEnabled() bool {
 	}
 
 	return true
+}
+
+func (s *Service) requireConnection() error {
+	if s == nil || s.Conn == nil {
+		return fmt.Errorf("libvirt_not_initialized")
+	}
+
+	return nil
 }
 
 func (s *Service) WriteVMJson(rid uint) error {
