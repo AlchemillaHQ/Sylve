@@ -317,6 +317,15 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if payload.ID == 0 {
 				return nil
 			}
+			var runningCount int64
+			if err := db.Model(&BackupEvent{}).
+				Where("job_id = ? AND status = ?", payload.ID, "running").
+				Count(&runningCount).Error; err != nil {
+				return err
+			}
+			if runningCount > 0 {
+				return fmt.Errorf("backup_job_running")
+			}
 			if err := db.Where("job_id = ?", payload.ID).Delete(&BackupEvent{}).Error; err != nil {
 				return err
 			}

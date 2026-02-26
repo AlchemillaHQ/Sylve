@@ -344,6 +344,16 @@ func (s *Service) ProposeBackupJobDelete(id uint, bypassRaft bool) error {
 	}
 
 	if bypassRaft {
+		var runningCount int64
+		if err := s.DB.Model(&clusterModels.BackupEvent{}).
+			Where("job_id = ? AND status = ?", id, "running").
+			Count(&runningCount).Error; err != nil {
+			return err
+		}
+		if runningCount > 0 {
+			return fmt.Errorf("backup_job_running")
+		}
+
 		if err := s.DB.Where("job_id = ?", id).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
 			return err
 		}
