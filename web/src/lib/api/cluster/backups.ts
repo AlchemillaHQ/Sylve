@@ -70,7 +70,7 @@ export async function deleteBackupTarget(id: number): Promise<APIResponse> {
 }
 
 export async function validateBackupTarget(id: number): Promise<APIResponse> {
-    return await apiRequest(`/cluster/backups/targets/${id}/validate`, APIResponseSchema, 'POST', {});
+    return await apiRequest(`/cluster/backups/targets/validate/${id}`, APIResponseSchema, 'POST', {});
 }
 
 export async function listBackupJobs(): Promise<BackupJob[]> {

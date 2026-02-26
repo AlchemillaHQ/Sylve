@@ -38,7 +38,7 @@
 
 	const simpleVMs = resource(
 		() => 'simple-vm-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			if (!storage.enabledServices?.includes('virtualization')) {
 				return [];
 			}
@@ -58,7 +58,7 @@
 
 	const simpleJails = resource(
 		() => 'simple-jail-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			if (!storage.enabledServices?.includes('jails')) {
 				return [];
 			}

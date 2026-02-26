@@ -179,9 +179,7 @@ func (s *Service) ProposeBackupTargetDelete(id uint, bypassRaft bool) error {
 		}
 
 		if len(jobIDs) > 0 {
-			if err := s.DB.Where("job_id IN ?", jobIDs).Delete(&clusterModels.BackupEvent{}).Error; err != nil {
-				return err
-			}
+			return fmt.Errorf("target_in_use_by_backup_jobs: %d", len(jobIDs))
 		}
 
 		if err := s.DB.Delete(&clusterModels.BackupJob{}, "target_id = ?", id).Error; err != nil {

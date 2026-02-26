@@ -7999,9 +7999,8 @@ msgstr "Target connectivity validated"
 msgid "Validation failed"
 msgstr "Validation failed"
 
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Validating..."
-msgstr "Validating..."
+#~ msgid "Validating..."
+#~ msgstr "Validating..."
 
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Validate"
@@ -8694,3 +8693,15 @@ msgid ""
 msgstr ""
 "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
 "network objects. Partial failures will be tolerated."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster Backup Target"
+msgstr "Cluster Backup Target"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster Backup Target - Validate"
+msgstr "Cluster Backup Target - Validate"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validating"
+msgstr "Validating"

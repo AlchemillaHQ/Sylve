@@ -83,7 +83,7 @@
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'mdi--server' : 'mdi--server-off',
+					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? mergedChildren : []
 				};
@@ -162,7 +162,6 @@
 			}
 		}
 	);
-
 </script>
 
 <div class="h-full overflow-y-auto px-1.5 pt-1">

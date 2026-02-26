@@ -85,6 +85,8 @@
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
 		'/api/cluster/notes': 'Cluster Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
+		'/api/cluster/backups/targets/validate': 'Cluster Backup Target - Validate',
+		'/api/cluster/backups/targets': 'Cluster Backup Target',
 		'/api/cluster': 'Cluster'
 	});
 
