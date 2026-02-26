@@ -102,7 +102,7 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 	}
 
 	if !mounted {
-		if _, err := utils.RunCommandWithContext(ctx, "zfs", "mount", dataset); err != nil {
+		if err := s.mountLocalDataset(ctx, dataset); err != nil {
 			return nil, "", fmt.Errorf("failed_to_mount_restored_dataset: %w", err)
 		}
 	}
@@ -122,14 +122,6 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 	}
 
 	return &restored, mountPoint, nil
-}
-
-func (s *Service) runLocalZFSGet(ctx context.Context, property, dataset string) (string, error) {
-	output, err := utils.RunCommandWithContext(ctx, "zfs", "get", "-H", "-o", "value", property, dataset)
-	if err != nil {
-		return output, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
-	}
-	return strings.TrimSpace(output), nil
 }
 
 func (s *Service) upsertRestoredJailState(

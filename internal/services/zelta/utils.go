@@ -5,8 +5,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func parseHumanSizeBytes(numStr, unitStr, suffixStr string) (uint64, bool) {
@@ -78,28 +76,21 @@ func parseTotalBytesFromOutput(output string) *uint64 {
 	return nil
 }
 
-func zfsDatasetUsedBytes(ctx context.Context, dataset string) (*uint64, error) {
+func zfsDatasetUsedBytes(s *Service, ctx context.Context, dataset string) (*uint64, error) {
 	path := strings.TrimSpace(dataset)
 	if path == "" {
 		return nil, nil
 	}
 
-	out, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-Hp", "-o", "used", path)
+	ds, err := s.getLocalDataset(ctx, path)
 	if err != nil {
 		return nil, err
 	}
-
-	line := strings.TrimSpace(strings.Split(strings.TrimSpace(out), "\n")[0])
-	if line == "" || line == "-" {
+	if ds == nil {
 		return nil, nil
 	}
-
-	parsed, err := strconv.ParseUint(line, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	return &parsed, nil
+	used := ds.Used
+	return &used, nil
 }
 
 // autoDestSuffix derives a destination suffix from the source dataset when the user hasn't set one.

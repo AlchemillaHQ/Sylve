@@ -189,7 +189,7 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	}
 
 	// Step 1: Clean up any previous restore temp dataset
-	_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
+	_ = s.destroyLocalDataset(ctx, restorePath, true)
 
 	// Step 2: Pull from remote backup@snapshot → temp dataset using zelta
 	// Override recv flags: skip readonly=on (RECV_TOP default) so the restored
@@ -228,22 +228,27 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	}
 
 	// Verify the dataset was actually created
-	verifyOut, verifyErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", restorePath)
-	if verifyErr != nil {
-		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist: %s", restorePath, verifyOut)
+	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
+	if verifyErr != nil || !restoreExists {
+		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
 	}
-	logger.L.Debug().Str("verify", strings.TrimSpace(verifyOut)).Msg("restore_dataset_verified")
+	logger.L.Debug().Str("verify", restorePath).Msg("restore_dataset_verified")
 
 	// Step 3: Remove the original dataset only if it exists
-	_, existErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", sourceDataset)
-	if existErr == nil {
+	sourceExists, existErr := s.localDatasetExists(ctx, sourceDataset)
+	if existErr != nil {
+		restoreErr = fmt.Errorf("failed_to_check_source_dataset_before_restore: %w", existErr)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
+	if sourceExists {
 		// Dataset exists — must be destroyed before we can rename the restore into place
-		_, destroyErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", sourceDataset)
+		destroyErr := s.destroyLocalDataset(ctx, sourceDataset, true)
 		if destroyErr != nil {
 			// Likely busy (jail/VM running, dataset mounted). Clean up the temp dataset.
-			_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
+			_ = s.destroyLocalDataset(ctx, restorePath, true)
 			restoreErr = fmt.Errorf("destroy_original_failed: cannot remove %s (is the jail/VM still running?): %v", sourceDataset, destroyErr)
 			s.finalizeRestoreEvent(&event, restoreErr, output)
 			return restoreErr
@@ -253,11 +258,11 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	// Step 4: Ensure the parent dataset exists (for restoring to a fresh system)
 	if idx := strings.LastIndex(sourceDataset, "/"); idx > 0 {
 		parent := sourceDataset[:idx]
-		_, _ = utils.RunCommandWithContext(ctx, "zfs", "create", "-p", parent)
+		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
 	// Step 5: Rename restored temp → original path
-	_, renameErr := utils.RunCommandWithContext(ctx, "zfs", "rename", restorePath, sourceDataset)
+	renameErr := s.renameLocalDataset(ctx, restorePath, sourceDataset)
 	if renameErr != nil {
 		restoreErr = fmt.Errorf("rename_restore_failed: could not rename %s → %s: %v", restorePath, sourceDataset, renameErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
@@ -326,17 +331,26 @@ func (s *Service) runRestoreVMJob(
 // fixRestoredProperties corrects ZFS properties after a restore so the dataset
 // behaves like the original (not readonly, correct mountpoint, canmount=on).
 func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
-	commands := [][]string{
-		{"zfs", "set", "readonly=off", dataset},
-		{"zfs", "inherit", "mountpoint", dataset},
-		{"zfs", "set", "canmount=on", dataset},
-		{"zfs", "mount", dataset},
+	ds, err := s.getLocalDataset(ctx, dataset)
+	if err != nil {
+		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_failed")
+		return
+	}
+	if ds == nil {
+		logger.L.Warn().Str("dataset", dataset).Msg("fix_restored_property_failed_dataset_not_found")
+		return
 	}
 
-	for _, cmd := range commands {
-		if _, err := utils.RunCommandWithContext(ctx, cmd[0], cmd[1:]...); err != nil {
-			logger.L.Warn().Err(err).Strs("cmd", cmd).Msg("fix_restored_property_failed")
-		}
+	if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
+		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_set_failed")
+	}
+
+	if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dataset); err != nil {
+		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_inherit_mountpoint_failed")
+	}
+
+	if err := ds.Mount(ctx, false); err != nil {
+		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_mount_failed")
 	}
 }
 

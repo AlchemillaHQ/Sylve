@@ -470,13 +470,8 @@ func (s *Service) validateDestinationPoolsExist(ctx context.Context, datasets []
 			continue
 		}
 
-		rootCheckOut, rootCheckErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", root)
-		if rootCheckErr != nil {
-			return fmt.Errorf(
-				"destination_dataset_pool_missing: cannot find destination root '%s': %s",
-				root,
-				strings.TrimSpace(rootCheckOut),
-			)
+		if err := s.ensureLocalPoolExists(ctx, root); err != nil {
+			return err
 		}
 
 		seenRoots[root] = struct{}{}
@@ -510,13 +505,8 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	if strings.TrimSpace(destinationRoot) == "" {
 		return fmt.Errorf("destination_dataset_required")
 	}
-	rootCheckOut, rootCheckErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", destinationRoot)
-	if rootCheckErr != nil {
-		return fmt.Errorf(
-			"destination_dataset_pool_missing: cannot find destination root '%s': %s",
-			destinationRoot,
-			strings.TrimSpace(rootCheckOut),
-		)
+	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
+		return err
 	}
 
 	snapshot := strings.TrimSpace(payload.Snapshot)
@@ -553,7 +543,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	var restoreErr error
 	var output string
 
-	_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
+	_ = s.destroyLocalDataset(ctx, restorePath, true)
 
 	extraEnv := s.buildZeltaEnv(target)
 	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", "no")
@@ -584,9 +574,9 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return restoreErr
 	}
 
-	verifyOut, verifyErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", restorePath)
-	if verifyErr != nil {
-		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist: %s", restorePath, verifyOut)
+	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
+	if verifyErr != nil || !restoreExists {
+		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
 	}
@@ -596,8 +586,13 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	var ctId uint
 
-	_, existErr := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", destinationDataset)
-	if existErr == nil {
+	destExists, existErr := s.localDatasetExists(ctx, destinationDataset)
+	if existErr != nil {
+		restoreErr = fmt.Errorf("failed_to_check_destination_dataset_before_restore: %w", existErr)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
+	if destExists {
 		if isJailDestination {
 			var err error
 			ctId, err = s.Jail.GetJailCTIDFromDataset(destinationDataset)
@@ -623,9 +618,9 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			}
 		}
 
-		_, destroyErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", destinationDataset)
+		destroyErr := s.destroyLocalDataset(ctx, destinationDataset, true)
 		if destroyErr != nil {
-			_, _ = utils.RunCommandWithContext(ctx, "zfs", "destroy", "-r", restorePath)
+			_ = s.destroyLocalDataset(ctx, restorePath, true)
 			restoreErr = fmt.Errorf("destroy_original_failed: cannot remove %s (is it still in use?): %v", destinationDataset, destroyErr)
 			s.finalizeRestoreEvent(&event, restoreErr, output)
 			return restoreErr
@@ -634,10 +629,10 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	if idx := strings.LastIndex(destinationDataset, "/"); idx > 0 {
 		parent := destinationDataset[:idx]
-		_, _ = utils.RunCommandWithContext(ctx, "zfs", "create", "-p", parent)
+		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
-	_, renameErr := utils.RunCommandWithContext(ctx, "zfs", "rename", restorePath, destinationDataset)
+	renameErr := s.renameLocalDataset(ctx, restorePath, destinationDataset)
 	if renameErr != nil {
 		restoreErr = fmt.Errorf("rename_restore_failed: could not rename %s → %s: %v", restorePath, destinationDataset, renameErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)

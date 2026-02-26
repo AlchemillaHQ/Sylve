@@ -23,7 +23,6 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -345,7 +344,11 @@ func (s *Service) normalizeRestoredVMStorages(
 			return nil, fmt.Errorf("unsupported_restored_vm_storage_type: %s", cleaned.Type)
 		}
 
-		if _, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-o", "name", datasetName); err != nil {
+		exists, err := s.localDatasetExists(ctx, datasetName)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_check_restored_vm_storage_dataset: %w", err)
+		}
+		if !exists {
 			return nil, fmt.Errorf("restored_vm_storage_dataset_not_found: %s", datasetName)
 		}
 
@@ -567,7 +570,7 @@ func (s *Service) readLocalDatasetMetadataBytes(
 	}
 
 	if !mounted {
-		if _, err := utils.RunCommandWithContext(ctx, "zfs", "mount", dataset); err != nil {
+		if err := s.mountLocalDataset(ctx, dataset); err != nil {
 			return nil, false, fmt.Errorf("failed_to_mount_restored_dataset: %w", err)
 		}
 	}

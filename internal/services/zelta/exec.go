@@ -369,7 +369,7 @@ func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) erro
 			continue
 		}
 
-		if _, err := utils.RunCommandWithContext(ctx, "zfs", "destroy", snap); err != nil {
+		if err := s.destroyLocalDataset(ctx, snap, false); err != nil {
 			return err
 		}
 	}

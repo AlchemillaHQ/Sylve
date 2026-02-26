@@ -120,7 +120,8 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 		jailService := dependencies[1].(jailServiceInterfaces.JailServiceInterface)
 		networkService := dependencies[2].(networkServiceInterfaces.NetworkServiceInterface)
 		vmService := dependencies[3].(libvirtServiceInterfaces.LibvirtServiceInterface)
-		return zelta.NewService(db, clusterService, jailService, networkService, vmService)
+		gzfs := dependencies[4].(*gzfs.Client)
+		return zelta.NewService(db, clusterService, jailService, networkService, vmService, gzfs)
 	default:
 		return nil
 	}
@@ -143,7 +144,7 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
-	zeltaService := NewService[zelta.Service](db, clusterService, jailService, networkService, libvirtService)
+	zeltaService := NewService[zelta.Service](db, clusterService, jailService, networkService, libvirtService, gzfs)
 
 	return &ServiceRegistry{
 		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),

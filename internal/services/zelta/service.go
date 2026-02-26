@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -51,6 +52,7 @@ type Service struct {
 	Jail    jailServiceInterfaces.JailServiceInterface
 	Network networkServiceInterfaces.NetworkServiceInterface
 	VM      libvirtServiceInterfaces.LibvirtServiceInterface
+	GZFS    *gzfs.Client
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -75,6 +77,7 @@ func NewService(
 	jailService jailServiceInterfaces.JailServiceInterface,
 	networkService networkServiceInterfaces.NetworkServiceInterface,
 	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
+	gzfsClient *gzfs.Client,
 ) *Service {
 	return &Service{
 		DB:          db,
@@ -82,6 +85,7 @@ func NewService(
 		Jail:        jailService,
 		Network:     networkService,
 		VM:          vmService,
+		GZFS:        gzfsClient,
 		runningJobs: make(map[uint]struct{}),
 	}
 }
@@ -717,7 +721,7 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 		}
 	}
 
-	output, err := utils.RunCommandWithContext(ctx, "zfs", "list", "-H", "-t", "filesystem", "-o", "name")
+	localDatasets, err := s.listLocalFilesystemDatasets(ctx)
 	if err != nil {
 		if len(sources) > 0 {
 			sort.Strings(sources)
@@ -734,8 +738,7 @@ func (s *Service) resolveVMBackupSourceDatasets(ctx context.Context, vmRID uint,
 		return []string{preferred}, nil
 	}
 
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		dataset := normalizeDatasetPath(line)
+	for _, dataset := range localDatasets {
 		if dataset == "" {
 			continue
 		}
@@ -998,7 +1001,7 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 		if progressDataset != "" {
 			progressDataset += ".restoring"
 			out.ProgressDataset = progressDataset
-			movedBytes, movedErr := zfsDatasetUsedBytes(ctx, progressDataset)
+			movedBytes, movedErr := zfsDatasetUsedBytes(s, ctx, progressDataset)
 			if movedErr != nil {
 				logger.L.Debug().
 					Uint("event_id", id).
