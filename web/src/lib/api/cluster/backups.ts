@@ -93,21 +93,38 @@ export async function runBackupJob(id: number): Promise<APIResponse> {
     return await apiRequest(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
 }
 
-export async function getBackupEvents(limit: number = 200, jobId?: number): Promise<BackupEvent[]> {
+export async function getBackupEvents(
+    limit: number = 200,
+    jobId?: number,
+    nodeId?: string
+): Promise<BackupEvent[]> {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
     if (jobId && jobId > 0) {
         params.set('jobId', String(jobId));
     }
+    if (nodeId && nodeId.trim() !== '') {
+        params.set('nodeId', nodeId.trim());
+    }
     return await apiRequest(`/cluster/backups/events?${params.toString()}`, z.array(BackupEventSchema), 'GET');
 }
 
-export async function getBackupEvent(id: number): Promise<BackupEvent> {
-    return await apiRequest(`/cluster/backups/events/${id}`, BackupEventSchema, 'GET');
+export async function getBackupEvent(id: number, nodeId?: string): Promise<BackupEvent> {
+    const params = new URLSearchParams();
+    if (nodeId && nodeId.trim() !== '') {
+        params.set('nodeId', nodeId.trim());
+    }
+    const query = params.toString();
+    return await apiRequest(`/cluster/backups/events/${id}${query ? `?${query}` : ''}`, BackupEventSchema, 'GET');
 }
 
-export async function getBackupEventProgress(id: number): Promise<BackupEventProgress> {
-    return await apiRequest(`/cluster/backups/events/${id}/progress`, BackupEventProgressSchema, 'GET');
+export async function getBackupEventProgress(id: number, nodeId?: string): Promise<BackupEventProgress> {
+    const params = new URLSearchParams();
+    if (nodeId && nodeId.trim() !== '') {
+        params.set('nodeId', nodeId.trim());
+    }
+    const query = params.toString();
+    return await apiRequest(`/cluster/backups/events/${id}/progress${query ? `?${query}` : ''}`, BackupEventProgressSchema, 'GET');
 }
 
 export async function listBackupJobSnapshots(jobId: number): Promise<SnapshotInfo[]> {

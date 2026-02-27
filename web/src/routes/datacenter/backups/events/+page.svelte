@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getBackupEventProgress, listBackupJobs } from '$lib/api/cluster/backups';
+	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -9,6 +10,7 @@
 	import { storage } from '$lib';
 	import type { BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import { humanFormatBytes, sha256 } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { updateCache } from '$lib/utils/http';
@@ -33,9 +35,57 @@
 		{ initialValue: [] as BackupJob[] }
 	);
 
+	let clusterDetails = resource(
+		() => 'cluster-details-events',
+		async () => {
+			const res = await getDetails();
+			updateCache('cluster-details', res);
+			return res;
+		},
+		{ initialValue: null as ClusterDetails | null }
+	);
+
+	let nodes = resource(
+		() => 'cluster-nodes-events',
+		async () => {
+			const res = await getNodes();
+			updateCache('cluster-nodes', res);
+			return res;
+		},
+		{ initialValue: [] as ClusterNode[] }
+	);
+
+	let selectedNodeId = $state('');
+	let initialNodeSelectionDone = $state(false);
+
+	$effect(() => {
+		if (initialNodeSelectionDone) return;
+
+		const currentNodeId = clusterDetails.current?.nodeId?.trim() || '';
+		const fallbackNodeId = nodes.current[0]?.nodeUUID?.trim() || '';
+		const nextNodeId = currentNodeId || fallbackNodeId;
+		if (!nextNodeId) return;
+
+		selectedNodeId = nextNodeId;
+		initialNodeSelectionDone = true;
+		reload = true;
+	});
+
+	function handleNodeSelection(value: string) {
+		if (value === selectedNodeId) {
+			return;
+		}
+
+		selectedNodeId = value;
+		activeRows = null;
+		progressModal.open = false;
+		reload = true;
+	}
+
 	let jails = $state<any[]>([]);
 	let jailsLoading = $state(false);
 	let progressEventId = $state(0);
+	let progressNodeId = $state('');
 	let progressModal = $state({
 		open: false,
 		error: ''
@@ -231,12 +281,12 @@
 
 	// svelte-ignore state_referenced_locally
 	const progressEvent = resource(
-		[() => progressEventId, () => progressModal.open],
-		async ([eventId, open]) => {
+		[() => progressEventId, () => progressNodeId, () => progressModal.open],
+		async ([eventId, nodeId, open]) => {
 			if (!open || eventId <= 0) return null;
 
 			try {
-				const res = await getBackupEventProgress(eventId);
+				const res = await getBackupEventProgress(eventId, nodeId);
 				progressModal.error = '';
 				return res;
 			} catch (e: any) {
@@ -307,6 +357,7 @@
 		if (eventId <= 0) return;
 
 		progressEventId = eventId;
+		progressNodeId = selectedNodeId;
 		progressModal.open = true;
 		progressModal.error = '';
 		await progressEvent.refetch();
@@ -315,6 +366,7 @@
 	$effect(() => {
 		if (!progressModal.open) {
 			progressEventId = 0;
+			progressNodeId = '';
 			progressModal.error = '';
 		}
 	});
@@ -428,10 +480,14 @@
 	});
 
 	let extraParams = $derived.by((): Record<string, string | number> => {
+		const params: Record<string, string | number> = {};
 		if (filterJobId) {
-			return { jobId: parseInt(filterJobId) };
+			params.jobId = Number.parseInt(filterJobId, 10);
 		}
-		return {};
+		if (selectedNodeId) {
+			params.nodeId = selectedNodeId;
+		}
+		return params;
 	});
 
 	let jobOptions = $derived([
@@ -441,6 +497,14 @@
 			label: job.name
 		}))
 	]);
+
+	let nodeOptions = $derived.by(() => {
+		const currentNodeId = clusterDetails.current?.nodeId?.trim() || '';
+		return nodes.current.map((node) => ({
+			value: node.nodeUUID,
+			label: node.nodeUUID === currentNodeId ? `${node.hostname} (Current)` : node.hostname
+		}));
+	});
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -453,6 +517,18 @@
 				options={jobOptions}
 				bind:value={filterJobId}
 				onChange={() => (reload = true)}
+				classes={{
+					parent: 'w-full',
+					trigger: '!h-6.5 text-sm'
+				}}
+			/>
+
+			<SimpleSelect
+				placeholder="Select node"
+				options={nodeOptions}
+				bind:value={selectedNodeId}
+				onChange={handleNodeSelection}
+				disabled={nodeOptions.length === 0}
 				classes={{
 					parent: 'w-full',
 					trigger: '!h-6.5 text-sm'
@@ -478,7 +554,7 @@
 
 	<div class="flex h-full flex-col overflow-hidden">
 		{#if hash && jailsLoading === false}
-			{#key `${jails.length}-${filterJobId}`}
+			{#key `${jails.length}-${filterJobId}-${selectedNodeId}`}
 				<TreeTable
 					data={tableData}
 					name="backup-events-tt"
