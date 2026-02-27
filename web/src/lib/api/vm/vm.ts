@@ -27,6 +27,10 @@ export async function getSimpleVMs(): Promise<SimpleVm[]> {
     return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET');
 }
 
+export async function getSimpleVMById(id: number, type: 'rid' | 'id'): Promise<SimpleVm> {
+    return await apiRequest(`/vm/simple/${id}?type=${type}`, SimpleVmSchema, 'GET');
+}
+
 export async function newVM(data: CreateData): Promise<APIResponse> {
     if (data.storage.iso.toLowerCase() === 'none') {
         data.storage.iso = '';

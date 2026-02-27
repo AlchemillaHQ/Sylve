@@ -284,6 +284,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(libvirtService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
 		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))

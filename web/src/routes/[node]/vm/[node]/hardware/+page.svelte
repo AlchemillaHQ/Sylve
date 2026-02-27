@@ -16,7 +16,7 @@
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval, watch } from 'runed';
+	import { resource, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
 
@@ -83,17 +83,24 @@
 			initialValue: data.domain
 		}
 	);
+	let vm: VM | null = $derived(
+		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
+	);
 
-	useInterval(() => 1000, {
-		callback: () => {
-			if (storage.visible) {
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		() => {
+			if (reload) {
 				vms.refetch();
 				pciDevices.refetch();
 				pptDevices.refetch();
 				domain.refetch();
+				reload = false;
 			}
 		}
-	});
+	);
 
 	watch(
 		() => storage.visible,
@@ -103,10 +110,6 @@
 			pptDevices.refetch();
 			domain.refetch();
 		}
-	);
-
-	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -273,8 +276,6 @@
 			}
 		]
 	});
-
-	let reload = $state(false);
 </script>
 
 {#snippet button(
@@ -341,7 +342,7 @@
 </div>
 
 {#if properties.ram.open}
-	<RAM bind:open={properties.ram.open} ram={data.ram} {vm} />
+	<RAM bind:open={properties.ram.open} ram={data.ram} {vm} bind:reload />
 {/if}
 
 {#if properties.cpu.open}
@@ -350,11 +351,12 @@
 		{vm}
 		vms={vms.current}
 		bind:pinnedCPUs={properties.cpu.pinnedCPUs}
+		bind:reload
 	/>
 {/if}
 
 {#if properties.vnc.open}
-	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} />
+	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} bind:reload />
 {/if}
 
 {#if properties.pciDevices.open}
@@ -363,6 +365,7 @@
 		{vm}
 		pciDevices={pciDevices.current}
 		pptDevices={pptDevices.current}
+		bind:reload
 	/>
 {/if}
 

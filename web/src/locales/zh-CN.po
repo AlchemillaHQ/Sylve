@@ -1007,6 +1007,7 @@ msgstr "查看"
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -1551,6 +1552,7 @@ msgstr "日期"
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Are you sure?"
 msgstr "你确定吗？"
@@ -1564,6 +1566,7 @@ msgstr "此操作无法撤销。永久删除"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -1578,6 +1581,7 @@ msgstr "取消"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Continue"
 msgstr "继续"
@@ -3744,16 +3748,19 @@ msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
 msgstr "请稍候，正在启动 Jail <b>{0} ({1})</b>"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stop"
 msgstr "停止"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Start"
 msgstr "开始"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3775,6 +3782,7 @@ msgid "This will permanently delete Jail"
 msgstr "这将永久删除 Jail"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete MAC Object(s)"
 msgstr "删除 MAC 对象"
@@ -4326,60 +4334,73 @@ msgstr "存储分离失败"
 msgid "Storage detached"
 msgstr "存储已分离"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Deleting Virtual Machine"
 msgstr "正在删除虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
 msgstr "请稍候，正在删除虚拟机 <b>{0} ({1})</b>"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error deleting VM"
 msgstr "删除虚拟机时出错"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM deleted"
 msgstr "虚拟机已删除"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Starting Virtual Machine"
 msgstr "正在启动虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
 msgstr "请稍候，正在启动虚拟机 <b>{0} ({1})</b>。"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error starting VM"
 msgstr "启动虚拟机时出错"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM started"
 msgstr "虚拟机已启动"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stopping Virtual Machine"
 msgstr "正在停止虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
 msgstr "请稍候，正在停止虚拟机 <b>{0} ({1})</b>"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error stopping VM"
 msgstr "停止虚拟机时出错"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM stopped"
 msgstr "虚拟机已停止"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Shutting Down Virtual Machine"
 msgstr "正在关闭虚拟机"
@@ -4390,6 +4411,7 @@ msgstr "正在关闭虚拟机"
 msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
 msgstr "请稍候，正在关闭虚拟机 <b>{0} ({1})</b>"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error shutting down VM"
 msgstr "关闭虚拟机出错"
@@ -4398,28 +4420,34 @@ msgstr "关闭虚拟机出错"
 msgid "VM shut down"
 msgstr "虚拟机关机"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Rebooting Virtual Machine"
 msgstr "正在重启虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
 msgstr "请稍候，正在重启虚拟机 <b>{0} ({1})</b>"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error rebooting VM"
 msgstr "重启虚拟机时出错"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM rebooted"
 msgstr "虚拟机已创建"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Shutdown"
 msgstr "关机"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Reboot"
 msgstr "重启"
@@ -4428,14 +4456,17 @@ msgstr "重启"
 msgid "Notes about VM"
 msgstr "虚拟机备注"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "This will permanently delete VM"
 msgstr "这将永久删除虚拟机"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete RAW Disk(s)"
 msgstr "删除裸磁盘"
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete Volume(s)"
 msgstr "删除卷"
@@ -7758,37 +7789,46 @@ msgstr ""
 msgid "Pools: <0/>"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Force Deleting Virtual Machine"
 msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error force deleting VM"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM force deleted with warnings"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "VM force deleted"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Force Delete"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Force Delete VM?"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "This will force delete VM"
 msgstr ""
@@ -7818,6 +7858,7 @@ msgstr ""
 msgid "Keep Last Snapshots"
 msgstr ""
 
+#: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid ""
 "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
@@ -7854,4 +7895,21 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Backup"
+msgstr ""
+
+#~ msgid "Test"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster Backup Job"
+msgstr ""
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+msgid "VM shutdown started"
 msgstr ""

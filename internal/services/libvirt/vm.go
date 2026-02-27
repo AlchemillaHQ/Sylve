@@ -116,6 +116,48 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 	return list, nil
 }
 
+func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfaces.SimpleList, error) {
+	if !s.IsVirtualizationEnabled() {
+		return libvirtServiceInterfaces.SimpleList{}, nil
+	}
+
+	var vm vmModels.VM
+	query := s.DB.
+		Model(&vmModels.VM{}).
+		Preload("CPUPinning").
+		Select("id", "name", "rid", "vnc_port")
+
+	if byRID {
+		query = query.Where("rid = ?", identifier)
+	} else {
+		query = query.Where("id = ?", identifier)
+	}
+
+	if err := query.First(&vm).Error; err != nil {
+		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_vm: %w", err)
+	}
+
+	state, err := s.GetDomainState(int(vm.RID))
+	if err != nil {
+		state = 0
+	}
+
+	simple := libvirtServiceInterfaces.SimpleList{
+		ID:         vm.ID,
+		RID:        vm.RID,
+		Name:       vm.Name,
+		State:      state,
+		VNCPort:    uint(vm.VNCPort),
+		CPUPinning: vm.CPUPinning,
+	}
+
+	if simple.CPUPinning == nil {
+		simple.CPUPinning = []vmModels.VMCPUPinning{}
+	}
+
+	return simple, nil
+}
+
 func validateCPUPins(
 	db *gorm.DB,
 	req libvirtServiceInterfaces.CreateVMRequest,

@@ -15,9 +15,16 @@
 		vm: VM | null;
 		pciDevices: PCIDevice[];
 		pptDevices: PPTDevice[];
+		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, pciDevices, pptDevices }: Props = $props();
+	let {
+		open = $bindable(),
+		vm,
+		pciDevices,
+		pptDevices,
+		reload = $bindable(false)
+	}: Props = $props();
 	let pciOptions = $derived.by(() => {
 		let options = [];
 
@@ -70,6 +77,8 @@
 				vm.rid,
 				properties.combobox.value.map((id) => Number(id)) || []
 			);
+
+			reload = true;
 
 			if (response.error) {
 				handleAPIError(response);

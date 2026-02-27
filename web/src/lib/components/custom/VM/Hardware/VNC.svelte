@@ -17,10 +17,12 @@
 		open: boolean;
 		vm: VM | null;
 		vms: VM[];
+		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, vms }: Props = $props();
+	let { open = $bindable(), vm, vms, reload = $bindable(false) }: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		port: vm?.vncPort || 5900,
 		resolution: vm?.vncResolution || '640x480',
@@ -73,6 +75,8 @@
 			properties.password,
 			properties.wait ?? false
 		);
+
+		reload = true;
 
 		if (response.error) {
 			handleAPIError(response);

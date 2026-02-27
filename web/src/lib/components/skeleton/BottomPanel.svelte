@@ -87,6 +87,7 @@
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster/backups/targets/validate': 'Cluster Backup Target - Validate',
 		'/api/cluster/backups/targets': 'Cluster Backup Target',
+		'/api/cluster/backups/jobs': 'Cluster Backup Job',
 		'/api/cluster': 'Cluster'
 	});
 

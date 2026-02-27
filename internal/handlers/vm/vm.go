@@ -550,3 +550,70 @@ func ListVMsSimple(libvirtService *libvirt.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Get a simple Virtual Machine by RID or ID
+// @Description Retrieve a simple virtual machine object by its RID or ID
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Virtual Machine RID or ID"
+// @Param type query string false "Type of identifier (rid or id)" Enums(rid, id) default(rid)
+// @Success 200 {object} internal.APIResponse[libvirtServiceInterfaces.SimpleList] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /vm/simple/:id [get]
+func GetSimpleVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		vmID := c.Param("id")
+		if vmID == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_vm_id",
+				Data:    nil,
+				Error:   "Virtual Machine ID is required",
+			})
+			return
+		}
+
+		t := c.DefaultQuery("type", "rid")
+		if t != "rid" && t != "id" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_type_param",
+				Data:    nil,
+				Error:   "Type parameter must be either 'rid' or 'id'",
+			})
+			return
+		}
+
+		identifier, err := strconv.Atoi(vmID)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_vm_id_format",
+				Data:    nil,
+				Error:   "Virtual Machine ID must be a valid integer",
+			})
+			return
+		}
+
+		simple, err := libvirtService.GetSimpleVM(identifier, t == "rid")
+		if err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_vm",
+				Data:    nil,
+				Error:   "failed_to_get_vm: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[libvirtServiceInterfaces.SimpleList]{
+			Status:  "success",
+			Message: "vm_retrieved_simple_by_vmid",
+			Data:    simple,
+			Error:   "",
+		})
+	}
+}
