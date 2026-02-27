@@ -6878,6 +6878,7 @@ msgstr ""
 msgid "Select target"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Select node"
 msgstr ""
@@ -7912,4 +7913,8 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 msgid "VM shutdown started"
+msgstr ""
+
+#: src/lib/components/custom/TreeTable/Search.svelte
+msgid "Toggle Search"
 msgstr ""

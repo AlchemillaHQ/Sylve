@@ -13,7 +13,7 @@
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import { humanFormatBytes, sha256 } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import Icon from '@iconify/svelte';
 	import { resource, useInterval } from 'runed';
 	import { onMount } from 'svelte';
@@ -39,6 +39,10 @@
 		() => 'cluster-details-events',
 		async () => {
 			const res = await getDetails();
+			if (isAPIResponse(res)) {
+				return null;
+			}
+
 			updateCache('cluster-details', res);
 			return res;
 		},
@@ -382,7 +386,7 @@
 		const currentJails = jails;
 
 		return [
-			{ field: 'id', title: 'ID', visible: false },
+			{ field: 'id', title: 'ID' },
 			{
 				field: 'status',
 				title: 'Status',
@@ -508,8 +512,8 @@
 </script>
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center border-b p-2">
-		<div class="flex items-center gap-2">
+	<div class="flex h-10 w-full items-center justify-between border-b p-2">
+		<div class="flex items-center gap-2 flex-1">
 			<Search bind:query />
 
 			<SimpleSelect
@@ -518,8 +522,7 @@
 				bind:value={filterJobId}
 				onChange={() => (reload = true)}
 				classes={{
-					parent: 'w-full',
-					trigger: '!h-6.5 text-sm'
+					trigger: '!h-6 text-sm' /* Adjusted to h-6 to match your buttons */
 				}}
 			/>
 
@@ -530,8 +533,7 @@
 				onChange={handleNodeSelection}
 				disabled={nodeOptions.length === 0}
 				classes={{
-					parent: 'w-full',
-					trigger: '!h-6.5 text-sm'
+					trigger: '!h-6 text-sm'
 				}}
 			/>
 
@@ -545,7 +547,12 @@
 			{/if}
 		</div>
 
-		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6">
+		<Button
+			onclick={() => (reload = true)}
+			size="sm"
+			variant="outline"
+			class="ml-auto h-6 shrink-0"
+		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--refresh] h-4 w-4"></span>
 			</div>

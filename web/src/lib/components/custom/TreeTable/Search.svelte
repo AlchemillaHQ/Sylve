@@ -28,12 +28,13 @@
 	});
 </script>
 
-<div class="relative">
+<div class="relative shrink-0">
 	<div
 		class="bg-primary text-primary-foreground flex h-6 items-center overflow-hidden rounded-lg transition-[width] duration-300 ease-in-out"
 		style="width: {expanded ? '16rem' : '1.5rem'}"
 	>
 		<button
+			aria-label="Toggle Search"
 			class="flex h-6 w-6 min-w-[1.5rem] shrink-0 items-center justify-center"
 			onclick={toggleSearch}
 		>

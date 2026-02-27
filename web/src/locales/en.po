@@ -7749,6 +7749,7 @@ msgstr "Source dataset is required for dataset mode"
 msgid "Select target"
 msgstr "Select target"
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Select node"
 msgstr "Select node"
@@ -8817,3 +8818,7 @@ msgstr "Please wait while VM <b>{0} ({1})</b> is shutting down"
 #: src/routes/[node]/vm/[node]/+layout.svelte
 msgid "VM shutdown started"
 msgstr "VM shutdown started"
+
+#: src/lib/components/custom/TreeTable/Search.svelte
+msgid "Toggle Search"
+msgstr "Toggle Search"
