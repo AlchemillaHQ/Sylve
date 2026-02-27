@@ -68,14 +68,14 @@ func (s *Service) ToggleDHCPServer(enable bool) error {
 			return fmt.Errorf("dnsmasq package is not installed")
 		}
 
-		_, err := utils.RunCommand("service", "dnsmasq", "start")
+		_, err := utils.RunCommand("/usr/sbin/service", "dnsmasq", "start")
 		if err != nil {
 			if !strings.Contains(err.Error(), "already running") {
 				return err
 			}
 		}
 	} else {
-		_, err := utils.RunCommand("service", "dnsmasq", "stop")
+		_, err := utils.RunCommand("/usr/sbin/service", "dnsmasq", "stop")
 		return err
 	}
 

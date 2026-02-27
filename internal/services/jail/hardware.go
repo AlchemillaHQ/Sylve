@@ -63,7 +63,7 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 	}
 
 	// Live update
-	_, err = utils.RunCommand("rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+	_, err = utils.RunCommand("/usr/bin/rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
 	if err != nil {
 		return fmt.Errorf("failed to apply memory limit with rctl: %w", err)
 	}
@@ -181,7 +181,7 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		return fmt.Errorf("failed to update jail CPU in database: %w", err)
 	}
 
-	if _, err := utils.RunCommand("cpuset", "-l", coreListStr, "-j", ctIdHash); err != nil {
+	if _, err := utils.RunCommand("/bin/cpuset", "-l", coreListStr, "-j", ctIdHash); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			logger.L.Warn().Msgf("jail %s not running, skipping live CPU set", ctIdHash)
 		} else {
@@ -258,7 +258,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 		return fmt.Errorf("failed to write updated post-start hook script: %w", err)
 	}
 
-	_, err = utils.RunCommand("rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash))
+	_, err = utils.RunCommand("/usr/bin/rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash))
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Failed to remove rctl rules for jail %d", ctId)
 	}
@@ -268,7 +268,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 	if numLogical > 1 {
 		allRange = fmt.Sprintf("0-%d", numLogical-1)
 	}
-	_, err = utils.RunCommand("cpuset", "-l", allRange, "-j", ctIdHash)
+	_, err = utils.RunCommand("/bin/cpuset", "-l", allRange, "-j", ctIdHash)
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Failed to reset cpuset for jail %d", ctId)
 	}

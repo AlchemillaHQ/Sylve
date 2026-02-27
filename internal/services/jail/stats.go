@@ -29,7 +29,7 @@ import (
 func (s *Service) GetJIDByCTID(ctId uint) int {
 	ctidHash := utils.HashIntToNLetters(int(ctId), 5)
 	output, err := utils.RunCommand(
-		"jls",
+		"/usr/sbin/jls",
 		"-j",
 		fmt.Sprintf("%s", ctidHash),
 		"jid",

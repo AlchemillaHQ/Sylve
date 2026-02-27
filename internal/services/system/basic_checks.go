@@ -57,7 +57,7 @@ func (s *Service) CheckVirtualization() error {
 		}
 	}
 
-	out, err := utils.RunCommand("kldload", "-nv", "vmm")
+	out, err := utils.RunCommand("/sbin/kldload", "-nv", "vmm")
 	if err != nil {
 		return fmt.Errorf("virt_failed_to_load_vmm: %w", err)
 	}
@@ -72,7 +72,7 @@ func (s *Service) CheckVirtualization() error {
 }
 
 func (s *Service) CheckJails() error {
-	out, err := utils.RunCommand("sysctl", "kern.racct.enable")
+	out, err := utils.RunCommand("/sbin/sysctl", "kern.racct.enable")
 	if err != nil {
 		return fmt.Errorf("jails_failed_to_check_racct: %w", err)
 	}
@@ -81,7 +81,7 @@ func (s *Service) CheckJails() error {
 		return fmt.Errorf("jails_racct_not_enabled")
 	}
 
-	out, err = utils.RunCommand("sysctl", "security.jail.enforce_statfs")
+	out, err = utils.RunCommand("/sbin/sysctl", "security.jail.enforce_statfs")
 	if err != nil {
 		return fmt.Errorf("jails_failed_to_check_enforce_statfs: %w", err)
 	}
@@ -102,7 +102,7 @@ func (s *Service) CheckDHCPServer() error {
 }
 
 func (s *Service) CheckSambaServer() error {
-	output, err := utils.RunCommand("pkg", "info")
+	output, err := utils.RunCommand("/usr/sbin/pkg", "info")
 	if err != nil {
 		return fmt.Errorf("failed to run pkg info: %w", err)
 	}

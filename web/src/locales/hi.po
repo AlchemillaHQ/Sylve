@@ -1128,7 +1128,6 @@ msgstr "क्लस्टर रीसेट के बाद लॉगिन �
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "CPU Usage"
@@ -1140,23 +1139,19 @@ msgstr "CPU उपयोग"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "RAM उपयोग"
 
 #: src/routes/[node]/summary/+page.svelte
-#: src/routes/[node]/summary/+page.svelte
 msgid "Swap Usage"
 msgstr "स्वैप उपयोग"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Network RX"
-msgstr "नेटवर्क RX"
+#~ msgid "Network RX"
+#~ msgstr "नेटवर्क RX"
 
-#: src/routes/[node]/summary/+page.svelte
-msgid "Network TX"
-msgstr "नेटवर्क TX"
+#~ msgid "Network TX"
+#~ msgstr "नेटवर्क TX"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "Disk Usage"
@@ -7235,4 +7230,26 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "No network interfaces reported by agent."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Shutdown"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Reboot"
+msgstr ""
+
+#~ msgid "VM - Description"
+#~ msgstr ""
+
+#~ msgid "VM - Update Notes"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Description"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Create.svelte
+msgid "Login required after initializing cluster"
 msgstr ""

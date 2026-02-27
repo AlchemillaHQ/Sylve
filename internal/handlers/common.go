@@ -62,6 +62,10 @@ func newReverseProxy(target *url.URL, tr http.RoundTripper, preserveHost bool) *
 	p.Director = func(r *http.Request) {
 		orig(r)
 
+		// Prevent upstream gzip on proxied requests so we don't double-compress
+		// when Gin gzip middleware is active on the current node.
+		r.Header.Del("Accept-Encoding")
+
 		if r.Header.Get("X-Forwarded-Proto") == "" {
 			if target.Scheme != "" {
 				r.Header.Set("X-Forwarded-Proto", target.Scheme)

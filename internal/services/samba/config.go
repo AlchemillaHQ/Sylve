@@ -218,20 +218,20 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 		config.WriteString("\n\n")
 
-		_, err := utils.RunCommand("setfacl", "-b", dataset.Mountpoint)
+		_, err := utils.RunCommand("/bin/setfacl", "-b", dataset.Mountpoint)
 		if err != nil {
 			return "", fmt.Errorf("failed to clear ACLs on mountpoint %s: %w", dataset.Mountpoint, err)
 		}
 
 		if len(rGroups) > 0 {
-			_, err := utils.RunCommand("setfacl", "-m", fmt.Sprintf("g:%s:read_set:fd:allow", strings.Join(rGroups, ",")), dataset.Mountpoint)
+			_, err := utils.RunCommand("/bin/setfacl", "-m", fmt.Sprintf("g:%s:read_set:fd:allow", strings.Join(rGroups, ",")), dataset.Mountpoint)
 			if err != nil {
 				return "", fmt.Errorf("failed to set read ACLs for groups %v on mountpoint %s: %w", rGroups, dataset.Mountpoint, err)
 			}
 		}
 
 		if len(wGroups) > 0 {
-			_, err := utils.RunCommand("setfacl", "-m", fmt.Sprintf("g:%s:modify_set:fd:allow", strings.Join(wGroups, ",")), dataset.Mountpoint)
+			_, err := utils.RunCommand("/bin/setfacl", "-m", fmt.Sprintf("g:%s:modify_set:fd:allow", strings.Join(wGroups, ",")), dataset.Mountpoint)
 			if err != nil {
 				return "", fmt.Errorf("failed to set write ACLs for groups %v on mountpoint %s: %w", wGroups, dataset.Mountpoint, err)
 			}

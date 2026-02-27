@@ -58,6 +58,12 @@ func ReverseProxy(c *gin.Context, backend string, clusterKey string) {
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
+	orig := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		orig(r)
+		// Avoid receiving gzip from upstream and then re-gzipping locally.
+		r.Header.Del("Accept-Encoding")
+	}
 
 	proxy.ErrorHandler = func(writer http.ResponseWriter, request *http.Request, err error) {
 		if !strings.Contains(err.Error(), "context canceled") {

@@ -1,12 +1,12 @@
 ---
 name: Issue Template
-about:
-  A template for submitting bug reports, feature requests, or support inquiries
-  for Sylve, with sections for behavior, reproduction steps, environment,
-  and additional context.
+about: A template for submitting bug reports, feature requests, or support inquiries
+  for Sylve, with sections for behavior, reproduction steps, environment, and additional
+  context.
 title: "[Bug/Feature/Support] Brief Description of the Issue"
-labels: ""
+labels: ''
 assignees: hayzamjs
+
 ---
 
 - **I'm submitting a**:
@@ -28,7 +28,7 @@ assignees: hayzamjs
 - **Please tell us about your environment**
 
   - **Version**: x.x.x
-  - **Operating System** (where sylve is running): FreeBSD 14.x (Only >= 14.2 is supported)
+  - **Operating System** (where sylve is running): FreeBSD 15.x (Only >= 15.0 is officially supported)
   - **Browser**: [all | Chrome XX | Firefox XX | Safari XX ]
 
 - Other information (e.g. detailed explanation, stacktraces, related issues, suggestions how to fix, links for us to have context, eg. stackoverflow, discord, etc)

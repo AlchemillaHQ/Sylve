@@ -19,10 +19,11 @@
 	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { watch } from 'runed';
 
 	interface Data {
+		hostname: string;
 		basicInfo: BasicInfo;
 		cpuInfo: CPUInfo;
 		cpuInfoHistorical: CPUInfoHistorical;
@@ -36,6 +37,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const basicInfo = resource(
 		() => 'basic-info',
 		async (key, prevKey, { signal }) => {
@@ -44,11 +46,11 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.basicInfo
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
 		() => 'cpu-info',
 		async (key, prevKey, { signal }) => {
@@ -57,50 +59,11 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.cpuInfo
 		}
 	);
 
-	const ramInfo = resource(
-		() => 'ram-info',
-		async (key, prevKey, { signal }) => {
-			const result = await getRAMInfo('current');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.ramInfo
-		}
-	);
-
-	const swapInfo = resource(
-		() => 'swap-info',
-		async (key, prevKey, { signal }) => {
-			const result = await getSwapInfo('current');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.swapInfo
-		}
-	);
-
-	const totalDiskUsage = resource(
-		() => 'total-disk-usage',
-		async (key, prevKey, { signal }) => {
-			const result = await getPoolsDiskUsage();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.totalDiskUsage
-		}
-	);
-
+	// svelte-ignore state_referenced_locally
 	const cpuInfoHistorical = resource(
 		() => 'cpu-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -109,11 +72,24 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.cpuInfoHistorical
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const ramInfo = resource(
+		() => 'ram-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getRAMInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.ramInfo
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const ramInfoHistorical = resource(
 		() => 'ram-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -122,11 +98,24 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.ramInfoHistorical
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const swapInfo = resource(
+		() => 'swap-info',
+		async (key, prevKey, { signal }) => {
+			const result = await getSwapInfo('current');
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.swapInfo
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const swapInfoHistorical = resource(
 		() => 'swap-info-historical',
 		async (key, prevKey, { signal }) => {
@@ -135,11 +124,24 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.swapInfoHistorical
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
+	const totalDiskUsage = resource(
+		() => 'total-disk-usage',
+		async (key, prevKey, { signal }) => {
+			const result = await getPoolsDiskUsage();
+			updateCache(key, result);
+			return result;
+		},
+		{
+			initialValue: data.totalDiskUsage
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const networkUsageHistorical = resource(
 		() => 'network-usage-historical',
 		async (key, prevKey, { signal }) => {
@@ -148,7 +150,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.networkUsageHistorical
 		}
 	);
@@ -182,9 +183,10 @@
 		}
 	});
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		[() => storage.visible, () => data.hostname],
+		([visible, hostname], [prevViisible, prevHostname]) => {
+			if (visible || hostname !== prevHostname) {
 				basicInfo.refetch();
 				cpuInfo.refetch();
 				ramInfo.refetch();
@@ -194,69 +196,9 @@
 				ramInfoHistorical.refetch();
 				swapInfoHistorical.refetch();
 				networkUsageHistorical.refetch();
-			});
-		}
-	});
-
-	let chartElements = $derived.by(() => {
-		return [
-			{
-				field: 'cpuUsage',
-				label: 'CPU Usage',
-				color: 'chart-1',
-				data: cpuInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'ramUsage',
-				label: 'RAM Usage',
-				color: 'chart-3',
-				data: ramInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'swapUsage',
-				label: 'Swap Usage',
-				color: 'chart-4',
-				data: swapInfoHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.usage.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'networkUsageRx',
-				label: 'Network RX',
-				color: 'chart-1',
-				data: networkUsageHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.receivedBytes.toFixed(2)
-					}))
-					.slice(-16)
-			},
-			{
-				field: 'networkUsageTx',
-				label: 'Network TX',
-				color: 'chart-4',
-				data: networkUsageHistorical.current
-					.map((data) => ({
-						date: new Date(data.createdAt),
-						value: data.sentBytes.toFixed(2)
-					}))
-					.slice(-16)
 			}
-		];
-	});
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -266,7 +208,7 @@
 				<Card.Root class="w-full gap-0 p-0">
 					<Card.Header class="p-4 pb-0">
 						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-							{basicInfo.current.hostname}
+							{data.hostname}
 						</Card.Description>
 					</Card.Header>
 					<Card.Content class="p-4 pt-2.5">
@@ -291,10 +233,10 @@
 										{'RAM Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(ramInfo.current.usedPercent, 2)}% of ${bytesToHumanReadable(ramInfo.current.total)}`}
+										{`${floatToNDecimals(ramInfo.current?.usedPercent || 0, 2)}% of ${bytesToHumanReadable(ramInfo.current?.total || 0)}`}
 									</p>
 								</div>
-								<Progress value={ramInfo.current.usedPercent || 0} max={100} class="h-2 w-full" />
+								<Progress value={ramInfo.current?.usedPercent || 0} max={100} class="h-2 w-full" />
 							</div>
 							<div>
 								<div class="flex w-full justify-between pb-1">

@@ -11,7 +11,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { CPUPin, VM, VMDomain } from '$lib/types/vm/vm';
+	import { type VMCPUPinning, type CPUPin, type VM, type VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
@@ -23,7 +23,7 @@
 	interface Data {
 		rid: number;
 		vms: VM[];
-		vm: VM;
+		vm: VM | undefined;
 		ram: RAMInfo;
 		domain: VMDomain;
 		pciDevices: PCIDevice[];
@@ -102,20 +102,20 @@
 	);
 
 	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null
+		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
 	);
 
 	// svelte-ignore state_referenced_locally
 	let options = {
 		cpu: {
-			sockets: data.vm.cpuSockets,
-			cores: data.vm.cpuCores,
-			threads: data.vm.cpuThreads,
-			pinning: data.vm.cpuPinning,
-			vCPUs: data.vm.cpuSockets * data.vm.cpuCores * data.vm.cpuThreads,
+			sockets: data.vm?.cpuSockets || 0,
+			cores: data.vm?.cpuCores || 0,
+			threads: data.vm?.cpuThreads || 0,
+			pinning: data.vm?.cpuPinning || ([] as VMCPUPinning[]),
+			vCPUs: 0,
 			open: false,
 			pinnedCPUs:
-				data.vm.cpuPinning?.map((pin) => {
+				data.vm?.cpuPinning?.map((pin) => {
 					return {
 						socket: pin.hostSocket,
 						cores: pin.hostCpu
@@ -123,19 +123,19 @@
 				}) || ([] as CPUPin[])
 		},
 		ram: {
-			value: data.vm.ram,
+			value: data.vm?.ram || 1024,
 			open: false
 		},
 		vnc: {
-			enabled: data.vm.vncEnabled,
-			resolution: data.vm.vncResolution,
-			port: data.vm.vncPort,
-			password: data.vm.vncPassword,
+			enabled: data.vm?.vncEnabled,
+			resolution: data.vm?.vncResolution,
+			port: data.vm?.vncPort,
+			password: data.vm?.vncPassword,
 			open: false
 		},
 		pciDevices: {
 			open: false,
-			value: data.vm.pciDevices
+			value: data.vm?.pciDevices
 		},
 		serial: { open: false },
 		tpmEmulation: { open: false }
@@ -143,21 +143,24 @@
 
 	let properties = $state(options);
 
-	$effect(() => {
-		if (vm) {
-			properties.cpu.sockets = vm.cpuSockets;
-			properties.cpu.cores = vm.cpuCores;
-			properties.cpu.threads = vm.cpuThreads;
-			properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
-			properties.cpu.pinning = vm.cpuPinning;
-			properties.ram.value = vm.ram;
-			properties.vnc.enabled = vm.vncEnabled;
-			properties.vnc.port = vm.vncPort;
-			properties.vnc.password = vm.vncPassword;
-			properties.vnc.resolution = vm.vncResolution;
-			properties.pciDevices.value = vm.pciDevices;
+	watch(
+		() => vm,
+		() => {
+			if (vm) {
+				properties.cpu.sockets = vm.cpuSockets;
+				properties.cpu.cores = vm.cpuCores;
+				properties.cpu.threads = vm.cpuThreads;
+				properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
+				properties.cpu.pinning = vm.cpuPinning ?? [];
+				properties.ram.value = vm.ram;
+				properties.vnc.enabled = vm.vncEnabled;
+				properties.vnc.port = vm.vncPort;
+				properties.vnc.password = vm.vncPassword;
+				properties.vnc.resolution = vm.vncResolution;
+				properties.pciDevices.value = vm.pciDevices;
+			}
 		}
-	});
+	);
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));

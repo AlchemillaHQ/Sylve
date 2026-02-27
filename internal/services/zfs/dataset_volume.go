@@ -159,7 +159,7 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 					return fmt.Errorf("zvol_not_found: %w", err)
 				} else {
 					output, err := utils.RunCommand(
-						"camdd",
+						"/usr/sbin/camdd",
 						"-i", "file="+file+",bs=4M",
 						"-o", "file=/dev/zvol/"+volume.Name+",bs=4M",
 						"-v",

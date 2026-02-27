@@ -15,7 +15,7 @@ import (
 )
 
 func GetDiskSize(device string) (uint64, error) {
-	out, err := utils.RunCommand("diskinfo", "-v", device)
+	out, err := utils.RunCommand("/usr/sbin/diskinfo", "-v", device)
 	if err != nil {
 		return 0, err
 	}

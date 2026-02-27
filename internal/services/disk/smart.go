@@ -22,7 +22,7 @@ import (
 )
 
 func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) {
-	output, err := utils.RunCommand("nvmecontrol", "devlist")
+	output, err := utils.RunCommand("/sbin/nvmecontrol", "devlist")
 	if err != nil {
 		return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device list: %v", err)
 	}
@@ -39,7 +39,7 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 	}
 
 	for _, nvmeDevice := range nvmeDevices {
-		output, err := utils.RunCommand("nvmecontrol", "identify", fmt.Sprintf("/dev/%s", nvmeDevice))
+		output, err := utils.RunCommand("/sbin/nvmecontrol", "identify", fmt.Sprintf("/dev/%s", nvmeDevice))
 		if err != nil {
 			return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device info: %v", err)
 		}
@@ -47,7 +47,7 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 		serialRegex := regexp.MustCompile(`Serial Number:\s*(\S+)`)
 		if matches := serialRegex.FindStringSubmatch(output); matches != nil {
 			if matches[1] == serial {
-				output, err := utils.RunCommand("nvmecontrol", "logpage", "-p", "2", nvmeDevice)
+				output, err := utils.RunCommand("/sbin/nvmecontrol", "logpage", "-p", "2", nvmeDevice)
 				if err != nil {
 					return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device logpage: %v", err)
 				}

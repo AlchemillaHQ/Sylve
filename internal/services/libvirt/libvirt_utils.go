@@ -497,7 +497,7 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 	}
 
 	isoPath := filepath.Join(vmPath, "cloud-init.iso")
-	_, err = utils.RunCommand("makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
+	_, err = utils.RunCommand("/usr/sbin/makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
 
 	if err != nil {
 		return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)

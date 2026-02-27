@@ -533,7 +533,7 @@ func (s *Service) StartPostProcess(id *uint) error {
 		if !sniffFailed {
 			if mime == "application/x-tar" || utils.IsTarLike(d.Path, mime) {
 				// We're using --no-xattrs to handle cross-platform rootfs extraction (e.g., Linux rootfs on FreeBSD)
-				if out, err := utils.RunCommand("tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
+				if out, err := utils.RunCommand("/usr/bin/tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
 					logger.L.Error().Msgf("tar extract failed: %v (%s)", err, out)
 					return s.failDownload(&d, err)
 				}
@@ -810,7 +810,7 @@ func (s *Service) DeleteDownload(id int) error {
 	if download.Type == "http" {
 		if download.UType == utilitiesModels.DownloadUTypeBase && download.ExtractedPath != "" {
 			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			_, err := utils.RunCommand("chflags", "-R", "noschg", extractsPath)
+			_, err := utils.RunCommand("/bin/chflags", "-R", "noschg", extractsPath)
 
 			if err != nil {
 				logger.L.Error().Msgf("Failed to change flags for extracts folder: %v", err)

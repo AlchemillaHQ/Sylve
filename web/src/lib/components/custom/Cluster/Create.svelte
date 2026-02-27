@@ -8,6 +8,7 @@
 	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import { logOut } from '$lib/api/auth';
 
 	interface Props {
 		open: boolean;
@@ -70,6 +71,8 @@
 			});
 			open = false;
 			properties = options;
+
+			await logOut('Login required after initializing cluster');
 		}
 	}
 </script>
