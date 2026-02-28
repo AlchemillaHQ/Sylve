@@ -89,6 +89,8 @@ msgstr "സ്വിച്ചുകൾ"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Manual"
 msgstr "സ്വയം"
 
@@ -568,6 +570,9 @@ msgstr "ചെറുതാക്കുക"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Close"
 msgstr "അടയ്ക്കുക"
 
@@ -915,6 +920,7 @@ msgstr "അവസാനിക്കുന്ന സമയം"
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Node"
 msgstr "നോഡ്"
 
@@ -938,6 +944,9 @@ msgstr "പ്രവർത്തനം"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Status"
@@ -1050,6 +1059,7 @@ msgstr "കാണുക"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Delete"
 msgstr "മായ്ക്കുക"
@@ -1077,6 +1087,7 @@ msgstr "മായ്ക്കുക"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Edit"
 msgstr "എഡിറ്റ് ചെയ്യുക"
 
@@ -1112,6 +1123,7 @@ msgstr "വലിയ തോതിലുള്ള മായ്ക്കൽ"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "New"
 msgstr "പുതിയത്"
@@ -1170,6 +1182,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Save"
 msgstr "സംരക്ഷിക്കുക"
 
@@ -1261,6 +1274,7 @@ msgstr "നെറ്റ്‌വർക്ക് ഉപയോഗം"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "Type"
 msgstr "തരം"
@@ -1563,6 +1577,8 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Copy"
 msgstr ""
 
@@ -1620,6 +1636,7 @@ msgstr ""
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
 msgstr "റദ്ദാക്കുക"
 
@@ -2293,6 +2310,7 @@ msgstr "അടിസ്ഥാനം"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "None"
 msgstr "ഒന്നുമില്ല"
 
@@ -3257,6 +3275,8 @@ msgstr ""
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enabled"
 msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 
@@ -3274,6 +3294,7 @@ msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Disabled"
 msgstr "പ്രവർത്തനരഹിതമാക്കി"
 
@@ -3881,6 +3902,8 @@ msgstr "ആരംഭിക്കുക"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Running"
 msgstr "പ്രവർത്തിക്കുന്നു"
 
@@ -5188,6 +5211,7 @@ msgstr "സ്നാപ്പ്ഷോട്ട് ജോലികൾ കാണ�
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Run"
 msgstr "അവസാനമായി പ്രവർത്തിപ്പിച്ചത്"
 
@@ -6419,6 +6443,7 @@ msgstr "അജ്ഞാത VM"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Started"
 msgstr "ആരംഭിച്ചു"
 
@@ -6428,6 +6453,7 @@ msgstr "മോശം അഭ്യർത്ഥന"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error"
 msgstr "പിശക്"
 
@@ -6951,6 +6977,7 @@ msgstr "{0} ടോഗിൾ ചെയ്യുന്നതിൽ പരാജയ
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "ജയിൽ"
 
@@ -7458,6 +7485,7 @@ msgid "Login required after initializing cluster"
 msgstr ""
 
 #: src/routes/datacenter/+layout.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Targets"
 msgstr ""
 
@@ -7481,6 +7509,7 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Completed"
 msgstr ""
 
@@ -7608,6 +7637,7 @@ msgid "Schedule"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Status"
 msgstr ""
 
@@ -7647,6 +7677,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Run Now"
 msgstr ""
 
@@ -7708,6 +7739,7 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Refresh"
 msgstr ""
 
@@ -7754,6 +7786,7 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select node"
 msgstr ""
 
@@ -7789,6 +7822,7 @@ msgstr ""
 msgid "Schedule: <0/>"
 msgstr ""
 
+#: src/routes/datacenter/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Events"
 msgstr ""
@@ -8006,11 +8040,15 @@ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failed"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Success"
 msgstr ""
 
@@ -8376,7 +8414,9 @@ msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
 msgstr ""
 
 #. placeholder {0}: jailMatch[1]
+#. placeholder {0}: policy.guestId
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail {0}"
 msgstr ""
 
@@ -8397,6 +8437,7 @@ msgid "Event Progress <0/>"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Loading progress..."
 msgstr ""
 
@@ -8447,14 +8488,17 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Moved"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Progress"
 msgstr ""
 
@@ -8637,6 +8681,7 @@ msgid "No VMs available"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select VM"
 msgstr ""
 
@@ -8738,10 +8783,12 @@ msgid ""
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr ""
 
@@ -8754,8 +8801,12 @@ msgstr ""
 #~ msgid "#{0} Job - Error Details"
 #~ msgstr ""
 
-#~ msgid "Event #{0}"
-#~ msgstr ""
+#. placeholder {0}: selectedEvent.id
+#. placeholder {0}: selectedEvent.id
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event #{0}"
+msgstr ""
 
 #. placeholder {0}: errorModal.id
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -8955,4 +9006,194 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail - Update Description"
+msgstr ""
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Replication"
+msgstr ""
+
+#: src/routes/datacenter/+layout.svelte
+msgid "Policies"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Workload"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Source Node"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Source Mode"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failback"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cron"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Next Run"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Pinned Primary"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Follow Active"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target nodes must be unique"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "At least one target node is required"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy name is required"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Select a valid workload"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Source node is required for pinned primary mode"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy updated"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy created"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failed to update policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failed to create policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy deleted"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failed to delete policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Replication run queued"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failed to start replication run"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Edit Replication Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "New Replication Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy Name"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Workload Type"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Select Jail"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target Nodes (Weight)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add Target"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Weight"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "All policies"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Failed to load progress"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Output copied to clipboard"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Failed to copy output"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target Node"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Message"
+msgstr ""
+
+#. placeholder {0}: event.policyId
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Policy {0}"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Output"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Replication Progress"
+msgstr ""
+
+#. placeholder {0}: outputModal.title
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event Output - {0}"
+msgstr ""
+
+#. placeholder {0}: errorModal.title
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event Error - {0}"
 msgstr ""

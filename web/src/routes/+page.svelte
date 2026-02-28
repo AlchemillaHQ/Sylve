@@ -235,4 +235,6 @@
 <span class="icon-[game-icons--divergence]"></span>
 <span class="icon-[ic--baseline-restore]"></span>
 <span class="icon-[material-symbols--backup-outline]"></span>
+<span class="icon-[carbon--ibm-data-replication]"></span>
+<span class="icon-[mdi--clipboard-list-outline]"></span>
 -->

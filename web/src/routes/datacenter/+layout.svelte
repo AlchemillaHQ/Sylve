@@ -84,7 +84,7 @@
 		if (clusterEnabled) {
 			items.push({
 				label: 'Replication',
-				icon: 'mdi--sync',
+				icon: 'carbon--ibm-data-replication',
 				children: [
 					{
 						label: 'Policies',

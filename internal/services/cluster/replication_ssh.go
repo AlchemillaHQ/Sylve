@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -187,7 +188,16 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 
 	leaderAddr, _ := s.Raft.LeaderWithID()
 	if leaderAddr == "" {
-		return fmt.Errorf("leader_unknown")
+		_, electedLeaderAddr, waitErr := s.waitUntilLeader(10 * time.Second)
+		if electedLeaderAddr != "" {
+			leaderAddr = electedLeaderAddr
+		}
+		if leaderAddr == "" {
+			if waitErr != nil {
+				return fmt.Errorf("leader_unknown: %w", waitErr)
+			}
+			return fmt.Errorf("leader_unknown")
+		}
 	}
 
 	host, _, err := net.SplitHostPort(string(leaderAddr))
@@ -210,15 +220,24 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 	}
 
 	url := fmt.Sprintf("https://%s:%d/api/cluster/replication/internal/ssh-identity", host, config.ParsedConfig.Port)
-	if err := utils.HTTPPostJSON(url, identity, map[string]string{
+	headers := map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
 		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}); err != nil {
-		return fmt.Errorf("forward_ssh_identity_to_leader_failed: %w", err)
 	}
 
-	return nil
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		if err := utils.HTTPPostJSON(url, identity, headers); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+
+		time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
+	}
+
+	return fmt.Errorf("forward_ssh_identity_to_leader_failed: %w", lastErr)
 }
 
 func replaceManagedSSHBlock(existing string, managed []string) string {
