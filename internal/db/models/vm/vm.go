@@ -176,6 +176,28 @@ type VMCPUPinning struct {
 	HostCPU    []int `json:"hostCpu" gorm:"serializer:json;type:json"`
 }
 
+type VMSnapshot struct {
+	ID uint `json:"id" gorm:"primaryKey"`
+
+	VMID uint `json:"vmId" gorm:"column:vm_id;index;uniqueIndex:idx_vm_snapshot_unique,priority:1"`
+	RID  uint `json:"rid" gorm:"column:rid;index"`
+
+	ParentSnapshotID *uint `json:"parentSnapshotId" gorm:"column:parent_snapshot_id;index"`
+
+	Name        string `json:"name" gorm:"not null"`
+	Description string `json:"description" gorm:"default:''"`
+
+	SnapshotName string   `json:"snapshotName" gorm:"column:snapshot_name;not null;uniqueIndex:idx_vm_snapshot_unique,priority:2"`
+	RootDatasets []string `json:"rootDatasets" gorm:"column:root_datasets;serializer:json;type:json"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (VMSnapshot) TableName() string {
+	return "vm_snapshots"
+}
+
 type VM struct {
 	ID          uint   `gorm:"primaryKey" json:"id"`
 	Name        string `json:"name"`
@@ -216,11 +238,12 @@ type VM struct {
 	Stats []VMStats           `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	State libvirt.DomainState `json:"state" gorm:"-"`
 
-	CloudInitData          string `json:"cloudInitData" gorm:"type:text"`
-	CloudInitMetaData      string `json:"cloudInitMetaData" gorm:"type:text"`
-	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig" gorm:"type:text"`
-	IgnoreUMSR             bool   `json:"ignoreUMSR" gorm:"default:false"`
-	QemuGuestAgent         bool   `json:"qemuGuestAgent" gorm:"default:false"`
+	CloudInitData          string       `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData      string       `json:"cloudInitMetaData" gorm:"type:text"`
+	CloudInitNetworkConfig string       `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	IgnoreUMSR             bool         `json:"ignoreUMSR" gorm:"default:false"`
+	QemuGuestAgent         bool         `json:"qemuGuestAgent" gorm:"default:false"`
+	Snapshots              []VMSnapshot `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

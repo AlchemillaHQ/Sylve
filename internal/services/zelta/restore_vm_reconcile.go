@@ -253,6 +253,36 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		hadCloudInit := strings.TrimSpace(cloudInitData) != "" ||
 			strings.TrimSpace(cloudInitMeta) != "" ||
 			strings.TrimSpace(cloudInitNetwork) != ""
+		cloudInitCleared := false
+		restoreCloudInit := func() error {
+			if !cloudInitCleared {
+				return nil
+			}
+
+			if err := s.DB.Model(&vmModels.VM{}).
+				Where("id = ?", reconciledVMID).
+				Updates(map[string]any{
+					"cloud_init_data":           cloudInitData,
+					"cloud_init_meta_data":      cloudInitMeta,
+					"cloud_init_network_config": cloudInitNetwork,
+				}).Error; err != nil {
+				return err
+			}
+
+			cloudInitCleared = false
+			return nil
+		}
+		defer func() {
+			if !cloudInitCleared {
+				return
+			}
+			if err := restoreCloudInit(); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("rid", rid).
+					Msg("failed_to_restore_vm_cloud_init_after_restore_reconcile_error")
+			}
+		}()
 
 		if hadCloudInit {
 			if err := s.DB.Model(&vmModels.VM{}).
@@ -264,6 +294,7 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 				}).Error; err != nil {
 				return fmt.Errorf("failed_to_temporarily_clear_vm_cloud_init_before_domain_rebuild: %w", err)
 			}
+			cloudInitCleared = true
 		}
 
 		if err := s.VM.CreateLvVm(int(reconciledVMID), ctx); err != nil {
@@ -275,14 +306,15 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		}
 
 		if hadCloudInit {
-			if err := s.DB.Model(&vmModels.VM{}).
-				Where("id = ?", reconciledVMID).
-				Updates(map[string]any{
-					"cloud_init_data":           cloudInitData,
-					"cloud_init_meta_data":      cloudInitMeta,
-					"cloud_init_network_config": cloudInitNetwork,
-				}).Error; err != nil {
+			if err := restoreCloudInit(); err != nil {
 				return fmt.Errorf("failed_to_restore_vm_cloud_init_after_domain_rebuild: %w", err)
+			}
+
+			if err := s.VM.SyncVMDisks(rid); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("rid", rid).
+					Msg("failed_to_recreate_vm_cloud_init_media_after_restore_reconcile")
 			}
 		}
 

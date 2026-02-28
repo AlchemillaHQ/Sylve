@@ -49,6 +49,11 @@
 				{ label: 'Storage', icon: 'mdi--storage', href: `/${node}/vm/${vmName}/storage` },
 				{ label: 'Hardware', icon: 'ix--hardware-cabinet', href: `/${node}/vm/${vmName}/hardware` },
 				{ label: 'Network', icon: 'mdi--network', href: `/${node}/vm/${vmName}/network` },
+				{
+					label: 'Snapshots',
+					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
+					href: `/${node}/vm/${vmName}/snapshots`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/vm/${vmName}/options` }
 			];
 		}

@@ -72,6 +72,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&vmModels.Network{},
 		&vmModels.VMStats{},
 		&vmModels.VMCPUPinning{},
+		&vmModels.VMSnapshot{},
 		&vmModels.VM{},
 
 		&jailModels.Network{},

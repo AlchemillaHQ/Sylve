@@ -327,7 +327,8 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	return s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true)
+	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false)
+	return err
 }
 
 func (s *Service) runRestoreFromTargetVM(
@@ -375,13 +376,13 @@ func (s *Service) runRestoreFromTargetVM(
 		return fmt.Errorf("remote_vm_roots_not_found")
 	}
 
-	restartVM := false
-	if existingVM, err := s.findVMByRID(destRID); err == nil && existingVM != nil {
-		restartVM = true
+	existingVM, err := s.findVMByRID(destRID)
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_existing_vm_before_restore: %w", err)
+	}
+	if existingVM != nil {
 		if err := s.stopVMIfPresent(destRID); err != nil {
-			if !strings.Contains(err.Error(), "domain is not running") {
-				return fmt.Errorf("failed_to_stop_vm_before_restore: %w", err)
-			}
+			return fmt.Errorf("failed_to_stop_vm_before_restore: %w", err)
 		}
 	}
 
@@ -412,6 +413,30 @@ func (s *Service) runRestoreFromTargetVM(
 		return err
 	}
 
+	type restoredDatasetBackup struct {
+		destination string
+		backup      string
+	}
+	appliedBackups := make([]restoredDatasetBackup, 0, len(vmRoots))
+	rollbackAppliedBackups := func() error {
+		var lastErr error
+		for idx := len(appliedBackups) - 1; idx >= 0; idx-- {
+			entry := appliedBackups[idx]
+			if strings.TrimSpace(entry.backup) == "" {
+				continue
+			}
+			if err := s.rollbackPromotedDataset(ctx, entry.destination, entry.backup); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Str("destination_dataset", entry.destination).
+					Str("backup_dataset", entry.backup).
+					Msg("failed_to_rollback_vm_dataset_after_restore_failure")
+				lastErr = err
+			}
+		}
+		return lastErr
+	}
+
 	for _, remoteRoot := range vmRoots {
 		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
 		if localRoot == "" {
@@ -428,21 +453,45 @@ func (s *Service) runRestoreFromTargetVM(
 		disableNetworkRestore := false
 		runPayload.RestoreNetwork = &disableNetworkRestore
 
-		if err := s.runRestoreFromTargetSingleDataset(ctx, target, runPayload, jobID, false); err != nil {
+		backupDataset, err := s.runRestoreFromTargetSingleDataset(
+			ctx,
+			target,
+			runPayload,
+			jobID,
+			false,
+			true,
+		)
+		if err != nil {
+			rollbackErr := rollbackAppliedBackups()
+			if rollbackErr != nil {
+				return fmt.Errorf("vm_multi_root_restore_failed: %w; rollback_failed: %v", err, rollbackErr)
+			}
 			return err
 		}
+
+		appliedBackups = append(appliedBackups, restoredDatasetBackup{
+			destination: localRoot,
+			backup:      backupDataset,
+		})
 	}
 
 	if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, primaryDestination, restoreNetwork); err != nil {
+		rollbackErr := rollbackAppliedBackups()
+		if rollbackErr != nil {
+			return fmt.Errorf("reconcile_restored_vm_failed: %w; rollback_failed: %v", err, rollbackErr)
+		}
 		return fmt.Errorf("reconcile_restored_vm_failed: %w", err)
 	}
 
-	if restartVM {
-		if err := s.startVMIfPresent(destRID); err != nil {
+	for _, entry := range appliedBackups {
+		if strings.TrimSpace(entry.backup) == "" {
+			continue
+		}
+		if err := s.cleanupRestoreBackupDataset(ctx, entry.backup); err != nil {
 			logger.L.Warn().
-				Uint("rid", destRID).
 				Err(err).
-				Msg("failed_to_start_vm_after_restore_continuing_anyway")
+				Str("backup_dataset", entry.backup).
+				Msg("failed_to_cleanup_vm_restore_backup_dataset")
 		}
 	}
 
@@ -486,27 +535,28 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	payload restoreFromTargetPayload,
 	jobID *uint,
 	reconcileJail bool,
-) error {
+	keepBackup bool,
+) (string, error) {
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
 	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
 	if destinationDataset == "" {
-		return fmt.Errorf("destination_dataset_required")
+		return "", fmt.Errorf("destination_dataset_required")
 	}
 	if !isValidRestoreDestinationDataset(destinationDataset) {
-		return fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
+		return "", fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
 	}
 	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
-		return fmt.Errorf("remote_dataset_outside_backup_root")
+		return "", fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 	destinationRoot := destinationDataset
 	if idx := strings.Index(destinationRoot, "/"); idx > 0 {
 		destinationRoot = destinationRoot[:idx]
 	}
 	if strings.TrimSpace(destinationRoot) == "" {
-		return fmt.Errorf("destination_dataset_required")
+		return "", fmt.Errorf("destination_dataset_required")
 	}
 	if err := s.ensureLocalPoolExists(ctx, destinationRoot); err != nil {
-		return err
+		return "", err
 	}
 
 	snapshot := strings.TrimSpace(payload.Snapshot)
@@ -516,7 +566,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 
 	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, target, remoteDataset, snapshot)
 	if err != nil {
-		return fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
+		return "", fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
 	}
 	remoteDataset = resolvedRemoteDataset
 
@@ -543,7 +593,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	var restoreErr error
 	var output string
 
-	_ = s.destroyLocalDataset(ctx, restorePath, true)
+	_ = s.destroyLocalDatasetWithRetry(ctx, restorePath, true, 5, 500*time.Millisecond)
 
 	extraEnv := s.buildZeltaEnv(target)
 	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", "no")
@@ -571,45 +621,40 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			Str("zelta_output", output).
 			Msg("target_restore_pull_failed")
 		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+		return "", restoreErr
 	}
 
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
 		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+		return "", restoreErr
 	}
 
 	destinationKind, _ := inferRestoreDatasetKind(destinationDataset)
 	isJailDestination := destinationKind == clusterModels.BackupJobModeJail
 
-	var ctId uint
-
 	destExists, existErr := s.localDatasetExists(ctx, destinationDataset)
 	if existErr != nil {
 		restoreErr = fmt.Errorf("failed_to_check_destination_dataset_before_restore: %w", existErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+		return "", restoreErr
 	}
 	if destExists {
 		if isJailDestination {
-			var err error
-			ctId, err = s.Jail.GetJailCTIDFromDataset(destinationDataset)
+			ctID, err := s.Jail.GetJailCTIDFromDataset(destinationDataset)
 			if err == nil {
 				logger.L.Info().
-					Uint("ct_id", ctId).
+					Uint("ct_id", ctID).
 					Str("dataset", destinationDataset).
 					Msg("stopping_jail_before_restore")
 
-				if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
+				if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
 					logger.L.Warn().
-						Uint("ct_id", ctId).
+						Uint("ct_id", ctID).
 						Err(err).
 						Msg("failed_to_stop_jail_before_restore_continuing_anyway")
 				}
-
-				time.Sleep(2 * time.Second)
 			} else {
 				logger.L.Warn().
 					Str("dataset", destinationDataset).
@@ -618,13 +663,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			}
 		}
 
-		destroyErr := s.destroyLocalDataset(ctx, destinationDataset, true)
-		if destroyErr != nil {
-			_ = s.destroyLocalDataset(ctx, restorePath, true)
-			restoreErr = fmt.Errorf("destroy_original_failed: cannot remove %s (is it still in use?): %v", destinationDataset, destroyErr)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
-		}
 	}
 
 	if idx := strings.LastIndex(destinationDataset, "/"); idx > 0 {
@@ -632,11 +670,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
-	renameErr := s.renameLocalDataset(ctx, restorePath, destinationDataset)
+	backupDataset, renameErr := s.promoteRestoredDataset(ctx, restorePath, destinationDataset)
 	if renameErr != nil {
-		restoreErr = fmt.Errorf("rename_restore_failed: could not rename %s → %s: %v", restorePath, destinationDataset, renameErr)
+		restoreErr = fmt.Errorf("rename_restore_failed: could not promote %s → %s: %v", restorePath, destinationDataset, renameErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
-		return restoreErr
+		return "", restoreErr
 	}
 
 	s.fixRestoredProperties(ctx, destinationDataset)
@@ -648,8 +686,16 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		}
 		if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, destinationDataset, restoreNetwork); err != nil {
 			restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
+			if rollbackErr := s.rollbackPromotedDataset(ctx, destinationDataset, backupDataset); rollbackErr != nil {
+				logger.L.Warn().
+					Err(rollbackErr).
+					Str("destination_dataset", destinationDataset).
+					Str("backup_dataset", backupDataset).
+					Msg("failed_to_rollback_jail_dataset_after_reconcile_failure")
+				restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
+			}
 			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
+			return "", restoreErr
 		}
 	}
 
@@ -661,17 +707,17 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		Str("dataset", destinationDataset).
 		Msg("target_dataset_restore_completed")
 
-	if isJailDestination && ctId != 0 {
-		err := s.Jail.JailAction(int(ctId), "start")
-		if err != nil {
+	if !keepBackup && strings.TrimSpace(backupDataset) != "" {
+		if err := s.cleanupRestoreBackupDataset(ctx, backupDataset); err != nil {
 			logger.L.Warn().
-				Uint("ct_id", ctId).
 				Err(err).
-				Msg("failed_to_start_jail_after_restore_continuing_anyway")
+				Str("backup_dataset", backupDataset).
+				Msg("failed_to_cleanup_restore_backup_dataset")
 		}
+		backupDataset = ""
 	}
 
-	return nil
+	return backupDataset, nil
 }
 
 func (s *Service) listRemoteVMRepresentativeRoots(

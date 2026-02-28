@@ -11,6 +11,7 @@ package jail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -22,7 +23,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"gorm.io/gorm"
 )
 
 var invalidSnapshotNameChars = regexp.MustCompile(`[^A-Za-z0-9._:-]+`)
@@ -163,11 +166,21 @@ func (s *Service) RollbackJailSnapshot(
 		if err := s.JailAction(int(ctID), "stop"); err != nil {
 			return fmt.Errorf("failed_to_stop_jail_before_snapshot_rollback: %w", err)
 		}
+		if err := s.waitForJailActiveState(ctID, false, 30*time.Second); err != nil {
+			return err
+		}
 	}
 
 	startAfter := wasActive
+	rollbackSucceeded := false
 	defer func() {
 		if !startAfter {
+			return
+		}
+		if !rollbackSucceeded {
+			logger.L.Warn().
+				Uint("ctid", ctID).
+				Msg("skipping_jail_restart_after_snapshot_rollback_due_to_failure")
 			return
 		}
 		if err := s.JailAction(int(ctID), "start"); err != nil {
@@ -175,6 +188,13 @@ func (s *Service) RollbackJailSnapshot(
 				Err(err).
 				Uint("ctid", ctID).
 				Msg("failed_to_start_jail_after_snapshot_rollback")
+			return
+		}
+		if err := s.waitForJailActiveState(ctID, true, 45*time.Second); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("ctid", ctID).
+				Msg("jail_did_not_reach_active_state_after_snapshot_rollback")
 		}
 	}()
 
@@ -213,7 +233,31 @@ func (s *Service) RollbackJailSnapshot(
 		return fmt.Errorf("failed_to_refresh_jail_json_after_rollback: %w", err)
 	}
 
+	rollbackSucceeded = true
 	return nil
+}
+
+func (s *Service) waitForJailActiveState(ctID uint, shouldBeActive bool, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		active, err := s.IsJailActive(ctID)
+		if err == nil && active == shouldBeActive {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			target := "inactive"
+			if shouldBeActive {
+				target = "active"
+			}
+			if err != nil {
+				return fmt.Errorf("jail_failed_to_reach_%s_state: %w", target, err)
+			}
+			return fmt.Errorf("jail_failed_to_reach_%s_state", target)
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func (s *Service) DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID uint) error {
@@ -261,6 +305,18 @@ func (s *Service) restoreJailDatabaseFromSnapshotJSON(ctID uint, mountPoint stri
 	if err := json.Unmarshal(data, &restored); err != nil {
 		return fmt.Errorf("invalid_snapshot_jail_json: %w", err)
 	}
+
+	normalizedNetworks, networkWarnings, err := s.normalizeRestoredJailSnapshotNetworks(restored.Networks)
+	if err != nil {
+		return err
+	}
+	for _, warning := range networkWarnings {
+		logger.L.Warn().
+			Uint("ctid", ctID).
+			Str("warning", warning).
+			Msg("jail_snapshot_restore_network_warning")
+	}
+	restored.Networks = normalizedNetworks
 
 	current, err := s.GetJailByCTID(ctID)
 	if err != nil {
@@ -381,6 +437,62 @@ func (s *Service) restoreJailDatabaseFromSnapshotJSON(ctID uint, mountPoint stri
 	}
 
 	return nil
+}
+
+func (s *Service) normalizeRestoredJailSnapshotNetworks(
+	networks []jailModels.Network,
+) ([]jailModels.Network, []string, error) {
+	if len(networks) == 0 {
+		return []jailModels.Network{}, nil, nil
+	}
+
+	warnings := make([]string, 0)
+	out := make([]jailModels.Network, 0, len(networks))
+
+	for _, network := range networks {
+		switchType := strings.ToLower(strings.TrimSpace(network.SwitchType))
+		if switchType == "" {
+			switchType = "standard"
+		}
+
+		switch switchType {
+		case "standard":
+			var sw networkModels.StandardSwitch
+			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					warnings = append(warnings, fmt.Sprintf(
+						"standard_switch_%d_not_found; skipped network restore",
+						network.SwitchID,
+					))
+					continue
+				}
+				return nil, nil, fmt.Errorf("failed_to_lookup_standard_switch_for_snapshot_restore: %w", err)
+			}
+			network.SwitchType = "standard"
+			out = append(out, network)
+		case "manual":
+			var sw networkModels.ManualSwitch
+			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					warnings = append(warnings, fmt.Sprintf(
+						"manual_switch_%d_not_found; skipped network restore",
+						network.SwitchID,
+					))
+					continue
+				}
+				return nil, nil, fmt.Errorf("failed_to_lookup_manual_switch_for_snapshot_restore: %w", err)
+			}
+			network.SwitchType = "manual"
+			out = append(out, network)
+		default:
+			warnings = append(warnings, fmt.Sprintf(
+				"switch_type_%q_invalid_for_network_restore; skipped",
+				network.SwitchType,
+			))
+		}
+	}
+
+	return out, warnings, nil
 }
 
 func resolveJailRootDataset(jail *jailModels.Jail) (string, string, error) {

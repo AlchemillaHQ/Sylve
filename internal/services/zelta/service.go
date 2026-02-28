@@ -388,6 +388,20 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			return runErr
 		}
 		vmSourceDatasets = sources
+
+		for _, vmSource := range vmSourceDatasets {
+			exists, err := s.localDatasetExists(ctx, vmSource)
+			if err != nil {
+				runErr := fmt.Errorf("failed_to_check_vm_backup_source_dataset_%s: %w", vmSource, err)
+				s.updateBackupJobResult(job, runErr)
+				return runErr
+			}
+			if !exists {
+				runErr := fmt.Errorf("vm_backup_source_dataset_not_found: %s", vmSource)
+				s.updateBackupJobResult(job, runErr)
+				return runErr
+			}
+		}
 	}
 
 	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
@@ -847,7 +861,44 @@ func (s *Service) stopVMIfPresent(rid uint) error {
 		return nil
 	}
 
-	return s.VM.LvVMAction(*vm, "stop")
+	isShutOff, err := s.VM.IsDomainShutOff(rid)
+	if err == nil && isShutOff {
+		return nil
+	}
+	if err != nil && isVMDomainNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed_to_check_vm_state_before_stop: %w", err)
+	}
+
+	if err := s.VM.LvVMAction(*vm, "stop"); err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not running") || isVMDomainNotFoundError(err) {
+			return nil
+		}
+		return err
+	}
+
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		isShutOff, err := s.VM.IsDomainShutOff(rid)
+		if err == nil && isShutOff {
+			return nil
+		}
+		if err != nil && isVMDomainNotFoundError(err) {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("vm_failed_to_reach_shutoff_state: %w", err)
+			}
+			return fmt.Errorf("vm_failed_to_reach_shutoff_state")
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func (s *Service) startVMIfPresent(rid uint) error {
@@ -864,6 +915,16 @@ func (s *Service) startVMIfPresent(rid uint) error {
 	}
 
 	return s.VM.LvVMAction(*vm, "start")
+}
+
+func isVMDomainNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "domain") &&
+		(strings.Contains(lower, "not found") || strings.Contains(lower, "no domain"))
 }
 
 func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int) ([]string, error) {

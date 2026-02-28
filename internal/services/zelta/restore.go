@@ -166,21 +166,18 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 
 	var restoreErr error
 	var output string
-	var ctId uint
 
 	if job.Mode == clusterModels.BackupJobModeJail {
-		var err error
-
-		ctId, err = s.Jail.GetJailCTIDFromDataset(sourceDataset)
+		ctID, err := s.Jail.GetJailCTIDFromDataset(sourceDataset)
 		if err == nil {
 			logger.L.Info().
-				Uint("ct_id", ctId).
+				Uint("ct_id", ctID).
 				Str("dataset", sourceDataset).
 				Msg("stopping_jail_before_restore")
 
-			if err := s.Jail.JailAction(int(ctId), "stop"); err != nil {
+			if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
 				logger.L.Warn().
-					Uint("ct_id", ctId).
+					Uint("ct_id", ctID).
 					Str("dataset", sourceDataset).
 					Err(err).
 					Msg("failed_to_stop_jail_before_restore_continuing_anyway")
@@ -189,7 +186,7 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	}
 
 	// Step 1: Clean up any previous restore temp dataset
-	_ = s.destroyLocalDataset(ctx, restorePath, true)
+	_ = s.destroyLocalDatasetWithRetry(ctx, restorePath, true, 5, 500*time.Millisecond)
 
 	// Step 2: Pull from remote backup@snapshot → temp dataset using zelta
 	// Override recv flags: skip readonly=on (RECV_TOP default) so the restored
@@ -236,23 +233,12 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	}
 	logger.L.Debug().Str("verify", restorePath).Msg("restore_dataset_verified")
 
-	// Step 3: Remove the original dataset only if it exists
-	sourceExists, existErr := s.localDatasetExists(ctx, sourceDataset)
+	// Step 3: Check whether the destination dataset exists.
+	_, existErr := s.localDatasetExists(ctx, sourceDataset)
 	if existErr != nil {
 		restoreErr = fmt.Errorf("failed_to_check_source_dataset_before_restore: %w", existErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
-	}
-	if sourceExists {
-		// Dataset exists — must be destroyed before we can rename the restore into place
-		destroyErr := s.destroyLocalDataset(ctx, sourceDataset, true)
-		if destroyErr != nil {
-			// Likely busy (jail/VM running, dataset mounted). Clean up the temp dataset.
-			_ = s.destroyLocalDataset(ctx, restorePath, true)
-			restoreErr = fmt.Errorf("destroy_original_failed: cannot remove %s (is the jail/VM still running?): %v", sourceDataset, destroyErr)
-			s.finalizeRestoreEvent(&event, restoreErr, output)
-			return restoreErr
-		}
 	}
 
 	// Step 4: Ensure the parent dataset exists (for restoring to a fresh system)
@@ -261,10 +247,10 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		_ = s.ensureLocalFilesystemPath(ctx, parent)
 	}
 
-	// Step 5: Rename restored temp → original path
-	renameErr := s.renameLocalDataset(ctx, restorePath, sourceDataset)
-	if renameErr != nil {
-		restoreErr = fmt.Errorf("rename_restore_failed: could not rename %s → %s: %v", restorePath, sourceDataset, renameErr)
+	// Step 5: Promote restored temp dataset into place.
+	backupDataset, promoteErr := s.promoteRestoredDataset(ctx, restorePath, sourceDataset)
+	if promoteErr != nil {
+		restoreErr = fmt.Errorf("rename_restore_failed: could not promote %s → %s: %v", restorePath, sourceDataset, promoteErr)
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
 	}
@@ -275,17 +261,24 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 	// Step 7: If this is a jail dataset, reconcile jail metadata/config from restored jail.json.
 	if err := s.reconcileRestoredJailFromDataset(ctx, sourceDataset); err != nil {
 		restoreErr = fmt.Errorf("reconcile_restored_jail_failed: %w", err)
+		if rollbackErr := s.rollbackPromotedDataset(ctx, sourceDataset, backupDataset); rollbackErr != nil {
+			logger.L.Warn().
+				Err(rollbackErr).
+				Str("dataset", sourceDataset).
+				Str("backup_dataset", backupDataset).
+				Msg("failed_to_rollback_dataset_after_restore_reconcile_failure")
+			restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
+		}
 		s.finalizeRestoreEvent(&event, restoreErr, output)
 		return restoreErr
 	}
 
-	if job.Mode == clusterModels.BackupJobModeJail && ctId != 0 {
-		err := s.Jail.JailAction(int(ctId), "start")
-		if err != nil {
+	if strings.TrimSpace(backupDataset) != "" {
+		if err := s.cleanupRestoreBackupDataset(ctx, backupDataset); err != nil {
 			logger.L.Warn().
-				Uint("ct_id", ctId).
 				Err(err).
-				Msg("failed_to_start_jail_after_restore_continuing_anyway")
+				Str("backup_dataset", backupDataset).
+				Msg("failed_to_cleanup_restore_backup_dataset")
 		}
 	}
 
