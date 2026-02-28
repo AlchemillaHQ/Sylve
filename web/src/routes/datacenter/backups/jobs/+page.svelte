@@ -380,7 +380,11 @@
 				return value > 0 ? `Keep ${value}` : 'Off';
 			}
 		},
-		{ field: 'cronExpr', title: 'Schedule' },
+		{
+			field: 'cronExpr',
+			title: 'Schedule',
+			formatter: (cell: CellComponent) => cronToHuman(String(cell.getValue() || ''))
+		},
 		{
 			field: 'lastRunAt',
 			title: 'Last Run',

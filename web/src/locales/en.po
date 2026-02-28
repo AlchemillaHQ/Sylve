@@ -9024,6 +9024,7 @@ msgstr "Jail terminal"
 msgid "New VM Snapshot"
 msgstr "New VM Snapshot"
 
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Clean Slate"
 msgstr "Clean Slate"
@@ -9039,3 +9040,7 @@ msgstr "VM Network - Attach"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Backup Job - Run"
 msgstr "DC Backup Job - Run"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update Description"
+msgstr "Jail - Update Description"

@@ -8120,6 +8120,7 @@ msgstr ""
 msgid "New VM Snapshot"
 msgstr ""
 
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Clean Slate"
 msgstr ""
@@ -8134,4 +8135,8 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Backup Job - Run"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update Description"
 msgstr ""

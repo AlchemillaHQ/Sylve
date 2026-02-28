@@ -99,6 +99,7 @@ export function formatUptime(seconds: number): string {
 
 export function cronToHuman(cron: string): string {
     try {
+        if (!cron || cron.trim() === '') return '-';
         return cronstrue.toString(cron, { throwExceptionOnParseError: true });
     } catch (e) {
         return '';

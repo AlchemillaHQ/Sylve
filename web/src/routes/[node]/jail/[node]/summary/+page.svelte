@@ -186,7 +186,7 @@
 	let totalRAM = $derived(ramInfo.current?.total ?? 0);
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
-	let lastDesc = $state('');
+	let isDescInitialized = false;
 
 	function isNearLogsBottom(element: HTMLDivElement): boolean {
 		return (
@@ -202,14 +202,21 @@
 		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
-	$effect(() => {
-		const value = debouncedDesc.current;
+	watch(
+		() => debouncedDesc.current,
+		(curr, prev) => {
+			if (!isDescInitialized) {
+				isDescInitialized = true;
+				return;
+			}
 
-		if (value !== undefined && value !== null && value !== lastDesc) {
-			updateDescription(jail.current.id, value);
-			lastDesc = value;
+			if (curr !== undefined && prev !== undefined) {
+				if (curr !== prev) {
+					updateDescription(jail.current.id, curr);
+				}
+			}
 		}
-	});
+	);
 
 	let udTime = $derived.by(() => {
 		if (jState.current.state === 'ACTIVE') {

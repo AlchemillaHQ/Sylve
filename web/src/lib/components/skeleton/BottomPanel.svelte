@@ -78,6 +78,7 @@
 		'/api/jail/network/inheritance': 'Jail - Network Inherit',
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
+		'/api/jail/description': 'Jail - Update Description',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/services/dhcp-server/toggle': 'Toggle - DHCP Server',
