@@ -136,6 +136,7 @@ msgid "Volumes"
 msgstr "卷"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "快照"
 
@@ -707,6 +708,8 @@ msgstr "重置"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -975,6 +978,7 @@ msgstr "已创建附注"
 msgid "Failed to create note"
 msgstr "附注创建失败"
 
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
@@ -993,7 +997,9 @@ msgstr "已更新"
 msgid "View"
 msgstr "查看"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -1049,6 +1055,7 @@ msgstr "批量删除"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1550,6 +1557,7 @@ msgstr "日期"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1564,6 +1572,8 @@ msgstr "此操作无法撤销。永久删除"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1579,6 +1589,8 @@ msgstr "取消"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1841,6 +1853,8 @@ msgstr "型号"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3708,50 +3722,66 @@ msgstr "{0} 已开始"
 msgid "Stopped {0}"
 msgstr "{0} 已停止"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Deleting Jail"
 msgstr "正在删除 Jail"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
 msgstr "请稍候，正在删除 Jail <b>{0} ({1})</b>"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error deleting jail"
 msgstr "删除 Jail 时出错"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail deleted"
 msgstr "Jail 已删除"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Stopping Jail"
 msgstr "正在停止 Jail"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
 msgstr "请稍候，正在停止 Jail <b>{0} ({1})</b>"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Starting Jail"
 msgstr "正在启动 Jail"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
 msgstr "请稍候，正在启动 Jail <b>{0} ({1})</b>"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stop"
 msgstr "停止"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3776,16 +3806,19 @@ msgstr "正在运行"
 msgid "Stopped"
 msgstr "已停止"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "This will permanently delete Jail"
 msgstr "这将永久删除 Jail"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete MAC Object(s)"
 msgstr "删除 MAC 对象"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Delete Root Filesystem"
 msgstr "删除根文件系统"
@@ -4894,6 +4927,8 @@ msgstr "未选择数据集"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 msgid "Failed to create snapshot"
 msgstr "快照创建失败"
 
@@ -4913,6 +4948,7 @@ msgid "Snapshot {0}@{1} created"
 msgstr "已创建快照 {0}@{1}"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 msgid "Create Snapshot"
 msgstr "创建快照"
 
@@ -7950,4 +7986,102 @@ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Leader cannot exit when followers are present"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "ZFS Snapshot Name"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot name is required"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot created"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot rollback started"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to rollback snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to delete snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback"
+msgstr ""
+
+#~ msgid "Rollback restores the selected snapshot and removes snapshots created after it."
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "New Jail Snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Optional note about why this snapshot was taken"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Creating..."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+msgid "Processing..."
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rolling Back"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error stopping jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail stopped"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error starting jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail started"
+msgstr ""
+
+#~ msgid "KeyC"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "VM serial terminal"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host terminal"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Jail terminal"
 msgstr ""

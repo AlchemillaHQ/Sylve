@@ -6,7 +6,6 @@
 	import { onMount, tick } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
@@ -140,11 +139,19 @@
 		};
 
 		ws.onmessage = (e) => {
-			terminal?.write(e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : e.data);
+			if (e.data instanceof ArrayBuffer) {
+				terminal?.write(new Uint8Array(e.data));
+			} else {
+				terminal?.write(e.data);
+			}
 		};
 
 		terminal.onData((data: string) => {
-			ws?.send(new TextEncoder().encode('\x00' + data.replace(/\n/g, '\r')));
+			const normalizedData = data.replace(/\n/g, '\r');
+
+			if (ws && ws.readyState === WebSocket.OPEN) {
+				ws.send(new TextEncoder().encode('\x00' + normalizedData));
+			}
 		});
 	};
 
@@ -163,7 +170,7 @@
 	});
 </script>
 
-<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
+<div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border p-4 bg-background">
 		{#if ws && !cState.current}
 			<Button
@@ -209,9 +216,12 @@
 	<div
 		class="terminal-wrapper h-full w-full bg-black focus:outline-none caret-transparent"
 		class:hidden={cState.current}
+		role="application"
+		aria-label="Host terminal"
 		tabindex="-1"
 		style="outline: none;"
 		bind:this={terminalContainer}
+		onpointerdown={() => terminal?.focus()}
 	></div>
 </div>
 
@@ -246,3 +256,9 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<style>
+	:global(.terminal-wrapper canvas) {
+		display: block;
+	}
+</style>

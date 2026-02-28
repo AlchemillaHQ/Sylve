@@ -8,7 +8,14 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
-	import { resource, useInterval, watch, PersistedState, useDebounce } from 'runed';
+	import {
+		resource,
+		useInterval,
+		watch,
+		PersistedState,
+		useDebounce,
+		useResizeObserver
+	} from 'runed';
 	import { mode } from 'mode-watcher';
 	import adze from 'adze';
 	import { fade } from 'svelte/transition';
@@ -227,6 +234,31 @@
 		terminal.focus();
 	}
 
+	function syncTerminalSizeAfterOpen() {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!terminalContainer) return;
+				const rect = terminalContainer.getBoundingClientRect();
+				if (!rect.width || !rect.height) return;
+				lastWidth = rect.width;
+				lastHeight = rect.height;
+				resizeTerminal(rect.width, rect.height);
+			});
+		});
+	}
+
+	useResizeObserver(
+		() => terminalContainer,
+		(entries) => {
+			const entry = entries[0];
+			if (!entry) return;
+			const { width, height } = entry.contentRect;
+			lastWidth = width;
+			lastHeight = height;
+			resizeTerminal(width, height);
+		}
+	);
+
 	const serialConnect = async () => {
 		cState.current = false;
 
@@ -266,6 +298,8 @@
 				const rect = terminalContainer.getBoundingClientRect();
 				resizeTerminal(rect.width, rect.height);
 			}
+
+			syncTerminalSizeAfterOpen();
 		};
 
 		ws.onmessage = (e) => {
@@ -278,6 +312,7 @@
 
 		terminal.onData((data: string) => {
 			const normalizedData = data.replace(/\n/g, '\r');
+
 			if (ws && ws.readyState === WebSocket.OPEN) {
 				ws.send(new TextEncoder().encode('\x00' + normalizedData));
 			}
@@ -331,7 +366,7 @@
 	);
 </script>
 
-<div class="flex h-full min-h-0 w-full flex-col">
+<div class="flex h-full w-full flex-col">
 	{#if (vm.current.vncEnabled || vm.current.serial) && domain.current.status !== 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if vm.current.vncEnabled && vm.current.serial}
@@ -422,12 +457,15 @@
 				{/if}
 
 				<div
-					class="terminal-wrapper hidden h-full w-full bg-black focus:outline-none caret-transparent"
+					class="terminal-wrapper h-full w-full focus:outline-none caret-transparent"
 					class:hidden={cState.current}
+					role="application"
+					aria-label="VM serial terminal"
 					tabindex="-1"
+					style:background-color={theme.current.background}
 					style="outline: none;"
 					bind:this={terminalContainer}
-					onclick={() => terminal?.focus()}
+					onpointerdown={() => terminal?.focus()}
 				></div>
 			</div>
 		{:else}

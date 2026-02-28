@@ -137,6 +137,7 @@ msgid "Volumes"
 msgstr "വോള്യങ്ങൾ"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "സ്നാപ്പ്ഷോട്ടുകൾ"
 
@@ -729,6 +730,8 @@ msgstr "പുനഃസജ്ജമാക്കുക"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -1003,6 +1006,7 @@ msgstr "കുറിപ്പ് സൃഷ്ടിച്ചു"
 msgid "Failed to create note"
 msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
@@ -1021,7 +1025,9 @@ msgstr "അപ്‌ഡേറ്റ് ചെയ്തത്"
 msgid "View"
 msgstr "കാണുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -1077,6 +1083,7 @@ msgstr "വലിയ തോതിലുള്ള മായ്ക്കൽ"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -1581,6 +1588,7 @@ msgstr "തീയതി"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1595,6 +1603,8 @@ msgstr ""
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1610,6 +1620,8 @@ msgstr "റദ്ദാക്കുക"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1872,6 +1884,8 @@ msgstr "മോഡൽ"
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3781,50 +3795,66 @@ msgstr "{0} മുമ്പ് ആരംഭിച്ചു"
 msgid "Stopped {0}"
 msgstr "{0} മുമ്പ് നിർത്തപ്പെട്ടു"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Deleting Jail"
 msgstr "ജയിൽ ഇല്ലാതാക്കുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
 msgstr "ജയിൽ <b>{0} ({1})</b> ഇല്ലാതാക്കുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error deleting jail"
 msgstr "ജയിൽ ഇല്ലാതാക്കുന്നതിൽ പിശക്"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail deleted"
 msgstr "ജയിൽ ഇല്ലാതാക്കി"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Stopping Jail"
 msgstr "ജയിൽ നിർത്തുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
 msgstr "ജയിൽ <b>{0} ({1})</b> നിർത്തുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Starting Jail"
 msgstr "ജയിൽ ആരംഭിക്കുന്നു"
 
 #. placeholder {0}: jail.current.name
 #. placeholder {1}: jail.current.ctId
+#. placeholder {0}: jail.current.name
+#. placeholder {1}: jail.current.ctId
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
 msgstr "ജയിൽ <b>{0} ({1})</b> ആരംഭിക്കുന്നത് വരെ ദയവായി കാത്തിരിക്കുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Stop"
 msgstr "നിർത്തുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3849,16 +3879,19 @@ msgstr "പ്രവർത്തിക്കുന്നു"
 msgid "Stopped"
 msgstr "നിർത്തി"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "This will permanently delete Jail"
 msgstr "ഇത് ജയിലിനെ എന്നെന്നേക്കുമായി ഇല്ലാതാക്കും"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Delete MAC Object(s)"
 msgstr "MAC ഒബ്ജക്റ്റ്(കൾ) ഇല്ലാതാക്കുക"
 
+#: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Delete Root Filesystem"
 msgstr "റൂട്ട് ഫയൽസിസ്റ്റം ഇല്ലാതാക്കുക"
@@ -5046,6 +5079,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 msgid "Failed to create snapshot"
 msgstr "സ്നാപ്പ്ഷോട്ട് ഉണ്ടാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
@@ -5065,6 +5100,7 @@ msgid "Snapshot {0}@{1} created"
 msgstr "സ്നാപ്പ്ഷോട്ട് {0}@{1} ഉണ്ടാക്കി"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 msgid "Create Snapshot"
 msgstr "സ്നാപ്പ്ഷോട്ട് സൃഷ്ടിക്കുക"
 
@@ -8766,4 +8802,102 @@ msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Leader cannot exit when followers are present"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "ZFS Snapshot Name"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot name is required"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot created"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot rollback started"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to rollback snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to delete snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback"
+msgstr ""
+
+#~ msgid "Rollback restores the selected snapshot and removes snapshots created after it."
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "New Jail Snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Optional note about why this snapshot was taken"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Creating..."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/Alert.svelte
+msgid "Processing..."
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rolling Back"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error stopping jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail stopped"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error starting jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail started"
+msgstr ""
+
+#~ msgid "KeyC"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "VM serial terminal"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host terminal"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Jail terminal"
 msgstr ""

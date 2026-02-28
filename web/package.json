@@ -87,7 +87,7 @@
 		"filepond": "^4.32.8",
 		"filepond-plugin-image-exif-orientation": "^1.0.11",
 		"filepond-plugin-image-preview": "^4.6.12",
-		"ghostty-web": "^0.4.0",
+		"ghostty-web": "0.4.0-next.14.g6a1a50d",
 		"human-format": "^1.2.1",
 		"ip-address": "^10.0.1",
 		"ip-cidr": "^4.0.2",

@@ -63,6 +63,7 @@
 
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
 	let isSummaryPage = $derived.by(() => page.url.pathname.endsWith('/summary'));
+	let isConsolePage = $derived.by(() => page.url.pathname.endsWith('/console'));
 
 	const visible = new IsDocumentVisible();
 
@@ -279,9 +280,9 @@
 	}
 </script>
 
-<div class="h-full w-full overflow-auto">
+<div class="flex h-full min-h-0 w-full flex-col">
 	{#if !isSummaryPage}
-		<div class="flex h-10 w-full items-center gap-1 border p-4">
+		<div class="flex h-10 shrink-0 w-full items-center gap-1 border p-4">
 			{#if vm.current && domain.current}
 				{#if domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 					<Button
@@ -352,7 +353,13 @@
 		</div>
 	{/if}
 
-	{@render children?.()}
+	<div
+		class="min-h-0 flex-1"
+		class:overflow-hidden={isConsolePage}
+		class:overflow-auto={!isConsolePage}
+	>
+		{@render children?.()}
+	</div>
 </div>
 
 <AlertDialogRaw.Root bind:open={modalState.isDeleteOpen}>

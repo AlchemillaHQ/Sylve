@@ -112,6 +112,7 @@ export const JailSchema = SimpleJailSchema.extend({
     memory: z.number(),
     startedAt: z.string().nullable(),
     stoppedAt: z.string().nullable(),
+    resourceLimits: z.boolean()
 });
 
 export const JailStateSchema = z.object({

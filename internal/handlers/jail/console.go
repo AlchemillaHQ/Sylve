@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"sync"
 
@@ -47,7 +48,9 @@ var (
 	GlobalSessionManager = &SessionManager{
 		sessions: make(map[string]*TerminalSession),
 	}
-	WSUpgrader = websocket.Upgrader{
+	cursorPositionResponsePattern     = regexp.MustCompile(`\x1b\[[0-9]{1,4};[0-9]{1,4}R`)
+	bareCursorPositionResponsePattern = regexp.MustCompile(`^(?:\x1b\[|\[)?[0-9]{1,4};[0-9]{1,4}R$`)
+	WSUpgrader                        = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
@@ -61,6 +64,19 @@ type WindowSize struct {
 	Cols uint16 `json:"cols"`
 	X    uint16
 	Y    uint16
+}
+
+func filterTerminalPayload(data []byte) []byte {
+	if len(data) == 0 {
+		return data
+	}
+
+	cleaned := cursorPositionResponsePattern.ReplaceAll(data, nil)
+	if bareCursorPositionResponsePattern.Match(cleaned) {
+		return nil
+	}
+
+	return cleaned
 }
 
 func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*TerminalSession, error) {
@@ -78,7 +94,7 @@ func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*Te
 	ctidHash := utils.HashIntToNLetters(ctidInt, 5)
 
 	cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "TERM=xterm")
 
 	ptymx, err := pty.Start(cmd)
 	if err != nil {
@@ -123,6 +139,10 @@ func (ts *TerminalSession) PumpOutput(sm *SessionManager) {
 
 		data := make([]byte, n)
 		copy(data, buf[:n])
+		data = filterTerminalPayload(data)
+		if len(data) == 0 {
+			continue
+		}
 
 		ts.Mu.Lock()
 
@@ -195,11 +215,14 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 		session.Observers[conn] = true
 
 		if len(session.History) > 0 {
-			if err := conn.WriteMessage(websocket.BinaryMessage, session.History); err != nil {
-				delete(session.Observers, conn)
-				session.Mu.Unlock()
-				conn.Close()
-				return
+			history := filterTerminalPayload(session.History)
+			if len(history) > 0 {
+				if err := conn.WriteMessage(websocket.BinaryMessage, history); err != nil {
+					delete(session.Observers, conn)
+					session.Mu.Unlock()
+					conn.Close()
+					return
+				}
 			}
 		}
 
@@ -229,8 +252,17 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 
 			switch header[0] {
 			case 0:
-				_, err := io.Copy(session.Pty, reader)
+				input, err := io.ReadAll(reader)
 				if err != nil {
+					return
+				}
+
+				input = filterTerminalPayload(input)
+				if len(input) == 0 {
+					continue
+				}
+
+				if _, err := session.Pty.Write(input); err != nil {
 					return
 				}
 

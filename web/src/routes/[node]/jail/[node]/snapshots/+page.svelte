@@ -18,7 +18,7 @@
 	import type { JailSnapshot } from '$lib/types/jail/snapshots';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { dateToAgo } from '$lib/utils/time';
-	import { updateCache } from '$lib/utils/http';
+	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import { toast } from 'svelte-sonner';
@@ -31,6 +31,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const snapshots = resource(
 		() => `jail-${data.ctId}-snapshots`,
 		async (key) => {
@@ -46,9 +47,9 @@
 	let reload = $state(false);
 	watch(
 		() => reload,
-		async (value) => {
+		(value) => {
 			if (!value) return;
-			await snapshots.refetch();
+			snapshots.refetch();
 			reload = false;
 		}
 	);
@@ -109,7 +110,8 @@
 			{
 				field: 'snapshotName',
 				title: 'ZFS Snapshot Name',
-				copyOnClick: true
+				copyOnClick: true,
+				visible: false
 			},
 			{
 				field: 'createdLabel',
@@ -140,6 +142,7 @@
 
 	let rollbackConfirmOpen = $state(false);
 	let deleteConfirmOpen = $state(false);
+	let rollbacking = $state(false);
 
 	async function onCreateSnapshot() {
 		const name = createModal.name.trim();
@@ -160,7 +163,9 @@
 				reload = true;
 				return;
 			}
-			toast.error(response.error || 'Failed to create snapshot', { position: 'bottom-center' });
+
+			handleAPIError(response);
+			toast.error('Failed to create snapshot', { position: 'bottom-center' });
 		} catch (e: any) {
 			toast.error(e?.message || 'Failed to create snapshot', { position: 'bottom-center' });
 		} finally {
@@ -169,7 +174,8 @@
 	}
 
 	async function onRollbackSnapshot() {
-		if (!selectedSnapshot) return;
+		if (!selectedSnapshot || rollbacking) return;
+		rollbacking = true;
 		try {
 			const response = await rollbackJailSnapshot(data.ctId, selectedSnapshot.id);
 			if (response.status === 'success') {
@@ -179,9 +185,13 @@
 				reload = true;
 				return;
 			}
-			toast.error(response.error || 'Failed to rollback snapshot', { position: 'bottom-center' });
+
+			handleAPIError(response);
+			toast.error('Failed to rollback snapshot', { position: 'bottom-center' });
 		} catch (e: any) {
 			toast.error(e?.message || 'Failed to rollback snapshot', { position: 'bottom-center' });
+		} finally {
+			rollbacking = false;
 		}
 	}
 
@@ -196,9 +206,11 @@
 				reload = true;
 				return;
 			}
-			toast.error(response.error || 'Failed to delete snapshot', { position: 'bottom-center' });
+
+			handleAPIError(response);
+			toast.error('Failed to delete snapshot', { position: 'bottom-center' });
 		} catch (e: any) {
-			toast.error(e?.message || 'Failed to delete snapshot', { position: 'bottom-center' });
+			toast.error('Failed to delete snapshot', { position: 'bottom-center' });
 		}
 	}
 </script>
@@ -251,10 +263,6 @@
 		{/if}
 	</div>
 
-	<div class="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-		Rollback restores the selected snapshot and removes snapshots created after it.
-	</div>
-
 	<div class="flex h-full flex-col overflow-hidden">
 		<TreeTable
 			data={tableData}
@@ -267,9 +275,14 @@
 </div>
 
 <Dialog.Root bind:open={createModal.open}>
-	<Dialog.Content class="max-h-[90vh] min-w-1/2 overflow-y-auto p-5">
+	<Dialog.Content class="max-h-[90vh] min-w-1/3 overflow-y-auto p-5">
 		<Dialog.Header>
-			<Dialog.Title>New Jail Snapshot</Dialog.Title>
+			<Dialog.Title>
+				<div class="flex items-center gap-2">
+					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-1 h-4 w-4"></span>
+					<span>New Jail Snapshot</span>
+				</div>
+			</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-2">
@@ -314,6 +327,9 @@
 
 <AlertDialog
 	open={rollbackConfirmOpen}
+	loading={rollbacking}
+	loadingLabel="Rolling Back"
+	confirmLabel="Continue"
 	customTitle={selectedSnapshot
 		? `Rollback to <b>${selectedSnapshot.name}</b>? This will destroy snapshots created after it.`
 		: ''}

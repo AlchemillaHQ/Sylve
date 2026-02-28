@@ -258,6 +258,7 @@
 
 	let resizeKey = $state(0);
 	let hasInitialized = false;
+	let isConsoleRoute = $derived.by(() => page.url.pathname.endsWith('/console'));
 
 	function handleResize() {
 		if (hasInitialized) {
@@ -331,7 +332,11 @@
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
 			{#key debouncedResize.current}
-				<div class="h-full w-full overflow-auto">
+				<div
+					class="h-full w-full"
+					class:overflow-hidden={isConsoleRoute}
+					class:overflow-auto={!isConsoleRoute}
+				>
 					{@render children?.()}
 				</div>
 			{/key}

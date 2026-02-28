@@ -10,7 +10,6 @@
 	import { onMount } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
@@ -29,6 +28,7 @@
 	let terminalContainer = $state<HTMLElement | null>(null);
 	let lastWidth = 0;
 	let lastHeight = 0;
+	let connectionToken = 0;
 	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
 	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
 		background: '#282c34',
@@ -71,6 +71,7 @@
 
 	let openSettings = $state(false);
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${data.jail.ctId}`,
 		async () => {
@@ -83,6 +84,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const jState = resource(
 		() => `jail-${data.state.ctId}-state`,
 		async () => {
@@ -102,13 +104,26 @@
 
 	function disconnect() {
 		cState.current = true;
+		connectionToken += 1;
 
-		if (ws && ws.readyState === WebSocket.OPEN) {
+		const socket = ws;
+		ws = null;
+
+		if (socket) {
+			socket.onopen = null;
+			socket.onmessage = null;
+			socket.onerror = null;
+			socket.onclose = null;
+		}
+
+		if (socket && socket.readyState === WebSocket.OPEN) {
 			const payload = JSON.stringify({ kill: '' });
 			const data = new TextEncoder().encode('\x02' + payload);
 
-			ws.send(data);
-			ws.close();
+			socket.send(data);
+			socket.close();
+		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
+			socket.close();
 		}
 
 		terminal?.dispose?.();
@@ -143,6 +158,19 @@
 
 		terminal.resize(cols, rows);
 		sendSize(cols, rows);
+	}
+
+	function syncTerminalSizeAfterOpen() {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!terminalContainer) return;
+				const rect = terminalContainer.getBoundingClientRect();
+				if (!rect.width || !rect.height) return;
+				lastWidth = rect.width;
+				lastHeight = rect.height;
+				resizeTerminal(rect.width, rect.height);
+			});
+		});
 	}
 
 	useResizeObserver(
@@ -193,10 +221,18 @@
 			})
 		);
 
-		ws = new WebSocket(`/api/jail/console?ctid=${data.ctId}&auth=${encodeURIComponent(wsAuth)}`);
-		ws.binaryType = 'arraybuffer';
+		const activeConnectionToken = ++connectionToken;
+		const activeTerminal = terminal;
+		const socket = new WebSocket(
+			`/api/jail/console?ctid=${data.ctId}&auth=${encodeURIComponent(wsAuth)}`
+		);
+		socket.binaryType = 'arraybuffer';
+		ws = socket;
 
-		ws.onopen = () => {
+		socket.onopen = () => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			adze.info(`Jail console connected for jail ${data.ctId}`);
 			if (lastWidth && lastHeight) {
 				resizeTerminal(lastWidth, lastHeight);
@@ -204,19 +240,34 @@
 				const rect = terminalContainer.getBoundingClientRect();
 				resizeTerminal(rect.width, rect.height);
 			}
+
+			syncTerminalSizeAfterOpen();
 		};
 
-		ws.onmessage = (e) => {
+		socket.onmessage = (e) => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			if (e.data instanceof ArrayBuffer) {
-				terminal?.write(new Uint8Array(e.data));
+				try {
+					activeTerminal?.write(new Uint8Array(e.data));
+				} catch {
+					return;
+				}
 			} else {
-				terminal?.write(e.data as string);
+				try {
+					activeTerminal?.write(e.data as string);
+				} catch {
+					return;
+				}
 			}
 		};
 
 		terminal.onData((data: string) => {
 			const normalizedData = data.replace(/\n/g, '\r');
-			ws?.send(new TextEncoder().encode('\x00' + normalizedData));
+
+			if (socket.readyState !== WebSocket.OPEN) return;
+			socket.send(new TextEncoder().encode('\x00' + normalizedData));
 		});
 	};
 
@@ -227,12 +278,24 @@
 
 		return () => {
 			destroyed = true;
+			connectionToken += 1;
+
+			if (ws) {
+				ws.onopen = null;
+				ws.onmessage = null;
+				ws.onerror = null;
+				ws.onclose = null;
+				ws.close();
+				ws = null;
+			}
+
 			if (terminal) {
 				terminal.clear?.();
 				terminal.reset?.();
 			}
 
 			terminal?.dispose?.();
+			terminal = null;
 		};
 	});
 </script>
@@ -248,8 +311,8 @@
 		</div>
 	</div>
 {:else}
-	<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
-		<div class="flex h-10 w-full items-center gap-2 border p-4">
+	<div class="flex h-full w-full flex-col">
+		<div class="flex h-10 shrink-0 w-full items-center gap-2 border p-4">
 			{#if ws?.OPEN === 1}
 				<Button
 					size="sm"
@@ -300,11 +363,15 @@
 		{/if}
 
 		<div
-			class="terminal-wrapper hidden h-full w-full bg-black focus:outline-none caret-transparent"
+			class="terminal-wrapper h-full w-full focus:outline-none caret-transparent"
 			class:hidden={cState.current}
+			role="application"
+			aria-label="Jail terminal"
 			tabindex="-1"
+			style:background-color={theme.current.background}
 			style="outline: none;"
 			bind:this={terminalContainer}
+			onpointerdown={() => terminal?.focus()}
 		></div>
 	</div>
 {/if}

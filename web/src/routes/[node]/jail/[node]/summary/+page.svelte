@@ -155,6 +155,10 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+
+				if (showLogs || modalState.loading.open) {
+					logs.refetch();
+				}
 			}
 		}
 	});
@@ -166,16 +170,37 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+
+				if (showLogs || modalState.loading.open) {
+					logs.refetch();
+				}
 			}
 		}
 	);
 
 	let showLogs = $state(false);
+	let logsContainerElement = $state<HTMLDivElement | null>(null);
+	let followLogs = $state(true);
+	const LOG_AUTO_SCROLL_THRESHOLD = 24;
 	let logicalCores = $derived(cpuInfo.current?.logicalCores ?? 0);
 	let totalRAM = $derived(ramInfo.current?.total ?? 0);
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let lastDesc = $state('');
+
+	function isNearLogsBottom(element: HTMLDivElement): boolean {
+		return (
+			element.scrollHeight - element.scrollTop - element.clientHeight <= LOG_AUTO_SCROLL_THRESHOLD
+		);
+	}
+
+	function handleLogsScroll() {
+		if (!logsContainerElement) {
+			return;
+		}
+
+		followLogs = isNearLogsBottom(logsContainerElement);
+	}
 
 	$effect(() => {
 		const value = debouncedDesc.current;
@@ -234,9 +259,11 @@
 		modalState.loading.title = 'Stopping Jail';
 		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being stopped`;
 		modalState.loading.iconColor = 'text-red-500';
+		await logs.refetch();
 
 		await sleep(1000);
 		await jailAction(jail.current.ctId, 'stop');
+		await logs.refetch();
 
 		reload.leftPanel = true;
 		modalState.loading.open = false;
@@ -247,22 +274,38 @@
 		modalState.loading.title = 'Starting Jail';
 		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being started`;
 		modalState.loading.iconColor = 'text-green-500';
+		await logs.refetch();
 
 		await sleep(1000);
 		await jailAction(jail.current.ctId, 'start');
+		await logs.refetch();
 
 		reload.leftPanel = true;
 		modalState.loading.open = false;
 	}
 
 	$effect(() => {
-		if (showLogs) {
+		const _currentLogs = logs.current.logs;
+
+		if (showLogs && followLogs) {
 			untrack(() => {
 				// scroll to the bottom of the logs
-				const logsContainer = document.querySelector('.logs-container');
-				if (logsContainer) {
-					logsContainer.scrollTop = logsContainer.scrollHeight;
+				if (logsContainerElement) {
+					logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
 				}
+			});
+		}
+	});
+
+	$effect(() => {
+		if (showLogs) {
+			followLogs = true;
+			untrack(() => {
+				requestAnimationFrame(() => {
+					if (logsContainerElement) {
+						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
+					}
+				});
 			});
 		}
 	});
@@ -309,6 +352,7 @@
 				<Button
 					size="sm"
 					onclick={() => {
+						followLogs = true;
 						showLogs = true;
 					}}
 					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
@@ -527,7 +571,11 @@
 
 		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
 			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
-				<div class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto">
+				<div
+					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+					bind:this={logsContainerElement}
+					onscroll={handleLogsScroll}
+				>
 					<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
 							{logs.current.logs}
 						</pre>
