@@ -974,9 +974,8 @@ msgstr "Join Cluster"
 msgid "Reset Cluster"
 msgstr "Reset Cluster"
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset clustering data on this node"
-msgstr "This will reset clustering data on this node"
+#~ msgid "This will reset clustering data on this node"
+#~ msgstr "This will reset clustering data on this node"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Failed to reset cluster"
@@ -7704,9 +7703,8 @@ msgstr "Run On Node"
 #~ msgid "Cluster - Notes"
 #~ msgstr "Cluster - Notes"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Notes"
-msgstr "Cluster Notes"
+#~ msgid "Cluster Notes"
+#~ msgstr "Cluster Notes"
 
 #~ msgid "Endpoint is required"
 #~ msgstr "Endpoint is required"
@@ -8751,13 +8749,11 @@ msgstr "This will force delete VM"
 #~ "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
 #~ "network objects. Partial failures will be tolerated."
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Target"
-msgstr "Cluster Backup Target"
+#~ msgid "Cluster Backup Target"
+#~ msgstr "Cluster Backup Target"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Target - Validate"
-msgstr "Cluster Backup Target - Validate"
+#~ msgid "Cluster Backup Target - Validate"
+#~ msgstr "Cluster Backup Target - Validate"
 
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Validating"
@@ -8815,9 +8811,8 @@ msgstr "Backup"
 #~ msgid "Test"
 #~ msgstr "Test"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Job"
-msgstr "Cluster Backup Job"
+#~ msgid "Cluster Backup Job"
+#~ msgstr "Cluster Backup Job"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
@@ -8836,3 +8831,23 @@ msgstr "Toggle Search"
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Create Backup Root"
 msgstr "Create Backup Root"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Notes"
+msgstr "DC Notes"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Target - Validate"
+msgstr "DC Backup Target - Validate"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Target"
+msgstr "DC Backup Target"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Job"
+msgstr "DC Backup Job"
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
+msgstr "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."

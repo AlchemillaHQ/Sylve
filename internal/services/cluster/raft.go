@@ -184,6 +184,28 @@ func (s *Service) ClearClusterNode(id string) error {
 }
 
 func (s *Service) ResetRaftNode() error {
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	if s.Raft.State() == raft.Leader {
+		detail := s.Detail()
+		if detail == nil {
+			return fmt.Errorf("unable_to_get_node_detail")
+		}
+
+		cfgFuture := s.Raft.GetConfiguration()
+		if err := cfgFuture.Error(); err != nil {
+			return fmt.Errorf("failed_to_get_raft_configuration: %v", err)
+		}
+
+		for _, server := range cfgFuture.Configuration().Servers {
+			if server.ID != raft.ServerID(detail.NodeID) {
+				return fmt.Errorf("leader_cannot_reset_while_other_nodes_exist")
+			}
+		}
+	}
+
 	if s.Raft.State() != raft.Leader {
 		nodeId := s.Detail().NodeID
 

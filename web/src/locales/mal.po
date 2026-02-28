@@ -972,9 +972,8 @@ msgstr "ക്ലസ്റ്ററിൽ ചേരുക"
 msgid "Reset Cluster"
 msgstr "ക്ലസ്റ്റർ പുനഃസജ്ജമാക്കുക"
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset clustering data on this node"
-msgstr "ഇത് ഈ നോഡിലെ ക്ലസ്റ്ററിംഗ് ഡാറ്റ പുനഃസജ്ജമാക്കും"
+#~ msgid "This will reset clustering data on this node"
+#~ msgstr "ഇത് ഈ നോഡിലെ ക്ലസ്റ്ററിംഗ് ഡാറ്റ പുനഃസജ്ജമാക്കും"
 
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Failed to reset cluster"
@@ -7652,9 +7651,8 @@ msgstr ""
 #~ msgid "Cluster - Notes"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Notes"
-msgstr ""
+#~ msgid "Cluster Notes"
+#~ msgstr ""
 
 #~ msgid "Endpoint is required"
 #~ msgstr ""
@@ -8665,13 +8663,11 @@ msgstr ""
 #~ "network objects. Partial failures will be tolerated."
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Target"
-msgstr ""
+#~ msgid "Cluster Backup Target"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Target - Validate"
-msgstr ""
+#~ msgid "Cluster Backup Target - Validate"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Validating"
@@ -8727,9 +8723,8 @@ msgstr ""
 #~ msgid "Test"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Cluster Backup Job"
-msgstr ""
+#~ msgid "Cluster Backup Job"
+#~ msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
@@ -8747,4 +8742,24 @@ msgstr ""
 
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Create Backup Root"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Notes"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Target - Validate"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Target"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Job"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
 msgstr ""

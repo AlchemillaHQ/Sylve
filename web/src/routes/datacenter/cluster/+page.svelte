@@ -203,7 +203,7 @@
 
 <AlertDialog
 	open={modals.reset.open}
-	customTitle={`This will reset clustering data on this node`}
+	customTitle={`This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone.`}
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();

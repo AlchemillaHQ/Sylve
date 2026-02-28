@@ -83,11 +83,11 @@
 		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',
 		'/api/system/basic-settings/services/jails/toggle': 'Toggle - Jails',
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
-		'/api/cluster/notes': 'Cluster Notes',
+		'/api/cluster/notes': 'DC Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
-		'/api/cluster/backups/targets/validate': 'Cluster Backup Target - Validate',
-		'/api/cluster/backups/targets': 'Cluster Backup Target',
-		'/api/cluster/backups/jobs': 'Cluster Backup Job',
+		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
+		'/api/cluster/backups/targets': 'DC Backup Target',
+		'/api/cluster/backups/jobs': 'DC Backup Job',
 		'/api/cluster': 'Cluster'
 	});
 
