@@ -352,8 +352,47 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 		rootDatasets = resolvedRoots
 	}
 
+	deleteTargets := make([]string, 0, len(rootDatasets))
+	seenTargets := make(map[string]struct{}, len(rootDatasets))
 	for _, rootDataset := range rootDatasets {
-		fullSnapshot := fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName)
+		targets, err := s.listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
+		if err != nil {
+			return err
+		}
+		if len(targets) == 0 {
+			targets = []string{
+				fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName),
+			}
+		}
+
+		for _, target := range targets {
+			if _, exists := seenTargets[target]; exists {
+				continue
+			}
+			seenTargets[target] = struct{}{}
+			deleteTargets = append(deleteTargets, target)
+		}
+	}
+
+	slices.SortStableFunc(deleteTargets, func(left, right string) int {
+		leftDepth := snapshotDatasetDepth(left)
+		rightDepth := snapshotDatasetDepth(right)
+		if leftDepth > rightDepth {
+			return -1
+		}
+		if leftDepth < rightDepth {
+			return 1
+		}
+		if left < right {
+			return -1
+		}
+		if left > right {
+			return 1
+		}
+		return 0
+	})
+
+	for _, fullSnapshot := range deleteTargets {
 		ds, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false)
 		if err != nil {
 			if !isVMDatasetNotFoundError(err) {
