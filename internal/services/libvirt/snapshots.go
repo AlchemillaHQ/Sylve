@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -232,7 +233,7 @@ func (s *Service) RollbackVMSnapshot(
 	rollbackTargets := make([]string, 0, len(rootDatasets))
 	seenTargets := make(map[string]struct{}, len(rootDatasets))
 	for _, rootDataset := range rootDatasets {
-		targets, err := listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
+		targets, err := s.listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
 		if err != nil {
 			return err
 		}
@@ -440,33 +441,28 @@ func poolFromDatasetName(dataset string) string {
 	return strings.TrimSpace(parts[0])
 }
 
-func listRecursiveRollbackTargets(ctx context.Context, rootDataset, snapshotName string) ([]string, error) {
+func (s *Service) listRecursiveRollbackTargets(ctx context.Context, rootDataset, snapshotName string) ([]string, error) {
 	rootDataset = strings.TrimSpace(rootDataset)
 	snapshotName = strings.TrimSpace(snapshotName)
 	if rootDataset == "" || snapshotName == "" {
 		return nil, nil
 	}
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, fmt.Errorf("gzfs_not_initialized")
+	}
 
-	out, err := utils.RunCommandWithContext(
-		ctx,
-		"zfs",
-		"list",
-		"-H",
-		"-t",
-		"snapshot",
-		"-r",
-		"-o",
-		"name",
-		rootDataset,
-	)
+	datasets, err := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, rootDataset, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_list_recursive_snapshot_targets: %w", err)
 	}
 
 	suffix := "@" + snapshotName
 	targets := make([]string, 0)
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		name := strings.TrimSpace(line)
+	for _, dataset := range datasets {
+		if dataset == nil {
+			continue
+		}
+		name := strings.TrimSpace(dataset.Name)
 		if name == "" {
 			continue
 		}
