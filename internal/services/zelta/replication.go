@@ -527,7 +527,28 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			owner = strings.TrimSpace(policy.SourceNodeID)
 		}
 		if owner == "" {
-			continue
+			resolvedOwner, resolveErr := s.Cluster.ResolveReplicationGuestOwnerNode(policy.GuestType, policy.GuestID)
+			if resolveErr != nil {
+				logger.L.Warn().Err(resolveErr).Uint("policy_id", policy.ID).Msg("resolve_replication_owner_failed")
+				continue
+			}
+			resolvedOwner = strings.TrimSpace(resolvedOwner)
+			if resolvedOwner == "" {
+				continue
+			}
+
+			req := s.replicationPolicyToReq(&policy)
+			if strings.TrimSpace(req.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
+				req.SourceNodeID = resolvedOwner
+			}
+			if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
+				logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("set_initial_replication_owner_failed")
+				continue
+			}
+
+			owner = resolvedOwner
+			policy.SourceNodeID = req.SourceNodeID
+			policy.ActiveNodeID = resolvedOwner
 		}
 
 		node, ok := nodeByID[owner]
@@ -646,24 +667,7 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		previousOwner = strings.TrimSpace(policy.SourceNodeID)
 	}
 
-	req := clusterServiceInterfaces.ReplicationPolicyReq{
-		Name:         policy.Name,
-		GuestType:    policy.GuestType,
-		GuestID:      policy.GuestID,
-		SourceNodeID: policy.SourceNodeID,
-		SourceMode:   policy.SourceMode,
-		FailbackMode: policy.FailbackMode,
-		CronExpr:     policy.CronExpr,
-		Enabled:      &policy.Enabled,
-		Targets:      make([]clusterServiceInterfaces.ReplicationPolicyTargetReq, 0, len(policy.Targets)),
-	}
-
-	for _, target := range policy.Targets {
-		req.Targets = append(req.Targets, clusterServiceInterfaces.ReplicationPolicyTargetReq{
-			NodeID: target.NodeID,
-			Weight: target.Weight,
-		})
-	}
+	req := s.replicationPolicyToReq(policy)
 
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 		req.SourceNodeID = targetNodeID
@@ -768,6 +772,29 @@ func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
 	}
 
 	return "", fmt.Errorf("replication_target_node_not_found")
+}
+
+func (s *Service) replicationPolicyToReq(policy *clusterModels.ReplicationPolicy) clusterServiceInterfaces.ReplicationPolicyReq {
+	req := clusterServiceInterfaces.ReplicationPolicyReq{
+		Name:         policy.Name,
+		GuestType:    policy.GuestType,
+		GuestID:      policy.GuestID,
+		SourceNodeID: policy.SourceNodeID,
+		SourceMode:   policy.SourceMode,
+		FailbackMode: policy.FailbackMode,
+		CronExpr:     policy.CronExpr,
+		Enabled:      &policy.Enabled,
+		Targets:      make([]clusterServiceInterfaces.ReplicationPolicyTargetReq, 0, len(policy.Targets)),
+	}
+
+	for _, target := range policy.Targets {
+		req.Targets = append(req.Targets, clusterServiceInterfaces.ReplicationPolicyTargetReq{
+			NodeID: target.NodeID,
+			Weight: target.Weight,
+		})
+	}
+
+	return req
 }
 
 func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) error {

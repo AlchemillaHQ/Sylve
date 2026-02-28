@@ -171,9 +171,39 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	sourceNodeID := strings.TrimSpace(input.SourceNodeID)
+	existingOwnerNodeID := ""
+	if id > 0 {
+		var existingByID clusterModels.ReplicationPolicy
+		if err := s.DB.First(&existingByID, id).Error; err == nil {
+			existingOwnerNodeID = strings.TrimSpace(existingByID.ActiveNodeID)
+			if existingOwnerNodeID == "" {
+				existingOwnerNodeID = strings.TrimSpace(existingByID.SourceNodeID)
+			}
+		}
+	}
+
 	if sourceMode == clusterModels.ReplicationSourceModePinned {
 		if sourceNodeID == "" {
 			return nil, nil, fmt.Errorf("source_node_required_for_pinned_mode")
+		}
+		if !s.backupRunnerNodeExists(sourceNodeID) {
+			return nil, nil, fmt.Errorf("source_node_not_found")
+		}
+	}
+
+	if sourceMode == clusterModels.ReplicationSourceModeFollowActive {
+		if sourceNodeID == "" {
+			sourceNodeID = existingOwnerNodeID
+		}
+		if sourceNodeID == "" {
+			resolvedOwner, err := s.ResolveReplicationGuestOwnerNode(guestType, input.GuestID)
+			if err != nil {
+				return nil, nil, err
+			}
+			sourceNodeID = strings.TrimSpace(resolvedOwner)
+		}
+		if sourceNodeID == "" {
+			return nil, nil, fmt.Errorf("guest_owner_node_not_found")
 		}
 		if !s.backupRunnerNodeExists(sourceNodeID) {
 			return nil, nil, fmt.Errorf("source_node_not_found")
@@ -204,7 +234,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	var activeNodeID string
-	if sourceMode == clusterModels.ReplicationSourceModePinned {
+	if sourceMode == clusterModels.ReplicationSourceModePinned || sourceMode == clusterModels.ReplicationSourceModeFollowActive {
 		activeNodeID = sourceNodeID
 	}
 
@@ -232,6 +262,78 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	return policy, targets, nil
+}
+
+func (s *Service) ResolveReplicationGuestOwnerNode(guestType string, guestID uint) (string, error) {
+	guestType = strings.TrimSpace(strings.ToLower(guestType))
+	if guestID == 0 {
+		return "", fmt.Errorf("guest_id_required")
+	}
+	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+		return "", fmt.Errorf("invalid_guest_type")
+	}
+
+	statusByNode := map[string]string{}
+	nodes, err := s.Nodes()
+	if err == nil {
+		for _, node := range nodes {
+			statusByNode[strings.TrimSpace(node.NodeUUID)] = strings.TrimSpace(strings.ToLower(node.Status))
+		}
+	}
+
+	resources, err := s.Resources()
+	if err != nil {
+		return "", fmt.Errorf("resolve_guest_owner_resources_failed: %w", err)
+	}
+
+	matches := make([]string, 0, len(resources))
+	for _, node := range resources {
+		nodeID := strings.TrimSpace(node.NodeUUID)
+		if nodeID == "" {
+			continue
+		}
+
+		found := false
+		switch guestType {
+		case clusterModels.ReplicationGuestTypeVM:
+			for _, vm := range node.VMs {
+				if vm.RID == guestID {
+					found = true
+					break
+				}
+			}
+		case clusterModels.ReplicationGuestTypeJail:
+			for _, jail := range node.Jails {
+				if jail.CTID == guestID {
+					found = true
+					break
+				}
+			}
+		}
+
+		if found {
+			matches = append(matches, nodeID)
+		}
+	}
+
+	if len(matches) == 0 {
+		return "", nil
+	}
+
+	online := make([]string, 0, len(matches))
+	for _, nodeID := range matches {
+		if status, ok := statusByNode[nodeID]; ok && status == "online" {
+			online = append(online, nodeID)
+		}
+	}
+
+	if len(online) > 0 {
+		sort.Strings(online)
+		return online[0], nil
+	}
+
+	sort.Strings(matches)
+	return matches[0], nil
 }
 
 func (s *Service) buildReplicationTargets(policyID uint, input []clusterServiceInterfaces.ReplicationPolicyTargetReq) ([]clusterModels.ReplicationPolicyTarget, error) {
