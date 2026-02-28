@@ -153,6 +153,28 @@ type JailHooks struct {
 	Script  string        `json:"script"`
 }
 
+type JailSnapshot struct {
+	ID uint `json:"id" gorm:"primaryKey"`
+
+	JailID uint `json:"jid" gorm:"column:jid;index;uniqueIndex:idx_jail_snapshot_unique,priority:1"`
+	CTID   uint `json:"ctId" gorm:"column:ct_id;index"`
+
+	ParentSnapshotID *uint `json:"parentSnapshotId" gorm:"column:parent_snapshot_id;index"`
+
+	Name        string `json:"name" gorm:"not null"`
+	Description string `json:"description" gorm:"default:''"`
+
+	SnapshotName string `json:"snapshotName" gorm:"column:snapshot_name;not null;uniqueIndex:idx_jail_snapshot_unique,priority:2"`
+	RootDataset  string `json:"rootDataset" gorm:"column:root_dataset;not null"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (JailSnapshot) TableName() string {
+	return "jail_snapshots"
+}
+
 type JailType string
 
 const (

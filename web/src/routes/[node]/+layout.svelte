@@ -68,6 +68,11 @@
 					href: `/${node}/jail/${jailName}/hardware`
 				},
 				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` },
+				{
+					label: 'Snapshots',
+					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
+					href: `/${node}/jail/${jailName}/snapshots`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
 		}
