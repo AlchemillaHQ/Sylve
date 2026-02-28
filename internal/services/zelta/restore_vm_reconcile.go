@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -26,7 +27,18 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
+func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.L.Error().
+				Interface("panic", recovered).
+				Str("dataset", dataset).
+				Str("stack", string(debug.Stack())).
+				Msg("panic_in_restore_vm_reconcile")
+			err = fmt.Errorf("panic_in_restore_vm_reconcile: %v", recovered)
+		}
+	}()
+
 	dataset = normalizeRestoreDestinationDataset(dataset)
 	if dataset == "" {
 		return nil

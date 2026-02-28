@@ -11,6 +11,7 @@ package zelta
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -362,20 +363,34 @@ func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err err
 
 // registerRestoreJob registers the restore queue handler with goqite.
 func (s *Service) registerRestoreJob() {
-	db.QueueRegisterJSON(restoreJobQueueName, func(ctx context.Context, payload restoreJobPayload) error {
+	db.QueueRegisterJSON(restoreJobQueueName, func(ctx context.Context, payload restoreJobPayload) (err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.L.Error().
+					Interface("panic", recovered).
+					Uint("job_id", payload.JobID).
+					Str("stack", string(debug.Stack())).
+					Msg("queued_restore_job_panicked")
+
+				// Do not return an error: restore jobs should not retry on failure.
+				err = nil
+			}
+		}()
+
 		if payload.JobID == 0 {
-			return fmt.Errorf("invalid_job_id_in_restore_payload")
+			logger.L.Warn().Msg("queued_restore_job_invalid_payload_job_id")
+			return nil
 		}
 
 		var job clusterModels.BackupJob
 		if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_restore_job_not_found")
-			return fmt.Errorf("backup_job_not_found: %w", err)
+			return nil
 		}
 
 		if err := s.runRestoreJob(ctx, &job, payload.Snapshot, payload.RemoteDataset); err != nil {
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_restore_job_failed")
-			return err
+			return nil
 		}
 
 		return nil

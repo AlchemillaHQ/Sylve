@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -490,12 +489,13 @@ func (s *Service) listRecursiveRollbackTargets(ctx context.Context, rootDataset,
 		return nil, fmt.Errorf("gzfs_not_initialized")
 	}
 
-	datasets, err := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, rootDataset, false)
+	datasets, err := s.GZFS.ZFS.ListWithPrefix(ctx, "snapshot", rootDataset, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_list_recursive_snapshot_targets: %w", err)
 	}
 
 	suffix := "@" + snapshotName
+	rootPrefix := rootDataset + "/"
 	targets := make([]string, 0)
 	for _, dataset := range datasets {
 		if dataset == nil {
@@ -505,7 +505,12 @@ func (s *Service) listRecursiveRollbackTargets(ctx context.Context, rootDataset,
 		if name == "" {
 			continue
 		}
-		if strings.HasSuffix(name, suffix) {
+		if !strings.HasSuffix(name, suffix) {
+			continue
+		}
+
+		datasetPart := name[:len(name)-len(suffix)]
+		if datasetPart == rootDataset || strings.HasPrefix(datasetPart, rootPrefix) {
 			targets = append(targets, name)
 		}
 	}

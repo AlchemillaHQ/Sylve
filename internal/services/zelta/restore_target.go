@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -287,23 +288,60 @@ func (s *Service) EnqueueRestoreFromTarget(
 }
 
 func (s *Service) registerRestoreFromTargetJob() {
-	db.QueueRegisterJSON(restoreFromTargetQueueName, func(ctx context.Context, payload restoreFromTargetPayload) error {
+	db.QueueRegisterJSON(restoreFromTargetQueueName, func(ctx context.Context, payload restoreFromTargetPayload) (err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.L.Error().
+					Interface("panic", recovered).
+					Uint("target_id", payload.TargetID).
+					Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
+					Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
+					Str("stack", string(debug.Stack())).
+					Msg("queued_restore_from_target_job_panicked")
+
+				// Do not return an error: restore-from-target jobs should not retry on failure.
+				err = nil
+			}
+		}()
+
 		if payload.TargetID == 0 {
-			return fmt.Errorf("invalid_target_id_in_restore_payload")
+			logger.L.Warn().
+				Msg("queued_restore_from_target_job_invalid_payload_target_id")
+			return nil
 		}
 		if strings.TrimSpace(payload.RemoteDataset) == "" {
-			return fmt.Errorf("remote_dataset_required")
+			logger.L.Warn().
+				Uint("target_id", payload.TargetID).
+				Msg("queued_restore_from_target_job_invalid_payload_remote_dataset")
+			return nil
 		}
 		if strings.TrimSpace(payload.DestinationDataset) == "" {
-			return fmt.Errorf("destination_dataset_required")
+			logger.L.Warn().
+				Uint("target_id", payload.TargetID).
+				Msg("queued_restore_from_target_job_invalid_payload_destination_dataset")
+			return nil
 		}
 
 		target, err := s.getRestoreTarget(payload.TargetID)
 		if err != nil {
-			return err
+			logger.L.Warn().
+				Err(err).
+				Uint("target_id", payload.TargetID).
+				Msg("queued_restore_from_target_job_target_lookup_failed")
+			return nil
 		}
 
-		return s.runRestoreFromTarget(ctx, &target, payload)
+		if err := s.runRestoreFromTarget(ctx, &target, payload); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("target_id", payload.TargetID).
+				Str("remote_dataset", strings.TrimSpace(payload.RemoteDataset)).
+				Str("destination_dataset", strings.TrimSpace(payload.DestinationDataset)).
+				Msg("queued_restore_from_target_job_failed")
+			return nil
+		}
+
+		return nil
 	})
 }
 
@@ -336,7 +374,7 @@ func (s *Service) runRestoreFromTargetVM(
 	target *clusterModels.BackupTarget,
 	payload restoreFromTargetPayload,
 	jobID *uint,
-) error {
+) (retErr error) {
 	if s.VM == nil || !s.VM.IsVirtualizationEnabled() {
 		return fmt.Errorf("virtualization_disabled")
 	}
@@ -352,6 +390,31 @@ func (s *Service) runRestoreFromTargetVM(
 	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
 		return fmt.Errorf("remote_dataset_outside_backup_root")
 	}
+
+	snapshot := strings.TrimSpace(payload.Snapshot)
+	if snapshot != "" && !strings.HasPrefix(snapshot, "@") {
+		snapshot = "@" + snapshot
+	}
+	remoteEndpoint := strings.TrimSpace(remoteDataset)
+	if host := strings.TrimSpace(target.SSHHost); host != "" {
+		remoteEndpoint = host + ":" + remoteEndpoint
+	}
+	if snapshot != "" {
+		remoteEndpoint = remoteEndpoint + snapshot
+	}
+
+	event := clusterModels.BackupEvent{
+		JobID:          jobID,
+		Mode:           "restore",
+		Status:         "running",
+		SourceDataset:  remoteEndpoint,
+		TargetEndpoint: destinationDataset,
+		StartedAt:      time.Now().UTC(),
+	}
+	s.DB.Create(&event)
+	defer func() {
+		s.finalizeRestoreEvent(&event, retErr, "")
+	}()
 
 	restoreNetwork := true
 	if payload.RestoreNetwork != nil {

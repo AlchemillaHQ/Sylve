@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	"github.com/digitalocean/go-libvirt"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
@@ -169,12 +171,27 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				var mac *libvirtServiceInterfaces.MACAddress
 				if network.MacID != nil && *network.MacID != 0 {
 					var macObj networkModels.Object
-					if err := s.DB.Preload("Entries").Where("id = ? and type = ?", *network.MacID, "Mac").Find(&macObj).Error; err != nil {
+					err := s.DB.Preload("Entries").
+						Where("id = ? and type = ?", *network.MacID, "Mac").
+						First(&macObj).Error
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						logger.L.Warn().
+							Uint("rid", vm.RID).
+							Uint("mac_id", *network.MacID).
+							Msg("vm_network_mac_object_missing_skipping_mac_assignment")
+					} else if err != nil {
 						return "", fmt.Errorf("failed_to_find_mac_object: %w", err)
+					} else if len(macObj.Entries) == 0 {
+						logger.L.Warn().
+							Uint("rid", vm.RID).
+							Uint("mac_id", macObj.ID).
+							Msg("vm_network_mac_object_has_no_entries_skipping_mac_assignment")
+					} else {
+						entry := strings.TrimSpace(macObj.Entries[0].Value)
+						if entry != "" {
+							mac = &libvirtServiceInterfaces.MACAddress{Address: entry}
+						}
 					}
-
-					entry := macObj.Entries[0]
-					mac = &libvirtServiceInterfaces.MACAddress{Address: entry.Value}
 				}
 
 				if network.SwitchType == "manual" {
