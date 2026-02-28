@@ -49,59 +49,65 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 		return err
 	}
 
+	var mac string
+
 	if network.AddressObj == nil || len(network.AddressObj.Entries) == 0 {
-		return fmt.Errorf("network_mac_address_missing")
-	}
-	mac := strings.TrimSpace(strings.ToLower(network.AddressObj.Entries[0].Value))
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xmlDesc); err != nil {
-		return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
+		logger.L.Debug().Msgf("Network detach: network_mac_address_missing for network ID %d, proceeding with detach", networkId)
+	} else {
+		mac = strings.TrimSpace(strings.ToLower(network.AddressObj.Entries[0].Value))
 	}
 
-	found := false
-	for _, iface := range doc.FindElements("//interface[@type='bridge']") {
-		macEl := iface.FindElement("mac")
-		if macEl == nil {
-			continue
-		}
-		addrAttr := macEl.SelectAttr("address")
-		if addrAttr == nil {
-			continue
+	if len(mac) != 0 {
+		doc := etree.NewDocument()
+		if err := doc.ReadFromString(xmlDesc); err != nil {
+			return fmt.Errorf("failed_to_parse_vm_xml: %w", err)
 		}
 
-		if strings.EqualFold(strings.TrimSpace(addrAttr.Value), mac) {
-			iface.Parent().RemoveChild(iface)
-			found = true
-			logger.L.Debug().Msgf("Removed interface with MAC: %s", addrAttr.Value)
-			break
+		found := false
+		for _, iface := range doc.FindElements("//interface[@type='bridge']") {
+			macEl := iface.FindElement("mac")
+			if macEl == nil {
+				continue
+			}
+
+			addrAttr := macEl.SelectAttr("address")
+			if addrAttr == nil {
+				continue
+			}
+
+			if strings.EqualFold(strings.TrimSpace(addrAttr.Value), mac) {
+				iface.Parent().RemoveChild(iface)
+				found = true
+				logger.L.Debug().Msgf("Removed interface with MAC: %s", addrAttr.Value)
+				break
+			}
 		}
-	}
 
-	if !found {
-		logger.L.Debug().Msgf("Network detach: network_interface_not_found_in_xml: %s", mac)
-		if err := s.DB.Delete(&network).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_network_record: %w", err)
+		if !found {
+			logger.L.Debug().Msgf("Network detach: network_interface_not_found_in_xml: %s", mac)
+			if err := s.DB.Delete(&network).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_network_record: %w", err)
+			}
+			return nil
 		}
-		return nil
-	}
 
-	newXML, err := doc.WriteToString()
-	if err != nil {
-		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
-	}
+		newXML, err := doc.WriteToString()
+		if err != nil {
+			return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
+		}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
-	if err != nil {
-		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
-	}
+		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+		if err != nil {
+			return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+		}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
-		return fmt.Errorf("failed_to_undefine_domain: %w", err)
-	}
+		if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+			return fmt.Errorf("failed_to_undefine_domain: %w", err)
+		}
 
-	if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
-		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+		if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
+			return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+		}
 	}
 
 	if err := s.DB.Delete(&network).Error; err != nil {

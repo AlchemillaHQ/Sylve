@@ -458,7 +458,7 @@ func RegisterRoutes(r *gin.Engine,
 			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
 			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
 			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
-			jobs.POST("/:id/run", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
+			jobs.POST("/run/:id", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
 			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
 			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
 		}

@@ -91,7 +91,7 @@ export async function deleteBackupJob(id: number): Promise<APIResponse> {
 }
 
 export async function runBackupJob(id: number): Promise<APIResponse> {
-    return await apiRequest(`/cluster/backups/jobs/${id}/run`, APIResponseSchema, 'POST', {});
+    return await apiRequest(`/cluster/backups/jobs/run/${id}`, APIResponseSchema, 'POST', {});
 }
 
 export async function getBackupEvents(

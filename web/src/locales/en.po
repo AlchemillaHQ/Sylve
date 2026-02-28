@@ -138,6 +138,7 @@ msgstr "Volumes"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "Snapshots"
 
@@ -745,6 +746,8 @@ msgstr "Reset"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
@@ -1010,6 +1013,7 @@ msgstr "Failed to create note"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
 msgstr "Created"
@@ -1043,6 +1047,7 @@ msgstr "View"
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -1103,6 +1108,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -1609,6 +1615,7 @@ msgstr "This action cannot be undone. This will permanently delete"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -1626,6 +1633,7 @@ msgstr "Cancel"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Continue"
 msgstr "Continue"
@@ -1890,6 +1898,8 @@ msgstr "Model"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -5097,6 +5107,8 @@ msgstr "No dataset selected"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Failed to create snapshot"
 msgstr "Failed to create snapshot"
 
@@ -5117,6 +5129,7 @@ msgstr "Snapshot {0}@{1} created"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Create Snapshot"
 msgstr "Create Snapshot"
 
@@ -8893,36 +8906,46 @@ msgid "Leader cannot exit when followers are present"
 msgstr "Leader cannot exit when followers are present"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "ZFS Snapshot Name"
 msgstr "ZFS Snapshot Name"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot name is required"
 msgstr "Snapshot name is required"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot created"
 msgstr "Snapshot created"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot rollback started"
 msgstr "Snapshot rollback started"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Failed to rollback snapshot"
 msgstr "Failed to rollback snapshot"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot deleted"
 msgstr "Snapshot deleted"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Failed to delete snapshot"
 msgstr "Failed to delete snapshot"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rollback"
 msgstr "Rollback"
 
@@ -8934,20 +8957,26 @@ msgid "New Jail Snapshot"
 msgstr "New Jail Snapshot"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Optional note about why this snapshot was taken"
 msgstr "Optional note about why this snapshot was taken"
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Creating..."
 msgstr "Creating..."
 
 #. placeholder {0}: selectedSnapshot.name
+#. placeholder {0}: selectedSnapshot.name
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
 msgstr "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
 
 #. placeholder {0}: selectedSnapshot.name
+#. placeholder {0}: selectedSnapshot.name
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
 msgstr "Delete snapshot <b>{0}</b>? This action cannot be undone."
 
@@ -8956,6 +8985,7 @@ msgid "Processing..."
 msgstr "Processing..."
 
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rolling Back"
 msgstr "Rolling Back"
 
@@ -8989,3 +9019,23 @@ msgstr "Host terminal"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Jail terminal"
 msgstr "Jail terminal"
+
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "New VM Snapshot"
+msgstr "New VM Snapshot"
+
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Clean Slate"
+msgstr "Clean Slate"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Network - Detach"
+msgstr "VM Network - Detach"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Network - Attach"
+msgstr "VM Network - Attach"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Job - Run"
+msgstr "DC Backup Job - Run"

@@ -569,6 +569,8 @@ func (s *Service) GetVM(id int) (vmModels.VM, error) {
 		Preload("Storages.Dataset").
 		Preload("Networks").
 		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
 		Where("id = ?", id).
 		First(&vm).Error
 
@@ -583,6 +585,8 @@ func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
 		Preload("Storages.Dataset").
 		Preload("Networks").
 		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
 		Where("rid = ?", rid).
 		First(&vm).Error
 
@@ -840,6 +844,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		return fmt.Errorf("failed_to_create_lv_vm: %w", err)
 	}
 
+	if err := s.WriteVMJson(*data.RID); err != nil {
+		logger.L.Error().Err(err).Msg("failed to write VM JSON after creation")
+	}
+
 	return nil
 }
 
@@ -858,7 +866,15 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		return fmt.Errorf("failed_to_find_vm: %w", err)
 	}
 
+	vmRootDatasets := make(map[string]struct{})
+
 	for _, storage := range vm.Storages {
+		if storage.Pool != "" {
+			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Pool, vm.RID)] = struct{}{}
+		} else if storage.Dataset.Pool != "" {
+			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Dataset.Pool, vm.RID)] = struct{}{}
+		}
+
 		if storage.Type == vmModels.VMStorageTypeDiskImage {
 			if err := s.DB.Delete(&storage).Error; err != nil {
 				return fmt.Errorf("failed_to_delete_storage: %w", err)
@@ -872,7 +888,8 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 
 		var err error
 
-		if storage.Type == vmModels.VMStorageTypeRaw {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
 			if deleteRawDisks {
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
@@ -885,7 +902,7 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 					),
 				)
 			}
-		} else if storage.Type == vmModels.VMStorageTypeZVol {
+		case vmModels.VMStorageTypeZVol:
 			if deleteVolumes {
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
@@ -921,13 +938,63 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 			return fmt.Errorf("failed_to_delete_storage: %w", err)
 		}
 
-		if datasets != nil && len(datasets) > 0 {
+		if len(datasets) > 0 {
 			for _, ds := range datasets {
 				err := ds.Destroy(ctx, true, false)
 				if err != nil {
 					logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy dataset %s", ds.Name)
 				}
 			}
+		}
+	}
+
+	for rootDataset := range vmRootDatasets {
+		hasChildren := false
+
+		fsSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, rootDataset)
+		if err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+				logger.L.Error().Err(err).Msgf("RemoveVM: failed to list filesystem datasets under %s", rootDataset)
+			}
+		} else {
+			for _, ds := range fsSets {
+				if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
+					hasChildren = true
+					break
+				}
+			}
+		}
+
+		if !hasChildren {
+			volSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false, rootDataset)
+			if err != nil {
+				if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+					logger.L.Error().Err(err).Msgf("RemoveVM: failed to list volume datasets under %s", rootDataset)
+				}
+			} else {
+				for _, ds := range volSets {
+					if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
+						hasChildren = true
+						break
+					}
+				}
+			}
+		}
+
+		if hasChildren {
+			continue
+		}
+
+		rootDS, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
+		if err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+				logger.L.Error().Err(err).Msgf("RemoveVM: failed to fetch root dataset %s", rootDataset)
+			}
+			continue
+		}
+
+		if err := rootDS.Destroy(ctx, true, false); err != nil {
+			logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy empty root dataset %s", rootDataset)
 		}
 	}
 

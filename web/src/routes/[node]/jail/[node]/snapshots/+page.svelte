@@ -290,7 +290,7 @@
 				<Label for="snapshot-name">Name</Label>
 				<Input
 					id="snapshot-name"
-					placeholder="pre-upgrade"
+					placeholder="Clean Slate"
 					bind:value={createModal.name}
 					disabled={createModal.creating}
 				/>

@@ -69,6 +69,8 @@
 		'/api/utilities/download': 'Downloader',
 		'/api/vm/storage/detach': 'VM Storage - Detach',
 		'/api/vm/storage/attach': 'VM Storage - Attach',
+		'/api/vm/network/detach': 'VM Network - Detach',
+		'/api/vm/network/attach': 'VM Network - Attach',
 		'/api/vm': 'VM',
 		'/api/network/manual-switch': 'Manual Switch',
 		'/api/zfs/pools': 'ZFS Pool',
@@ -87,6 +89,7 @@
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
 		'/api/cluster/backups/targets': 'DC Backup Target',
+		'/api/cluster/backups/jobs/run': 'DC Backup Job - Run',
 		'/api/cluster/backups/jobs': 'DC Backup Job',
 		'/api/cluster': 'Cluster'
 	});

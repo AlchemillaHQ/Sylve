@@ -13,7 +13,6 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
 )
@@ -138,12 +137,7 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}
 
-	return tx.Preload("Entries").
-		Where("id IN ?", []uint{
-			utils.GetVal(n.MacID),
-		}).
-		Find(&[]networkModels.Object{}).
-		Error
+	return nil
 }
 
 type VMStats struct {
