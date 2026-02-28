@@ -177,7 +177,17 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
 	}
 
-	return s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+
+	kind, _ := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
+	if kind == clusterModels.BackupJobModeVM {
+		snapshots = collapseSnapshotsByShortName(snapshots)
+	}
+
+	return snapshots, nil
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
@@ -1024,6 +1034,110 @@ func parseSnapshotCreationTime(raw string) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
+}
+
+func collapseSnapshotsByShortName(snapshots []SnapshotInfo) []SnapshotInfo {
+	if len(snapshots) == 0 {
+		return snapshots
+	}
+
+	grouped := make(map[string]SnapshotInfo, len(snapshots))
+	for _, snapshot := range snapshots {
+		shortName := strings.TrimSpace(snapshot.ShortName)
+		if shortName == "" {
+			if idx := strings.LastIndex(strings.TrimSpace(snapshot.Name), "@"); idx >= 0 {
+				shortName = strings.TrimSpace(snapshot.Name[idx:])
+			}
+		}
+		if shortName == "" {
+			shortName = strings.TrimSpace(snapshot.Name)
+		}
+		if shortName == "" {
+			continue
+		}
+
+		if strings.TrimSpace(snapshot.ShortName) == "" {
+			snapshot.ShortName = shortName
+		}
+
+		existing, ok := grouped[shortName]
+		if !ok || snapshotRepresentativeLess(snapshot, existing) {
+			grouped[shortName] = snapshot
+		}
+	}
+
+	out := make([]SnapshotInfo, 0, len(grouped))
+	for _, snapshot := range grouped {
+		out = append(out, snapshot)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		ti, okI := parseSnapshotCreationTime(out[i].Creation)
+		tj, okJ := parseSnapshotCreationTime(out[j].Creation)
+		if okI && okJ && !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		if okI != okJ {
+			return okI
+		}
+
+		leftShort := strings.TrimSpace(out[i].ShortName)
+		if leftShort == "" {
+			leftShort = strings.TrimSpace(out[i].Name)
+		}
+		rightShort := strings.TrimSpace(out[j].ShortName)
+		if rightShort == "" {
+			rightShort = strings.TrimSpace(out[j].Name)
+		}
+		if leftShort != rightShort {
+			return leftShort < rightShort
+		}
+
+		return strings.TrimSpace(out[i].Name) < strings.TrimSpace(out[j].Name)
+	})
+
+	return out
+}
+
+func snapshotRepresentativeLess(left, right SnapshotInfo) bool {
+	leftLineage := datasetLineageRank(left.Lineage)
+	rightLineage := datasetLineageRank(right.Lineage)
+	if leftLineage != rightLineage {
+		return leftLineage < rightLineage
+	}
+
+	if left.OutOfBand != right.OutOfBand {
+		return !left.OutOfBand
+	}
+
+	leftDataset := snapshotDatasetName(left.Name)
+	if leftDataset == "" {
+		leftDataset = strings.TrimSpace(left.Dataset)
+	}
+	rightDataset := snapshotDatasetName(right.Name)
+	if rightDataset == "" {
+		rightDataset = strings.TrimSpace(right.Dataset)
+	}
+
+	leftDepth := datasetDepth(leftDataset)
+	rightDepth := datasetDepth(rightDataset)
+	if leftDepth != rightDepth {
+		return leftDepth < rightDepth
+	}
+
+	if leftDataset != rightDataset {
+		return leftDataset < rightDataset
+	}
+
+	return strings.TrimSpace(left.Name) < strings.TrimSpace(right.Name)
+}
+
+func datasetDepth(dataset string) int {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return int(^uint(0) >> 1)
+	}
+	return len(strings.Split(dataset, "/"))
 }
 
 func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]string, error) {

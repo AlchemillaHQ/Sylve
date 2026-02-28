@@ -553,6 +553,11 @@
 						? `virtual-machines/${grouped.vmRid}`
 						: grouped.baseSuffix;
 
+			const totalSnapshots =
+				grouped.kind === 'vm'
+					? Math.max(...grouped.datasets.map((dataset) => dataset.snapshotCount || 0), 0)
+					: grouped.totalSnapshots;
+
 			out.push({
 				baseSuffix: grouped.baseSuffix,
 				label: displayBase,
@@ -560,7 +565,7 @@
 				kind: grouped.kind,
 				jailCtId: grouped.jailCtId,
 				vmRid: grouped.vmRid,
-				totalSnapshots: grouped.totalSnapshots
+				totalSnapshots
 			});
 		}
 

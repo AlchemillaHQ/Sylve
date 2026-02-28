@@ -58,7 +58,12 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 		return nil, err
 	}
 
-	return filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots), nil
+	filtered := filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots)
+	if job.Mode == clusterModels.BackupJobModeVM {
+		return collapseSnapshotsByShortName(filtered), nil
+	}
+
+	return filtered, nil
 }
 
 // EnqueueRestoreJob enqueues a restore job for async execution via goqite.
