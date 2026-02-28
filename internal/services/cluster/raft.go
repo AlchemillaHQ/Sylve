@@ -153,9 +153,6 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 		if err != nil {
 			return err
 		}
-		if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
-			return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
-		}
 		return nil
 	}
 
@@ -169,10 +166,6 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	_, err := s.SetupRaft(bootstrap, fsm)
 	if err != nil {
 		return err
-	}
-
-	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
-		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
 	}
 
 	return nil
