@@ -4,7 +4,7 @@ import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function listJailSnapshots(ctId: number): Promise<JailSnapshot[]> {
-	return await apiRequest(`/jail/${ctId}/snapshots`, z.array(JailSnapshotSchema), 'GET');
+	return await apiRequest(`/jail/snapshots/${ctId}`, z.array(JailSnapshotSchema), 'GET');
 }
 
 export async function createJailSnapshot(
@@ -12,7 +12,7 @@ export async function createJailSnapshot(
 	name: string,
 	description: string
 ): Promise<APIResponse> {
-	return await apiRequest(`/jail/${ctId}/snapshots`, APIResponseSchema, 'POST', {
+	return await apiRequest(`/jail/snapshots/${ctId}`, APIResponseSchema, 'POST', {
 		name,
 		description
 	});
@@ -20,7 +20,7 @@ export async function createJailSnapshot(
 
 export async function rollbackJailSnapshot(ctId: number, snapshotId: number): Promise<APIResponse> {
 	return await apiRequest(
-		`/jail/${ctId}/snapshots/${snapshotId}/rollback`,
+		`/jail/snapshots/${ctId}/${snapshotId}/rollback`,
 		APIResponseSchema,
 		'POST',
 		{}
@@ -28,5 +28,5 @@ export async function rollbackJailSnapshot(ctId: number, snapshotId: number): Pr
 }
 
 export async function deleteJailSnapshot(ctId: number, snapshotId: number): Promise<APIResponse> {
-	return await apiRequest(`/jail/${ctId}/snapshots/${snapshotId}`, APIResponseSchema, 'DELETE');
+	return await apiRequest(`/jail/snapshots/${ctId}/${snapshotId}`, APIResponseSchema, 'DELETE');
 }
