@@ -15,8 +15,10 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"gorm.io/gorm"
 )
 
 func (s *Service) JailAction(ctId int, action string) error {
@@ -50,6 +52,14 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	switch action {
 	case "start":
+		allowed, leaseErr := s.canStartProtectedJail(uint(ctId))
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+
 		active, err := s.IsJailActive(uint(ctId))
 		if err != nil {
 			return fmt.Errorf("failed to check if jail is active: %w", err)
@@ -105,4 +115,39 @@ func (s *Service) JailAction(ctId int, action string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) canStartProtectedJail(ctID uint) (bool, error) {
+	if ctID == 0 {
+		return true, nil
+	}
+
+	var policy clusterModels.ReplicationPolicy
+	err := s.DB.Where("guest_type = ? AND guest_id = ? AND enabled = ?", clusterModels.ReplicationGuestTypeJail, ctID, true).
+		First(&policy).Error
+	if err == gorm.ErrRecordNotFound {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+
+	var lease clusterModels.ReplicationLease
+	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if time.Now().UTC().After(lease.ExpiresAt) {
+		return false, nil
+	}
+
+	return strings.TrimSpace(lease.OwnerNodeID) == strings.TrimSpace(nodeID), nil
 }

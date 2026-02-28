@@ -242,6 +242,69 @@ func (s *Service) backfillPreClusterState() error {
 		}
 	}
 
+	{
+		var policies []clusterModels.ReplicationPolicy
+		if err := s.DB.Preload("Targets").Order("id ASC").Find(&policies).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_policies: %w", err)
+		}
+
+		for _, p := range policies {
+			data, _ := json.Marshal(clusterModels.ReplicationPolicyPayload{
+				Policy:  p,
+				Targets: p.Targets,
+			})
+			cmd := clusterModels.Command{Type: "replication_policy", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_replication_policy id=%d: %w", p.ID, err)
+			}
+		}
+	}
+
+	{
+		var leases []clusterModels.ReplicationLease
+		if err := s.DB.Order("id ASC").Find(&leases).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_leases: %w", err)
+		}
+
+		for _, l := range leases {
+			data, _ := json.Marshal(l)
+			cmd := clusterModels.Command{Type: "replication_lease", Action: "upsert", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_upsert_replication_lease id=%d: %w", l.ID, err)
+			}
+		}
+	}
+
+	{
+		var identities []clusterModels.ClusterSSHIdentity
+		if err := s.DB.Order("id ASC").Find(&identities).Error; err != nil {
+			return fmt.Errorf("scan_existing_cluster_ssh_identities: %w", err)
+		}
+
+		for _, i := range identities {
+			data, _ := json.Marshal(i)
+			cmd := clusterModels.Command{Type: "cluster_ssh_identity", Action: "upsert", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_upsert_cluster_ssh_identity id=%d: %w", i.ID, err)
+			}
+		}
+	}
+
+	{
+		var events []clusterModels.ReplicationEvent
+		if err := s.DB.Order("id ASC").Find(&events).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_events: %w", err)
+		}
+
+		for _, e := range events {
+			data, _ := json.Marshal(e)
+			cmd := clusterModels.Command{Type: "replication_event", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_replication_event id=%d: %w", e.ID, err)
+			}
+		}
+	}
+
 	if err := s.Raft.Barrier(10 * time.Second).Error(); err != nil {
 		return fmt.Errorf("barrier_after_backfill: %w", err)
 	}
@@ -310,6 +373,10 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 
 	if _, err := s.SetupRaft(true, fsm); err != nil {
 		return err
+	}
+
+	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
 	}
 
 	c.Enabled = true
@@ -402,6 +469,10 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 		return err
 	}
 
+	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -425,6 +496,26 @@ func (s *Service) ClearClusteredData() error {
 
 		if err := tx.Exec("DELETE FROM backup_targets").Error; err != nil {
 			return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_events").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_events: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_leases").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_leases: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_policy_targets").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_policy_targets: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_policies").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_policies: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM cluster_ssh_identities").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_ssh_identities: %w", err)
 		}
 
 		return nil

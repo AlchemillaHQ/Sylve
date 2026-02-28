@@ -150,7 +150,13 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	if hasExistingRaftState(raftDir) {
 		logger.L.Info().Msg("Found existing Raft state; starting Raft (non-bootstrap restore).")
 		_, err := s.SetupRaft(false, fsm)
-		return err
+		if err != nil {
+			return err
+		}
+		if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+			return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
+		}
+		return nil
 	}
 
 	bootstrap := c.RaftBootstrap != nil && *c.RaftBootstrap
@@ -161,8 +167,15 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	}
 
 	_, err := s.SetupRaft(bootstrap, fsm)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) RemovePeer(id raft.ServerID) error {

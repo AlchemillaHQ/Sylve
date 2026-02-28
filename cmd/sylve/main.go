@@ -127,6 +127,7 @@ func main() {
 	}
 
 	go zeltaS.StartBackupScheduler(qCtx)
+	go zeltaS.StartReplicationScheduler(qCtx)
 	go aS.ClearExpiredJWTTokens()
 
 	gin.SetMode(gin.ReleaseMode)

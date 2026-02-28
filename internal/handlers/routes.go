@@ -469,6 +469,23 @@ func RegisterRoutes(r *gin.Engine,
 		clusterBackups.GET("/events/:id/progress", clusterHandlers.BackupEventProgressByID(clusterService, zeltaService))
 	}
 
+	clusterReplication := cluster.Group("/replication")
+	{
+		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
+		clusterReplication.POST("/policies", clusterHandlers.CreateReplicationPolicy(clusterService))
+		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService))
+		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService))
+		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
+
+		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
+		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
+		clusterReplication.GET("/events/:id/progress", clusterHandlers.ReplicationEventProgressByID(clusterService, zeltaService))
+
+		clusterReplication.POST("/internal/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
+		clusterReplication.POST("/internal/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
+		clusterReplication.POST("/internal/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
+	}
+
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
 	vnc.Use(EnsureCorrectHost(db, authService))

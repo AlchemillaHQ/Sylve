@@ -1,0 +1,909 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package zelta
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/db"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
+)
+
+const replicationJobQueueName = "zelta-replication-run"
+
+type replicationJobPayload struct {
+	PolicyID uint `json:"policy_id"`
+}
+
+type ReplicationEventProgress struct {
+	Event           *clusterModels.ReplicationEvent `json:"event"`
+	MovedBytes      *uint64                         `json:"movedBytes"`
+	TotalBytes      *uint64                         `json:"totalBytes"`
+	ProgressPercent *float64                        `json:"progressPercent"`
+}
+
+func (s *Service) registerReplicationJob() {
+	db.QueueRegisterJSON(replicationJobQueueName, func(ctx context.Context, payload replicationJobPayload) error {
+		if payload.PolicyID == 0 {
+			return fmt.Errorf("invalid_policy_id_in_queue_payload")
+		}
+
+		policy, err := s.Cluster.GetReplicationPolicyByID(payload.PolicyID)
+		if err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_not_found")
+			return err
+		}
+
+		if err := s.runReplicationPolicy(ctx, policy); err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
+			return err
+		}
+		return nil
+	})
+}
+
+func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+
+	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+	if err != nil {
+		return err
+	}
+	if !s.acquireReplication(policyID) {
+		return fmt.Errorf("replication_policy_already_running")
+	}
+	s.releaseReplication(policyID)
+
+	_ = policy
+	return db.EnqueueJSON(ctx, replicationJobQueueName, replicationJobPayload{PolicyID: policyID})
+}
+
+func (s *Service) StartReplicationScheduler(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	lastSSHSync := time.Time{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if s.Cluster != nil && time.Since(lastSSHSync) > 30*time.Second {
+				if err := s.Cluster.EnsureAndPublishLocalSSHIdentity(); err != nil {
+					logger.L.Warn().Err(err).Msg("cluster_ssh_identity_sync_failed")
+				}
+				lastSSHSync = time.Now()
+			}
+
+			if err := s.selfFenceExpiredLeases(ctx); err != nil {
+				logger.L.Warn().Err(err).Msg("replication_self_fence_check_failed")
+			}
+
+			if err := s.runReplicationSchedulerTick(ctx); err != nil {
+				logger.L.Warn().Err(err).Msg("replication_scheduler_tick_failed")
+			}
+
+			if s.Cluster != nil && s.Cluster.Raft != nil && s.Cluster.Raft.State() == raft.Leader {
+				if err := s.runFailoverControllerTick(ctx); err != nil {
+					logger.L.Warn().Err(err).Msg("replication_failover_tick_failed")
+				}
+			}
+		}
+	}
+}
+
+func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
+	if s.DB == nil || s.Cluster == nil {
+		return nil
+	}
+
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.Preload("Targets").Where("enabled = ? AND COALESCE(cron_expr, '') != ''", true).Find(&policies).Error; err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	for i := range policies {
+		policy := policies[i]
+		runnerNodeID := s.replicationRunnerNodeID(&policy)
+		if runnerNodeID != "" && localNodeID != "" && runnerNodeID != localNodeID {
+			continue
+		}
+		if runnerNodeID == "" && s.Cluster.Raft != nil && s.Cluster.Raft.State() != raft.Leader {
+			continue
+		}
+
+		nextAt, err := nextRunTime(policy.CronExpr, now)
+		if err != nil {
+			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
+				"last_status": "failed",
+				"last_error":  "invalid_cron_expr",
+				"next_run_at": nil,
+			}).Error
+			continue
+		}
+
+		if policy.NextRunAt == nil {
+			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Update("next_run_at", nextAt).Error
+			continue
+		}
+
+		if now.Before(*policy.NextRunAt) {
+			continue
+		}
+
+		if err := s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Update("next_run_at", nextAt).Error; err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_update_replication_policy_next_run")
+			continue
+		}
+
+		enqueueCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := db.EnqueueJSON(enqueueCtx, replicationJobQueueName, replicationJobPayload{PolicyID: policy.ID}); err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("failed_to_enqueue_replication_policy")
+		}
+		cancel()
+	}
+
+	return nil
+}
+
+func (s *Service) replicationRunnerNodeID(policy *clusterModels.ReplicationPolicy) string {
+	if policy == nil {
+		return ""
+	}
+	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned {
+		return strings.TrimSpace(policy.SourceNodeID)
+	}
+	return strings.TrimSpace(policy.ActiveNodeID)
+}
+
+func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
+	if policy == nil || policy.ID == 0 {
+		return fmt.Errorf("invalid_policy")
+	}
+	if !s.acquireReplication(policy.ID) {
+		return fmt.Errorf("replication_policy_already_running")
+	}
+	defer s.releaseReplication(policy.ID)
+
+	localNodeID := ""
+	if s.Cluster != nil {
+		localNodeID = strings.TrimSpace(s.Cluster.LocalNodeID())
+	}
+
+	runner := s.replicationRunnerNodeID(policy)
+	if runner != "" && localNodeID != "" && runner != localNodeID {
+		return fmt.Errorf("policy_runner_mismatch")
+	}
+
+	sourceDatasets, err := s.replicationSourceDatasets(ctx, policy)
+	if err != nil {
+		s.updateReplicationPolicyResult(policy, err)
+		return err
+	}
+
+	identities, err := s.Cluster.ListClusterSSHIdentities()
+	if err != nil {
+		s.updateReplicationPolicyResult(policy, err)
+		return err
+	}
+	identityByNode := make(map[string]clusterModels.ClusterSSHIdentity, len(identities))
+	for _, identity := range identities {
+		identityByNode[strings.TrimSpace(identity.NodeUUID)] = identity
+	}
+
+	nodes, _ := s.Cluster.Nodes()
+	statusByNode := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		statusByNode[strings.TrimSpace(node.NodeUUID)] = strings.TrimSpace(strings.ToLower(node.Status))
+	}
+
+	event := clusterModels.ReplicationEvent{
+		PolicyID:     &policy.ID,
+		EventType:    "replication",
+		Status:       "running",
+		SourceNodeID: localNodeID,
+		GuestType:    policy.GuestType,
+		GuestID:      policy.GuestID,
+		StartedAt:    time.Now().UTC(),
+		Message:      "replication_run_started",
+	}
+	if err := s.DB.Create(&event).Error; err != nil {
+		s.updateReplicationPolicyResult(policy, err)
+		return err
+	}
+
+	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
+	if err != nil {
+		runErr := fmt.Errorf("cluster_ssh_private_key_path_failed: %w", err)
+		s.finalizeReplicationEvent(&event, runErr)
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
+	}
+
+	targets := append([]clusterModels.ReplicationPolicyTarget{}, policy.Targets...)
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].Weight == targets[j].Weight {
+			return targets[i].NodeID < targets[j].NodeID
+		}
+		return targets[i].Weight > targets[j].Weight
+	})
+
+	var runErr error
+	for _, target := range targets {
+		targetNodeID := strings.TrimSpace(target.NodeID)
+		if targetNodeID == "" || targetNodeID == localNodeID {
+			continue
+		}
+		if status, ok := statusByNode[targetNodeID]; ok && status != "online" {
+			continue
+		}
+
+		identity, ok := identityByNode[targetNodeID]
+		if !ok {
+			continue
+		}
+
+		for _, sourceDataset := range sourceDatasets {
+			backupRoot, destSuffix := splitDatasetForTarget(sourceDataset)
+			targetSpec := &clusterModels.BackupTarget{
+				SSHHost:    fmt.Sprintf("%s@%s", strings.TrimSpace(identity.SSHUser), strings.TrimSpace(identity.SSHHost)),
+				SSHPort:    identity.SSHPort,
+				SSHKeyPath: privateKeyPath,
+				BackupRoot: backupRoot,
+				Enabled:    true,
+			}
+			event.TargetNodeID = targetNodeID
+			event.Message = fmt.Sprintf("replicating_%s_to_%s", sourceDataset, targetNodeID)
+			_ = s.DB.Model(&clusterModels.ReplicationEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
+				"target_node_id": targetNodeID,
+				"message":        event.Message,
+			}).Error
+
+			out, err := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
+			if strings.TrimSpace(out) != "" {
+				_ = s.AppendReplicationEventOutput(event.ID, out)
+			}
+			if err != nil {
+				runErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
+				break
+			}
+		}
+
+		if runErr != nil {
+			break
+		}
+	}
+
+	s.finalizeReplicationEvent(&event, runErr)
+	s.updateReplicationPolicyResult(policy, runErr)
+
+	return runErr
+}
+
+func splitDatasetForTarget(dataset string) (string, string) {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return "zroot", "sylve"
+	}
+
+	idx := strings.Index(dataset, "/")
+	if idx <= 0 || idx >= len(dataset)-1 {
+		return dataset, ""
+	}
+	return dataset[:idx], dataset[idx+1:]
+}
+
+func (s *Service) replicateWithEventProgress(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	sourceDataset string,
+	destSuffix string,
+	eventID uint,
+) (string, error) {
+	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
+	extraEnv := s.buildZeltaEnv(target)
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+
+	return runZeltaWithEnvStreaming(
+		ctx,
+		extraEnv,
+		func(line string) {
+			if err := s.AppendReplicationEventOutput(eventID, line); err != nil {
+				logger.L.Warn().Uint("event_id", eventID).Err(err).Msg("append_replication_event_output_failed")
+			}
+		},
+		"backup",
+		"--json",
+		sourceDataset,
+		zeltaEndpoint,
+	)
+}
+
+func (s *Service) replicationSourceDatasets(ctx context.Context, policy *clusterModels.ReplicationPolicy) ([]string, error) {
+	if policy == nil {
+		return nil, fmt.Errorf("policy_required")
+	}
+
+	switch strings.TrimSpace(policy.GuestType) {
+	case clusterModels.ReplicationGuestTypeJail:
+		dataset, err := s.resolveJailReplicationSourceDataset(policy.GuestID)
+		if err != nil {
+			return nil, err
+		}
+		return []string{dataset}, nil
+	case clusterModels.ReplicationGuestTypeVM:
+		return s.resolveVMBackupSourceDatasets(ctx, policy.GuestID, "")
+	default:
+		return nil, fmt.Errorf("invalid_guest_type")
+	}
+}
+
+func (s *Service) resolveJailReplicationSourceDataset(ctID uint) (string, error) {
+	if ctID == 0 {
+		return "", fmt.Errorf("invalid_jail_ctid")
+	}
+
+	var jail jailModels.Jail
+	if err := s.DB.Preload("Storages").Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
+		return "", err
+	}
+
+	pool := ""
+	for _, storage := range jail.Storages {
+		if storage.IsBase {
+			pool = strings.TrimSpace(storage.Pool)
+			break
+		}
+	}
+	if pool == "" && len(jail.Storages) > 0 {
+		pool = strings.TrimSpace(jail.Storages[0].Pool)
+	}
+	if pool == "" {
+		return "", fmt.Errorf("jail_pool_not_found")
+	}
+
+	return fmt.Sprintf("%s/sylve/jails/%d", pool, ctID), nil
+}
+
+func (s *Service) updateReplicationPolicyResult(policy *clusterModels.ReplicationPolicy, runErr error) {
+	if policy == nil || policy.ID == 0 {
+		return
+	}
+
+	now := time.Now().UTC()
+	next := (*time.Time)(nil)
+	if policy.Enabled {
+		if n, err := nextRunTime(policy.CronExpr, now); err == nil {
+			next = &n
+		}
+	}
+
+	updates := map[string]any{
+		"last_run_at": now,
+		"last_status": "success",
+		"last_error":  "",
+		"next_run_at": next,
+	}
+	if runErr != nil {
+		updates["last_status"] = "failed"
+		updates["last_error"] = runErr.Error()
+	}
+
+	_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(updates).Error
+}
+
+func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent, runErr error) {
+	if event == nil || event.ID == 0 {
+		return
+	}
+
+	now := time.Now().UTC()
+	event.CompletedAt = &now
+	if runErr != nil {
+		event.Status = "failed"
+		event.Error = runErr.Error()
+		event.Message = "replication_run_failed"
+	} else {
+		event.Status = "success"
+		event.Error = ""
+		event.Message = "replication_run_completed"
+	}
+
+	_ = s.DB.Model(&clusterModels.ReplicationEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
+		"status":       event.Status,
+		"error":        event.Error,
+		"message":      event.Message,
+		"completed_at": event.CompletedAt,
+	}).Error
+}
+
+func (s *Service) AppendReplicationEventOutput(eventID uint, chunk string) error {
+	chunk = strings.TrimSpace(chunk)
+	if eventID == 0 || chunk == "" {
+		return nil
+	}
+	return s.DB.Model(&clusterModels.ReplicationEvent{}).
+		Where("id = ?", eventID).
+		Update("output", gorm.Expr("COALESCE(output, '') || ?", chunk+"\n")).Error
+}
+
+func (s *Service) GetReplicationEventProgress(_ context.Context, id uint) (*ReplicationEventProgress, error) {
+	if id == 0 {
+		return nil, fmt.Errorf("invalid_event_id")
+	}
+
+	var event clusterModels.ReplicationEvent
+	if err := s.DB.First(&event, id).Error; err != nil {
+		return nil, err
+	}
+
+	out := &ReplicationEventProgress{
+		Event:      &event,
+		TotalBytes: parseTotalBytesFromOutput(event.Output),
+		MovedBytes: parseMovedBytesFromOutput(event.Output),
+	}
+
+	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 {
+		pct := (float64(*out.MovedBytes) / float64(*out.TotalBytes)) * 100
+		if pct < 0 {
+			pct = 0
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		out.ProgressPercent = &pct
+	}
+
+	return out, nil
+}
+
+func (s *Service) acquireReplication(policyID uint) bool {
+	s.replicationMu.Lock()
+	defer s.replicationMu.Unlock()
+	if _, exists := s.runningReplication[policyID]; exists {
+		return false
+	}
+	s.runningReplication[policyID] = struct{}{}
+	return true
+}
+
+func (s *Service) releaseReplication(policyID uint) {
+	s.replicationMu.Lock()
+	defer s.replicationMu.Unlock()
+	delete(s.runningReplication, policyID)
+}
+
+func (s *Service) runFailoverControllerTick(ctx context.Context) error {
+	if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
+		return nil
+	}
+
+	nodes, err := s.Cluster.Nodes()
+	if err != nil {
+		return err
+	}
+	nodeByID := make(map[string]clusterModels.ClusterNode, len(nodes))
+	for _, node := range nodes {
+		nodeByID[strings.TrimSpace(node.NodeUUID)] = node
+	}
+
+	policies, err := s.Cluster.ListReplicationPolicies()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	for i := range policies {
+		policy := policies[i]
+		if !policy.Enabled {
+			continue
+		}
+
+		owner := strings.TrimSpace(policy.ActiveNodeID)
+		if owner == "" {
+			owner = strings.TrimSpace(policy.SourceNodeID)
+		}
+		if owner == "" {
+			continue
+		}
+
+		node, ok := nodeByID[owner]
+		status := "offline"
+		if ok {
+			status = strings.ToLower(strings.TrimSpace(node.Status))
+		}
+
+		if status == "online" {
+			s.downMisses[policy.ID] = 0
+			lease := clusterModels.ReplicationLease{
+				PolicyID:    policy.ID,
+				GuestType:   policy.GuestType,
+				GuestID:     policy.GuestID,
+				OwnerNodeID: owner,
+				ExpiresAt:   now.Add(10 * time.Second),
+				Version:     uint64(now.UnixNano()),
+				LastReason:  "leader_renew",
+				LastActor:   s.Cluster.LocalNodeID(),
+			}
+			if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
+				logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("replication_lease_renew_failed")
+			}
+
+			if policy.FailbackMode == clusterModels.ReplicationFailbackAuto &&
+				strings.TrimSpace(policy.SourceNodeID) != "" &&
+				strings.TrimSpace(policy.SourceNodeID) != owner {
+				sourceNode, ok := nodeByID[strings.TrimSpace(policy.SourceNodeID)]
+				if ok && strings.ToLower(strings.TrimSpace(sourceNode.Status)) == "online" {
+					if err := s.failoverPolicyToNode(ctx, &policy, strings.TrimSpace(policy.SourceNodeID), "auto_failback"); err != nil {
+						logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("auto_failback_failed")
+					}
+				}
+			}
+			continue
+		}
+
+		s.downMisses[policy.ID]++
+		if s.downMisses[policy.ID] < 3 {
+			continue
+		}
+
+		targetNodeID, selectErr := s.selectFailoverTarget(&policy, owner, nodeByID)
+		if selectErr != nil {
+			_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+				PolicyID:     &policy.ID,
+				EventType:    "failover",
+				Status:       "failed",
+				Message:      "no_healthy_failover_target",
+				Error:        selectErr.Error(),
+				SourceNodeID: owner,
+				GuestType:    policy.GuestType,
+				GuestID:      policy.GuestID,
+				StartedAt:    now,
+				CompletedAt:  &now,
+			}, false)
+			continue
+		}
+
+		if err := s.failoverPolicyToNode(ctx, &policy, targetNodeID, "node_down_failover"); err != nil {
+			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Str("target", targetNodeID).Msg("policy_failover_failed")
+			continue
+		}
+
+		s.downMisses[policy.ID] = 0
+	}
+
+	return nil
+}
+
+func (s *Service) selectFailoverTarget(policy *clusterModels.ReplicationPolicy, currentOwner string, nodes map[string]clusterModels.ClusterNode) (string, error) {
+	if policy == nil {
+		return "", fmt.Errorf("policy_required")
+	}
+
+	targets := append([]clusterModels.ReplicationPolicyTarget{}, policy.Targets...)
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].Weight == targets[j].Weight {
+			ni := nodes[strings.TrimSpace(targets[i].NodeID)]
+			nj := nodes[strings.TrimSpace(targets[j].NodeID)]
+			li := ni.CPUUsage + ni.MemoryUsage + ni.DiskUsage
+			lj := nj.CPUUsage + nj.MemoryUsage + nj.DiskUsage
+			if li == lj {
+				return targets[i].NodeID < targets[j].NodeID
+			}
+			return li < lj
+		}
+		return targets[i].Weight > targets[j].Weight
+	})
+
+	for _, target := range targets {
+		nodeID := strings.TrimSpace(target.NodeID)
+		if nodeID == "" || nodeID == currentOwner {
+			continue
+		}
+		node, ok := nodes[nodeID]
+		if !ok {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(node.Status)) != "online" {
+			continue
+		}
+		return nodeID, nil
+	}
+
+	return "", fmt.Errorf("no_healthy_target_nodes")
+}
+
+func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModels.ReplicationPolicy, targetNodeID string, reason string) error {
+	if policy == nil || targetNodeID == "" {
+		return fmt.Errorf("invalid_failover_input")
+	}
+
+	previousOwner := strings.TrimSpace(policy.ActiveNodeID)
+	if previousOwner == "" {
+		previousOwner = strings.TrimSpace(policy.SourceNodeID)
+	}
+
+	req := clusterServiceInterfaces.ReplicationPolicyReq{
+		Name:         policy.Name,
+		GuestType:    policy.GuestType,
+		GuestID:      policy.GuestID,
+		SourceNodeID: policy.SourceNodeID,
+		SourceMode:   policy.SourceMode,
+		FailbackMode: policy.FailbackMode,
+		CronExpr:     policy.CronExpr,
+		Enabled:      &policy.Enabled,
+		Targets:      make([]clusterServiceInterfaces.ReplicationPolicyTargetReq, 0, len(policy.Targets)),
+	}
+
+	for _, target := range policy.Targets {
+		req.Targets = append(req.Targets, clusterServiceInterfaces.ReplicationPolicyTargetReq{
+			NodeID: target.NodeID,
+			Weight: target.Weight,
+		})
+	}
+
+	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
+		req.SourceNodeID = targetNodeID
+	}
+
+	policy.ActiveNodeID = targetNodeID
+	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
+		return err
+	}
+
+	lease := clusterModels.ReplicationLease{
+		PolicyID:    policy.ID,
+		GuestType:   policy.GuestType,
+		GuestID:     policy.GuestID,
+		OwnerNodeID: targetNodeID,
+		ExpiresAt:   time.Now().UTC().Add(10 * time.Second),
+		Version:     uint64(time.Now().UTC().UnixNano()),
+		LastReason:  reason,
+		LastActor:   s.Cluster.LocalNodeID(),
+	}
+	if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
+		return err
+	}
+
+	_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+		PolicyID:     &policy.ID,
+		EventType:    "failover",
+		Status:       "running",
+		Message:      reason,
+		SourceNodeID: previousOwner,
+		TargetNodeID: targetNodeID,
+		GuestType:    policy.GuestType,
+		GuestID:      policy.GuestID,
+		StartedAt:    time.Now().UTC(),
+	}, false)
+
+	if strings.TrimSpace(targetNodeID) == strings.TrimSpace(s.Cluster.LocalNodeID()) {
+		return s.ActivateReplicationPolicy(ctx, policy.ID)
+	}
+	return s.forwardActivateReplicationPolicy(targetNodeID, policy.ID)
+}
+
+func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint) error {
+	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
+	if err != nil {
+		return err
+	}
+
+	hostname, err := utils.GetSystemHostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "cluster"
+	}
+
+	clusterToken, err := s.Cluster.AuthService.CreateClusterJWT(0, hostname, "", "")
+	if err != nil {
+		return fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	url := fmt.Sprintf("https://%s/api/cluster/replication/internal/activate", targetAPI)
+	return utils.HTTPPostJSON(url, map[string]any{
+		"policyId": policyID,
+	}, map[string]string{
+		"Accept":          "application/json",
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	})
+}
+
+func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return "", fmt.Errorf("replication_target_node_required")
+	}
+
+	nodes, err := s.Cluster.Nodes()
+	if err == nil {
+		for _, node := range nodes {
+			if strings.TrimSpace(node.NodeUUID) == nodeID && strings.TrimSpace(node.API) != "" {
+				return strings.TrimSpace(node.API), nil
+			}
+		}
+	}
+
+	if s.Cluster.Raft != nil {
+		fut := s.Cluster.Raft.GetConfiguration()
+		if fut.Error() == nil {
+			for _, server := range fut.Configuration().Servers {
+				if string(server.ID) != nodeID {
+					continue
+				}
+				host, _, splitErr := net.SplitHostPort(string(server.Address))
+				if splitErr != nil {
+					host = string(server.Address)
+				}
+				host = strings.TrimSpace(host)
+				if host == "" {
+					continue
+				}
+				return net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port)), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("replication_target_node_not_found")
+}
+
+func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+
+	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+	if err != nil {
+		return err
+	}
+
+	switch strings.TrimSpace(policy.GuestType) {
+	case clusterModels.ReplicationGuestTypeJail:
+		return s.activateReplicationJail(ctx, policy.GuestID)
+	case clusterModels.ReplicationGuestTypeVM:
+		return s.activateReplicationVM(ctx, policy.GuestID)
+	default:
+		return fmt.Errorf("invalid_guest_type")
+	}
+}
+
+func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error {
+	var jailCount int64
+	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Count(&jailCount).Error; err != nil {
+		return err
+	}
+
+	if jailCount == 0 {
+		dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeJail, ctID)
+		if err != nil {
+			return err
+		}
+		if dataset == "" {
+			return fmt.Errorf("jail_dataset_not_found")
+		}
+
+		if err := s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true); err != nil {
+			return err
+		}
+	}
+
+	return s.Jail.JailAction(int(ctID), "start")
+}
+
+func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
+	vm, err := s.findVMByRID(rid)
+	if err != nil {
+		return err
+	}
+
+	if vm == nil {
+		dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeVM, rid)
+		if err != nil {
+			return err
+		}
+		if dataset == "" {
+			return fmt.Errorf("vm_dataset_not_found")
+		}
+		if err := s.reconcileRestoredVMFromDatasetWithOptions(ctx, dataset, true); err != nil {
+			return err
+		}
+		vm, err = s.findVMByRID(rid)
+		if err != nil {
+			return err
+		}
+		if vm == nil {
+			return fmt.Errorf("vm_definition_not_found_after_reconcile")
+		}
+	}
+
+	return s.VM.LvVMAction(*vm, "start")
+}
+
+func (s *Service) findLocalGuestDataset(ctx context.Context, guestType string, guestID uint) (string, error) {
+	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	seen := map[string]struct{}{}
+	candidates := make([]string, 0)
+	for _, dataset := range datasets {
+		kind, id := inferRestoreDatasetKind(dataset)
+		if kind != guestType || id != guestID {
+			continue
+		}
+
+		normalized := normalizeDatasetPath(dataset)
+		if kind == clusterModels.ReplicationGuestTypeVM {
+			root := vmDatasetRoot(normalized)
+			if root != "" {
+				normalized = root
+			}
+		}
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		candidates = append(candidates, normalized)
+	}
+
+	sort.Strings(candidates)
+	if len(candidates) == 0 {
+		return "", nil
+	}
+	return candidates[0], nil
+}
+
+func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
+	if s.Cluster == nil {
+		return nil
+	}
+
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID == "" {
+		return nil
+	}
+
+	var leases []clusterModels.ReplicationLease
+	if err := s.DB.Where("owner_node_id = ? AND expires_at <= ?", localNodeID, time.Now().UTC()).
+		Find(&leases).Error; err != nil {
+		return err
+	}
+
+	for _, lease := range leases {
+		switch strings.TrimSpace(lease.GuestType) {
+		case clusterModels.ReplicationGuestTypeJail:
+			_ = s.Jail.JailAction(int(lease.GuestID), "stop")
+		case clusterModels.ReplicationGuestTypeVM:
+			_ = s.stopVMIfPresent(lease.GuestID)
+		}
+	}
+
+	return nil
+}

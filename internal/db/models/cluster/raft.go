@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/hashicorp/raft"
 )
@@ -75,10 +77,14 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 // ClusterSnapshot represents the state that will be snapshotted/restored
 type ClusterSnapshot struct {
-	Notes         []ClusterNote                    `json:"notes"`
-	Options       []ClusterOption                  `json:"options"`
-	BackupTargets []BackupTargetReplicationPayload `json:"backupTargets"`
-	BackupJobs    []BackupJob                      `json:"backupJobs"`
+	Notes               []ClusterNote                    `json:"notes"`
+	Options             []ClusterOption                  `json:"options"`
+	BackupTargets       []BackupTargetReplicationPayload `json:"backupTargets"`
+	BackupJobs          []BackupJob                      `json:"backupJobs"`
+	ReplicationPolicies []ReplicationPolicyPayload       `json:"replicationPolicies"`
+	ReplicationLeases   []ReplicationLease               `json:"replicationLeases"`
+	ReplicationEvents   []ReplicationEvent               `json:"replicationEvents"`
+	SSHIdentities       []ClusterSSHIdentity             `json:"sshIdentities"`
 	// We can add more tables here as needed
 }
 
@@ -103,6 +109,26 @@ func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	if err := f.DB.Order("id ASC").Find(&snap.BackupJobs).Error; err != nil {
 		return nil, err
 	}
+	var replicationPolicies []ReplicationPolicy
+	if err := f.DB.Preload("Targets").Order("id ASC").Find(&replicationPolicies).Error; err != nil {
+		return nil, err
+	}
+	snap.ReplicationPolicies = make([]ReplicationPolicyPayload, 0, len(replicationPolicies))
+	for _, policy := range replicationPolicies {
+		snap.ReplicationPolicies = append(snap.ReplicationPolicies, ReplicationPolicyPayload{
+			Policy:  policy,
+			Targets: policy.Targets,
+		})
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.ReplicationLeases).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.ReplicationEvents).Error; err != nil {
+		return nil, err
+	}
+	if err := f.DB.Order("id ASC").Find(&snap.SSHIdentities).Error; err != nil {
+		return nil, err
+	}
 	return &snap, nil
 }
 
@@ -124,8 +150,22 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		for _, t := range snap.BackupTargets {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
+		replicationPolicies := make([]ReplicationPolicy, 0, len(snap.ReplicationPolicies))
+		replicationTargets := make([]ReplicationPolicyTarget, 0)
+		for _, payload := range snap.ReplicationPolicies {
+			replicationPolicies = append(replicationPolicies, payload.Policy)
+			for _, t := range payload.Targets {
+				t.PolicyID = payload.Policy.ID
+				replicationTargets = append(replicationTargets, t)
+			}
+		}
 
 		deleteSets := []restoreSet{
+			{"replication_events", snap.ReplicationEvents, 500},
+			{"replication_leases", snap.ReplicationLeases, 500},
+			{"replication_policy_targets", replicationTargets, 500},
+			{"replication_policies", replicationPolicies, 500},
+			{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			{"backup_jobs", snap.BackupJobs, 500},
 			{"backup_targets", backupTargets, 200},
 			{"cluster_notes", snap.Notes, 500},
@@ -133,6 +173,11 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 
 		createSets := []restoreSet{
+			{"cluster_ssh_identities", snap.SSHIdentities, 200},
+			{"replication_policies", replicationPolicies, 500},
+			{"replication_policy_targets", replicationTargets, 500},
+			{"replication_leases", snap.ReplicationLeases, 500},
+			{"replication_events", snap.ReplicationEvents, 500},
 			{"backup_targets", backupTargets, 200},
 			{"backup_jobs", snap.BackupJobs, 500},
 			{"cluster_notes", snap.Notes, 500},
@@ -320,6 +365,120 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return db.Delete(&BackupJob{}, payload.ID).Error
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_policy", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "create", "update":
+			var payload ReplicationPolicyPayload
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return upsertReplicationPolicy(db, &payload.Policy, payload.Targets)
+		case "delete":
+			var payload struct {
+				ID uint `json:"id"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			if payload.ID == 0 {
+				return nil
+			}
+			return db.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationPolicyTarget{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationLease{}).Error; err != nil {
+					return err
+				}
+				return tx.Delete(&ReplicationPolicy{}, payload.ID).Error
+			})
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_lease", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "upsert":
+			var lease ReplicationLease
+			if err := json.Unmarshal(raw, &lease); err != nil {
+				return err
+			}
+			return upsertReplicationLease(db, &lease)
+		case "delete":
+			var payload struct {
+				PolicyID uint `json:"policyId"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			if payload.PolicyID == 0 {
+				return nil
+			}
+			return db.Where("policy_id = ?", payload.PolicyID).Delete(&ReplicationLease{}).Error
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("cluster_ssh_identity", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "upsert":
+			var identity ClusterSSHIdentity
+			if err := json.Unmarshal(raw, &identity); err != nil {
+				return err
+			}
+			return upsertClusterSSHIdentity(db, &identity)
+		case "delete":
+			var payload struct {
+				NodeUUID string `json:"nodeUUID"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			payload.NodeUUID = strings.TrimSpace(payload.NodeUUID)
+			if payload.NodeUUID == "" {
+				return nil
+			}
+			return db.Where("node_uuid = ?", payload.NodeUUID).Delete(&ClusterSSHIdentity{}).Error
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("replication_event", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "create", "update":
+			var event ReplicationEvent
+			if err := json.Unmarshal(raw, &event); err != nil {
+				return err
+			}
+			if event.ID == 0 {
+				return fmt.Errorf("replication_event_id_required")
+			}
+			return db.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"policy_id",
+					"event_type",
+					"status",
+					"message",
+					"error",
+					"output",
+					"source_node_id",
+					"target_node_id",
+					"guest_type",
+					"guest_id",
+					"started_at",
+					"completed_at",
+					"updated_at",
+				}),
+			}).Create(&event).Error
 		default:
 			return nil
 		}

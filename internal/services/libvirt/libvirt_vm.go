@@ -23,6 +23,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -724,6 +725,16 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		return err
 	}
 
+	if action == "start" {
+		allowed, err := s.canStartProtectedVM(vm.RID)
+		if err != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
+
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
@@ -760,6 +771,41 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
+	if rid == 0 {
+		return true, nil
+	}
+
+	var policy clusterModels.ReplicationPolicy
+	err := s.DB.Where("guest_type = ? AND guest_id = ? AND enabled = ?", clusterModels.ReplicationGuestTypeVM, rid, true).
+		First(&policy).Error
+	if err == gorm.ErrRecordNotFound {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+
+	var lease clusterModels.ReplicationLease
+	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if time.Now().UTC().After(lease.ExpiresAt) {
+		return false, nil
+	}
+
+	return strings.TrimSpace(lease.OwnerNodeID) == strings.TrimSpace(nodeID), nil
 }
 
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {

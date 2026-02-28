@@ -57,6 +57,10 @@ type Service struct {
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
+
+	replicationMu      sync.Mutex
+	runningReplication map[uint]struct{}
+	downMisses         map[uint]int
 }
 
 type BackupEventProgress struct {
@@ -81,13 +85,15 @@ func NewService(
 	gzfsClient *gzfs.Client,
 ) *Service {
 	return &Service{
-		DB:          db,
-		Cluster:     clusterService,
-		Jail:        jailService,
-		Network:     networkService,
-		VM:          vmService,
-		GZFS:        gzfsClient,
-		runningJobs: make(map[uint]struct{}),
+		DB:                 db,
+		Cluster:            clusterService,
+		Jail:               jailService,
+		Network:            networkService,
+		VM:                 vmService,
+		GZFS:               gzfsClient,
+		runningJobs:        make(map[uint]struct{}),
+		runningReplication: make(map[uint]struct{}),
+		downMisses:         make(map[uint]int),
 	}
 }
 
@@ -200,6 +206,7 @@ func (s *Service) RegisterJobs() {
 
 	s.registerRestoreJob()
 	s.registerRestoreFromTargetJob()
+	s.registerReplicationJob()
 }
 
 func (s *Service) Run(ctx context.Context) {
