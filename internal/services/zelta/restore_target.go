@@ -379,7 +379,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false)
+	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, nil)
 	return err
 }
 
@@ -427,7 +427,11 @@ func (s *Service) runRestoreFromTargetVM(
 	}
 	s.DB.Create(&event)
 	defer func() {
-		s.finalizeRestoreEvent(&event, retErr, "")
+		output := ""
+		if current, err := s.GetLocalBackupEvent(event.ID); err == nil && current != nil {
+			output = current.Output
+		}
+		s.finalizeRestoreEvent(&event, retErr, output)
 	}()
 
 	restoreNetwork := true
@@ -537,6 +541,7 @@ func (s *Service) runRestoreFromTargetVM(
 			jobID,
 			false,
 			true,
+			&event.ID,
 		)
 		if err != nil {
 			rollbackErr := rollbackAppliedBackups()
@@ -613,6 +618,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	jobID *uint,
 	reconcileJail bool,
 	keepBackup bool,
+	sharedEventID *uint,
 ) (string, error) {
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
 	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
@@ -650,15 +656,40 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	remoteEndpoint := target.SSHHost + ":" + remoteDataset + snapshot
 	restorePath := destinationDataset + ".restoring"
 
-	event := clusterModels.BackupEvent{
-		JobID:          jobID,
-		Mode:           "restore",
-		Status:         "running",
-		SourceDataset:  remoteEndpoint,
-		TargetEndpoint: destinationDataset,
-		StartedAt:      time.Now().UTC(),
+	activeEventID := uint(0)
+	ownsEvent := false
+	event := clusterModels.BackupEvent{}
+	if sharedEventID != nil && *sharedEventID > 0 {
+		activeEventID = *sharedEventID
+	} else {
+		event = clusterModels.BackupEvent{
+			JobID:          jobID,
+			Mode:           "restore",
+			Status:         "running",
+			SourceDataset:  remoteEndpoint,
+			TargetEndpoint: destinationDataset,
+			StartedAt:      time.Now().UTC(),
+		}
+		s.DB.Create(&event)
+		activeEventID = event.ID
+		ownsEvent = true
 	}
-	s.DB.Create(&event)
+
+	appendEventOutput := func(chunk string) {
+		if activeEventID == 0 {
+			return
+		}
+		if err := s.AppendBackupEventOutput(activeEventID, chunk); err != nil {
+			logger.L.Warn().
+				Uint("event_id", activeEventID).
+				Err(err).
+				Msg("append_restore_event_output_failed")
+		}
+	}
+
+	if !ownsEvent {
+		appendEventOutput(fmt.Sprintf("vm_dataset_restore_start: %s -> %s", remoteEndpoint, destinationDataset))
+	}
 
 	logger.L.Info().
 		Uint("target_id", target.ID).
@@ -679,12 +710,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		ctx,
 		extraEnv,
 		func(line string) {
-			if err := s.AppendBackupEventOutput(event.ID, line); err != nil {
-				logger.L.Warn().
-					Uint("event_id", event.ID).
-					Err(err).
-					Msg("append_restore_event_output_failed")
-			}
+			appendEventOutput(line)
 		},
 		"backup",
 		"--json",
@@ -697,14 +723,22 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			Str("restore_path", restorePath).
 			Str("zelta_output", output).
 			Msg("target_restore_pull_failed")
-		s.finalizeRestoreEvent(&event, restoreErr, output)
+		if ownsEvent {
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+		} else {
+			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+		}
 		return "", restoreErr
 	}
 
 	restoreExists, verifyErr := s.localDatasetExists(ctx, restorePath)
 	if verifyErr != nil || !restoreExists {
 		restoreErr = fmt.Errorf("zelta_recv_dataset_missing: zelta exited successfully but '%s' does not exist", restorePath)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
+		if ownsEvent {
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+		} else {
+			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+		}
 		return "", restoreErr
 	}
 
@@ -714,7 +748,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	destExists, existErr := s.localDatasetExists(ctx, destinationDataset)
 	if existErr != nil {
 		restoreErr = fmt.Errorf("failed_to_check_destination_dataset_before_restore: %w", existErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
+		if ownsEvent {
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+		} else {
+			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+		}
 		return "", restoreErr
 	}
 	if destExists {
@@ -750,7 +788,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	backupDataset, renameErr := s.promoteRestoredDataset(ctx, restorePath, destinationDataset)
 	if renameErr != nil {
 		restoreErr = fmt.Errorf("rename_restore_failed: could not promote %s → %s: %v", restorePath, destinationDataset, renameErr)
-		s.finalizeRestoreEvent(&event, restoreErr, output)
+		if ownsEvent {
+			s.finalizeRestoreEvent(&event, restoreErr, output)
+		} else {
+			appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+		}
 		return "", restoreErr
 	}
 
@@ -771,12 +813,20 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 					Msg("failed_to_rollback_jail_dataset_after_reconcile_failure")
 				restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
 			}
-			s.finalizeRestoreEvent(&event, restoreErr, output)
+			if ownsEvent {
+				s.finalizeRestoreEvent(&event, restoreErr, output)
+			} else {
+				appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+			}
 			return "", restoreErr
 		}
 	}
 
-	s.finalizeRestoreEvent(&event, nil, output)
+	if ownsEvent {
+		s.finalizeRestoreEvent(&event, nil, output)
+	} else {
+		appendEventOutput(fmt.Sprintf("vm_dataset_restore_complete: %s -> %s", remoteEndpoint, destinationDataset))
+	}
 
 	logger.L.Info().
 		Uint("target_id", target.ID).
