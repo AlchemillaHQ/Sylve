@@ -4463,6 +4463,8 @@ msgstr "आभासी मशीन हटा रहे हैं"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4485,6 +4487,8 @@ msgstr "आभासी मशीन शुरू हो रही है"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4505,6 +4509,8 @@ msgstr "VM शुरू हो गई"
 msgid "Stopping Virtual Machine"
 msgstr "आभासी मशीन रोक रहे हैं"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -4547,6 +4553,8 @@ msgstr "VM बंद कर दी गई"
 msgid "Rebooting Virtual Machine"
 msgstr "आभासी मशीन पुनः प्रारंभ की जा रही है"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -8629,6 +8637,8 @@ msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
@@ -8749,4 +8759,8 @@ msgstr ""
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Create Backup Root"
 msgstr ""

@@ -4478,6 +4478,8 @@ msgstr "വിർച്വൽ മെഷീൻ ഡിലീറ്റ് ചെയ
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4500,6 +4502,8 @@ msgstr "വിർച്വൽ മെഷീൻ ആരംഭിക്കുന്�
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4520,6 +4524,8 @@ msgstr "വിഎം സ്റ്റാർട്ട് ചെയ്തു"
 msgid "Stopping Virtual Machine"
 msgstr "വിർച്വൽ മെഷീൻ നിർത്തുന്നു"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -4562,6 +4568,8 @@ msgstr "വിഎം ഷട്ട്ഡൗൺ ചെയ്തു"
 msgid "Rebooting Virtual Machine"
 msgstr "വിർച്വൽ മെഷീൻ റീബൂട്ട് ചെയ്യുന്നു"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -8613,6 +8621,8 @@ msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
@@ -8733,4 +8743,8 @@ msgstr ""
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Create Backup Root"
 msgstr ""

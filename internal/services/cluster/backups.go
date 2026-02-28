@@ -71,14 +71,15 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 
 	target := clusterModels.BackupTarget{
-		Name:        strings.TrimSpace(input.Name),
-		SSHHost:     strings.TrimSpace(input.SSHHost),
-		SSHPort:     input.SSHPort,
-		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
-		SSHKey:      resolvedSSHKey,
-		BackupRoot:  strings.TrimSpace(input.BackupRoot),
-		Description: strings.TrimSpace(input.Description),
-		Enabled:     utils.PtrToBool(input.Enabled),
+		Name:             strings.TrimSpace(input.Name),
+		SSHHost:          strings.TrimSpace(input.SSHHost),
+		SSHPort:          input.SSHPort,
+		SSHKeyPath:       strings.TrimSpace(input.SSHKeyPath),
+		SSHKey:           resolvedSSHKey,
+		BackupRoot:       strings.TrimSpace(input.BackupRoot),
+		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
+		Description:      strings.TrimSpace(input.Description),
+		Enabled:          utils.PtrToBool(input.Enabled),
 	}
 
 	if target.SSHPort == 0 {
@@ -123,15 +124,16 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 
 	target := clusterModels.BackupTarget{
-		ID:          input.ID,
-		Name:        strings.TrimSpace(input.Name),
-		SSHHost:     strings.TrimSpace(input.SSHHost),
-		SSHPort:     input.SSHPort,
-		SSHKeyPath:  strings.TrimSpace(input.SSHKeyPath),
-		SSHKey:      resolvedSSHKey,
-		BackupRoot:  strings.TrimSpace(input.BackupRoot),
-		Description: strings.TrimSpace(input.Description),
-		Enabled:     utils.PtrToBool(input.Enabled),
+		ID:               input.ID,
+		Name:             strings.TrimSpace(input.Name),
+		SSHHost:          strings.TrimSpace(input.SSHHost),
+		SSHPort:          input.SSHPort,
+		SSHKeyPath:       strings.TrimSpace(input.SSHKeyPath),
+		SSHKey:           resolvedSSHKey,
+		BackupRoot:       strings.TrimSpace(input.BackupRoot),
+		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
+		Description:      strings.TrimSpace(input.Description),
+		Enabled:          utils.PtrToBool(input.Enabled),
 	}
 
 	if target.SSHPort == 0 {
@@ -140,14 +142,15 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 
 	if bypassRaft {
 		return s.DB.Model(&clusterModels.BackupTarget{}).Where("id = ?", input.ID).Updates(map[string]any{
-			"name":         target.Name,
-			"ssh_host":     target.SSHHost,
-			"ssh_port":     target.SSHPort,
-			"ssh_key_path": target.SSHKeyPath,
-			"ssh_key":      target.SSHKey,
-			"backup_root":  target.BackupRoot,
-			"description":  target.Description,
-			"enabled":      target.Enabled,
+			"name":               target.Name,
+			"ssh_host":           target.SSHHost,
+			"ssh_port":           target.SSHPort,
+			"ssh_key_path":       target.SSHKeyPath,
+			"ssh_key":            target.SSHKey,
+			"backup_root":        target.BackupRoot,
+			"create_backup_root": target.CreateBackupRoot,
+			"description":        target.Description,
+			"enabled":            target.Enabled,
 		}).Error
 	}
 

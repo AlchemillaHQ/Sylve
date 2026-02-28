@@ -85,10 +85,11 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 		}
 
 		testTarget := &clusterModels.BackupTarget{
-			SSHHost:    strings.TrimSpace(req.SSHHost),
-			SSHPort:    sshPort,
-			SSHKeyPath: sshKeyPath,
-			BackupRoot: strings.TrimSpace(req.BackupRoot),
+			SSHHost:          strings.TrimSpace(req.SSHHost),
+			SSHPort:          sshPort,
+			SSHKeyPath:       sshKeyPath,
+			BackupRoot:       strings.TrimSpace(req.BackupRoot),
+			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
 		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
@@ -187,10 +188,11 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 		}
 
 		testTarget := &clusterModels.BackupTarget{
-			SSHHost:    strings.TrimSpace(req.SSHHost),
-			SSHPort:    sshPort,
-			SSHKeyPath: sshKeyPath,
-			BackupRoot: strings.TrimSpace(req.BackupRoot),
+			SSHHost:          strings.TrimSpace(req.SSHHost),
+			SSHPort:          sshPort,
+			SSHKeyPath:       sshKeyPath,
+			BackupRoot:       strings.TrimSpace(req.BackupRoot),
+			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
 		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)

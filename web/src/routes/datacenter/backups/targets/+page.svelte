@@ -67,6 +67,7 @@
 		sshPort: 22,
 		sshKey: '',
 		backupRoot: '',
+		createBackupRoot: false,
 		description: '',
 		enabled: true
 	});
@@ -127,6 +128,7 @@
 		targetModal.sshPort = 22;
 		targetModal.sshKey = '';
 		targetModal.backupRoot = '';
+		targetModal.createBackupRoot = false;
 		targetModal.description = '';
 		targetModal.enabled = true;
 	}
@@ -148,6 +150,7 @@
 		targetModal.sshPort = target.sshPort || 22;
 		targetModal.sshKey = '';
 		targetModal.backupRoot = target.backupRoot;
+		targetModal.createBackupRoot = target.createBackupRoot ?? false;
 		targetModal.description = target.description || '';
 		targetModal.enabled = target.enabled;
 	}
@@ -172,6 +175,7 @@
 			sshPort: targetModal.sshPort || 22,
 			sshKey: targetModal.sshKey || undefined,
 			backupRoot: targetModal.backupRoot,
+			createBackupRoot: targetModal.createBackupRoot,
 			description: targetModal.description,
 			enabled: targetModal.enabled
 		};
@@ -398,11 +402,19 @@
 				classes="space-y-1"
 			/>
 
-			<CustomCheckbox
-				label="Enabled"
-				bind:checked={targetModal.enabled}
-				classes="flex items-center gap-2"
-			/>
+			<div class="flex items-center gap-4">
+				<CustomCheckbox
+					label="Create Backup Root"
+					bind:checked={targetModal.createBackupRoot}
+					classes="flex items-center gap-2"
+				/>
+
+				<CustomCheckbox
+					label="Enabled"
+					bind:checked={targetModal.enabled}
+					classes="flex items-center gap-2"
+				/>
+			</div>
 		</div>
 
 		<Dialog.Footer>

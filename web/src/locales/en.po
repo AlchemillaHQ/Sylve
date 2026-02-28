@@ -4494,6 +4494,8 @@ msgstr "Deleting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4516,6 +4518,8 @@ msgstr "Starting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4536,6 +4540,8 @@ msgstr "VM started"
 msgid "Stopping Virtual Machine"
 msgstr "Stopping Virtual Machine"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -4578,6 +4584,8 @@ msgstr "VM shut down"
 msgid "Rebooting Virtual Machine"
 msgstr "Rebooting Virtual Machine"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -8697,6 +8705,8 @@ msgstr "Force Deleting Virtual Machine"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
@@ -8822,3 +8832,7 @@ msgstr "VM shutdown started"
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
 msgstr "Toggle Search"
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Create Backup Root"
+msgstr "Create Backup Root"

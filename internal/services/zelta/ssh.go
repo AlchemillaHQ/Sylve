@@ -229,21 +229,123 @@ func (s *Service) ReconcileBackupTargetSSHKeys() error {
 }
 
 func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error {
+	backupRoot := strings.TrimSpace(target.BackupRoot)
+	if backupRoot == "" {
+		return fmt.Errorf("backup_root_required")
+	}
+
+	rootExists, output, err := s.remoteDatasetExists(ctx, target, backupRoot)
+	if err == nil && rootExists {
+		return nil
+	}
+
+	if !target.CreateBackupRoot {
+		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
+			return err
+		}
+		return fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target (but SSH connection works): %s", backupRoot, output)
+	}
+
+	pool := parseZFSPoolNameFromDataset(backupRoot)
+	if pool == "" {
+		return fmt.Errorf("invalid_backup_root: dataset '%s' is invalid", backupRoot)
+	}
+
+	poolExists, poolOutput, poolErr := s.remoteZFSPoolExists(ctx, target, pool)
+	if poolErr != nil {
+		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
+			return err
+		}
+		if !poolExists {
+			return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
+		}
+		return fmt.Errorf("backup_pool_check_failed: %s", poolOutput)
+	}
+	if !poolExists {
+		return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
+	}
+
+	if err := s.remoteCreateDataset(ctx, target, backupRoot); err != nil {
+		return err
+	}
+
+	created, verifyOutput, verifyErr := s.remoteDatasetExists(ctx, target, backupRoot)
+	if verifyErr != nil || !created {
+		if verifyErr != nil {
+			return fmt.Errorf("backup_root_create_verify_failed: %s", verifyOutput)
+		}
+		return fmt.Errorf("backup_root_create_verify_failed: dataset '%s' still not visible on target", backupRoot)
+	}
+
+	return nil
+}
+
+func parseZFSPoolNameFromDataset(dataset string) string {
+	trimmed := strings.TrimSpace(dataset)
+	if trimmed == "" {
+		return ""
+	}
+
+	idx := strings.Index(trimmed, "/")
+	if idx <= 0 {
+		return trimmed
+	}
+
+	return strings.TrimSpace(trimmed[:idx])
+}
+
+func (s *Service) remoteDatasetExists(ctx context.Context, target *clusterModels.BackupTarget, dataset string) (bool, string, error) {
 	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-d", "0", target.BackupRoot)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-o", "name", "-t", "filesystem", "-d", "0", dataset)
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		sshArgs2 := s.buildSSHArgs(target)
-		sshArgs2 = append(sshArgs2, target.SSHHost, "zfs", "version")
-		output2, err2 := utils.RunCommandWithContext(ctx, "ssh", sshArgs2...)
-		if err2 != nil {
-			return fmt.Errorf("ssh_connection_failed: %s: %s", err2, output2)
-		}
-		return fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target (but SSH connection works): %s", target.BackupRoot, output)
+		return false, output, err
 	}
 
-	_ = output
+	return strings.TrimSpace(output) != "", output, nil
+}
+
+func (s *Service) remoteZFSPoolExists(ctx context.Context, target *clusterModels.BackupTarget, pool string) (bool, string, error) {
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zpool", "list", "-H", "-o", "name", pool)
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
+		if strings.Contains(combined, "no such pool") {
+			return false, output, nil
+		}
+		return false, output, err
+	}
+
+	return strings.TrimSpace(output) == pool, output, nil
+}
+
+func (s *Service) remoteCreateDataset(ctx context.Context, target *clusterModels.BackupTarget, dataset string) error {
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "create", "-p", dataset)
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
+			return err
+		}
+		return fmt.Errorf("backup_root_create_failed: failed to create dataset '%s': %s", dataset, output)
+	}
+
+	return nil
+}
+
+func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterModels.BackupTarget) error {
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "version")
+
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		return fmt.Errorf("ssh_connection_failed: %s: %s", err, output)
+	}
+
 	return nil
 }
 

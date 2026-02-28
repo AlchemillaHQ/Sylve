@@ -4341,6 +4341,8 @@ msgstr "正在删除虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
@@ -4363,6 +4365,8 @@ msgstr "正在启动虚拟机"
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being started."
@@ -4383,6 +4387,8 @@ msgstr "虚拟机已启动"
 msgid "Stopping Virtual Machine"
 msgstr "正在停止虚拟机"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -4425,6 +4431,8 @@ msgstr "虚拟机关机"
 msgid "Rebooting Virtual Machine"
 msgstr "正在重启虚拟机"
 
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -7797,6 +7805,8 @@ msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
@@ -7917,4 +7927,8 @@ msgstr ""
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Create Backup Root"
 msgstr ""

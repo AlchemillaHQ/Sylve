@@ -26,6 +26,7 @@ export type BackupTargetInput = {
     sshPort: number;
     sshKey?: string;
     backupRoot: string;
+    createBackupRoot: boolean;
     description?: string;
     enabled: boolean;
 };

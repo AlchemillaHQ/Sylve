@@ -7,6 +7,7 @@ export const BackupTargetSchema = z.object({
     sshPort: z.number().default(22),
     sshKeyPath: z.string().optional().default(''),
     backupRoot: z.string(),
+    createBackupRoot: z.boolean().default(false),
     description: z.string().optional().default(''),
     enabled: z.boolean().default(true),
     createdAt: z.string().optional(),
