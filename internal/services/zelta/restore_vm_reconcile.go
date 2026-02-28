@@ -238,17 +238,15 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 			}
 		}
 
-		if restoredMeta.SnapshotsPresent {
-			if err := reconcileRestoredVMSnapshots(
-				tx,
-				reconciledVMID,
-				rid,
-				restoredMeta.Snapshots,
-				normalizedStorages,
-				dataset,
-			); err != nil {
-				return err
-			}
+		if err := reconcileRestoredVMSnapshots(
+			tx,
+			reconciledVMID,
+			rid,
+			restoredMeta.Snapshots,
+			normalizedStorages,
+			dataset,
+		); err != nil {
+			return err
 		}
 
 		return nil
@@ -504,9 +502,8 @@ func (s *Service) normalizeRestoredVMNetworks(
 }
 
 type restoredVMMetadata struct {
-	VM               vmModels.VM
-	Snapshots        []vmModels.VMSnapshot
-	SnapshotsPresent bool
+	VM        vmModels.VM
+	Snapshots []vmModels.VMSnapshot
 }
 
 func reconcileRestoredVMSnapshots(
@@ -671,19 +668,12 @@ func (s *Service) readLocalRestoredVMMetadata(
 			return nil, fmt.Errorf("invalid_restored_vm_metadata_json: %w", err)
 		}
 
-		snapshotsPresent := false
-		var rawMap map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(metaRaw), &rawMap); err == nil {
-			_, snapshotsPresent = rawMap["snapshots"]
-		}
-
 		if payload.RID == 0 {
 			payload.RID = fallbackRID
 		}
 		return &restoredVMMetadata{
-			VM:               payload.VM,
-			Snapshots:        payload.Snapshots,
-			SnapshotsPresent: snapshotsPresent,
+			VM:        payload.VM,
+			Snapshots: payload.Snapshots,
 		}, nil
 	}
 

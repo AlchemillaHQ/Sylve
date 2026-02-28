@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,13 +50,14 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 		return nil
 	}
 
-	restored, mountPoint, err := s.readLocalRestoredJailMetadata(ctx, dataset)
+	restoredMeta, mountPoint, err := s.readLocalRestoredJailMetadata(ctx, dataset)
 	if err != nil {
 		return err
 	}
-	if restored == nil {
+	if restoredMeta == nil {
 		return fmt.Errorf("restored_jail_metadata_not_found")
 	}
+	restored := &restoredMeta.Jail
 
 	if restored.CTID == 0 {
 		restored.CTID = fallbackCTID
@@ -64,7 +66,7 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 		return fmt.Errorf("restored_jail_ctid_missing")
 	}
 
-	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restored, restoreNetwork)
+	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork)
 	if err != nil {
 		return err
 	}
@@ -85,7 +87,12 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 	return nil
 }
 
-func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset string) (*jailModels.Jail, string, error) {
+type restoredJailMetadata struct {
+	Jail      jailModels.Jail
+	Snapshots []jailModels.JailSnapshot
+}
+
+func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset string) (*restoredJailMetadata, string, error) {
 	mountedOut, err := s.runLocalZFSGet(ctx, "mounted", dataset)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed_to_read_dataset_mounted_property: %w", err)
@@ -116,20 +123,33 @@ func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset str
 		return nil, "", fmt.Errorf("failed_to_read_restored_jail_metadata: %w", err)
 	}
 
-	var restored jailModels.Jail
-	if err := json.Unmarshal(raw, &restored); err != nil {
+	type jailMetadataPayload struct {
+		jailModels.Jail
+		Snapshots []jailModels.JailSnapshot `json:"snapshots"`
+	}
+
+	payload := jailMetadataPayload{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, "", fmt.Errorf("invalid_restored_jail_metadata_json: %w", err)
 	}
 
-	return &restored, mountPoint, nil
+	return &restoredJailMetadata{
+		Jail:      payload.Jail,
+		Snapshots: payload.Snapshots,
+	}, mountPoint, nil
 }
 
 func (s *Service) upsertRestoredJailState(
 	ctx context.Context,
 	dataset string,
-	restored *jailModels.Jail,
+	restoredMeta *restoredJailMetadata,
 	restoreNetwork bool,
 ) (*jailModels.Jail, error) {
+	if restoredMeta == nil {
+		return nil, fmt.Errorf("restored_jail_metadata_not_found")
+	}
+	restored := &restoredMeta.Jail
+
 	basePool := strings.TrimSpace(strings.Split(strings.TrimSpace(dataset), "/")[0])
 
 	datasetGUID := ""
@@ -280,6 +300,16 @@ func (s *Service) upsertRestoredJailState(
 			}
 		}
 
+		if err := reconcileRestoredJailSnapshots(
+			tx,
+			baseJail.ID,
+			ctid,
+			restoredMeta.Snapshots,
+			dataset,
+		); err != nil {
+			return err
+		}
+
 		if err := tx.
 			Preload("Storages").
 			Preload("JailHooks").
@@ -304,6 +334,105 @@ func (s *Service) upsertRestoredJailState(
 	}
 
 	return &reconciled, nil
+}
+
+func reconcileRestoredJailSnapshots(
+	tx *gorm.DB,
+	jailID uint,
+	ctid uint,
+	snapshots []jailModels.JailSnapshot,
+	rootDataset string,
+) error {
+	if tx == nil || jailID == 0 || ctid == 0 {
+		return nil
+	}
+
+	rootDataset = normalizeRestoreDestinationDataset(rootDataset)
+
+	if err := tx.Where("jid = ?", jailID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_restored_jail_snapshots: %w", err)
+	}
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	ordered := append([]jailModels.JailSnapshot(nil), snapshots...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := ordered[i]
+		right := ordered[j]
+		if !left.CreatedAt.Equal(right.CreatedAt) {
+			return left.CreatedAt.Before(right.CreatedAt)
+		}
+		return left.ID < right.ID
+	})
+
+	oldToNewIDs := make(map[uint]uint, len(ordered))
+	insertedByName := make(map[string]uint, len(ordered))
+	var latestInsertedID uint
+
+	for _, snapshot := range ordered {
+		snapshotName := strings.TrimSpace(snapshot.SnapshotName)
+		if snapshotName == "" {
+			continue
+		}
+		if _, exists := insertedByName[snapshotName]; exists {
+			continue
+		}
+
+		name := strings.TrimSpace(snapshot.Name)
+		if name == "" {
+			name = snapshotName
+		}
+		description := strings.TrimSpace(snapshot.Description)
+
+		recordRoot := rootDataset
+		if recordRoot == "" {
+			recordRoot = normalizeRestoreDestinationDataset(snapshot.RootDataset)
+		}
+		if recordRoot == "" {
+			continue
+		}
+
+		record := jailModels.JailSnapshot{
+			JailID:       jailID,
+			CTID:         ctid,
+			Name:         name,
+			Description:  description,
+			SnapshotName: snapshotName,
+			RootDataset:  recordRoot,
+		}
+		if !snapshot.CreatedAt.IsZero() {
+			record.CreatedAt = snapshot.CreatedAt
+		}
+		if !snapshot.UpdatedAt.IsZero() {
+			record.UpdatedAt = snapshot.UpdatedAt
+		}
+
+		parentID := uint(0)
+		if snapshot.ParentSnapshotID != nil && *snapshot.ParentSnapshotID > 0 {
+			if mapped, ok := oldToNewIDs[*snapshot.ParentSnapshotID]; ok {
+				parentID = mapped
+			}
+		}
+		if parentID == 0 && latestInsertedID > 0 {
+			parentID = latestInsertedID
+		}
+		if parentID > 0 {
+			record.ParentSnapshotID = &parentID
+		}
+
+		if err := tx.Create(&record).Error; err != nil {
+			return fmt.Errorf("failed_to_insert_restored_jail_snapshot: %w", err)
+		}
+
+		if snapshot.ID > 0 {
+			oldToNewIDs[snapshot.ID] = record.ID
+		}
+		insertedByName[snapshotName] = record.ID
+		latestInsertedID = record.ID
+	}
+
+	return nil
 }
 
 func normalizeRestoredJailHooks(jailID uint, hooks []jailModels.JailHooks) []jailModels.JailHooks {

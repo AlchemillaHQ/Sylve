@@ -91,6 +91,9 @@ func (s *Service) GetJail(id uint) (*jailModels.Jail, error) {
 	if err := s.DB.
 		Preload("Storages").
 		Preload("JailHooks").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
 		Preload("Networks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").
@@ -120,6 +123,9 @@ func (s *Service) GetJailByCTID(ctId uint) (*jailModels.Jail, error) {
 	if err := s.DB.
 		Preload("Storages").
 		Preload("JailHooks").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
 		Preload("Networks").
 		Preload("Networks.MacAddressObj").
 		Preload("Networks.MacAddressObj.Entries").

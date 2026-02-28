@@ -208,9 +208,10 @@ type Jail struct {
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	JailHooks         []JailHooks `json:"jailHooks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
-	Storages []Storage   `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Networks []Network   `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Stats    []JailStats `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Storages  []Storage      `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Networks  []Network      `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Snapshots []JailSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Stats     []JailStats    `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
 	MetadataMeta string `json:"metadataMeta"`
 	MetadataEnv  string `json:"metadataEnv"`

@@ -2,9 +2,12 @@ package zelta
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 func parseHumanSizeBytes(numStr, unitStr, suffixStr string) (uint64, bool) {
@@ -55,25 +58,86 @@ func parseTotalBytesFromOutput(output string) *uint64 {
 
 	matches := replicationSizeRegex.FindAllStringSubmatch(output, -1)
 	if len(matches) > 0 {
-		last := matches[len(matches)-1]
-		if len(last) >= 2 {
-			if parsed, err := strconv.ParseUint(last[1], 10, 64); err == nil {
-				return &parsed
+		total := uint64(0)
+		found := false
+		for _, match := range matches {
+			if len(match) < 2 {
+				continue
 			}
+			parsed, err := strconv.ParseUint(match[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			if math.MaxUint64-total < parsed {
+				total = math.MaxUint64
+			} else {
+				total += parsed
+			}
+			found = true
+		}
+		if found {
+			return &total
 		}
 	}
 
 	matches = syncingSizeRegex.FindAllStringSubmatch(output, -1)
 	if len(matches) > 0 {
-		last := matches[len(matches)-1]
-		if len(last) >= 4 {
-			if parsed, ok := parseHumanSizeBytes(last[1], last[2], last[3]); ok {
-				return &parsed
+		total := uint64(0)
+		found := false
+		for _, match := range matches {
+			if len(match) < 4 {
+				continue
 			}
+			parsed, ok := parseHumanSizeBytes(match[1], match[2], match[3])
+			if !ok {
+				continue
+			}
+			if math.MaxUint64-total < parsed {
+				total = math.MaxUint64
+			} else {
+				total += parsed
+			}
+			found = true
+		}
+		if found {
+			return &total
 		}
 	}
 
 	return nil
+}
+
+func parseMovedBytesFromOutput(output string) *uint64 {
+	if strings.TrimSpace(output) == "" {
+		return nil
+	}
+
+	matches := sentSizeRegex.FindAllStringSubmatch(output, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	total := uint64(0)
+	found := false
+	for _, match := range matches {
+		if len(match) < 4 {
+			continue
+		}
+		parsed, ok := parseHumanSizeBytes(match[1], match[2], match[3])
+		if !ok {
+			continue
+		}
+		if math.MaxUint64-total < parsed {
+			total = math.MaxUint64
+		} else {
+			total += parsed
+		}
+		found = true
+	}
+	if !found {
+		return nil
+	}
+	return &total
 }
 
 func zfsDatasetUsedBytes(s *Service, ctx context.Context, dataset string) (*uint64, error) {
@@ -91,6 +155,62 @@ func zfsDatasetUsedBytes(s *Service, ctx context.Context, dataset string) (*uint
 	}
 	used := ds.Used
 	return &used, nil
+}
+
+func zfsTargetDatasetUsedBytes(
+	s *Service,
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+) (*uint64, error) {
+	path := normalizeDatasetPath(dataset)
+	if s == nil || target == nil || path == "" {
+		return nil, nil
+	}
+
+	out, err := s.runTargetZFSList(ctx, target, "-Hp", "-o", "used", "-d", "0", "-t", "filesystem,volume", path)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "does not exist") ||
+			strings.Contains(lower, "dataset does not exist") ||
+			strings.Contains(lower, "cannot open") {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	line := strings.TrimSpace(out)
+	if idx := strings.IndexByte(line, '\n'); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	if line == "" {
+		return nil, nil
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return nil, nil
+	}
+
+	val, parseErr := strconv.ParseUint(strings.TrimSpace(fields[0]), 10, 64)
+	if parseErr != nil {
+		return nil, fmt.Errorf("invalid_remote_used_bytes_value: %w", parseErr)
+	}
+
+	return &val, nil
+}
+
+func datasetFromZeltaEndpoint(endpoint string) string {
+	raw := strings.TrimSpace(endpoint)
+	if raw == "" {
+		return ""
+	}
+
+	if idx := strings.LastIndex(raw, ":"); idx >= 0 && idx+1 < len(raw) {
+		return normalizeDatasetPath(raw[idx+1:])
+	}
+
+	return normalizeDatasetPath(raw)
 }
 
 // autoDestSuffix derives a destination suffix from the source dataset when the user hasn't set one.

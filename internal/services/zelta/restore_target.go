@@ -86,6 +86,9 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		if idx <= 0 {
 			continue
 		}
+		if !isBackupSnapshotShortName(name[idx+1:]) {
+			continue
+		}
 		ds := strings.TrimSpace(name[:idx])
 		if ds == "" {
 			continue
@@ -181,6 +184,7 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 	if err != nil {
 		return nil, err
 	}
+	snapshots = filterBackupSnapshots(snapshots)
 
 	kind, _ := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
 	if kind == clusterModels.BackupJobModeVM {
@@ -1097,6 +1101,46 @@ func collapseSnapshotsByShortName(snapshots []SnapshotInfo) []SnapshotInfo {
 	})
 
 	return out
+}
+
+func filterBackupSnapshots(snapshots []SnapshotInfo) []SnapshotInfo {
+	if len(snapshots) == 0 {
+		return snapshots
+	}
+
+	filtered := make([]SnapshotInfo, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		shortName := snapshotShortName(snapshot)
+		if !isBackupSnapshotShortName(shortName) {
+			continue
+		}
+		filtered = append(filtered, snapshot)
+	}
+	return filtered
+}
+
+func snapshotShortName(snapshot SnapshotInfo) string {
+	shortName := strings.TrimSpace(snapshot.ShortName)
+	if shortName != "" {
+		return shortName
+	}
+
+	fullName := strings.TrimSpace(snapshot.Name)
+	if idx := strings.LastIndex(fullName, "@"); idx >= 0 {
+		return strings.TrimSpace(fullName[idx:])
+	}
+
+	return fullName
+}
+
+func isBackupSnapshotShortName(snapshotName string) bool {
+	snapshotName = strings.TrimSpace(snapshotName)
+	snapshotName = strings.TrimPrefix(snapshotName, "@")
+	if snapshotName == "" {
+		return false
+	}
+
+	return strings.HasPrefix(snapshotName, "zelta_")
 }
 
 func snapshotRepresentativeLess(left, right SnapshotInfo) bool {

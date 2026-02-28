@@ -59,6 +59,7 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	}
 
 	filtered := filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots)
+	filtered = filterBackupSnapshots(filtered)
 	if job.Mode == clusterModels.BackupJobModeVM {
 		return collapseSnapshotsByShortName(filtered), nil
 	}

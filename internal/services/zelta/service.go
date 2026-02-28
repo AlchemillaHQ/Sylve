@@ -37,6 +37,7 @@ import (
 var (
 	replicationSizeRegex = regexp.MustCompile(`"replicationSize"\s*:\s*"?([0-9]+)"?`)
 	syncingSizeRegex     = regexp.MustCompile(`syncing:\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\b`)
+	sentSizeRegex        = regexp.MustCompile(`(?im)\b([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\s+sent\b`)
 )
 
 // backupJobPayload is the goqite queue payload for a backup job
@@ -1056,6 +1057,7 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 		Event:      event,
 		TotalBytes: parseTotalBytesFromOutput(event.Output),
 	}
+	out.MovedBytes = parseMovedBytesFromOutput(event.Output)
 
 	if strings.EqualFold(event.Mode, "restore") {
 		progressDataset := strings.TrimSpace(event.TargetEndpoint)
@@ -1073,6 +1075,43 @@ func (s *Service) GetBackupEventProgress(ctx context.Context, id uint) (*BackupE
 				out.MovedBytes = movedBytes
 			}
 		}
+	} else if event.JobID != nil && *event.JobID > 0 {
+		var job clusterModels.BackupJob
+		if err := s.DB.Preload("Target").First(&job, *event.JobID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				logger.L.Debug().
+					Err(err).
+					Uint("event_id", id).
+					Msg("backup_event_progress_job_lookup_failed")
+			}
+		} else if job.Target.ID > 0 {
+			progressDataset := datasetFromZeltaEndpoint(event.TargetEndpoint)
+			if progressDataset != "" {
+				out.ProgressDataset = progressDataset
+				movedBytes, movedErr := zfsTargetDatasetUsedBytes(s, ctx, &job.Target, progressDataset)
+				if movedErr != nil {
+					logger.L.Debug().
+						Uint("event_id", id).
+						Str("dataset", progressDataset).
+						Err(movedErr).
+						Msg("backup_progress_dataset_query_failed")
+				} else if movedBytes != nil {
+					if out.TotalBytes != nil && *out.TotalBytes > 0 && *movedBytes > *out.TotalBytes {
+						// Avoid false 100% progress when target dataset already has historical data.
+						if out.MovedBytes == nil || *out.MovedBytes > *out.TotalBytes {
+							// Keep output-derived progress only.
+						}
+					} else if out.MovedBytes == nil || *movedBytes > *out.MovedBytes {
+						out.MovedBytes = movedBytes
+					}
+				}
+			}
+		}
+	}
+
+	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 && *out.MovedBytes > *out.TotalBytes {
+		capped := *out.TotalBytes
+		out.MovedBytes = &capped
 	}
 
 	if out.TotalBytes != nil && out.MovedBytes != nil && *out.TotalBytes > 0 {

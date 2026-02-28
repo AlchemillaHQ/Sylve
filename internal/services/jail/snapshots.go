@@ -134,6 +134,13 @@ func (s *Service) CreateJailSnapshot(
 		return nil, fmt.Errorf("failed_to_record_jail_snapshot: %w", err)
 	}
 
+	if err := s.WriteJailJSON(ctID); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("ctid", ctID).
+			Msg("failed_to_refresh_jail_json_after_snapshot_create")
+	}
+
 	return &record, nil
 }
 
@@ -289,6 +296,13 @@ func (s *Service) DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID 
 
 	if err := s.DB.Delete(&record).Error; err != nil {
 		return fmt.Errorf("failed_to_delete_snapshot_record: %w", err)
+	}
+
+	if err := s.WriteJailJSON(ctID); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("ctid", ctID).
+			Msg("failed_to_refresh_jail_json_after_snapshot_delete")
 	}
 
 	return nil
