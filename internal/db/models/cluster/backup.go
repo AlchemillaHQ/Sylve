@@ -9,7 +9,9 @@
 package clusterModels
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -137,13 +139,97 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 		return fmt.Errorf("backup_target_id_required")
 	}
 
-	return db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"name", "ssh_host", "ssh_port", "ssh_key_path", "ssh_key", "backup_root",
-			"create_backup_root", "description", "enabled", "updated_at",
-		}),
-	}).Create(target).Error
+	normalized := normalizeBackupTarget(*target)
+	*target = normalized
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var existingByID BackupTarget
+		err := tx.Where("id = ?", target.ID).First(&existingByID).Error
+		hasByID := err == nil
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		var existingByName BackupTarget
+		err = tx.Where("name = ?", target.Name).First(&existingByName).Error
+		hasByName := err == nil
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		now := time.Now()
+		updates := map[string]any{
+			"name":               target.Name,
+			"ssh_host":           target.SSHHost,
+			"ssh_port":           target.SSHPort,
+			"ssh_key_path":       target.SSHKeyPath,
+			"ssh_key":            target.SSHKey,
+			"backup_root":        target.BackupRoot,
+			"create_backup_root": target.CreateBackupRoot,
+			"description":        target.Description,
+			"enabled":            target.Enabled,
+			"updated_at":         now,
+		}
+
+		switch {
+		case hasByID:
+			if hasByName && existingByName.ID != existingByID.ID {
+				return fmt.Errorf("backup_target_name_conflict_id_mismatch")
+			}
+
+			if backupTargetsEquivalent(existingByID, *target) {
+				return nil
+			}
+
+			return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
+
+		case hasByName:
+			if existingByName.ID == target.ID {
+				if backupTargetsEquivalent(existingByName, *target) {
+					return nil
+				}
+				return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
+			}
+
+			updatesWithID := make(map[string]any, len(updates)+1)
+			for key, value := range updates {
+				updatesWithID[key] = value
+			}
+			updatesWithID["id"] = target.ID
+
+			return tx.Model(&BackupTarget{}).Where("id = ?", existingByName.ID).Updates(updatesWithID).Error
+
+		default:
+			return tx.Create(target).Error
+		}
+	})
+}
+
+func normalizeBackupTarget(target BackupTarget) BackupTarget {
+	target.Name = strings.TrimSpace(target.Name)
+	target.SSHHost = strings.TrimSpace(target.SSHHost)
+	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
+	target.BackupRoot = strings.TrimSpace(target.BackupRoot)
+	target.Description = strings.TrimSpace(target.Description)
+
+	if target.SSHPort == 0 {
+		target.SSHPort = 22
+	}
+
+	return target
+}
+
+func backupTargetsEquivalent(existing BackupTarget, incoming BackupTarget) bool {
+	return existing.ID == incoming.ID &&
+		existing.Name == incoming.Name &&
+		existing.SSHHost == incoming.SSHHost &&
+		existing.SSHPort == incoming.SSHPort &&
+		existing.SSHKeyPath == incoming.SSHKeyPath &&
+		existing.SSHKey == incoming.SSHKey &&
+		existing.BackupRoot == incoming.BackupRoot &&
+		existing.CreateBackupRoot == incoming.CreateBackupRoot &&
+		existing.Description == incoming.Description &&
+		existing.Enabled == incoming.Enabled
 }
 
 func upsertBackupJob(db *gorm.DB, job *BackupJob) error {

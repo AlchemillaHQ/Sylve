@@ -228,18 +228,7 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			target := payload.ToModel()
-			// Use Updates with map to properly handle boolean false values
-			return db.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(map[string]any{
-				"name":               target.Name,
-				"ssh_host":           target.SSHHost,
-				"ssh_port":           target.SSHPort,
-				"ssh_key_path":       target.SSHKeyPath,
-				"ssh_key":            target.SSHKey,
-				"backup_root":        target.BackupRoot,
-				"create_backup_root": target.CreateBackupRoot,
-				"description":        target.Description,
-				"enabled":            target.Enabled,
-			}).Error
+			return upsertBackupTarget(db, &target)
 		case "delete":
 			var payload struct {
 				ID uint `json:"id"`
