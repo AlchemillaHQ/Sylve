@@ -384,23 +384,7 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 		return err
 	}
 
-	if err := s.DB.Exec("DELETE FROM cluster_notes").Error; err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM cluster_options").Error; err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM backup_events").Error; err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM backup_jobs").Error; err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM backup_targets").Error; err != nil {
+	if err := s.ClearClusteredData(); err != nil {
 		return err
 	}
 
@@ -419,6 +403,32 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 	}
 
 	return nil
+}
+
+func (s *Service) ClearClusteredData() error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM cluster_notes").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_notes: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM cluster_options").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_options: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_events").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_events: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_jobs: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_targets").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey string) error {

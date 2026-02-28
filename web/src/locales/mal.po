@@ -8763,3 +8763,7 @@ msgstr ""
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
 msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leader cannot exit when followers are present"
+msgstr ""

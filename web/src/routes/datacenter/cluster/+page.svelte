@@ -15,7 +15,7 @@
 	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 
 	interface Data {
 		cluster: ClusterDetails;
@@ -24,6 +24,7 @@
 	let { data }: { data: Data } = $props();
 	let reload = $state(false);
 
+	// svelte-ignore state_referenced_locally
 	const datacenter = resource(
 		() => 'cluster-info',
 		async (key, prevKey, { signal }) => {
@@ -34,12 +35,15 @@
 		{ initialValue: data.cluster }
 	);
 
-	$effect(() => {
-		if (reload) {
-			datacenter.refetch();
-			reload = false;
+	watch(
+		() => reload,
+		() => {
+			if (reload) {
+				datacenter.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	let canReset = $derived(datacenter.current.cluster.enabled === true);
 	let canCreate = $derived(
@@ -210,6 +214,15 @@
 			storage.clusterToken = '';
 			reload = true;
 			if (response.error) {
+				if (response.error.includes('leader_cannot_reset_while_other_nodes_exist')) {
+					toast.error('Leader cannot exit when followers are present', {
+						position: 'bottom-center'
+					});
+
+					modals.reset.open = false;
+					return;
+				}
+
 				handleAPIError(response);
 				toast.error('Failed to reset cluster', {
 					position: 'bottom-center'
