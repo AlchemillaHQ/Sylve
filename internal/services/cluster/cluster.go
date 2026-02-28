@@ -375,10 +375,6 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 		return err
 	}
 
-	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
-		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
-	}
-
 	c.Enabled = true
 	c.Key = newKey
 	c.RaftBootstrap = &bootstrap
@@ -398,6 +394,10 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 
 		if err := s.Raft.Snapshot().Error(); err != nil && !errors.Is(err, raft.ErrNothingNewToSnapshot) {
 			return fmt.Errorf("raft_snapshot_failed: %w", err)
+		}
+
+		if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+			logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
 		}
 	} else {
 		logger.L.Info().Str("leader", string(leaderAddr)).Msg("not leader after bootstrap; skipping local snapshot")
@@ -470,7 +470,7 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 	}
 
 	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
-		return fmt.Errorf("cluster_ssh_identity_publish_failed: %w", err)
+		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during joiner startup")
 	}
 
 	return nil
