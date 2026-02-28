@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -49,10 +50,11 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		return nil
 	}
 
-	restored, err := s.readLocalRestoredVMMetadata(ctx, dataset, fallbackRID)
+	restoredMeta, err := s.readLocalRestoredVMMetadata(ctx, dataset, fallbackRID)
 	if err != nil {
 		return err
 	}
+	restored := &restoredMeta.VM
 	if restored == nil {
 		return fmt.Errorf("restored_vm_metadata_not_found")
 	}
@@ -233,6 +235,19 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 		if len(normalizedNetworks) > 0 {
 			if err := tx.Create(&normalizedNetworks).Error; err != nil {
 				return fmt.Errorf("failed_to_insert_restored_vm_networks: %w", err)
+			}
+		}
+
+		if restoredMeta.SnapshotsPresent {
+			if err := reconcileRestoredVMSnapshots(
+				tx,
+				reconciledVMID,
+				rid,
+				restoredMeta.Snapshots,
+				normalizedStorages,
+				dataset,
+			); err != nil {
+				return err
 			}
 		}
 
@@ -488,11 +503,154 @@ func (s *Service) normalizeRestoredVMNetworks(
 	return out, requiresSwitchSync, nil
 }
 
+type restoredVMMetadata struct {
+	VM               vmModels.VM
+	Snapshots        []vmModels.VMSnapshot
+	SnapshotsPresent bool
+}
+
+func reconcileRestoredVMSnapshots(
+	tx *gorm.DB,
+	vmID uint,
+	rid uint,
+	snapshots []vmModels.VMSnapshot,
+	storages []vmModels.Storage,
+	destinationDataset string,
+) error {
+	if tx == nil || vmID == 0 || rid == 0 {
+		return nil
+	}
+
+	roots := inferRestoredVMRootDatasets(rid, storages, destinationDataset)
+
+	if err := tx.Where("vm_id = ?", vmID).Delete(&vmModels.VMSnapshot{}).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_restored_vm_snapshots: %w", err)
+	}
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	ordered := append([]vmModels.VMSnapshot(nil), snapshots...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := ordered[i]
+		right := ordered[j]
+		if !left.CreatedAt.Equal(right.CreatedAt) {
+			return left.CreatedAt.Before(right.CreatedAt)
+		}
+		return left.ID < right.ID
+	})
+
+	oldToNewIDs := make(map[uint]uint, len(ordered))
+	insertedByName := make(map[string]uint, len(ordered))
+	var latestInsertedID uint
+
+	for _, snapshot := range ordered {
+		snapshotName := strings.TrimSpace(snapshot.SnapshotName)
+		if snapshotName == "" {
+			continue
+		}
+		if _, exists := insertedByName[snapshotName]; exists {
+			continue
+		}
+
+		name := strings.TrimSpace(snapshot.Name)
+		if name == "" {
+			name = snapshotName
+		}
+
+		record := vmModels.VMSnapshot{
+			VMID:         vmID,
+			RID:          rid,
+			Name:         name,
+			Description:  strings.TrimSpace(snapshot.Description),
+			SnapshotName: snapshotName,
+			RootDatasets: append([]string(nil), roots...),
+		}
+		if !snapshot.CreatedAt.IsZero() {
+			record.CreatedAt = snapshot.CreatedAt
+		}
+		if !snapshot.UpdatedAt.IsZero() {
+			record.UpdatedAt = snapshot.UpdatedAt
+		}
+
+		parentID := uint(0)
+		if snapshot.ParentSnapshotID != nil && *snapshot.ParentSnapshotID > 0 {
+			if mapped, ok := oldToNewIDs[*snapshot.ParentSnapshotID]; ok {
+				parentID = mapped
+			}
+		}
+		if parentID == 0 && latestInsertedID > 0 {
+			parentID = latestInsertedID
+		}
+		if parentID > 0 {
+			record.ParentSnapshotID = &parentID
+		}
+
+		if err := tx.Create(&record).Error; err != nil {
+			return fmt.Errorf("failed_to_insert_restored_vm_snapshot: %w", err)
+		}
+
+		if snapshot.ID > 0 {
+			oldToNewIDs[snapshot.ID] = record.ID
+		}
+		insertedByName[snapshotName] = record.ID
+		latestInsertedID = record.ID
+	}
+
+	return nil
+}
+
+func inferRestoredVMRootDatasets(rid uint, storages []vmModels.Storage, destinationDataset string) []string {
+	roots := make([]string, 0, len(storages)+1)
+	seen := make(map[string]struct{}, len(storages)+1)
+	addRoot := func(root string) {
+		root = normalizeRestoreDestinationDataset(root)
+		if root == "" {
+			return
+		}
+		if _, ok := seen[root]; ok {
+			return
+		}
+		seen[root] = struct{}{}
+		roots = append(roots, root)
+	}
+
+	for _, storage := range storages {
+		pool := strings.TrimSpace(storage.Pool)
+		if pool == "" {
+			pool = strings.TrimSpace(storage.Dataset.Pool)
+		}
+		if pool == "" {
+			datasetName := normalizeDatasetPath(storage.Dataset.Name)
+			if idx := strings.Index(datasetName, "/"); idx > 0 {
+				pool = strings.TrimSpace(datasetName[:idx])
+			}
+		}
+		if pool == "" {
+			continue
+		}
+
+		addRoot(fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, rid))
+	}
+
+	destinationDataset = normalizeRestoreDestinationDataset(destinationDataset)
+	if destinationDataset != "" {
+		root := vmDatasetRoot(destinationDataset)
+		if root == "" {
+			root = destinationDataset
+		}
+		addRoot(root)
+	}
+
+	sort.Strings(roots)
+	return roots
+}
+
 func (s *Service) readLocalRestoredVMMetadata(
 	ctx context.Context,
 	dataset string,
 	fallbackRID uint,
-) (*vmModels.VM, error) {
+) (*restoredVMMetadata, error) {
 	candidates := vmMetadataCandidateDatasets(dataset)
 	for _, candidate := range candidates {
 		metaRaw, err := s.readLocalDatasetMetadataFile(ctx, candidate, ".sylve/vm.json")
@@ -503,14 +661,30 @@ func (s *Service) readLocalRestoredVMMetadata(
 			continue
 		}
 
-		var restored vmModels.VM
-		if err := json.Unmarshal([]byte(metaRaw), &restored); err != nil {
+		type vmMetadataPayload struct {
+			vmModels.VM
+			Snapshots []vmModels.VMSnapshot `json:"snapshots"`
+		}
+
+		payload := vmMetadataPayload{}
+		if err := json.Unmarshal([]byte(metaRaw), &payload); err != nil {
 			return nil, fmt.Errorf("invalid_restored_vm_metadata_json: %w", err)
 		}
-		if restored.RID == 0 {
-			restored.RID = fallbackRID
+
+		snapshotsPresent := false
+		var rawMap map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(metaRaw), &rawMap); err == nil {
+			_, snapshotsPresent = rawMap["snapshots"]
 		}
-		return &restored, nil
+
+		if payload.RID == 0 {
+			payload.RID = fallbackRID
+		}
+		return &restoredVMMetadata{
+			VM:               payload.VM,
+			Snapshots:        payload.Snapshots,
+			SnapshotsPresent: snapshotsPresent,
+		}, nil
 	}
 
 	return nil, nil

@@ -237,7 +237,7 @@ type VM struct {
 	CloudInitNetworkConfig string       `json:"cloudInitNetworkConfig" gorm:"type:text"`
 	IgnoreUMSR             bool         `json:"ignoreUMSR" gorm:"default:false"`
 	QemuGuestAgent         bool         `json:"qemuGuestAgent" gorm:"default:false"`
-	Snapshots              []VMSnapshot `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Snapshots              []VMSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

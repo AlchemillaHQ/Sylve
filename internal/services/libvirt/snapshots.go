@@ -141,6 +141,13 @@ func (s *Service) CreateVMSnapshot(
 		return nil, fmt.Errorf("failed_to_record_vm_snapshot: %w", err)
 	}
 
+	if err := s.WriteVMJson(rid); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("rid", rid).
+			Msg("failed_to_refresh_vm_json_after_snapshot_create")
+	}
+
 	return &record, nil
 }
 
@@ -407,6 +414,13 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 
 	if err := s.DB.Delete(&record).Error; err != nil {
 		return fmt.Errorf("failed_to_delete_snapshot_record: %w", err)
+	}
+
+	if err := s.WriteVMJson(rid); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("rid", rid).
+			Msg("failed_to_refresh_vm_json_after_snapshot_delete")
 	}
 
 	return nil
