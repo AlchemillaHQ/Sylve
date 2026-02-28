@@ -229,16 +229,55 @@ func (s *Service) RollbackVMSnapshot(
 		rootDatasets = resolvedRoots
 	}
 
-	snapshotDatasets := make([]string, 0, len(rootDatasets))
+	rollbackTargets := make([]string, 0, len(rootDatasets))
+	seenTargets := make(map[string]struct{}, len(rootDatasets))
 	for _, rootDataset := range rootDatasets {
-		fullSnapshot := fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName)
+		targets, err := listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
+		if err != nil {
+			return err
+		}
+		if len(targets) == 0 {
+			fullSnapshot := fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName)
+			if _, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false); err != nil {
+				return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
+			}
+			targets = []string{fullSnapshot}
+		}
+
+		for _, target := range targets {
+			if _, exists := seenTargets[target]; exists {
+				continue
+			}
+			seenTargets[target] = struct{}{}
+			rollbackTargets = append(rollbackTargets, target)
+		}
+	}
+
+	slices.SortStableFunc(rollbackTargets, func(left, right string) int {
+		leftDepth := snapshotDatasetDepth(left)
+		rightDepth := snapshotDatasetDepth(right)
+		if leftDepth > rightDepth {
+			return -1
+		}
+		if leftDepth < rightDepth {
+			return 1
+		}
+		if left < right {
+			return -1
+		}
+		if left > right {
+			return 1
+		}
+		return 0
+	})
+
+	for _, fullSnapshot := range rollbackTargets {
 		if _, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false); err != nil {
 			return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
 		}
-		snapshotDatasets = append(snapshotDatasets, fullSnapshot)
 	}
 
-	for _, fullSnapshot := range snapshotDatasets {
+	for _, fullSnapshot := range rollbackTargets {
 		snapshotDataset, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
@@ -399,6 +438,58 @@ func poolFromDatasetName(dataset string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[0])
+}
+
+func listRecursiveRollbackTargets(ctx context.Context, rootDataset, snapshotName string) ([]string, error) {
+	rootDataset = strings.TrimSpace(rootDataset)
+	snapshotName = strings.TrimSpace(snapshotName)
+	if rootDataset == "" || snapshotName == "" {
+		return nil, nil
+	}
+
+	out, err := utils.RunCommandWithContext(
+		ctx,
+		"zfs",
+		"list",
+		"-H",
+		"-t",
+		"snapshot",
+		"-r",
+		"-o",
+		"name",
+		rootDataset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_list_recursive_snapshot_targets: %w", err)
+	}
+
+	suffix := "@" + snapshotName
+	targets := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+		if strings.HasSuffix(name, suffix) {
+			targets = append(targets, name)
+		}
+	}
+
+	return targets, nil
+}
+
+func snapshotDatasetDepth(fullSnapshot string) int {
+	fullSnapshot = strings.TrimSpace(fullSnapshot)
+	if fullSnapshot == "" {
+		return 0
+	}
+
+	dataset := fullSnapshot
+	if at := strings.LastIndex(dataset, "@"); at > 0 {
+		dataset = dataset[:at]
+	}
+
+	return strings.Count(dataset, "/")
 }
 
 func sanitizeVMSnapshotToken(raw string) string {
