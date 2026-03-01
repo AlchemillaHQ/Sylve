@@ -29,6 +29,8 @@ const (
 )
 
 func (s *Service) ListReplicationPolicies() ([]clusterModels.ReplicationPolicy, error) {
+	s.cleanupOrphanReplicationRows()
+
 	var policies []clusterModels.ReplicationPolicy
 	err := s.DB.Preload("Targets").Order("name ASC").Find(&policies).Error
 	return policies, err
@@ -120,6 +122,9 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 				return err
 			}
 			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationLease{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
 				return err
 			}
 			return tx.Delete(&clusterModels.ReplicationPolicy{}, id).Error
@@ -473,6 +478,8 @@ func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.Replication
 }
 
 func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterModels.ReplicationEvent, error) {
+	s.cleanupOrphanReplicationRows()
+
 	if limit <= 0 {
 		limit = 200
 	}
@@ -486,6 +493,21 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 		return nil, err
 	}
 	return events, nil
+}
+
+func (s *Service) cleanupOrphanReplicationRows() {
+	if s.DB == nil {
+		return
+	}
+
+	policyIDs := s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
+	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationPolicyTarget{}).Error
+
+	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
+	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationLease{}).Error
+
+	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
+	_ = s.DB.Where("policy_id IS NOT NULL AND policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationEvent{}).Error
 }
 
 func (s *Service) GetReplicationEventByID(id uint) (*clusterModels.ReplicationEvent, error) {

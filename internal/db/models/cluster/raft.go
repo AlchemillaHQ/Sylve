@@ -152,10 +152,24 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 		replicationPolicies := make([]ReplicationPolicy, 0, len(snap.ReplicationPolicies))
 		replicationTargets := make([]ReplicationPolicyTarget, 0)
+		seenReplicationTargetID := make(map[uint]struct{})
+		seenReplicationTargetPair := make(map[string]struct{})
 		for _, payload := range snap.ReplicationPolicies {
 			replicationPolicies = append(replicationPolicies, payload.Policy)
 			for _, t := range payload.Targets {
 				t.PolicyID = payload.Policy.ID
+				if t.ID != 0 {
+					if _, exists := seenReplicationTargetID[t.ID]; exists {
+						continue
+					}
+					seenReplicationTargetID[t.ID] = struct{}{}
+				} else {
+					k := fmt.Sprintf("%d|%s", t.PolicyID, strings.TrimSpace(t.NodeID))
+					if _, exists := seenReplicationTargetPair[k]; exists {
+						continue
+					}
+					seenReplicationTargetPair[k] = struct{}{}
+				}
 				replicationTargets = append(replicationTargets, t)
 			}
 		}
@@ -193,7 +207,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		for _, s := range createSets {
 			val := reflect.ValueOf(s.data)
 			if val.Kind() == reflect.Slice && val.Len() > 0 {
-				if err := tx.CreateInBatches(s.data, s.batch).Error; err != nil {
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(s.data, s.batch).Error; err != nil {
 					return err
 				}
 			}
@@ -393,6 +407,9 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 					return err
 				}
 				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationLease{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("policy_id = ?", payload.ID).Delete(&ReplicationEvent{}).Error; err != nil {
 					return err
 				}
 				return tx.Delete(&ReplicationPolicy{}, payload.ID).Error
