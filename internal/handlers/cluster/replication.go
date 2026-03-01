@@ -416,16 +416,6 @@ func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.ReconcileClusterSSHAuthorizedKeys(); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "reconcile_cluster_ssh_authorized_keys_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cluster_ssh_identity_upserted",
