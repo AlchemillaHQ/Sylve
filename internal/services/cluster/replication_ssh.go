@@ -18,7 +18,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 )
@@ -164,10 +163,6 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 		}
 	}
 
-	if err := s.ReconcileClusterSSHAuthorizedKeys(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -228,9 +223,4 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 	}
 
 	return fmt.Errorf("forward_ssh_identity_to_leader_failed: %w", lastErr)
-}
-
-func (s *Service) ReconcileClusterSSHAuthorizedKeys() error {
-	logger.L.Debug().Msg("cluster_ssh_authorized_keys_reconcile_skipped_embedded_ssh_mode")
-	return nil
 }
