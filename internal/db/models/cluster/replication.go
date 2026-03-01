@@ -94,7 +94,7 @@ type ClusterSSHIdentity struct {
 	NodeUUID  string    `gorm:"uniqueIndex;not null" json:"nodeUUID"`
 	SSHUser   string    `gorm:"not null;default:root" json:"sshUser"`
 	SSHHost   string    `gorm:"not null" json:"sshHost"`
-	SSHPort   int       `gorm:"not null;default:22" json:"sshPort"`
+	SSHPort   int       `gorm:"not null;default:8122" json:"sshPort"`
 	PublicKey string    `gorm:"type:text;not null" json:"publicKey"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
@@ -249,7 +249,7 @@ func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 		identity.SSHUser = "root"
 	}
 	if identity.SSHPort == 0 {
-		identity.SSHPort = 22
+		identity.SSHPort = 8122
 	}
 
 	if identity.NodeUUID == "" {

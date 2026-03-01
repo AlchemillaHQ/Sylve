@@ -281,7 +281,6 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		for _, sourceDataset := range sourceDatasets {
 			attemptedTransfers++
 			backupRoot, destSuffix := splitDatasetForTarget(sourceDataset)
-			targetDataset := targetDatasetPath(backupRoot, destSuffix)
 			targetSpec := &clusterModels.BackupTarget{
 				SSHHost:    fmt.Sprintf("%s@%s", strings.TrimSpace(identity.SSHUser), strings.TrimSpace(identity.SSHHost)),
 				SSHPort:    identity.SSHPort,
@@ -301,12 +300,39 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 				_ = s.AppendReplicationEventOutput(event.ID, out)
 			}
 			if err != nil {
-				runErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
-				break
-			}
-			if err := s.normalizeReplicatedTargetDataset(ctx, targetSpec, targetDataset); err != nil {
-				runErr = fmt.Errorf("replication_target_dataset_prepare_%s_failed: %w", targetNodeID, err)
-				break
+				if isReplicationTargetModifiedError(err) {
+					_ = s.AppendReplicationEventOutput(event.ID, "target_dataset_diverged_attempting_zelta_rotate")
+					rotateOut, rotateErr := s.RotateWithTarget(ctx, targetSpec, sourceDataset, destSuffix)
+					if strings.TrimSpace(rotateOut) != "" {
+						_ = s.AppendReplicationEventOutput(event.ID, rotateOut)
+					}
+					if rotateErr != nil {
+						runErr = fmt.Errorf(
+							"replication_to_target_%s_failed_after_diverged_target_rotate_failed: %w (original: %v)",
+							targetNodeID,
+							rotateErr,
+							err,
+						)
+						break
+					}
+
+					retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
+					if strings.TrimSpace(retryOut) != "" {
+						_ = s.AppendReplicationEventOutput(event.ID, retryOut)
+					}
+					if retryErr != nil {
+						runErr = fmt.Errorf(
+							"replication_to_target_%s_failed_after_diverged_target_rotate: %w (original: %v)",
+							targetNodeID,
+							retryErr,
+							err,
+						)
+						break
+					}
+				} else {
+					runErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
+					break
+				}
 			}
 		}
 
@@ -342,52 +368,13 @@ func splitDatasetForTarget(dataset string) (string, string) {
 	return dataset[:idx], dataset[idx+1:]
 }
 
-func targetDatasetPath(root, suffix string) string {
-	root = normalizeDatasetPath(root)
-	suffix = normalizeDatasetPath(suffix)
-	if root == "" {
-		return suffix
+func isReplicationTargetModifiedError(err error) bool {
+	if err == nil {
+		return false
 	}
-	if suffix == "" {
-		return root
-	}
-	return root + "/" + suffix
-}
-
-func (s *Service) normalizeReplicatedTargetDataset(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	dataset string,
-) error {
-	dataset = normalizeDatasetPath(dataset)
-	if target == nil || dataset == "" {
-		return nil
-	}
-
-	script := fmt.Sprintf(
-		`set -eu
-root=%q
-zfs list -H -o name -r "$root" | while IFS= read -r ds; do
-  [ -n "$ds" ] || continue
-  zfs set readonly=off "$ds"
-done
-zfs list -H -o name -r -t filesystem "$root" | while IFS= read -r ds; do
-  [ -n "$ds" ] || continue
-  zfs set canmount=on "$ds" || true
-done
-zfs inherit mountpoint "$root" || true
-zfs list -H -o name -r -t filesystem "$root" | while IFS= read -r ds; do
-  [ -n "$ds" ] || continue
-  zfs mount "$ds" || true
-done`,
-		dataset,
-	)
-
-	if _, err := s.runTargetSSH(ctx, target, "sh", "-c", script); err != nil {
-		return fmt.Errorf("normalize_target_dataset_properties_failed: %w", err)
-	}
-
-	return nil
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "destination") &&
+		strings.Contains(lower, "has been modified")
 }
 
 func (s *Service) replicateWithEventProgress(
