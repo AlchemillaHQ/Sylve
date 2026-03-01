@@ -841,16 +841,20 @@ func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) 
 }
 
 func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error {
+	dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeJail, ctID)
+	if err != nil {
+		return err
+	}
+	if err := s.prepareReplicatedDatasetForActivation(ctx, dataset); err != nil {
+		return err
+	}
+
 	var jailCount int64
 	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Count(&jailCount).Error; err != nil {
 		return err
 	}
 
 	if jailCount == 0 {
-		dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeJail, ctID)
-		if err != nil {
-			return err
-		}
 		if dataset == "" {
 			return fmt.Errorf("jail_dataset_not_found")
 		}
@@ -864,16 +868,20 @@ func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error 
 }
 
 func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
+	dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeVM, rid)
+	if err != nil {
+		return err
+	}
+	if err := s.prepareReplicatedDatasetForActivation(ctx, dataset); err != nil {
+		return err
+	}
+
 	vm, err := s.findVMByRID(rid)
 	if err != nil {
 		return err
 	}
 
 	if vm == nil {
-		dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeVM, rid)
-		if err != nil {
-			return err
-		}
 		if dataset == "" {
 			return fmt.Errorf("vm_dataset_not_found")
 		}
@@ -890,6 +898,77 @@ func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
 	}
 
 	return s.VM.LvVMAction(*vm, "start")
+}
+
+func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, rootDataset string) error {
+	rootDataset = normalizeDatasetPath(rootDataset)
+	if rootDataset == "" {
+		return nil
+	}
+
+	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	if err != nil {
+		return err
+	}
+
+	seen := map[string]struct{}{
+		rootDataset: {},
+	}
+	subtree := []string{rootDataset}
+	prefix := rootDataset + "/"
+
+	for _, candidate := range datasets {
+		ds := normalizeDatasetPath(candidate)
+		if ds == "" || ds == rootDataset {
+			continue
+		}
+		if !strings.HasPrefix(ds, prefix) {
+			continue
+		}
+		if _, ok := seen[ds]; ok {
+			continue
+		}
+		seen[ds] = struct{}{}
+		subtree = append(subtree, ds)
+	}
+
+	sort.SliceStable(subtree, func(i, j int) bool {
+		di := strings.Count(subtree[i], "/")
+		dj := strings.Count(subtree[j], "/")
+		if di == dj {
+			return subtree[i] < subtree[j]
+		}
+		return di < dj
+	})
+
+	for idx, dataset := range subtree {
+		ds, err := s.getLocalDataset(ctx, dataset)
+		if err != nil {
+			return fmt.Errorf("failed_to_open_replication_dataset_%s: %w", dataset, err)
+		}
+		if ds == nil {
+			continue
+		}
+
+		if err := ds.SetProperties(ctx, "readonly", "off", "canmount", "on"); err != nil {
+			return fmt.Errorf("failed_to_set_replication_dataset_properties_%s: %w", dataset, err)
+		}
+
+		if idx == 0 {
+			if _, err := utils.RunCommandWithContext(ctx, "zfs", "inherit", "mountpoint", dataset); err != nil {
+				return fmt.Errorf("failed_to_inherit_replication_dataset_mountpoint_%s: %w", dataset, err)
+			}
+		}
+
+		if err := ds.Mount(ctx, false); err != nil {
+			lower := strings.ToLower(err.Error())
+			if !strings.Contains(lower, "already mounted") {
+				return fmt.Errorf("failed_to_mount_replication_dataset_%s: %w", dataset, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) findLocalGuestDataset(ctx context.Context, guestType string, guestID uint) (string, error) {

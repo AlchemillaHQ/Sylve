@@ -1,3 +1,4 @@
+.gocache/
 data/*
 !data/.gitignore
 internal/assets/web-files/*
