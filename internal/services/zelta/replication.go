@@ -562,6 +562,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			if strings.TrimSpace(req.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 				req.SourceNodeID = resolvedOwner
 			}
+			req.ActiveNodeID = resolvedOwner
 			if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
 				logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("set_initial_replication_owner_failed")
 				continue
@@ -693,6 +694,7 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 		req.SourceNodeID = targetNodeID
 	}
+	req.ActiveNodeID = targetNodeID
 
 	policy.ActiveNodeID = targetNodeID
 	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
@@ -938,20 +940,66 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 		return nil
 	}
 
-	var leases []clusterModels.ReplicationLease
-	if err := s.DB.Where("owner_node_id = ? AND expires_at <= ?", localNodeID, time.Now().UTC()).
-		Find(&leases).Error; err != nil {
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
 		return err
 	}
 
-	for _, lease := range leases {
-		switch strings.TrimSpace(lease.GuestType) {
+	now := time.Now().UTC()
+	for _, policy := range policies {
+		running, err := s.isLocalProtectedGuestRunning(strings.TrimSpace(policy.GuestType), policy.GuestID)
+		if err != nil || !running {
+			continue
+		}
+
+		var lease clusterModels.ReplicationLease
+		leaseErr := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error
+
+		fenceReason := ""
+		if leaseErr == gorm.ErrRecordNotFound {
+			fenceReason = "lease_missing"
+		} else if leaseErr != nil {
+			continue
+		} else if strings.TrimSpace(lease.OwnerNodeID) != localNodeID {
+			fenceReason = "lease_not_owned"
+		} else if now.After(lease.ExpiresAt) {
+			fenceReason = "lease_expired"
+		}
+
+		if fenceReason == "" {
+			continue
+		}
+
+		switch strings.TrimSpace(policy.GuestType) {
 		case clusterModels.ReplicationGuestTypeJail:
-			_ = s.Jail.JailAction(int(lease.GuestID), "stop")
+			_ = s.Jail.JailAction(int(policy.GuestID), "stop")
 		case clusterModels.ReplicationGuestTypeVM:
-			_ = s.stopVMIfPresent(lease.GuestID)
+			_ = s.stopVMIfPresent(policy.GuestID)
 		}
 	}
 
 	return nil
+}
+
+func (s *Service) isLocalProtectedGuestRunning(guestType string, guestID uint) (bool, error) {
+	switch strings.TrimSpace(guestType) {
+	case clusterModels.ReplicationGuestTypeVM:
+		vm, err := s.findVMByRID(guestID)
+		if err != nil || vm == nil {
+			return false, err
+		}
+		inactive, err := s.VM.IsDomainInactive(guestID)
+		if err != nil {
+			return false, err
+		}
+		return !inactive, nil
+	case clusterModels.ReplicationGuestTypeJail:
+		out, err := utils.RunCommand("jls", "-j", fmt.Sprintf("%d", guestID), "jid")
+		if err != nil {
+			return false, nil
+		}
+		return strings.TrimSpace(out) != "", nil
+	default:
+		return false, nil
+	}
 }
