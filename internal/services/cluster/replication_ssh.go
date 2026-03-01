@@ -13,7 +13,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -29,8 +28,7 @@ const (
 	clusterSSHPrivateFileName = "id_ed25519"
 	clusterSSHPublicFileName  = "id_ed25519.pub"
 
-	clusterManagedKeyStart = "# --- sylve cluster replication keys start ---"
-	clusterManagedKeyEnd   = "# --- sylve cluster replication keys end ---"
+	ClusterEmbeddedSSHPort = 8122
 )
 
 func (s *Service) clusterSSHDir() (string, error) {
@@ -48,14 +46,6 @@ func (s *Service) clusterSSHDir() (string, error) {
 	}
 
 	return path, nil
-}
-
-func (s *Service) clusterSSHPrivateKeyPath() (string, error) {
-	dir, err := s.clusterSSHDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, clusterSSHPrivateFileName), nil
 }
 
 func (s *Service) ClusterSSHPrivateKeyPath() (string, error) {
@@ -160,7 +150,7 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 		NodeUUID:  strings.TrimSpace(detail.NodeID),
 		SSHUser:   "root",
 		SSHHost:   s.localClusterSSHHost(),
-		SSHPort:   22,
+		SSHPort:   ClusterEmbeddedSSHPort,
 		PublicKey: pubKey,
 	}
 
@@ -240,92 +230,7 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 	return fmt.Errorf("forward_ssh_identity_to_leader_failed: %w", lastErr)
 }
 
-func replaceManagedSSHBlock(existing string, managed []string) string {
-	managedSet := make(map[string]struct{}, len(managed))
-	normalized := make([]string, 0, len(managed))
-	for _, line := range managed {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if _, ok := managedSet[line]; ok {
-			continue
-		}
-		managedSet[line] = struct{}{}
-		normalized = append(normalized, line)
-	}
-	sort.Strings(normalized)
-
-	blockLines := []string{clusterManagedKeyStart}
-	blockLines = append(blockLines, normalized...)
-	blockLines = append(blockLines, clusterManagedKeyEnd)
-	block := strings.Join(blockLines, "\n")
-
-	start := strings.Index(existing, clusterManagedKeyStart)
-	end := strings.Index(existing, clusterManagedKeyEnd)
-	if start >= 0 && end > start {
-		end += len(clusterManagedKeyEnd)
-		left := strings.TrimRight(existing[:start], "\n")
-		right := strings.TrimLeft(existing[end:], "\n")
-		parts := []string{}
-		if left != "" {
-			parts = append(parts, left)
-		}
-		parts = append(parts, block)
-		if right != "" {
-			parts = append(parts, right)
-		}
-		return strings.TrimSpace(strings.Join(parts, "\n\n")) + "\n"
-	}
-
-	base := strings.TrimSpace(existing)
-	if base == "" {
-		return block + "\n"
-	}
-	return base + "\n\n" + block + "\n"
-}
-
 func (s *Service) ReconcileClusterSSHAuthorizedKeys() error {
-	identities, err := s.ListClusterSSHIdentities()
-	if err != nil {
-		return err
-	}
-
-	managed := make([]string, 0, len(identities))
-	for _, identity := range identities {
-		pub := strings.TrimSpace(identity.PublicKey)
-		if pub == "" {
-			continue
-		}
-		managed = append(managed, pub)
-	}
-
-	sshDir := "/root/.ssh"
-	if err := os.MkdirAll(sshDir, 0700); err != nil {
-		return fmt.Errorf("root_ssh_dir_create_failed: %w", err)
-	}
-	if err := os.Chmod(sshDir, 0700); err != nil {
-		return fmt.Errorf("root_ssh_dir_chmod_failed: %w", err)
-	}
-
-	authKeysPath := filepath.Join(sshDir, "authorized_keys")
-	existing := ""
-	if raw, readErr := os.ReadFile(authKeysPath); readErr == nil {
-		existing = string(raw)
-	}
-
-	next := replaceManagedSSHBlock(existing, managed)
-	if err := os.WriteFile(authKeysPath, []byte(next), 0600); err != nil {
-		return fmt.Errorf("authorized_keys_write_failed: %w", err)
-	}
-	if err := os.Chmod(authKeysPath, 0600); err != nil {
-		return fmt.Errorf("authorized_keys_chmod_failed: %w", err)
-	}
-
-	logger.L.Debug().
-		Int("managed_keys", len(managed)).
-		Str("path", authKeysPath).
-		Msg("cluster_ssh_authorized_keys_reconciled")
-
+	logger.L.Debug().Msg("cluster_ssh_authorized_keys_reconcile_skipped_embedded_ssh_mode")
 	return nil
 }

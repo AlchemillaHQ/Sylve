@@ -122,6 +122,10 @@ func main() {
 		}
 	}
 
+	if err := cS.(*cluster.Service).StartEmbeddedSSHServer(qCtx); err != nil {
+		logger.L.Error().Err(err).Msg("Failed to start embedded cluster SSH server")
+	}
+
 	if err := zelta.EnsureZeltaInstalled(); err != nil {
 		logger.L.Error().Err(err).Msg("Failed to install Zelta")
 	}

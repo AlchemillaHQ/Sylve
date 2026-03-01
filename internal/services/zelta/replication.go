@@ -203,6 +203,11 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 		s.updateReplicationPolicyResult(policy, err)
 		return err
 	}
+	if len(sourceDatasets) == 0 {
+		runErr := fmt.Errorf("no_source_datasets_found")
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
+	}
 
 	identities, err := s.Cluster.ListClusterSSHIdentities()
 	if err != nil {
@@ -252,21 +257,29 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	})
 
 	var runErr error
+	eligibleTargets := 0
+	skippedOffline := 0
+	skippedNoIdentity := 0
+	attemptedTransfers := 0
 	for _, target := range targets {
 		targetNodeID := strings.TrimSpace(target.NodeID)
 		if targetNodeID == "" || targetNodeID == localNodeID {
 			continue
 		}
 		if status, ok := statusByNode[targetNodeID]; ok && status != "online" {
+			skippedOffline++
 			continue
 		}
 
 		identity, ok := identityByNode[targetNodeID]
 		if !ok {
+			skippedNoIdentity++
 			continue
 		}
+		eligibleTargets++
 
 		for _, sourceDataset := range sourceDatasets {
+			attemptedTransfers++
 			backupRoot, destSuffix := splitDatasetForTarget(sourceDataset)
 			targetSpec := &clusterModels.BackupTarget{
 				SSHHost:    fmt.Sprintf("%s@%s", strings.TrimSpace(identity.SSHUser), strings.TrimSpace(identity.SSHHost)),
@@ -294,6 +307,14 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 
 		if runErr != nil {
 			break
+		}
+	}
+
+	if runErr == nil {
+		if eligibleTargets == 0 {
+			runErr = fmt.Errorf("no_eligible_replication_targets (offline=%d missing_identity=%d)", skippedOffline, skippedNoIdentity)
+		} else if attemptedTransfers == 0 {
+			runErr = fmt.Errorf("no_replication_transfers_executed")
 		}
 	}
 
