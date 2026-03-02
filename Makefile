@@ -1,38 +1,22 @@
 BINARY_NAME := sylve
 BIN_DIR := bin
+ARCH ?= amd64
 
-PLATFORMS := amd64 arm64 riscv64
-
-.PHONY: all build build-all clean run test build-depcheck
+.PHONY: all build clean web-build
 
 all: build
 
-build: build-depcheck web
+build: 
 	mkdir -p $(BIN_DIR)
-	CGO_ENABLED=1 \
-	GOOS=freebsd GOARCH=amd64 go build -o $(BIN_DIR)/$(BINARY_NAME)-amd64 cmd/sylve/main.go
+	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
+	go build -o $(BIN_DIR)/$(BINARY_NAME)-$(ARCH) cmd/sylve/main.go
 
-build-all: build-depcheck web
-	mkdir -p $(BIN_DIR)
-	@for arch in $(PLATFORMS); do \
-		CGO_ENABLED=1 \
-		GOOS=freebsd GOARCH=$$arch \
-		go build -o $(BIN_DIR)/$(BINARY_NAME)-$$arch cmd/sylve/main.go ; \
-	done
-
-web:
+web-build:
 	npm install --prefix web
 	npm run build --prefix web
-	cp -rf web/build/* internal/assets/web-files
+	mkdir -p internal/assets/web-files
+	cp -rf web/build/* internal/assets/web-files/
 
 clean:
 	rm -rf $(BIN_DIR)
-
-run: build
-	./$(BIN_DIR)/$(BINARY_NAME)-amd64
-
-test:
-	go test ./...
-
-build-depcheck:
-	@./scripts/build-deps-check.sh
+	rm -rf internal/assets/web-files/*

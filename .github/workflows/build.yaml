@@ -1,41 +1,65 @@
-name: Build
+name: Build Sylve
 on: [push]
 
 jobs:
-  build:
+  build-web:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build Web Assets
+        run: |
+          npm install --prefix web
+          npm run build --prefix web
+          mkdir -p internal/assets/web-files
+          cp -rf web/build/* internal/assets/web-files/
+      - name: Upload Web Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: internal/assets/web-files/
+
+  build-freebsd:
+    needs: build-web
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            vm_arch: x86-64
+          - arch: arm64
+            vm_arch: aarch64
+          - arch: riscv64
+            vm_arch: riscv64
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build on FreeBSD
+      - name: Download Web Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: internal/assets/web-files
+
+      - name: Build on FreeBSD ${{ matrix.arch }}
         uses: vmactions/freebsd-vm@v1
         with:
+          arch: ${{ matrix.vm_arch }}
+          sync: scp
           usesh: true
-          prepare: pkg install -y node24 npm-node24 go git
+          prepare: pkg install -y go git
           run: |
-            export GOPATH=$HOME/go
-            export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
-            chmod +x scripts/build-deps-check.sh
-            make build-all
+            mkdir -p bin
+            # Build using the specific architecture
+            CGO_ENABLED=1 GOOS=freebsd GOARCH=${{ matrix.arch }} \
+            go build -o bin/sylve-${{ matrix.arch }} cmd/sylve/main.go
 
-      - name: Verify outputs
-        run: ls -lah bin
-
-      - name: Upload amd64
+      - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: sylve-amd64
-          path: bin/sylve-amd64
-
-      - name: Upload arm64
-        uses: actions/upload-artifact@v4
-        with:
-          name: sylve-arm64
-          path: bin/sylve-arm64
-
-      - name: Upload riscv64
-        uses: actions/upload-artifact@v4
-        with:
-          name: sylve-riscv64
-          path: bin/sylve-riscv64
+          name: sylve-${{ matrix.arch }}
+          path: bin/sylve-${{ matrix.arch }}
