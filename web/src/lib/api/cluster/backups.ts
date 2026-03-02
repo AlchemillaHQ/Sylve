@@ -38,7 +38,6 @@ export type BackupJobInput = {
     mode: 'dataset' | 'jail' | 'vm';
     sourceDataset?: string;
     jailRootDataset?: string;
-    destSuffix?: string;
     pruneKeepLast: number;
     pruneTarget: boolean;
     stopBeforeBackup: boolean;

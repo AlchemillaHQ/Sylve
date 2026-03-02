@@ -189,7 +189,6 @@
 		sourceDataset: '',
 		selectedJailId: '',
 		selectedVmId: '',
-		destSuffix: '',
 		pruneKeepLast: '0',
 		pruneTarget: false,
 		cronExpr: '0 * * * *',
@@ -700,7 +699,6 @@
 		jobModal.sourceDataset = '';
 		jobModal.selectedJailId = '';
 		jobModal.selectedVmId = '';
-		jobModal.destSuffix = '';
 		jobModal.pruneKeepLast = '0';
 		jobModal.pruneTarget = false;
 		jobModal.stopBeforeBackup = false;
@@ -753,7 +751,6 @@
 			}
 		}
 
-		jobModal.destSuffix = job.destSuffix || '';
 		jobModal.pruneKeepLast = String(job.pruneKeepLast ?? 0);
 		jobModal.pruneTarget = !!job.pruneTarget;
 		jobModal.stopBeforeBackup = !!job.stopBeforeBackup;
@@ -768,10 +765,6 @@
 		}
 		if (!jobModal.targetId) {
 			toast.error('Target is required', { position: 'bottom-center' });
-			return;
-		}
-		if (!jobModal.destSuffix.trim() && jobModal.mode === 'dataset') {
-			toast.error('Destination suffix is required', { position: 'bottom-center' });
 			return;
 		}
 		if (jobModal.mode === 'dataset' && !jobModal.sourceDataset.trim()) {
@@ -834,7 +827,6 @@
 						? vmDataset
 						: '',
 			jailRootDataset: jobModal.mode === 'jail' ? jailDataset : '',
-			destSuffix: jobModal.destSuffix,
 			pruneKeepLast,
 			pruneTarget: jobModal.pruneTarget,
 			cronExpr: jobModal.cronExpr,
@@ -1429,7 +1421,7 @@
 				/>
 			</div>
 
-			<div class="grid grid-cols-2 gap-4">
+			<div>
 				{#if jobModal.mode === 'dataset'}
 					<CustomValueInput
 						label="Source Dataset"
@@ -1446,23 +1438,16 @@
 						onChange={() => {}}
 						disabled={jails.length === 0}
 					/>
-				{:else}
-					<SimpleSelect
-						label="Virtual Machine"
-						placeholder={vms.length === 0 ? 'No VMs available' : 'Select VM'}
-						options={vmOptions}
-						bind:value={jobModal.selectedVmId}
-						onChange={() => {}}
-						disabled={vms.length === 0}
-					/>
-				{/if}
-
-				<CustomValueInput
-					label="Destination Suffix"
-					placeholder="server1/data (appended to target's backup root)"
-					bind:value={jobModal.destSuffix}
-					classes="space-y-1"
-				/>
+					{:else}
+						<SimpleSelect
+							label="Virtual Machine"
+							placeholder={vms.length === 0 ? 'No VMs available' : 'Select VM'}
+							options={vmOptions}
+							bind:value={jobModal.selectedVmId}
+							onChange={() => {}}
+							disabled={vms.length === 0}
+						/>
+					{/if}
 			</div>
 
 			<div class="grid grid-cols-2 gap-4">

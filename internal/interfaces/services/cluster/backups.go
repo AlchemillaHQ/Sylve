@@ -20,7 +20,6 @@ type BackupJobReq struct {
 	Mode             string `json:"mode" binding:"required"`
 	SourceDataset    string `json:"sourceDataset"`
 	JailRootDataset  string `json:"jailRootDataset"`
-	DestSuffix       string `json:"destSuffix"`
 	PruneKeepLast    int    `json:"pruneKeepLast"`
 	PruneTarget      bool   `json:"pruneTarget"`
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`

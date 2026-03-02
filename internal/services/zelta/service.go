@@ -717,6 +717,18 @@ func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset 
 		if configuredSuffix == "" {
 			return sourceDataset
 		}
+		sourceRoot := normalizeDatasetPath(vmDatasetRoot(sourceDataset))
+		if sourceRoot != "" {
+			sourceRootSuffix := autoDestSuffix(sourceRoot)
+			if configuredSuffix == sourceRootSuffix || strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/job-") {
+				rel := strings.TrimPrefix(sourceDataset, sourceRoot)
+				rel = strings.TrimPrefix(rel, "/")
+				if rel == "" {
+					return configuredSuffix
+				}
+				return normalizeDatasetPath(configuredSuffix + "/" + rel)
+			}
+		}
 		if configuredSuffix == sourceDataset || strings.HasSuffix(configuredSuffix, "/"+sourceDataset) {
 			return configuredSuffix
 		}

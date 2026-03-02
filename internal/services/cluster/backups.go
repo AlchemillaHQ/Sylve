@@ -37,7 +37,6 @@ type BackupJobInput struct {
 	Mode             string `json:"mode"`
 	SourceDataset    string `json:"sourceDataset"`
 	JailRootDataset  string `json:"jailRootDataset"`
-	DestSuffix       string `json:"destSuffix"` // appended to target's BackupRoot
 	PruneKeepLast    int    `json:"pruneKeepLast"`
 	PruneTarget      bool   `json:"pruneTarget"`
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`
@@ -237,7 +236,6 @@ type BackupJobReq struct {
 	Mode             string `json:"mode" binding:"required"`
 	SourceDataset    string `json:"sourceDataset"`
 	JailRootDataset  string `json:"jailRootDataset"`
-	DestSuffix       string `json:"destSuffix"`
 	PruneKeepLast    int    `json:"pruneKeepLast"`
 	PruneTarget      bool   `json:"pruneTarget"`
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`
@@ -252,7 +250,6 @@ type BackupJobReq struct {
 			Mode:             req.Mode,
 			SourceDataset:    req.SourceDataset,
 			JailRootDataset:  req.JailRootDataset,
-			DestSuffix:       req.DestSuffix,
 			PruneKeepLast:    req.PruneKeepLast,
 			PruneTarget:      req.PruneTarget,
 			StopBeforeBackup: req.StopBeforeBackup,
@@ -262,13 +259,9 @@ type BackupJobReq struct {
 */
 
 func (s *Service) ProposeBackupJobCreate(input clusterServiceInterfaces.BackupJobReq, bypassRaft bool) error {
-	id := uint(0)
-	var err error
-	if !bypassRaft {
-		id, err = s.newRaftObjectID("backup_jobs")
-		if err != nil {
-			return fmt.Errorf("new_backup_job_id_failed: %w", err)
-		}
+	id, err := s.newRaftObjectID("backup_jobs")
+	if err != nil {
+		return fmt.Errorf("new_backup_job_id_failed: %w", err)
 	}
 
 	job, err := s.buildBackupJob(id, input)
@@ -456,7 +449,7 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		SourceDataset:    strings.TrimSpace(input.SourceDataset),
 		JailRootDataset:  strings.TrimSpace(input.JailRootDataset),
 		FriendlySrc:      "",
-		DestSuffix:       strings.TrimSpace(input.DestSuffix),
+		DestSuffix:       "",
 		PruneKeepLast:    input.PruneKeepLast,
 		PruneTarget:      input.PruneTarget,
 		StopBeforeBackup: input.StopBeforeBackup,
@@ -489,6 +482,8 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 		job.JailRootDataset = ""
 	}
 
+	job.DestSuffix = autoBackupJobDestSuffix(job.ID, job.Mode, job.SourceDataset, job.JailRootDataset)
+
 	job.FriendlySrc = s.resolveBackupJobFriendlySource(job.Mode, job.SourceDataset, job.JailRootDataset)
 
 	if !next.IsZero() {
@@ -496,6 +491,49 @@ func (s *Service) buildBackupJob(id uint, input clusterServiceInterfaces.BackupJ
 	}
 
 	return job, nil
+}
+
+func autoBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset string) string {
+	source := strings.TrimSpace(sourceDataset)
+	if strings.TrimSpace(mode) == clusterModels.BackupJobModeJail {
+		source = strings.TrimSpace(jailRootDataset)
+	}
+
+	base := autoBackupDestBase(source)
+	if base == "" {
+		base = "backups"
+	}
+
+	if jobID == 0 {
+		return base
+	}
+
+	return fmt.Sprintf("%s/job-%d", base, jobID)
+}
+
+func autoBackupDestBase(source string) string {
+	source = normalizeBackupDatasetPath(source)
+	if source == "" {
+		return ""
+	}
+
+	parts := strings.Split(source, "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		switch parts[i] {
+		case "jails", "virtual-machines":
+			return strings.Join(parts[i:], "/")
+		}
+	}
+
+	return strings.ReplaceAll(source, "/", "-")
+}
+
+func normalizeBackupDatasetPath(dataset string) string {
+	dataset = strings.TrimSpace(dataset)
+	for strings.HasSuffix(dataset, "/") {
+		dataset = strings.TrimSuffix(dataset, "/")
+	}
+	return dataset
 }
 
 func (s *Service) resolveBackupJobFriendlySource(mode, sourceDataset, jailRootDataset string) string {
