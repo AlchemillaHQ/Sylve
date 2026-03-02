@@ -286,7 +286,7 @@ func isBenignPipeReadError(err error) bool {
 func (s *Service) BackupWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
 	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(ctx, extraEnv, "backup", "--json", "--snap-name", zeltaSnapshotName("bk"), sourceDataset, zeltaEndpoint)
+	return runZeltaWithEnv(ctx, extraEnv, "backup", "--json", "--incremental", "--snapshot", "--snap-name", zeltaSnapshotName("bk"), sourceDataset, zeltaEndpoint)
 }
 
 func (s *Service) MatchWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {

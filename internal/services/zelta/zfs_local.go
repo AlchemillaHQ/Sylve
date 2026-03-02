@@ -123,28 +123,18 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 		return "", err
 	}
 
-	backupDataset := ""
 	if destinationExists {
-		backupDataset = fmt.Sprintf("%s.pre_restore_%d", destination, time.Now().UTC().UnixNano())
-		if err := s.renameLocalDataset(ctx, destination, backupDataset); err != nil {
-			return "", fmt.Errorf("failed_to_backup_destination_dataset_before_restore: %w", err)
+		// Green-field behavior: replace destination in-place; do not preserve pre-restore copies.
+		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
+			return "", fmt.Errorf("failed_to_remove_destination_dataset_before_restore: %w", err)
 		}
 	}
 
 	if err := s.renameLocalDataset(ctx, restorePath, destination); err != nil {
-		if backupDataset != "" {
-			if rollbackErr := s.renameLocalDataset(ctx, backupDataset, destination); rollbackErr != nil {
-				return "", fmt.Errorf(
-					"failed_to_promote_restored_dataset: %w; failed_to_restore_original_dataset: %v",
-					err,
-					rollbackErr,
-				)
-			}
-		}
 		return "", fmt.Errorf("failed_to_promote_restored_dataset: %w", err)
 	}
 
-	return backupDataset, nil
+	return "", nil
 }
 
 func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, backupDataset string) error {

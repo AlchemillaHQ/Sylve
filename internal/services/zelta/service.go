@@ -38,6 +38,7 @@ var (
 	replicationSizeRegex = regexp.MustCompile(`"replicationSize"\s*:\s*"?([0-9]+)"?`)
 	syncingSizeRegex     = regexp.MustCompile(`syncing:\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\b`)
 	sentSizeRegex        = regexp.MustCompile(`(?im)\b([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?)(i?B?)\s+sent\b`)
+	rotateJobSuffixRegex = regexp.MustCompile(`_bk_j[0-9]+_`)
 )
 
 // backupJobPayload is the goqite queue payload for a backup job
@@ -151,6 +152,8 @@ func (s *Service) backupWithEventProgress(
 		},
 		"backup",
 		"--json",
+		"--incremental",
+		"--snapshot",
 		"--snap-name",
 		zeltaSnapshotName(snapPrefix),
 		sourceDataset,
@@ -164,31 +167,6 @@ func (s *Service) Match(ctx context.Context, target *clusterModels.BackupTarget,
 
 func (s *Service) Rotate(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	return s.RotateWithTarget(ctx, target, sourceDataset, destSuffix)
-}
-
-// RenameTargetDatasetForBootstrap preserves an existing non-replica target dataset
-// by renaming it out of the way so a fresh full backup can proceed
-func (s *Service) RenameTargetDatasetForBootstrap(ctx context.Context, target *clusterModels.BackupTarget, destSuffix string) (string, string, error) {
-	currentDataset := strings.TrimSpace(target.BackupRoot)
-	suffix := strings.TrimSpace(destSuffix)
-	if suffix != "" {
-		currentDataset = currentDataset + "/" + suffix
-	}
-	if currentDataset == "" {
-		return "", "", fmt.Errorf("target_dataset_required")
-	}
-
-	renamedDataset := fmt.Sprintf("%s.pre_sylve_%d", currentDataset, time.Now().UTC().UnixNano())
-
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "rename", currentDataset, renamedDataset)
-
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
-	if err != nil {
-		return currentDataset, renamedDataset, fmt.Errorf("target_dataset_rename_failed: %s: %w", strings.TrimSpace(output), err)
-	}
-
-	return currentDataset, renamedDataset, nil
 }
 
 func (s *Service) RegisterJobs() {
@@ -214,6 +192,84 @@ func (s *Service) RegisterJobs() {
 	s.registerRestoreJob()
 	s.registerRestoreFromTargetJob()
 	s.registerReplicationJob()
+}
+
+func compactRotatedDatasetLeaf(leaf string) string {
+	leaf = strings.TrimSpace(leaf)
+	if leaf == "" {
+		return ""
+	}
+	return rotateJobSuffixRegex.ReplaceAllString(leaf, "_bk_")
+}
+
+func (s *Service) compactLatestRotatedTargetDatasetName(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	destSuffix string,
+) {
+	if target == nil {
+		return
+	}
+
+	remoteDataset := normalizeDatasetPath(strings.TrimSpace(target.BackupRoot))
+	suffix := normalizeDatasetPath(destSuffix)
+	if suffix != "" {
+		remoteDataset = normalizeDatasetPath(remoteDataset + "/" + suffix)
+	}
+	if remoteDataset == "" {
+		return
+	}
+
+	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("remote_dataset", remoteDataset).
+			Msg("compact_rotated_dataset_name_lineage_list_failed")
+		return
+	}
+
+	for idx := len(lineageDatasets) - 1; idx >= 0; idx-- {
+		dataset := normalizeDatasetPath(lineageDatasets[idx])
+		if dataset == "" || dataset == remoteDataset {
+			continue
+		}
+
+		lineage, _, _ := classifyDatasetLineage(relativeDatasetSuffix(target.BackupRoot, dataset))
+		if lineage != "rotated" {
+			continue
+		}
+
+		slashIdx := strings.LastIndex(dataset, "/")
+		if slashIdx <= 0 || slashIdx+1 >= len(dataset) {
+			continue
+		}
+		parent := dataset[:slashIdx]
+		leaf := dataset[slashIdx+1:]
+		compactLeaf := compactRotatedDatasetLeaf(leaf)
+		if compactLeaf == "" || compactLeaf == leaf {
+			continue
+		}
+
+		renamedDataset := parent + "/" + compactLeaf
+		sshArgs := s.buildSSHArgs(target)
+		sshArgs = append(sshArgs, target.SSHHost, "zfs", "rename", dataset, renamedDataset)
+		output, renameErr := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+		if renameErr != nil {
+			logger.L.Warn().
+				Err(renameErr).
+				Str("from_dataset", dataset).
+				Str("to_dataset", renamedDataset).
+				Str("output", strings.TrimSpace(output)).
+				Msg("compact_rotated_dataset_name_failed")
+		} else {
+			logger.L.Info().
+				Str("from_dataset", dataset).
+				Str("to_dataset", renamedDataset).
+				Msg("compact_rotated_dataset_name_completed")
+		}
+		return
+	}
 }
 
 func (s *Service) Run(ctx context.Context) {
@@ -531,52 +587,15 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		rotateOutput, rotateErr := s.RotateWithTargetAndPrefix(ctx, &job.Target, sourceDataset, destSuffix, backupSnapPrefix)
 		output = appendOutput(output, rotateOutput)
 		if rotateErr != nil {
-			if shouldRenameTargetAfterRotateFailure(rotateOutput) {
-				fromDataset, renamedDataset, renameErr := s.RenameTargetDatasetForBootstrap(ctx, &job.Target, destSuffix)
-				if renameErr != nil {
-					output = appendOutput(output, fmt.Sprintf("auto_rename_target_failed: %s", renameErr))
-					runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
-				} else {
-					logger.L.Info().
-						Uint("job_id", job.ID).
-						Str("source", sourceDataset).
-						Str("from_dataset", fromDataset).
-						Str("renamed_dataset", renamedDataset).
-						Msg("backup_auto_target_renamed_for_bootstrap")
-					output = appendOutput(output, fmt.Sprintf("auto_renamed_target_dataset: %s -> %s", fromDataset, renamedDataset))
-
-					retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
-					output = appendOutput(output, retryOutput)
-					runErr = retryErr
-					if runErr == nil {
-						retryOutcome := classifyBackupOutput(retryOutput)
-						if code := retryOutcome.errorCode(); code != "" {
-							runErr = errors.New(code)
-						} else if retryOutcome == backupOutputUpToDate {
-							logger.L.Info().
-								Uint("job_id", job.ID).
-								Str("source", sourceDataset).
-								Str("target", event.TargetEndpoint).
-								Msg("backup_up_to_date_noop_after_target_rename")
-						}
-					}
-					if runErr == nil {
-						logger.L.Info().
-							Uint("job_id", job.ID).
-							Str("source", sourceDataset).
-							Str("target", event.TargetEndpoint).
-							Msg("backup_completed_after_target_rename")
-					}
-				}
-			} else {
-				runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
-			}
+			runErr = fmt.Errorf("backup_auto_rotate_failed: %w", rotateErr)
 		} else {
 			logger.L.Info().
 				Uint("job_id", job.ID).
 				Str("source", sourceDataset).
 				Str("target", event.TargetEndpoint).
 				Msg("backup_auto_rotate_completed")
+
+			s.compactLatestRotatedTargetDatasetName(ctx, &job.Target, destSuffix)
 
 			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
 			output = appendOutput(output, retryOutput)

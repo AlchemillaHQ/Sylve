@@ -572,6 +572,8 @@ func (s *Service) listLocalReplicationLineageDatasets(ctx context.Context, rootD
 			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+"_zelta_"):
 			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+"_bk_"):
+			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
 			add(dataset)
 		}
@@ -612,7 +614,9 @@ func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []strin
 			leaf = dataset[idx+1:]
 		}
 
-		if strings.HasPrefix(leaf, baseLeaf+"_zelta_") || strings.HasPrefix(leaf, baseLeaf+".pre_sylve_") {
+		if strings.HasPrefix(leaf, baseLeaf+"_zelta_") ||
+			strings.HasPrefix(leaf, baseLeaf+"_bk_") ||
+			strings.HasPrefix(leaf, baseLeaf+".pre_sylve_") {
 			outOfBand = append(outOfBand, dataset)
 		}
 	}
@@ -631,6 +635,9 @@ func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []strin
 func replicationLineageBaseLeaf(leaf string) string {
 	leaf = strings.TrimSpace(leaf)
 	if idx := strings.Index(leaf, "_zelta_"); idx > 0 {
+		return leaf[:idx]
+	}
+	if idx := strings.Index(leaf, "_bk_"); idx > 0 {
 		return leaf[:idx]
 	}
 	if idx := strings.Index(leaf, ".pre_sylve_"); idx > 0 {
