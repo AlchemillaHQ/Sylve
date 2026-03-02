@@ -226,6 +226,60 @@ func (s *Service) archiveActiveTargetDatasetForReseed(
 	return currentDataset, archivedDataset, nil
 }
 
+func (s *Service) syncTargetBackupJobMetadata(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	sourceDataset string,
+	destSuffix string,
+) {
+	if job == nil {
+		return
+	}
+
+	target := &job.Target
+	if target == nil || strings.TrimSpace(target.SSHHost) == "" {
+		return
+	}
+
+	remoteDataset := normalizeDatasetPath(strings.TrimSpace(target.BackupRoot))
+	suffix := normalizeDatasetPath(destSuffix)
+	if suffix != "" {
+		remoteDataset = normalizeDatasetPath(remoteDataset + "/" + suffix)
+	}
+	if remoteDataset == "" {
+		return
+	}
+
+	sourceDataset = normalizeDatasetPath(sourceDataset)
+	if sourceDataset == "" && strings.TrimSpace(job.Mode) == clusterModels.BackupJobModeJail {
+		sourceDataset = normalizeDatasetPath(job.JailRootDataset)
+	}
+	if sourceDataset == "" {
+		sourceDataset = normalizeDatasetPath(job.SourceDataset)
+	}
+
+	props := []string{
+		fmt.Sprintf("sylve:backup_job_id=%d", job.ID),
+		fmt.Sprintf("sylve:backup_mode=%s", strings.TrimSpace(job.Mode)),
+		fmt.Sprintf("sylve:backup_source=%s", sourceDataset),
+		fmt.Sprintf("sylve:backup_updated_at=%s", time.Now().UTC().Format(time.RFC3339)),
+	}
+
+	sshArgs := s.buildSSHArgs(target)
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "set")
+	sshArgs = append(sshArgs, props...)
+	sshArgs = append(sshArgs, remoteDataset)
+	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("job_id", job.ID).
+			Str("dataset", remoteDataset).
+			Str("output", strings.TrimSpace(output)).
+			Msg("sync_target_backup_job_metadata_failed")
+	}
+}
+
 func (s *Service) Run(ctx context.Context) {
 	<-ctx.Done()
 }
@@ -576,6 +630,10 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 					Msg("backup_completed_after_reseed")
 			}
 		}
+	}
+
+	if runErr == nil {
+		s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, destSuffix)
 	}
 
 	if job.Mode != clusterModels.BackupJobModeVM && runErr == nil && job.PruneKeepLast > 0 {

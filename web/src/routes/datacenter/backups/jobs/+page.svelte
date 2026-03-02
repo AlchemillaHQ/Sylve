@@ -65,6 +65,7 @@
 	interface RestoreTargetDatasetGroup {
 		baseSuffix: string;
 		label: string;
+		jobLabel: string;
 		representativeDataset: string;
 		kind: 'dataset' | 'jail' | 'vm';
 		jailCtId: number;
@@ -495,8 +496,29 @@
 		return `${count} ${count === 1 ? 'snap' : 'snaps'}`;
 	}
 
+	function extractJobLabel(baseSuffix: string): string {
+		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+)(?:\/|$)/);
+		if (!match) return '';
+		return match[1];
+	}
+
+	function snapshotGenerationTag(snapshot: SnapshotInfo): string {
+		const dataset =
+			(snapshot.dataset && snapshot.dataset.trim()) ||
+			(snapshot.name.includes('@') ? snapshot.name.slice(0, snapshot.name.lastIndexOf('@')) : '');
+		if (!dataset) return '';
+		const leaf = dataset.slice(dataset.lastIndexOf('/') + 1);
+		if (!leaf) return '';
+		if (leaf === 'active') return 'active';
+
+		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9].*)$/);
+		if (marker) return marker[1];
+		return leaf;
+	}
+
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
-		return `${group.label} (${formatSnapshotCount(group.totalSnapshots)})`;
+		const label = group.jobLabel ? `${group.label} · ${group.jobLabel}` : group.label;
+		return `${label} (${formatSnapshotCount(group.totalSnapshots)})`;
 	}
 
 	let restoreTargetDatasetGroups = $derived.by(() => {
@@ -564,6 +586,7 @@
 			out.push({
 				baseSuffix: grouped.baseSuffix,
 				label: displayBase,
+				jobLabel: extractJobLabel(grouped.baseSuffix),
 				representativeDataset: representative.name,
 				kind: grouped.kind,
 				jailCtId: grouped.jailCtId,
@@ -599,10 +622,16 @@
 	);
 
 	let restoreTargetSnapshotOptions = $derived(
-		[...restoreTargetModal.snapshots].reverse().map((snapshot) => ({
-			value: snapshot.name || snapshot.shortName,
-			label: `${formatRestoreSnapshotDate(snapshot)} [${snapshotLineageMarker(snapshot)}]`
-		}))
+		[...restoreTargetModal.snapshots].reverse().map((snapshot) => {
+			const generation = snapshotGenerationTag(snapshot);
+			const marker = snapshotLineageMarker(snapshot);
+			const generationLabel =
+				marker !== 'CURR' && generation && generation !== 'active' ? ` · ${generation}` : '';
+			return {
+				value: snapshot.name || snapshot.shortName,
+				label: `${formatRestoreSnapshotDate(snapshot)} [${marker}${generationLabel}]`
+			};
+		})
 	);
 
 	let selectedRestoreSnapshotDate = $derived.by(() => {
@@ -1630,6 +1659,7 @@
 									onclick={() => (restoreModal.selectedSnapshot = snap.name)}
 									title={snap.name}
 								>
+									{@const generation = snapshotGenerationTag(snap)}
 									<td class="p-2 text-center">
 										{#if restoreModal.selectedSnapshot === snap.name}
 											<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
@@ -1647,6 +1677,11 @@
 												></span>
 											{/if}
 											<span>{formatRestoreSnapshotDate(snap)}</span>
+											{#if snapshotLineageMarker(snap) !== 'CURR' && generation && generation !== 'active'}
+												<code class="rounded bg-background px-1 text-[10px] text-foreground"
+													>{generation}</code
+												>
+											{/if}
 										</span></td
 									>
 									<td class="p-2 text-right text-xs text-muted-foreground"
@@ -1668,9 +1703,7 @@
 					</p>
 					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 						<li>
-							The current dataset will be renamed to <code class="rounded bg-background px-1"
-								>.pre-restore</code
-							>
+							The current dataset is replaced in place with the selected restore point
 						</li>
 						<li>
 							Data from <code class="rounded bg-background px-1"
@@ -1685,10 +1718,7 @@
 							</li>
 						{/if}
 						<li>No deletion on target, all snapshots remain available</li>
-						<li>
-							You can delete the <code class="rounded bg-background px-1">.pre-restore</code> dataset
-							later to reclaim space
-						</li>
+						<li>No `.pre-restore` dataset is kept after restore</li>
 					</ul>
 				</div>
 			{/if}

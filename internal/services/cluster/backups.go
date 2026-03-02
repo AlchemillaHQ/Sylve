@@ -505,10 +505,10 @@ func autoBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset st
 	}
 
 	if jobID == 0 {
-		return base
+		return fmt.Sprintf("%s/job-pending/active", base)
 	}
 
-	return fmt.Sprintf("%s/job-%d", base, jobID)
+	return fmt.Sprintf("%s/job-%d/active", base, jobID)
 }
 
 func autoBackupDestBase(source string) string {

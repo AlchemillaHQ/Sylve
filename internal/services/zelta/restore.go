@@ -407,14 +407,7 @@ func (s *Service) registerRestoreJob() {
 func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 	destSuffix := strings.TrimSpace(job.DestSuffix)
 	if destSuffix == "" {
-		sourceDataset := job.SourceDataset
-		if job.Mode == clusterModels.BackupJobModeJail {
-			sourceDataset = job.JailRootDataset
-		}
-		destSuffix = normalizeDatasetPath(sourceDataset)
-		if job.Mode != clusterModels.BackupJobModeVM {
-			destSuffix = autoDestSuffix(sourceDataset)
-		}
+		destSuffix = fallbackBackupJobDestSuffix(job.ID, job.Mode, job.SourceDataset, job.JailRootDataset)
 	}
 
 	remoteDataset := strings.TrimSpace(job.Target.BackupRoot)
@@ -422,6 +415,24 @@ func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 		remoteDataset = remoteDataset + "/" + destSuffix
 	}
 	return remoteDataset
+}
+
+func fallbackBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset string) string {
+	source := strings.TrimSpace(sourceDataset)
+	if strings.TrimSpace(mode) == clusterModels.BackupJobModeJail {
+		source = strings.TrimSpace(jailRootDataset)
+	}
+
+	base := normalizeDatasetPath(autoDestSuffix(source))
+	if base == "" {
+		base = "backups"
+	}
+
+	if jobID == 0 {
+		return fmt.Sprintf("%s/job-pending/active", base)
+	}
+
+	return fmt.Sprintf("%s/job-%d/active", base, jobID)
 }
 
 func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (string, string, error) {

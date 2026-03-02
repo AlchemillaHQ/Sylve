@@ -114,12 +114,6 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		if kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM {
 			kind, guestID = inferRestoreDatasetKind(suffix)
 		}
-		if kind == clusterModels.BackupJobModeJail && guestID > 0 {
-			baseSuffix = fmt.Sprintf("jails/%d", guestID)
-		}
-		if kind == clusterModels.BackupJobModeVM && guestID > 0 {
-			baseSuffix = fmt.Sprintf("virtual-machines/%d", guestID)
-		}
 
 		jailCTID := uint(0)
 		vmRID := uint(0)
