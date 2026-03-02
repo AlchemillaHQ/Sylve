@@ -229,6 +229,7 @@
 		loading: false,
 		restoring: false,
 		snapshots: [] as SnapshotInfo[],
+		selectedGeneration: '',
 		selectedSnapshot: '',
 		error: ''
 	});
@@ -243,6 +244,7 @@
 		targetId: '',
 		restoreNodeId: '',
 		dataset: '',
+		selectedGeneration: '',
 		snapshot: '',
 		destinationDataset: '',
 		restoreNetwork: true,
@@ -273,71 +275,36 @@
 	const jobColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
-			field: 'mode',
-			title: 'Mode',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-
-				let v = { name: '', icon: '' };
-
-				switch (value) {
-					case 'jail':
-						v = { name: 'Jail', icon: 'hugeicons:prison' };
-						break;
-					case 'vm':
-						v = { name: 'VM', icon: 'material-symbols:monitor-outline' };
-						break;
-					case 'dataset':
-						v = { name: 'Dataset', icon: 'material-symbols:files' };
-						break;
-					default:
-						v = { name: String(value), icon: 'mdi:help' };
-				}
-
-				return renderWithIcon(v.icon, v.name);
-			}
-		},
-		{
-			field: 'enabled',
+			field: 'status',
 			title: 'Status',
-			formatter: (cell: CellComponent) =>
-				cell.getValue()
-					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
-					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
-		},
-		{
-			field: 'lastStatus',
-			title: 'Last Status',
 			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				if (value === 'success') {
-					return renderWithIcon('mdi:check-circle', 'Success', 'text-green-500');
-				} else if (value === 'failed') {
-					return renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500');
-				} else if (value === 'running') {
-					return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
+				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string };
+				const enabled = row.enabled;
+				const lastStatus = row.lastStatus;
+				const icons = [];
+
+				if (!enabled) {
+					icons.push(renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500'));
+				} else {
+					icons.push(renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500'));
 				}
 
-				return value || '-';
+				if (lastStatus === 'success') {
+					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
+				} else if (lastStatus === 'failed') {
+					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
+				} else if (lastStatus === 'running') {
+					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
+				}
+
+				return `
+                    <div class="flex flex-col gap-1">
+                        ${icons.join(' ')}
+                    </div>
+                `;
 			}
 		},
 		{ field: 'name', title: 'Name' },
-		{
-			field: 'targetId',
-			title: 'Target',
-			formatter: (cell: CellComponent) => {
-				const value = Number(cell.getValue());
-				return targetNameById[value] || String(value);
-			}
-		},
-		{
-			field: 'runnerNodeId',
-			title: 'Node',
-			formatter: (cell: CellComponent) => {
-				const value = String(cell.getValue() || '');
-				return nodeNameById[value] || value || '-';
-			}
-		},
 		{
 			field: 'sourceDataset',
 			title: 'Source',
@@ -368,9 +335,22 @@
 			}
 		},
 		{
+			field: 'target',
+			title: 'Target',
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow().getData() as { runnerNodeId?: string; targetId?: number };
+				const nodeId = row.runnerNodeId || '';
+				const targetId = row.targetId || 0;
+				const nodeName = nodeNameById[nodeId] || nodeId || '-';
+				const targetName = targetNameById[targetId] || String(targetId);
+				return `${nodeName} → ${targetName}`;
+			}
+		},
+		{
 			field: 'destSuffix',
 			title: 'Dest Suffix',
-			formatter: (cell: CellComponent) => cell.getValue() || '-'
+			formatter: (cell: CellComponent) => cell.getValue() || '-',
+			visible: false
 		},
 		{
 			field: 'pruneKeepLast',
@@ -430,6 +410,8 @@
 					: job.sourceDataset || job.jailRootDataset || ''
 			).id,
 			id: job.id,
+			status: job.id,
+			target: job.id,
 			name: job.name,
 			targetId: job.targetId,
 			runnerNodeId: job.runnerNodeId || '',
@@ -514,6 +496,129 @@
 		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9a-z._-]+|gen-[0-9a-z._-]+)$/i);
 		if (marker) return marker[1];
 		return leaf;
+	}
+
+	function parseGenerationTimestampMs(tag: string): number | null {
+		const trimmed = (tag || '').trim().toLowerCase();
+		if (!trimmed || trimmed === 'active') return null;
+
+		const token = trimmed.startsWith('gen-')
+			? trimmed.slice(4)
+			: trimmed.startsWith('bk_')
+				? trimmed.slice(3)
+				: trimmed.startsWith('zelta_')
+					? trimmed.slice(6)
+					: '';
+		if (!token) return null;
+
+		// token may include job prefix in bk_j<id>_<ts36>
+		const parts = token.split('_');
+		const candidate = parts.length > 1 ? parts[parts.length - 1] : token;
+		if (!candidate) return null;
+
+		const parsed = Number.parseInt(candidate, 36);
+		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) return null;
+		return parsed;
+	}
+
+	function parseSnapshotTimeMs(snapshot: SnapshotInfo): number | null {
+		const raw = (snapshot.creation || '').trim();
+		if (!raw) return null;
+		const ms = Date.parse(raw);
+		if (!Number.isFinite(ms) || Number.isNaN(ms)) return null;
+		return ms;
+	}
+
+	function buildGenerationAliasMap(snapshots: SnapshotInfo[]): Map<string, string> {
+		const generationTime = new Map<string, number>();
+		for (const snapshot of snapshots) {
+			const generation = snapshotGenerationTag(snapshot);
+			if (!generation || generation === 'active') continue;
+
+			const generationMs = parseGenerationTimestampMs(generation);
+			const snapshotMs = parseSnapshotTimeMs(snapshot);
+			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
+
+			const existing = generationTime.get(generation);
+			if (existing === undefined || inferredMs < existing) {
+				generationTime.set(generation, inferredMs);
+			}
+		}
+
+		const ordered = [...generationTime.entries()].sort((left, right) => {
+			if (left[1] !== right[1]) return left[1] - right[1];
+			return left[0].localeCompare(right[0]);
+		});
+
+		const aliases = new Map<string, string>();
+		for (let index = 0; index < ordered.length; index++) {
+			aliases.set(ordered[index][0], `gen-${index + 1}`);
+		}
+
+		return aliases;
+	}
+
+	function snapshotGenerationKey(snapshot: SnapshotInfo): string {
+		const lineage = snapshot.lineage || 'active';
+		if (lineage === 'active' && !snapshot.outOfBand) {
+			return 'active';
+		}
+		const generation = snapshotGenerationTag(snapshot);
+		return generation && generation.trim() !== '' ? generation : 'active';
+	}
+
+	function generationLabelFromKey(key: string, aliasByTag: Map<string, string>): string {
+		if ((key || '').trim() === '' || key === 'active') return 'Current';
+		return aliasByTag.get(key) || key;
+	}
+
+	function filterSnapshotsByGeneration(
+		snapshots: SnapshotInfo[],
+		generation: string
+	): SnapshotInfo[] {
+		const target = (generation || '').trim();
+		if (!target) return snapshots;
+		return snapshots.filter((snapshot) => snapshotGenerationKey(snapshot) === target);
+	}
+
+	function buildGenerationOptions(
+		snapshots: SnapshotInfo[],
+		aliasByTag: Map<string, string>
+	): Array<{ value: string; label: string }> {
+		if (snapshots.length === 0) return [];
+
+		const groups = new Map<string, { count: number; sortMs: number }>();
+		for (const snapshot of snapshots) {
+			const key = snapshotGenerationKey(snapshot);
+			const generationMs = parseGenerationTimestampMs(key);
+			const snapshotMs = parseSnapshotTimeMs(snapshot);
+			const inferredMs = generationMs ?? snapshotMs ?? Number.MAX_SAFE_INTEGER;
+
+			const existing = groups.get(key);
+			if (!existing) {
+				groups.set(key, { count: 1, sortMs: inferredMs });
+				continue;
+			}
+
+			existing.count += 1;
+			if (inferredMs < existing.sortMs) {
+				existing.sortMs = inferredMs;
+			}
+		}
+
+		const ordered = [...groups.entries()].sort((left, right) => {
+			const leftKey = left[0];
+			const rightKey = right[0];
+			if (leftKey === 'active' && rightKey !== 'active') return -1;
+			if (rightKey === 'active' && leftKey !== 'active') return 1;
+			if (left[1].sortMs !== right[1].sortMs) return left[1].sortMs - right[1].sortMs;
+			return leftKey.localeCompare(rightKey);
+		});
+
+		return ordered.map(([key, meta]) => ({
+			value: key,
+			label: `${generationLabelFromKey(key, aliasByTag)} (${meta.count})`
+		}));
 	}
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
@@ -621,12 +726,34 @@
 		() => selectedRestoreTargetDatasetKind === 'jail' || selectedRestoreTargetDatasetKind === 'vm'
 	);
 
+	let restoreGenerationAliasByTag = $derived.by(() =>
+		buildGenerationAliasMap(restoreModal.snapshots)
+	);
+	let restoreTargetGenerationAliasByTag = $derived.by(() =>
+		buildGenerationAliasMap(restoreTargetModal.snapshots)
+	);
+
+	let restoreGenerationOptions = $derived.by(() =>
+		buildGenerationOptions(restoreModal.snapshots, restoreGenerationAliasByTag)
+	);
+	let restoreTargetGenerationOptions = $derived.by(() =>
+		buildGenerationOptions(restoreTargetModal.snapshots, restoreTargetGenerationAliasByTag)
+	);
+
+	let restoreVisibleSnapshots = $derived.by(() =>
+		filterSnapshotsByGeneration(restoreModal.snapshots, restoreModal.selectedGeneration)
+	);
+	let restoreTargetVisibleSnapshots = $derived.by(() =>
+		filterSnapshotsByGeneration(restoreTargetModal.snapshots, restoreTargetModal.selectedGeneration)
+	);
+
 	let restoreTargetSnapshotOptions = $derived(
-		[...restoreTargetModal.snapshots].reverse().map((snapshot) => {
+		[...restoreTargetVisibleSnapshots].reverse().map((snapshot) => {
 			const generation = snapshotGenerationTag(snapshot);
+			const generationAlias = generationLabelFromKey(generation, restoreTargetGenerationAliasByTag);
 			const marker = snapshotLineageMarker(snapshot);
 			const generationLabel =
-				marker !== 'CURR' && generation && generation !== 'active' ? ` · ${generation}` : '';
+				marker !== 'CURR' && generation && generation !== 'active' ? ` · ${generationAlias}` : '';
 			return {
 				value: snapshot.name || snapshot.shortName,
 				label: `${formatRestoreSnapshotDate(snapshot)} [${marker}${generationLabel}]`
@@ -994,6 +1121,7 @@
 		restoreModal.open = true;
 		restoreModal.loading = true;
 		restoreModal.snapshots = [];
+		restoreModal.selectedGeneration = '';
 		restoreModal.selectedSnapshot = '';
 		restoreModal.error = '';
 		restoreModal.restoring = false;
@@ -1002,13 +1130,34 @@
 			const snaps = await listBackupJobSnapshots(selectedJobId);
 			restoreModal.snapshots = snaps;
 			if (snaps.length > 0) {
-				restoreModal.selectedSnapshot = snaps[snaps.length - 1].name;
+				const latest = snaps[snaps.length - 1];
+				restoreModal.selectedGeneration = snapshotGenerationKey(latest);
+				restoreModal.selectedSnapshot = latest.name;
 			}
 		} catch (e: any) {
 			restoreModal.error = e?.message || 'Failed to load snapshots';
 		} finally {
 			restoreModal.loading = false;
 		}
+	}
+
+	function onRestoreGenerationChange() {
+		const visible = filterSnapshotsByGeneration(
+			restoreModal.snapshots,
+			restoreModal.selectedGeneration
+		);
+		if (visible.length === 0) {
+			restoreModal.selectedSnapshot = '';
+			return;
+		}
+
+		const selectedStillVisible = visible.some(
+			(snapshot) => snapshot.name === restoreModal.selectedSnapshot
+		);
+		if (selectedStillVisible) return;
+
+		const latest = visible[visible.length - 1];
+		restoreModal.selectedSnapshot = latest.name;
 	}
 
 	async function triggerRestore() {
@@ -1070,6 +1219,7 @@
 		restoreTargetModal.targetId = '';
 		restoreTargetModal.restoreNodeId = '';
 		restoreTargetModal.dataset = '';
+		restoreTargetModal.selectedGeneration = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
 		restoreTargetModal.restoreNetwork = true;
@@ -1087,6 +1237,7 @@
 		restoreTargetModal.targetId = targetOptions[0]?.value || '';
 		restoreTargetModal.restoreNodeId = '';
 		restoreTargetModal.dataset = '';
+		restoreTargetModal.selectedGeneration = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
 		restoreTargetModal.restoreNetwork = true;
@@ -1118,6 +1269,7 @@
 		restoreTargetModal.loadingDatasets = true;
 		restoreTargetModal.error = '';
 		restoreTargetModal.dataset = '';
+		restoreTargetModal.selectedGeneration = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.destinationDataset = '';
 		restoreTargetModal.datasets = [];
@@ -1169,6 +1321,7 @@
 		restoreTargetModal.loadingSnapshots = true;
 		restoreTargetModal.loadingMetadata = true;
 		restoreTargetModal.error = '';
+		restoreTargetModal.selectedGeneration = '';
 		restoreTargetModal.snapshot = '';
 		restoreTargetModal.snapshots = [];
 		restoreTargetModal.jailMetadata = null;
@@ -1193,8 +1346,10 @@
 			restoreTargetModal.snapshots = snapshots;
 			if (snapshots.length > 0) {
 				const latest = snapshots[snapshots.length - 1];
+				restoreTargetModal.selectedGeneration = snapshotGenerationKey(latest);
 				restoreTargetModal.snapshot = latest.name || latest.shortName;
 			} else {
+				restoreTargetModal.selectedGeneration = '';
 				restoreTargetModal.snapshot = '';
 			}
 
@@ -1215,6 +1370,25 @@
 			restoreTargetModal.loadingSnapshots = false;
 			restoreTargetModal.loadingMetadata = false;
 		}
+	}
+
+	function onRestoreTargetGenerationChange() {
+		const visible = filterSnapshotsByGeneration(
+			restoreTargetModal.snapshots,
+			restoreTargetModal.selectedGeneration
+		);
+		if (visible.length === 0) {
+			restoreTargetModal.snapshot = '';
+			return;
+		}
+
+		const selectedStillVisible = visible.some(
+			(snapshot) => (snapshot.name || snapshot.shortName) === restoreTargetModal.snapshot
+		);
+		if (selectedStillVisible) return;
+
+		const latest = visible[visible.length - 1];
+		restoreTargetModal.snapshot = latest.name || latest.shortName;
 	}
 
 	async function triggerRestoreFromTarget() {
@@ -1467,16 +1641,16 @@
 						onChange={() => {}}
 						disabled={jails.length === 0}
 					/>
-					{:else}
-						<SimpleSelect
-							label="Virtual Machine"
-							placeholder={vms.length === 0 ? 'No VMs available' : 'Select VM'}
-							options={vmOptions}
-							bind:value={jobModal.selectedVmId}
-							onChange={() => {}}
-							disabled={vms.length === 0}
-						/>
-					{/if}
+				{:else}
+					<SimpleSelect
+						label="Virtual Machine"
+						placeholder={vms.length === 0 ? 'No VMs available' : 'Select VM'}
+						options={vmOptions}
+						bind:value={jobModal.selectedVmId}
+						onChange={() => {}}
+						disabled={vms.length === 0}
+					/>
+				{/if}
 			</div>
 
 			<div class="grid grid-cols-2 gap-4">
@@ -1630,6 +1804,15 @@
 					No snapshots found on the backup target. Run a backup first.
 				</div>
 			{:else}
+				<SimpleSelect
+					label="Generation"
+					placeholder="Select generation"
+					options={restoreGenerationOptions}
+					bind:value={restoreModal.selectedGeneration}
+					onChange={onRestoreGenerationChange}
+					disabled={restoreGenerationOptions.length === 0}
+				/>
+
 				{#if restoreModalHasOutOfBandSnapshots}
 					<div
 						class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700"
@@ -1639,62 +1822,72 @@
 					</div>
 				{/if}
 
-				<div class="max-h-72 overflow-auto rounded-md border">
-					<table class="w-full text-sm">
-						<thead class="sticky top-0 bg-muted">
-							<tr>
-								<th class="w-8 p-2"></th>
-								<th class="p-2 text-left font-medium">Backup Date</th>
-								<th class="p-2 text-right font-medium">Used</th>
-								<th class="p-2 text-right font-medium">Refer</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each [...restoreModal.snapshots].reverse() as snap}
-								<tr
-									class="cursor-pointer border-t transition-colors hover:bg-accent {restoreModal.selectedSnapshot ===
-									snap.name
-										? 'bg-accent'
-										: ''}"
-									onclick={() => (restoreModal.selectedSnapshot = snap.name)}
-									title={snap.name}
-								>
-									{@const generation = snapshotGenerationTag(snap)}
-									<td class="p-2 text-center">
-										{#if restoreModal.selectedSnapshot === snap.name}
-											<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
-										{:else}
-											<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
-										{/if}
-									</td>
-									<td class="p-2 text-xs text-muted-foreground"
-										><span class="inline-flex items-center gap-1">
-											{#if snapshotLineageMarker(snap) !== 'CURR'}
-												{@const lineageIcon = snapshotLineageIcon(snap)}
-												<span
-													class="h-3.5 w-3.5 icon ${lineageIcon.className}"
-													title={`${snapshotLineageLabel(snap)} (${snapshotLineageMarker(snap)})`}
-												></span>
-											{/if}
-											<span>{formatRestoreSnapshotDate(snap)}</span>
-											{#if snapshotLineageMarker(snap) !== 'CURR' && generation && generation !== 'active'}
-												<code class="rounded bg-background px-1 text-[10px] text-foreground"
-													>{generation}</code
-												>
-											{/if}
-										</span></td
-									>
-									<td class="p-2 text-right text-xs text-muted-foreground"
-										>{humanFormatBytes(snap.used)}</td
-									>
-									<td class="p-2 text-right text-xs text-muted-foreground"
-										>{humanFormatBytes(snap.refer)}</td
-									>
+				{#if restoreVisibleSnapshots.length === 0}
+					<div class="rounded-md bg-muted p-4 text-center text-sm text-muted-foreground">
+						No snapshots found in the selected generation.
+					</div>
+				{:else}
+					<div class="max-h-72 overflow-auto rounded-md border">
+						<table class="w-full text-sm">
+							<thead class="sticky top-0 bg-muted">
+								<tr>
+									<th class="w-8 p-2"></th>
+									<th class="p-2 text-left font-medium">Backup Date</th>
+									<th class="p-2 text-right font-medium">Used</th>
+									<th class="p-2 text-right font-medium">Refer</th>
 								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
+							</thead>
+							<tbody>
+								{#each [...restoreVisibleSnapshots].reverse() as snap}
+									{@const generation = snapshotGenerationTag(snap)}
+									{@const generationAlias = generationLabelFromKey(
+										generation,
+										restoreGenerationAliasByTag
+									)}
+									<tr
+										class="cursor-pointer border-t transition-colors hover:bg-accent {restoreModal.selectedSnapshot ===
+										snap.name
+											? 'bg-accent'
+											: ''}"
+										onclick={() => (restoreModal.selectedSnapshot = snap.name)}
+										title={snap.name}
+									>
+										<td class="p-2 text-center">
+											{#if restoreModal.selectedSnapshot === snap.name}
+												<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
+											{:else}
+												<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
+											{/if}
+										</td>
+										<td class="p-2 text-xs text-muted-foreground"
+											><span class="inline-flex items-center gap-1">
+												{#if snapshotLineageMarker(snap) !== 'CURR'}
+													{@const lineageIcon = snapshotLineageIcon(snap)}
+													<span
+														class="h-3.5 w-3.5 icon ${lineageIcon.className}"
+														title={`${snapshotLineageLabel(snap)} (${snapshotLineageMarker(snap)})`}
+													></span>
+												{/if}
+												<span>{formatRestoreSnapshotDate(snap)}</span>
+												{#if snapshotLineageMarker(snap) !== 'CURR' && generation && generation !== 'active'}
+													<code class="rounded bg-background px-1 text-[10px] text-foreground"
+														>{generationAlias}</code
+													>
+												{/if}
+											</span></td
+										>
+										<td class="p-2 text-right text-xs text-muted-foreground"
+											>{humanFormatBytes(snap.used)}</td
+										>
+										<td class="p-2 text-right text-xs text-muted-foreground"
+											>{humanFormatBytes(snap.refer)}</td
+										>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
 
 				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
 					<p class="font-medium text-yellow-600 dark:text-yellow-400">
@@ -1702,9 +1895,7 @@
 						Restore Warning
 					</p>
 					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
-						<li>
-							The current dataset is replaced in place with the selected restore point
-						</li>
+						<li>The current dataset is replaced in place with the selected restore point</li>
 						<li>
 							Data from <code class="rounded bg-background px-1"
 								>{selectedRestoreSnapshotDate || restoreModal.selectedSnapshot}</code
@@ -1813,19 +2004,33 @@
 				</div>
 			{/if}
 
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+				<SimpleSelect
+					label="Generation"
+					placeholder={restoreTargetModal.loadingSnapshots
+						? 'Loading generations...'
+						: restoreTargetGenerationOptions.length === 0
+							? 'No generations found'
+							: 'Select generation'}
+					options={restoreTargetGenerationOptions}
+					bind:value={restoreTargetModal.selectedGeneration}
+					onChange={onRestoreTargetGenerationChange}
+					disabled={restoreTargetModal.loadingSnapshots ||
+						restoreTargetGenerationOptions.length === 0}
+				/>
+
 				<SimpleSelect
 					label="Snapshot"
 					placeholder={restoreTargetModal.loadingSnapshots
 						? 'Loading snapshots...'
-						: restoreTargetModal.snapshots.length === 0
+						: restoreTargetVisibleSnapshots.length === 0
 							? 'No snapshots found'
 							: 'Select snapshot'}
 					options={restoreTargetSnapshotOptions}
 					bind:value={restoreTargetModal.snapshot}
 					onChange={() => {}}
 					disabled={restoreTargetModal.loadingSnapshots ||
-						restoreTargetModal.snapshots.length === 0}
+						restoreTargetVisibleSnapshots.length === 0}
 				/>
 
 				<CustomValueInput

@@ -546,6 +546,11 @@ func reconcileRestoredVMSnapshots(
 		if snapshotName == "" {
 			continue
 		}
+
+		if !isBackupSnapshotShortName(snapshotName) {
+			continue
+		}
+
 		if _, exists := insertedByName[snapshotName]; exists {
 			continue
 		}

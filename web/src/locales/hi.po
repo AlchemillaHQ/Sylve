@@ -920,7 +920,6 @@ msgstr "समाप्ति समय"
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Node"
 msgstr "नोड"
@@ -1830,7 +1829,6 @@ msgstr "Samba शेयर बनाएँ"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dataset"
 msgstr "डेटासेट"
 
@@ -6991,7 +6989,6 @@ msgstr "{0} को टॉगल करने में विफल रहा"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
@@ -7635,7 +7632,6 @@ msgstr ""
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr ""
 
@@ -7652,7 +7648,6 @@ msgstr ""
 msgid "Schedule"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Status"
 msgstr ""
@@ -8163,9 +8158,8 @@ msgstr ""
 msgid "<0/> Restore Warning"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "The current dataset will be renamed to <0/>"
-msgstr ""
+#~ msgid "The current dataset will be renamed to <0/>"
+#~ msgstr ""
 
 #~ msgid "Data from <0/> will be restored in its place"
 #~ msgstr ""
@@ -8186,11 +8180,10 @@ msgstr ""
 msgid "<0/> Restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid ""
-"You can delete the <0/> dataset\n"
-"later to reclaim space"
-msgstr ""
+#~ msgid ""
+#~ "You can delete the <0/> dataset\n"
+#~ "later to reclaim space"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Prune"
@@ -8326,8 +8319,9 @@ msgstr ""
 msgid "OOB Restore"
 msgstr ""
 
-#~ msgid "Current"
-#~ msgstr ""
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Current"
+msgstr ""
 
 #~ msgid "OOB lineage"
 #~ msgstr ""
@@ -8625,53 +8619,8 @@ msgstr ""
 #~ msgid "Sylve is a lightweight virtualization platform providing a <0>seamless experience for FreeBSD</0>. It integrates <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3> through a high-performance Go backend and a modern SvelteKit frontend."
 #~ msgstr ""
 
-#~ msgid ""
-#~ "Sylve is a lightweight, unified management interface designed to harness the full power of <0>FreeBSD virtualization</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
-#~ "and a responsive SvelteKit frontend."
+#~ msgid "Sylve is a lightweight, unified management interface designed to"
 #~ msgstr ""
-
-#~ msgid ""
-#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
-#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for <1>Bhyve</1>, <2>Jails</2>, and <3>ZFS</3>, Sylve simplifies complex infrastructure management through a high-performance Go backend\n"
-#~ "and a responsive SvelteKit frontend."
-#~ msgstr ""
-
-#~ msgid ""
-#~ "Sylve is a lightweight, unified management interface designed to harness the full power of\n"
-#~ "the <0>FreeBSD ecosystem</0>. By providing a streamlined control plane for Bhyve,\n"
-#~ "Jails, ZFS and more. Sylve simplifies complex infrastructure management through a\n"
-#~ "high-performance Go backend and a responsive SvelteKit frontend."
-#~ msgstr ""
-
-#~ msgid ""
-#~ "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
-#~ "Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a\n"
-#~ "high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
-#~ "infrastructure simple."
-#~ msgstr ""
-
-#: src/lib/components/custom/About.svelte
-msgid "Released under the <0>BSD 2-Clause License</0>"
-msgstr ""
-
-#: src/lib/components/custom/About.svelte
-msgid ""
-"Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
-"Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a\n"
-"high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
-"infrastructure simple."
-msgstr ""
-
-#~ msgid ""
-#~ "Sylve is a simple and lightweight control plane for the <0>FreeBSD ecosystem</0>,\n"
-#~ "unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by\n"
-#~ "a high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
-#~ "infrastructure simple."
-#~ msgstr ""
-
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Restore Jail Network Config"
-msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8691,12 +8640,20 @@ msgid "Unable to resolve a VM dataset root for the selected VM"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore job started - check events for progress"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "No VMs available"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select VM"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep Last Snapshots"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8709,7 +8666,19 @@ msgid "RID: <0/>"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "The current dataset is replaced in place with the selected restore point"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No `.pre-restore` dataset is kept after restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore VM Network Config"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore Jail Network Config"
 msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -8720,142 +8689,44 @@ msgstr ""
 msgid "Pools: <0/>"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Force Deleting Virtual Machine"
+#: src/routes/datacenter/+layout.svelte
+msgid "Replication"
 msgstr ""
 
-#. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.rid
-#. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
+#: src/routes/datacenter/+layout.svelte
+msgid "Policies"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Error force deleting VM"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM force deleted with warnings"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM force deleted"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Force Delete"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Force Delete VM?"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "This will force delete VM"
-msgstr ""
-
-#~ msgid ""
-#~ "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM\n"
-#~ "network objects. Partial failures will be tolerated."
-#~ msgstr ""
-
-#~ msgid "Cluster Backup Target"
-#~ msgstr ""
-
-#~ msgid "Cluster Backup Target - Validate"
-#~ msgstr ""
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Validating"
-msgstr ""
-
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Restore job started - check events for progress"
-msgstr ""
-
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Keep Last Snapshots"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/About.svelte
 msgid ""
-"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
-"VM network objects. Partial failures will be tolerated."
+"Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying\n"
+"Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a\n"
+"high-performance Go backend and a responsive SvelteKit frontend, it makes complex\n"
+"infrastructure simple."
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Error copied to clipboard"
+#: src/lib/components/custom/About.svelte
+msgid "Released under the <0>BSD 2-Clause License</0>"
 msgstr ""
 
-#: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Failed to copy error"
-msgstr ""
-
-#~ msgid "Event Error"
-#~ msgstr ""
-
-#~ msgid "#{0} Error Details"
-#~ msgstr ""
-
-#~ msgid "#{0} Job - Error Details"
-#~ msgstr ""
-
-#. placeholder {0}: selectedEvent.id
-#. placeholder {0}: selectedEvent.id
-#: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Event #{0}"
-msgstr ""
-
-#. placeholder {0}: errorModal.id
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "#{0} Event - Error Details"
-msgstr ""
-
-#~ msgid "Jail Backup"
-#~ msgstr ""
-
-#: src/routes/datacenter/backups/events/+page.svelte
-msgid "Backup"
-msgstr ""
-
-#~ msgid "Test"
-#~ msgstr ""
-
-#~ msgid "Cluster Backup Job"
-#~ msgstr ""
-
-#. placeholder {0}: vm.current.name
-#. placeholder {1}: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
-msgstr ""
-
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "VM shutdown started"
+#: src/lib/components/custom/Dialog/Alert.svelte
+msgid "Processing..."
 msgstr ""
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "Create Backup Root"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Network - Detach"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Network - Attach"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update Description"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -8871,99 +8742,58 @@ msgid "DC Backup Target"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DC Backup Job - Run"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DC Backup Job"
 msgstr ""
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Error copied to clipboard"
 msgstr ""
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Leader cannot exit when followers are present"
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to copy error"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "ZFS Snapshot Name"
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Snapshot name is required"
+#. placeholder {0}: errorModal.id
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "#{0} Event - Error Details"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Snapshot created"
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validating"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Snapshot rollback started"
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Create Backup Root"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Failed to rollback snapshot"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Generation"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Snapshot deleted"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select generation"
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Failed to delete snapshot"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No snapshots found in the selected generation."
 msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Rollback"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading generations..."
 msgstr ""
 
-#~ msgid "Rollback restores the selected snapshot and removes snapshots created after it."
-#~ msgstr ""
-
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-msgid "New Jail Snapshot"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Optional note about why this snapshot was taken"
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Creating..."
-msgstr ""
-
-#. placeholder {0}: selectedSnapshot.name
-#. placeholder {0}: selectedSnapshot.name
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
-msgstr ""
-
-#. placeholder {0}: selectedSnapshot.name
-#. placeholder {0}: selectedSnapshot.name
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
-msgstr ""
-
-#: src/lib/components/custom/Dialog/Alert.svelte
-msgid "Processing..."
-msgstr ""
-
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Rolling Back"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No generations found"
 msgstr ""
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
@@ -8982,11 +8812,68 @@ msgstr ""
 msgid "Jail started"
 msgstr ""
 
-#~ msgid "KeyC"
-#~ msgstr ""
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "ZFS Snapshot Name"
+msgstr ""
 
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "VM serial terminal"
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot name is required"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot created"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot rollback started"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to rollback snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Snapshot deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Failed to delete snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "New Jail Snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Clean Slate"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Optional note about why this snapshot was taken"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Creating..."
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rolling Back"
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
 msgstr ""
 
 #: src/routes/[node]/terminal/+page.svelte
@@ -8997,51 +8884,21 @@ msgstr ""
 msgid "Jail terminal"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "New VM Snapshot"
-msgstr ""
+#~ msgid "TargetID"
+#~ msgstr ""
 
-#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-msgid "Clean Slate"
-msgstr ""
+#~ msgid "NodeID"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "VM Network - Detach"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "VM Network - Attach"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "DC Backup Job - Run"
-msgstr ""
-
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail - Update Description"
-msgstr ""
-
-#: src/routes/datacenter/+layout.svelte
-msgid "Replication"
-msgstr ""
-
-#: src/routes/datacenter/+layout.svelte
-msgid "Policies"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
 msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload"
 msgstr ""
 
-#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Source Node"
@@ -9163,51 +9020,4 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Weight"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "All policies"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Failed to load progress"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Output copied to clipboard"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Failed to copy output"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Target Node"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Message"
-msgstr ""
-
-#. placeholder {0}: event.policyId
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Policy {0}"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Output"
-msgstr ""
-
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Replication Progress"
-msgstr ""
-
-#. placeholder {0}: outputModal.title
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Event Output - {0}"
-msgstr ""
-
-#. placeholder {0}: errorModal.title
-#: src/routes/datacenter/replication/events/+page.svelte
-msgid "Event Error - {0}"
 msgstr ""

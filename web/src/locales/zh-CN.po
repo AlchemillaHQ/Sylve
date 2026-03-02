@@ -891,7 +891,6 @@ msgstr "结束时间"
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Node"
 msgstr "节点"
@@ -1808,7 +1807,6 @@ msgstr "创建 Samba 共享"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dataset"
 msgstr "数据集"
 
@@ -6160,7 +6158,6 @@ msgstr "{0} 切换失败"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
@@ -6800,7 +6797,6 @@ msgstr ""
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr ""
 
@@ -6817,7 +6813,6 @@ msgstr ""
 msgid "Schedule"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Status"
 msgstr ""
@@ -7331,9 +7326,8 @@ msgstr ""
 msgid "<0/> Restore Warning"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "The current dataset will be renamed to <0/>"
-msgstr ""
+#~ msgid "The current dataset will be renamed to <0/>"
+#~ msgstr ""
 
 #~ msgid "Data from <0/> will be restored in its place"
 #~ msgstr ""
@@ -7354,11 +7348,10 @@ msgstr ""
 msgid "<0/> Restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid ""
-"You can delete the <0/> dataset\n"
-"later to reclaim space"
-msgstr ""
+#~ msgid ""
+#~ "You can delete the <0/> dataset\n"
+#~ "later to reclaim space"
+#~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Prune"
@@ -7494,8 +7487,9 @@ msgstr ""
 msgid "OOB Restore"
 msgstr ""
 
-#~ msgid "Current"
-#~ msgstr ""
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Current"
+msgstr ""
 
 #~ msgid "OOB lineage"
 #~ msgstr ""
@@ -8378,4 +8372,42 @@ msgstr ""
 #. placeholder {0}: errorModal.title
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Event Error - {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "The current dataset is replaced in place with the selected restore point"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No `.pre-restore` dataset is kept after restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Generation"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select generation"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No snapshots found in the selected generation."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading generations..."
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No generations found"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "TargetID"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "NodeID"
 msgstr ""

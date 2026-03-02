@@ -921,7 +921,6 @@ msgstr "End Time"
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Node"
 msgstr "Node"
@@ -1841,7 +1840,6 @@ msgstr "Create Samba Share"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Dataset"
 msgstr "Dataset"
 
@@ -7025,7 +7023,6 @@ msgstr "Failed to toggle {0}"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
@@ -7671,7 +7668,6 @@ msgstr "Snapshot (optional)"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr "Mode"
 
@@ -7688,7 +7684,6 @@ msgstr "Source"
 msgid "Schedule"
 msgstr "Schedule"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Status"
 msgstr "Last Status"
@@ -8199,9 +8194,8 @@ msgstr "Refer"
 msgid "<0/> Restore Warning"
 msgstr "<0/> Restore Warning"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "The current dataset will be renamed to <0/>"
-msgstr "The current dataset will be renamed to <0/>"
+#~ msgid "The current dataset will be renamed to <0/>"
+#~ msgstr "The current dataset will be renamed to <0/>"
 
 #~ msgid "Data from <0/> will be restored in its place"
 #~ msgstr "Data from <0/> will be restored in its place"
@@ -8222,13 +8216,12 @@ msgstr "<0/> Restoring..."
 msgid "<0/> Restore"
 msgstr "<0/> Restore"
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid ""
-"You can delete the <0/> dataset\n"
-"later to reclaim space"
-msgstr ""
-"You can delete the <0/> dataset\n"
-"later to reclaim space"
+#~ msgid ""
+#~ "You can delete the <0/> dataset\n"
+#~ "later to reclaim space"
+#~ msgstr ""
+#~ "You can delete the <0/> dataset\n"
+#~ "later to reclaim space"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Prune"
@@ -8366,8 +8359,9 @@ msgstr "The destination dataset will be replaced if it already exists."
 msgid "OOB Restore"
 msgstr "OOB Restore"
 
-#~ msgid "Current"
-#~ msgstr "Current"
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Current"
+msgstr "Current"
 
 #~ msgid "OOB lineage"
 #~ msgstr "OOB lineage"
@@ -9283,3 +9277,39 @@ msgstr "Event Output - {0}"
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Event Error - {0}"
 msgstr "Event Error - {0}"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "The current dataset is replaced in place with the selected restore point"
+msgstr "The current dataset is replaced in place with the selected restore point"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No `.pre-restore` dataset is kept after restore"
+msgstr "No `.pre-restore` dataset is kept after restore"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Generation"
+msgstr "Generation"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Select generation"
+msgstr "Select generation"
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No snapshots found in the selected generation."
+msgstr "No snapshots found in the selected generation."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Loading generations..."
+msgstr "Loading generations..."
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "No generations found"
+msgstr "No generations found"
+
+#~ msgid "TargetID"
+#~ msgstr "TargetID"
+
+#~ msgid "NodeID"
+#~ msgstr "NodeID"
