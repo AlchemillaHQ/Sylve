@@ -11,6 +11,9 @@ build:
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
 	go build -o $(BIN_DIR)/$(BINARY_NAME)-$(ARCH) cmd/sylve/main.go
 
+test:
+	go test ./...
+
 web-build:
 	npm install --prefix web
 	npm run build --prefix web
