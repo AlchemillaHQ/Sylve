@@ -33,8 +33,6 @@ jobs:
             vm_arch: x86_64
           - arch: arm64
             vm_arch: aarch64
-          - arch: riscv64
-            vm_arch: riscv64
 
     steps:
       - uses: actions/checkout@v4
