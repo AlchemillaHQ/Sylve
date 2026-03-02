@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattn/go-isatty"
 	"github.com/natefinch/lumberjack"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -48,7 +49,7 @@ func InitLogger(dataDir string, level int8) {
 	consoleWriter := zerolog.ConsoleWriter{
 		Out:        os.Stderr,
 		TimeFormat: "2006/01/02 15:04:05",
-		NoColor:    false,
+		NoColor:    !isatty.IsTerminal(os.Stderr.Fd()),
 	}
 
 	fileWriter := &lumberjack.Logger{
