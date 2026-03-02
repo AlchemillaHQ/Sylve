@@ -100,7 +100,7 @@ func (s *Service) CreateJailSnapshot(
 	}
 
 	snapToken := sanitizeSnapshotToken(name)
-	snapshotName := fmt.Sprintf("sylve_%s_%d", snapToken, time.Now().UTC().UnixMilli())
+	snapshotName := fmt.Sprintf("sjs_%s_%d", snapToken, time.Now().UTC().UnixMilli())
 
 	createdSnapshot, err := rootFS.Snapshot(ctx, snapshotName, true)
 	if err != nil {

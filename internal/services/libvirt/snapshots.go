@@ -93,7 +93,7 @@ func (s *Service) CreateVMSnapshot(
 	}
 
 	snapToken := sanitizeVMSnapshotToken(name)
-	snapshotName := fmt.Sprintf("sylve_%s_%d", snapToken, time.Now().UTC().UnixMilli())
+	snapshotName := fmt.Sprintf("svms_%s_%d", snapToken, time.Now().UTC().UnixMilli())
 
 	createdRoots := make([]string, 0, len(rootDatasets))
 	for _, rootDataset := range rootDatasets {
