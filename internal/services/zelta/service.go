@@ -146,6 +146,8 @@ func (s *Service) backupWithEventProgress(
 		},
 		"backup",
 		"--json",
+		"--snap-name",
+		zeltaSnapshotName("bk"),
 		sourceDataset,
 		zeltaEndpoint,
 	)

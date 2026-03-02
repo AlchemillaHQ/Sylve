@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -29,6 +30,11 @@ import (
 )
 
 const replicationJobQueueName = "zelta-replication-run"
+
+const (
+	defaultReplicationPruneKeepLast  = 64
+	defaultReplicationLineageKeepOld = 2
+)
 
 type replicationJobPayload struct {
 	PolicyID uint `json:"policy_id"`
@@ -302,7 +308,7 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 			if err != nil {
 				if isReplicationTargetModifiedError(err) {
 					_ = s.AppendReplicationEventOutput(event.ID, "target_dataset_diverged_attempting_zelta_rotate")
-					rotateOut, rotateErr := s.RotateWithTarget(ctx, targetSpec, sourceDataset, destSuffix)
+					rotateOut, rotateErr := s.RotateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
 					if strings.TrimSpace(rotateOut) != "" {
 						_ = s.AppendReplicationEventOutput(event.ID, rotateOut)
 					}
@@ -333,6 +339,16 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 					runErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
 					break
 				}
+			}
+
+			if retentionErr := s.applyReplicationRetention(ctx, targetSpec, sourceDataset, destSuffix, event.ID); retentionErr != nil {
+				logger.L.Warn().
+					Err(retentionErr).
+					Uint("policy_id", policy.ID).
+					Str("source_dataset", sourceDataset).
+					Str("target_node_id", targetNodeID).
+					Msg("replication_retention_post_run_failed")
+				_ = s.AppendReplicationEventOutput(event.ID, fmt.Sprintf("replication_retention_warning: %v", retentionErr))
 			}
 		}
 
@@ -368,6 +384,261 @@ func splitDatasetForTarget(dataset string) (string, string) {
 	return dataset[:idx], dataset[idx+1:]
 }
 
+func targetDatasetPath(root, suffix string) string {
+	root = normalizeDatasetPath(root)
+	suffix = normalizeDatasetPath(suffix)
+	if root == "" {
+		return suffix
+	}
+	if suffix == "" {
+		return root
+	}
+	return root + "/" + suffix
+}
+
+func (s *Service) applyReplicationRetention(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	sourceDataset string,
+	destSuffix string,
+	eventID uint,
+) error {
+	if target == nil {
+		return fmt.Errorf("replication_target_required")
+	}
+	retentionErrors := make([]string, 0)
+
+	pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(
+		ctx,
+		target,
+		sourceDataset,
+		destSuffix,
+		defaultReplicationPruneKeepLast,
+	)
+	if strings.TrimSpace(pruneOutput) != "" {
+		_ = s.AppendReplicationEventOutput(eventID, pruneOutput)
+	}
+	if pruneErr != nil {
+		retentionErrors = append(retentionErrors, fmt.Sprintf("source_prune_scan_failed: %v", pruneErr))
+	} else if len(pruneCandidates) > 0 {
+		if err := s.DestroySnapshots(ctx, pruneCandidates); err != nil {
+			retentionErrors = append(retentionErrors, fmt.Sprintf("source_prune_destroy_failed: %v", err))
+		} else {
+			_ = s.AppendReplicationEventOutput(eventID, fmt.Sprintf("source_prune_completed: %d", len(pruneCandidates)))
+		}
+	}
+
+	targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(
+		ctx,
+		target,
+		sourceDataset,
+		destSuffix,
+		defaultReplicationPruneKeepLast,
+	)
+	if strings.TrimSpace(targetPruneOutput) != "" {
+		_ = s.AppendReplicationEventOutput(eventID, targetPruneOutput)
+	}
+	if targetPruneErr != nil {
+		retentionErrors = append(retentionErrors, fmt.Sprintf("target_prune_scan_failed: %v", targetPruneErr))
+	} else if len(targetPruneCandidates) > 0 {
+		if err := s.DestroyTargetSnapshotsByName(ctx, target, targetPruneCandidates); err != nil {
+			retentionErrors = append(retentionErrors, fmt.Sprintf("target_prune_destroy_failed: %v", err))
+		} else {
+			_ = s.AppendReplicationEventOutput(eventID, fmt.Sprintf("target_prune_completed: %d", len(targetPruneCandidates)))
+		}
+	}
+
+	if err := s.trimLocalReplicationLineageDatasets(ctx, sourceDataset, defaultReplicationLineageKeepOld); err != nil {
+		retentionErrors = append(retentionErrors, fmt.Sprintf("local_lineage_trim_failed: %v", err))
+	}
+
+	targetDataset := targetDatasetPath(target.BackupRoot, destSuffix)
+	if err := s.trimRemoteReplicationLineageDatasets(ctx, target, targetDataset, defaultReplicationLineageKeepOld); err != nil {
+		retentionErrors = append(retentionErrors, fmt.Sprintf("target_lineage_trim_failed: %v", err))
+	}
+
+	if len(retentionErrors) > 0 {
+		return errors.New(strings.Join(retentionErrors, "; "))
+	}
+
+	return nil
+}
+
+func (s *Service) trimLocalReplicationLineageDatasets(
+	ctx context.Context,
+	rootDataset string,
+	keepOutOfBand int,
+) error {
+	lineageDatasets, err := s.listLocalReplicationLineageDatasets(ctx, rootDataset)
+	if err != nil {
+		return err
+	}
+
+	staleDatasets := staleReplicationLineageDatasets(rootDataset, lineageDatasets, keepOutOfBand)
+	for _, dataset := range staleDatasets {
+		if err := s.destroyLocalDatasetWithRetry(ctx, dataset, true, 5, 500*time.Millisecond); err != nil {
+			return fmt.Errorf("destroy_local_lineage_dataset_%s_failed: %w", dataset, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) trimRemoteReplicationLineageDatasets(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	remoteDataset string,
+	keepOutOfBand int,
+) error {
+	if target == nil {
+		return fmt.Errorf("replication_target_required")
+	}
+
+	lineageDatasets, err := s.listRemoteLineageDatasets(ctx, target, remoteDataset)
+	if err != nil {
+		return err
+	}
+
+	staleDatasets := staleReplicationLineageDatasets(remoteDataset, lineageDatasets, keepOutOfBand)
+	for _, dataset := range staleDatasets {
+		script := fmt.Sprintf(
+			`set -eu
+ds=%q
+if zfs list -H "$ds" >/dev/null 2>&1; then
+  zfs destroy -r -f "$ds"
+fi`,
+			dataset,
+		)
+		if _, err := s.runTargetSSH(ctx, target, "sh", "-c", script); err != nil {
+			return fmt.Errorf("destroy_remote_lineage_dataset_%s_failed: %w", dataset, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) listLocalReplicationLineageDatasets(ctx context.Context, rootDataset string) ([]string, error) {
+	rootDataset = normalizeDatasetPath(rootDataset)
+	if rootDataset == "" {
+		return nil, fmt.Errorf("root_dataset_required")
+	}
+
+	parent := rootDataset
+	leaf := rootDataset
+	if idx := strings.LastIndex(rootDataset, "/"); idx > 0 {
+		parent = rootDataset[:idx]
+		leaf = rootDataset[idx+1:]
+	}
+	baseLeaf := replicationLineageBaseLeaf(leaf)
+
+	datasets, err := s.listLocalFilesystemDatasets(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	results := make([]string, 0)
+	add := func(dataset string) {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == "" {
+			return
+		}
+		if _, ok := seen[dataset]; ok {
+			return
+		}
+		seen[dataset] = struct{}{}
+		results = append(results, dataset)
+	}
+
+	for _, dataset := range datasets {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == "" {
+			continue
+		}
+		if dataset == rootDataset {
+			add(dataset)
+			continue
+		}
+		if !strings.HasPrefix(dataset, parent+"/") {
+			continue
+		}
+		if datasetDepth(dataset) != datasetDepth(rootDataset) {
+			continue
+		}
+
+		suffix := strings.TrimPrefix(dataset, parent+"/")
+		switch {
+		case suffix == baseLeaf:
+			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+"_zelta_"):
+			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
+			add(dataset)
+		}
+	}
+
+	if len(results) == 0 {
+		return []string{rootDataset}, nil
+	}
+
+	return results, nil
+}
+
+func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []string, keepOutOfBand int) []string {
+	rootDataset = normalizeDatasetPath(rootDataset)
+	if rootDataset == "" || len(lineageDatasets) == 0 {
+		return nil
+	}
+
+	if keepOutOfBand < 0 {
+		keepOutOfBand = 0
+	}
+
+	rootLeaf := rootDataset
+	if idx := strings.LastIndex(rootDataset, "/"); idx >= 0 && idx+1 < len(rootDataset) {
+		rootLeaf = rootDataset[idx+1:]
+	}
+	baseLeaf := replicationLineageBaseLeaf(rootLeaf)
+
+	outOfBand := make([]string, 0)
+	for _, dataset := range lineageDatasets {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == "" || dataset == rootDataset {
+			continue
+		}
+
+		leaf := dataset
+		if idx := strings.LastIndex(dataset, "/"); idx >= 0 && idx+1 < len(dataset) {
+			leaf = dataset[idx+1:]
+		}
+
+		if strings.HasPrefix(leaf, baseLeaf+"_zelta_") || strings.HasPrefix(leaf, baseLeaf+".pre_sylve_") {
+			outOfBand = append(outOfBand, dataset)
+		}
+	}
+
+	if len(outOfBand) <= keepOutOfBand {
+		return nil
+	}
+
+	sort.SliceStable(outOfBand, func(i, j int) bool {
+		return outOfBand[i] > outOfBand[j]
+	})
+
+	return outOfBand[keepOutOfBand:]
+}
+
+func replicationLineageBaseLeaf(leaf string) string {
+	leaf = strings.TrimSpace(leaf)
+	if idx := strings.Index(leaf, "_zelta_"); idx > 0 {
+		return leaf[:idx]
+	}
+	if idx := strings.Index(leaf, ".pre_sylve_"); idx > 0 {
+		return leaf[:idx]
+	}
+	return leaf
+}
+
 func isReplicationTargetModifiedError(err error) bool {
 	if err == nil {
 		return false
@@ -398,6 +669,8 @@ func (s *Service) replicateWithEventProgress(
 		},
 		"backup",
 		"--json",
+		"--snap-name",
+		zeltaSnapshotName("ha"),
 		sourceDataset,
 		zeltaEndpoint,
 	)

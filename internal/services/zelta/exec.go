@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -32,6 +33,14 @@ var zeltaFS = assets.ZeltaFiles
 var zfsSnapshotNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:/-]+@[A-Za-z0-9._:-]+$`)
 
 var ZeltaInstallDir string
+
+func zeltaSnapshotName(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = "zl"
+	}
+	return fmt.Sprintf("%s_%s", prefix, time.Now().UTC().Format("2006-01-02_15.04.05.000"))
+}
 
 func GetZeltaInstallDir() (string, error) {
 	if ZeltaInstallDir != "" {
@@ -277,7 +286,7 @@ func isBenignPipeReadError(err error) bool {
 func (s *Service) BackupWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
 	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
 	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(ctx, extraEnv, "backup", "--json", sourceDataset, zeltaEndpoint)
+	return runZeltaWithEnv(ctx, extraEnv, "backup", "--json", "--snap-name", zeltaSnapshotName("bk"), sourceDataset, zeltaEndpoint)
 }
 
 func (s *Service) MatchWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
@@ -287,9 +296,27 @@ func (s *Service) MatchWithTarget(ctx context.Context, target *clusterModels.Bac
 }
 
 func (s *Service) RotateWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string) (string, error) {
+	return s.RotateWithTargetAndPrefix(ctx, target, sourceDataset, destSuffix, "bk")
+}
+
+func (s *Service) RotateWithTargetAndPrefix(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	sourceDataset, destSuffix string,
+	snapPrefix string,
+) (string, error) {
 	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
 	extraEnv := s.buildZeltaEnv(target)
-	return runZeltaWithEnv(ctx, extraEnv, "rotate", "--json", sourceDataset, zeltaEndpoint)
+	return runZeltaWithEnv(
+		ctx,
+		extraEnv,
+		"rotate",
+		"--json",
+		"--snap-name",
+		zeltaSnapshotName(snapPrefix),
+		sourceDataset,
+		zeltaEndpoint,
+	)
 }
 
 func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string, keepLast int) ([]string, string, error) {
