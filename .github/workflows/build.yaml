@@ -1,11 +1,14 @@
 name: Build
 on: [push]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+
+      - name: Build on FreeBSD
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
@@ -14,4 +17,25 @@ jobs:
             export GOPATH=$HOME/go
             export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
             chmod +x scripts/build-deps-check.sh
-            make
+            make build-all
+
+      - name: Verify outputs
+        run: ls -lah bin
+
+      - name: Upload amd64
+        uses: actions/upload-artifact@v4
+        with:
+          name: sylve-amd64
+          path: bin/sylve-amd64
+
+      - name: Upload arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: sylve-arm64
+          path: bin/sylve-arm64
+
+      - name: Upload riscv64
+        uses: actions/upload-artifact@v4
+        with:
+          name: sylve-riscv64
+          path: bin/sylve-riscv64
