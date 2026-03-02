@@ -28,6 +28,7 @@ import (
 )
 
 var maxSafeJSInt = big.NewInt(9007199254740991)
+var maxBackupJobIDRange = big.NewInt(1000000000)
 
 // BackupJobInput represents the input for creating/updating a backup job.
 type BackupJobInput struct {
@@ -505,10 +506,17 @@ func autoBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset st
 	}
 
 	if jobID == 0 {
-		return fmt.Sprintf("%s/job-pending/active", base)
+		return fmt.Sprintf("%s/j-pending/active", base)
 	}
 
-	return fmt.Sprintf("%s/job-%d/active", base, jobID)
+	return fmt.Sprintf("%s/j-%s/active", base, compactBackupJobToken(jobID))
+}
+
+func compactBackupJobToken(jobID uint) string {
+	if jobID == 0 {
+		return "0"
+	}
+	return strings.ToLower(strconv.FormatUint(uint64(jobID), 36))
 }
 
 func autoBackupDestBase(source string) string {
@@ -701,8 +709,9 @@ func (s *Service) backupRunnerNodeExists(nodeID string) bool {
 }
 
 func (s *Service) newRaftObjectID(table string) (uint, error) {
+	idRangeMax := raftObjectIDRangeForTable(table)
 	for attempts := 0; attempts < 16; attempts++ {
-		n, err := rand.Int(rand.Reader, maxSafeJSInt)
+		n, err := rand.Int(rand.Reader, idRangeMax)
 		if err != nil {
 			return 0, err
 		}
@@ -722,6 +731,15 @@ func (s *Service) newRaftObjectID(table string) (uint, error) {
 	}
 
 	return 0, fmt.Errorf("unable_to_allocate_unique_id")
+}
+
+func raftObjectIDRangeForTable(table string) *big.Int {
+	switch strings.ToLower(strings.TrimSpace(table)) {
+	case "backup_jobs":
+		return maxBackupJobIDRange
+	default:
+		return maxSafeJSInt
+	}
 }
 
 func resolveSSHKeyMaterial(sshKey, sshKeyPath string) string {

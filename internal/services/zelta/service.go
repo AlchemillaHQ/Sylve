@@ -15,6 +15,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -211,16 +212,34 @@ func (s *Service) archiveActiveTargetDatasetForReseed(
 		return "", "", fmt.Errorf("target_dataset_required")
 	}
 
-	archivedDataset := normalizeDatasetPath(currentDataset + "_" + zeltaSnapshotName("bk"))
-	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "rename", currentDataset, archivedDataset)
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	exists, err := s.targetDatasetExists(ctx, target, currentDataset)
 	if err != nil {
-		combined := strings.ToLower(strings.TrimSpace(output) + " " + err.Error())
-		if strings.Contains(combined, "does not exist") || strings.Contains(combined, "dataset_not_found") {
-			return currentDataset, "", nil
+		return currentDataset, "", err
+	}
+	if !exists {
+		return currentDataset, "", nil
+	}
+
+	generationToken := compactNowToken()
+	archivedDataset := ""
+	for attempt := 0; attempt < 16; attempt++ {
+		candidate := targetGenerationDatasetCandidate(currentDataset, generationToken, attempt)
+		candidateExists, existsErr := s.targetDatasetExists(ctx, target, candidate)
+		if existsErr != nil {
+			return currentDataset, "", existsErr
 		}
-		return currentDataset, archivedDataset, fmt.Errorf("target_dataset_archive_failed: %s: %w", strings.TrimSpace(output), err)
+		if candidateExists {
+			continue
+		}
+		archivedDataset = candidate
+		break
+	}
+	if archivedDataset == "" {
+		return currentDataset, "", fmt.Errorf("failed_to_allocate_archive_dataset_name")
+	}
+
+	if err := s.renameTargetDataset(ctx, target, currentDataset, archivedDataset); err != nil {
+		return currentDataset, archivedDataset, fmt.Errorf("target_dataset_archive_failed: %w", err)
 	}
 
 	return currentDataset, archivedDataset, nil
@@ -753,7 +772,9 @@ func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset 
 		sourceRoot := normalizeDatasetPath(vmDatasetRoot(sourceDataset))
 		if sourceRoot != "" {
 			sourceRootSuffix := autoDestSuffix(sourceRoot)
-			if configuredSuffix == sourceRootSuffix || strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/job-") {
+			if configuredSuffix == sourceRootSuffix ||
+				strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/job-") ||
+				strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/j-") {
 				rel := strings.TrimPrefix(sourceDataset, sourceRoot)
 				rel = strings.TrimPrefix(rel, "/")
 				if rel == "" {
@@ -1132,7 +1153,35 @@ func backupSnapshotPrefixForJob(jobID uint) string {
 	if jobID == 0 {
 		return "bk"
 	}
-	return fmt.Sprintf("bk_j%d", jobID)
+	return "bk_j" + compactIDToken(jobID)
+}
+
+func compactIDToken(id uint) string {
+	if id == 0 {
+		return "0"
+	}
+	return strings.ToLower(strconv.FormatUint(uint64(id), 36))
+}
+
+func compactNowToken() string {
+	return strings.ToLower(strconv.FormatInt(time.Now().UTC().UnixMilli(), 36))
+}
+
+func targetGenerationDatasetCandidate(activeDataset, generationToken string, attempt int) string {
+	activeDataset = normalizeDatasetPath(activeDataset)
+	generationToken = strings.TrimSpace(generationToken)
+	if activeDataset == "" {
+		return ""
+	}
+	if generationToken == "" {
+		generationToken = compactNowToken()
+	}
+
+	candidate := normalizeDatasetPath(activeDataset + "_gen-" + generationToken)
+	if attempt > 0 {
+		candidate = normalizeDatasetPath(fmt.Sprintf("%s-%d", candidate, attempt))
+	}
+	return candidate
 }
 
 func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error) {

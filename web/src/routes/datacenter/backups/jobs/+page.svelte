@@ -497,7 +497,7 @@
 	}
 
 	function extractJobLabel(baseSuffix: string): string {
-		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+)(?:\/|$)/);
+		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+|j-[0-9a-z]+)(?:\/|$)/i);
 		if (!match) return '';
 		return match[1];
 	}
@@ -511,7 +511,7 @@
 		if (!leaf) return '';
 		if (leaf === 'active') return 'active';
 
-		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9].*)$/);
+		const marker = leaf.match(/(?:^|_)((?:bk|zelta)_[0-9a-z._-]+|gen-[0-9a-z._-]+)$/i);
 		if (marker) return marker[1];
 		return leaf;
 	}

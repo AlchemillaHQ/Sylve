@@ -20,7 +20,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/assets"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -39,7 +38,7 @@ func zeltaSnapshotName(prefix string) string {
 	if prefix == "" {
 		prefix = "zl"
 	}
-	return fmt.Sprintf("%s_%s", prefix, time.Now().UTC().Format("2006-01-02_15.04.05.000"))
+	return fmt.Sprintf("%s_%s", prefix, compactNowToken())
 }
 
 func GetZeltaInstallDir() (string, error) {

@@ -1325,6 +1325,8 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+"_bk_"):
 			add(dataset)
+		case strings.HasPrefix(suffix, baseLeaf+"_gen-"):
+			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
 			add(dataset)
 		}
@@ -1718,6 +1720,9 @@ func classifyDatasetLineage(suffix string) (string, bool, string) {
 		lineage = "rotated"
 		baseLeaf = leaf[:idx]
 	} else if idx := strings.Index(leaf, "_bk_"); idx > 0 {
+		lineage = "rotated"
+		baseLeaf = leaf[:idx]
+	} else if idx := strings.Index(leaf, "_gen-"); idx > 0 {
 		lineage = "rotated"
 		baseLeaf = leaf[:idx]
 	} else if strings.Contains(leaf, ".pre_") {

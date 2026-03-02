@@ -510,13 +510,10 @@ func (s *Service) activateTargetGenerationForRestore(
 		return "", err
 	}
 	if activeExists {
-		baseArchivedDataset := normalizeDatasetPath(activeDataset + "_" + zeltaSnapshotName("bk"))
+		generationToken := compactNowToken()
 		archivedDataset = ""
 		for attempt := 0; attempt < 16; attempt++ {
-			candidate := baseArchivedDataset
-			if attempt > 0 {
-				candidate = fmt.Sprintf("%s_%d", baseArchivedDataset, attempt)
-			}
+			candidate := targetGenerationDatasetCandidate(activeDataset, generationToken, attempt)
 			if candidate == selectedDataset {
 				continue
 			}
@@ -566,10 +563,10 @@ func fallbackBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDatase
 	}
 
 	if jobID == 0 {
-		return fmt.Sprintf("%s/job-pending/active", base)
+		return fmt.Sprintf("%s/j-pending/active", base)
 	}
 
-	return fmt.Sprintf("%s/job-%d/active", base, jobID)
+	return fmt.Sprintf("%s/j-%s/active", base, compactIDToken(jobID))
 }
 
 func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (string, string, error) {
