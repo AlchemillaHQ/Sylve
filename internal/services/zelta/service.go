@@ -128,10 +128,15 @@ func (s *Service) backupWithEventProgress(
 	target *clusterModels.BackupTarget,
 	sourceDataset, destSuffix string,
 	eventID uint,
+	snapPrefix string,
 ) (string, error) {
 	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
 	extraEnv := s.buildZeltaEnv(target)
 	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+	snapPrefix = strings.TrimSpace(snapPrefix)
+	if snapPrefix == "" {
+		snapPrefix = "bk"
+	}
 
 	return runZeltaWithEnvStreaming(
 		ctx,
@@ -147,7 +152,7 @@ func (s *Service) backupWithEventProgress(
 		"backup",
 		"--json",
 		"--snap-name",
-		zeltaSnapshotName("bk"),
+		zeltaSnapshotName(snapPrefix),
 		sourceDataset,
 		zeltaEndpoint,
 	)
@@ -415,6 +420,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
+	backupSnapPrefix := backupSnapshotPrefixForJob(job.ID)
 	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
 	if err := s.DB.Create(&event).Error; err != nil {
 		runErr := fmt.Errorf("create_backup_event_failed: %w", err)
@@ -491,7 +497,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		for idx, vmSource := range vmSourceDatasets {
 			vmDestSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), vmSource)
 			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
-			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID)
+			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, backupSnapPrefix)
 			output = appendOutput(output, partOutput)
 			if partErr != nil {
 				runErr = partErr
@@ -499,7 +505,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			}
 		}
 	} else {
-		output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
+		output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
 		if runErr == nil {
 			outcome := classifyBackupOutput(output)
 			if code := outcome.errorCode(); code != "" {
@@ -522,7 +528,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 			Str("reason", runErr.Error()).
 			Msg("backup_auto_rotate_starting")
 
-		rotateOutput, rotateErr := s.Rotate(ctx, &job.Target, sourceDataset, destSuffix)
+		rotateOutput, rotateErr := s.RotateWithTargetAndPrefix(ctx, &job.Target, sourceDataset, destSuffix, backupSnapPrefix)
 		output = appendOutput(output, rotateOutput)
 		if rotateErr != nil {
 			if shouldRenameTargetAfterRotateFailure(rotateOutput) {
@@ -539,7 +545,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 						Msg("backup_auto_target_renamed_for_bootstrap")
 					output = appendOutput(output, fmt.Sprintf("auto_renamed_target_dataset: %s -> %s", fromDataset, renamedDataset))
 
-					retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
+					retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
 					output = appendOutput(output, retryOutput)
 					runErr = retryErr
 					if runErr == nil {
@@ -572,7 +578,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				Str("target", event.TargetEndpoint).
 				Msg("backup_auto_rotate_completed")
 
-			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID)
+			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
 			output = appendOutput(output, retryOutput)
 			runErr = retryErr
 			if runErr == nil {
@@ -598,12 +604,23 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	if job.Mode != clusterModels.BackupJobModeVM && runErr == nil && job.PruneKeepLast > 0 {
-		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
+		localSnapshots, localListErr := s.listLocalSnapshotsForDataset(ctx, sourceDataset)
+		if localListErr != nil {
+			logger.L.Warn().Err(localListErr).Uint("job_id", job.ID).Str("source", sourceDataset).Msg("backup_prune_local_snapshot_list_failed")
+		}
+
+		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, 0)
 		output = appendOutput(output, pruneOutput)
 
 		if pruneErr != nil {
 			logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Msg("backup_prune_scan_failed")
-		} else if len(pruneCandidates) > 0 {
+		} else if localListErr == nil {
+			pruneCandidates = buildBKRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, snapshotCandidateSet(pruneCandidates), backupSnapPrefix)
+		} else {
+			pruneCandidates = []string{}
+		}
+
+		if len(pruneCandidates) > 0 {
 			if err := s.DestroySnapshots(ctx, pruneCandidates); err != nil {
 				logger.L.Warn().Err(err).Uint("job_id", job.ID).Int("candidate_count", len(pruneCandidates)).Msg("backup_prune_destroy_failed")
 			} else {
@@ -614,19 +631,38 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 
 		if job.PruneTarget {
-			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, sourceDataset, destSuffix, job.PruneKeepLast)
+			remoteDataset := normalizeDatasetPath(strings.TrimSpace(job.Target.BackupRoot))
+			if ds := normalizeDatasetPath(destSuffix); ds != "" {
+				if remoteDataset == "" {
+					remoteDataset = ds
+				} else {
+					remoteDataset = normalizeDatasetPath(remoteDataset + "/" + ds)
+				}
+			}
+			remoteSnapshots, remoteListErr := s.listRemoteSnapshotsForDataset(ctx, &job.Target, remoteDataset)
+			if remoteListErr != nil {
+				logger.L.Warn().Err(remoteListErr).Uint("job_id", job.ID).Str("remote_dataset", remoteDataset).Msg("backup_prune_target_snapshot_list_failed")
+			}
+
+			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, sourceDataset, destSuffix, 0)
 			output = appendOutput(output, targetPruneOutput)
 
 			if targetPruneErr != nil {
 				logger.L.Warn().Err(targetPruneErr).Uint("job_id", job.ID).Msg("backup_prune_target_scan_failed")
-			} else if len(targetPruneCandidates) > 0 {
+			} else if remoteListErr == nil {
+				targetPruneCandidates = buildBKRetentionPruneCandidates(remoteSnapshots, job.PruneKeepLast, snapshotCandidateSet(targetPruneCandidates), backupSnapPrefix)
+			} else {
+				targetPruneCandidates = []string{}
+			}
+
+			if len(targetPruneCandidates) > 0 {
 				if err := s.DestroyTargetSnapshotsByName(ctx, &job.Target, targetPruneCandidates); err != nil {
 					logger.L.Warn().Err(err).Uint("job_id", job.ID).Int("candidate_count", len(targetPruneCandidates)).Msg("backup_prune_target_destroy_failed")
 				} else {
 					logger.L.Info().Uint("job_id", job.ID).Int("pruned", len(targetPruneCandidates)).Msg("backup_prune_target_completed")
 				}
 			} else {
-				fallbackCandidates, fallbackErr := s.buildTargetRetentionPruneCandidates(ctx, job, job.PruneKeepLast+1)
+				fallbackCandidates, fallbackErr := s.buildTargetRetentionPruneCandidates(ctx, job, job.PruneKeepLast+1, backupSnapPrefix)
 				if fallbackErr != nil {
 					logger.L.Warn().Err(fallbackErr).Uint("job_id", job.ID).Msg("backup_prune_target_retention_scan_failed")
 				} else if len(fallbackCandidates) > 0 {
@@ -937,7 +973,7 @@ func isVMDomainNotFoundError(err error) bool {
 		(strings.Contains(lower, "not found") || strings.Contains(lower, "no domain"))
 }
 
-func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int) ([]string, error) {
+func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int, snapPrefix string) ([]string, error) {
 	if keepCount < 1 {
 		keepCount = 1
 	}
@@ -948,21 +984,110 @@ func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *
 		return nil, err
 	}
 
-	if len(snapshots) <= keepCount {
-		return []string{}, nil
+	return buildBKRetentionPruneCandidates(snapshots, keepCount, nil, snapPrefix), nil
+}
+
+func (s *Service) listLocalSnapshotsForDataset(ctx context.Context, dataset string) ([]SnapshotInfo, error) {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return nil, fmt.Errorf("source_dataset_required")
 	}
 
-	deleteCount := len(snapshots) - keepCount
-	candidates := make([]string, 0, deleteCount)
-	for i := range deleteCount {
-		name := strings.TrimSpace(snapshots[i].Name)
+	output, err := utils.RunCommandWithContext(
+		ctx,
+		"zfs",
+		"list",
+		"-t", "snapshot",
+		"-r",
+		"-Hp",
+		"-o", "name,creation,used,refer",
+		"-s", "creation",
+		dataset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_list_local_snapshots: %w", err)
+	}
+
+	return parseSnapshotInfoOutput(output), nil
+}
+
+func buildBKRetentionPruneCandidates(snapshots []SnapshotInfo, keepCount int, safeSet map[string]struct{}, snapPrefix string) []string {
+	if keepCount < 0 {
+		keepCount = 0
+	}
+
+	grouped := make(map[string][]string)
+	for _, snapshot := range snapshots {
+		name := strings.TrimSpace(snapshot.Name)
 		if !isValidZFSSnapshotName(name) {
 			continue
 		}
-		candidates = append(candidates, name)
+		if !isBKSnapshotShortName(snapshotShortName(snapshot), snapPrefix) {
+			continue
+		}
+		if safeSet != nil {
+			if _, ok := safeSet[name]; !ok {
+				continue
+			}
+		}
+
+		dataset := snapshotDatasetName(name)
+		if dataset == "" {
+			dataset = normalizeDatasetPath(snapshot.Dataset)
+		}
+		grouped[dataset] = append(grouped[dataset], name)
 	}
 
-	return candidates, nil
+	if len(grouped) == 0 {
+		return []string{}
+	}
+
+	datasets := make([]string, 0, len(grouped))
+	for dataset := range grouped {
+		datasets = append(datasets, dataset)
+	}
+	sort.Strings(datasets)
+
+	candidates := make([]string, 0)
+	for _, dataset := range datasets {
+		names := grouped[dataset]
+		if len(names) <= keepCount {
+			continue
+		}
+		deleteCount := len(names) - keepCount
+		candidates = append(candidates, names[:deleteCount]...)
+	}
+
+	return candidates
+}
+
+func snapshotCandidateSet(snapshots []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(snapshots))
+	for _, snapshot := range snapshots {
+		name := strings.TrimSpace(snapshot)
+		if !isValidZFSSnapshotName(name) {
+			continue
+		}
+		set[name] = struct{}{}
+	}
+	return set
+}
+
+func isBKSnapshotShortName(snapshotName, snapPrefix string) bool {
+	snapshotName = strings.TrimSpace(snapshotName)
+	snapshotName = strings.TrimPrefix(snapshotName, "@")
+	snapPrefix = strings.TrimSpace(snapPrefix)
+	if snapPrefix == "" {
+		return strings.HasPrefix(snapshotName, "bk_")
+	}
+	return strings.HasPrefix(snapshotName, snapPrefix+"_")
+}
+
+func backupSnapshotPrefixForJob(jobID uint) string {
+	if jobID == 0 {
+		return "bk"
+	}
+	return fmt.Sprintf("bk_j%d", jobID)
 }
 
 func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr error) {

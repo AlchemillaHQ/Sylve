@@ -185,7 +185,6 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 		return nil, err
 	}
 	snapshots = filterBackupSnapshots(snapshots)
-
 	kind, _ := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
 	if kind == clusterModels.BackupJobModeVM {
 		snapshots = collapseSnapshotsByShortName(snapshots)
@@ -1169,6 +1168,24 @@ func filterBackupSnapshots(snapshots []SnapshotInfo) []SnapshotInfo {
 	return filtered
 }
 
+func filterSnapshotsForBackupJob(snapshots []SnapshotInfo, jobID uint) []SnapshotInfo {
+	if len(snapshots) == 0 {
+		return snapshots
+	}
+
+	jobPrefix := backupSnapshotPrefixForJob(jobID)
+	jobScoped := make([]SnapshotInfo, 0, len(snapshots))
+
+	for _, snapshot := range snapshots {
+		shortName := strings.TrimPrefix(snapshotShortName(snapshot), "@")
+		if strings.HasPrefix(shortName, jobPrefix+"_") {
+			jobScoped = append(jobScoped, snapshot)
+		}
+	}
+
+	return jobScoped
+}
+
 func snapshotShortName(snapshot SnapshotInfo) string {
 	shortName := strings.TrimSpace(snapshot.ShortName)
 	if shortName != "" {
@@ -1190,7 +1207,7 @@ func isBackupSnapshotShortName(snapshotName string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(snapshotName, "zelta_")
+	return strings.HasPrefix(snapshotName, "bk_")
 }
 
 func snapshotRepresentativeLess(left, right SnapshotInfo) bool {
