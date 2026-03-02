@@ -9,11 +9,13 @@ all: build
 
 build: build-depcheck web
 	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=1 \
 	GOOS=freebsd GOARCH=amd64 go build -o $(BIN_DIR)/$(BINARY_NAME)-amd64 cmd/sylve/main.go
 
 build-all: build-depcheck web
 	mkdir -p $(BIN_DIR)
 	@for arch in $(PLATFORMS); do \
+		CGO_ENABLED=1 \
 		GOOS=freebsd GOARCH=$$arch \
 		go build -o $(BIN_DIR)/$(BINARY_NAME)-$$arch cmd/sylve/main.go ; \
 	done
