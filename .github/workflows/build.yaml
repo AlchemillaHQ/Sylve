@@ -30,7 +30,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            vm_arch: x86-64
+            vm_arch: x86_64
           - arch: arm64
             vm_arch: aarch64
           - arch: riscv64
