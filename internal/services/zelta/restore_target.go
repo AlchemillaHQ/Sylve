@@ -372,7 +372,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, nil)
+	_, err := s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil)
 	return err
 }
 
@@ -511,6 +511,8 @@ func (s *Service) runRestoreFromTargetVM(
 		return lastErr
 	}
 
+	activateRemoteGeneration := jobID != nil && *jobID > 0
+
 	for _, remoteRoot := range vmRoots {
 		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
 		if localRoot == "" {
@@ -534,6 +536,7 @@ func (s *Service) runRestoreFromTargetVM(
 			jobID,
 			false,
 			true,
+			activateRemoteGeneration,
 			&event.ID,
 		)
 		if err != nil {
@@ -611,9 +614,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	jobID *uint,
 	reconcileJail bool,
 	keepBackup bool,
+	activateRemoteGeneration bool,
 	sharedEventID *uint,
 ) (string, error) {
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
+	preferredRemoteDataset := remoteDataset
 	destinationDataset := normalizeRestoreDestinationDataset(payload.DestinationDataset)
 	if destinationDataset == "" {
 		return "", fmt.Errorf("destination_dataset_required")
@@ -806,6 +811,18 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 					Msg("failed_to_rollback_jail_dataset_after_reconcile_failure")
 				restoreErr = fmt.Errorf("%w; rollback_failed: %v", restoreErr, rollbackErr)
 			}
+			if ownsEvent {
+				s.finalizeRestoreEvent(&event, restoreErr, output)
+			} else {
+				appendEventOutput(fmt.Sprintf("vm_dataset_restore_failed: %s -> %s: %v", remoteEndpoint, destinationDataset, restoreErr))
+			}
+			return "", restoreErr
+		}
+	}
+
+	if activateRemoteGeneration {
+		if _, err := s.activateTargetGenerationForRestore(ctx, target, preferredRemoteDataset, remoteDataset); err != nil {
+			restoreErr = fmt.Errorf("activate_restore_generation_failed: %w", err)
 			if ownsEvent {
 				s.finalizeRestoreEvent(&event, restoreErr, output)
 			} else {

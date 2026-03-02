@@ -290,6 +290,15 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		}
 	}
 
+	activeRemoteDataset := remoteDatasetForJob(job)
+	if _, activationErr := s.activateTargetGenerationForRestore(ctx, &job.Target, activeRemoteDataset, remoteDataset); activationErr != nil {
+		restoreErr = fmt.Errorf("activate_restore_generation_failed: %w", activationErr)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
+	activeDestSuffix := relativeDatasetSuffix(job.Target.BackupRoot, activeRemoteDataset)
+	s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, activeDestSuffix)
+
 	s.finalizeRestoreEvent(&event, nil, output)
 
 	logger.L.Info().
@@ -415,6 +424,134 @@ func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 		remoteDataset = remoteDataset + "/" + destSuffix
 	}
 	return remoteDataset
+}
+
+func (s *Service) targetDatasetExists(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	dataset string,
+) (bool, error) {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return false, fmt.Errorf("dataset_required")
+	}
+
+	output, err := s.runTargetSSH(ctx, target, "zfs", "list", "-H", "-o", "name", dataset)
+	if err != nil {
+		combined := strings.ToLower(strings.TrimSpace(output) + " " + err.Error())
+		if strings.Contains(combined, "does not exist") || strings.Contains(combined, "dataset does not exist") {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return normalizeDatasetPath(strings.TrimSpace(output)) == dataset, nil
+}
+
+func (s *Service) renameTargetDataset(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	fromDataset, toDataset string,
+) error {
+	fromDataset = normalizeDatasetPath(fromDataset)
+	toDataset = normalizeDatasetPath(toDataset)
+	if fromDataset == "" || toDataset == "" {
+		return fmt.Errorf("dataset_required")
+	}
+	if fromDataset == toDataset {
+		return nil
+	}
+
+	output, err := s.runTargetSSH(ctx, target, "zfs", "rename", fromDataset, toDataset)
+	if err != nil {
+		return fmt.Errorf("failed_to_rename_target_dataset: %s: %w", strings.TrimSpace(output), err)
+	}
+
+	return nil
+}
+
+func (s *Service) activateTargetGenerationForRestore(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	activeDataset string,
+	selectedDataset string,
+) (string, error) {
+	activeDataset = normalizeDatasetPath(activeDataset)
+	selectedDataset = normalizeDatasetPath(selectedDataset)
+	if target == nil {
+		return "", fmt.Errorf("target_required")
+	}
+	if activeDataset == "" || selectedDataset == "" {
+		return "", fmt.Errorf("target_dataset_required")
+	}
+	if activeDataset == selectedDataset {
+		return "", nil
+	}
+	if !datasetWithinRoot(target.BackupRoot, activeDataset) || !datasetWithinRoot(target.BackupRoot, selectedDataset) {
+		return "", fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+	activeBase := datasetLineageBaseSuffixForDataset(target.BackupRoot, activeDataset)
+	selectedBase := datasetLineageBaseSuffixForDataset(target.BackupRoot, selectedDataset)
+	if activeBase != "" && selectedBase != "" && activeBase != selectedBase {
+		return "", fmt.Errorf("restore_dataset_lineage_mismatch")
+	}
+
+	selectedExists, err := s.targetDatasetExists(ctx, target, selectedDataset)
+	if err != nil {
+		return "", err
+	}
+	if !selectedExists {
+		return "", fmt.Errorf("selected_restore_dataset_not_found")
+	}
+
+	archivedDataset := ""
+	activeExists, err := s.targetDatasetExists(ctx, target, activeDataset)
+	if err != nil {
+		return "", err
+	}
+	if activeExists {
+		baseArchivedDataset := normalizeDatasetPath(activeDataset + "_" + zeltaSnapshotName("bk"))
+		archivedDataset = ""
+		for attempt := 0; attempt < 16; attempt++ {
+			candidate := baseArchivedDataset
+			if attempt > 0 {
+				candidate = fmt.Sprintf("%s_%d", baseArchivedDataset, attempt)
+			}
+			if candidate == selectedDataset {
+				continue
+			}
+			candidateExists, existsErr := s.targetDatasetExists(ctx, target, candidate)
+			if existsErr != nil {
+				return "", existsErr
+			}
+			if candidateExists {
+				continue
+			}
+			archivedDataset = candidate
+			break
+		}
+		if archivedDataset == "" {
+			return "", fmt.Errorf("failed_to_allocate_archive_dataset_name")
+		}
+		if err := s.renameTargetDataset(ctx, target, activeDataset, archivedDataset); err != nil {
+			return "", err
+		}
+	}
+
+	if err := s.renameTargetDataset(ctx, target, selectedDataset, activeDataset); err != nil {
+		if archivedDataset != "" {
+			_ = s.renameTargetDataset(ctx, target, archivedDataset, activeDataset)
+		}
+		return "", err
+	}
+
+	return archivedDataset, nil
+}
+
+func datasetLineageBaseSuffixForDataset(backupRoot, dataset string) string {
+	suffix := relativeDatasetSuffix(backupRoot, dataset)
+	_, _, baseSuffix := classifyDatasetLineage(suffix)
+	return normalizeDatasetPath(baseSuffix)
 }
 
 func fallbackBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset string) string {
