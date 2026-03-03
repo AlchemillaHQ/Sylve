@@ -455,6 +455,8 @@ msgstr "मिनिमाइज़"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
@@ -576,6 +578,8 @@ msgstr "मिनिमाइज़"
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Close"
 msgstr "बंद करें"
 
@@ -588,20 +592,24 @@ msgid "No data available"
 msgstr "कोई डेटा उपलब्ध नहीं"
 
 #. placeholder {0}: sizes.length > 1 ? 's' : ''
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} बनाया गया"
 
 #. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
 
 #. placeholder {0}: newPartitions.length + 1
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "New Partition {0}"
 msgstr "नया विभाजन {0}"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
 msgstr "पार्टिशन बनाएँ"
@@ -618,6 +626,8 @@ msgstr "पार्टिशन बनाएँ"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
@@ -723,6 +733,7 @@ msgstr "रीसेट"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -765,6 +776,7 @@ msgstr "रीसेट"
 msgid "Name"
 msgstr "नाम"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -777,26 +789,32 @@ msgstr "आकार"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
 msgstr "उपयोग"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Actions"
 msgstr "कार्यों"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Existing"
 msgstr "मौजूदा"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No partitions created yet"
 msgstr "अभी तक कोई पार्टिशन नहीं बनाया गया"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Add Partition"
 msgstr "पार्टिशन जोड़ें"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No space left"
 msgstr "स्थान समाप्त"
@@ -807,6 +825,7 @@ msgstr "स्थान समाप्त"
 #~ msgid "Remaining space: {0}"
 #~ msgstr "शेष स्थान: {0}"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
 msgstr "पार्टिशन सहेजें"
@@ -6689,6 +6708,7 @@ msgstr ""
 #~ msgid "Remaining space: {0}, {1}%"
 #~ msgstr ""
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
 msgstr "शेष स्थान: <0/>"

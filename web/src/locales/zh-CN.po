@@ -432,6 +432,8 @@ msgstr "最小化"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
@@ -553,6 +555,8 @@ msgstr "最小化"
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Close"
 msgstr "关闭"
 
@@ -565,20 +569,24 @@ msgid "No data available"
 msgstr "无数据可用"
 
 #. placeholder {0}: sizes.length > 1 ? 's' : ''
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区 {0}"
 
 #. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
 
 #. placeholder {0}: newPartitions.length + 1
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "New Partition {0}"
 msgstr "新建分区 {0}"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
 msgstr "创建分区"
@@ -595,6 +603,8 @@ msgstr "创建分区"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
@@ -700,6 +710,7 @@ msgstr "重置"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -742,6 +753,7 @@ msgstr "重置"
 msgid "Name"
 msgstr "名称"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -754,30 +766,37 @@ msgstr "大小"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
 msgstr "使用情况"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Actions"
 msgstr "动作"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Existing"
 msgstr "现有"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No partitions created yet"
 msgstr "尚未创建分区"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Add Partition"
 msgstr "添加分区"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No space left"
 msgstr "空间已满"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
 msgstr "保存分区"
@@ -6098,6 +6117,7 @@ msgstr "已选择 {0},"
 msgid "Limit: {0}"
 msgstr "限制：{0}"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
 msgstr "剩余空间：<0/>"

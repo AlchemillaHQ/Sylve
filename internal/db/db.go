@@ -31,9 +31,21 @@ import (
 )
 
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
+	var logMode gormLogger.Interface
+
+	switch cfg.Environment {
+	case internal.Development:
+		logMode = gormLogger.Default.LogMode(gormLogger.Warn)
+	case internal.Debug:
+		logMode = gormLogger.Default.LogMode(gormLogger.Info)
+	case internal.Production:
+		logMode = gormLogger.Default.LogMode(gormLogger.Silent)
+	}
+
 	ormConfig := &gorm.Config{
-		Logger:         gormLogger.Default.LogMode(gormLogger.Info),
-		TranslateError: true,
+		Logger:                                   logMode,
+		TranslateError:                           true,
+		DisableForeignKeyConstraintWhenMigrating: true,
 	}
 
 	var db *gorm.DB
@@ -54,7 +66,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error getting sql database handle: %v", err)
 	}
 
-	db.Exec("PRAGMA foreign_keys = OFF")
 	db.Exec("PRAGMA busy_timeout = 5000")
 	db.Exec("PRAGMA journal_mode = WAL")
 	db.Exec("PRAGMA synchronous = NORMAL")
@@ -140,8 +151,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)
 	}
-
-	db.Exec("PRAGMA foreign_keys = ON")
 
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)

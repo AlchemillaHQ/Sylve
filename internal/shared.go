@@ -38,8 +38,16 @@ type BTT struct {
 	DHT DHTConfig `json:"dht"`
 }
 
+type Environment string
+
+const (
+	Development Environment = "development"
+	Production  Environment = "production"
+	Debug       Environment = "debug"
+)
+
 type SylveConfig struct {
-	Environment   string          `json:"environment"`
+	Environment   Environment     `json:"environment"`
 	ProxyToVite   bool            `json:"proxyToVite"`
 	IP            string          `json:"ip"`
 	Port          int             `json:"port"`

@@ -454,6 +454,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
@@ -575,6 +577,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Close"
 msgstr "അടയ്ക്കുക"
 
@@ -587,20 +591,24 @@ msgid "No data available"
 msgstr "ഡാറ്റ ലഭ്യമല്ല"
 
 #. placeholder {0}: sizes.length > 1 ? 's' : ''
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "പാർട്ടീഷൻ {0} ഉണ്ടാക്കി"
 
 #. placeholder {0}: sizes.length > 1 ? 'partitions' : 'partition'
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} ഉണ്ടാക്കുന്നതിൽ പിശക്"
 
 #. placeholder {0}: newPartitions.length + 1
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "New Partition {0}"
 msgstr "പുതിയ പാർട്ടീഷൻ {0}"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Create Partitions"
 msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
@@ -617,6 +625,8 @@ msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
@@ -722,6 +732,7 @@ msgstr "പുനഃസജ്ജമാക്കുക"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -764,6 +775,7 @@ msgstr "പുനഃസജ്ജമാക്കുക"
 msgid "Name"
 msgstr "പേര്"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -776,26 +788,32 @@ msgstr "വലിപ്പം"
 
 #: src/lib/components/custom/Charts/EChart.svelte
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Usage"
 msgstr "ഉപയോഗം"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Actions"
 msgstr "പ്രവർത്തനങ്ങൾ"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Existing"
 msgstr "നിലവിലുള്ളത്"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No partitions created yet"
 msgstr "പാര്‍ട്ടീഷനുകളൊന്നും ഇതുവരെ ഉണ്ടാക്കിയിട്ടില്ല"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Add Partition"
 msgstr "പാര്‍ട്ടീഷൻ ചേർക്കുക"
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "No space left"
 msgstr "സ്ഥലമില്ല"
@@ -806,6 +824,7 @@ msgstr "സ്ഥലമില്ല"
 #~ msgid "Remaining space: {0}"
 #~ msgstr ""
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Save Partitions"
 msgstr "പാര്‍ട്ടീഷനുകൾ സേവ് ചെയ്യുക"
@@ -6673,6 +6692,7 @@ msgstr "പരിധി: {0}"
 #~ msgid "Remaining space: {0}, {1}%"
 #~ msgstr ""
 
+#: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/disk/CreatePartition.svelte
 msgid "Remaining space: <0/>"
 msgstr "ശേഷിക്കുന്ന സ്ഥലം: <0/>"

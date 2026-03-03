@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/assets"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
@@ -66,7 +67,7 @@ import (
 // @host      sylve.lan:8181
 // @BasePath  /api
 func RegisterRoutes(r *gin.Engine,
-	environment string,
+	environment internal.Environment,
 	proxyToVite bool,
 	authService *authService.Service,
 	infoService *infoService.Service,
