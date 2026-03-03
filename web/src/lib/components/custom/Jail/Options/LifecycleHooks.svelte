@@ -8,7 +8,6 @@
 	import type { Jail, ExecPhaseKey, ExecPhaseState } from '$lib/types/jail/jail';
 	import { ExecPhaseDefs } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -44,7 +43,8 @@
 		return scripts;
 	}
 
-	let execScripts = $derived<Record<ExecPhaseKey, ExecPhaseState>>(scriptsFromJail(jail));
+	// svelte-ignore state_referenced_locally
+	let execScripts = $state<Record<ExecPhaseKey, ExecPhaseState>>(scriptsFromJail(jail));
 
 	function reset() {
 		execScripts = scriptsFromJail(jail);

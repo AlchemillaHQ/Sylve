@@ -479,7 +479,7 @@
 				</Card.Root>
 			</div>
 
-			<div class="space-y-4 p-3">
+			<div class="space-y-4 px-4 pb-4">
 				<LineBrush
 					title="CPU Usage"
 					points={stats.current.map((data) => ({

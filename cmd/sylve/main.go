@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,13 +42,18 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
-	sysU "github.com/alchemillahq/sylve/pkg/system"
+	_ "net/http/pprof"
 
+	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
+
 	cmd.AsciiArt()
 
 	if !sysU.IsRoot() {

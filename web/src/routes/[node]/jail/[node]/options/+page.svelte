@@ -21,6 +21,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${data.ctId}`,
 		async (key, prevKey, { signal }) => {
@@ -144,7 +145,7 @@
 
 	watch(
 		() => reload,
-		(value) => {
+		() => {
 			jail.refetch();
 			reload = false;
 		}

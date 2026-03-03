@@ -48,10 +48,10 @@ msgstr "ഹാർഡ്‌വെയർ"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Network"
 msgstr "ശൃംഖല"
 
@@ -440,6 +440,16 @@ msgstr "ചെറുതാക്കുക"
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
@@ -562,15 +572,8 @@ msgstr "ചെറുതാക്കുക"
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Close"
 msgstr "അടയ്ക്കുക"
@@ -610,6 +613,8 @@ msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
@@ -708,14 +713,14 @@ msgstr "പാർട്ടീഷനുകൾ ഉണ്ടാക്കുക"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Reset"
 msgstr "പുനഃസജ്ജമാക്കുക"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -750,7 +755,6 @@ msgstr "പുനഃസജ്ജമാക്കുക"
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -1176,7 +1180,6 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Save"
@@ -1456,6 +1459,7 @@ msgstr ""
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1618,6 +1622,11 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 msgid "This action cannot be undone. This will permanently delete"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -1629,9 +1638,6 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
@@ -1792,6 +1798,7 @@ msgstr "എസ്കേപ്പ്"
 msgid "Share name already exists"
 msgstr "പങ്കിട്ട പേര് നിലവിൽ ഉണ്ട്"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -1799,7 +1806,6 @@ msgstr "പങ്കിട്ട പേര് നിലവിൽ ഉണ്ട്
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Name is required"
 msgstr "പേര് ആവശ്യമാണ്"
 
@@ -1839,8 +1845,9 @@ msgstr "സാംബ പങ്കിടൽ സൃഷ്ടിക്കുക"
 msgid "Dataset"
 msgstr "ഡാറ്റാസെറ്റ്"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Select dataset"
 msgstr "ഡാറ്റാസെറ്റ് തിരഞ്ഞെടുക്കുക"
 
@@ -1922,9 +1929,9 @@ msgstr "വിവരണം"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "MAC Address"
 msgstr "MAC വിലാസം"
 
@@ -3256,6 +3263,9 @@ msgstr ""
 msgid "VNC"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3267,15 +3277,15 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enabled"
 msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3285,9 +3295,6 @@ msgstr "പ്രവർത്തനക്ഷമമാക്കി"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3925,6 +3932,7 @@ msgstr "MAC ഒബ്ജക്റ്റ്(കൾ) ഇല്ലാതാക്�
 msgid "Delete Root Filesystem"
 msgstr "റൂട്ട് ഫയൽസിസ്റ്റം ഇല്ലാതാക്കുക"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -4262,11 +4270,12 @@ msgstr "ഉപയോക്താവിനെ ഇല്ലാതാക്കി"
 msgid "Share"
 msgstr "പങ്കിടുക"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Target"
@@ -4491,8 +4500,8 @@ msgid "Unknown MAC"
 msgstr ""
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
 msgstr "അജ്ഞാതം"
@@ -6501,8 +6510,9 @@ msgstr "ആനുകാലിക സ്നാപ്പ്ഷോട്ട് ഇ�
 #~ msgid "Filesystems"
 #~ msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Used"
 msgstr "ഉപയോഗിച്ചത്"
 
@@ -6968,10 +6978,13 @@ msgstr "നിങ്ങൾ {0} {1} ചെയ്യാൻ പോകുകയാ�
 msgid "Failed to toggle {0}"
 msgstr "{0} ടോഗിൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
@@ -7401,39 +7414,39 @@ msgstr ""
 #~ msgid "Guest Infomation"
 #~ msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Guest Information"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "OS Info"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "OS Name"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Kernel"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Architecture"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Version ID"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Interface"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "IP Addresses"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "RX / TX"
 msgstr ""
 
@@ -7441,20 +7454,20 @@ msgstr ""
 #~ msgstr ""
 
 #. placeholder {0}: humanFormat(iface.statistics['rx-bytes'] || 0)
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "↓ {0}B"
 msgstr ""
 
 #. placeholder {0}: humanFormat(iface.statistics['tx-bytes'] || 0)
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "↑ {0}B"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "N/A"
 msgstr ""
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "No network interfaces reported by agent."
 msgstr ""
 
@@ -7495,11 +7508,12 @@ msgstr ""
 #~ msgid "Direction"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Source Dataset"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Destination Dataset"
 msgstr ""
 
@@ -7612,9 +7626,9 @@ msgstr ""
 #~ msgid "Delete selected backup target?"
 #~ msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Mode"
 msgstr ""
 
@@ -7635,19 +7649,19 @@ msgstr ""
 msgid "Last Status"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Backup job updated"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Backup job created"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Failed to update job"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Failed to create job"
 msgstr ""
 
@@ -7687,11 +7701,11 @@ msgstr ""
 #~ msgid "No backup events loaded"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Edit Backup Job"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "New Backup Job"
 msgstr ""
 
@@ -7718,7 +7732,7 @@ msgstr ""
 #~ msgid "Run On"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Run On Node"
 msgstr ""
 
@@ -7747,48 +7761,50 @@ msgstr ""
 #~ msgid "Select a target"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Select a node"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Single Dataset"
 msgstr ""
 
 #~ msgid "All Jails"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Target is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Destination dataset is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Source dataset is required for dataset mode"
 msgstr ""
 
 #~ msgid "Backup jobs automatically send ZFS snapshots to a backup target on a schedule."
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Select target"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select node"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Select mode"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Schedule (Cron, 5-field)"
 msgstr ""
 
@@ -7798,21 +7814,20 @@ msgstr ""
 #~ msgid "With intermediates"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Job Summary:"
-msgstr ""
+#~ msgid "Job Summary:"
+#~ msgstr ""
 
 #~ msgid "All jails under <0/> will be backed up"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Dataset <0/> will be backed up"
 msgstr ""
 
 #~ msgid "Snapshots will be sent to <0/>"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Schedule: <0/>"
 msgstr ""
 
@@ -7821,6 +7836,8 @@ msgstr ""
 msgid "Events"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 msgid "Restore"
@@ -7859,8 +7876,10 @@ msgstr ""
 msgid "Failed to load datasets from target"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Failed to load snapshots"
 msgstr ""
 
@@ -7916,7 +7935,8 @@ msgstr ""
 #~ msgid "Select a dataset above to see available snapshots"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Restore from Backup"
 msgstr ""
@@ -7983,6 +8003,7 @@ msgstr ""
 msgid "Will restore all available snapshots (latest state)"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 msgid "Restoring..."
 msgstr ""
@@ -8007,22 +8028,22 @@ msgstr ""
 msgid "Will rollback dataset to this snapshot - <0>snapshots newer than this will be destroyed</0>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Jail selection is required for jail mode"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Select jail"
 msgstr ""
 
 #~ msgid "Select a jail"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Jail <0/> will be backed up"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "No jails available"
 msgstr ""
 
@@ -8109,35 +8130,42 @@ msgstr ""
 #~ msgid "Destination suffix: <0/>"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "Restore job started — check events for progress"
-msgstr ""
+#~ msgid "Restore job started — check events for progress"
+#~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Failed to start restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Loading snapshots from remote target..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "No snapshots found on the backup target. Run a backup first."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Snapshot"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Refer"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "<0/> Restore Warning"
 msgstr ""
 
@@ -8153,13 +8181,13 @@ msgstr ""
 #~ msgid "You can delete the <0/> dataset later to reclaim space"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "<0/> Restoring..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "<0/> Restore"
 msgstr ""
 
@@ -8181,26 +8209,26 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Prune keep value must be 0 or greater"
 msgstr ""
 
 #~ msgid "Keep Last Snapshots (0 disables pruning)"
 #~ msgstr ""
 
-#. placeholder {0}: Number.parseInt(jobModal.pruneKeepLast || '0', 10)
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#. placeholder {0}: Number.parseInt(form.pruneKeepLast || '0', 10)
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Keep last {0} snapshots"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Pruning: <0/>"
 msgstr ""
 
 #~ msgid "Also prune on target"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Target prune: <0/>"
 msgstr ""
 
@@ -8218,15 +8246,15 @@ msgid ""
 "jail"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Prune on target"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Stop before backup"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Stop before backup: <0/>"
 msgstr ""
 
@@ -8234,67 +8262,84 @@ msgstr ""
 msgid "Backup Target Diverged"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "No backup targets available"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Failed to load target datasets"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Failed to load dataset details"
 msgstr ""
 
 #~ msgid "Restore From Target"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Restore From Target Dataset"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Dataset on Target"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Loading datasets..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "No restorable datasets found"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Loading snapshots..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "No snapshots found"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Select snapshot"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Detected Jail Metadata"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Name: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "CT ID: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Base Pool: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "The destination dataset will be replaced if it already exists."
 msgstr ""
 
@@ -8302,7 +8347,10 @@ msgstr ""
 msgid "OOB Restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Current"
 msgstr ""
 
@@ -8315,28 +8363,33 @@ msgstr ""
 #~ msgid "Out of band"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid ""
 "Some backups are from out-of-band lineages. Regular prune count applies to the current\n"
 "lineage only."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Backup Date"
 msgstr ""
 
 #~ msgid "Lineage"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Data from <0/> will be restored"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "This snapshot is from <0/> and may not be counted by active-lineage prune."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "No deletion on target, all snapshots remain available"
 msgstr ""
 
@@ -8345,62 +8398,78 @@ msgstr ""
 #~ "active lineage only."
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Selected backup date: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Selected snapshot lineage: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Current lineage"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "System-preserved lineage"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Out-of-band lineage"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Failed to load cluster details"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Failed to validate cluster guest placement"
 msgstr ""
 
 #~ msgid "Jail {0} already exists on {1}."
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Restore node is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Restore On Node"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Loading nodes..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "No cluster nodes found"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Select restore node"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "This backup set includes non-active lineages. Snapshot markers show lineage as <0/>, <1/>, and <2/>."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
 msgstr ""
 
@@ -8646,54 +8715,59 @@ msgstr ""
 #~ "infrastructure simple."
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Restore Jail Network Config"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Virtual Machine"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "VM selection is required for VM mode"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Selected VM was not found"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Unable to resolve a VM dataset root for the selected VM"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "No VMs available"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select VM"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "VM <0/> will be backed up"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "RID: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Restore VM Network Config"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Detected VM Metadata"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Pools: <0/>"
 msgstr ""
 
@@ -8758,11 +8832,14 @@ msgstr ""
 msgid "Validating"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Restore job started - check events for progress"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Keep Last Snapshots"
 msgstr ""
 
@@ -9189,33 +9266,41 @@ msgstr ""
 msgid "Event Error - {0}"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "The current dataset is replaced in place with the selected restore point"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "No `.pre-restore` dataset is kept after restore"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Generation"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "Select generation"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 msgid "No snapshots found in the selected generation."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "Loading generations..."
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte
 msgid "No generations found"
 msgstr ""
 
@@ -9231,10 +9316,57 @@ msgstr ""
 #~ msgid "Saving"
 #~ msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Updating"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Creating"
 msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Selected jail was not found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Unable to resolve a jail base dataset for the selected jail"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading jails..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading VMs..."
+msgstr ""
+
+#~ msgid "Updating..."
+#~ msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restore Warning"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restoring"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Job Summary"
+msgstr ""
+
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+msgid "Stale cache"
+msgstr ""
+
+#~ msgid "Last cached {0}."
+#~ msgstr ""
+
+#~ msgid "Guest information is currently stale and could not be refreshed. <0/>"
+#~ msgstr ""
+
+#~ msgid "Guest information is currently stale and could not be refreshed."
+#~ msgstr ""

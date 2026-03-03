@@ -6,7 +6,6 @@
 	import {
 		actionVm,
 		deleteVM,
-		getQGAInfo,
 		getStats,
 		getVmById,
 		getVMDomain,
@@ -37,7 +36,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import { getVMIconByGaId } from '$lib/utils/vm/vm';
-	import * as Table from '$lib/components/ui/table/index.js';
+	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
 
 	interface Data {
 		rid: number;
@@ -84,22 +83,6 @@
 		{ initialValue: data.stats }
 	);
 
-	// svelte-ignore state_referenced_locally
-	const gaInfo = resource(
-		() => `vm-qga-${data.vm.rid}`,
-		async (key) => {
-			const result = await getQGAInfo(data.vm.rid);
-			if (isAPIResponse(result)) {
-				if (!isAPIResponse(data.gaInfo)) return data.gaInfo;
-				return null;
-			}
-
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: isAPIResponse(data.gaInfo) ? null : data.gaInfo }
-	);
-
 	const visible = new IsDocumentVisible();
 
 	useInterval(() => 1000, {
@@ -141,6 +124,8 @@
 	let recentStat = $derived(
 		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
 	);
+	let gaRefreshSignal = $state(0);
+	let initialGaInfo = $derived.by(() => (isAPIResponse(data.gaInfo) ? null : data.gaInfo));
 
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
@@ -255,7 +240,7 @@
 			});
 		}
 
-		gaInfo.refetch();
+		gaRefreshSignal += 1;
 	}
 
 	async function handleStop() {
@@ -333,7 +318,7 @@
 			});
 		}
 
-		gaInfo.refetch();
+		gaRefreshSignal += 1;
 	}
 
 	let udTime = $derived.by(() => {
@@ -355,8 +340,6 @@
 			.toLowerCase()
 	);
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-
-	let activeGaView = $state('os');
 </script>
 
 {#snippet button(type: string)}
@@ -450,9 +433,8 @@
 					<Card.Header class="p-0">
 						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
 							<div class="flex items-center gap-1.5 whitespace-nowrap">
-								{#if gaInfo.current && getVMIconByGaId(gaInfo.current?.osInfo.id || '')}
-									<span class="icon {getVMIconByGaId(gaInfo.current?.osInfo.id || '')} h-6 w-6"
-									></span>
+								{#if initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
+									<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"></span>
 								{/if}
 								<span>{vm.current.name}</span>
 								{#if udTime}
@@ -541,133 +523,7 @@
 				</Card.Root>
 			</div>
 
-			{#if gaInfo.current}
-				<div class="space-y-4 px-4 pb-4">
-					<Card.Root class="w-full gap-0 p-4">
-						<Card.Header class="p-0">
-							<Card.Description
-								class="text-md flex items-center justify-between font-normal text-blue-600 dark:text-blue-500"
-							>
-								<div class="flex items-center gap-2">
-									<span class="icon icon-[lucide--bot] h-6 w-6"></span>
-									<span>Guest Information</span>
-								</div>
-
-								<div class="flex items-center gap-2">
-									<SimpleSelect
-										options={[
-											{ label: 'OS Info', value: 'os' },
-											{ label: 'Network', value: 'network' }
-										]}
-										bind:value={activeGaView}
-										classes={{ trigger: 'h-6! text-white min-w-[100px]' }}
-										onChange={(v: string) => {
-											activeGaView = v;
-										}}
-									/>
-
-									<Button
-										variant="secondary"
-										size="icon"
-										class="h-5 w-5"
-										onclick={() => gaInfo.refetch()}
-										disabled={gaInfo.loading}
-									>
-										<span class="icon-[mdi--refresh] h-4 w-4 {gaInfo.loading ? 'animate-spin' : ''}"
-										></span>
-									</Button>
-								</div>
-							</Card.Description>
-						</Card.Header>
-
-						<Card.Content class="mt-3 p-0">
-							{#if activeGaView === 'os'}
-								<Table.Root class="w-full">
-									<Table.Body>
-										<Table.Row>
-											<Table.Cell class="font-medium">OS Name</Table.Cell>
-											<Table.Cell
-												>{gaInfo.current.osInfo['pretty-name'] ||
-													gaInfo.current.osInfo.name ||
-													'Unknown'}</Table.Cell
-											>
-										</Table.Row>
-										<Table.Row>
-											<Table.Cell class="font-medium">Kernel</Table.Cell>
-											<Table.Cell>{gaInfo.current.osInfo['kernel-release'] || '-'}</Table.Cell>
-										</Table.Row>
-										<Table.Row>
-											<Table.Cell class="font-medium">Architecture</Table.Cell>
-											<Table.Cell>{gaInfo.current.osInfo.machine || '-'}</Table.Cell>
-										</Table.Row>
-										<Table.Row>
-											<Table.Cell class="font-medium">Version ID</Table.Cell>
-											<Table.Cell>{gaInfo.current.osInfo['version-id'] || '-'}</Table.Cell>
-										</Table.Row>
-									</Table.Body>
-								</Table.Root>
-							{:else if activeGaView === 'network'}
-								<div class="max-h-64 overflow-y-auto rounded-md border">
-									<Table.Root class="w-full">
-										<Table.Header class="sticky top-0 bg-muted/50 backdrop-blur-sm">
-											<Table.Row>
-												<Table.Head>Interface</Table.Head>
-												<Table.Head>MAC Address</Table.Head>
-												<Table.Head>IP Addresses</Table.Head>
-												<Table.Head class="text-right">RX / TX</Table.Head>
-											</Table.Row>
-										</Table.Header>
-										<Table.Body>
-											{#if gaInfo.current.interfaces && gaInfo.current.interfaces.length > 0}
-												{#each gaInfo.current.interfaces as iface}
-													<Table.Row>
-														<Table.Cell class="font-mono font-bold"
-															>{iface.name || 'unknown'}</Table.Cell
-														>
-														<Table.Cell class="font-mono text-xs"
-															>{iface['hardware-address'] || '-'}</Table.Cell
-														>
-														<Table.Cell>
-															<div class="flex flex-col gap-1">
-																{#if iface['ip-addresses'] && iface['ip-addresses'].length > 0}
-																	{#each iface['ip-addresses'] as ip}
-																		<span class="text-xs">
-																			<span class="text-muted-foreground mr-1 uppercase"
-																				>{ip['ip-address-type']}:</span
-																			>
-																			{ip['ip-address']}/{ip.prefix}
-																		</span>
-																	{/each}
-																{:else}
-																	<span class="text-muted-foreground text-xs">-</span>
-																{/if}
-															</div>
-														</Table.Cell>
-														<Table.Cell class="text-right text-xs">
-															{#if iface.statistics}
-																<div>↓ {humanFormat(iface.statistics['rx-bytes'] || 0)}B</div>
-																<div>↑ {humanFormat(iface.statistics['tx-bytes'] || 0)}B</div>
-															{:else}
-																<span class="text-muted-foreground italic">N/A</span>
-															{/if}
-														</Table.Cell>
-													</Table.Row>
-												{/each}
-											{:else}
-												<Table.Row>
-													<Table.Cell colspan={4} class="text-center text-muted-foreground py-4">
-														No network interfaces reported by agent.
-													</Table.Cell>
-												</Table.Row>
-											{/if}
-										</Table.Body>
-									</Table.Root>
-								</div>
-							{/if}
-						</Card.Content>
-					</Card.Root>
-				</div>
-			{/if}
+			<GuestAgent rid={data.vm.rid} initialGaInfo={data.gaInfo} refreshSignal={gaRefreshSignal} />
 
 			<div class="space-y-4 px-4 pb-4">
 				<LineBrush

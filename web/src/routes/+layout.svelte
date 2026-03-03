@@ -7,7 +7,6 @@
 	import { fade } from 'svelte/transition';
 	import { goto, preloadData } from '$app/navigation';
 	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
-	import { browser } from '$app/environment';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';

@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
@@ -27,6 +28,10 @@ var getHostname = os.Hostname
 var getUptime = uptime.Get
 var getLoadAvg = loadavg.Get
 
+var cachedHostname string
+var hostnameOnce sync.Once
+var hostnameErr error
+
 func GetSystemUUID() (string, error) {
 	const kenvKey = "kern.hostuuid"
 
@@ -38,7 +43,11 @@ func GetSystemUUID() (string, error) {
 }
 
 func GetSystemHostname() (string, error) {
-	return getHostname()
+	hostnameOnce.Do(func() {
+		cachedHostname, hostnameErr = getHostname()
+	})
+
+	return cachedHostname, hostnameErr
 }
 
 func GetOS() string {

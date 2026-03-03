@@ -21,7 +21,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
-	"github.com/alchemillahq/sylve/pkg/rcconf"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
@@ -142,53 +141,6 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 	for err := range errCh {
 		if err != nil {
 			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) CheckServiceDependencies(basicSettings models.BasicSettings) error {
-	const rcConfPath = "/etc/rc.conf"
-
-	enabledServices := []string{"zfs_enable"}
-
-	serviceMap := map[string]string{
-		"virtualization": "libvirtd_enable",
-		"dhcp-server":    "dnsmasq_enable",
-		"samba-server":   "samba_server_enable",
-	}
-
-	for _, svc := range basicSettings.Services {
-		if rc, ok := serviceMap[string(svc)]; ok {
-			enabledServices = append(enabledServices, rc)
-		}
-	}
-
-	serviceNames := map[string]string{
-		"libvirtd_enable":     "libvirtd",
-		"dnsmasq_enable":      "dnsmasq",
-		"samba_server_enable": "samba_server",
-	}
-
-	config, err := rcconf.Parse(rcConfPath)
-	if err != nil {
-		return fmt.Errorf("failed to parse %s: %w", rcConfPath, err)
-	}
-
-	for _, key := range enabledServices {
-		val, ok := config[key]
-		if !ok || val != "YES" {
-			return fmt.Errorf("required service %s is not enabled in %s", key, rcConfPath)
-		}
-
-		if key == "zfs_enable" || key == "samba_server_enable" || key == "dnsmasq_enable" {
-			continue
-		}
-
-		service := serviceNames[key]
-		if err := ensureServiceRunning(service); err != nil {
-			return fmt.Errorf("failed to ensure service %s is running: %w", service, err)
 		}
 	}
 
@@ -436,24 +388,22 @@ add path 'bpf*' unhide
 	return nil
 }
 
-func ensureServiceRunning(service string) error {
-	if _, err := utils.RunCommand("/usr/sbin/service", service, "enable"); err != nil {
-		return fmt.Errorf("could not enable service %s: %w", service, err)
-	}
-
-	_, statusErr := utils.RunCommand("/usr/sbin/service", service, "status")
+func ensureServiceStarted(service string) error {
+	// Check if it's already running using onestatus
+	_, statusErr := utils.RunCommand("/usr/sbin/service", service, "onestatus")
 	if statusErr == nil {
-		return nil
+		return nil // Service is already running
 	}
 
-	output, startErr := utils.RunCommand("/usr/sbin/service", service, "start")
+	// Force start the service without needing it enabled in /etc/rc.conf
+	output, startErr := utils.RunCommand("/usr/sbin/service", service, "onestart")
 	if startErr != nil {
-		// Check in case the start command actually worked but returned a non-zero exit code (some services do this, apparently?)
-		if _, finalStatusErr := utils.RunCommand("/usr/sbin/service", service, "status"); finalStatusErr == nil {
+		// Double check in case it actually started but returned a weird exit code
+		if _, finalStatusErr := utils.RunCommand("/usr/sbin/service", service, "onestatus"); finalStatusErr == nil {
 			return nil
 		}
-
-		return fmt.Errorf("could not start service %s: %w (output: %s)", service, startErr, output)
+		
+		return fmt.Errorf("could not force start service %s: %w (output: %s)", service, startErr, output)
 	}
 
 	return nil

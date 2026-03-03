@@ -494,7 +494,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	if proxyToVite {
 		r.NoRoute(func(c *gin.Context) {
-			ReverseProxy(c, "http://127.0.0.1:5173")
+			ReverseProxy(c, "http://[::1]:5173")
 		})
 	} else {
 		files, err := static.EmbedFolder(assets.SvelteKitFiles, "web-files")

@@ -16,7 +16,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	sambaUtils "github.com/alchemillahq/sylve/pkg/system/samba"
@@ -75,7 +74,7 @@ func (s *Service) InitSamba(ctx context.Context) error {
 		}
 	}
 
-	return system.ServiceAction("samba_server", "restart")
+	return nil
 }
 
 func (s *Service) InitSambaAdmins() error {

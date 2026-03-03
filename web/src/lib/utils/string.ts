@@ -9,8 +9,6 @@
  */
 
 import { getIcon, loadIcon } from '@iconify/svelte';
-import isCidr from 'is-cidr';
-import { isIP, isIPv4, isIPv6 } from 'is-ip';
 import { decode as magnetDecode, encode as magnetEncode } from 'magnet-uri';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
@@ -18,6 +16,7 @@ import isMACAddress from 'validator/lib/isMACAddress';
 import isURL from 'validator/lib/isURL';
 import { Mnemonic } from './vendor/mnemonic';
 import humanFormat from 'human-format';
+import { Address4, Address6 } from 'ip-address';
 
 export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): string {
     if (firstOnly) {
@@ -100,36 +99,28 @@ export function isValidSwitchName(name: string): boolean {
     return regex.test(name);
 }
 
-export function isValidIPv4(ip: string, cidr: boolean = false): boolean {
+export function isValidIPv4(ip: string, cidr = false): boolean {
     try {
-        if (cidr && isCidr.v4(ip)) {
-            return true;
+        const parsed = new Address4(ip);
+        if (!parsed.v4) return false;
+        const hasCidr = parsed.parsedSubnet !== "";
+
+        if (cidr) {
+            return hasCidr && parsed.subnetMask >= 0 && parsed.subnetMask <= 32;
         }
 
-        if (!cidr && isIPv4(ip)) {
-            return true;
-        }
-
-        return false;
-    } catch (e) {
-        console.log(e);
+        return !hasCidr;
+    } catch {
         return false;
     }
 }
 
-export function isValidIPv6(ip: string, cidr: boolean = false): boolean {
+export function isValidIPv6(ip: string, cidr = false): boolean {
     try {
-        if (cidr && isCidr.v6(ip)) {
-            return true;
-        }
-
-        if (!cidr && isIPv6(ip)) {
-            return true;
-        }
-
-        return false;
-    } catch (e) {
-        console.log(e);
+        const parsed = new Address6(ip);
+        const hasCidr = parsed.parsedSubnet !== "";
+        return cidr ? hasCidr : !hasCidr;
+    } catch {
         return false;
     }
 }

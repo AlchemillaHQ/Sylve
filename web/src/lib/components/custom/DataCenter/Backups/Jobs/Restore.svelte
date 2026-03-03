@@ -15,7 +15,6 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { humanFormatBytes } from '$lib/utils/string';
 	import { snapshotLineageLabel, formatRestoreSnapshotDate } from '$lib/utils/zfs';
-	import Icon from '@iconify/svelte';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -26,12 +25,7 @@
 		reload: boolean;
 	}
 
-	let {
-		open = $bindable(),
-		selectedJob,
-		nodes,
-		reload = $bindable()
-	}: Props = $props();
+	let { open = $bindable(), selectedJob, nodes, reload = $bindable() }: Props = $props();
 
 	let loading = $state(false);
 	let restoring = $state(false);
@@ -84,20 +78,20 @@
 		const marker = snapshotLineageMarker(snapshot);
 		if (marker === 'CURR') {
 			return {
-				icon: 'mdi:check-circle-outline',
+				icon: 'icon-[mdi--check-circle-outline]',
 				className: 'text-green-600',
 				title: 'Current lineage'
 			};
 		}
 		if (marker === 'INT') {
 			return {
-				icon: 'mdi:archive-outline',
+				icon: 'icon-[mdi--archive-outline]',
 				className: 'text-orange-600',
 				title: 'System-preserved lineage'
 			};
 		}
 		return {
-			icon: 'mdi:source-branch',
+			icon: 'icon-[mdi--source-branch]',
 			className: 'text-blue-600',
 			title: 'Out-of-band lineage'
 		};
@@ -370,8 +364,12 @@
 	}
 
 	let generationAliasByTag = $derived.by(() => buildGenerationAliasMap(snapshots));
-	let generationOptions = $derived.by(() => buildGenerationOptions(snapshots, generationAliasByTag));
-	let visibleSnapshots = $derived.by(() => filterSnapshotsByGeneration(snapshots, selectedGeneration));
+	let generationOptions = $derived.by(() =>
+		buildGenerationOptions(snapshots, generationAliasByTag)
+	);
+	let visibleSnapshots = $derived.by(() =>
+		filterSnapshotsByGeneration(snapshots, selectedGeneration)
+	);
 
 	let selectedSnapshotDate = $derived.by(() => {
 		if (!selectedSnapshot) return '';
@@ -385,16 +383,15 @@
 	);
 
 	let hasOutOfBandSnapshots = $derived.by(() =>
-		snapshots.some((snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active')
+		snapshots.some(
+			(snapshot) => !!snapshot.outOfBand || (snapshot.lineage || 'active') !== 'active'
+		)
 	);
 
-	watch(
-		[() => open, () => selectedJob?.id || 0],
-		([isOpen]) => {
-			if (!isOpen) return;
-			void loadSnapshots();
-		}
-	);
+	watch([() => open, () => selectedJob?.id || 0], ([isOpen]) => {
+		if (!isOpen) return;
+		void loadSnapshots();
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -402,7 +399,7 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:backup-restore" class="h-5 w-5" />
+					<span class="icon-[mdi--backup-restore] h-5 w-5"></span>
 					<span>Restore from Backup</span>
 				</div>
 
@@ -416,7 +413,7 @@
 		<div class="grid gap-4 py-0">
 			{#if loading}
 				<div class="flex items-center justify-center py-8">
-					<Icon icon="mdi:loading" class="h-6 w-6 animate-spin text-muted-foreground" />
+					<span class="icon-[mdi--loading] h-6 w-6 animate-spin text-muted-foreground"></span>
 					<span class="ml-2 text-muted-foreground">Loading snapshots from remote target...</span>
 				</div>
 			{:else if error}
@@ -439,7 +436,9 @@
 				/>
 
 				{#if hasOutOfBandSnapshots}
-					<div class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700">
+					<div
+						class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700"
+					>
 						Some backups are from out-of-band lineages. Regular prune count applies to the current
 						lineage only.
 					</div>
@@ -463,7 +462,10 @@
 							<tbody>
 								{#each [...visibleSnapshots].reverse() as snapshot}
 									{@const generation = snapshotGenerationTag(snapshot)}
-									{@const generationAlias = generationLabelFromKey(generation, generationAliasByTag)}
+									{@const generationAlias = generationLabelFromKey(
+										generation,
+										generationAliasByTag
+									)}
 									<tr
 										class="cursor-pointer border-t transition-colors hover:bg-accent {selectedSnapshot ===
 										snapshot.name
@@ -474,20 +476,20 @@
 									>
 										<td class="p-2 text-center">
 											{#if selectedSnapshot === snapshot.name}
-												<Icon icon="mdi:radiobox-marked" class="h-4 w-4 text-primary" />
+												<span class="icon-[mdi--radiobox-marked] h-4 w-4 text-primary"></span>
 											{:else}
-												<Icon icon="mdi:radiobox-blank" class="h-4 w-4 text-muted-foreground" />
+												<span class="icon-[mdi--radiobox-blank] h-4 w-4 text-muted-foreground"
+												></span>
 											{/if}
 										</td>
 										<td class="p-2 text-xs text-muted-foreground"
 											><span class="inline-flex items-center gap-1">
 												{#if snapshotLineageMarker(snapshot) !== 'CURR'}
 													{@const lineageIcon = snapshotLineageIcon(snapshot)}
-													<Icon
-														icon={lineageIcon.icon}
-														class={`h-3.5 w-3.5 ${lineageIcon.className}`}
+													<span
+														class={`${lineageIcon.icon} h-3.5 w-3.5 ${lineageIcon.className}`}
 														title={`${snapshotLineageLabel(snapshot)} (${snapshotLineageMarker(snapshot)})`}
-													/>
+													></span>
 												{/if}
 												<span>{formatRestoreSnapshotDate(snapshot)}</span>
 												{#if snapshotLineageMarker(snapshot) !== 'CURR' && generation && generation !== 'active'}
@@ -511,10 +513,10 @@
 				{/if}
 
 				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
-					<p class="font-medium text-yellow-600 dark:text-yellow-400">
-						<Icon icon="mdi:alert" class="mr-1 inline h-4 w-4" />
-						Restore Warning
-					</p>
+					<div class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
+						<span class="icon-[mdi--alert] h-4 w-4 text-yellow-600 dark:text-yellow-400"></span>
+						<span>Restore Warning</span>
+					</div>
 					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 						<li>The current dataset is replaced in place with the selected restore point</li>
 						<li>
@@ -530,7 +532,6 @@
 							</li>
 						{/if}
 						<li>No deletion on target, all snapshots remain available</li>
-						<li>No `.pre-restore` dataset is kept after restore</li>
 					</ul>
 				</div>
 			{/if}
@@ -544,11 +545,15 @@
 				variant="destructive"
 			>
 				{#if restoring}
-					<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
-					Restoring...
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						<span>Restoring</span>
+					</div>
 				{:else}
-					<Icon icon="mdi:backup-restore" class="mr-1 h-4 w-4" />
-					Restore
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--backup-restore] h-4 w-4"></span>
+						<span>Restore</span>
+					</div>
 				{/if}
 			</Button>
 		</Dialog.Footer>

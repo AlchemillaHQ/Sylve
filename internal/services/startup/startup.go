@@ -93,10 +93,6 @@ func (s *Service) PreFlightChecklist(basicSettings models.BasicSettings) error {
 		return err
 	}
 
-	if err := s.CheckServiceDependencies(basicSettings); err != nil {
-		return err
-	}
-
 	if err := s.CheckKernelModules(basicSettings); err != nil {
 		return err
 	}
@@ -131,6 +127,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	s.SysctlSync()
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
+		err := ensureServiceStarted("libvirtd")
+		if err != nil {
+			return fmt.Errorf("unable to start libvirtd")
+		}
+
 		if err := s.Libvirt.CheckVersion(); err != nil {
 			return err
 		}
@@ -157,13 +158,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		logger.L.Error().Msgf("error syncing standard switches: %v", err)
 	}
 
-	if slices.Contains(basicSettings.Services, models.DHCPServer) {
-		err = ensureServiceRunning("dnsmasq")
-		if err != nil {
-			logger.L.Error().Msgf("error ensuring dnsmasq is running: %v", err)
-		}
-	}
-
 	if slices.Contains(basicSettings.Services, models.Jails) {
 		if err := s.Network.SyncEpairs(false); err != nil {
 			return fmt.Errorf("error syncing epairs %v", err)
@@ -185,6 +179,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 		if err := s.InitSambaAdmins(); err != nil {
 			return fmt.Errorf("failed to initialize Samba admins: %w", err)
+		}
+
+		err := ensureServiceStarted("samba_server")
+		if err != nil {
+			logger.L.Error().Err(err).Msgf("unable to start samba server")
 		}
 	}
 
@@ -249,6 +248,17 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()
 		go s.Libvirt.WolTasks()
+	}
+
+	if slices.Contains(basicSettings.Services, models.DHCPServer) {
+		go func() {
+			time.Sleep(30 * time.Second) 
+
+			err := ensureServiceStarted("dnsmasq")
+			if err != nil {
+				logger.L.Error().Err(err).Msg("unable to start dnsmasq") 
+			}
+		}()
 	}
 
 	return nil

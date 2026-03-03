@@ -9,22 +9,22 @@
 	import { triggers } from '$lib/utils/keyboard-shortcuts';
 	import { shortcut, type ShortcutTrigger } from '@svelte-put/shortcut';
 	let openCategories: { [key: string]: boolean } = $state({});
-	import { Debounced } from 'runed';
+	import { Debounced, watch } from 'runed';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
 	};
 
-	let node = $derived.by(() => {
-		let url = page.url.pathname;
-		return url.split('/')[1];
-	});
+	let node = $derived(page.url.pathname.split('/')[1] || '');
 
-	$effect(() => {
-		if (node) {
-			storage.hostname = node;
+	watch(
+		() => node,
+		(curr, prev) => {
+			if (curr !== prev) {
+				storage.hostname = node;
+			}
 		}
-	});
+	);
 
 	interface NodeItem {
 		label: string;

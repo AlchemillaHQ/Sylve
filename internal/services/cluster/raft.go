@@ -56,6 +56,7 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(detail.NodeID)
+	cfg.SnapshotThreshold = 1024
 
 	raftLog := logger.NewZerologHCLog(logger.L, "raft")
 	raftLog.SetLevel(hclog.Error)

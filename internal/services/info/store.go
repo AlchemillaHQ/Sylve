@@ -9,17 +9,16 @@
 package info
 
 import (
+	"context"
 	"reflect"
 	"sync"
 	"time"
-	"context"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-const retention = 70 * 24 * time.Hour
 const netRetention = 2 * time.Hour
 
 func (s *Service) StoreStats() {

@@ -9,6 +9,8 @@
 package db
 
 import (
+	"errors"
+
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -30,7 +32,7 @@ import (
 
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	ormConfig := &gorm.Config{
-		Logger:         gormLogger.Default.LogMode(gormLogger.Warn),
+		Logger:         gormLogger.Default.LogMode(gormLogger.Info),
 		TranslateError: true,
 	}
 
@@ -141,8 +143,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	db.Exec("PRAGMA foreign_keys = ON")
 
-	sqlDB.SetMaxOpenConns(10)
-	sqlDB.SetMaxIdleConns(2)
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	err = setupInitUsers(db, cfg)
 	if err != nil {
@@ -270,17 +272,42 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 }
 
 func initClusterRecord(db *gorm.DB) error {
-	cluster := &clusterModels.Cluster{
-		Enabled:       false,
-		Key:           "",
-		RaftBootstrap: nil,
-		RaftIP:        "",
-		RaftPort:      0,
+	var keepID uint
+
+	err := db.Model(&clusterModels.Cluster{}).
+		Order("key DESC, id ASC").
+		Select("id").
+		First(&keepID).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			defaultCluster := &clusterModels.Cluster{
+				Enabled:       false,
+				Key:           "",
+				RaftBootstrap: nil,
+				RaftIP:        "",
+				RaftPort:      0,
+			}
+
+			if err := db.Create(defaultCluster).Error; err != nil {
+				logger.L.Error().Msgf("Failed to create initial cluster record: %v", err)
+				return err
+			}
+			return nil
+		}
+
+		logger.L.Error().Msgf("Failed to query best cluster record: %v", err)
+		return err
 	}
 
-	if err := db.Create(cluster).Error; err != nil {
-		logger.L.Error().Msgf("Failed to create initial data center record: %v", err)
-		return err
+	res := db.Where("id != ?", keepID).Delete(&clusterModels.Cluster{})
+	if res.Error != nil {
+		logger.L.Error().Msgf("Failed to clean up cluster records: %v", res.Error)
+		return res.Error
+	}
+
+	if res.RowsAffected > 0 {
+		logger.L.Info().Msgf("Purged %d duplicate cluster records!", res.RowsAffected)
 	}
 
 	return nil

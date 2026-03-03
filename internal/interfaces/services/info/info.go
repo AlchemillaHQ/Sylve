@@ -10,8 +10,23 @@ package infoServiceInterfaces
 
 import (
 	"context"
+
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 )
+
+type NodeInfo struct {
+	Hostname     string  `json:"hostname"`
+	LogicalCores int16   `json:"logicalCores"`
+	CPUUsage     float64 `json:"cpuUsage"`
+
+	RAMTotal uint64  `json:"ramTotal"`
+	RAMUsage float64 `json:"ramUsage"`
+
+	DiskTotal uint64  `json:"diskTotal"`
+	DiskUsage float64 `json:"diskUsage"`
+
+	Guests []uint `json:"guestIds"`
+}
 
 type InfoServiceInterface interface {
 	GetAuditRecords(limit int) ([]infoModels.AuditRecord, error)

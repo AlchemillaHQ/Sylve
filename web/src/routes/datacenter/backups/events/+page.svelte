@@ -14,7 +14,6 @@
 	import { humanFormatBytes, sha256 } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import Icon from '@iconify/svelte';
 	import { resource, useInterval } from 'runed';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -233,31 +232,31 @@
 		switch ((status || '').toLowerCase()) {
 			case 'success':
 				return {
-					icon: 'mdi:check-circle-outline',
+					icon: 'icon-[mdi--check-circle-outline]',
 					label: 'Success',
 					className: 'text-green-500'
 				};
 			case 'failed':
 				return {
-					icon: 'mdi:close-circle-outline',
+					icon: 'icon-[mdi--close-circle-outline]',
 					label: 'Failed',
 					className: 'text-red-500'
 				};
 			case 'interrupted':
 				return {
-					icon: 'mdi:alert-circle-outline',
+					icon: 'icon-[mdi--alert-circle-outline]',
 					label: 'Interrupted',
 					className: 'text-orange-500'
 				};
 			case 'running':
 				return {
-					icon: 'mdi:progress-clock',
+					icon: 'icon-[mdi--progress-clock]',
 					label: 'Running',
 					className: 'text-yellow-500'
 				};
 			default:
 				return {
-					icon: 'mdi:help-circle-outline',
+					icon: 'icon-[mdi--help-circle-outline]',
 					label: status || '-',
 					className: 'text-muted-foreground'
 				};
@@ -540,7 +539,7 @@
 			{#if selectedRunningEventId > 0}
 				<Button onclick={openProgressModal} size="sm" variant="outline" class="h-6 shrink-0">
 					<div class="flex items-center">
-						<Icon icon="mdi:chart-line" class="mr-1 h-4 w-4" />
+						<span class="icon-[mdi--chart-line] mr-1 h-4 w-4"></span>
 						<span>View Progress</span>
 					</div>
 				</Button>
@@ -584,7 +583,7 @@
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
 					<div class="flex items-center gap-2">
-						<Icon icon="mdi:chart-line" class="h-5 w-5" />
+						<span class="icon-[mdi--chart-line] h-5 w-5"></span>
 						<span>
 							Event Progress
 							{#if progressEvent.current?.event}
@@ -605,7 +604,7 @@
 							progressModal.open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>
@@ -629,7 +628,7 @@
 								<td class="p-2 text-muted-foreground">Status</td>
 								<td class="p-2 text-right">
 									<span class={`inline-flex items-center gap-1 ${status.className}`}>
-										<Icon icon={status.icon} class="h-4 w-4" />
+										<span class={status.icon + ' h-4 w-4'}></span>
 										<span>{status.label}</span>
 									</span>
 								</td>
@@ -712,7 +711,7 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:alert-circle-outline" class="h-5 w-5 text-red-500" />
+					<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
 					<span>#{errorModal.id} Event - Error Details</span>
 				</div>
 				<div class="flex items-center gap-2">
@@ -725,7 +724,7 @@
 							errorModal.open = false;
 						}}
 					>
-						<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+						<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
 				</div>

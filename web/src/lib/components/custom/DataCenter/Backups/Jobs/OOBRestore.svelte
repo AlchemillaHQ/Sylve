@@ -32,7 +32,6 @@
 		pickRepresentativeDataset,
 		snapshotLineageLabel
 	} from '$lib/utils/zfs';
-	import Icon from '@iconify/svelte';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -43,12 +42,7 @@
 		reload: boolean;
 	}
 
-	let {
-		open = $bindable(),
-		targets,
-		nodes,
-		reload = $bindable()
-	}: Props = $props();
+	let { open = $bindable(), targets, nodes, reload = $bindable() }: Props = $props();
 
 	let loadingDatasets = $state(false);
 	let loadingSnapshots = $state(false);
@@ -365,9 +359,7 @@
 
 	let selectedRestoreTargetDatasetGroup = $derived.by(
 		() =>
-			visibleRestoreTargetDatasets.find(
-				(entry) => entry.representativeDataset === dataset
-			) || null
+			visibleRestoreTargetDatasets.find((entry) => entry.representativeDataset === dataset) || null
 	);
 
 	let selectedRestoreTargetDatasetKind = $derived.by(
@@ -379,8 +371,12 @@
 	);
 
 	let generationAliasByTag = $derived.by(() => buildGenerationAliasMap(snapshots));
-	let generationOptions = $derived.by(() => buildGenerationOptions(snapshots, generationAliasByTag));
-	let visibleSnapshots = $derived.by(() => filterSnapshotsByGeneration(snapshots, selectedGeneration));
+	let generationOptions = $derived.by(() =>
+		buildGenerationOptions(snapshots, generationAliasByTag)
+	);
+	let visibleSnapshots = $derived.by(() =>
+		filterSnapshotsByGeneration(snapshots, selectedGeneration)
+	);
 
 	let snapshotOptions = $derived(
 		[...visibleSnapshots].reverse().map((item) => {
@@ -665,8 +661,7 @@
 			const metadataGuest = jailMetadata?.ctId || vmMetadata?.rid || 0;
 			const guestID = destinationGuest.id || metadataGuest;
 			const guestKind: 'jail' | 'vm' =
-				destinationGuest.kind === 'vm' ||
-				(destinationGuest.kind === 'dataset' && !!vmMetadata?.rid)
+				destinationGuest.kind === 'vm' || (destinationGuest.kind === 'dataset' && !!vmMetadata?.rid)
 					? 'vm'
 					: 'jail';
 
@@ -708,16 +703,13 @@
 		}
 	}
 
-	watch(
-		[() => open, () => targetOptions.length],
-		([isOpen]) => {
-			if (!isOpen) {
-				resetState(false);
-				return;
-			}
-			void initializeModal();
+	watch([() => open, () => targetOptions.length], ([isOpen]) => {
+		if (!isOpen) {
+			resetState(false);
+			return;
 		}
-	);
+		void initializeModal();
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -725,7 +717,7 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon="mdi:database-sync-outline" class="h-5 w-5" />
+					<span class="icon-[mdi--database-sync-outline] h-5 w-5"></span>
 					<span>Restore From Target Dataset</span>
 				</div>
 
@@ -842,7 +834,9 @@
 							CT ID: <code class="rounded bg-background px-1">{jailMetadata.ctId}</code>
 						</div>
 						<div>
-							Base Pool: <code class="rounded bg-background px-1">{jailMetadata.basePool || '-'}</code>
+							Base Pool: <code class="rounded bg-background px-1"
+								>{jailMetadata.basePool || '-'}</code
+							>
 						</div>
 					</div>
 				</div>
@@ -875,10 +869,10 @@
 			{/if}
 
 			<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
-				<p class="font-medium text-yellow-600 dark:text-yellow-400">
-					<Icon icon="mdi:alert" class="mr-1 inline h-4 w-4" />
-					Restore Warning
-				</p>
+				<div class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
+					<span class="icon-[mdi--alert] h-4 w-4"></span>
+					<span>Restore Warning</span>
+				</div>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 					<li>The destination dataset will be replaced if it already exists.</li>
 					{#if selectedSnapshotInfo}
@@ -917,11 +911,15 @@
 				variant="destructive"
 			>
 				{#if restoring}
-					<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
-					Restoring...
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						<span>Restoring...</span>
+					</div>
 				{:else}
-					<Icon icon="mdi:database-sync-outline" class="mr-1 h-4 w-4" />
-					Restore
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--database-sync-outline] h-4 w-4"></span>
+						<span>Restore</span>
+					</div>
 				{/if}
 			</Button>
 		</Dialog.Footer>

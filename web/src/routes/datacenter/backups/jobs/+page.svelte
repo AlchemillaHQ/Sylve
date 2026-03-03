@@ -6,8 +6,8 @@
 		runBackupJob
 	} from '$lib/api/cluster/backups';
 	import Form from '$lib/components/custom/DataCenter/Backups/Jobs/Form.svelte';
-	import OOBRestoreForm from '$lib/components/custom/DataCenter/Backups/Jobs/OOBRestoreForm.svelte';
-	import RestoreForm from '$lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte';
+	import OOBRestore from '$lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte';
+	import Restore from '$lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -54,6 +54,7 @@
 		{ initialValue: data.jobs }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 	let reload = $state(false);
 
@@ -161,12 +162,14 @@
 				const value = String(cell.getValue() || '');
 
 				if (row.mode === 'jail') {
-					const label = row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
+					const label =
+						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
 					return renderWithIcon('hugeicons:prison', label || '-');
 				}
 
 				if (row.mode === 'vm') {
-					const label = row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
+					const label =
+						row.sourceGuestId && row.sourceGuestId > 0 ? String(row.sourceGuestId) : value;
 					return renderWithIcon('material-symbols:monitor-outline', label || '-');
 				}
 
@@ -397,9 +400,8 @@
 	{nodes}
 />
 
-<RestoreForm bind:open={restoreModalOpen} bind:reload {selectedJob} {nodes} />
-
-<OOBRestoreForm bind:open={restoreTargetModalOpen} bind:reload targets={targets.current} {nodes} />
+<Restore bind:open={restoreModalOpen} bind:reload {selectedJob} {nodes} />
+<OOBRestore bind:open={restoreTargetModalOpen} bind:reload targets={targets.current} {nodes} />
 
 <AlertDialog
 	open={deleteModalOpen}

@@ -68,7 +68,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/2 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content class="w-1/2 overflow-hidden p-5 lg:max-w-lg">
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">

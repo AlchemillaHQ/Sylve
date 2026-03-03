@@ -1,9 +1,5 @@
 <script lang="ts">
-	import {
-		createBackupJob,
-		updateBackupJob,
-		type BackupJobInput
-	} from '$lib/api/cluster/backups';
+	import { createBackupJob, updateBackupJob, type BackupJobInput } from '$lib/api/cluster/backups';
 	import { getJails } from '$lib/api/jail/jail';
 	import { getVMs } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -23,7 +19,6 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { vmBaseDataset, vmStoragePools } from '$lib/utils/vm/vm';
-	import Icon from '@iconify/svelte';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -211,13 +206,13 @@
 			if (parsedGuest.kind === 'jail' && parsedGuest.id > 0) {
 				const matchingJail = jails.find((jail) => jail.ctId === parsedGuest.id);
 				form.selectedJailId = matchingJail ? String(matchingJail.id) : '';
-				} else {
-					const matchingJail = jails.find((jail) => {
-						const baseStorage = jail.storages?.find((storage) => storage.isBase);
-						if (!baseStorage) return false;
-						return `${baseStorage.pool}/sylve/jails/${jail.ctId}` === rootDataset;
-					});
-					form.selectedJailId = matchingJail ? String(matchingJail.id) : '';
+			} else {
+				const matchingJail = jails.find((jail) => {
+					const baseStorage = jail.storages?.find((storage) => storage.isBase);
+					if (!baseStorage) return false;
+					return `${baseStorage.pool}/sylve/jails/${jail.ctId}` === rootDataset;
+				});
+				form.selectedJailId = matchingJail ? String(matchingJail.id) : '';
 			}
 		}
 
@@ -290,17 +285,17 @@
 		}
 
 		let jailDataset = '';
-			if (form.mode === 'jail') {
-				if (!selectedJail) {
-					toast.error('Selected jail was not found', { position: 'bottom-center' });
-					return;
-				}
+		if (form.mode === 'jail') {
+			if (!selectedJail) {
+				toast.error('Selected jail was not found', { position: 'bottom-center' });
+				return;
+			}
 
-				const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
-				if (!baseStorage) {
-					toast.error('Unable to resolve a jail base dataset for the selected jail', {
-						position: 'bottom-center'
-					});
+			const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
+			if (!baseStorage) {
+				toast.error('Unable to resolve a jail base dataset for the selected jail', {
+					position: 'bottom-center'
+				});
 				return;
 			}
 
@@ -359,30 +354,24 @@
 		});
 	}
 
-	watch(
-		[() => open, () => edit, () => selectedJob?.id || 0],
-		([isOpen, isEdit]) => {
-			if (!isOpen) return;
-			if (isEdit && selectedJob) {
-				void applyFromJob(selectedJob);
-				return;
-			}
-			applyDefaults();
+	watch([() => open, () => edit, () => selectedJob?.id || 0], ([isOpen, isEdit]) => {
+		if (!isOpen) return;
+		if (isEdit && selectedJob) {
+			void applyFromJob(selectedJob);
+			return;
 		}
-	);
+		applyDefaults();
+	});
 
-	watch(
-		[() => open, () => form.mode, () => form.selectedVmId],
-		([isOpen, mode, selectedVmId]) => {
-			if (!isOpen || mode !== 'vm' || !selectedVmId) return;
-			const vm = vms.find((entry) => entry.id === Number.parseInt(selectedVmId, 10));
-			if (!vm) return;
-			const dataset = vmBaseDataset(vm);
-			if (dataset) {
-				form.sourceDataset = dataset;
-			}
+	watch([() => open, () => form.mode, () => form.selectedVmId], ([isOpen, mode, selectedVmId]) => {
+		if (!isOpen || mode !== 'vm' || !selectedVmId) return;
+		const vm = vms.find((entry) => entry.id === Number.parseInt(selectedVmId, 10));
+		if (!vm) return;
+		const dataset = vmBaseDataset(vm);
+		if (dataset) {
+			form.sourceDataset = dataset;
 		}
-	);
+	});
 </script>
 
 <Dialog.Root bind:open>
@@ -390,7 +379,11 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<Icon icon={edit ? 'mdi:note-edit' : 'mdi:calendar-sync'} class="h-5 w-5" />
+					<span
+						class="{edit
+							? 'icon-[ic--outline-edit-calendar]'
+							: 'icon-[material-symbols--calendar-add-on-outline-rounded]'} h-5 w-5"
+					></span>
 					<span>{edit ? 'Edit Backup Job' : 'New Backup Job'}</span>
 				</div>
 
@@ -406,13 +399,7 @@
 						<span class="sr-only">{'Reset'}</span>
 					</Button>
 
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={handleClose}
-					>
+					<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={handleClose}>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">{'Close'}</span>
 					</Button>
@@ -509,7 +496,11 @@
 			</div>
 
 			<div class="flex flex-row gap-4">
-				<CustomCheckbox label="Enabled" bind:checked={form.enabled} classes="flex items-center gap-2" />
+				<CustomCheckbox
+					label="Enabled"
+					bind:checked={form.enabled}
+					classes="flex items-center gap-2"
+				/>
 
 				<CustomCheckbox
 					label="Prune on target"
@@ -525,19 +516,25 @@
 			</div>
 
 			<div class="rounded-md bg-muted p-3 text-sm">
-				<p class="font-medium">Job Summary:</p>
+				<p class="font-medium">Job Summary</p>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 					{#if form.mode === 'jail'}
 						<li>
-							Jail <code class="rounded bg-background px-1">{selectedJail?.name || '(not selected)'}</code>
+							Jail <code class="rounded bg-background px-1"
+								>{selectedJail?.name || '(not selected)'}</code
+							>
 							will be backed up
 						</li>
 						<li>
-							CT ID: <code class="rounded bg-background px-1">{selectedJail?.ctId || '(unknown)'}</code>
+							CT ID: <code class="rounded bg-background px-1"
+								>{selectedJail?.ctId || '(unknown)'}</code
+							>
 						</li>
 					{:else if form.mode === 'vm'}
 						<li>
-							VM <code class="rounded bg-background px-1">{selectedVM?.name || '(not selected)'}</code>
+							VM <code class="rounded bg-background px-1"
+								>{selectedVM?.name || '(not selected)'}</code
+							>
 							will be backed up
 						</li>
 						<li>
@@ -545,12 +542,16 @@
 						</li>
 					{:else}
 						<li>
-							Dataset <code class="rounded bg-background px-1">{form.sourceDataset || '(not set)'}</code>
+							Dataset <code class="rounded bg-background px-1"
+								>{form.sourceDataset || '(not set)'}</code
+							>
 							will be backed up
 						</li>
 					{/if}
 					<li>
-						Schedule: <code class="rounded bg-background px-1">{cronToHuman(form.cronExpr) || '(not set)'}</code>
+						Schedule: <code class="rounded bg-background px-1"
+							>{cronToHuman(form.cronExpr) || '(not set)'}</code
+						>
 					</li>
 					<li>
 						Pruning:
@@ -562,7 +563,9 @@
 					</li>
 					<li>
 						Target prune:
-						<code class="rounded bg-background px-1">{form.pruneTarget ? 'Enabled' : 'Disabled'}</code>
+						<code class="rounded bg-background px-1"
+							>{form.pruneTarget ? 'Enabled' : 'Disabled'}</code
+						>
 					</li>
 					<li>
 						Stop before backup:
@@ -578,8 +581,10 @@
 			<Button variant="outline" onclick={handleClose}>Cancel</Button>
 			<Button onclick={saveJob} disabled={loading}>
 				{#if loading}
-					<Icon icon="mdi:loading" class="mr-1 h-4 w-4 animate-spin" />
-					{edit ? 'Updating...' : 'Creating...'}
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						<span>{edit ? 'Updating' : 'Creating'}</span>
+					</div>
 				{:else}
 					{edit ? 'Update' : 'Create'}
 				{/if}
