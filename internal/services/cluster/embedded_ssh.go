@@ -58,7 +58,7 @@ func (s *Service) StartEmbeddedSSHServer(ctx context.Context) error {
 
 		logger.L.Info().
 			Str("addr", listenAddr).
-			Msg("embedded_cluster_ssh_started")
+			Msg("Embedded SSH server started")
 
 		go func() {
 			<-ctx.Done()

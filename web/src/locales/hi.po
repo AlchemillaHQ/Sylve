@@ -8750,10 +8750,12 @@ msgid "DC Backup Job"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr ""
 
@@ -8890,15 +8892,18 @@ msgstr ""
 #~ msgid "NodeID"
 #~ msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Source Node"
@@ -9020,4 +9025,133 @@ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Weight"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Deleting Virtual Machine"
+msgstr ""
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error force deleting VM"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM force deleted with warnings"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM force deleted"
+msgstr ""
+
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
+#: src/routes/[node]/vm/[node]/+layout.svelte
+msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+msgid "VM shutdown started"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Delete"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Delete VM?"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "This will force delete VM"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid ""
+"Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and\n"
+"VM network objects. Partial failures will be tolerated."
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "VM serial terminal"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leader cannot exit when followers are present"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "All policies"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Failed to load progress"
+msgstr ""
+
+#. placeholder {0}: selectedEvent.id
+#. placeholder {0}: selectedEvent.id
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event #{0}"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Output copied to clipboard"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Failed to copy output"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target Node"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Message"
+msgstr ""
+
+#. placeholder {0}: event.policyId
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Policy {0}"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Output"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Replication Progress"
+msgstr ""
+
+#. placeholder {0}: outputModal.title
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event Output - {0}"
+msgstr ""
+
+#. placeholder {0}: errorModal.title
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Event Error - {0}"
 msgstr ""

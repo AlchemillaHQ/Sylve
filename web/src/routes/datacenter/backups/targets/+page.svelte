@@ -317,7 +317,7 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
-					<span class="icon-[mdi--note-edit] h-5 w-5"></span>
+					<span class="icon-[carbon--server-proxy] h-5 w-5"></span>
 					<span>{targetModal.edit ? 'Edit Backup Target' : 'New Backup Target'}</span>
 				</div>
 				<div class="flex items-center gap-0.5">

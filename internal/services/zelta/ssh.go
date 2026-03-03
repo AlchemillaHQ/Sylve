@@ -117,7 +117,7 @@ func recoverSingleSSHKeyPathCandidate() (string, error) {
 	return candidates[0], nil
 }
 
-func RemoveSSHKey(targetID uint) {
+func (s *Service) RemoveSSHKey(targetID uint) {
 	sshDir, err := GetSSHKeyDir()
 	if err != nil {
 		logger.L.Warn().Err(err).Uint("target_id", targetID).Msg("failed_to_get_ssh_key_dir_for_removal")
@@ -126,19 +126,6 @@ func RemoveSSHKey(targetID uint) {
 
 	keyPath := filepath.Join(sshDir, fmt.Sprintf("target-%d_id", targetID))
 	_ = os.Remove(keyPath)
-}
-
-func setEnvValue(env []string, key, value string) []string {
-	prefix := key + "="
-	out := make([]string, 0, len(env)+1)
-	for _, entry := range env {
-		if strings.HasPrefix(entry, prefix) {
-			continue
-		}
-		out = append(out, entry)
-	}
-	out = append(out, prefix+value)
-	return out
 }
 
 func (s *Service) ensureBackupTargetSSHKeyMaterialized(target *clusterModels.BackupTarget) error {
@@ -234,16 +221,21 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 		return fmt.Errorf("backup_root_required")
 	}
 
-	rootExists, output, err := s.remoteDatasetExists(ctx, target, backupRoot)
+	if err := s.ensureSSHConnectivity(ctx, target); err != nil {
+		return err
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	rootExists, _, err := s.remoteDatasetExists(ctx, target, backupRoot)
 	if err == nil && rootExists {
 		return nil
 	}
 
-	if !target.CreateBackupRoot {
-		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
-			return err
-		}
-		return fmt.Errorf("backup_root_not_found: dataset '%s' does not exist on target (but SSH connection works): %s", backupRoot, output)
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	pool := parseZFSPoolNameFromDataset(backupRoot)
@@ -251,16 +243,19 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 		return fmt.Errorf("invalid_backup_root: dataset '%s' is invalid", backupRoot)
 	}
 
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	poolExists, poolOutput, poolErr := s.remoteZFSPoolExists(ctx, target, pool)
 	if poolErr != nil {
-		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
-			return err
-		}
 		if !poolExists {
 			return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
 		}
+
 		return fmt.Errorf("backup_pool_check_failed: %s", poolOutput)
 	}
+
 	if !poolExists {
 		return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
 	}
@@ -328,9 +323,6 @@ func (s *Service) remoteCreateDataset(ctx context.Context, target *clusterModels
 
 	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		if err := s.ensureSSHConnectivity(ctx, target); err != nil {
-			return err
-		}
 		return fmt.Errorf("backup_root_create_failed: failed to create dataset '%s': %s", dataset, output)
 	}
 
@@ -350,12 +342,21 @@ func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterMode
 }
 
 func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
-	args := []string{"-n", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"}
+	args := []string{
+		"-n",
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "ConnectTimeout=3",
+		"-o", "ConnectionAttempts=1",
+	}
+
 	if target.SSHPort != 0 && target.SSHPort != 22 {
 		args = append(args, "-p", fmt.Sprintf("%d", target.SSHPort))
 	}
+
 	if target.SSHKeyPath != "" {
 		args = append(args, "-i", target.SSHKeyPath)
 	}
+
 	return args
 }

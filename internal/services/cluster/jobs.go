@@ -541,7 +541,7 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 
 	const maxRetries = 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if err := writeOnce(); err != nil {
 			if strings.Contains(err.Error(), "database is locked") && attempt < maxRetries-1 {
 				time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)

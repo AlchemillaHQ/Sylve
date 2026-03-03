@@ -65,6 +65,6 @@ func GetValue(key string) ([]byte, bool) {
 
 func RunCacheGC() {
 	for CacheDB.RunValueLogGC(0.5) == nil {
-		logger.L.Info().Msg("Successfully ran value log GC on cache DB")
+		logger.L.Info().Msg("Ran value log GC on cache DB")
 	}
 }

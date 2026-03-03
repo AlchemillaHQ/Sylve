@@ -233,3 +233,16 @@ func autoDestSuffix(source string) string {
 	// Fallback: full source path with "/" replaced by "-".
 	return strings.ReplaceAll(source, "/", "-")
 }
+
+func setEnvValue(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	out = append(out, prefix+value)
+	return out
+}

@@ -12,20 +12,20 @@
 		{
 			name: 'Alchemilla',
 			url: 'https://alchemilla.io',
-			light: '/logo/sponsors/Alchemilla-Dark.png',
-			dark: '/logo/sponsors/Alchemilla-White.png'
+			light: '/logo/sponsors/Alchemilla-Dark.webp',
+			dark: '/logo/sponsors/Alchemilla-White.webp'
 		},
 		{
 			name: 'FreeBSD Foundation',
 			url: 'https://freebsdfoundation.org',
-			light: '/logo/sponsors/FreeBSD-Red.png',
-			dark: '/logo/sponsors/FreeBSD-White.png'
+			light: '/logo/sponsors/FreeBSD-Red.webp',
+			dark: '/logo/sponsors/FreeBSD-White.webp'
 		},
 		{
 			name: 'IPTechnics',
 			url: 'https://iptechnics.com',
-			light: '/logo/sponsors/IP-Technics-Dark.png',
-			dark: '/logo/sponsors/IP-Technics-White.png'
+			light: '/logo/sponsors/IP-Technics-Dark.webp',
+			dark: '/logo/sponsors/IP-Technics-White.webp'
 		}
 	];
 </script>

@@ -9,7 +9,6 @@
 package clusterModels
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -144,18 +143,18 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		var existingByID BackupTarget
-		err := tx.Where("id = ?", target.ID).First(&existingByID).Error
-		hasByID := err == nil
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		queryByID := tx.Where("id = ?", target.ID).Limit(1).Find(&existingByID)
+		if queryByID.Error != nil {
+			return queryByID.Error
 		}
+		hasByID := queryByID.RowsAffected > 0
 
 		var existingByName BackupTarget
-		err = tx.Where("name = ?", target.Name).First(&existingByName).Error
-		hasByName := err == nil
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		queryByName := tx.Where("name = ?", target.Name).Limit(1).Find(&existingByName)
+		if queryByName.Error != nil {
+			return queryByName.Error
 		}
+		hasByName := queryByName.RowsAffected > 0
 
 		now := time.Now()
 		updates := map[string]any{

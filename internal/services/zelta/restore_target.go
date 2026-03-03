@@ -117,9 +117,10 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 
 		jailCTID := uint(0)
 		vmRID := uint(0)
-		if kind == clusterModels.BackupJobModeJail {
+		switch kind {
+		case clusterModels.BackupJobModeJail:
 			jailCTID = guestID
-		} else if kind == clusterModels.BackupJobModeVM {
+		case clusterModels.BackupJobModeVM:
 			vmRID = guestID
 		}
 
@@ -988,6 +989,7 @@ func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
 	root[vmIdx+1] = ridPart
 	return normalizeDatasetPath(strings.Join(root, "/"))
 }
+
 func (s *Service) listRemoteSnapshotsForDataset(ctx context.Context, target *clusterModels.BackupTarget, remoteDataset string) ([]SnapshotInfo, error) {
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost,

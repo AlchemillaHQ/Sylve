@@ -159,16 +159,22 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error initializing DHCP config: %v", err)
 	}
 
-	if !isTest {
-		if err := db.Exec("VACUUM").Error; err != nil {
-			logger.L.Warn().Msgf("VACUUM failed: %v", err)
-		}
-	}
-
 	err = Fixups(db)
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error applying database fixups: %v", err)
+	}
+
+	err = PruneJobs(db)
+
+	if err != nil {
+		logger.L.Error().Err(err).Msgf("Error pruning database of unnecessary records: %v", err)
+	}
+
+	if !isTest {
+		if err := db.Exec("VACUUM").Error; err != nil {
+			logger.L.Warn().Msgf("VACUUM failed: %v", err)
+		}
 	}
 
 	db.Model(&models.BasicSettings{}).

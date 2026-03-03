@@ -69,8 +69,8 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 		}
 
 		sshKeyPath := ""
+		tmpID := uint(time.Now().UnixNano() % 1000000)
 		if strings.TrimSpace(req.SSHKey) != "" {
-			tmpID := uint(time.Now().UnixNano() % 1000000)
 			path, err := zelta.SaveSSHKey(tmpID, req.SSHKey)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -92,7 +92,7 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
-		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
@@ -102,6 +102,9 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 				Error:   err.Error(),
 				Data:    nil,
 			})
+
+			zS.RemoveSSHKey(tmpID)
+
 			return
 		}
 
@@ -195,7 +198,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			CreateBackupRoot: req.CreateBackupRoot != nil && *req.CreateBackupRoot,
 		}
 
-		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		validateCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(validateCtx, testTarget); err != nil {
@@ -236,7 +239,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 	}
 }
 
-func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
+func DeleteBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -265,7 +268,7 @@ func DeleteBackupTarget(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		zelta.RemoveSSHKey(uint(id64))
+		zS.RemoveSSHKey(uint(id64))
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
@@ -299,7 +302,7 @@ func ValidateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFun
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
 		if err := zS.ValidateTarget(ctx, target); err != nil {
