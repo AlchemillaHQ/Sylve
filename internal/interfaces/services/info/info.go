@@ -18,14 +18,11 @@ type NodeInfo struct {
 	Hostname     string  `json:"hostname"`
 	LogicalCores int16   `json:"logicalCores"`
 	CPUUsage     float64 `json:"cpuUsage"`
-
-	RAMTotal uint64  `json:"ramTotal"`
-	RAMUsage float64 `json:"ramUsage"`
-
-	DiskTotal uint64  `json:"diskTotal"`
-	DiskUsage float64 `json:"diskUsage"`
-
-	Guests []uint `json:"guestIds"`
+	RAMTotal     uint64  `json:"ramTotal"`
+	RAMUsage     float64 `json:"ramUsage"`
+	DiskTotal    uint64  `json:"diskTotal"`
+	DiskUsage    float64 `json:"diskUsage"`
+	Guests       []uint  `json:"guestIds"`
 }
 
 type InfoServiceInterface interface {

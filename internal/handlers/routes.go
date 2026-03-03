@@ -130,6 +130,8 @@ func RegisterRoutes(r *gin.Engine,
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
 		info.GET("/terminal", infoHandlers.HandleHostTerminal)
+
+		info.GET("/node", infoHandlers.NodeInfo(infoService))
 	}
 
 	zfs := api.Group("/zfs")

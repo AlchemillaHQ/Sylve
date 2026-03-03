@@ -96,6 +96,10 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
 	}
 
+	raftAddr := raft.ServerAddress(bindAddr)
+	s.RaftID = &raftAddr
+	s.NodeID = detail.NodeID
+
 	s.Transport = t
 
 	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, s.Transport)

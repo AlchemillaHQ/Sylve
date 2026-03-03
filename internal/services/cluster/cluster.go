@@ -32,6 +32,8 @@ var _ clusterServiceInterfaces.ClusterServiceInterface = (*Service)(nil)
 type Service struct {
 	DB          *gorm.DB
 	Raft        *raft.Raft
+	RaftID      *raft.ServerAddress
+	NodeID      string
 	Transport   *raft.NetworkTransport
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
@@ -43,6 +45,8 @@ func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInt
 	return &Service{
 		DB:          db,
 		Raft:        nil,
+		RaftID:      nil,
+		NodeID:      "",
 		AuthService: authService,
 		JailService: jailService,
 	}

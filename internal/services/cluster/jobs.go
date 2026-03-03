@@ -20,15 +20,13 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-type basicHealthData struct {
-	Hostname string `json:"hostname"`
-}
 
 type curInfo struct {
 	nodeUUID  string
@@ -122,194 +120,52 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
-func (s *Service) fetchCPUInfo(host string, port int, clusterToken string) (int, float64, bool) {
-	url := fmt.Sprintf("https://%s:%d/api/info/cpu", host, port)
-
-	body, _, err := utils.HTTPGetJSONRead(
-		url,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-	)
-
-	if err != nil {
-		return 0, 0, false
-	}
-
-	var resp internal.APIResponse[infoServiceInterfaces.CPUInfo]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return 0, 0, false
-	}
-
-	if resp.Status != "success" {
-		return 0, 0, false
-	}
-
-	cores := int(resp.Data.LogicalCores)
-	usage := resp.Data.Usage
-	return cores, usage, true
-}
-
-func (s *Service) fetchRAMInfo(host string, port int, clusterToken string) (uint64, float64, bool) {
-	url := fmt.Sprintf("https://%s:%d/api/info/ram", host, port)
-
-	body, _, err := utils.HTTPGetJSONRead(
-		url,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-	)
-	if err != nil {
-		return 0, 0, false
-	}
-
-	var resp internal.APIResponse[infoServiceInterfaces.RAMInfo]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return 0, 0, false
-	}
-	if resp.Status != "success" {
-		return 0, 0, false
-	}
-
-	return resp.Data.Total, resp.Data.UsedPercent, true
-}
-
-type PoolDisksUsageResponse struct {
-	Total float64 `json:"total"`
-	Usage float64 `json:"usage"`
-}
-
-func (s *Service) fetchDiskInfo(host string, port int, clusterToken string) (uint64, float64, bool) {
-	url := fmt.Sprintf("https://%s:%d/api/zfs/pools/disks-usage", host, port)
-
-	body, _, err := utils.HTTPGetJSONRead(
-		url,
-		map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		},
-	)
-
-	if err != nil {
-		return 0, 0, false
-	}
-
-	var resp internal.APIResponse[PoolDisksUsageResponse]
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return 0, 0, false
-	}
-
-	if resp.Status != "success" {
-		return 0, 0, false
-	}
-
-	total := uint64(resp.Data.Total)
-	used := uint64(resp.Data.Usage)
-	pct := float64(0)
-	if total > 0 {
-		pct = (float64(used) / float64(total)) * 100.0
-	}
-
-	return uint64(resp.Data.Total), pct, true
-}
-
-func (s *Service) fetchCanonicalHostnameAndCPU(host string, port int, clusterToken, clusterKey, selfHostname string) (string, bool, int, float64, bool) {
-	if utils.IsLocalIP(host) {
-		hostname := selfHostname
-		cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken)
-		return hostname, true, cpuCores, usage, okCPU
-	}
-	canon, ok := s.fetchCanonicalHostnameWithToken(host, port, clusterToken, clusterKey)
-	cpuCores, usage, okCPU := s.fetchCPUInfo(host, port, clusterToken)
-	return canon, ok, cpuCores, usage, okCPU
-}
-
 func (s *Service) getClusterToken(hostname string) (string, error) {
 	return s.AuthService.CreateClusterJWT(0, hostname, "", "")
 }
 
-func (s *Service) fetchCanonicalHostnameWithToken(host string, port int, clusterToken, clusterKey string) (string, bool) {
-	url := fmt.Sprintf("https://%s:%d/api/health/basic", host, port)
+func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoServiceInterfaces.NodeInfo, error) {
+	var nodeInfo infoServiceInterfaces.NodeInfo
 
-	body, _, err := utils.HTTPPostJSONRead(
+	url := fmt.Sprintf("https://%s:%d/api/info/node", host, port)
+	body, _, err := utils.HTTPGetJSONRead(
 		url,
-		map[string]any{"clusterKey": clusterKey},
 		map[string]string{
 			"Accept":          "application/json",
-			"Content-Type":    "application/json",
 			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
 		},
 	)
+
 	if err != nil {
-		return "", false
+		return nodeInfo, err
 	}
 
-	var resp internal.APIResponse[basicHealthData]
+	var resp internal.APIResponse[infoServiceInterfaces.NodeInfo]
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", false
-	}
-	if resp.Status == "success" && resp.Data.Hostname != "" {
-		return resp.Data.Hostname, true
-	}
-	return "", false
-}
-
-func (s *Service) fetchResourceIds(host string, port int, clusterToken string) ([]uint, error) {
-	var resourceIDs []uint
-
-	endpoints := []string{"vm", "jail"}
-
-	for _, endpoint := range endpoints {
-		url := fmt.Sprintf("https://%s:%d/api/%s/simple", host, port, endpoint)
-
-		body, _, err := utils.HTTPGetJSONRead(
-			url,
-			map[string]string{
-				"Accept":          "application/json",
-				"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-			},
-		)
-		if err != nil {
-			continue
-		}
-
-		var resp struct {
-			Status string `json:"status"`
-			Data   []struct {
-				RID  uint `json:"rid"`
-				CTID uint `json:"ctId"`
-			} `json:"data"`
-		}
-
-		if err := json.Unmarshal(body, &resp); err != nil {
-			return nil, err
-		}
-
-		for _, item := range resp.Data {
-			if item.RID > 0 {
-				resourceIDs = append(resourceIDs, item.RID)
-			} else if item.CTID > 0 {
-				resourceIDs = append(resourceIDs, item.CTID)
-			}
-		}
+		return nodeInfo, err
 	}
 
-	return resourceIDs, nil
+	if resp.Status != "success" {
+		return nodeInfo, fmt.Errorf("failed_to_fetch_node_info")
+	}
+
+	return resp.Data, nil
 }
 
 func (s *Service) PopulateClusterNodes() error {
+	if s.Raft == nil || s.Raft.State() != raft.Leader {
+		return nil
+	}
+
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
 		return err
 	}
+
 	if !c.Enabled {
 		return nil
 	}
+
 	if s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
@@ -318,20 +174,17 @@ func (s *Service) PopulateClusterNodes() error {
 	if err != nil {
 		return err
 	}
+
 	clusterToken, err := s.getClusterToken(selfHostname)
 	if err != nil {
 		return err
 	}
-	clusterDetails, err := s.GetClusterDetails()
-	if err != nil {
-		return err
-	}
-	clusterKey := clusterDetails.Cluster.Key
 
 	fut := s.Raft.GetConfiguration()
 	if err := fut.Error(); err != nil {
 		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
 	}
+
 	cfg := fut.Configuration()
 
 	current := make(map[string]curInfo, len(cfg.Servers))
@@ -353,71 +206,24 @@ func (s *Service) PopulateClusterNodes() error {
 			api := fmt.Sprintf("%s:%d", host, config.ParsedConfig.Port)
 			port := config.ParsedConfig.Port
 
-			// Parallelize fetches within each node
-			var nodeWg sync.WaitGroup
-			var canon string
-			var okHealth bool
-			var cores int
-			var cpuUsage float64
-			var okCPU bool
-			var memBytes uint64
-			var memUsedPct float64
-			var okRAM bool
-			var diskBytes uint64
-			var diskUsedPct float64
-			var okDisk bool
-			var guestIDs []uint
-
-			nodeWg.Add(4)
-
-			go func() {
-				defer nodeWg.Done()
-				canon, okHealth, cores, cpuUsage, okCPU =
-					s.fetchCanonicalHostnameAndCPU(host, port, clusterToken, clusterKey, selfHostname)
-			}()
-
-			go func() {
-				defer nodeWg.Done()
-				memBytes, memUsedPct, okRAM = s.fetchRAMInfo(host, port, clusterToken)
-			}()
-
-			go func() {
-				defer nodeWg.Done()
-				diskBytes, diskUsedPct, okDisk = s.fetchDiskInfo(host, port, clusterToken)
-			}()
-
-			go func() {
-				defer nodeWg.Done()
-				ids, err := s.fetchResourceIds(host, port, clusterToken)
-				if err == nil {
-					guestIDs = ids
-				}
-			}()
-
-			nodeWg.Wait()
-
 			ci := curInfo{
-				nodeUUID:  uuid,
-				api:       api,
-				canonHost: canon,
-				rawHost:   host,
-				healthOK:  okHealth,
-				guestIDs:  guestIDs,
+				nodeUUID: uuid,
+				api:      api,
+				rawHost:  host,
+				healthOK: false,
 			}
 
-			if okCPU {
-				ci.cpu = cores
-				ci.cpuUsage = cpuUsage
-			}
-
-			if okRAM {
-				ci.memory = memBytes
-				ci.memUsage = memUsedPct
-			}
-
-			if okDisk {
-				ci.disk = diskBytes
-				ci.diskUsage = diskUsedPct
+			nodeInfo, err := s.GetNodeInfo(host, port, clusterToken)
+			if err == nil {
+				ci.healthOK = true
+				ci.canonHost = nodeInfo.Hostname
+				ci.cpu = int(nodeInfo.LogicalCores)
+				ci.cpuUsage = nodeInfo.CPUUsage
+				ci.memory = nodeInfo.RAMTotal
+				ci.memUsage = nodeInfo.RAMUsage
+				ci.disk = nodeInfo.DiskTotal
+				ci.diskUsage = nodeInfo.DiskUsage
+				ci.guestIDs = nodeInfo.Guests
 			}
 
 			mu.Lock()
@@ -539,17 +345,73 @@ func (s *Service) PopulateClusterNodes() error {
 			return nil
 		})
 	}
-
 	const maxRetries = 3
 	for attempt := range maxRetries {
-		if err := writeOnce(); err != nil {
-			if strings.Contains(err.Error(), "database is locked") && attempt < maxRetries-1 {
-				time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
-				continue
-			}
-			return err
+		err := writeOnce()
+		if err == nil {
+			break
 		}
-		return nil
+
+		if strings.Contains(err.Error(), "database is locked") && attempt < maxRetries-1 {
+			time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
+			continue
+		}
+
+		return err
+	}
+
+	var syncPayload []clusterServiceInterfaces.NodeHealthSync
+	for _, cur := range current {
+		status := "offline"
+		if cur.healthOK {
+			status = "online"
+		}
+
+		hostname := cur.canonHost
+		if hostname == "" {
+			hostname = cur.rawHost
+		}
+
+		syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
+			NodeUUID:    cur.nodeUUID,
+			Hostname:    hostname,
+			API:         cur.api,
+			Status:      status,
+			CPU:         cur.cpu,
+			CPUUsage:    cur.cpuUsage,
+			Memory:      cur.memory,
+			MemoryUsage: cur.memUsage,
+			Disk:        cur.disk,
+			DiskUsage:   cur.diskUsage,
+			GuestIDs:    cur.guestIDs,
+		})
+	}
+
+	payloadBytes, _ := json.Marshal(syncPayload)
+
+	for _, server := range cfg.Servers {
+		if server.Address == s.Raft.Leader() {
+			continue
+		}
+
+		go func(addr string) {
+			host, _, _ := net.SplitHostPort(addr)
+			if host == "" {
+				host = addr
+			}
+
+			url := fmt.Sprintf("https://%s:%d/api/internal/cluster/sync-health", host, config.ParsedConfig.Port)
+
+			utils.HTTPPostJSONWithTimeout(
+				url,
+				payloadBytes,
+				map[string]string{
+					"Content-Type":    "application/json",
+					"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+				},
+				5*time.Second,
+			)
+		}(string(server.Address))
 	}
 
 	return nil
