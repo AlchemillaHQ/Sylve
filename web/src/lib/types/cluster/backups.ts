@@ -102,3 +102,27 @@ export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
 export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
 export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
 export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
+export type BackupJobMode = BackupJob['mode'];
+export type BackupGuestKind = 'dataset' | 'jail' | 'vm';
+export type BackupSnapshotLineageMarker = 'CURR' | 'OOB' | 'INT';
+
+export interface BackupGuestRef {
+    kind: BackupGuestKind;
+    id: number;
+}
+
+export interface BackupRestoreGenerationOption {
+    value: string;
+    label: string;
+}
+
+export interface RestoreTargetDatasetGroup {
+    baseSuffix: string;
+    label: string;
+    jobLabel: string;
+    representativeDataset: string;
+    kind: BackupGuestKind;
+    jailCtId: number;
+    vmRid: number;
+    totalSnapshots: number;
+}
