@@ -1,19 +1,13 @@
 <script lang="ts">
 	import {
-		createBackupTarget,
 		deleteBackupTarget,
 		listBackupTargets,
-		updateBackupTarget,
-		validateBackupTarget,
-		type BackupTargetInput
+		validateBackupTarget
 	} from '$lib/api/cluster/backups';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { BackupTarget } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
@@ -21,6 +15,7 @@
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
+	import Form from '$lib/components/custom/DataCenter/Backups/Targets/Form.svelte';
 
 	interface Data {
 		targets: BackupTarget[];
@@ -58,6 +53,11 @@
 			? Number(activeRows[0].id)
 			: 0
 	);
+
+	let selectedTarget = $derived.by(() => {
+		if (!selectedTargetId) return null;
+		return targets.current.find((t) => t.id === selectedTargetId) || null;
+	});
 
 	let targetModal = $state({
 		open: false,
@@ -120,89 +120,6 @@
 		columns: targetColumns
 	});
 
-	function resetTargetModal() {
-		targetModal.open = false;
-		targetModal.edit = false;
-		targetModal.name = '';
-		targetModal.sshHost = '';
-		targetModal.sshPort = 22;
-		targetModal.sshKey = '';
-		targetModal.backupRoot = '';
-		targetModal.createBackupRoot = false;
-		targetModal.description = '';
-		targetModal.enabled = true;
-	}
-
-	function openCreateTarget() {
-		resetTargetModal();
-		targetModal.open = true;
-	}
-
-	function openEditTarget() {
-		if (selectedTargetId === 0) return;
-		const target = targets.current.find((t) => t.id === selectedTargetId);
-		if (!target) return;
-
-		targetModal.open = true;
-		targetModal.edit = true;
-		targetModal.name = target.name;
-		targetModal.sshHost = target.sshHost;
-		targetModal.sshPort = target.sshPort || 22;
-		targetModal.sshKey = '';
-		targetModal.backupRoot = target.backupRoot;
-		targetModal.createBackupRoot = target.createBackupRoot ?? false;
-		targetModal.description = target.description || '';
-		targetModal.enabled = target.enabled;
-	}
-
-	async function saveTarget() {
-		if (!targetModal.name.trim()) {
-			toast.error('Name is required', { position: 'bottom-center' });
-			return;
-		}
-		if (!targetModal.sshHost.trim()) {
-			toast.error('SSH Host is required', { position: 'bottom-center' });
-			return;
-		}
-		if (!targetModal.backupRoot.trim()) {
-			toast.error('Backup Root is required', { position: 'bottom-center' });
-			return;
-		}
-
-		const payload: BackupTargetInput = {
-			name: targetModal.name,
-			sshHost: targetModal.sshHost,
-			sshPort: targetModal.sshPort || 22,
-			sshKey: targetModal.sshKey || undefined,
-			backupRoot: targetModal.backupRoot,
-			createBackupRoot: targetModal.createBackupRoot,
-			description: targetModal.description,
-			enabled: targetModal.enabled
-		};
-
-		const response = targetModal.edit
-			? await updateBackupTarget(selectedTargetId, payload)
-			: await createBackupTarget(payload);
-
-		if (response.status === 'success') {
-			toast.success(targetModal.edit ? 'Backup target updated' : 'Backup target created', {
-				position: 'bottom-center'
-			});
-			reload = true;
-			resetTargetModal();
-			return;
-		}
-
-		handleAPIError(response);
-		if (response.error?.includes('backup_root_not_found')) {
-			toast.error('Backup root not found on target', { position: 'bottom-center' });
-		} else {
-			toast.error(targetModal.edit ? 'Failed to update target' : 'Failed to create target', {
-				position: 'bottom-center'
-			});
-		}
-	}
-
 	async function removeTarget() {
 		if (!selectedTargetId) return;
 		const response = await deleteBackupTarget(selectedTargetId);
@@ -252,7 +169,15 @@
 	{/if}
 
 	{#if type === 'edit' && activeRows !== null && activeRows.length === 1}
-		<Button onclick={openEditTarget} size="sm" variant="outline" class="h-6">
+		<Button
+			onclick={() => {
+				targetModal.edit = true;
+				targetModal.open = true;
+			}}
+			size="sm"
+			variant="outline"
+			class="h-6"
+		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
 				<span>Edit</span>
@@ -282,7 +207,15 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
-		<Button onclick={openCreateTarget} size="sm" class="h-6">
+		<Button
+			onclick={() => {
+				targetModal.edit = false;
+				targetModal.open = true;
+				activeRows = [];
+			}}
+			size="sm"
+			class="h-6"
+		>
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
@@ -312,117 +245,20 @@
 	</div>
 </div>
 
-<Dialog.Root bind:open={targetModal.open}>
-	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
-		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="icon-[carbon--server-proxy] h-5 w-5"></span>
-					<span>{targetModal.edit ? 'Edit Backup Target' : 'New Backup Target'}</span>
-				</div>
-				<div class="flex items-center gap-0.5">
-					<Button
-						size="sm"
-						variant="link"
-						title={'Reset'}
-						class="h-4 {targetModal.edit ? '' : 'hidden'}"
-						onclick={() => {
-							if (targetModal.edit) {
-								openEditTarget();
-							}
-						}}
-					>
-						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
-					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title={'Close'}
-						onclick={() => {
-							resetTargetModal();
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
-					</Button>
-				</div>
-			</Dialog.Title>
-		</Dialog.Header>
-
-		<div class="grid gap-4 py-0">
-			<CustomValueInput
-				label="Name"
-				placeholder="offsite-backup"
-				bind:value={targetModal.name}
-				classes="space-y-1"
-			/>
-
-			<div class="grid grid-cols-3 gap-3">
-				<div class="col-span-2">
-					<CustomValueInput
-						label="SSH Host"
-						placeholder="root@192.168.1.100"
-						bind:value={targetModal.sshHost}
-						classes="space-y-1"
-					/>
-				</div>
-				<CustomValueInput
-					label="SSH Port"
-					placeholder="22"
-					bind:value={targetModal.sshPort}
-					type="number"
-					classes="space-y-1"
-				/>
-			</div>
-
-			<div class="space-y-1">
-				<CustomValueInput
-					label="SSH Private Key {targetModal.edit ? '(leave empty to keep existing)' : ''}"
-					placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
-					bind:value={targetModal.sshKey}
-					type="textarea"
-					classes="space-y-1"
-					textAreaClasses="min-h-[80px]! max-h-[200px]!"
-				/>
-			</div>
-
-			<CustomValueInput
-				label="Backup Root"
-				placeholder="tank/Backups"
-				bind:value={targetModal.backupRoot}
-				classes="space-y-1"
-			/>
-
-			<CustomValueInput
-				label="Description"
-				placeholder="Offsite backup server in datacenter"
-				bind:value={targetModal.description}
-				classes="space-y-1"
-			/>
-
-			<div class="flex items-center gap-4">
-				<CustomCheckbox
-					label="Create Backup Root"
-					bind:checked={targetModal.createBackupRoot}
-					classes="flex items-center gap-2"
-				/>
-
-				<CustomCheckbox
-					label="Enabled"
-					bind:checked={targetModal.enabled}
-					classes="flex items-center gap-2"
-				/>
-			</div>
-		</div>
-
-		<Dialog.Footer>
-			<Button variant="outline" onclick={resetTargetModal}>Cancel</Button>
-			<Button onclick={saveTarget}>Save</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<Form
+	bind:open={targetModal.open}
+	bind:edit={targetModal.edit}
+	bind:name={targetModal.name}
+	bind:sshHost={targetModal.sshHost}
+	bind:sshPort={targetModal.sshPort}
+	bind:sshKey={targetModal.sshKey}
+	bind:backupRoot={targetModal.backupRoot}
+	bind:createBackupRoot={targetModal.createBackupRoot}
+	bind:description={targetModal.description}
+	bind:enabled={targetModal.enabled}
+	bind:reload
+	{selectedTarget}
+/>
 
 <AlertDialog
 	open={deleteModalOpen}

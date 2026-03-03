@@ -418,6 +418,8 @@ msgstr "最小化"
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
@@ -544,9 +546,6 @@ msgstr "最小化"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -589,6 +588,8 @@ msgstr "创建分区"
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
@@ -687,15 +688,13 @@ msgstr "创建分区"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Reset"
 msgstr "重置"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -732,7 +731,6 @@ msgstr "重置"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1151,7 +1149,6 @@ msgstr "这是附注"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Save"
@@ -1428,6 +1425,7 @@ msgstr "Admin"
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1589,6 +1587,7 @@ msgstr "你确定吗？"
 msgid "This action cannot be undone. This will permanently delete"
 msgstr "此操作无法撤销。永久删除"
 
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -1603,7 +1602,6 @@ msgstr "此操作无法撤销。永久删除"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
 msgstr "取消"
@@ -1763,6 +1761,7 @@ msgstr "退出"
 msgid "Share name already exists"
 msgstr "共享名称已存在"
 
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -1770,7 +1769,6 @@ msgstr "共享名称已存在"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Name is required"
 msgstr "名称为必填项"
 
@@ -1874,6 +1872,7 @@ msgstr "无数据"
 msgid "Model"
 msgstr "型号"
 
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1883,7 +1882,6 @@ msgstr "型号"
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Description"
 msgstr "描述"
@@ -3191,6 +3189,7 @@ msgstr "VNC 已修改"
 msgid "VNC"
 msgstr "VNC"
 
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3204,7 +3203,6 @@ msgstr "VNC"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3854,6 +3852,7 @@ msgstr "删除 MAC 对象"
 msgid "Delete Root Filesystem"
 msgstr "删除根文件系统"
 
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update"
@@ -6694,19 +6693,19 @@ msgstr ""
 #~ msgid "Job: {0}"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Backup target updated"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Backup target created"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Failed to update target"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Failed to create target"
 msgstr ""
 
@@ -6751,11 +6750,11 @@ msgstr ""
 #~ msgid "No status loaded"
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Edit Backup Target"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "New Backup Target"
 msgstr ""
 
@@ -6922,7 +6921,7 @@ msgstr ""
 #~ msgid "Backup targets are remote nodes where ZFS snapshots can be sent for offsite backup."
 #~ msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Offsite backup server in datacenter"
 msgstr ""
 
@@ -7238,21 +7237,21 @@ msgstr ""
 msgid "No backup jobs found for this target"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "SSH Host"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Backup Root"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Host is required"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Backup Root is required"
 msgstr ""
 
@@ -7272,12 +7271,12 @@ msgstr ""
 msgid "Validate"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Port"
 msgstr ""
 
-#. placeholder {0}: targetModal.edit ? '(leave empty to keep existing)' : ''
-#: src/routes/datacenter/backups/targets/+page.svelte
+#. placeholder {0}: edit ? '(leave empty to keep existing)' : ''
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr ""
 
@@ -7389,7 +7388,7 @@ msgstr ""
 msgid "Target prune: <0/>"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Backup root not found on target"
 msgstr ""
 
@@ -8016,7 +8015,7 @@ msgstr ""
 msgid "Toggle Search"
 msgstr ""
 
-#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "Create Backup Root"
 msgstr ""
 
@@ -8404,10 +8403,22 @@ msgstr ""
 msgid "No generations found"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "TargetID"
+#~ msgid "TargetID"
+#~ msgstr ""
+
+#~ msgid "NodeID"
+#~ msgstr ""
+
+#~ msgid "Saving..."
+#~ msgstr ""
+
+#~ msgid "Saving"
+#~ msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Updating"
 msgstr ""
 
-#: src/routes/datacenter/backups/jobs/+page.svelte
-msgid "NodeID"
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Creating"
 msgstr ""
