@@ -38,6 +38,9 @@ type Service struct {
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
 
+	peerProbeMu            sync.Mutex
+	peerProbeFailureStreak map[string]int
+
 	embeddedSSHOnce sync.Once
 	monitorOnce     sync.Once
 }
@@ -50,6 +53,8 @@ func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInt
 		NodeID:      "",
 		AuthService: authService,
 		JailService: jailService,
+
+		peerProbeFailureStreak: make(map[string]int),
 	}
 }
 
