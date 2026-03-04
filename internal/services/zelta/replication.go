@@ -1075,7 +1075,7 @@ func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint)
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s/api/cluster/replication/internal/activate", targetAPI)
+	url := fmt.Sprintf("https://%s/api/intra-cluster/activate", targetAPI)
 	return utils.HTTPPostJSON(url, map[string]any{
 		"policyId": policyID,
 	}, map[string]string{

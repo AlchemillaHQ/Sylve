@@ -19,7 +19,7 @@ import (
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /internal/cluster/sync-health [post]
+// @Router /intra-cluster/sync-health [post]
 func SyncHealth(clusterService *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var payload []clusterServiceInterfaces.NodeHealthSync

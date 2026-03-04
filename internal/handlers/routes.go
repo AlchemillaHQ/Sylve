@@ -423,6 +423,15 @@ func RegisterRoutes(r *gin.Engine,
 		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
 	}
 
+	intraCluster := api.Group("/intra-cluster")
+	intraCluster.Use(middleware.EnsureAuthenticated(authService))
+	{
+		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
+		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
+		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
+		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
+	}
+
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
 	cluster.Use(middleware.RequestLoggerMiddleware(db, authService))
@@ -491,10 +500,6 @@ func RegisterRoutes(r *gin.Engine,
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
 		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
 		clusterReplication.GET("/events/:id/progress", clusterHandlers.ReplicationEventProgressByID(clusterService, zeltaService))
-
-		clusterReplication.POST("/internal/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
-		clusterReplication.POST("/internal/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
-		clusterReplication.POST("/internal/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
 	}
 
 	vnc := api.Group("/vnc")

@@ -204,7 +204,7 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s:%d/api/cluster/replication/internal/ssh-identity", host, config.ParsedConfig.Port)
+	url := fmt.Sprintf("https://%s:%d/api/intra-cluster/ssh-identity", host, config.ParsedConfig.Port)
 	headers := map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
