@@ -104,14 +104,14 @@ func main() {
 	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
 
-	go sysS.StartNetlinkWatcher(qCtx)
-	go sysS.NetlinkEventsCleaner(qCtx)
-	go db.StartQueue(qCtx)
-
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
 
 	err := sS.Initialize(aS.(*auth.Service), initContext)
+
+	go sysS.StartNetlinkWatcher(qCtx)
+	go sysS.NetlinkEventsCleaner(qCtx)
+	go db.StartQueue(qCtx)
 
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
