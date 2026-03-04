@@ -7,7 +7,7 @@
 		id?: string;
 		label: string;
 		checked: boolean;
-		classes: string;
+		classes?: string;
 		disabled?: boolean;
 	}
 

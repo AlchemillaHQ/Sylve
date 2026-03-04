@@ -26,6 +26,7 @@
 
 	const visible = new IsDocumentVisible();
 
+	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'zfs-pools-full',
 		async (key, prevKey, { signal }) => {
@@ -38,6 +39,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'system-basic-settings',
 		async (key, prevKey, { signal }) => {
@@ -54,31 +56,6 @@
 	let poolOptions = $derived.by(() => {
 		return pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
 	});
-
-	function refetch() {
-		pools.refetch();
-		basicSettings.refetch();
-	}
-
-	useInterval(3000, {
-		callback: async () => {
-			if (visible.current && !storage.idle) {
-				refetch();
-			}
-		}
-	});
-
-	let reload = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				refetch();
-				reload = false;
-			}
-		}
-	);
 
 	let query: string = $state('');
 	let tableData = $derived.by(() => {
@@ -175,6 +152,43 @@
 		position: 'bottom-center' as const
 	};
 
+	async function refetch() {
+		await Promise.all([pools.refetch(), basicSettings.refetch()]);
+
+		poolOptions = pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
+		modals.zfsPools.values = basicSettings.current.pools.join(',');
+	}
+
+	const anyModalOpen = $derived(
+		modals.zfsPools.open ||
+			modals['dhcp-server'].open ||
+			modals['wol-server'].open ||
+			modals['samba-server'].open ||
+			modals.virtualization.open ||
+			modals.jails.open
+	);
+
+	useInterval(3000, {
+		callback: async () => {
+			if (visible.current && !storage.idle && !anyModalOpen) {
+				refetch();
+			}
+		}
+	});
+
+	let reload = $state(false);
+	let loading = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
+				refetch();
+				reload = false;
+			}
+		}
+	);
+
 	async function saveZFSPools() {
 		if (modals.zfsPools.open) {
 			const newPools = modals.zfsPools.values
@@ -189,23 +203,21 @@
 
 			if (sameElements(newPools, basicSettings.current.pools)) {
 				toast.info('No changes made to ZFS Pools', toastOpts);
-
 				return;
-			} else {
-				const missingPools = basicSettings.current.pools.filter((pool) => !newPools.includes(pool));
-				if (missingPools.length > 0) {
-					toast.error('Cannot remove initialized ZFS Pools', toastOpts);
-					return;
-				}
 			}
 
+			loading = true;
+
 			const response = await updateUsablePools(newPools);
+
 			reload = true;
+			loading = false;
+
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to update ZFS Pools', toastOpts);
 			} else {
-				toast.success('ZFS Pools updated successfully', toastOpts);
+				toast.success('ZFS Pools updated', toastOpts);
 				modals.zfsPools.open = false;
 				modals.zfsPools.values = newPools.join(',');
 			}
@@ -314,6 +326,7 @@
 		saveZFSPools();
 	}}
 	options={poolOptions}
+	bind:loading
 />
 
 {@render serviceToggleDialog('DHCP Server', 'dhcp-server', modals['dhcp-server'].enabled)}

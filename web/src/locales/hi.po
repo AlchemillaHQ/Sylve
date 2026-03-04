@@ -1131,6 +1131,7 @@ msgstr "यह एक नोट है"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -6410,9 +6411,8 @@ msgstr "ZFS पूल्स में कोई बदलाव नहीं क
 msgid "Failed to update ZFS Pools"
 msgstr "ZFS पूल्स को अपडेट करने में विफल रहा"
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "ZFS Pools updated successfully"
-msgstr "ZFS पूल्स सफलतापूर्वक अपडेट किए गए"
+#~ msgid "ZFS Pools updated successfully"
+#~ msgstr "ZFS पूल्स सफलतापूर्वक अपडेट किए गए"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Enter ZFS Pools"
@@ -6422,9 +6422,8 @@ msgstr "ZFS पूल दर्ज करें"
 msgid "Select ZFS Pools"
 msgstr ""
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Cannot remove initialized ZFS Pools"
-msgstr "आरंभ किए गए ZFS पूल्स को हटाया नहीं जा सकता"
+#~ msgid "Cannot remove initialized ZFS Pools"
+#~ msgstr "आरंभ किए गए ZFS पूल्स को हटाया नहीं जा सकता"
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
@@ -9281,8 +9280,9 @@ msgstr ""
 #~ msgid "Saving..."
 #~ msgstr ""
 
-#~ msgid "Saving"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Saving"
+msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
@@ -9344,4 +9344,12 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Stale Cache"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Basic Settings - ZFS Pools"
 msgstr ""

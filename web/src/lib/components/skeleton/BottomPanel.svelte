@@ -81,6 +81,7 @@
 		'/api/jail/description': 'Jail - Update Description',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
+		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
 		'/api/system/basic-settings/services/dhcp-server/toggle': 'Toggle - DHCP Server',
 		'/api/system/basic-settings/services/wol-server/toggle': 'Toggle - WoL Server',
 		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',

@@ -1174,6 +1174,7 @@ msgstr "This is a note"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -6432,9 +6433,8 @@ msgstr "No changes made to ZFS Pools"
 msgid "Failed to update ZFS Pools"
 msgstr "Failed to update ZFS Pools"
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "ZFS Pools updated successfully"
-msgstr "ZFS Pools updated successfully"
+#~ msgid "ZFS Pools updated successfully"
+#~ msgstr "ZFS Pools updated successfully"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Enter ZFS Pools"
@@ -6444,9 +6444,8 @@ msgstr "Enter ZFS Pools"
 msgid "Select ZFS Pools"
 msgstr "Select ZFS Pools"
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Cannot remove initialized ZFS Pools"
-msgstr "Cannot remove initialized ZFS Pools"
+#~ msgid "Cannot remove initialized ZFS Pools"
+#~ msgstr "Cannot remove initialized ZFS Pools"
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
@@ -9421,8 +9420,9 @@ msgstr "No generations found"
 #~ msgid "Saving..."
 #~ msgstr "Saving..."
 
-#~ msgid "Saving"
-#~ msgstr "Saving"
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Saving"
+msgstr "Saving"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
@@ -9481,3 +9481,11 @@ msgstr "Job Summary"
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Stale Cache"
 msgstr "Stale Cache"
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated"
+msgstr "ZFS Pools updated"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Basic Settings - ZFS Pools"
+msgstr "Basic Settings - ZFS Pools"

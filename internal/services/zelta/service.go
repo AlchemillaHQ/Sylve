@@ -532,6 +532,32 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	var output string
 	var runErr error
 
+	runVMBackupPass := func() error {
+		for idx, vmSource := range vmSourceDatasets {
+			vmDestSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), vmSource)
+			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
+			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, backupSnapPrefix)
+			output = appendOutput(output, partOutput)
+			if partErr == nil {
+				outcome := classifyBackupOutput(partOutput)
+				if code := outcome.errorCode(); code != "" {
+					partErr = errors.New(code)
+				} else if outcome == backupOutputUpToDate {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", vmSource).
+						Str("target", job.Target.ZeltaEndpoint(vmDestSuffix)).
+						Msg("backup_up_to_date_noop")
+				}
+			}
+			if partErr != nil {
+				return partErr
+			}
+		}
+
+		return nil
+	}
+
 	defer func() {
 		s.finalizeBackupEvent(&event, runErr, output)
 		s.updateBackupJobResult(job, runErr)
@@ -577,16 +603,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	if job.Mode == clusterModels.BackupJobModeVM {
-		for idx, vmSource := range vmSourceDatasets {
-			vmDestSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), vmSource)
-			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
-			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, backupSnapPrefix)
-			output = appendOutput(output, partOutput)
-			if partErr != nil {
-				runErr = partErr
-				break
-			}
-		}
+		runErr = runVMBackupPass()
 	} else {
 		output, runErr = s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
 		if runErr == nil {
@@ -603,22 +620,29 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 	}
 
-	if job.Mode != clusterModels.BackupJobModeVM && runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
+	if runErr != nil && shouldAutoRotateBackupErrorCode(runErr.Error()) {
+		reseedSource := sourceDataset
+		reseedDestSuffix := destSuffix
+		if job.Mode == clusterModels.BackupJobModeVM && len(vmSourceDatasets) > 0 {
+			reseedSource = vmSourceDatasets[0]
+			reseedDestSuffix = s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), reseedSource)
+		}
+
 		logger.L.Info().
 			Uint("job_id", job.ID).
-			Str("source", sourceDataset).
-			Str("target", event.TargetEndpoint).
+			Str("source", reseedSource).
+			Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
 			Str("reason", runErr.Error()).
 			Msg("backup_auto_reseed_starting")
 
-		fromDataset, archivedDataset, archiveErr := s.archiveActiveTargetDatasetForReseed(ctx, &job.Target, destSuffix)
+		fromDataset, archivedDataset, archiveErr := s.archiveActiveTargetDatasetForReseed(ctx, &job.Target, reseedDestSuffix)
 		if archiveErr != nil {
 			runErr = fmt.Errorf("backup_auto_reseed_failed: %w", archiveErr)
 		} else {
 			logger.L.Info().
 				Uint("job_id", job.ID).
-				Str("source", sourceDataset).
-				Str("target", event.TargetEndpoint).
+				Str("source", reseedSource).
+				Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
 				Str("archived_from", fromDataset).
 				Str("archived_to", archivedDataset).
 				Msg("backup_auto_reseed_archive_completed")
@@ -626,26 +650,31 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				output = appendOutput(output, fmt.Sprintf("auto_archived_target_dataset: %s -> %s", fromDataset, archivedDataset))
 			}
 
-			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
-			output = appendOutput(output, retryOutput)
-			runErr = retryErr
-			if runErr == nil {
-				retryOutcome := classifyBackupOutput(retryOutput)
-				if code := retryOutcome.errorCode(); code != "" {
-					runErr = errors.New(code)
-				} else if retryOutcome == backupOutputUpToDate {
-					logger.L.Info().
-						Uint("job_id", job.ID).
-						Str("source", sourceDataset).
-						Str("target", event.TargetEndpoint).
-						Msg("backup_up_to_date_noop_after_reseed")
+			if job.Mode == clusterModels.BackupJobModeVM {
+				runErr = runVMBackupPass()
+			} else {
+				retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
+				output = appendOutput(output, retryOutput)
+				runErr = retryErr
+				if runErr == nil {
+					retryOutcome := classifyBackupOutput(retryOutput)
+					if code := retryOutcome.errorCode(); code != "" {
+						runErr = errors.New(code)
+					} else if retryOutcome == backupOutputUpToDate {
+						logger.L.Info().
+							Uint("job_id", job.ID).
+							Str("source", sourceDataset).
+							Str("target", event.TargetEndpoint).
+							Msg("backup_up_to_date_noop_after_reseed")
+					}
 				}
 			}
+
 			if runErr == nil {
 				logger.L.Info().
 					Uint("job_id", job.ID).
-					Str("source", sourceDataset).
-					Str("target", event.TargetEndpoint).
+					Str("source", reseedSource).
+					Str("target", job.Target.ZeltaEndpoint(reseedDestSuffix)).
 					Msg("backup_completed_after_reseed")
 			}
 		}

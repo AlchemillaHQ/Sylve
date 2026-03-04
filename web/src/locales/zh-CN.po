@@ -1144,6 +1144,7 @@ msgstr "这是附注"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Add.svelte
@@ -5929,9 +5930,8 @@ msgstr "ZFS 存储池未发生任何变更"
 msgid "Failed to update ZFS Pools"
 msgstr "ZFS 存储池更新失败"
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "ZFS Pools updated successfully"
-msgstr "ZFS 存储池更新成功"
+#~ msgid "ZFS Pools updated successfully"
+#~ msgstr "ZFS 存储池更新成功"
 
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "Enter ZFS Pools"
@@ -5941,9 +5941,8 @@ msgstr "输入 ZFS 存储池"
 msgid "Select ZFS Pools"
 msgstr "选择 ZFS 存储池"
 
-#: src/routes/[node]/settings/system/+page.svelte
-msgid "Cannot remove initialized ZFS Pools"
-msgstr "无法移除已初始化的 ZFS 存储池"
+#~ msgid "Cannot remove initialized ZFS Pools"
+#~ msgstr "无法移除已初始化的 ZFS 存储池"
 
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 msgid "Add spares to enable auto replace"
@@ -8517,8 +8516,9 @@ msgstr ""
 #~ msgid "Saving..."
 #~ msgstr ""
 
-#~ msgid "Saving"
-#~ msgstr ""
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Saving"
+msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
@@ -8576,4 +8576,12 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Stale Cache"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Basic Settings - ZFS Pools"
 msgstr ""

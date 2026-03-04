@@ -360,6 +360,10 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 	}
 
 	if err := ds.Mount(ctx, false); err != nil {
+		lowerErr := strings.ToLower(strings.TrimSpace(err.Error()))
+		if strings.Contains(lowerErr, "already mounted") {
+			return
+		}
 		logger.L.Warn().Err(err).Str("dataset", dataset).Msg("fix_restored_property_mount_failed")
 	}
 }

@@ -822,7 +822,14 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	}
 
 	if activateRemoteGeneration {
-		if _, err := s.activateTargetGenerationForRestore(ctx, target, preferredRemoteDataset, remoteDataset); err != nil {
+		activationActive := preferredRemoteDataset
+		activationSelected := remoteDataset
+		if datasetWithinRoot(activationActive, activationSelected) && activationActive != activationSelected {
+			// Snapshot resolution can land on a child dataset (for example a VM zvol under the VM root).
+			// Generation activation is only defined for the lineage root dataset, so keep it anchored there.
+			activationSelected = activationActive
+		}
+		if _, err := s.activateTargetGenerationForRestore(ctx, target, activationActive, activationSelected); err != nil {
 			restoreErr = fmt.Errorf("activate_restore_generation_failed: %w", err)
 			if ownsEvent {
 				s.finalizeRestoreEvent(&event, restoreErr, output)

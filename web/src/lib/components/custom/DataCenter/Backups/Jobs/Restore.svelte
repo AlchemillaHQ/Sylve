@@ -395,7 +395,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[92%] max-w-2xl overflow-hidden p-5">
+	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-5">
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
