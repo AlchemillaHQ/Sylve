@@ -773,7 +773,6 @@ func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset 
 		if sourceRoot != "" {
 			sourceRootSuffix := autoDestSuffix(sourceRoot)
 			if configuredSuffix == sourceRootSuffix ||
-				strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/job-") ||
 				strings.HasPrefix(configuredSuffix, sourceRootSuffix+"/j-") {
 				rel := strings.TrimPrefix(sourceDataset, sourceRoot)
 				rel = strings.TrimPrefix(rel, "/")

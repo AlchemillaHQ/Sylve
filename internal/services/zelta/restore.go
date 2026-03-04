@@ -29,7 +29,7 @@ type SnapshotInfo struct {
 	Creation  string `json:"creation"`            // creation timestamp
 	Used      string `json:"used"`                // space used
 	Refer     string `json:"refer"`               // referenced size
-	Lineage   string `json:"lineage,omitempty"`   // "active" | "rotated" | "preserved" | "other"
+	Lineage   string `json:"lineage,omitempty"`   // "active" | "rotated" | "other"
 	OutOfBand bool   `json:"outOfBand,omitempty"` // true when snapshot is outside the active lineage
 }
 
@@ -415,10 +415,6 @@ func (s *Service) registerRestoreJob() {
 
 func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 	destSuffix := strings.TrimSpace(job.DestSuffix)
-	if destSuffix == "" {
-		destSuffix = fallbackBackupJobDestSuffix(job.ID, job.Mode, job.SourceDataset, job.JailRootDataset)
-	}
-
 	remoteDataset := strings.TrimSpace(job.Target.BackupRoot)
 	if destSuffix != "" {
 		remoteDataset = remoteDataset + "/" + destSuffix
@@ -549,24 +545,6 @@ func datasetLineageBaseSuffixForDataset(backupRoot, dataset string) string {
 	suffix := relativeDatasetSuffix(backupRoot, dataset)
 	_, _, baseSuffix := classifyDatasetLineage(suffix)
 	return normalizeDatasetPath(baseSuffix)
-}
-
-func fallbackBackupJobDestSuffix(jobID uint, mode, sourceDataset, jailRootDataset string) string {
-	source := strings.TrimSpace(sourceDataset)
-	if strings.TrimSpace(mode) == clusterModels.BackupJobModeJail {
-		source = strings.TrimSpace(jailRootDataset)
-	}
-
-	base := normalizeDatasetPath(autoDestSuffix(source))
-	if base == "" {
-		base = "backups"
-	}
-
-	if jobID == 0 {
-		return fmt.Sprintf("%s/j-pending/active", base)
-	}
-
-	return fmt.Sprintf("%s/j-%s/active", base, compactIDToken(jobID))
 }
 
 func parseRestoreSnapshotInput(snapshotInput, defaultRemoteDataset string) (string, string, error) {

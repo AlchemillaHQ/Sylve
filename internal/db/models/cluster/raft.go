@@ -321,9 +321,6 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			if err := json.Unmarshal(raw, &job); err != nil {
 				return err
 			}
-			if job.Mode == "" {
-				job.Mode = BackupJobModeDataset
-			}
 			if !validBackupJobMode(job.Mode) {
 				return fmt.Errorf("invalid_backup_job_mode")
 			}
@@ -332,9 +329,6 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 			var job BackupJob
 			if err := json.Unmarshal(raw, &job); err != nil {
 				return err
-			}
-			if job.Mode == "" {
-				job.Mode = BackupJobModeDataset
 			}
 			if !validBackupJobMode(job.Mode) {
 				return fmt.Errorf("invalid_backup_job_mode")

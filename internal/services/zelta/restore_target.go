@@ -40,7 +40,7 @@ type BackupTargetDatasetInfo struct {
 	Name          string `json:"name"` // full remote dataset path
 	Suffix        string `json:"suffix"`
 	BaseSuffix    string `json:"baseSuffix"`
-	Lineage       string `json:"lineage"` // "active" | "rotated" | "preserved" | "other"
+	Lineage       string `json:"lineage"` // "active" | "rotated" | "other"
 	OutOfBand     bool   `json:"outOfBand"`
 	SnapshotCount int    `json:"snapshotCount"`
 	Kind          string `json:"kind"` // "dataset" | "jail" | "vm"
@@ -463,7 +463,7 @@ func (s *Service) runRestoreFromTargetVM(
 
 	primaryDestination := destinationDataset
 	if kind, _ := inferRestoreDatasetKind(primaryDestination); kind != clusterModels.BackupJobModeVM {
-		primaryDestination = destinationVMRootFromRemoteRoot(target.BackupRoot, vmRoots[0], destRID)
+		primaryDestination = destinationVMRootFromRemoteRoot(target.BackupRoot, vmRoots[0], primaryDestination, destRID)
 	}
 	if primaryDestination == "" {
 		return fmt.Errorf("destination_dataset_required")
@@ -473,7 +473,7 @@ func (s *Service) runRestoreFromTargetVM(
 	candidateDestinations = append(candidateDestinations, primaryDestination)
 	seenDestinations := make(map[string]struct{})
 	for _, remoteRoot := range vmRoots {
-		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
+		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, primaryDestination, destRID)
 		if localRoot == "" {
 			continue
 		}
@@ -515,7 +515,7 @@ func (s *Service) runRestoreFromTargetVM(
 	activateRemoteGeneration := jobID != nil && *jobID > 0
 
 	for _, remoteRoot := range vmRoots {
-		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, destRID)
+		localRoot := destinationVMRootFromRemoteRoot(target.BackupRoot, remoteRoot, primaryDestination, destRID)
 		if localRoot == "" {
 			continue
 		}
@@ -937,9 +937,65 @@ func (s *Service) listRemoteVMRepresentativeRoots(
 	return results, nil
 }
 
-func destinationVMRootFromRemoteRoot(backupRoot, remoteRoot string, vmRID uint) string {
+func destinationVMRootFromRemoteRoot(backupRoot, remoteRoot, destinationDataset string, vmRID uint) string {
 	suffix := canonicalVMDatasetRoot(vmDatasetRoot(relativeDatasetSuffix(backupRoot, remoteRoot)), vmRID)
-	return normalizeRestoreDestinationDataset(suffix)
+	suffix = normalizeRestoreDestinationDataset(suffix)
+	if suffix == "" {
+		return ""
+	}
+
+	vmTail := vmRootSuffixFromDataset(suffix)
+	if vmTail == "" {
+		return suffix
+	}
+
+	anchor := vmDestinationAnchor(destinationDataset)
+	if anchor == "" {
+		return vmTail
+	}
+
+	return normalizeRestoreDestinationDataset(anchor + "/" + vmTail)
+}
+
+func vmRootSuffixFromDataset(dataset string) string {
+	dataset = normalizeDatasetPath(dataset)
+	if dataset == "" {
+		return ""
+	}
+
+	parts := strings.Split(dataset, "/")
+	for idx := 0; idx+1 < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" {
+			continue
+		}
+		return strings.Join(parts[idx:idx+2], "/")
+	}
+
+	return dataset
+}
+
+func vmDestinationAnchor(dataset string) string {
+	dataset = normalizeRestoreDestinationDataset(dataset)
+	if dataset == "" {
+		return ""
+	}
+
+	parts := strings.Split(dataset, "/")
+	for idx := 0; idx < len(parts); idx++ {
+		if parts[idx] != "virtual-machines" {
+			continue
+		}
+		if idx == 0 {
+			return ""
+		}
+		return strings.Join(parts[:idx], "/")
+	}
+
+	if len(parts) > 1 {
+		return dataset
+	}
+
+	return ""
 }
 
 func canonicalVMDatasetRoot(dataset string, vmRID uint) string {
@@ -1323,13 +1379,7 @@ func (s *Service) listRemoteLineageDatasets(ctx context.Context, target *cluster
 		switch {
 		case suffix == baseLeaf:
 			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+"_zelta_"):
-			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+"_bk_"):
-			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+"_gen-"):
-			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
 			add(dataset)
 		}
 	}
@@ -1715,16 +1765,7 @@ func classifyDatasetLineage(suffix string) (string, bool, string) {
 	baseLeaf := leaf
 	lineage := "active"
 
-	if idx := strings.Index(leaf, ".pre_sylve_"); idx > 0 {
-		lineage = "preserved"
-		baseLeaf = leaf[:idx]
-	} else if idx := strings.Index(leaf, "_zelta_"); idx > 0 {
-		lineage = "rotated"
-		baseLeaf = leaf[:idx]
-	} else if idx := strings.Index(leaf, "_bk_"); idx > 0 {
-		lineage = "rotated"
-		baseLeaf = leaf[:idx]
-	} else if idx := strings.Index(leaf, "_gen-"); idx > 0 {
+	if idx := strings.Index(leaf, "_gen-"); idx > 0 {
 		lineage = "rotated"
 		baseLeaf = leaf[:idx]
 	} else if strings.Contains(leaf, ".pre_") {
@@ -1745,10 +1786,8 @@ func datasetLineageRank(lineage string) int {
 		return 0
 	case "rotated":
 		return 1
-	case "preserved":
-		return 2
 	default:
-		return 3
+		return 2
 	}
 }
 
