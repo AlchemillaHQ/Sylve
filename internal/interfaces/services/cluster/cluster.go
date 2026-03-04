@@ -52,4 +52,5 @@ type ClusterServiceInterface interface {
 	SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error)
 	GetClusterDetails() (*ClusterDetails, error)
 	PopulateClusterNodes() error
+	StartClusterMonitors()
 }

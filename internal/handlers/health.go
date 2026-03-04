@@ -55,9 +55,5 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 }
 
 func HTTPHealthCheckHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, internal.APIResponse[any]{
-		Status:  "success",
-		Message: "HTTP health is OK",
-		Data:    nil,
-	})
+	c.Status(http.StatusOK)
 }

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -232,18 +231,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}()
 	}
 
-	go func() {
-		firstRun := true
-		for {
-			if err := s.Cluster.PopulateClusterNodes(); err != nil {
-				if !strings.Contains(err.Error(), "raft_not_initialized") || !firstRun {
-					logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
-				}
-			}
-			firstRun = false
-			time.Sleep(5 * time.Second)
-		}
-	}()
+	s.Cluster.StartClusterMonitors()
 
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()

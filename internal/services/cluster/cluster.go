@@ -39,6 +39,7 @@ type Service struct {
 	JailService jailServiceInterfaces.JailServiceInterface
 
 	embeddedSSHOnce sync.Once
+	monitorOnce     sync.Once
 }
 
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {

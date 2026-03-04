@@ -22,6 +22,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
@@ -93,28 +94,30 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 		}
 	}
 
-	if cur.cpu > 0 && ex.CPU != cur.cpu {
-		return true
-	}
+	if cur.healthOK {
+		if cur.cpu > 0 && ex.CPU != cur.cpu {
+			return true
+		}
 
-	if cur.memory > 0 && ex.Memory != cur.memory {
-		return true
-	}
+		if cur.memory > 0 && ex.Memory != cur.memory {
+			return true
+		}
 
-	if cur.disk > 0 && ex.Disk != cur.disk {
-		return true
-	}
+		if cur.disk > 0 && ex.Disk != cur.disk {
+			return true
+		}
 
-	if math.Abs(ex.CPUUsage-cur.cpuUsage) >= usageThreshold {
-		return true
-	}
+		if math.Abs(ex.CPUUsage-cur.cpuUsage) >= usageThreshold {
+			return true
+		}
 
-	if math.Abs(ex.MemoryUsage-cur.memUsage) >= usageThreshold {
-		return true
-	}
+		if math.Abs(ex.MemoryUsage-cur.memUsage) >= usageThreshold {
+			return true
+		}
 
-	if math.Abs(ex.DiskUsage-cur.diskUsage) >= usageThreshold {
-		return true
+		if math.Abs(ex.DiskUsage-cur.diskUsage) >= usageThreshold {
+			return true
+		}
 	}
 
 	return false
@@ -153,7 +156,12 @@ func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoS
 }
 
 func (s *Service) PopulateClusterNodes() error {
-	if s.Raft == nil || s.Raft.State() != raft.Leader {
+	if s.Raft == nil {
+		return nil
+	}
+
+	state := s.Raft.State()
+	if state != raft.Leader {
 		return nil
 	}
 
@@ -345,6 +353,7 @@ func (s *Service) PopulateClusterNodes() error {
 			return nil
 		})
 	}
+
 	const maxRetries = 3
 	for attempt := range maxRetries {
 		err := writeOnce()
@@ -415,4 +424,173 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 
 	return nil
+}
+
+func (s *Service) FastStatusCheck() {
+	if s.Raft == nil {
+		return
+	}
+
+	state := s.Raft.State()
+	_, leaderID := s.Raft.LeaderWithID()
+	now := time.Now()
+
+	if err := s.DB.Model(&clusterModels.ClusterNode{}).
+		Where("node_uuid = ?", s.NodeID).
+		Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
+		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to update local node status")
+	}
+
+	fut := s.Raft.GetConfiguration()
+	if err := fut.Error(); err != nil {
+		return
+	}
+
+	peerIDs := make([]string, 0, len(fut.Configuration().Servers))
+	peerAddrs := make(map[string]string, len(fut.Configuration().Servers))
+	for _, server := range fut.Configuration().Servers {
+		id := string(server.ID)
+		if id == s.NodeID {
+			continue
+		}
+		peerIDs = append(peerIDs, id)
+		peerAddrs[id] = string(server.Address)
+	}
+
+	if len(peerIDs) == 0 {
+		return
+	}
+
+	setPeersStatus := func(status string) {
+		if err := s.DB.Model(&clusterModels.ClusterNode{}).
+			Where("node_uuid IN ?", peerIDs).
+			Updates(map[string]any{"status": status, "updated_at": now}).Error; err != nil {
+			logger.L.Debug().Err(err).Str("status", status).Msg("FastStatusCheck: failed to update peer statuses")
+		}
+	}
+
+	if state != raft.Leader {
+		if leaderID == "" {
+			setPeersStatus("offline")
+			return
+		}
+
+		if err := s.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&clusterModels.ClusterNode{}).
+				Where("node_uuid IN ?", peerIDs).
+				Updates(map[string]any{"status": "offline", "updated_at": now}).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Model(&clusterModels.ClusterNode{}).
+				Where("node_uuid = ?", string(leaderID)).
+				Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply non-leader status view")
+		}
+		return
+	}
+
+	if state == raft.Leader {
+		if err := s.Raft.VerifyLeader().Error(); err != nil {
+			setPeersStatus("offline")
+			return
+		}
+
+		selfHostname, err := utils.GetSystemHostname()
+		if err != nil {
+			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get system hostname")
+			setPeersStatus("offline")
+			return
+		}
+
+		clusterToken, err := s.getClusterToken(selfHostname)
+		if err != nil {
+			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
+			setPeersStatus("offline")
+			return
+		}
+
+		headers := map[string]string{
+			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+		}
+
+		results := make(map[string]string, len(peerIDs))
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		for _, id := range peerIDs {
+			addr := peerAddrs[id]
+			wg.Add(1)
+			go func(nodeID, raftAddr string) {
+				defer wg.Done()
+
+				host, _, err := net.SplitHostPort(raftAddr)
+				if err != nil || host == "" {
+					host = raftAddr
+				}
+
+				status := "offline"
+				url := fmt.Sprintf("https://%s:%d/api/health/http", host, config.ParsedConfig.Port)
+				if _, err := utils.HTTPGetStatus(url, headers); err == nil {
+					status = "online"
+				}
+
+				mu.Lock()
+				results[nodeID] = status
+				mu.Unlock()
+			}(id, addr)
+		}
+
+		wg.Wait()
+
+		if err := s.DB.Transaction(func(tx *gorm.DB) error {
+			for id, status := range results {
+				if err := tx.Model(&clusterModels.ClusterNode{}).
+					Where("node_uuid = ?", id).
+					Updates(map[string]any{"status": status, "updated_at": now}).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply per-node leader checks")
+		}
+	}
+}
+
+func (s *Service) StartClusterMonitors() {
+	s.monitorOnce.Do(func() {
+		if err := s.PopulateClusterNodes(); err != nil {
+			if !strings.Contains(err.Error(), "raft_not_initialized") {
+				logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
+			}
+		}
+
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				s.FastStatusCheck()
+			}
+		}()
+
+		go func() {
+			ticker := time.NewTicker(60 * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				if err := s.PopulateClusterNodes(); err != nil {
+					if !strings.Contains(err.Error(), "raft_not_initialized") {
+						logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
+					}
+				}
+			}
+		}()
+	})
 }

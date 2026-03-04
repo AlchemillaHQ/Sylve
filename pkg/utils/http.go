@@ -339,6 +339,31 @@ func HTTPGetJSONRead(url string, headers map[string]string) ([]byte, int, error)
 	return data, resp.StatusCode, nil
 }
 
+func HTTPGetStatus(url string, headers map[string]string) (int, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := intraClusterClient().Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, fmt.Errorf("http error %d", resp.StatusCode)
+	}
+
+	return resp.StatusCode, nil
+}
+
 func ParamUint(c *gin.Context, name string) (uint, error) {
 	param := c.Param(name)
 	value, err := strconv.ParseUint(param, 10, 32)
