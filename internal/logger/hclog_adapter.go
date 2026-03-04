@@ -44,7 +44,6 @@ func StandardWriterAdapter(zl zerolog.Logger) io.Writer {
 	return zerologWriter{l: zl, level: zerolog.InfoLevel}
 }
 
-// ZerologHCLog is now optimized to cache the subsystem-specific logger
 type ZerologHCLog struct {
 	zl          zerolog.Logger
 	name        string
@@ -56,6 +55,10 @@ type raftLogLimiter struct {
 	mu       sync.Mutex
 	interval time.Duration
 	entries  map[string]raftLogEntry
+	maxAge   time.Duration
+
+	cleanupEvery time.Duration
+	nextCleanup  time.Time
 }
 
 type raftLogEntry struct {
@@ -65,14 +68,25 @@ type raftLogEntry struct {
 
 func newRaftLogLimiter(interval time.Duration) *raftLogLimiter {
 	return &raftLogLimiter{
-		interval: interval,
-		entries:  make(map[string]raftLogEntry),
+		interval:     interval,
+		entries:      make(map[string]raftLogEntry),
+		maxAge:       interval * 10,
+		cleanupEvery: interval,
 	}
 }
 
 func (r *raftLogLimiter) allow(key string, now time.Time) (bool, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if r.nextCleanup.IsZero() || !now.Before(r.nextCleanup) {
+		for k, v := range r.entries {
+			if !v.last.IsZero() && now.Sub(v.last) >= r.maxAge {
+				delete(r.entries, k)
+			}
+		}
+		r.nextCleanup = now.Add(r.cleanupEvery)
+	}
 
 	entry := r.entries[key]
 	if entry.last.IsZero() || now.Sub(entry.last) >= r.interval {
@@ -90,8 +104,46 @@ func (r *raftLogLimiter) allow(key string, now time.Time) (bool, int) {
 
 var raftRequestVoteLimiter = newRaftLogLimiter(30 * time.Second)
 
+func raftConnErrorCategory(errText string) string {
+	switch {
+	case strings.Contains(errText, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(errText, "host is down"):
+		return "host_is_down"
+	case strings.Contains(errText, "no route to host"):
+		return "no_route_to_host"
+	case strings.Contains(errText, "network is unreachable"):
+		return "network_unreachable"
+	case strings.Contains(errText, "i/o timeout"):
+		return "io_timeout"
+	default:
+		return "other"
+	}
+}
+
+func shouldRateLimitRaftConnError(msg, errText string) bool {
+	if msg == "" || errText == "" {
+		return false
+	}
+
+	isNoisyRPC := strings.Contains(msg, "failed to make requestVote RPC") ||
+		strings.Contains(msg, "failed to heartbeat to") ||
+		strings.Contains(msg, "failed to appendEntries to")
+
+	if !isNoisyRPC {
+		return false
+	}
+
+	isConnError := strings.Contains(errText, "connection refused") ||
+		strings.Contains(errText, "host is down") ||
+		strings.Contains(errText, "no route to host") ||
+		strings.Contains(errText, "network is unreachable") ||
+		strings.Contains(errText, "i/o timeout")
+
+	return isConnError
+}
+
 func NewZerologHCLog(zl zerolog.Logger, name string) hclog.Logger {
-	// Cache the subsystem string once during creation
 	return &ZerologHCLog{
 		zl:    zl.With().Str("subsystem", name).Logger(),
 		name:  name,
@@ -100,23 +152,22 @@ func NewZerologHCLog(zl zerolog.Logger, name string) hclog.Logger {
 }
 
 func (l *ZerologHCLog) Log(level hclog.Level, msg string, args ...any) {
-	// PERFORMANCE FIX 1: Bail immediately if level is disabled.
-	// This prevents all slice appends and map creations below.
 	if !l.accept(level) {
 		return
 	}
 
 	var fields map[string]any
 
-	// PERFORMANCE FIX 2: Optimized Raft Rate Limiting
-	// We only process fields if we are in a Raft error state.
-	if l.name == "raft" && level == hclog.Error && strings.Contains(msg, "failed to make requestVote RPC") {
+	if l.name == "raft" && level == hclog.Error {
 		fields = kvsToMap(append(l.impliedArgs, args...)...)
 		target := fmt.Sprint(fields["target"])
+		if target == "<nil>" || target == "" {
+			target = fmt.Sprint(fields["peer"])
+		}
 		errText := fmt.Sprint(fields["error"])
 
-		if strings.Contains(errText, "connection refused") {
-			key := target + "|" + errText // Cheaper than Sprintf
+		if shouldRateLimitRaftConnError(msg, errText) {
+			key := target + "|" + raftConnErrorCategory(errText)
 			allow, suppressed := raftRequestVoteLimiter.allow(key, time.Now())
 			if !allow {
 				return
@@ -128,7 +179,6 @@ func (l *ZerologHCLog) Log(level hclog.Level, msg string, args ...any) {
 		}
 	}
 
-	// PERFORMANCE FIX 3: Use the cached logger (no .With().Logger() calls)
 	ev := l.baseEvent(level)
 
 	if fields == nil && (len(l.impliedArgs) > 0 || len(args) > 0) {
@@ -155,7 +205,6 @@ func (l *ZerologHCLog) IsError() bool { return l.level <= hclog.Error }
 
 func (l *ZerologHCLog) With(args ...any) hclog.Logger {
 	n := *l
-	// Cache the fields into the logger so we don't re-process them every line
 	n.zl = l.zl.With().Fields(kvsToMap(args...)).Logger()
 	n.impliedArgs = append(append([]any{}, l.impliedArgs...), args...)
 	return &n
@@ -168,7 +217,7 @@ func (l *ZerologHCLog) Named(name string) hclog.Logger {
 	} else {
 		n.name = name
 	}
-	// PERFORMANCE FIX: Pre-bind the subsystem name
+
 	n.zl = l.zl.With().Str("subsystem", n.name).Logger()
 	return &n
 }
@@ -200,7 +249,7 @@ func (l *ZerologHCLog) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writ
 			lev = zerolog.ErrorLevel
 		}
 	}
-	// Return the cached logger context
+
 	return zerologWriter{l: l.zl, level: lev}
 }
 
@@ -211,7 +260,6 @@ func (l *ZerologHCLog) ImpliedArgs() []any {
 func (l *ZerologHCLog) accept(level hclog.Level) bool { return level >= l.level }
 
 func (l *ZerologHCLog) baseEvent(level hclog.Level) *zerolog.Event {
-	// Directly return the event from the cached logger
 	switch level {
 	case hclog.Trace, hclog.Debug:
 		return l.zl.Debug()
