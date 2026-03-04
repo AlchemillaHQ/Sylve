@@ -951,34 +951,15 @@ func destinationVMRootFromRemoteRoot(backupRoot, remoteRoot, destinationDataset 
 		return ""
 	}
 
-	vmTail := vmRootSuffixFromDataset(suffix)
-	if vmTail == "" {
-		return suffix
-	}
-
-	anchor := vmDestinationAnchor(destinationDataset)
-	if anchor == "" {
-		return vmTail
-	}
-
-	return normalizeRestoreDestinationDataset(anchor + "/" + vmTail)
-}
-
-func vmRootSuffixFromDataset(dataset string) string {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
-		return ""
-	}
-
-	parts := strings.Split(dataset, "/")
-	for idx := 0; idx+1 < len(parts); idx++ {
-		if parts[idx] != "virtual-machines" {
-			continue
+	if strings.HasPrefix(suffix, "virtual-machines/") {
+		anchor := vmDestinationAnchor(destinationDataset)
+		if anchor == "" {
+			return suffix
 		}
-		return strings.Join(parts[idx:idx+2], "/")
+		return normalizeRestoreDestinationDataset(anchor + "/" + suffix)
 	}
 
-	return dataset
+	return suffix
 }
 
 func vmDestinationAnchor(dataset string) string {
