@@ -183,7 +183,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			logger.L.Error().Err(err).Msgf("unable to start samba server")
 		}
 
-		go s.Samba.WatchAuditLogs(ctx)
+		go s.Samba.WatchAuditLogs(dCtx)
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {

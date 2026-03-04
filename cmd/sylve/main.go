@@ -42,8 +42,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
-	_ "net/http/pprof"
-
 	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
