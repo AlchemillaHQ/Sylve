@@ -16,7 +16,7 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 		return fmt.Errorf("leader_should_not_receive_syncs")
 	}
 
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var incomingUUIDs []string
 		var insertRows []clusterModels.ClusterNode
 
@@ -60,5 +60,10 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	publishLeftPanelRefresh()
+	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -155,7 +156,12 @@ func StreamSSE(authService *authService.Service) gin.HandlerFunc {
 					continue
 				}
 
-				_, _ = c.Writer.Write([]byte("event: left-panel-refresh\n"))
+				eventName := strings.TrimSpace(evt.Type)
+				if eventName == "" {
+					eventName = "left-panel-refresh"
+				}
+
+				_, _ = c.Writer.Write([]byte("event: " + eventName + "\n"))
 				_, _ = c.Writer.Write([]byte("data: "))
 				_, _ = c.Writer.Write(data)
 				_, _ = c.Writer.Write([]byte("\n\n"))

@@ -11,12 +11,13 @@
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PoolsDiskUsage } from '$lib/types/zfs/pool';
+	import { reload } from '$lib/stores/api.svelte';
 	import { getQuorumStatus } from '$lib/utils/cluster';
 	import { updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 
 	interface Data {
 		nodes: ClusterNode[];
@@ -147,6 +148,25 @@
 			{} as Record<string, number>
 		);
 	});
+
+	watch(
+		() => reload.leftPanel,
+		(shouldReload) => {
+			if (!shouldReload) return;
+
+			nodes.refetch();
+			clusterDetails.refetch();
+		}
+	);
+
+	watch(
+		() => reload.clusterDetails,
+		(shouldReload) => {
+			if (!shouldReload) return;
+
+			clusterDetails.refetch();
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col space-y-4">

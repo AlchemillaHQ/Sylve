@@ -326,8 +326,10 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 	return current
 }
 
-func (s *Service) persistCurrentClusterNodesOnce(current map[string]curInfo) error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+func (s *Service) persistCurrentClusterNodesOnce(current map[string]curInfo) (bool, error) {
+	changed := false
+
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var existing []clusterModels.ClusterNode
 		if err := tx.Find(&existing).Error; err != nil {
 			return err
@@ -355,6 +357,7 @@ func (s *Service) persistCurrentClusterNodesOnce(current map[string]curInfo) err
 			}).Create(&insertRow).Error; err != nil {
 				return err
 			}
+			changed = true
 
 			delete(exByUUID, cur.nodeUUID)
 		}
@@ -368,24 +371,29 @@ func (s *Service) persistCurrentClusterNodesOnce(current map[string]curInfo) err
 			ids = append(ids, uuid)
 		}
 
-		return tx.Where("node_uuid IN ?", ids).Delete(&clusterModels.ClusterNode{}).Error
+		if err := tx.Where("node_uuid IN ?", ids).Delete(&clusterModels.ClusterNode{}).Error; err != nil {
+			return err
+		}
+		changed = true
+		return nil
 	})
+	return changed, err
 }
 
-func (s *Service) persistCurrentClusterNodes(current map[string]curInfo) error {
+func (s *Service) persistCurrentClusterNodes(current map[string]curInfo) (bool, error) {
 	const maxRetries = 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		err := s.persistCurrentClusterNodesOnce(current)
+		changed, err := s.persistCurrentClusterNodesOnce(current)
 		if err == nil {
-			return nil
+			return changed, nil
 		}
 		if strings.Contains(err.Error(), "database is locked") && attempt < maxRetries-1 {
 			time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
 			continue
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return false, nil
 }
 
 func buildNodeHealthSyncPayload(current map[string]curInfo) []clusterServiceInterfaces.NodeHealthSync {
@@ -394,6 +402,43 @@ func buildNodeHealthSyncPayload(current map[string]curInfo) []clusterServiceInte
 		payload = append(payload, currentToNodeHealthSync(cur))
 	}
 	return payload
+}
+
+func clusterNodeToNodeHealthSync(node clusterModels.ClusterNode) clusterServiceInterfaces.NodeHealthSync {
+	return clusterServiceInterfaces.NodeHealthSync{
+		NodeUUID:    node.NodeUUID,
+		Hostname:    node.Hostname,
+		API:         node.API,
+		Status:      node.Status,
+		CPU:         node.CPU,
+		CPUUsage:    node.CPUUsage,
+		Memory:      node.Memory,
+		MemoryUsage: node.MemoryUsage,
+		Disk:        node.Disk,
+		DiskUsage:   node.DiskUsage,
+		GuestIDs:    node.GuestIDs,
+	}
+}
+
+func (s *Service) buildNodeHealthSyncPayloadFromDB(current map[string]curInfo) ([]clusterServiceInterfaces.NodeHealthSync, error) {
+	ids := make([]string, 0, len(current))
+	for nodeUUID := range current {
+		ids = append(ids, nodeUUID)
+	}
+	if len(ids) == 0 {
+		return []clusterServiceInterfaces.NodeHealthSync{}, nil
+	}
+
+	var nodes []clusterModels.ClusterNode
+	if err := s.DB.Where("node_uuid IN ?", ids).Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+
+	payload := make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
+	for _, node := range nodes {
+		payload = append(payload, clusterNodeToNodeHealthSync(node))
+	}
+	return payload, nil
 }
 
 func (s *Service) broadcastHealthSyncPayload(cfg raft.Configuration, payloadBytes []byte, clusterToken string) {
@@ -464,11 +509,21 @@ func (s *Service) PopulateClusterNodes() error {
 
 	current := s.collectCurrentClusterInfo(cfg, clusterToken)
 
-	if err := s.persistCurrentClusterNodes(current); err != nil {
+	changed, err := s.persistCurrentClusterNodes(current)
+	if err != nil {
 		return err
 	}
+	if changed {
+		publishLeftPanelRefresh()
+	}
 
-	syncPayload := buildNodeHealthSyncPayload(current)
+	syncPayload, err := s.buildNodeHealthSyncPayloadFromDB(current)
+	if err != nil {
+		logger.L.Debug().
+			Err(err).
+			Msg("PopulateClusterNodes: failed to build DB-backed sync payload, falling back to probe payload")
+		syncPayload = buildNodeHealthSyncPayload(current)
+	}
 	payloadBytes, _ := json.Marshal(syncPayload)
 	s.broadcastHealthSyncPayload(cfg, payloadBytes, clusterToken)
 

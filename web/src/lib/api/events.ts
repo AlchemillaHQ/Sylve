@@ -21,6 +21,21 @@ let eventSource: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let connecting = false;
 
+function pulseLeftPanelReload() {
+    reload.leftPanel = false;
+    queueMicrotask(() => {
+        reload.leftPanel = true;
+        reload.auditLog = true;
+    });
+}
+
+function pulseClusterDetailsReload() {
+    reload.clusterDetails = false;
+    queueMicrotask(() => {
+        reload.clusterDetails = true;
+    });
+}
+
 async function fetchSSEToken(): Promise<string | null> {
     if (!storage.token) {
         return null;
@@ -82,19 +97,14 @@ export async function startSSEEvents() {
     const url = `/api/events/stream?sse_token=${encodeURIComponent(sseToken)}`;
     eventSource = new EventSource(url);
 
-    eventSource.addEventListener('left-panel-refresh', () => {
-        reload.leftPanel = true;
-        reload.auditLog = true;
-    });
+    eventSource.addEventListener('left-panel-refresh', pulseLeftPanelReload);
 
     eventSource.addEventListener('reconnect', () => {
         cleanupConnection();
         scheduleReconnect();
     });
 
-    eventSource.addEventListener('cluster-details-refresh', () => {
-        reload.clusterDetails = true;
-    });
+    eventSource.addEventListener('cluster-details-refresh', pulseClusterDetailsReload);
 
     eventSource.onerror = () => {
         cleanupConnection();
