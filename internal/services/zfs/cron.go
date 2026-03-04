@@ -10,6 +10,7 @@ package zfs
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,10 @@ import (
 )
 
 func (s *Service) StoreStats() {
-	pools, err := s.GZFS.Zpool.List(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pools, err := s.GZFS.Zpool.List(ctx)
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to list zpools")
 		return
@@ -47,10 +51,10 @@ func (s *Service) StoreStats() {
 
 	now := time.Now()
 
-	var rows []*infoModels.ZPoolHistorical
+	var rows []infoModels.ZPoolHistorical
 	if err := s.DB.
 		Select("id", "name", "created_at").
-		Order("name, created_at ASC").
+		Order("created_at DESC").
 		Find(&rows).Error; err != nil {
 		logger.L.Debug().Err(err).Msg("zfs_cron: Failed to load zpool historical rows for GFS")
 		return
@@ -60,26 +64,19 @@ func (s *Service) StoreStats() {
 		return
 	}
 
-	groups := make(map[string][]db.ReflectRow, 8)
+	groups := make(map[string][]infoModels.ZPoolHistorical)
 	for _, r := range rows {
-		groups[r.Name] = append(groups[r.Name], db.ReflectRow{Ptr: r})
+		groups[r.Name] = append(groups[r.Name], r)
 	}
 
-	delSet := make(map[uint]struct{})
-	for _, adapters := range groups {
-		_, deleteIDs := db.ApplyGFS(now, adapters)
-		for _, id := range deleteIDs {
-			delSet[id] = struct{}{}
-		}
+	var allDeleteIDs []uint
+	for _, poolRows := range groups {
+		_, deleteIDs := db.ApplyGFS(now, poolRows)
+		allDeleteIDs = append(allDeleteIDs, deleteIDs...)
 	}
 
-	if len(delSet) == 0 {
+	if len(allDeleteIDs) == 0 {
 		return
-	}
-
-	allDeleteIDs := make([]uint, 0, len(delSet))
-	for id := range delSet {
-		allDeleteIDs = append(allDeleteIDs, id)
 	}
 
 	const batchSize = 500
@@ -90,7 +87,7 @@ func (s *Service) StoreStats() {
 		}
 		batch := allDeleteIDs[i:end]
 
-		if err := s.DB.Delete(&infoModels.ZPoolHistorical{}, batch).Error; err != nil {
+		if err := s.DB.Unscoped().Delete(&infoModels.ZPoolHistorical{}, batch).Error; err != nil {
 			logger.L.Debug().Err(err).Msg("zfs_cron: Failed to prune zpool historical data (batch delete)")
 		}
 	}
@@ -102,9 +99,7 @@ func (s *Service) RemoveNonExistentPools() {
 
 	existingPools, err := s.GZFS.Zpool.GetPoolNames(ctx)
 	if err != nil {
-		logger.L.Debug().
-			Err(err).
-			Msg("zfs_cron: failed to list zpools")
+		logger.L.Debug().Err(err).Msg("zfs_cron: failed to list zpools")
 		return
 	}
 
@@ -119,9 +114,7 @@ func (s *Service) RemoveNonExistentPools() {
 		Distinct("name").
 		Pluck("name", &storedNames).Error; err != nil {
 
-		logger.L.Debug().
-			Err(err).
-			Msg("zfs_cron: failed to load historical pool names")
+		logger.L.Debug().Err(err).Msg("zfs_cron: failed to load historical pool names")
 		return
 	}
 
@@ -136,34 +129,28 @@ func (s *Service) RemoveNonExistentPools() {
 		return
 	}
 
-	result := s.DB.
+	result := s.DB.Unscoped().
 		Where("name IN ?", namesToDelete).
 		Delete(&infoModels.ZPoolHistorical{})
 
 	if result.Error != nil {
+		logger.L.Debug().Err(result.Error).Msg("zfs_cron: failed to delete non-existent pool entries")
+		return
+	}
+
+	if result.RowsAffected > 0 {
 		logger.L.Debug().
-			Err(result.Error).
-			Msg("zfs_cron: failed to delete non-existent pool entries")
-		return
+			Int64("deleted_count", result.RowsAffected).
+			Strs("names", namesToDelete).
+			Msg("zfs_cron: deleted non-existent pool entries")
 	}
-
-	if result.RowsAffected == 0 {
-		return
-	}
-
-	logger.L.Debug().
-		Int64("deleted_count", result.RowsAffected).
-		Strs("names", namesToDelete).
-		Msg("zfs_cron: deleted non-existent pool entries")
 
 	go func() {
 		refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer refreshCancel()
 
 		if err := s.RefreshDatasetsCache(refreshCtx); err != nil {
-			logger.L.Debug().
-				Err(err).
-				Msg("zfs_cron: failed to refresh datasets cache")
+			logger.L.Debug().Err(err).Msg("zfs_cron: failed to refresh datasets cache")
 		}
 	}()
 }
@@ -188,35 +175,39 @@ func (s *Service) RegisterJobs() {
 	)
 }
 
-func (s *Service) Cron() {
+func (s *Service) Cron(ctx context.Context) {
 	tickerFast := time.NewTicker(10 * time.Second)
 	tickerSlow := time.NewTicker(10 * time.Minute)
 	tickerJob := time.NewTicker(1 * time.Minute)
 
 	defer tickerFast.Stop()
 	defer tickerSlow.Stop()
+	defer tickerJob.Stop()
 
 	s.StoreStats()
 	s.RemoveNonExistentPools()
-	s.RefreshDatasetsCache(context.Background())
-	s.DevdJobQueuer(context.Background())
+	s.RefreshDatasetsCache(ctx)
+	s.NetlinkJobQueuer(ctx)
 
 	for {
 		select {
+		case <-ctx.Done():
+			logger.L.Info().Msg("Shutting down ZFS cron workers")
+			return
 		case <-tickerFast.C:
 			s.StoreStats()
 		case <-tickerSlow.C:
 			s.RemoveNonExistentPools()
 		case <-tickerJob.C:
-			s.DevdJobQueuer(context.Background())
+			s.NetlinkJobQueuer(ctx)
 		}
 	}
 }
 
-func (s *Service) DevdJobQueuer(ctx context.Context) {
+func (s *Service) NetlinkJobQueuer(ctx context.Context) {
 	const batchSize = 500
 
-	var events []models.DevdEvent
+	var events []models.NetlinkEvent
 
 	if err := s.DB.
 		Where("processed = ?", false).
@@ -226,9 +217,7 @@ func (s *Service) DevdJobQueuer(ctx context.Context) {
 		Limit(batchSize).
 		Find(&events).Error; err != nil {
 
-		logger.L.Debug().
-			Err(err).
-			Msg("devd_job_queuer: failed to load devd events")
+		logger.L.Debug().Err(err).Msg("netlink_job_queuer: failed to load netlink events")
 		return
 	}
 
@@ -240,16 +229,13 @@ func (s *Service) DevdJobQueuer(ctx context.Context) {
 		EventIDs []uint
 		Datasets map[string]struct{}
 		Actions  map[string]struct{}
-		MinTXG   string
-		MaxTXG   string
+		MinTXG   uint64
+		MaxTXG   uint64
 		Pool     string
+		Kind     string
 	}
 
-	buckets := map[string]*bucket{
-		"snapshot":        {Datasets: map[string]struct{}{}, Actions: map[string]struct{}{}},
-		"generic-dataset": {Datasets: map[string]struct{}{}, Actions: map[string]struct{}{}},
-	}
-
+	buckets := make(map[string]*bucket)
 	var processedIDs []uint
 
 	for _, ev := range events {
@@ -263,66 +249,78 @@ func (s *Service) DevdJobQueuer(ctx context.Context) {
 
 		ds := attrs["history_dsname"]
 		action := attrs["history_internal_name"]
-		txg := attrs["history_txg"]
 
-		var kind string
+		txgStr := attrs["history_txg"]
+		txg, _ := strconv.ParseUint(txgStr, 10, 64)
+
+		kind := "generic-dataset"
 		if strings.Contains(ds, "@") {
 			kind = "snapshot"
-		} else {
-			kind = "generic-dataset"
 		}
 
-		b := buckets[kind]
-		b.Pool = pool
+		bKey := kind + "|" + pool
+		b, exists := buckets[bKey]
+		if !exists {
+			b = &bucket{
+				Datasets: make(map[string]struct{}),
+				Actions:  make(map[string]struct{}),
+				Pool:     pool,
+				Kind:     kind,
+			}
+			buckets[bKey] = b
+		}
+
 		b.EventIDs = append(b.EventIDs, ev.ID)
 		b.Datasets[ds] = struct{}{}
 		b.Actions[action] = struct{}{}
 
-		if b.MinTXG == "" || txg < b.MinTXG {
+		if b.MinTXG == 0 || txg < b.MinTXG {
 			b.MinTXG = txg
 		}
 		if txg > b.MaxTXG {
 			b.MaxTXG = txg
 		}
-
-		processedIDs = append(processedIDs, ev.ID)
 	}
 
-	for kind, b := range buckets {
+	for _, b := range buckets {
 		if len(b.EventIDs) == 0 {
 			continue
 		}
 
 		job := zfsServiceInterfaces.ZFSHistoryBatchJob{
 			Pool:     b.Pool,
-			Kind:     kind,
+			Kind:     b.Kind,
 			EventIDs: b.EventIDs,
 			Datasets: utils.MapKeys(b.Datasets),
 			Actions:  utils.MapKeys(b.Actions),
-			MinTXG:   b.MinTXG,
-			MaxTXG:   b.MaxTXG,
+			MinTXG:   strconv.FormatUint(b.MinTXG, 10),
+			MaxTXG:   strconv.FormatUint(b.MaxTXG, 10),
 		}
 
 		enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		err := db.EnqueueJSON(enqueueCtx, "zfs_history_batch", job)
+		cancel()
 
-		if err := db.EnqueueJSON(enqueueCtx, "zfs_history_batch", job); err != nil {
-			logger.L.Debug().
+		if err != nil {
+			logger.L.Error().
 				Err(err).
-				Str("dataset_type", kind).
-				Msg("devd_job_queuer: failed to enqueue batch job")
-			return
+				Str("dataset_type", b.Kind).
+				Str("pool", b.Pool).
+				Msg("netlink_job_queuer: failed to enqueue batch job")
+			continue
 		}
+
+		processedIDs = append(processedIDs, b.EventIDs...)
 	}
 
-	if err := s.DB.
-		Model(&models.DevdEvent{}).
-		Where("id IN ?", processedIDs).
-		Update("processed", true).Error; err != nil {
+	if len(processedIDs) > 0 {
+		if err := s.DB.
+			Model(&models.NetlinkEvent{}).
+			Where("id IN ?", processedIDs).
+			Update("processed", true).Error; err != nil {
 
-		logger.L.Debug().
-			Err(err).
-			Msg("devd_job_queuer: failed to mark events processed")
+			logger.L.Debug().Err(err).Msg("netlink_job_queuer: failed to mark events processed")
+		}
 	}
 }
 

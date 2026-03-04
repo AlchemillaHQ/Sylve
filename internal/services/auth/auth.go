@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -359,22 +360,35 @@ func (s *Service) UpsertSecret(name string, data string) error {
 	return nil
 }
 
-func (s *Service) ClearExpiredJWTTokens() {
-	ticker := time.NewTicker(1 * time.Minute)
+func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
+
+	logger.L.Info().Msg("Token cleanup worker started")
 
 	for {
 		select {
+		case <-ctx.Done():
+			logger.L.Info().Msg("Stopping token cleanup worker...")
+			return
 		case <-ticker.C:
-			err := s.DB.Where("expiry < ?", time.Now()).Delete(&models.Token{})
-			if err.Error != nil {
-				logger.L.Error().Msgf("Error deleting expired tokens: %v", err.Error)
-			} else {
-				if err.RowsAffected > 0 {
-					logger.L.Info().Msgf("Cleared %d expired tokens", err.RowsAffected)
-				}
-			}
+			s.performTokenCleanup()
 		}
+	}
+}
+
+func (s *Service) performTokenCleanup() {
+	result := s.DB.Where("expiry < ?", time.Now()).Delete(&models.Token{})
+
+	if result.Error != nil {
+		logger.L.Error().Err(result.Error).Msg("Failed to clear expired tokens")
+		return
+	}
+
+	if result.RowsAffected > 0 {
+		logger.L.Info().
+			Int64("count", result.RowsAffected).
+			Msg("Cleared expired JWT tokens")
 	}
 }
 

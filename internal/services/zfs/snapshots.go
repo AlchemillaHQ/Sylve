@@ -285,7 +285,7 @@ func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.Modif
 
 	switch rtype {
 	case retentionSimple:
-		if gfsPresent { // client sent some GFS fields in this request (invalid), already blocked by validator
+		if gfsPresent {
 			// no-op; validator should have errored earlier
 		} else if simplePresent {
 			// They touched simple; zero-out GFS only if they're switching away from it
@@ -298,7 +298,7 @@ func (s *Service) ModifyPeriodicSnapshotRetention(req zfsServiceInterfaces.Modif
 			}
 		}
 	case retentionGFS:
-		if simplePresent { // invalid mix; validator should have errored already
+		if simplePresent {
 			// no-op
 		} else if gfsPresent {
 			if job.KeepLast != 0 || job.MaxAgeDays != 0 {
@@ -513,7 +513,7 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 				for _, job := range snapshotJobs {
 					var (
 						shouldRun  bool
-						runAtLocal time.Time // for cron path (local time boundary)
+						runAtLocal time.Time
 					)
 
 					if job.CronExpr != "" {
@@ -545,13 +545,14 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						nowLocal := time.Now().In(time.Local)
 
 						if job.LastRunAt.IsZero() {
-							runAtLocal = nowLocal.Truncate(iv) // local boundary
+							runAtLocal = nowLocal.Truncate(iv)
 							shouldRun = true
 						} else {
 							lastLocal := job.LastRunAt.In(time.Local)
-							dueLocal := lastLocal.Add(iv) // step in LOCAL time
-							if !nowLocal.Before(dueLocal) {
-								runAtLocal = dueLocal
+							elapsed := nowLocal.Sub(lastLocal)
+							if elapsed >= iv {
+								missedIntervals := elapsed / iv
+								runAtLocal = lastLocal.Add(missedIntervals * iv)
 								shouldRun = true
 							}
 						}
@@ -564,24 +565,21 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						continue
 					}
 
-					// Decide the boundary stamp and the value to persist in LastRunAt.
 					boundaryLocal := runAtLocal
 					persistTime := runAtLocal.UTC()
 
 					if job.CronExpr != "" {
 						boundaryLocal = runAtLocal
-						persistTime = runAtLocal // cron can stay local if you prefer
+						persistTime = runAtLocal
 					} else {
-						boundaryLocal = runAtLocal     // interval: we computed it in local
-						persistTime = runAtLocal.UTC() // but persist UTC
+						boundaryLocal = runAtLocal
+						persistTime = runAtLocal.UTC()
 					}
 
-					// Name with boundary time (predictable, aligned).
 					name := job.Prefix + "-" + boundaryLocal.Format("2006-01-02-15-04")
 					dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
 					if err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to get dataset for %s", job.GUID)
-						// Remove the job if the dataset vanished.
 						if err := s.DB.Delete(&job).Error; err != nil {
 							logger.L.Debug().Err(err).Msgf("Failed to delete job %s", job.GUID)
 						}
@@ -594,7 +592,6 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 					exists, _ := s.GZFS.ZFS.Get(ctx, full, false)
 					if exists != nil {
 						logger.L.Debug().Msgf("Snapshot %s already exists", name)
-						// Still move LastRunAt forward to the boundary we processed.
 						if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
 							logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 						}

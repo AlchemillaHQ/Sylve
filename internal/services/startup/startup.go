@@ -144,7 +144,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	}
 
 	go s.Info.Cron(ctx)
-	go s.ZFS.Cron()
+	go s.ZFS.Cron(ctx)
 	go s.ZFS.StartSnapshotScheduler(context.Background())
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
@@ -240,11 +240,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.DHCPServer) {
 		go func() {
-			time.Sleep(30 * time.Second) 
+			time.Sleep(30 * time.Second)
 
 			err := ensureServiceStarted("dnsmasq")
 			if err != nil {
-				logger.L.Error().Err(err).Msg("unable to start dnsmasq") 
+				logger.L.Error().Err(err).Msg("unable to start dnsmasq")
 			}
 		}()
 	}

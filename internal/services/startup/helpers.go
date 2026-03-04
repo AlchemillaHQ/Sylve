@@ -275,21 +275,17 @@ func (s *Service) EnableLinux() error {
 
 func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	requiredModules := []string{
-		"vmm",
-		"nmdm",
 		"if_bridge",
 		"zfs",
 		"cryptodev",
 		"if_epair",
 		"nullfs",
+		"netlink",
+		"nlsysevent",
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		requiredModules = append(requiredModules, "vmm", "nmdm")
-	}
-
-	if slices.Contains(basicSettings.Services, models.Jails) {
-		requiredModules = append(requiredModules, "if_epair", "nullfs")
 	}
 
 	for _, module := range requiredModules {
@@ -402,7 +398,7 @@ func ensureServiceStarted(service string) error {
 		if _, finalStatusErr := utils.RunCommand("/usr/sbin/service", service, "onestatus"); finalStatusErr == nil {
 			return nil
 		}
-		
+
 		return fmt.Errorf("could not force start service %s: %w (output: %s)", service, startErr, output)
 	}
 

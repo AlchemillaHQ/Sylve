@@ -104,8 +104,8 @@ func main() {
 	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
 
-	go sysS.StartDevdParser(qCtx)
-	go sysS.DevdEventsCleaner(qCtx)
+	go sysS.StartNetlinkWatcher(qCtx)
+	go sysS.NetlinkEventsCleaner(qCtx)
 	go db.StartQueue(qCtx)
 
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -138,7 +138,7 @@ func main() {
 
 	go zeltaS.StartBackupScheduler(qCtx)
 	go zeltaS.StartReplicationScheduler(qCtx)
-	go aS.ClearExpiredJWTTokens()
+	go aS.ClearExpiredJWTTokens(qCtx)
 
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard

@@ -27,3 +27,12 @@ type Swap struct {
 	Usage     float64   `json:"usage"`
 	CreatedAt time.Time `gorm:"autoCreateTime;index" json:"createdAt"`
 }
+
+func (c CPU) GetID() uint             { return c.ID }
+func (c CPU) GetCreatedAt() time.Time { return c.CreatedAt }
+
+func (r RAM) GetID() uint             { return r.ID }
+func (r RAM) GetCreatedAt() time.Time { return r.CreatedAt }
+
+func (s Swap) GetID() uint             { return s.ID }
+func (s Swap) GetCreatedAt() time.Time { return s.CreatedAt }

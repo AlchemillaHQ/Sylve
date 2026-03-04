@@ -35,7 +35,7 @@ type EditVolumeRequest struct {
 type ZfsServiceInterface interface {
 	StoreStats()
 	RemoveNonExistentPools()
-	Cron()
+	Cron(ctx context.Context)
 	RegisterJobs()
 
 	CreateFilesystem(ctx context.Context, name string, props map[string]string) error

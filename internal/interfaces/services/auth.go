@@ -9,6 +9,7 @@
 package serviceInterfaces
 
 import (
+	"context"
 	"crypto/tls"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -32,7 +33,7 @@ type AuthServiceInterface interface {
 	InitSecret(name string, shaRounds int) error
 	GetSecret(name string) (string, error)
 	UpsertSecret(name string, data string) error
-	ClearExpiredJWTTokens()
+	ClearExpiredJWTTokens(ctx context.Context)
 	GetTokenBySHA256(hash string) (string, error)
 	IsValidClusterKey(clusterKey string) bool
 	GetBasicSettings() (models.BasicSettings, error)

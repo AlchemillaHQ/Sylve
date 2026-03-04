@@ -39,14 +39,16 @@ type Triggers struct {
 	CompletedAt time.Time `json:"completedAt" gorm:"autoUpdateTime"`
 }
 
-type DevdEvent struct {
+type NetlinkEvent struct {
 	ID        uint              `json:"id" gorm:"primaryKey"`
-	System    string            `json:"system"`
+	System    string            `json:"system" gorm:"index"`
 	Subsystem string            `json:"subsystem"`
-	Type      string            `json:"type"`
+	Type      string            `json:"type" gorm:"index"`
 	Attrs     map[string]string `json:"attrs" gorm:"serializer:json"`
-	Raw       string            `json:"raw"`
-	Processed bool              `json:"processed"`
-	CreatedAt time.Time         `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt time.Time         `json:"updatedAt" gorm:"autoUpdateTime"`
+
+	Raw       string `json:"raw" gorm:"type:text"`
+	Processed bool   `json:"processed" gorm:"index"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime;index"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
