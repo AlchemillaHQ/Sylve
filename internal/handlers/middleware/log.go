@@ -14,11 +14,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
-
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"

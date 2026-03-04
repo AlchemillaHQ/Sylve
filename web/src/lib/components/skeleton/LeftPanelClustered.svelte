@@ -12,7 +12,7 @@
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 	import { DomainState } from '$lib/types/vm/vm';
 	import { storage } from '$lib';
-	import { resource, useInterval, watch } from 'runed';
+	import { resource, watch } from 'runed';
 	import { page } from '$app/state';
 
 	let openIds = $state(new Set<string>(['datacenter']));
@@ -135,14 +135,6 @@
 			}
 		}
 	);
-
-	useInterval(30000, {
-		callback: () => {
-			if (!storage.idle) {
-				reload.leftPanel = true;
-			}
-		}
-	});
 
 	const activeNodeId = $derived.by(() => {
 		const path = page.url.pathname;

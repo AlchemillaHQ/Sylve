@@ -27,6 +27,8 @@
 	import { getBasicSettings } from '$lib/api/system/settings.js';
 	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
 	import About from '$lib/components/custom/About.svelte';
+	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
+	import { onDestroy } from 'svelte';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -48,6 +50,8 @@
 		]);
 
 		if (validToken && validClusterToken) {
+			void startSSEEvents();
+
 			loading.initialization = true;
 			loading.throbber = true;
 
@@ -75,10 +79,15 @@
 			const basicSettings = await getBasicSettings();
 			storage.enabledServices = basicSettings.services;
 		} else {
+			stopSSEEvents();
 			storage.token = '';
 			initialized = null;
 			rebooted = false;
 		}
+	});
+
+	onDestroy(() => {
+		stopSSEEvents();
 	});
 
 	async function handleLogin(
@@ -161,6 +170,17 @@
 		() => idle.current,
 		(current) => {
 			storage.idle = current;
+		}
+	);
+
+	watch(
+		() => storage.token,
+		(token) => {
+			if (token) {
+				void startSSEEvents();
+			} else {
+				stopSSEEvents();
+			}
 		}
 	);
 

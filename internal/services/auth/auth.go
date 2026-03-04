@@ -36,6 +36,12 @@ type JWT struct {
 	CustomClaims serviceInterfaces.CustomClaims `json:"custom_claims"`
 }
 
+type ScopedJWT struct {
+	jwt.RegisteredClaims
+	Scope        string                         `json:"scope"`
+	CustomClaims serviceInterfaces.CustomClaims `json:"custom_claims"`
+}
+
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
 	return &Service{
 		DB: db,
@@ -182,6 +188,41 @@ func (s *Service) CreateClusterJWT(userId uint, username string, authType string
 	return token, nil
 }
 
+func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error) {
+	if scope == "" {
+		return "", fmt.Errorf("scope_required")
+	}
+
+	if expiresInSeconds <= 0 {
+		expiresInSeconds = 120
+	}
+
+	secret, err := s.GetJWTSecret()
+	if err != nil {
+		return "", fmt.Errorf("jwt_secret_not_found")
+	}
+
+	data := ScopedJWT{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiresInSeconds) * time.Second)),
+			ID:        uuid.NewString(),
+		},
+		Scope: scope,
+		CustomClaims: serviceInterfaces.CustomClaims{
+			UserID:   userID,
+			Username: username,
+			AuthType: authType,
+		},
+	}
+
+	token, err := (jwt.NewWithClaims(jwt.SigningMethodHS256, data)).SignedString([]byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("jwt_signing_failed")
+	}
+
+	return token, nil
+}
+
 func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.CustomClaims, error) {
 	clusterKey, err := s.GetClusterKey()
 	if err != nil || clusterKey == "" {
@@ -274,6 +315,39 @@ func (s *Service) ValidateToken(tokenString string) (serviceInterfaces.CustomCla
 
 	if !s.VerifyTokenInDb(tokenString) {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_not_found_in_db")
+	}
+
+	return claims.CustomClaims, nil
+}
+
+func (s *Service) ValidateScopedJWT(tokenString, expectedScope string) (serviceInterfaces.CustomClaims, error) {
+	if expectedScope == "" {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("scope_required")
+	}
+
+	secret, err := s.GetJWTSecret()
+	if err != nil {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_secret_not_found")
+	}
+
+	token, err := jwt.ParseWithClaims(tokenString, &ScopedJWT{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+	if err != nil {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	claims, ok := token.Claims.(*ScopedJWT)
+	if !ok || !token.Valid {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	}
+
+	if claims.Scope != expectedScope {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_scope")
+	}
+
+	if time.Now().After(claims.ExpiresAt.Time) {
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
 	}
 
 	return claims.CustomClaims, nil

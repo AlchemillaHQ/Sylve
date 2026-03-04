@@ -14,7 +14,7 @@
 	import { humanFormatBytes, sha256 } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import { resource, useInterval } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -61,18 +61,21 @@
 	let selectedNodeId = $state('');
 	let initialNodeSelectionDone = $state(false);
 
-	$effect(() => {
-		if (initialNodeSelectionDone) return;
+	watch(
+		[() => initialNodeSelectionDone, () => clusterDetails.current?.nodeId, () => nodes.current],
+		([done, currentNodeIdRaw, currentNodes]) => {
+			if (done) return;
 
-		const currentNodeId = clusterDetails.current?.nodeId?.trim() || '';
-		const fallbackNodeId = nodes.current[0]?.nodeUUID?.trim() || '';
-		const nextNodeId = currentNodeId || fallbackNodeId;
-		if (!nextNodeId) return;
+			const currentNodeId = (currentNodeIdRaw || '').trim();
+			const fallbackNodeId = currentNodes[0]?.nodeUUID?.trim() || '';
+			const nextNodeId = currentNodeId || fallbackNodeId;
+			if (!nextNodeId) return;
 
-		selectedNodeId = nextNodeId;
-		initialNodeSelectionDone = true;
-		reload = true;
-	});
+			selectedNodeId = nextNodeId;
+			initialNodeSelectionDone = true;
+			reload = true;
+		}
+	);
 
 	function handleNodeSelection(value: string) {
 		if (value === selectedNodeId) {
@@ -232,31 +235,31 @@
 		switch ((status || '').toLowerCase()) {
 			case 'success':
 				return {
-					icon: 'icon-[mdi--check-circle-outline]',
+					icon: 'mdi:check-circle-outline',
 					label: 'Success',
 					className: 'text-green-500'
 				};
 			case 'failed':
 				return {
-					icon: 'icon-[mdi--close-circle-outline]',
+					icon: 'mdi:close-circle-outline',
 					label: 'Failed',
 					className: 'text-red-500'
 				};
 			case 'interrupted':
 				return {
-					icon: 'icon-[mdi--alert-circle-outline]',
+					icon: 'mdi:alert-circle-outline',
 					label: 'Interrupted',
 					className: 'text-orange-500'
 				};
 			case 'running':
 				return {
-					icon: 'icon-[mdi--progress-clock]',
+					icon: 'mdi:progress-clock',
 					label: 'Running',
 					className: 'text-yellow-500'
 				};
 			default:
 				return {
-					icon: 'icon-[mdi--help-circle-outline]',
+					icon: 'mdi:help-circle-outline',
 					label: status || '-',
 					className: 'text-muted-foreground'
 				};
@@ -304,6 +307,11 @@
 		const current = progressEvent.current;
 		if (!current) return 0;
 
+		const status = (current.event?.status || '').toLowerCase();
+		if (status === 'success') {
+			return 100;
+		}
+
 		const percent = current.progressPercent;
 		if (percent !== null && percent !== undefined && Number.isFinite(percent)) {
 			return Math.max(0, Math.min(100, percent));
@@ -327,6 +335,11 @@
 	let progressHasData = $derived.by(() => {
 		const current = progressEvent.current;
 		if (!current) return false;
+
+		const status = (current.event?.status || '').toLowerCase();
+		if (status === 'success') {
+			return true;
+		}
 
 		const percent = current.progressPercent;
 		if (percent !== null && percent !== undefined && Number.isFinite(percent)) {
@@ -366,20 +379,35 @@
 		await progressEvent.refetch();
 	}
 
-	$effect(() => {
-		if (!progressModal.open) {
-			progressEventId = 0;
-			progressNodeId = '';
-			progressModal.error = '';
+	watch(
+		() => progressModal.open,
+		(open) => {
+			if (!open) {
+				progressEventId = 0;
+				progressNodeId = '';
+				progressModal.error = '';
+				activeRows = null;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		const status = progressEvent.current?.event?.status;
-		if (progressModal.open && status && status !== 'running') {
-			reload = true;
+	watch(
+		() => reload,
+		(isReloading) => {
+			if (isReloading) {
+				activeRows = null;
+			}
 		}
-	});
+	);
+
+	watch(
+		[() => progressModal.open, () => progressEvent.current?.event?.status],
+		([open, status]) => {
+			if (open && status && status !== 'running') {
+				reload = true;
+			}
+		}
+	);
 
 	let eventColumns = $derived.by((): Column[] => {
 		const currentJails = jails;

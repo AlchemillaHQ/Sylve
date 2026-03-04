@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	hub "github.com/alchemillahq/sylve/internal/events"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -232,6 +233,12 @@ func (s *Service) PopulateClusterNodes() error {
 				ci.disk = nodeInfo.DiskTotal
 				ci.diskUsage = nodeInfo.DiskUsage
 				ci.guestIDs = nodeInfo.Guests
+			} else {
+				logger.L.Debug().
+					Str("node_uuid", uuid).
+					Str("host", host).
+					Err(err).
+					Msg("PopulateClusterNodes: node info probe failed, keeping node offline")
 			}
 
 			mu.Lock()
@@ -434,15 +441,31 @@ func (s *Service) FastStatusCheck() {
 	state := s.Raft.State()
 	_, leaderID := s.Raft.LeaderWithID()
 	now := time.Now()
+	logger.L.Debug().
+		Str("state", state.String()).
+		Str("node_id", s.NodeID).
+		Str("leader_id", string(leaderID)).
+		Msg("FastStatusCheck: tick")
 
-	if err := s.DB.Model(&clusterModels.ClusterNode{}).
+	publishRefresh := func() {
+		hub.SSE.Publish(hub.Event{
+			Type:      "left-panel-refresh",
+			Timestamp: time.Now(),
+		})
+	}
+
+	localUpdate := s.DB.Model(&clusterModels.ClusterNode{}).
 		Where("node_uuid = ? AND status <> ?", s.NodeID, "online").
-		Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to update local node status")
+		Updates(map[string]any{"status": "online", "updated_at": now})
+	if localUpdate.Error != nil {
+		logger.L.Debug().Err(localUpdate.Error).Msg("FastStatusCheck: failed to update local node status")
+	} else if localUpdate.RowsAffected > 0 {
+		publishRefresh()
 	}
 
 	fut := s.Raft.GetConfiguration()
 	if err := fut.Error(); err != nil {
+		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get raft configuration")
 		return
 	}
 
@@ -458,39 +481,49 @@ func (s *Service) FastStatusCheck() {
 	}
 
 	if len(peerIDs) == 0 {
+		logger.L.Debug().Msg("FastStatusCheck: no peers in raft configuration")
 		return
 	}
 
 	setPeersStatus := func(status string) {
-		if err := s.DB.Model(&clusterModels.ClusterNode{}).
+		result := s.DB.Model(&clusterModels.ClusterNode{}).
 			Where("node_uuid IN ? AND status <> ?", peerIDs, status).
-			Updates(map[string]any{"status": status, "updated_at": now}).Error; err != nil {
-			logger.L.Debug().Err(err).Str("status", status).Msg("FastStatusCheck: failed to update peer statuses")
+			Updates(map[string]any{"status": status, "updated_at": now})
+		if result.Error != nil {
+			logger.L.Debug().Err(result.Error).Str("status", status).Msg("FastStatusCheck: failed to update peer statuses")
+			return
+		}
+
+		logger.L.Debug().
+			Str("status", status).
+			Int64("rows_affected", result.RowsAffected).
+			Int("peer_count", len(peerIDs)).
+			Msg("FastStatusCheck: bulk peer status update result")
+
+		if result.RowsAffected > 0 {
+			publishRefresh()
 		}
 	}
 
 	if state != raft.Leader {
 		if leaderID == "" {
-			setPeersStatus("offline")
+			logger.L.Debug().Msg("FastStatusCheck: non-leader and no leaderID, skipping peer writes")
 			return
 		}
 
-		if err := s.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&clusterModels.ClusterNode{}).
-				Where("node_uuid IN ? AND status <> ?", peerIDs, "offline").
-				Updates(map[string]any{"status": "offline", "updated_at": now}).Error; err != nil {
-				return err
+		result := s.DB.Model(&clusterModels.ClusterNode{}).
+			Where("node_uuid = ? AND status <> ?", string(leaderID), "online").
+			Updates(map[string]any{"status": "online", "updated_at": now})
+		if result.Error != nil {
+			logger.L.Debug().Err(result.Error).Msg("FastStatusCheck: failed to update leader status on non-leader")
+		} else {
+			logger.L.Debug().
+				Str("leader_id", string(leaderID)).
+				Int64("rows_affected", result.RowsAffected).
+				Msg("FastStatusCheck: non-leader leader-status update result")
+			if result.RowsAffected > 0 {
+				publishRefresh()
 			}
-
-			if err := tx.Model(&clusterModels.ClusterNode{}).
-				Where("node_uuid = ? AND status <> ?", string(leaderID), "online").
-				Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
-				return err
-			}
-
-			return nil
-		}); err != nil {
-			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply non-leader status view")
 		}
 		return
 	}
@@ -538,7 +571,20 @@ func (s *Service) FastStatusCheck() {
 				url := fmt.Sprintf("https://%s:%d/api/health/http", host, config.ParsedConfig.Port)
 				if _, err := utils.HTTPGetStatus(url, headers); err == nil {
 					status = "online"
+				} else {
+					logger.L.Debug().
+						Str("peer_id", nodeID).
+						Str("peer_addr", raftAddr).
+						Str("url", url).
+						Err(err).
+						Msg("FastStatusCheck: peer health probe failed")
 				}
+
+				logger.L.Debug().
+					Str("peer_id", nodeID).
+					Str("peer_addr", raftAddr).
+					Str("status", status).
+					Msg("FastStatusCheck: peer health probe result")
 
 				mu.Lock()
 				results[nodeID] = status
@@ -558,26 +604,52 @@ func (s *Service) FastStatusCheck() {
 			}
 		}
 
+		logger.L.Debug().
+			Int("online_count", len(onlinePeerIDs)).
+			Int("offline_count", len(offlinePeerIDs)).
+			Msg("FastStatusCheck: classified peer statuses")
+
+		changed := false
+		onlineRows := int64(0)
+		offlineRows := int64(0)
 		if err := s.DB.Transaction(func(tx *gorm.DB) error {
 			if len(onlinePeerIDs) > 0 {
-				if err := tx.Model(&clusterModels.ClusterNode{}).
+				result := tx.Model(&clusterModels.ClusterNode{}).
 					Where("node_uuid IN ? AND status <> ?", onlinePeerIDs, "online").
-					Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
-					return err
+					Updates(map[string]any{"status": "online", "updated_at": now})
+				if result.Error != nil {
+					return result.Error
+				}
+				onlineRows = result.RowsAffected
+				if result.RowsAffected > 0 {
+					changed = true
 				}
 			}
 
 			if len(offlinePeerIDs) > 0 {
-				if err := tx.Model(&clusterModels.ClusterNode{}).
+				result := tx.Model(&clusterModels.ClusterNode{}).
 					Where("node_uuid IN ? AND status <> ?", offlinePeerIDs, "offline").
-					Updates(map[string]any{"status": "offline", "updated_at": now}).Error; err != nil {
-					return err
+					Updates(map[string]any{"status": "offline", "updated_at": now})
+				if result.Error != nil {
+					return result.Error
+				}
+				offlineRows = result.RowsAffected
+				if result.RowsAffected > 0 {
+					changed = true
 				}
 			}
 
 			return nil
 		}); err != nil {
 			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply per-node leader checks")
+		} else if changed {
+			logger.L.Debug().
+				Int64("online_rows", onlineRows).
+				Int64("offline_rows", offlineRows).
+				Msg("FastStatusCheck: applied leader peer status updates")
+			publishRefresh()
+		} else {
+			logger.L.Debug().Msg("FastStatusCheck: leader checks made no DB status changes")
 		}
 	}
 }

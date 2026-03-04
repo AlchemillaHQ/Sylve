@@ -9,6 +9,7 @@
  */
 
 export const reload = $state({
-	leftPanel: false,
-	auditLog: false
+    leftPanel: false,
+    auditLog: false,
+    clusterDetails: false
 });

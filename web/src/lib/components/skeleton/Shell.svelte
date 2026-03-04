@@ -6,8 +6,9 @@
 	import * as Resizable from '$lib/components/ui/resizable';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
 	import { fade } from 'svelte/transition';
-	import { resource, useInterval } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
+	import { reload } from '$lib/stores/api.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -23,13 +24,16 @@
 		{}
 	);
 
-	useInterval(() => 2000, {
-		callback: () => {
-			if (storage.visible) {
+	watch(
+		() => reload.clusterDetails,
+		() => {
+			if (reload.clusterDetails) {
+				console.debug('Reloading cluster details due to reload.clusterDetails being true');
 				clusterDetails.refetch();
+				reload.clusterDetails = false;
 			}
 		}
-	});
+	);
 
 	let details = $derived(clusterDetails.current);
 	let clustered = $derived(details?.cluster?.enabled || false);

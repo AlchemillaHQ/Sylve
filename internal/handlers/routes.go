@@ -23,6 +23,7 @@ import (
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
+	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
@@ -394,6 +395,13 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		auth.POST("/login", authHandlers.LoginHandler(authService))
 		auth.GET("/logout", authHandlers.LogoutHandler(authService))
+		auth.GET("/sse-token", eventsHandlers.CreateSSEToken(authService))
+	}
+
+	events := api.Group("/events")
+	events.Use(middleware.EnsureAuthenticated(authService))
+	{
+		events.GET("/stream", eventsHandlers.StreamSSE(authService))
 	}
 
 	users := auth.Group("/users")

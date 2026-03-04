@@ -30,6 +30,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			path == "/api/info/terminal" ||
 			path == "/api/vm/console" ||
 			path == "/api/jail/console"
+		isSSEPath := path == "/api/events/stream"
 
 		if strings.HasPrefix(path, "/api/utilities/downloads/") &&
 			!strings.HasPrefix(path, "/api/utilities/downloads/bulk-delete") &&
@@ -43,6 +44,28 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 		}
 
 		if path == "/api/auth/login" {
+			c.Next()
+			return
+		}
+
+		if isSSEPath {
+			sseToken := c.Query("sse_token")
+			if sseToken == "" {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "missing_sse_token"})
+				return
+			}
+
+			claims, err := authService.ValidateScopedJWT(sseToken, "sse")
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "error", "error": "invalid_sse_token"})
+				return
+			}
+
+			c.Set("Token", sseToken)
+			c.Set("AuthScope", "sse")
+			c.Set("UserID", claims.UserID)
+			c.Set("Username", claims.Username)
+			c.Set("AuthType", claims.AuthType)
 			c.Next()
 			return
 		}

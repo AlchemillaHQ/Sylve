@@ -25,11 +25,13 @@ type AuthServiceInterface interface {
 	GetJWTSecret() (string, error)
 	GetClusterKey() (string, error)
 	CreateJWT(username, password, authType string, remember bool) (uint, string, error)
+	CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error)
 	CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error)
 	VerifyClusterJWT(tokenString string) (CustomClaims, error)
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool
 	ValidateToken(tokenString string) (CustomClaims, error)
+	ValidateScopedJWT(tokenString, expectedScope string) (CustomClaims, error)
 	InitSecret(name string, shaRounds int) error
 	GetSecret(name string) (string, error)
 	UpsertSecret(name string, data string) error
