@@ -9378,9 +9378,8 @@ msgstr ""
 msgid "Job Summary"
 msgstr ""
 
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "Stale cache"
-msgstr ""
+#~ msgid "Stale cache"
+#~ msgstr ""
 
 #~ msgid "Last cached {0}."
 #~ msgstr ""
@@ -9390,3 +9389,7 @@ msgstr ""
 
 #~ msgid "Guest information is currently stale and could not be refreshed."
 #~ msgstr ""
+
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+msgid "Stale Cache"
+msgstr ""

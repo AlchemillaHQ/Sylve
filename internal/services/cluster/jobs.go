@@ -436,7 +436,7 @@ func (s *Service) FastStatusCheck() {
 	now := time.Now()
 
 	if err := s.DB.Model(&clusterModels.ClusterNode{}).
-		Where("node_uuid = ?", s.NodeID).
+		Where("node_uuid = ? AND status <> ?", s.NodeID, "online").
 		Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to update local node status")
 	}
@@ -463,7 +463,7 @@ func (s *Service) FastStatusCheck() {
 
 	setPeersStatus := func(status string) {
 		if err := s.DB.Model(&clusterModels.ClusterNode{}).
-			Where("node_uuid IN ?", peerIDs).
+			Where("node_uuid IN ? AND status <> ?", peerIDs, status).
 			Updates(map[string]any{"status": status, "updated_at": now}).Error; err != nil {
 			logger.L.Debug().Err(err).Str("status", status).Msg("FastStatusCheck: failed to update peer statuses")
 		}
@@ -477,13 +477,13 @@ func (s *Service) FastStatusCheck() {
 
 		if err := s.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&clusterModels.ClusterNode{}).
-				Where("node_uuid IN ?", peerIDs).
+				Where("node_uuid IN ? AND status <> ?", peerIDs, "offline").
 				Updates(map[string]any{"status": "offline", "updated_at": now}).Error; err != nil {
 				return err
 			}
 
 			if err := tx.Model(&clusterModels.ClusterNode{}).
-				Where("node_uuid = ?", string(leaderID)).
+				Where("node_uuid = ? AND status <> ?", string(leaderID), "online").
 				Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
 				return err
 			}
@@ -548,14 +548,33 @@ func (s *Service) FastStatusCheck() {
 
 		wg.Wait()
 
+		onlinePeerIDs := make([]string, 0, len(results))
+		offlinePeerIDs := make([]string, 0, len(results))
+		for id, status := range results {
+			if status == "online" {
+				onlinePeerIDs = append(onlinePeerIDs, id)
+			} else {
+				offlinePeerIDs = append(offlinePeerIDs, id)
+			}
+		}
+
 		if err := s.DB.Transaction(func(tx *gorm.DB) error {
-			for id, status := range results {
+			if len(onlinePeerIDs) > 0 {
 				if err := tx.Model(&clusterModels.ClusterNode{}).
-					Where("node_uuid = ?", id).
-					Updates(map[string]any{"status": status, "updated_at": now}).Error; err != nil {
+					Where("node_uuid IN ? AND status <> ?", onlinePeerIDs, "online").
+					Updates(map[string]any{"status": "online", "updated_at": now}).Error; err != nil {
 					return err
 				}
 			}
+
+			if len(offlinePeerIDs) > 0 {
+				if err := tx.Model(&clusterModels.ClusterNode{}).
+					Where("node_uuid IN ? AND status <> ?", offlinePeerIDs, "offline").
+					Updates(map[string]any{"status": "offline", "updated_at": now}).Error; err != nil {
+					return err
+				}
+			}
+
 			return nil
 		}); err != nil {
 			logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply per-node leader checks")
@@ -572,7 +591,7 @@ func (s *Service) StartClusterMonitors() {
 		}
 
 		go func() {
-			ticker := time.NewTicker(2 * time.Second)
+			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 
 			for range ticker.C {

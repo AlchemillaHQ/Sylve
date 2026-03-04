@@ -99,7 +99,7 @@
 								in:fade={{ duration: 180 }}
 								out:fade={{ duration: 120 }}
 							>
-								Stale cache
+								Stale Cache
 							</span>
 						{/if}
 					</div>

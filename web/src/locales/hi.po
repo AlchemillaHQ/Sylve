@@ -9326,9 +9326,8 @@ msgstr ""
 msgid "Job Summary"
 msgstr ""
 
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "Stale cache"
-msgstr ""
+#~ msgid "Stale cache"
+#~ msgstr ""
 
 #~ msgid "Last cached {0}."
 #~ msgstr ""
@@ -9341,4 +9340,8 @@ msgstr ""
 
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "New VM Snapshot"
+msgstr ""
+
+#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+msgid "Stale Cache"
 msgstr ""
