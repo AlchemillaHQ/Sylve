@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -42,7 +43,18 @@ type Service struct {
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
 
-	crudMutex sync.Mutex
+	crudMutex         sync.Mutex
+	networkUpdateChan chan int64
+
+	liveStateMutex     sync.RWMutex
+	liveStateByCTID    map[uint]jailServiceInterfaces.State
+	liveStateUpdatedAt time.Time
+	hashCacheMutex     sync.RWMutex
+	ctidHashByCTID     map[uint]string
+
+	usagePersistQueue   chan struct{}
+	usageRetentionQueue chan struct{}
+	monitorOnce         sync.Once
 }
 
 func NewJailService(
@@ -50,12 +62,33 @@ func NewJailService(
 	networkService networkServiceInterfaces.NetworkServiceInterface,
 	systemService systemServiceInterfaces.SystemServiceInterface,
 	gzfs *gzfs.Client) jailServiceInterfaces.JailServiceInterface {
-	return &Service{
-		DB:             db,
-		NetworkService: networkService,
-		System:         systemService,
-		GZFS:           gzfs,
+	s := &Service{
+		DB:                  db,
+		NetworkService:      networkService,
+		System:              systemService,
+		GZFS:                gzfs,
+		networkUpdateChan:   make(chan int64, 100),
+		liveStateByCTID:     make(map[uint]jailServiceInterfaces.State),
+		ctidHashByCTID:      make(map[uint]string),
+		usagePersistQueue:   make(chan struct{}, 1),
+		usageRetentionQueue: make(chan struct{}, 1),
 	}
+
+	go s.networkUpdateWorker()
+	go s.jailUsagePersistWorker()
+	go s.jailUsageRetentionWorker()
+
+	networkService.RegisterOnJailObjectUpdateCallback(func(jailIDs []uint) {
+		for _, id := range jailIDs {
+			select {
+			case s.networkUpdateChan <- int64(id):
+			default:
+				logger.L.Warn().Msgf("Network update channel full, skipping jail %d", id)
+			}
+		}
+	})
+
+	return s
 }
 
 func (s *Service) GetJails() ([]jailModels.Jail, error) {
@@ -374,7 +407,7 @@ func (s *Service) CreateHardwareConfig(data jailModels.Jail) (string, string, er
 	cpuCfg := ""
 	memoryCfg := ""
 
-	ctidHash := utils.HashIntToNLetters(int(data.CTID), 5)
+	ctidHash := s.GetCTIDHash(data.CTID)
 
 	jails, err := s.GetJails()
 	if err != nil {
@@ -503,7 +536,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	}
 
 	var cfg string
-	ctidHash := utils.HashIntToNLetters(int(ctid), 5)
+	ctidHash := s.GetCTIDHash(ctid)
 
 	cfg += JAIL_CONF_PREAMBLE
 	cfg += fmt.Sprintf("%s {\n", ctidHash)

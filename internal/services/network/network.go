@@ -23,7 +23,12 @@ type Service struct {
 	DB        *gorm.DB
 	syncMutex sync.Mutex
 
-	LibVirt libvirtServiceInterfaces.LibvirtServiceInterface
+	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
+	OnJailObjectUpdate func(jailIDs []uint)
+}
+
+func (s *Service) RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint)) {
+	s.OnJailObjectUpdate = cb
 }
 
 func NewNetworkService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.NetworkServiceInterface {

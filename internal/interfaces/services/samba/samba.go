@@ -17,6 +17,7 @@ import (
 type SambaServiceInterface interface {
 	WriteConfig(ctx context.Context, reload bool) error
 	ParseAuditLogs() error
+	WatchAuditLogs(ctx context.Context)
 }
 
 type AuditLogsResponse struct {

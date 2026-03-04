@@ -13,6 +13,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
@@ -90,4 +92,25 @@ func (s *Service) GetJailCTIDFromDataset(dataset string) (uint, error) {
 	}
 
 	return uint(n), nil
+}
+
+func (s *Service) GetCTIDHash(ctId uint) string {
+	s.hashCacheMutex.RLock()
+	hash, ok := s.ctidHashByCTID[ctId]
+	s.hashCacheMutex.RUnlock()
+	if ok {
+		return hash
+	}
+
+	hash = utils.HashIntToNLetters(int(ctId), 5)
+
+	s.hashCacheMutex.Lock()
+	if existing, exists := s.ctidHashByCTID[ctId]; exists {
+		hash = existing
+	} else {
+		s.ctidHashByCTID[ctId] = hash
+	}
+	s.hashCacheMutex.Unlock()
+
+	return hash
 }

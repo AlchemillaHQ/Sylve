@@ -107,7 +107,7 @@ func main() {
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
 
-	err := sS.Initialize(aS.(*auth.Service), initContext)
+	err := sS.Initialize(aS.(*auth.Service), initContext, qCtx)
 
 	go sysS.StartNetlinkWatcher(qCtx)
 	go sysS.NetlinkEventsCleaner(qCtx)
@@ -222,7 +222,7 @@ func main() {
 
 	<-sigChan
 
-	logger.L.Info().Msg("Shutting down servers gracefully...")
+	logger.L.Info().Msg("Shutting down servers gracefully")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -47,4 +47,5 @@ type NetworkServiceInterface interface {
 	CreateEpair(name string) error
 	SyncEpairs(forceStart bool) error
 	DeleteEpair(name string) error
+	RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint))
 }

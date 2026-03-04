@@ -8,7 +8,11 @@
 
 package jailServiceInterfaces
 
-import jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+import (
+	"context"
+
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+)
 
 type HookPhase struct {
 	Enabled bool   `json:"enabled"`
@@ -118,8 +122,8 @@ type EditJailNetworkRequest struct {
 type JailServiceInterface interface {
 	JailAction(ctid int, action string) error
 	GetJailCTIDFromDataset(dataset string) (uint, error)
+	StartStatsMonitoring(ctx context.Context)
 
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
-	WatchNetworkObjectChanges() error
 }

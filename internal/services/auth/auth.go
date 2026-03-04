@@ -369,7 +369,7 @@ func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			logger.L.Info().Msg("Stopping token cleanup worker...")
+			logger.L.Info().Msg("Stopping token cleanup worker")
 			return
 		case <-ticker.C:
 			s.performTokenCleanup()

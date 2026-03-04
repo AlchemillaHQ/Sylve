@@ -14,5 +14,5 @@ type StartupServiceInterface interface {
 	InitKeys(authService AuthServiceInterface) error
 	SysctlSync() error
 	InitFirewall() error
-	Initialize(authService AuthServiceInterface, ctx context.Context) error
+	Initialize(authService AuthServiceInterface, ctx context.Context, dCtx context.Context) error
 }

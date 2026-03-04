@@ -47,14 +47,14 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
 		if strings.Contains(t, "rctl -a") && strings.Contains(t, "memoryuse") {
-			lines[i] = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb)
+			lines[i] = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		lines = append(lines, fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+		lines = append(lines, fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb))
 	}
 
 	newContent := strings.Join(lines, "\n")
@@ -63,7 +63,7 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 	}
 
 	// Live update
-	_, err = utils.RunCommand("/usr/bin/rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+	_, err = utils.RunCommand("/usr/bin/rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb))
 	if err != nil {
 		return fmt.Errorf("failed to apply memory limit with rctl: %w", err)
 	}
@@ -140,7 +140,7 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 	}
 
 	coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selected), " ", ",", -1), "[]")
-	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
+	ctIdHash := s.GetCTIDHash(ctId)
 
 	postStart, err := s.GetHookScriptPath(ctId, "post-start")
 	if err != nil {
@@ -217,7 +217,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 		return fmt.Errorf("jail config not found for CTID: %d", ctId)
 	}
 
-	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
+	ctIdHash := s.GetCTIDHash(ctId)
 
 	if enabled {
 		const oneGiB = int64(1024 * 1024 * 1024)

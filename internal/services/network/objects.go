@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -865,27 +864,18 @@ func (s *Service) AddNetworkObjectEditJailTrigger(id uint, values []string) erro
 	}
 
 	used, jailIds, err := s.IsObjectUsedByJail(id)
-
 	if err != nil {
 		return fmt.Errorf("failed to check if object %d is used by a jail: %w", id, err)
 	}
 
 	if used {
-		var trigger models.Triggers
-
-		slice, err := utils.UintSliceToJSON(jailIds)
-		if err != nil {
-			return fmt.Errorf("failed to convert jail IDs to JSON: %w", err)
+		var idsToUpdate []int64
+		for _, jid := range jailIds {
+			idsToUpdate = append(idsToUpdate, int64(jid))
 		}
 
-		trigger = models.Triggers{
-			Action:    "edit_network_object_used_by_jails",
-			Completed: false,
-			Data:      slice,
-		}
-
-		if err := s.DB.Create(&trigger).Error; err != nil {
-			return fmt.Errorf("failed to create trigger for object %d: %w", id, err)
+		if s.OnJailObjectUpdate != nil {
+			s.OnJailObjectUpdate(jailIds)
 		}
 	}
 

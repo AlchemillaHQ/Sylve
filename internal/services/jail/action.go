@@ -40,7 +40,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return fmt.Errorf("failed to find jail with ct_id %d: %w", ctId, err)
 	}
 
-	jailName := utils.HashIntToNLetters(int(jail.CTID), 5)
+	jailName := s.GetCTIDHash(jail.CTID)
 
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command("jail", args...)

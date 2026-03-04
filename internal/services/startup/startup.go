@@ -107,7 +107,7 @@ func (s *Service) PreFlightChecklist(basicSettings models.BasicSettings) error {
 	return nil
 }
 
-func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context) error {
+func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context, dCtx context.Context) error {
 	if err := s.InitKeys(authService); err != nil {
 		return err
 	}
@@ -140,16 +140,14 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 
 		go s.Libvirt.StoreVMUsage()
-
 	}
 
-	go s.Info.Cron(ctx)
-	go s.ZFS.Cron(ctx)
-	go s.ZFS.StartSnapshotScheduler(context.Background())
+	go s.Info.Cron(dCtx)
+	go s.ZFS.Cron(dCtx)
+	go s.ZFS.StartSnapshotScheduler(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
-		go s.Jail.StoreJailUsage()
-		go s.Jail.WatchNetworkObjectChanges()
+		s.Jail.StartStatsMonitoring(dCtx)
 	}
 
 	err := s.Network.SyncStandardSwitches(nil, "sync")
@@ -184,6 +182,8 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		if err != nil {
 			logger.L.Error().Err(err).Msgf("unable to start samba server")
 		}
+
+		go s.Samba.WatchAuditLogs(ctx)
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
@@ -193,39 +193,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 					logger.L.Error().Msgf("Failed to sync VM states: %v", err)
 				}
 
-				time.Sleep(5 * time.Second)
-			}
-		}()
-	}
-
-	if slices.Contains(basicSettings.Services, models.Jails) {
-		go func() {
-			for {
-				if err := s.Jail.StoreJailUsage(); err != nil {
-					logger.L.Error().Msgf("Failed to sync Jail states: %v", err)
-				}
-
-				time.Sleep(5 * time.Second)
-			}
-		}()
-
-		go func() {
-			for {
-				if err := s.Jail.WatchNetworkObjectChanges(); err != nil {
-					logger.L.Error().Msgf("Failed to watch network object changes: %v", err)
-				}
-
-				time.Sleep(1 * time.Second)
-			}
-		}()
-	}
-
-	if slices.Contains(basicSettings.Services, models.SambaServer) {
-		go func() {
-			for {
-				if err := s.Samba.ParseAuditLogs(); err != nil {
-					logger.L.Error().Msgf("Failed to parse Samba audit logs: %v", err)
-				}
 				time.Sleep(5 * time.Second)
 			}
 		}()
