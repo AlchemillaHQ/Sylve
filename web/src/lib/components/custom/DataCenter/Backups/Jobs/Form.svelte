@@ -59,8 +59,11 @@
 
 	let jails = $state<Jail[]>([]);
 	let jailsLoading = $state(false);
+	let jailsLoadedForNode = $state('');
 	let vms = $state<VM[]>([]);
 	let vmsLoading = $state(false);
+	let vmsLoadedForNode = $state('');
+	let lastRunnerNodeId = $state('');
 
 	let form = $state<JobFormState>({
 		name: '',
@@ -144,27 +147,44 @@
 		return { kind: 'dataset', id: 0 };
 	}
 
+	function selectedRunnerHostname(): string {
+		const runnerNodeId = form.runnerNodeId.trim();
+		if (!runnerNodeId) return '';
+
+		const selectedNode = nodes.find((node) => node.nodeUUID === runnerNodeId);
+		if (selectedNode?.hostname) {
+			return selectedNode.hostname;
+		}
+
+		const nodeByHostname = nodes.find((node) => node.hostname === runnerNodeId);
+		return nodeByHostname?.hostname || runnerNodeId;
+	}
+
 	async function loadJails(force: boolean = false) {
+		const hostname = selectedRunnerHostname();
 		if (jailsLoading) return;
-		if (!force && jails.length > 0) return;
+		if (!force && jails.length > 0 && jailsLoadedForNode === hostname) return;
 		jailsLoading = true;
 		try {
-			const res = await getJails();
-			updateCache('jail-list', res);
+			const res = await getJails(hostname || undefined);
+			updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', res);
 			jails = res;
+			jailsLoadedForNode = hostname;
 		} finally {
 			jailsLoading = false;
 		}
 	}
 
 	async function loadVMs(force: boolean = false) {
+		const hostname = selectedRunnerHostname();
 		if (vmsLoading) return;
-		if (!force && vms.length > 0) return;
+		if (!force && vms.length > 0 && vmsLoadedForNode === hostname) return;
 		vmsLoading = true;
 		try {
-			const res = await getVMs();
-			updateCache('vm-list', res);
+			const res = await getVMs(hostname || undefined);
+			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', res);
 			vms = res;
+			vmsLoadedForNode = hostname;
 		} finally {
 			vmsLoading = false;
 		}
@@ -183,6 +203,7 @@
 		form.stopBeforeBackup = false;
 		form.cronExpr = '0 * * * *';
 		form.enabled = true;
+		lastRunnerNodeId = form.runnerNodeId;
 	}
 
 	async function applyFromJob(job: BackupJob) {
@@ -198,6 +219,7 @@
 		form.stopBeforeBackup = !!job.stopBeforeBackup;
 		form.cronExpr = job.cronExpr;
 		form.enabled = job.enabled;
+		lastRunnerNodeId = form.runnerNodeId;
 
 		if (form.mode === 'jail') {
 			await loadJails(true);
@@ -370,6 +392,25 @@
 		const dataset = vmBaseDataset(vm);
 		if (dataset) {
 			form.sourceDataset = dataset;
+		}
+	});
+
+	watch([() => open, () => form.runnerNodeId, () => form.mode], ([isOpen, runnerNodeId, mode]) => {
+		if (!isOpen) return;
+		if (runnerNodeId === lastRunnerNodeId) return;
+
+		lastRunnerNodeId = runnerNodeId;
+		form.selectedJailId = '';
+		form.selectedVmId = '';
+		if (mode !== 'dataset') {
+			form.sourceDataset = '';
+		}
+
+		if (mode === 'jail') {
+			void loadJails(true);
+		}
+		if (mode === 'vm') {
+			void loadVMs(true);
 		}
 	});
 </script>

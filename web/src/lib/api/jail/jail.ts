@@ -58,8 +58,8 @@ export async function getSimpleJails(): Promise<SimpleJail[]> {
     return await apiRequest('/jail/simple', z.array(SimpleJailSchema), 'GET');
 }
 
-export async function getJails(): Promise<Jail[]> {
-    return await apiRequest('/jail', z.array(JailSchema), 'GET');
+export async function getJails(hostname?: string): Promise<Jail[]> {
+    return await apiRequest('/jail', z.array(JailSchema), 'GET', undefined, { hostname });
 }
 
 export async function getJailById(id: number, type: 'ctid' | 'id'): Promise<Jail> {

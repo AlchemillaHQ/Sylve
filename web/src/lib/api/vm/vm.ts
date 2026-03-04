@@ -19,8 +19,8 @@ export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
     return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
 }
 
-export async function getVMs(): Promise<VM[]> {
-    return await apiRequest('/vm', z.array(VMSchema), 'GET');
+export async function getVMs(hostname?: string): Promise<VM[]> {
+    return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
 }
 
 export async function getSimpleVMs(): Promise<SimpleVm[]> {

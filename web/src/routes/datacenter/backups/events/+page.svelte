@@ -165,11 +165,36 @@
 	}
 
 	function formatSnapshotLabel(snapshot: string): string {
-		const value = snapshot.startsWith('zelta_') ? snapshot.slice(6) : snapshot;
-		if (/^\d{4}-\d{2}-\d{2}_\d{2}\.\d{2}\.\d{2}$/.test(value)) {
-			return value.replace('_', ' ').replace(/\./g, ':');
+		const raw = (snapshot || '').trim();
+		if (!raw) return '';
+
+		const legacy = raw.startsWith('zelta_') ? raw.slice(6) : raw;
+		if (/^\d{4}-\d{2}-\d{2}_\d{2}\.\d{2}\.\d{2}$/.test(legacy)) {
+			return legacy.replace('_', ' ').replace(/\./g, ':');
 		}
-		return value;
+
+		const normalized = raw.toLowerCase();
+		const token = normalized.startsWith('gen-')
+			? normalized.slice(4)
+			: normalized.includes('_')
+				? normalized.split('_').pop() || ''
+				: '';
+
+		if (!token || !/^[0-9a-z]+$/.test(token)) {
+			return legacy;
+		}
+
+		const parsed = Number.parseInt(token, 36);
+		if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) {
+			return legacy;
+		}
+
+		const timestamp = new Date(parsed);
+		if (Number.isNaN(timestamp.getTime())) {
+			return legacy;
+		}
+
+		return convertDbTime(timestamp.toISOString());
 	}
 
 	function compactDatasetLabel(dataset: string): string {
