@@ -11,6 +11,4 @@ jobs:
           usesh: true
           prepare: pkg install -y node24 npm-node24 go git
           run: |
-            export GOPATH=$HOME/go
-            export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
             make test

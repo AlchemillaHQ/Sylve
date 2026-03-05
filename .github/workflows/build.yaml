@@ -1,4 +1,4 @@
-name: Build Sylve
+name: Build
 on: [push]
 
 jobs:
@@ -12,10 +12,7 @@ jobs:
           node-version: 24
       - name: Build Web Assets
         run: |
-          npm install --prefix web
-          npm run build --prefix web
-          mkdir -p internal/assets/web-files
-          cp -rf web/build/* internal/assets/web-files/
+          make frontend
       - name: Upload Web Assets
         uses: actions/upload-artifact@v4
         with:
@@ -51,10 +48,7 @@ jobs:
           usesh: true
           prepare: pkg install -y go git
           run: |
-            mkdir -p bin
-            # Build using the specific architecture
-            CGO_ENABLED=1 GOOS=freebsd GOARCH=${{ matrix.arch }} \
-            go build -o bin/sylve-${{ matrix.arch }} cmd/sylve/main.go
+            make backend ARCH=${{ matrix.arch }}
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
