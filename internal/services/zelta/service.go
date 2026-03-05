@@ -503,6 +503,11 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
+	if job.Mode == clusterModels.BackupJobModeVM {
+		destSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), sourceDataset)
+	} else if job.Mode == clusterModels.BackupJobModeJail {
+		destSuffix = s.backupDestSuffixForJailSource(strings.TrimSpace(job.DestSuffix), sourceDataset)
+	}
 	backupSnapPrefix := backupSnapshotPrefixForJob(job.ID)
 	event.TargetEndpoint = job.Target.ZeltaEndpoint(destSuffix)
 	if err := s.DB.Create(&event).Error; err != nil {
@@ -539,7 +544,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		lastVMFailedDestSuffix = ""
 
 		for idx, vmSource := range vmSourceDatasets {
-			vmDestSuffix := s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource, sourceDataset)
+			vmDestSuffix := s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource)
 			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
 			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, backupSnapPrefix)
 			output = appendOutput(output, partOutput)
@@ -636,7 +641,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				reseedDestSuffix = lastVMFailedDestSuffix
 			} else if len(vmSourceDatasets) > 0 {
 				reseedSource = vmSourceDatasets[0]
-				reseedDestSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), reseedSource, sourceDataset)
+				reseedDestSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), reseedSource)
 			}
 		}
 
@@ -836,40 +841,100 @@ func (s *Service) backupDestSuffixForMode(mode, configuredSuffix, sourceDataset 
 	return autoDestSuffix(sourceDataset)
 }
 
-func (s *Service) backupDestSuffixForVMSource(configuredSuffix, vmSourceDataset, primarySourceDataset string) string {
-	destSuffix := s.backupDestSuffixForMode(clusterModels.BackupJobModeVM, configuredSuffix, vmSourceDataset)
+func (s *Service) backupDestSuffixForVMSource(configuredSuffix, vmSourceDataset string) string {
+	return vmDestSuffixForSource(configuredSuffix, vmSourceDataset)
+}
+
+func (s *Service) backupDestSuffixForJailSource(configuredSuffix, jailSourceDataset string) string {
+	return jailDestSuffixForSource(configuredSuffix, jailSourceDataset)
+}
+
+func vmDestSuffixForSource(configuredSuffix, vmSourceDataset string) string {
+	configuredSuffix = normalizeDatasetPath(configuredSuffix)
+	vmSourceDataset = normalizeDatasetPath(vmSourceDataset)
+
+	sourceRoot := normalizeDatasetPath(vmDatasetRoot(vmSourceDataset))
+	if sourceRoot == "" {
+		return configuredSuffix
+	}
+
+	rel := strings.TrimPrefix(vmSourceDataset, sourceRoot)
+	rel = strings.TrimPrefix(rel, "/")
+
+	if tail := vmJobLineageTail(configuredSuffix); tail != "" {
+		mapped := normalizeDatasetPath(sourceRoot + "/" + tail)
+		if rel != "" {
+			mapped = normalizeDatasetPath(mapped + "/" + rel)
+		}
+		return mapped
+	}
+
+	if configuredSuffix == "" {
+		if rel == "" {
+			return sourceRoot
+		}
+		return normalizeDatasetPath(sourceRoot + "/" + rel)
+	}
+
+	mapped := configuredSuffix
+	if !strings.HasPrefix(mapped, sourceRoot+"/") && mapped != sourceRoot {
+		mapped = normalizeDatasetPath(sourceRoot + "/" + mapped)
+	}
+	if rel != "" && !strings.HasSuffix(mapped, "/"+rel) {
+		mapped = normalizeDatasetPath(mapped + "/" + rel)
+	}
+
+	return normalizeDatasetPath(mapped)
+}
+
+func vmJobLineageTail(destSuffix string) string {
 	destSuffix = normalizeDatasetPath(destSuffix)
 	if destSuffix == "" {
 		return ""
 	}
 
-	sourcePrefix := vmDatasetPrefix(vmDatasetRoot(vmSourceDataset))
-	primaryPrefix := vmDatasetPrefix(vmDatasetRoot(primarySourceDataset))
-	if sourcePrefix == "" || sourcePrefix == primaryPrefix {
-		return destSuffix
+	if idx := strings.Index(destSuffix, "/j-"); idx >= 0 {
+		return strings.TrimLeft(destSuffix[idx+1:], "/")
 	}
-	if strings.HasPrefix(destSuffix, sourcePrefix+"/") || destSuffix == sourcePrefix {
-		return destSuffix
+	if idx := strings.Index(destSuffix, "/job-"); idx >= 0 {
+		return strings.TrimLeft(destSuffix[idx+1:], "/")
 	}
 
-	return normalizeDatasetPath(sourcePrefix + "/" + destSuffix)
+	return ""
 }
 
-func vmDatasetPrefix(dataset string) string {
-	dataset = normalizeDatasetPath(dataset)
-	if dataset == "" {
+func jailDestSuffixForSource(configuredSuffix, jailSourceDataset string) string {
+	configuredSuffix = normalizeDatasetPath(configuredSuffix)
+	jailSourceDataset = normalizeDatasetPath(jailSourceDataset)
+	if jailSourceDataset == "" {
+		return configuredSuffix
+	}
+
+	if tail := jailJobLineageTail(configuredSuffix); tail != "" {
+		return normalizeDatasetPath(jailSourceDataset + "/" + tail)
+	}
+
+	if configuredSuffix == "" {
+		return jailSourceDataset
+	}
+	if strings.HasPrefix(configuredSuffix, jailSourceDataset+"/") || configuredSuffix == jailSourceDataset {
+		return configuredSuffix
+	}
+
+	return normalizeDatasetPath(jailSourceDataset + "/" + configuredSuffix)
+}
+
+func jailJobLineageTail(destSuffix string) string {
+	destSuffix = normalizeDatasetPath(destSuffix)
+	if destSuffix == "" {
 		return ""
 	}
 
-	parts := strings.Split(dataset, "/")
-	for idx := 0; idx < len(parts); idx++ {
-		if parts[idx] != "virtual-machines" {
-			continue
-		}
-		if idx == 0 {
-			return ""
-		}
-		return strings.Join(parts[:idx], "/")
+	if idx := strings.Index(destSuffix, "/j-"); idx >= 0 {
+		return strings.TrimLeft(destSuffix[idx+1:], "/")
+	}
+	if idx := strings.Index(destSuffix, "/job-"); idx >= 0 {
+		return strings.TrimLeft(destSuffix[idx+1:], "/")
 	}
 
 	return ""

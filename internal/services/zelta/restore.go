@@ -419,6 +419,12 @@ func (s *Service) registerRestoreJob() {
 
 func remoteDatasetForJob(job *clusterModels.BackupJob) string {
 	destSuffix := strings.TrimSpace(job.DestSuffix)
+	mode := strings.TrimSpace(job.Mode)
+	if mode == clusterModels.BackupJobModeVM {
+		destSuffix = vmDestSuffixForSource(destSuffix, strings.TrimSpace(job.SourceDataset))
+	} else if mode == clusterModels.BackupJobModeJail {
+		destSuffix = jailDestSuffixForSource(destSuffix, strings.TrimSpace(job.JailRootDataset))
+	}
 	remoteDataset := strings.TrimSpace(job.Target.BackupRoot)
 	if destSuffix != "" {
 		remoteDataset = remoteDataset + "/" + destSuffix
