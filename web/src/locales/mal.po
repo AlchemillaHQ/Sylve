@@ -5074,6 +5074,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -7159,6 +7160,7 @@ msgstr ""
 msgid "Select a Template"
 msgstr ""
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Docker"
 msgstr ""
@@ -9452,4 +9454,12 @@ msgstr ""
 
 #: src/lib/components/custom/Command/Index.svelte
 msgid "Host Terminal"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD Network Config"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian Network Config"
 msgstr ""

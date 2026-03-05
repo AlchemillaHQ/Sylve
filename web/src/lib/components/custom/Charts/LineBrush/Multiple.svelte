@@ -16,7 +16,6 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
-	import { cssVar } from '$lib/utils';
 	import { watch } from 'runed';
 
 	use([
@@ -58,18 +57,20 @@
 	}: Props = $props();
 
 	let chart: EChartsType | undefined = $state(undefined);
+	let optionRafId: number | null = null;
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 
-	const colors = {
+	const colors = $derived({
 		grid: {
 			dark: 'rgba(255,255,255,0.12)',
 			light: 'rgba(0,0,0,0.12)'
 		},
 		tooltip: {
-			background: cssVar('--muted'),
-			border: cssVar('--border')
+			background: 'var(--muted)',
+			border: 'var(--border)',
+			text: 'var(--foreground)'
 		},
 		one: {
 			main: 'rgba(230, 131, 47, 1)',
@@ -105,7 +106,7 @@
 						soft: 'rgb(195, 195, 195, 0.6)',
 						filler: 'rgb(195, 195, 195, 0.01)'
 					}
-	};
+	});
 
 	const primaryColor = $derived(series.length > 0 ? series[0].color : 'one');
 	const seriesColors = $derived(series.map((s) => colors[s.color].main));
@@ -123,7 +124,6 @@
 			.filter(Boolean) as [number, number | null][];
 	}
 
-	// Create a function to generate options based on current state
 	function getOptions(): EChartsOption {
 		return {
 			title: {
@@ -158,7 +158,7 @@
 						const timestamp = paramArray[0].data[0];
 						if (timestamp !== undefined) {
 							const date = new Date(timestamp as string | number | Date);
-							tooltipHtml += `<div class="font-semibold mb-1">${date.toLocaleString()}</div>`;
+							tooltipHtml += `<div class="font-semi mb-1" style="color:${colors.tooltip.text}">${date.toLocaleString()}</div>`;
 						}
 					}
 
@@ -178,10 +178,7 @@
 								}
 							}
 
-							tooltipHtml += `<div class="flex items-center gap-2">
-								<span style="display:inline-block;width:10px;height:10px;background-color:${param.color};border-radius:50%;"></span>
-								<span>${seriesName}: ${formattedValue}</span>
-							</div>`;
+							tooltipHtml += `<div class="font-semi" style="color:${colors.tooltip.text}">${seriesName}: ${formattedValue}</div>`;
 						}
 					});
 					tooltipHtml += `</div>`;
@@ -189,6 +186,9 @@
 				},
 				backgroundColor: colors.tooltip.background,
 				borderColor: colors.tooltip.border,
+				textStyle: {
+					color: colors.tooltip.text
+				},
 				borderWidth: 1
 			},
 			grid: {
@@ -302,7 +302,16 @@
 		],
 		() => {
 			if (!chart || chart.isDisposed?.()) return;
-			chart.setOption(getOptions(), { notMerge: false, lazyUpdate: true });
+
+			if (optionRafId !== null) {
+				cancelAnimationFrame(optionRafId);
+			}
+
+			optionRafId = requestAnimationFrame(() => {
+				if (!chart || chart.isDisposed?.()) return;
+				chart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+				optionRafId = null;
+			});
 		}
 	);
 </script>
@@ -327,7 +336,9 @@
 					>{title}</span
 				>
 			</div>
-			<Chart {init} options={getOptions()} bind:chart />
+			{#key mode.current}
+				<Chart {init} options={getOptions()} bind:chart />
+			{/key}
 		</div>
 	</Card.Content>
 </Card.Root>

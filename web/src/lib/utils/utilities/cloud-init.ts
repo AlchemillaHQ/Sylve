@@ -64,7 +64,7 @@ export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; col
 type TemplateResult = { user: string; meta: string; networkConfig: string }
 
 const templates: Record<string, TemplateResult> = {
-    simple: {
+    'Simple': {
         user: `#cloud-config
 hostname: demo-vm
 timezone: UTC
@@ -104,7 +104,7 @@ local-hostname: sylve-simple-vm
 `,
         networkConfig: ``
     },
-    freebsdNetworkConfig: {
+    'FreeBSD Network Config': {
         user: `#cloud-config
 hostname: freebsd-network-config
 timezone: UTC
@@ -132,7 +132,7 @@ local-hostname: freebsd-network-config
         - 1.1.1.1
 `
     },
-    debianNetworkConfig: {
+    'Debian Network Config': {
         user: `#cloud-config
 hostname: debian-vm
 timezone: UTC
@@ -161,7 +161,7 @@ ethernets:
         - 1.1.1.1
 `
     },
-    docker: {
+    'Docker': {
         user: `#cloud-config
 hostname: docker-vm
 timezone: UTC

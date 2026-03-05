@@ -5090,6 +5090,7 @@ msgstr "Snapshot GUID not found"
 #~ msgstr "This will delete the snapshot <0/>"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
@@ -7209,6 +7210,7 @@ msgstr "Meta Data"
 msgid "Select a Template"
 msgstr "Select a Template"
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Docker"
 msgstr "Docker"
@@ -9541,3 +9543,11 @@ msgstr "Light"
 #: src/lib/components/custom/Command/Index.svelte
 msgid "Host Terminal"
 msgstr "Host Terminal"
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD Network Config"
+msgstr "FreeBSD Network Config"
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian Network Config"
+msgstr "Debian Network Config"

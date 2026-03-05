@@ -29,8 +29,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
-    import { watch } from 'runed';
+	import { watch } from 'runed';
 
 	interface Data {
 		downloads: Download[];
@@ -40,6 +39,8 @@
 	let reload = $state(false);
 
 	const visible = new IsDocumentVisible();
+
+	// svelte-ignore state_referenced_locally
 	const downloads = resource(
 		() => 'downloads',
 		async () => {
@@ -52,20 +53,24 @@
 		}
 	);
 
-	$effect(() => {
-		if (visible.current) {
-			untrack(() => {
+	watch(
+		() => visible.current,
+		(current) => {
+			if (current) {
 				downloads.refetch();
-			});
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (reload) {
-			downloads.refetch();
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				downloads.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	useInterval(1000, {
 		callback: () => {
@@ -246,13 +251,16 @@
 		}
 	}
 
-    watch(() => modalState.downloadType, () => {
-        if (modalState.downloadType === 'base-rootfs') {
-            if (modalState.automaticExtraction === false) {
-                modalState.automaticExtraction = true;
-            }
-        }
-    })
+	watch(
+		() => modalState.downloadType,
+		() => {
+			if (modalState.downloadType === 'base-rootfs') {
+				if (modalState.automaticExtraction === false) {
+					modalState.automaticExtraction = true;
+				}
+			}
+		}
+	);
 </script>
 
 {#snippet button(type: string)}

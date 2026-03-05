@@ -49,6 +49,7 @@
 	}: Props = $props();
 
 	let chart: EChartsType | undefined = $state(undefined);
+	let optionRafId: number | null = null;
 
 	const colors = $derived({
 		title: cssVar('--text-blue-600'),
@@ -58,7 +59,8 @@
 		},
 		tooltip: {
 			background: cssVar('--muted'),
-			border: cssVar('--border')
+			border: cssVar('--border'),
+			text: mode.current === 'dark' ? '#ffffff' : '#000000'
 		},
 		one: {
 			main: 'rgba(230, 131, 47, 1)',
@@ -123,12 +125,12 @@
 						const value = param.data[1];
 						if (timestamp !== undefined) {
 							const date = new Date(timestamp as string | number | Date);
-							tooltipHtml += `<div class="dark:text-white font-semi">${date.toLocaleString()}: ${parseFloat(value !== undefined ? Number(value).toFixed(2) : '0')}%</div>`;
+							tooltipHtml += `<div class="font-semi" style="color:${colors.tooltip.text}">${date.toLocaleString()}: ${parseFloat(value !== undefined ? Number(value).toFixed(2) : '0')}%</div>`;
 						} else {
-							tooltipHtml += `<div class="dark:text-white">Invalid date</div>`;
+							tooltipHtml += `<div style="color:${colors.tooltip.text}">Invalid date</div>`;
 						}
 					} else {
-						tooltipHtml += `<div class="dark:text-white">Invalid data</div>`;
+						tooltipHtml += `<div style="color:${colors.tooltip.text}">Invalid data</div>`;
 					}
 				});
 				tooltipHtml += `</div>`;
@@ -136,6 +138,9 @@
 			},
 			backgroundColor: colors.tooltip.background,
 			borderColor: colors.tooltip.border,
+			textStyle: {
+				color: colors.tooltip.text
+			},
 			borderWidth: 1
 		},
 		grid: {
@@ -276,51 +281,52 @@
 		() => {
 			if (!chart) return;
 
-			const gridColor = mode.current === 'dark' ? colors.grid.dark : colors.grid.light;
+			if (optionRafId !== null) {
+				cancelAnimationFrame(optionRafId);
+			}
 
-			chart.setOption({
-				title: {
-					show: false
-				},
-				tooltip: {
-					backgroundColor: colors.tooltip.background,
-					borderColor: colors.tooltip.border
-				},
-				xAxis: {
-					axisLine: {
-						lineStyle: {
-							color: gridColor
-						}
-					}
-				},
-				yAxis: {
-					max: percentage ? 100 : undefined,
-					min: percentage ? 0 : undefined,
-					axisLabel: {
-						formatter: percentage ? '{value}%' : '{value}'
+			optionRafId = requestAnimationFrame(() => {
+				if (!chart) return;
+
+				const gridColor = mode.current === 'dark' ? colors.grid.dark : colors.grid.light;
+
+				chart.setOption({
+					title: {
+						show: false
 					},
-					splitLine: {
-						lineStyle: {
-							color: gridColor
+					tooltip: {
+						backgroundColor: colors.tooltip.background,
+						borderColor: colors.tooltip.border,
+						textStyle: {
+							color: colors.tooltip.text
 						}
-					}
-				},
-				dataZoom: [
-					{
-						selectedDataBackground: {
-							lineStyle: { color: colors.moveHandle.color },
-							areaStyle: { color: colors.moveHandle.soft }
+					},
+					xAxis: {
+						axisLine: {
+							lineStyle: {
+								color: gridColor
+							}
+						}
+					},
+					yAxis: {
+						max: percentage ? 100 : undefined,
+						min: percentage ? 0 : undefined,
+						axisLabel: {
+							formatter: percentage ? '{value}%' : '{value}'
 						},
-						fillerColor: colors.moveHandle.filler,
-						handleStyle: {
-							color: colors.moveHandle.color,
-							borderColor: colors.moveHandle.color
-						},
-						moveHandleStyle: {
-							color: colors.moveHandle.color,
-							borderColor: colors.moveHandle.color
-						},
-						emphasis: {
+						splitLine: {
+							lineStyle: {
+								color: gridColor
+							}
+						}
+					},
+					dataZoom: [
+						{
+							selectedDataBackground: {
+								lineStyle: { color: colors.moveHandle.color },
+								areaStyle: { color: colors.moveHandle.soft }
+							},
+							fillerColor: colors.moveHandle.filler,
 							handleStyle: {
 								color: colors.moveHandle.color,
 								borderColor: colors.moveHandle.color
@@ -328,19 +334,31 @@
 							moveHandleStyle: {
 								color: colors.moveHandle.color,
 								borderColor: colors.moveHandle.color
+							},
+							emphasis: {
+								handleStyle: {
+									color: colors.moveHandle.color,
+									borderColor: colors.moveHandle.color
+								},
+								moveHandleStyle: {
+									color: colors.moveHandle.color,
+									borderColor: colors.moveHandle.color
+								}
 							}
 						}
-					}
-				],
-				toolbox: {
-					feature: {
-						saveAsImage: {
-							backgroundColor: colors.tooltip.background,
-							connectedBackgroundColor: colors.tooltip.background
+					],
+					toolbox: {
+						feature: {
+							saveAsImage: {
+								backgroundColor: colors.tooltip.background,
+								connectedBackgroundColor: colors.tooltip.background
+							}
 						}
-					}
-				},
-				color: [colors[color].main]
+					},
+					color: [colors[color].main]
+				});
+
+				optionRafId = null;
 			});
 		}
 	);

@@ -19,9 +19,9 @@
 
 	// svelte-ignore state_referenced_locally
 	let options = {
-		name: template?.name    || '',
-		user: template?.user    || '',
-		meta: template?.meta    || '',
+		name: template?.name || '',
+		user: template?.user || '',
+		meta: template?.meta || '',
 		networkConfig: template?.networkConfig || ''
 	};
 
@@ -206,10 +206,10 @@
 
 			<SimpleSelect
 				options={[
-					{ label: 'Simple', value: 'simple' },
-					{ label: 'FreeBSD with Static IP', value: 'freebsdNetworkConfig' },
-					{ label: 'Debian with Static IP', value: 'debianNetworkConfig' },
-					{ label: 'Docker', value: 'docker' }
+					{ label: 'Simple', value: 'Simple' },
+					{ label: 'FreeBSD with Static IP', value: 'FreeBSD Network Config' },
+					{ label: 'Debian with Static IP', value: 'Debian Network Config' },
+					{ label: 'Docker', value: 'Docker' }
 				]}
 				placeholder="Select a Template"
 				bind:value={templateSelector.current}
@@ -219,7 +219,7 @@
 						name: e,
 						user: template.user,
 						meta: template.meta,
-                        networkConfig: template.networkConfig
+						networkConfig: template.networkConfig
 					};
 
 					templateSelector.open = false;
