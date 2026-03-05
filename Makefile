@@ -2,23 +2,25 @@ BINARY_NAME := sylve
 BIN_DIR := bin
 ARCH ?= amd64
 
-.PHONY: all build clean web-build
+.PHONY: all build backend frontend test clean
 
 all: build
 
-build: 
+build: frontend backend
+
+backend:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
 	go build -o $(BIN_DIR)/$(BINARY_NAME)-$(ARCH) cmd/sylve/main.go
 
-test:
-	go test ./...
-
-web-build:
+frontend:
 	npm install --prefix web
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/
+
+test:
+	go test ./...
 
 clean:
 	rm -rf $(BIN_DIR)
