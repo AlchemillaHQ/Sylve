@@ -176,16 +176,11 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	sourceNodeID := strings.TrimSpace(input.SourceNodeID)
-	existingOwnerNodeID := ""
 	var existingByID clusterModels.ReplicationPolicy
 	existingByIDFound := false
 	if id > 0 {
 		if err := s.DB.First(&existingByID, id).Error; err == nil {
 			existingByIDFound = true
-			existingOwnerNodeID = strings.TrimSpace(existingByID.ActiveNodeID)
-			if existingOwnerNodeID == "" {
-				existingOwnerNodeID = strings.TrimSpace(existingByID.SourceNodeID)
-			}
 		}
 	}
 
@@ -199,9 +194,6 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	if sourceMode == clusterModels.ReplicationSourceModeFollowActive {
-		if sourceNodeID == "" {
-			sourceNodeID = existingOwnerNodeID
-		}
 		if sourceNodeID == "" {
 			resolvedOwner, err := s.ResolveReplicationGuestOwnerNode(guestType, input.GuestID)
 			if err != nil {
@@ -242,18 +234,9 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 
 	activeNodeID := sourceNodeID
 	if existingByIDFound {
-		previousSourceNodeID := strings.TrimSpace(existingByID.SourceNodeID)
 		previousActiveNodeID := strings.TrimSpace(existingByID.ActiveNodeID)
-
 		if previousActiveNodeID != "" {
 			activeNodeID = previousActiveNodeID
-		}
-
-		// For follow-active mode, an explicit source move should also move active owner.
-		if sourceMode == clusterModels.ReplicationSourceModeFollowActive &&
-			sourceNodeID != "" &&
-			sourceNodeID != previousSourceNodeID {
-			activeNodeID = sourceNodeID
 		}
 	}
 	if overrideActiveNodeID := strings.TrimSpace(input.ActiveNodeID); overrideActiveNodeID != "" {

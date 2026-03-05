@@ -795,8 +795,12 @@ func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
 
 	var lease clusterModels.ReplicationLease
 	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return false, nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
+			if expectedOwner == "" {
+				expectedOwner = strings.TrimSpace(policy.SourceNodeID)
+			}
+			return expectedOwner != "" && strings.TrimSpace(nodeID) == expectedOwner, nil
 		}
 		return false, err
 	}

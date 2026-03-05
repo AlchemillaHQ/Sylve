@@ -1,5 +1,6 @@
 <script>
 	import { getJWTClaims, logOut } from '$lib/api/auth';
+	import ReplicationActivity from '$lib/components/custom/DataCenter/Replication/Activity.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -60,6 +61,8 @@
 	</Sheet.Root>
 	<div class="flex w-full items-center justify-end gap-2 md:ml-auto">
 		<div class="mr-2 hidden items-center gap-4 lg:inline-flex">
+			<ReplicationActivity />
+
 			{#if storage.enabledServices?.includes('virtualization')}
 				<Button
 					class="relative h-6"

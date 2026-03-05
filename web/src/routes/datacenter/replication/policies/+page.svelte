@@ -110,6 +110,24 @@
 		return out;
 	});
 
+	function compactNodeLabel(nodeId: string): string {
+		const value = String(nodeId || '').trim();
+		if (!value) return '-';
+		const known = nodeNameByID[value];
+		if (known) return known;
+		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+	}
+
+	function scheduleLabel(cronExpr: string): string {
+		const value = String(cronExpr || '').trim();
+		if (!value) return '-';
+		try {
+			return cronToHuman(value);
+		} catch {
+			return value;
+		}
+	}
+
 	let nodeOptions = $derived.by(() =>
 		nodes.map((node) => ({
 			value: node.nodeUUID,
@@ -135,17 +153,37 @@
 	const policyColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
-			field: 'enabled',
+			field: 'status',
 			title: 'Status',
-			formatter: (cell: CellComponent) =>
-				cell.getValue()
-					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
-					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+			width: 150,
+			minWidth: 130,
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow().getData() as { enabled: boolean; lastStatus: string };
+				const icons = [];
+				if (row.enabled) {
+					icons.push(renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500'));
+				} else {
+					icons.push(renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500'));
+				}
+
+				const lastStatus = String(row.lastStatus || '').toLowerCase();
+				if (lastStatus === 'success') {
+					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
+				} else if (lastStatus === 'failed') {
+					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
+				} else if (lastStatus === 'running') {
+					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
+				}
+
+				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
+			}
 		},
-		{ field: 'name', title: 'Policy' },
+		{ field: 'name', title: 'Policy', width: 190, minWidth: 150 },
 		{
 			field: 'workload',
 			title: 'Workload',
+			width: 120,
+			minWidth: 110,
 			formatter: (cell: CellComponent) => {
 				const data = cell.getRow().getData();
 				const icon =
@@ -153,27 +191,15 @@
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'source', title: 'Source Node' },
-		{ field: 'sourceMode', title: 'Source Mode' },
-		{ field: 'failbackMode', title: 'Failback' },
-		{ field: 'targets', title: 'Targets' },
-		{ field: 'cronExpr', title: 'Cron' },
-		{
-			field: 'lastStatus',
-			title: 'Last Status',
-			formatter: (cell: CellComponent) => {
-				const value = String(cell.getValue() || '').toLowerCase();
-				if (value === 'success')
-					return renderWithIcon('mdi:check-circle', 'Success', 'text-green-500');
-				if (value === 'failed') return renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500');
-				if (value === 'running')
-					return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
-				return '-';
-			}
-		},
+		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
+		{ field: 'mode', title: 'Mode', width: 170, minWidth: 130 },
+		{ field: 'targets', title: 'Targets', width: 260, minWidth: 180 },
+		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
 		{
 			field: 'lastRunAt',
 			title: 'Last Run',
+			width: 170,
+			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -182,6 +208,8 @@
 		{
 			field: 'nextRunAt',
 			title: 'Next Run',
+			width: 170,
+			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -194,23 +222,25 @@
 			const workloadLabel =
 				policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
 			const sourceNode = policy.activeNodeId || policy.sourceNodeId || '';
-			const sourceLabel = sourceNode ? (nodeNameByID[sourceNode] ?? sourceNode) : '-';
+			const sourceLabel = compactNodeLabel(sourceNode);
 			const targetsLabel =
 				policy.targets
-					?.map((target) => `${nodeNameByID[target.nodeId] || target.nodeId} (${target.weight})`)
-					.join(', ') || '-';
+					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
+					.join(' | ') || '-';
 
 			return {
 				id: policy.id,
+				status: policy.id,
 				enabled: policy.enabled,
 				name: policy.name,
 				guestType: policy.guestType,
 				workload: workloadLabel,
-				source: sourceLabel,
-				sourceMode: policy.sourceMode === 'pinned_primary' ? 'Pinned Primary' : 'Follow Active',
-				failbackMode: policy.failbackMode === 'auto' ? 'Auto' : 'Manual',
+				activeNode: sourceLabel,
+				mode: `${policy.sourceMode === 'pinned_primary' ? 'Pinned' : 'Follow'} / ${
+					policy.failbackMode === 'auto' ? 'Auto' : 'Manual'
+				}`,
 				targets: targetsLabel,
-				cronExpr: policy.cronExpr || '-',
+				schedule: scheduleLabel(policy.cronExpr),
 				lastStatus: policy.lastStatus,
 				lastRunAt: policy.lastRunAt,
 				nextRunAt: policy.nextRunAt

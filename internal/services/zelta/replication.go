@@ -570,13 +570,7 @@ func (s *Service) listLocalReplicationLineageDatasets(ctx context.Context, rootD
 		switch {
 		case suffix == baseLeaf:
 			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+"_zelta_"):
-			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+"_bk_"):
-			add(dataset)
 		case strings.HasPrefix(suffix, baseLeaf+"_gen-"):
-			add(dataset)
-		case strings.HasPrefix(suffix, baseLeaf+".pre_sylve_"):
 			add(dataset)
 		}
 	}
@@ -616,10 +610,7 @@ func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []strin
 			leaf = dataset[idx+1:]
 		}
 
-		if strings.HasPrefix(leaf, baseLeaf+"_zelta_") ||
-			strings.HasPrefix(leaf, baseLeaf+"_bk_") ||
-			strings.HasPrefix(leaf, baseLeaf+"_gen-") ||
-			strings.HasPrefix(leaf, baseLeaf+".pre_sylve_") {
+		if strings.HasPrefix(leaf, baseLeaf+"_gen-") {
 			outOfBand = append(outOfBand, dataset)
 		}
 	}
@@ -637,16 +628,7 @@ func staleReplicationLineageDatasets(rootDataset string, lineageDatasets []strin
 
 func replicationLineageBaseLeaf(leaf string) string {
 	leaf = strings.TrimSpace(leaf)
-	if idx := strings.Index(leaf, "_zelta_"); idx > 0 {
-		return leaf[:idx]
-	}
-	if idx := strings.Index(leaf, "_bk_"); idx > 0 {
-		return leaf[:idx]
-	}
 	if idx := strings.Index(leaf, "_gen-"); idx > 0 {
-		return leaf[:idx]
-	}
-	if idx := strings.Index(leaf, ".pre_sylve_"); idx > 0 {
 		return leaf[:idx]
 	}
 	return leaf
@@ -874,29 +856,8 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			owner = strings.TrimSpace(policy.SourceNodeID)
 		}
 		if owner == "" {
-			resolvedOwner, resolveErr := s.Cluster.ResolveReplicationGuestOwnerNode(policy.GuestType, policy.GuestID)
-			if resolveErr != nil {
-				logger.L.Warn().Err(resolveErr).Uint("policy_id", policy.ID).Msg("resolve_replication_owner_failed")
-				continue
-			}
-			resolvedOwner = strings.TrimSpace(resolvedOwner)
-			if resolvedOwner == "" {
-				continue
-			}
-
-			req := s.replicationPolicyToReq(&policy)
-			if strings.TrimSpace(req.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
-				req.SourceNodeID = resolvedOwner
-			}
-			req.ActiveNodeID = resolvedOwner
-			if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
-				logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("set_initial_replication_owner_failed")
-				continue
-			}
-
-			owner = resolvedOwner
-			policy.SourceNodeID = req.SourceNodeID
-			policy.ActiveNodeID = resolvedOwner
+			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_missing")
+			continue
 		}
 
 		node, ok := nodeByID[owner]
@@ -1041,7 +1002,8 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		return err
 	}
 
-	_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+	eventStartedAt := time.Now().UTC()
+	eventID, _ := s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
 		PolicyID:     &policy.ID,
 		EventType:    "failover",
 		Status:       "running",
@@ -1050,13 +1012,55 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		TargetNodeID: targetNodeID,
 		GuestType:    policy.GuestType,
 		GuestID:      policy.GuestID,
-		StartedAt:    time.Now().UTC(),
+		StartedAt:    eventStartedAt,
 	}, false)
 
+	var activateErr error
 	if strings.TrimSpace(targetNodeID) == strings.TrimSpace(s.Cluster.LocalNodeID()) {
-		return s.ActivateReplicationPolicy(ctx, policy.ID)
+		activateErr = s.ActivateReplicationPolicy(ctx, policy.ID)
+	} else {
+		activateErr = s.forwardActivateReplicationPolicy(targetNodeID, policy.ID)
 	}
-	return s.forwardActivateReplicationPolicy(targetNodeID, policy.ID)
+
+	eventCompletedAt := time.Now().UTC()
+	if activateErr != nil {
+		if eventID > 0 {
+			_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+				ID:           eventID,
+				PolicyID:     &policy.ID,
+				EventType:    "failover",
+				Status:       "failed",
+				Message:      reason + "_failed",
+				Error:        activateErr.Error(),
+				SourceNodeID: previousOwner,
+				TargetNodeID: targetNodeID,
+				GuestType:    policy.GuestType,
+				GuestID:      policy.GuestID,
+				StartedAt:    eventStartedAt,
+				CompletedAt:  &eventCompletedAt,
+			}, false)
+		}
+		return activateErr
+	}
+
+	if eventID > 0 {
+		_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+			ID:           eventID,
+			PolicyID:     &policy.ID,
+			EventType:    "failover",
+			Status:       "success",
+			Message:      reason + "_completed",
+			Error:        "",
+			SourceNodeID: previousOwner,
+			TargetNodeID: targetNodeID,
+			GuestType:    policy.GuestType,
+			GuestID:      policy.GuestID,
+			StartedAt:    eventStartedAt,
+			CompletedAt:  &eventCompletedAt,
+		}, false)
+	}
+
+	return nil
 }
 
 func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint) error {
@@ -1167,6 +1171,10 @@ func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) 
 }
 
 func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error {
+	if err := s.stopLocalJailIfPresent(ctID); err != nil {
+		return err
+	}
+
 	dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeJail, ctID)
 	if err != nil {
 		return err
@@ -1194,6 +1202,10 @@ func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error 
 }
 
 func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
+	if err := s.stopVMIfPresent(rid); err != nil {
+		return err
+	}
+
 	dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeVM, rid)
 	if err != nil {
 		return err
@@ -1224,6 +1236,32 @@ func (s *Service) activateReplicationVM(ctx context.Context, rid uint) error {
 	}
 
 	return s.VM.LvVMAction(*vm, "start")
+}
+
+func (s *Service) stopLocalJailIfPresent(ctID uint) error {
+	if ctID == 0 || s.Jail == nil {
+		return nil
+	}
+
+	var jailCount int64
+	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Count(&jailCount).Error; err != nil {
+		return err
+	}
+	if jailCount == 0 {
+		return nil
+	}
+
+	if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "failed to find jail") ||
+			strings.Contains(lower, "not found") ||
+			strings.Contains(lower, "no such process") {
+			return nil
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, rootDataset string) error {
@@ -1352,9 +1390,9 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 
 	now := time.Now().UTC()
 	for _, policy := range policies {
-		running, err := s.isLocalProtectedGuestRunning(strings.TrimSpace(policy.GuestType), policy.GuestID)
-		if err != nil || !running {
-			continue
+		expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
+		if expectedOwner == "" {
+			expectedOwner = strings.TrimSpace(policy.SourceNodeID)
 		}
 
 		var lease clusterModels.ReplicationLease
@@ -1362,6 +1400,10 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 
 		fenceReason := ""
 		if leaseErr == gorm.ErrRecordNotFound {
+			if expectedOwner != "" && expectedOwner == localNodeID {
+				// Leader lease renewal can briefly lag behind policy updates; don't fence expected owner on missing lease.
+				continue
+			}
 			fenceReason = "lease_missing"
 		} else if leaseErr != nil {
 			continue
@@ -1377,34 +1419,25 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 
 		switch strings.TrimSpace(policy.GuestType) {
 		case clusterModels.ReplicationGuestTypeJail:
-			_ = s.Jail.JailAction(int(policy.GuestID), "stop")
+			if err := s.stopLocalJailIfPresent(policy.GuestID); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", policy.ID).
+					Uint("guest_id", policy.GuestID).
+					Str("reason", fenceReason).
+					Msg("replication_self_fence_jail_stop_failed")
+			}
 		case clusterModels.ReplicationGuestTypeVM:
-			_ = s.stopVMIfPresent(policy.GuestID)
+			if err := s.stopVMIfPresent(policy.GuestID); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", policy.ID).
+					Uint("guest_id", policy.GuestID).
+					Str("reason", fenceReason).
+					Msg("replication_self_fence_vm_stop_failed")
+			}
 		}
 	}
 
 	return nil
-}
-
-func (s *Service) isLocalProtectedGuestRunning(guestType string, guestID uint) (bool, error) {
-	switch strings.TrimSpace(guestType) {
-	case clusterModels.ReplicationGuestTypeVM:
-		vm, err := s.findVMByRID(guestID)
-		if err != nil || vm == nil {
-			return false, err
-		}
-		inactive, err := s.VM.IsDomainInactive(guestID)
-		if err != nil {
-			return false, err
-		}
-		return !inactive, nil
-	case clusterModels.ReplicationGuestTypeJail:
-		out, err := utils.RunCommand("jls", "-j", fmt.Sprintf("%d", guestID), "jid")
-		if err != nil {
-			return false, nil
-		}
-		return strings.TrimSpace(out) != "", nil
-	default:
-		return false, nil
-	}
 }

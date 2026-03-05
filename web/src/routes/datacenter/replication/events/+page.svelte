@@ -10,6 +10,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { ReplicationEvent, ReplicationEventProgress, ReplicationPolicy } from '$lib/types/cluster/replication';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { updateCache } from '$lib/utils/http';
@@ -23,9 +24,11 @@
 	interface Data {
 		policies: ReplicationPolicy[];
 		events: ReplicationEvent[];
+		nodes: ClusterNode[];
 	}
 
 	let { data }: { data: Data } = $props();
+	let nodes = $state(data.nodes);
 
 	let query = $state('');
 	let reload = $state(false);
@@ -84,6 +87,22 @@
 		}
 		return out;
 	});
+
+	let nodeNameByID = $derived.by(() => {
+		const out: Record<string, string> = {};
+		for (const node of nodes) {
+			out[node.nodeUUID] = node.hostname || node.nodeUUID;
+		}
+		return out;
+	});
+
+	function compactNodeLabel(nodeId: string): string {
+		const value = String(nodeId || '').trim();
+		if (!value) return '-';
+		const known = nodeNameByID[value];
+		if (known) return known;
+		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+	}
 
 	let policyFilterOptions = $derived.by(() => [
 		{ value: '', label: 'All policies' },
@@ -211,37 +230,44 @@
 	}
 
 	let eventColumns = $derived.by((): Column[] => [
-		{ field: 'id', title: 'ID' },
+		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'status',
 			title: 'Status',
+			width: 130,
+			minWidth: 110,
 			formatter: (cell: CellComponent) => {
 				const meta = statusMeta(String(cell.getValue() || ''));
 				return renderWithIcon(meta.icon, meta.label, meta.className);
 			}
 		},
-		{ field: 'eventType', title: 'Type' },
-		{ field: 'policy', title: 'Policy' },
+		{ field: 'eventType', title: 'Type', width: 110, minWidth: 100 },
+		{ field: 'policy', title: 'Policy', width: 170, minWidth: 130 },
 		{
 			field: 'workload',
 			title: 'Workload',
+			width: 130,
+			minWidth: 115,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
 				const icon = row.guestType === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline';
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'sourceNodeId', title: 'Source Node' },
-		{ field: 'targetNodeId', title: 'Target Node' },
-		{ field: 'message', title: 'Message' },
+		{ field: 'path', title: 'Path', width: 220, minWidth: 170 },
+		{ field: 'message', title: 'Message', width: 250, minWidth: 180 },
 		{
 			field: 'startedAt',
 			title: 'Started',
+			width: 165,
+			minWidth: 145,
 			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
 		},
 		{
-			field: 'completedAt',
-			title: 'Completed',
+			field: 'finishedAt',
+			title: 'Finished',
+			width: 165,
+			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -257,11 +283,10 @@
 			policy: event.policyId ? (policyNameByID[event.policyId] ?? `Policy ${event.policyId}`) : '-',
 			guestType: event.guestType,
 			workload: `${event.guestType || 'guest'} ${event.guestId || 0}`,
-			sourceNodeId: event.sourceNodeId || '-',
-			targetNodeId: event.targetNodeId || '-',
+			path: `${compactNodeLabel(event.sourceNodeId || '')} -> ${compactNodeLabel(event.targetNodeId || '')}`,
 			message: event.message || '-',
 			startedAt: event.startedAt,
-			completedAt: event.completedAt || null,
+			finishedAt: event.completedAt || null,
 			error: event.error || '',
 			output: event.output || ''
 		})),
