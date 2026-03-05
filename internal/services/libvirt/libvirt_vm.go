@@ -29,6 +29,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 
@@ -774,79 +775,16 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 }
 
 func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
-	if rid == 0 {
-		return true, nil
-	}
-
-	var policy clusterModels.ReplicationPolicy
-	err := s.DB.Where("guest_type = ? AND guest_id = ? AND enabled = ?", clusterModels.ReplicationGuestTypeVM, rid, true).
-		First(&policy).Error
-	if err == gorm.ErrRecordNotFound {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
 		return false, err
 	}
-	localNodeID := strings.TrimSpace(nodeID)
-	expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
-	if expectedOwner == "" {
-		expectedOwner = strings.TrimSpace(policy.SourceNodeID)
-	}
-
-	var lease clusterModels.ReplicationLease
-	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return expectedOwner != "" && localNodeID == expectedOwner, nil
-		}
-		return false, err
-	}
-
-	leaseOwner := strings.TrimSpace(lease.OwnerNodeID)
-	if time.Now().UTC().After(lease.ExpiresAt) {
-		// During failover, policy owner may move before lease renewal is visible locally.
-		if expectedOwner != "" && localNodeID == expectedOwner {
-			return true, nil
-		}
-		return false, nil
-	}
-
-	if leaseOwner == localNodeID {
-		return true, nil
-	}
-
-	if expectedOwner != "" && localNodeID == expectedOwner && leaseOwner != "" {
-		ownerOnline, ownerKnown, statusErr := s.isReplicationNodeOnline(leaseOwner)
-		if statusErr != nil {
-			return false, statusErr
-		}
-		if !ownerKnown || !ownerOnline {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-func (s *Service) isReplicationNodeOnline(nodeID string) (bool, bool, error) {
-	nodeID = strings.TrimSpace(nodeID)
-	if nodeID == "" {
-		return false, false, nil
-	}
-
-	var node clusterModels.ClusterNode
-	if err := s.DB.Where("node_uuid = ?", nodeID).First(&node).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, false, nil
-		}
-		return false, false, err
-	}
-
-	return strings.EqualFold(strings.TrimSpace(node.Status), "online"), true, nil
+	return clusterService.CanNodeStartProtectedGuest(
+		s.DB,
+		clusterModels.ReplicationGuestTypeVM,
+		rid,
+		strings.TrimSpace(nodeID),
+	)
 }
 
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {

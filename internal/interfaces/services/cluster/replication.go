@@ -11,6 +11,7 @@ type ReplicationPolicyReq struct {
 	GuestID      uint                         `json:"guestId" binding:"required"`
 	SourceNodeID string                       `json:"sourceNodeId"`
 	ActiveNodeID string                       `json:"-"`
+	OwnerEpoch   uint64                       `json:"-"`
 	SourceMode   string                       `json:"sourceMode"`
 	FailbackMode string                       `json:"failbackMode"`
 	CronExpr     string                       `json:"cronExpr"`

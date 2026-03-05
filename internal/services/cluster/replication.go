@@ -233,14 +233,21 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 
 	activeNodeID := sourceNodeID
+	ownerEpoch := uint64(1)
 	if existingByIDFound {
 		previousActiveNodeID := strings.TrimSpace(existingByID.ActiveNodeID)
 		if previousActiveNodeID != "" {
 			activeNodeID = previousActiveNodeID
 		}
+		if existingByID.OwnerEpoch > 0 {
+			ownerEpoch = existingByID.OwnerEpoch
+		}
 	}
 	if overrideActiveNodeID := strings.TrimSpace(input.ActiveNodeID); overrideActiveNodeID != "" {
 		activeNodeID = overrideActiveNodeID
+	}
+	if input.OwnerEpoch > 0 {
+		ownerEpoch = input.OwnerEpoch
 	}
 
 	policy := &clusterModels.ReplicationPolicy{
@@ -250,6 +257,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		GuestID:      input.GuestID,
 		SourceNodeID: sourceNodeID,
 		ActiveNodeID: activeNodeID,
+		OwnerEpoch:   ownerEpoch,
 		SourceMode:   sourceMode,
 		FailbackMode: failbackMode,
 		CronExpr:     cronExpr,
@@ -611,39 +619,11 @@ func (s *Service) ResolveSSHHostForNode(nodeID string) (string, error) {
 }
 
 func (s *Service) CanLocalNodeStartProtectedGuest(guestType string, guestID uint) (bool, error) {
-	guestType = strings.TrimSpace(strings.ToLower(guestType))
-	if guestType == "" || guestID == 0 {
-		return true, nil
-	}
-
-	var policy clusterModels.ReplicationPolicy
-	err := s.DB.Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).First(&policy).Error
-	if err == gorm.ErrRecordNotFound {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
 	detail := s.Detail()
 	if detail == nil || strings.TrimSpace(detail.NodeID) == "" {
 		return false, fmt.Errorf("local_node_id_unavailable")
 	}
-
-	var lease clusterModels.ReplicationLease
-	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return false, nil
-		}
-		return false, err
-	}
-
-	now := time.Now().UTC()
-	if now.After(lease.ExpiresAt) {
-		return false, nil
-	}
-
-	return strings.TrimSpace(lease.OwnerNodeID) == strings.TrimSpace(detail.NodeID), nil
+	return CanNodeStartProtectedGuest(s.DB, guestType, guestID, strings.TrimSpace(detail.NodeID))
 }
 
 func (s *Service) LocalNodeID() string {

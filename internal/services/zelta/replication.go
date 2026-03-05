@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"sort"
 	"strconv"
@@ -183,6 +184,24 @@ func (s *Service) replicationRunnerNodeID(policy *clusterModels.ReplicationPolic
 		return strings.TrimSpace(policy.SourceNodeID)
 	}
 	return strings.TrimSpace(policy.ActiveNodeID)
+}
+
+func replicationPolicyOwnerNode(policy *clusterModels.ReplicationPolicy) string {
+	if policy == nil {
+		return ""
+	}
+	owner := strings.TrimSpace(policy.ActiveNodeID)
+	if owner == "" {
+		owner = strings.TrimSpace(policy.SourceNodeID)
+	}
+	return owner
+}
+
+func replicationPolicyOwnerEpoch(policy *clusterModels.ReplicationPolicy) uint64 {
+	if policy == nil {
+		return 0
+	}
+	return policy.OwnerEpoch
 }
 
 func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModels.ReplicationPolicy) error {
@@ -851,12 +870,14 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			continue
 		}
 
-		owner := strings.TrimSpace(policy.ActiveNodeID)
-		if owner == "" {
-			owner = strings.TrimSpace(policy.SourceNodeID)
-		}
+		owner := replicationPolicyOwnerNode(&policy)
 		if owner == "" {
 			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_missing")
+			continue
+		}
+		ownerEpoch := replicationPolicyOwnerEpoch(&policy)
+		if ownerEpoch == 0 {
+			logger.L.Warn().Uint("policy_id", policy.ID).Msg("replication_policy_owner_epoch_missing")
 			continue
 		}
 
@@ -873,6 +894,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				GuestType:   policy.GuestType,
 				GuestID:     policy.GuestID,
 				OwnerNodeID: owner,
+				OwnerEpoch:  ownerEpoch,
 				ExpiresAt:   now.Add(10 * time.Second),
 				Version:     uint64(now.UnixNano()),
 				LastReason:  "leader_renew",
@@ -971,10 +993,15 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		return fmt.Errorf("invalid_failover_input")
 	}
 
-	previousOwner := strings.TrimSpace(policy.ActiveNodeID)
-	if previousOwner == "" {
-		previousOwner = strings.TrimSpace(policy.SourceNodeID)
+	previousOwner := replicationPolicyOwnerNode(policy)
+	currentEpoch := replicationPolicyOwnerEpoch(policy)
+	if currentEpoch == 0 {
+		return fmt.Errorf("replication_policy_owner_epoch_missing")
 	}
+	if currentEpoch == math.MaxUint64 {
+		return fmt.Errorf("replication_policy_owner_epoch_exhausted")
+	}
+	nextEpoch := currentEpoch + 1
 
 	req := s.replicationPolicyToReq(policy)
 
@@ -982,8 +1009,10 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		req.SourceNodeID = targetNodeID
 	}
 	req.ActiveNodeID = targetNodeID
+	req.OwnerEpoch = nextEpoch
 
 	policy.ActiveNodeID = targetNodeID
+	policy.OwnerEpoch = nextEpoch
 	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
 		return err
 	}
@@ -993,6 +1022,7 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		GuestType:   policy.GuestType,
 		GuestID:     policy.GuestID,
 		OwnerNodeID: targetNodeID,
+		OwnerEpoch:  nextEpoch,
 		ExpiresAt:   time.Now().UTC().Add(10 * time.Second),
 		Version:     uint64(time.Now().UTC().UnixNano()),
 		LastReason:  reason,
@@ -1133,6 +1163,7 @@ func (s *Service) replicationPolicyToReq(policy *clusterModels.ReplicationPolicy
 		GuestType:    policy.GuestType,
 		GuestID:      policy.GuestID,
 		SourceNodeID: policy.SourceNodeID,
+		OwnerEpoch:   replicationPolicyOwnerEpoch(policy),
 		SourceMode:   policy.SourceMode,
 		FailbackMode: policy.FailbackMode,
 		CronExpr:     policy.CronExpr,
@@ -1150,9 +1181,72 @@ func (s *Service) replicationPolicyToReq(policy *clusterModels.ReplicationPolicy
 	return req
 }
 
+func (s *Service) waitForLocalReplicationOwnership(ctx context.Context, policyID uint, timeout time.Duration) error {
+	if policyID == 0 || s.Cluster == nil {
+		return nil
+	}
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID == "" {
+		return nil
+	}
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	deadline := time.Now().UTC().Add(timeout)
+	for {
+		policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+		if err != nil {
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+		} else {
+			expectedOwner := replicationPolicyOwnerNode(policy)
+			expectedEpoch := replicationPolicyOwnerEpoch(policy)
+			if expectedEpoch == 0 {
+				return fmt.Errorf("replication_policy_owner_epoch_missing")
+			}
+
+			if expectedOwner == localNodeID {
+				var lease clusterModels.ReplicationLease
+				leaseErr := s.DB.Where("policy_id = ?", policyID).First(&lease).Error
+				if leaseErr != nil {
+					if leaseErr != gorm.ErrRecordNotFound {
+						return leaseErr
+					}
+				} else {
+					leaseEpoch := lease.OwnerEpoch
+					if strings.TrimSpace(lease.OwnerNodeID) == localNodeID &&
+						leaseEpoch == expectedEpoch &&
+						time.Now().UTC().Before(lease.ExpiresAt) {
+						return nil
+					}
+				}
+			}
+		}
+
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		if time.Now().UTC().After(deadline) {
+			return fmt.Errorf("replication_activation_ownership_not_ready")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+
+	if err := s.waitForLocalReplicationOwnership(ctx, policyID, 10*time.Second); err != nil {
+		return err
 	}
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
@@ -1388,34 +1482,12 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 		return err
 	}
 
-	now := time.Now().UTC()
 	for _, policy := range policies {
-		expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
-		if expectedOwner == "" {
-			expectedOwner = strings.TrimSpace(policy.SourceNodeID)
-		}
-
-		var lease clusterModels.ReplicationLease
-		leaseErr := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error
-
-		fenceReason := ""
-		if leaseErr == gorm.ErrRecordNotFound {
-			if expectedOwner != "" && expectedOwner == localNodeID {
-				// Leader lease renewal can briefly lag behind policy updates; don't fence expected owner on missing lease.
-				continue
-			}
-			fenceReason = "lease_missing"
-		} else if leaseErr != nil {
-			continue
-		} else if strings.TrimSpace(lease.OwnerNodeID) != localNodeID {
-			fenceReason = "lease_not_owned"
-		} else if now.After(lease.ExpiresAt) {
-			fenceReason = "lease_expired"
-		}
-
-		if fenceReason == "" {
+		expectedOwner := replicationPolicyOwnerNode(&policy)
+		if expectedOwner == "" || expectedOwner == localNodeID {
 			continue
 		}
+		fenceReason := "policy_owner_mismatch"
 
 		switch strings.TrimSpace(policy.GuestType) {
 		case clusterModels.ReplicationGuestTypeJail:

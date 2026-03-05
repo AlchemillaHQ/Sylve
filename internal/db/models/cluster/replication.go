@@ -35,6 +35,7 @@ type ReplicationPolicy struct {
 	GuestID      uint                      `gorm:"index:idx_replication_policy_guest,priority:2;not null" json:"guestId"`
 	SourceNodeID string                    `gorm:"index" json:"sourceNodeId"`
 	ActiveNodeID string                    `gorm:"index" json:"activeNodeId"`
+	OwnerEpoch   uint64                    `gorm:"not null;default:1" json:"ownerEpoch"`
 	SourceMode   string                    `gorm:"not null;default:follow_active" json:"sourceMode"`
 	FailbackMode string                    `gorm:"not null;default:manual" json:"failbackMode"`
 	CronExpr     string                    `gorm:"not null" json:"cronExpr"`
@@ -63,6 +64,7 @@ type ReplicationLease struct {
 	GuestType   string    `gorm:"index;not null" json:"guestType"`
 	GuestID     uint      `gorm:"index;not null" json:"guestId"`
 	OwnerNodeID string    `gorm:"index;not null" json:"ownerNodeId"`
+	OwnerEpoch  uint64    `gorm:"not null;default:1;index" json:"ownerEpoch"`
 	ExpiresAt   time.Time `gorm:"index;not null" json:"expiresAt"`
 	Version     uint64    `gorm:"not null;default:1" json:"version"`
 	LastReason  string    `json:"lastReason"`
@@ -157,6 +159,9 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 	if !validReplicationFailbackMode(policy.FailbackMode) {
 		return fmt.Errorf("invalid_replication_failback_mode")
 	}
+	if policy.OwnerEpoch == 0 {
+		return fmt.Errorf("replication_policy_owner_epoch_required")
+	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.OnConflict{
@@ -167,6 +172,7 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 				"guest_id",
 				"source_node_id",
 				"active_node_id",
+				"owner_epoch",
 				"source_mode",
 				"failback_mode",
 				"cron_expr",
@@ -217,6 +223,9 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 	if lease.OwnerNodeID == "" {
 		return fmt.Errorf("replication_lease_owner_required")
 	}
+	if lease.OwnerEpoch == 0 {
+		return fmt.Errorf("replication_lease_owner_epoch_required")
+	}
 	if lease.ExpiresAt.IsZero() {
 		return fmt.Errorf("replication_lease_expiry_required")
 	}
@@ -227,6 +236,7 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 			"guest_type",
 			"guest_id",
 			"owner_node_id",
+			"owner_epoch",
 			"expires_at",
 			"version",
 			"last_reason",
