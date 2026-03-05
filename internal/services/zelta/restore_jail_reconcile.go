@@ -184,14 +184,12 @@ func (s *Service) upsertRestoredJailState(
 	requiresStandardSwitchSync := false
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
 		var existing jailModels.Jail
-		existingFound := true
-		if err := tx.Where("ct_id = ?", ctid).First(&existing).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				existingFound = false
-			} else {
-				return fmt.Errorf("failed_to_lookup_existing_jail_by_ctid: %w", err)
-			}
+		existingFound := false
+		lookup := tx.Where("ct_id = ?", ctid).Limit(1).Find(&existing)
+		if lookup.Error != nil {
+			return fmt.Errorf("failed_to_lookup_existing_jail_by_ctid: %w", lookup.Error)
 		}
+		existingFound = lookup.RowsAffected > 0
 
 		resolvedName, err := s.ensureUniqueRestoredJailName(tx, name, ctid, existing.ID)
 		if err != nil {
@@ -1380,12 +1378,12 @@ func (s *Service) ensureUniqueRestoredObjectName(tx *gorm.DB, base string) (stri
 	candidate := base
 	for i := 1; ; i++ {
 		var existing networkModels.Object
-		err := tx.Where("name = ?", candidate).First(&existing).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return candidate, nil
+		lookup := tx.Where("name = ?", candidate).Limit(1).Find(&existing)
+		if lookup.Error != nil {
+			return "", fmt.Errorf("failed_to_validate_network_object_name: %w", lookup.Error)
 		}
-		if err != nil {
-			return "", fmt.Errorf("failed_to_validate_network_object_name: %w", err)
+		if lookup.RowsAffected == 0 {
+			return candidate, nil
 		}
 		candidate = fmt.Sprintf("%s-%d", base, i)
 	}
@@ -1401,12 +1399,12 @@ func (s *Service) ensureUniqueRestoredJailName(tx *gorm.DB, name string, ctid ui
 	candidate := base
 	for i := 1; ; i++ {
 		var existing jailModels.Jail
-		err := tx.Where("name = ?", candidate).First(&existing).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return candidate, nil
+		lookup := tx.Where("name = ?", candidate).Limit(1).Find(&existing)
+		if lookup.Error != nil {
+			return "", fmt.Errorf("failed_to_validate_restored_jail_name: %w", lookup.Error)
 		}
-		if err != nil {
-			return "", fmt.Errorf("failed_to_validate_restored_jail_name: %w", err)
+		if lookup.RowsAffected == 0 {
+			return candidate, nil
 		}
 		if existing.ID == currentID {
 			return candidate, nil
@@ -1436,13 +1434,13 @@ func (s *Service) ensureUniqueRestoredJailNetworkName(
 		}
 
 		var existing jailModels.Network
-		err := tx.Where("name = ?", candidate).First(&existing).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		lookup := tx.Where("name = ?", candidate).Limit(1).Find(&existing)
+		if lookup.Error != nil {
+			return "", fmt.Errorf("failed_to_validate_restored_jail_network_name: %w", lookup.Error)
+		}
+		if lookup.RowsAffected == 0 {
 			used[candidate] = struct{}{}
 			return candidate, nil
-		}
-		if err != nil {
-			return "", fmt.Errorf("failed_to_validate_restored_jail_network_name: %w", err)
 		}
 		if existing.JailID == jailID {
 			used[candidate] = struct{}{}

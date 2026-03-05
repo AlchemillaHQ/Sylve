@@ -792,24 +792,61 @@ func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	localNodeID := strings.TrimSpace(nodeID)
+	expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
+	if expectedOwner == "" {
+		expectedOwner = strings.TrimSpace(policy.SourceNodeID)
+	}
 
 	var lease clusterModels.ReplicationLease
 	if err := s.DB.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
-			if expectedOwner == "" {
-				expectedOwner = strings.TrimSpace(policy.SourceNodeID)
-			}
-			return expectedOwner != "" && strings.TrimSpace(nodeID) == expectedOwner, nil
+			return expectedOwner != "" && localNodeID == expectedOwner, nil
 		}
 		return false, err
 	}
 
+	leaseOwner := strings.TrimSpace(lease.OwnerNodeID)
 	if time.Now().UTC().After(lease.ExpiresAt) {
+		// During failover, policy owner may move before lease renewal is visible locally.
+		if expectedOwner != "" && localNodeID == expectedOwner {
+			return true, nil
+		}
 		return false, nil
 	}
 
-	return strings.TrimSpace(lease.OwnerNodeID) == strings.TrimSpace(nodeID), nil
+	if leaseOwner == localNodeID {
+		return true, nil
+	}
+
+	if expectedOwner != "" && localNodeID == expectedOwner && leaseOwner != "" {
+		ownerOnline, ownerKnown, statusErr := s.isReplicationNodeOnline(leaseOwner)
+		if statusErr != nil {
+			return false, statusErr
+		}
+		if !ownerKnown || !ownerOnline {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (s *Service) isReplicationNodeOnline(nodeID string) (bool, bool, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false, false, nil
+	}
+
+	var node clusterModels.ClusterNode
+	if err := s.DB.Where("node_uuid = ?", nodeID).First(&node).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+
+	return strings.EqualFold(strings.TrimSpace(node.Status), "online"), true, nil
 }
 
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
