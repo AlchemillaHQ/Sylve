@@ -581,6 +581,8 @@ msgstr "Minimize"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Close"
 msgstr "Close"
 
@@ -9221,7 +9223,6 @@ msgid "Failback"
 msgstr "Failback"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cron"
 msgstr "Cron"
 
@@ -9551,3 +9552,11 @@ msgstr "FreeBSD Network Config"
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Debian Network Config"
 msgstr "Debian Network Config"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "All Nodes"
+msgstr "All Nodes"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Workload Node"
+msgstr "Workload Node"

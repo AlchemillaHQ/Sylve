@@ -556,6 +556,8 @@ msgstr "最小化"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Close"
 msgstr "关闭"
 
@@ -8316,7 +8318,6 @@ msgid "Failback"
 msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cron"
 msgstr ""
 
@@ -8658,4 +8659,12 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Debian Network Config"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "All Nodes"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Workload Node"
 msgstr ""

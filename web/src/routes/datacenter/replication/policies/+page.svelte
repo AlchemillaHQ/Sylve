@@ -8,6 +8,8 @@
 		type ReplicationPolicyInput,
 		type ReplicationPolicyTargetInput
 	} from '$lib/api/cluster/replication';
+	import { getJails } from '$lib/api/jail/jail';
+	import { getVMs } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -22,7 +24,7 @@
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { convertDbTime } from '$lib/utils/time';
+	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -48,6 +50,10 @@
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let deleteModalOpen = $state(false);
+	let jailsLoading = $state(false);
+	let vmsLoading = $state(false);
+	let jailsLoadedForNode = $state('');
+	let vmsLoadedForNode = $state('');
 
 	// svelte-ignore state_referenced_locally
 	let policies = resource(
@@ -81,6 +87,7 @@
 		edit: false,
 		name: '',
 		guestType: 'vm' as 'vm' | 'jail',
+		workloadNodeId: '',
 		guestId: '',
 		sourceMode: 'follow_active' as 'follow_active' | 'pinned_primary',
 		sourceNodeId: '',
@@ -110,10 +117,8 @@
 		}))
 	);
 
-	let sourceNodeOptions = $derived.by(() => [
-		{ value: '', label: 'None' },
-		...nodeOptions
-	]);
+	let sourceNodeOptions = $derived.by(() => [{ value: '', label: 'None' }, ...nodeOptions]);
+	let workloadNodeOptions = $derived.by(() => [{ value: '', label: 'All Nodes' }, ...nodeOptions]);
 
 	let vmOptions = $derived.by(() =>
 		vms.map((vm) => ({ value: String(vm.rid), label: `${vm.name} (RID ${vm.rid})` }))
@@ -143,7 +148,8 @@
 			title: 'Workload',
 			formatter: (cell: CellComponent) => {
 				const data = cell.getRow().getData();
-				const icon = data.guestType === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline';
+				const icon =
+					data.guestType === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline';
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
@@ -157,9 +163,11 @@
 			title: 'Last Status',
 			formatter: (cell: CellComponent) => {
 				const value = String(cell.getValue() || '').toLowerCase();
-				if (value === 'success') return renderWithIcon('mdi:check-circle', 'Success', 'text-green-500');
+				if (value === 'success')
+					return renderWithIcon('mdi:check-circle', 'Success', 'text-green-500');
 				if (value === 'failed') return renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500');
-				if (value === 'running') return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
+				if (value === 'running')
+					return renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500');
 				return '-';
 			}
 		},
@@ -183,7 +191,8 @@
 
 	let tableData = $derived.by(() => ({
 		rows: policies.current.map((policy) => {
-			const workloadLabel = policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
+			const workloadLabel =
+				policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
 			const sourceNode = policy.activeNodeId || policy.sourceNodeId || '';
 			const sourceLabel = sourceNode ? (nodeNameByID[sourceNode] ?? sourceNode) : '-';
 			const targetsLabel =
@@ -215,6 +224,7 @@
 		policyModal.edit = false;
 		policyModal.name = '';
 		policyModal.guestType = 'vm';
+		policyModal.workloadNodeId = '';
 		policyModal.guestId = '';
 		policyModal.sourceMode = 'follow_active';
 		policyModal.sourceNodeId = '';
@@ -227,9 +237,10 @@
 	function openCreatePolicy() {
 		resetPolicyModal();
 		policyModal.open = true;
+		void loadVMsForNode();
 	}
 
-	function openEditPolicy() {
+	async function openEditPolicy() {
 		if (selectedPolicyId === 0) return;
 		const policy = policies.current.find((entry) => entry.id === selectedPolicyId);
 		if (!policy) return;
@@ -238,6 +249,7 @@
 		policyModal.edit = true;
 		policyModal.name = policy.name;
 		policyModal.guestType = policy.guestType;
+		policyModal.workloadNodeId = policy.activeNodeId || policy.sourceNodeId || '';
 		policyModal.guestId = String(policy.guestId);
 		policyModal.sourceMode = policy.sourceMode;
 		policyModal.sourceNodeId = policy.sourceNodeId || '';
@@ -251,6 +263,59 @@
 						weight: String(target.weight || 100)
 					}))
 				: [{ nodeId: '', weight: '100' }];
+
+		if (policyModal.guestType === 'jail') {
+			await loadJailsForNode(true);
+			return;
+		}
+		await loadVMsForNode(true);
+	}
+
+	function selectedWorkloadHostname(): string {
+		const nodeId = policyModal.workloadNodeId.trim();
+		if (!nodeId) return '';
+
+		const selectedNode = nodes.find((node) => node.nodeUUID === nodeId);
+		if (selectedNode?.hostname) {
+			return selectedNode.hostname;
+		}
+
+		const nodeByHostname = nodes.find((node) => node.hostname === nodeId);
+		return nodeByHostname?.hostname || nodeId;
+	}
+
+	async function loadJailsForNode(force: boolean = false) {
+		const hostname = selectedWorkloadHostname();
+		if (jailsLoading) return;
+		if (!force && jailsLoadedForNode === hostname) return;
+		jailsLoading = true;
+		try {
+			const res = await getJails(hostname || undefined);
+			updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', res);
+			jails = res;
+			jailsLoadedForNode = hostname;
+		} finally {
+			jailsLoading = false;
+		}
+	}
+
+	async function loadVMsForNode(force: boolean = false) {
+		const hostname = selectedWorkloadHostname();
+		if (vmsLoading) return;
+		if (!force && vmsLoadedForNode === hostname) return;
+		vmsLoading = true;
+		try {
+			const res = await getVMs(hostname || undefined);
+			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', res);
+			vms = res;
+			vmsLoadedForNode = hostname;
+		} finally {
+			vmsLoading = false;
+		}
+	}
+
+	function closePolicyModal() {
+		resetPolicyModal();
 	}
 
 	function addTargetRow() {
@@ -378,6 +443,26 @@
 		handleAPIError(result);
 		toast.error('Failed to start replication run', { position: 'bottom-center' });
 	}
+
+	watch(
+		[() => policyModal.open, () => policyModal.workloadNodeId, () => policyModal.guestType],
+		([isOpen, _workloadNodeId, guestType]) => {
+			if (!isOpen) return;
+			if (guestType === 'jail') {
+				void loadJailsForNode(true);
+				return;
+			}
+			void loadVMsForNode(true);
+		}
+	);
+
+	let humanCron = $derived.by(() => {
+		try {
+			return cronToHuman(policyModal.cronExpr);
+		} catch {
+			return '';
+		}
+	});
 </script>
 
 {#snippet actionButtons(type: string)}
@@ -439,7 +524,13 @@
 <Dialog.Root bind:open={policyModal.open}>
 	<Dialog.Content class="w-[90%] max-w-3xl overflow-hidden p-5">
 		<Dialog.Header>
-			<Dialog.Title>{policyModal.edit ? 'Edit Replication Policy' : 'New Replication Policy'}</Dialog.Title>
+			<Dialog.Title class="flex items-center justify-between">
+				<span>{policyModal.edit ? 'Edit Replication Policy' : 'New Replication Policy'}</span>
+				<Button size="sm" variant="link" class="h-4" title="Close" onclick={closePolicyModal}>
+					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+					<span class="sr-only">Close</span>
+				</Button>
+			</Dialog.Title>
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
@@ -450,7 +541,7 @@
 				classes="space-y-1"
 			/>
 
-			<div class="grid grid-cols-2 gap-3">
+			<div class="grid grid-cols-3 gap-3">
 				<SimpleSelect
 					label="Workload Type"
 					value={policyModal.guestType}
@@ -461,6 +552,21 @@
 					onChange={(value) => {
 						policyModal.guestType = (value || 'vm') as 'vm' | 'jail';
 						policyModal.guestId = '';
+						if (policyModal.guestType === 'jail') {
+							void loadJailsForNode(true);
+							return;
+						}
+						void loadVMsForNode(true);
+					}}
+				/>
+
+				<SimpleSelect
+					label="Workload Node"
+					value={policyModal.workloadNodeId}
+					options={workloadNodeOptions}
+					onChange={(value) => {
+						policyModal.workloadNodeId = value;
+						policyModal.guestId = '';
 					}}
 				/>
 
@@ -469,7 +575,9 @@
 					value={policyModal.guestId}
 					options={guestOptions}
 					placeholder={policyModal.guestType === 'vm' ? 'Select VM' : 'Select Jail'}
-					disabled={guestOptions.length === 0}
+					disabled={policyModal.guestType === 'vm'
+						? vmsLoading || guestOptions.length === 0
+						: jailsLoading || guestOptions.length === 0}
 					onChange={(value) => {
 						policyModal.guestId = value;
 					}}
@@ -516,10 +624,18 @@
 
 			<div class="grid grid-cols-[1fr_auto] items-end gap-3">
 				<CustomValueInput
-					label="Cron"
 					placeholder="*/15 * * * *"
 					bind:value={policyModal.cronExpr}
 					classes="space-y-1"
+					labelHTML={true}
+					label={`
+                    <span class="text-sm font-medium text-gray-200">
+                        Cron Expression${
+													cronToHuman(policyModal.cronExpr)
+														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(policyModal.cronExpr)})</span>`
+														: ''
+												}
+                    </span>`}
 				/>
 				<CustomCheckbox
 					label="Enabled"
