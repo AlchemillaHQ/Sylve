@@ -131,12 +131,34 @@ func (s *Service) backupWithEventProgress(
 	eventID uint,
 	snapPrefix string,
 ) (string, error) {
-	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
-	extraEnv := s.buildZeltaEnv(target)
-	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
 	snapPrefix = strings.TrimSpace(snapPrefix)
 	if snapPrefix == "" {
 		snapPrefix = "bk"
+	}
+
+	return s.backupWithEventProgressSnapshotName(
+		ctx,
+		target,
+		sourceDataset,
+		destSuffix,
+		eventID,
+		zeltaSnapshotName(snapPrefix),
+	)
+}
+
+func (s *Service) backupWithEventProgressSnapshotName(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	sourceDataset, destSuffix string,
+	eventID uint,
+	snapshotName string,
+) (string, error) {
+	zeltaEndpoint := target.ZeltaEndpoint(destSuffix)
+	extraEnv := s.buildZeltaEnv(target)
+	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+	snapshotName = strings.TrimSpace(snapshotName)
+	if snapshotName == "" {
+		snapshotName = zeltaSnapshotName("bk")
 	}
 
 	return runZeltaWithEnvStreaming(
@@ -155,7 +177,7 @@ func (s *Service) backupWithEventProgress(
 		"--incremental",
 		"--snapshot",
 		"--snap-name",
-		zeltaSnapshotName(snapPrefix),
+		snapshotName,
 		sourceDataset,
 		zeltaEndpoint,
 	)
@@ -542,11 +564,12 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	runVMBackupPass := func() error {
 		lastVMFailedSource = ""
 		lastVMFailedDestSuffix = ""
+		vmSnapshotName := zeltaSnapshotName(backupSnapPrefix)
 
 		for idx, vmSource := range vmSourceDatasets {
 			vmDestSuffix := s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource)
 			output = appendOutput(output, fmt.Sprintf("vm_dataset_backup_start[%d/%d]: %s -> %s", idx+1, len(vmSourceDatasets), vmSource, job.Target.ZeltaEndpoint(vmDestSuffix)))
-			partOutput, partErr := s.backupWithEventProgress(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, backupSnapPrefix)
+			partOutput, partErr := s.backupWithEventProgressSnapshotName(ctx, &job.Target, vmSource, vmDestSuffix, event.ID, vmSnapshotName)
 			output = appendOutput(output, partOutput)
 			if partErr == nil {
 				outcome := classifyBackupOutput(partOutput)
