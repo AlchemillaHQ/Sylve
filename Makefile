@@ -14,7 +14,7 @@ backend:
 	go build -o $(BIN_DIR)/$(BINARY_NAME)-$(ARCH) cmd/sylve/main.go
 
 frontend:
-	npm install --prefix web
+	npm ci --prefix web
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/
