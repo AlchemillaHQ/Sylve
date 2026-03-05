@@ -434,7 +434,8 @@
 						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
 							<div class="flex items-center gap-1.5 whitespace-nowrap">
 								{#if initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
-									<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"></span>
+									<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"
+									></span>
 								{/if}
 								<span>{vm.current.name}</span>
 								{#if udTime}
@@ -535,6 +536,7 @@
 					percentage={true}
 					color="one"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[solar--cpu-bold]"
 				/>
 
 				<LineBrush
@@ -546,6 +548,7 @@
 					percentage={true}
 					color="two"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[ph--memory]"
 				/>
 			</div>
 		</ScrollArea>

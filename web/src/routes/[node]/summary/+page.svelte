@@ -312,6 +312,7 @@
 					}))}
 					color="one"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[solar--cpu-bold]"
 				/>
 
 				<LineBrush
@@ -323,6 +324,7 @@
 					}))}
 					color="two"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[ph--memory]"
 				/>
 
 				<LineBrushMultiple
@@ -347,6 +349,7 @@
 							}))
 						}
 					]}
+					titleIconClass="icon-[mdi--network]"
 				/>
 			</div>
 		</ScrollArea>

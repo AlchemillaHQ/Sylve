@@ -17,7 +17,7 @@
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
-	import { untrack } from 'svelte';
+	import { watch } from 'runed';
 
 	use([
 		LineChart,
@@ -39,6 +39,7 @@
 
 	interface Props {
 		title: string;
+		titleIconClass?: string;
 		series: SeriesData[];
 		percentage: boolean;
 		data: boolean;
@@ -48,6 +49,7 @@
 
 	let {
 		title,
+		titleIconClass = '',
 		series,
 		percentage,
 		data,
@@ -98,10 +100,10 @@
 						filler: 'rgb(200, 200, 200, 0.01)'
 					}
 				: {
-						color: 'rgb(0, 0, 0)',
-						borderColor: 'rgb(0, 0, 0)',
-						soft: 'rgb(0, 0, 0, 0.6)',
-						filler: 'rgb(0, 0, 0, 0.01)'
+						color: 'rgb(165, 165, 165)',
+						borderColor: 'rgb(165, 165, 165)',
+						soft: 'rgb(195, 195, 195, 0.6)',
+						filler: 'rgb(195, 195, 195, 0.01)'
 					}
 	};
 
@@ -125,7 +127,7 @@
 	function getOptions(): EChartsOption {
 		return {
 			title: {
-				text: title,
+				show: false,
 				textStyle: {
 					color: titleColor,
 					fontStyle: 'normal',
@@ -289,26 +291,42 @@
 
 	let mouseIn = $state(false);
 
-	$effect(() => {
-		if (!chart || chart.isDisposed?.()) return;
-
-		untrack(() => {
-			requestAnimationFrame(() => {
-				if (!chart || chart.isDisposed?.()) return;
-				chart.setOption(getOptions(), { notMerge: false, lazyUpdate: true });
-			});
-		});
-	});
+	watch(
+		[
+			() => mode.current,
+			() => title,
+			() => series,
+			() => percentage,
+			() => data,
+			() => titleIconClass
+		],
+		() => {
+			if (!chart || chart.isDisposed?.()) return;
+			chart.setOption(getOptions(), { notMerge: false, lazyUpdate: true });
+		}
+	);
 </script>
 
 <Card.Root class={containerClass}>
 	<Card.Content class="{containerContentHeight} w-full overflow-hidden rounded-sm p-0">
 		<div
 			role="region"
-			class="h-full w-full overflow-visible"
+			class="relative h-full w-full overflow-visible"
 			onmouseenter={() => (mouseIn = true)}
 			onmouseleave={() => (mouseIn = false)}
 		>
+			<div
+				class="pointer-events-none absolute top-1 left-2 z-10 flex items-center gap-1 whitespace-nowrap"
+			>
+				{#if titleIconClass}
+					<span
+						class={`${titleIconClass} text-blue-600 dark:text-blue-500 inline-block h-5 w-5 shrink-0 align-middle`}
+					></span>
+				{/if}
+				<span class="text-base leading-none font-normal text-blue-600 dark:text-blue-500"
+					>{title}</span
+				>
+			</div>
 			<Chart {init} options={getOptions()} bind:chart />
 		</div>
 	</Card.Content>

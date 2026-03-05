@@ -489,6 +489,7 @@
 					percentage={true}
 					color="one"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[solar--cpu-bold]"
 				/>
 
 				<LineBrush
@@ -500,6 +501,7 @@
 					percentage={true}
 					color="two"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[ph--memory]"
 				/>
 			</div>
 		</ScrollArea>
