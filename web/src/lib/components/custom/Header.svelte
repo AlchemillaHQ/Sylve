@@ -18,7 +18,7 @@
 			open: false,
 			minimize: false
 		},
-		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme', shortcut: '⌘⇧T' }]
+		menuItems: [{ icon: 'mdi--palette', label: 'Color Theme' }]
 	};
 
 	let properties = $state(options);
@@ -134,14 +134,10 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="w-56">
 				<DropdownMenu.Group>
-					{#each properties.menuItems as { icon, label, shortcut }}
+					{#each properties.menuItems as { icon, label }}
 						<DropdownMenu.Item class="cursor-pointer" onclick={toggleMode}>
 							<span class="icon-[{icon}] mr-2 h-4 w-4"></span>
-
 							<span>{label}</span>
-							{#if shortcut}
-								<DropdownMenu.Shortcut>{shortcut}</DropdownMenu.Shortcut>
-							{/if}
 						</DropdownMenu.Item>
 					{/each}
 
@@ -177,7 +173,6 @@
 				<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
 					<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
 					<span>Log Out</span>
-					<DropdownMenu.Shortcut>⌘⇧Q</DropdownMenu.Shortcut>
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '@fontsource/noto-sans';
 	import '@fontsource/noto-sans/700.css';
-
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -29,6 +28,8 @@
 	import About from '$lib/components/custom/About.svelte';
 	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
 	import { onDestroy } from 'svelte';
+	import { handleCommandKeydown } from '$lib/system.js';
+	import Index from '$lib/components/custom/Command/Index.svelte';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -192,6 +193,8 @@
 	<title>Sylve</title>
 </svelte:head>
 
+<svelte:document onkeydown={handleCommandKeydown} />
+
 <Toaster />
 <ModeWatcher />
 
@@ -218,6 +221,7 @@
 				bind:busy
 			/>
 			<Shell>
+				<Index />
 				<Tooltip.Provider>
 					{@render children()}
 				</Tooltip.Provider>

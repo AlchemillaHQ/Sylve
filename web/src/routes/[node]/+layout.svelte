@@ -6,8 +6,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { triggers } from '$lib/utils/keyboard-shortcuts';
-	import { shortcut, type ShortcutTrigger } from '@svelte-put/shortcut';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { Debounced, watch } from 'runed';
 
@@ -274,12 +272,6 @@
 	}
 	const debouncedResize = new Debounced(() => resizeKey, 150);
 </script>
-
-<svelte:window
-	use:shortcut={{
-		trigger: triggers as ShortcutTrigger[]
-	}}
-/>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">

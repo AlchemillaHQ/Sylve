@@ -270,12 +270,12 @@ msgstr "Create Jail"
 msgid "Toggle user menu"
 msgstr "Toggle user menu"
 
-#~ msgid "Log out"
-#~ msgstr "Log out"
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Log out"
+msgstr "Log out"
 
-#: src/lib/components/custom/Header.svelte
-msgid "⌘⇧Q"
-msgstr "⌘⇧Q"
+#~ msgid "⌘⇧Q"
+#~ msgstr "⌘⇧Q"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -9489,3 +9489,55 @@ msgstr "ZFS Pools updated"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Basic Settings - ZFS Pools"
 msgstr "Basic Settings - ZFS Pools"
+
+#~ msgid "Press <0><0/>J</0>"
+#~ msgstr "Press <0><0/>J</0>"
+
+#~ msgid "Type a command or search..."
+#~ msgstr "Type a command or search..."
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "No results found."
+msgstr "No results found."
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Suggestions"
+msgstr "Suggestions"
+
+#~ msgid "Calendar"
+#~ msgstr "Calendar"
+
+#~ msgid "Search Emoji"
+#~ msgstr "Search Emoji"
+
+#~ msgid "Calculator"
+#~ msgstr "Calculator"
+
+#~ msgid "⌘P"
+#~ msgstr "⌘P"
+
+#~ msgid "⌘B"
+#~ msgstr "⌘B"
+
+#~ msgid "⌘S"
+#~ msgstr "⌘S"
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Type a command..."
+msgstr "Type a command..."
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Toggle theme"
+msgstr "Toggle theme"
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Dark"
+msgstr "Dark"
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Light"
+msgstr "Light"
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Host Terminal"
+msgstr "Host Terminal"

@@ -272,9 +272,8 @@ msgstr "यूज़र मेनू टॉगल करें"
 msgid "Log Out"
 msgstr "लॉग आउट"
 
-#: src/lib/components/custom/Header.svelte
-msgid "⌘⇧Q"
-msgstr "⌘⇧Q"
+#~ msgid "⌘⇧Q"
+#~ msgstr "⌘⇧Q"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialize.svelte
@@ -5471,8 +5470,9 @@ msgstr "यह {0} को हटा देगा। यह क्रिया �
 msgid "<0/> Language"
 msgstr "<0/> भाषा"
 
-#~ msgid "Log out"
-#~ msgstr ""
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Log out"
+msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Downloader - Create Signed URL"
@@ -9352,4 +9352,56 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Basic Settings - ZFS Pools"
+msgstr ""
+
+#~ msgid "Press <0><0/>J</0>"
+#~ msgstr ""
+
+#~ msgid "Type a command or search..."
+#~ msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "No results found."
+msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Suggestions"
+msgstr ""
+
+#~ msgid "Calendar"
+#~ msgstr ""
+
+#~ msgid "Search Emoji"
+#~ msgstr ""
+
+#~ msgid "Calculator"
+#~ msgstr ""
+
+#~ msgid "⌘P"
+#~ msgstr ""
+
+#~ msgid "⌘B"
+#~ msgstr ""
+
+#~ msgid "⌘S"
+#~ msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Type a command..."
+msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Toggle theme"
+msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Dark"
+msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Light"
+msgstr ""
+
+#: src/lib/components/custom/Command/Index.svelte
+msgid "Host Terminal"
 msgstr ""
