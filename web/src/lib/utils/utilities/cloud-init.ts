@@ -1,71 +1,71 @@
-import type { Column, Row } from "$lib/types/components/tree-table";
-import type { CloudInitTemplate } from "$lib/types/utilities/cloud-init";
-import { generateNanoId } from "../string";
+import type { Column, Row } from '$lib/types/components/tree-table';
+import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
+import { generateNanoId } from '../string';
 
 export const cloudInitPlaceholders = {
-    data: `#cloud-config\nusers:\n  - name: <username>\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    passwd: "$6$c8XPKY..."\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...\n\nssh_pwauth: true`,
-    metadata: `instance-id: iid-local01\nlocal-hostname: test`,
-    networkConfig: `# Leave blank for DHCP`,
+	data: `#cloud-config\nusers:\n  - name: <username>\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    passwd: "$6$c8XPKY..."\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQ...\n\nssh_pwauth: true`,
+	metadata: `instance-id: iid-local01\nlocal-hostname: test`,
+	networkConfig: `# Leave blank for DHCP`
 };
 
 export function generateTableData(data: CloudInitTemplate[]): { rows: Row[]; columns: Column[] } {
-    const columns: Column[] = [
-        {
-            field: "id",
-            title: "ID",
-            visible: false
-        },
-        {
-            field: "name",
-            title: "Name"
-        },
-        {
-            field: "data.user",
-            title: "User Data",
-            formatter(cell, formatterParams, onRendered) {
-                const data = cell.getValue();
-                return data ? data.substring(0, 30) + (data.length > 30 ? "..." : "") : "";
-            },
-        },
-        {
-            field: "data.metadata",
-            title: "Metadata",
-            formatter(cell, formatterParams, onRendered) {
-                const data = cell.getValue();
-                return data ? data.substring(0, 30) + (data.length > 30 ? "..." : "") : "";
-            },
-        },
-        {
-            field: "data.networkConfig",
-            title: "Network Config",
-            formatter(cell, formatterParams, onRendered) {
-                const data = cell.getValue();
-                return data ? data.substring(0, 30) + (data.length > 30 ? "..." : "") : "-";
-            },
-        }
-    ]
+	const columns: Column[] = [
+		{
+			field: 'id',
+			title: 'ID',
+			visible: false
+		},
+		{
+			field: 'name',
+			title: 'Name'
+		},
+		{
+			field: 'data.user',
+			title: 'User Data',
+			formatter(cell, formatterParams, onRendered) {
+				const data = cell.getValue();
+				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '';
+			}
+		},
+		{
+			field: 'data.metadata',
+			title: 'Metadata',
+			formatter(cell, formatterParams, onRendered) {
+				const data = cell.getValue();
+				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '';
+			}
+		},
+		{
+			field: 'data.networkConfig',
+			title: 'Network Config',
+			formatter(cell, formatterParams, onRendered) {
+				const data = cell.getValue();
+				return data ? data.substring(0, 30) + (data.length > 30 ? '...' : '') : '-';
+			}
+		}
+	];
 
-    const rows = data.map((template) => ({
-        id: template.id,
-        name: template.name,
-        data: {
-            user: template.user,
-            metadata: template.meta,
-            networkConfig: template.networkConfig
-        }
-    }));
+	const rows = data.map((template) => ({
+		id: template.id,
+		name: template.name,
+		data: {
+			user: template.user,
+			metadata: template.meta,
+			networkConfig: template.networkConfig
+		}
+	}));
 
-    return {
-        columns: columns,
-        rows: rows
-    }
+	return {
+		columns: columns,
+		rows: rows
+	};
 }
 
-type TemplateResult = { user: string; meta: string; networkConfig: string }
+type TemplateResult = { user: string; meta: string; networkConfig: string };
 
 const templates: Record<string, TemplateResult> = {
-    'Simple': {
-        user: `#cloud-config
+	Simple: {
+		user: `#cloud-config
 hostname: demo-vm
 timezone: UTC
 
@@ -99,13 +99,13 @@ final_message: |
   User: dev
   SSH keys imported from GitHub.
 `,
-        meta: `instance-id: sylve-vm-${generateNanoId()}
+		meta: `instance-id: sylve-vm-${generateNanoId()}
 local-hostname: sylve-simple-vm
 `,
-        networkConfig: ``
-    },
-    'FreeBSD Network Config': {
-        user: `#cloud-config
+		networkConfig: ``
+	},
+	'FreeBSD Network Config': {
+		user: `#cloud-config
 hostname: freebsd-network-config
 timezone: UTC
 
@@ -119,10 +119,10 @@ users:
     lock_passwd: true
 
 `,
-        meta: `instance-id: sylve-vm-${generateNanoId()}
+		meta: `instance-id: sylve-vm-${generateNanoId()}
 local-hostname: freebsd-network-config
 `,
-        networkConfig: `ethernets:
+		networkConfig: `ethernets:
   em0:
     addresses:
       - 192.168.0.10/24
@@ -131,9 +131,9 @@ local-hostname: freebsd-network-config
       addresses:
         - 1.1.1.1
 `
-    },
-    'Debian Network Config': {
-        user: `#cloud-config
+	},
+	'Debian Network Config': {
+		user: `#cloud-config
 hostname: debian-vm
 timezone: UTC
 
@@ -146,10 +146,10 @@ users:
       - gh:YOUR_GITHUB_USERNAME
     lock_passwd: true
 `,
-        meta: `instance-id: debian-vm-${generateNanoId()}
+		meta: `instance-id: debian-vm-${generateNanoId()}
 local-hostname: debian-vm
 `,
-        networkConfig: `version: 2
+		networkConfig: `version: 2
 ethernets:
   enp0s3:
     dhcp4: false
@@ -160,9 +160,9 @@ ethernets:
       addresses:
         - 1.1.1.1
 `
-    },
-    'Docker': {
-        user: `#cloud-config
+	},
+	Docker: {
+		user: `#cloud-config
 hostname: docker-vm
 timezone: UTC
 
@@ -189,13 +189,13 @@ runcmd:
 final_message: |
   Docker host ready.
 `,
-        meta: `instance-id: sylve-vm-${generateNanoId()}
+		meta: `instance-id: sylve-vm-${generateNanoId()}
 local-hostname: sylve-docker-vm
 `,
-        networkConfig: ``
-    }
-}
+		networkConfig: ``
+	}
+};
 
 export function generateTemplate(type: string): TemplateResult {
-    return templates[type] ?? { user: '', meta: '', networkConfig: '' };
+	return templates[type] ?? { user: '', meta: '', networkConfig: '' };
 }

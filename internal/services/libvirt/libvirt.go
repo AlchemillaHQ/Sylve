@@ -40,6 +40,9 @@ type Service struct {
 	actionMutex sync.Mutex
 	crudMutex   sync.Mutex
 
+	leftPanelRefreshEmitterMu sync.RWMutex
+	leftPanelRefreshEmitter   func(reason string)
+
 	GZFS *gzfs.Client
 }
 

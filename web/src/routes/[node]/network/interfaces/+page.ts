@@ -8,15 +8,15 @@ import { cachedFetch } from '$lib/utils/http';
 export async function load() {
 	const [interfaces, objects, jails, vms] = await Promise.all([
 		cachedFetch('networkInterfaces', async () => await getInterfaces(), SEVEN_DAYS),
-        cachedFetch('networkObjects', async () => await getNetworkObjects(), SEVEN_DAYS),
-        cachedFetch('jail-list', async () => await getJails(), SEVEN_DAYS),
-        cachedFetch('vm-list', async () => await getVMs(), SEVEN_DAYS)
+		cachedFetch('networkObjects', async () => await getNetworkObjects(), SEVEN_DAYS),
+		cachedFetch('jail-list', async () => await getJails(), SEVEN_DAYS),
+		cachedFetch('vm-list', async () => await getVMs(), SEVEN_DAYS)
 	]);
 
 	return {
 		interfaces,
 		objects,
 		jails,
-        vms
+		vms
 	};
 }

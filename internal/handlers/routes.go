@@ -428,6 +428,7 @@ func RegisterRoutes(r *gin.Engine,
 	intraCluster.Use(middleware.RequireClusterScope())
 	{
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
+		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
 		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))

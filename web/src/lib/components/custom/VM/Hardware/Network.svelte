@@ -73,7 +73,7 @@
 
 	let properties = $state(options);
 	let editOptions = {
-		emulation: selectedNetwork ? selectedNetwork.emulation ?? '' : '',
+		emulation: selectedNetwork ? (selectedNetwork.emulation ?? '') : '',
 		mac: {
 			open: false,
 			value: selectedNetwork?.macId ? selectedNetwork.macId.toString() : '0'
@@ -170,7 +170,9 @@
 				<div class="flex items-center gap-2">
 					<span class="icon-[mdi--network] h-5 w-5"></span>
 
-					<span>{selectedNetwork ? `Edit - ${selectedSwitchName || 'Network'}` : 'New Network'}</span>
+					<span
+						>{selectedNetwork ? `Edit - ${selectedSwitchName || 'Network'}` : 'New Network'}</span
+					>
 				</div>
 
 				<div class="flex items-center gap-0.5">

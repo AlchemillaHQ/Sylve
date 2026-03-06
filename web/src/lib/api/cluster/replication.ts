@@ -64,7 +64,12 @@ export async function failoverReplicationPolicy(
 	id: number,
 	input: ReplicationPolicyFailoverInput
 ): Promise<APIResponse> {
-	return await apiRequest(`/cluster/replication/policies/${id}/failover`, APIResponseSchema, 'POST', input);
+	return await apiRequest(
+		`/cluster/replication/policies/${id}/failover`,
+		APIResponseSchema,
+		'POST',
+		input
+	);
 }
 
 export async function listReplicationEvents(

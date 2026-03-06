@@ -1400,6 +1400,8 @@ func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr e
 	if err := s.DB.Save(event).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("event_id", event.ID).Msg("failed_to_finalize_backup_event")
 	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("backup_event_finalized_%d", event.ID))
 }
 
 func (s *Service) ListLocalBackupEvents(limit int, jobID uint) ([]clusterModels.BackupEvent, error) {

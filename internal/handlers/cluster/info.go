@@ -1,7 +1,10 @@
 package clusterHandlers
 
 import (
+	"errors"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
@@ -47,6 +50,33 @@ func SyncHealth(clusterService *cluster.Service) gin.HandlerFunc {
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cluster_health_synced",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
+func EmitLeftPanelRefreshLocal(clusterService *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var payload struct {
+			Reason string `json:"reason"`
+		}
+
+		if err := c.ShouldBindJSON(&payload); err != nil && !errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_payload",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		clusterService.EmitLeftPanelRefreshLocal(strings.TrimSpace(payload.Reason))
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "left_panel_refresh_emitted",
 			Error:   "",
 			Data:    nil,
 		})

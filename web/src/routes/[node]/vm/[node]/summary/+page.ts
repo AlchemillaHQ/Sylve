@@ -3,21 +3,21 @@ import { SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
-    const cacheDuration = SEVEN_DAYS;
-    const rid = params.node;
+	const cacheDuration = SEVEN_DAYS;
+	const rid = params.node;
 
-    const [vm, domain, stats, gaInfo] = await Promise.all([
-        cachedFetch(`vm-${rid}`, async () => getVmById(Number(rid), 'rid'), cacheDuration),
-        cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(Number(rid)), cacheDuration),
-        cachedFetch(`vm-stats-${rid}`, async () => getStats(Number(rid), 'hourly'), cacheDuration),
-        cachedFetch(`vm-qga-${rid}`, async () => getQGAInfo(Number(rid)), cacheDuration, true),
-    ]);
+	const [vm, domain, stats, gaInfo] = await Promise.all([
+		cachedFetch(`vm-${rid}`, async () => getVmById(Number(rid), 'rid'), cacheDuration),
+		cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(Number(rid)), cacheDuration),
+		cachedFetch(`vm-stats-${rid}`, async () => getStats(Number(rid), 'hourly'), cacheDuration),
+		cachedFetch(`vm-qga-${rid}`, async () => getQGAInfo(Number(rid)), cacheDuration, true)
+	]);
 
-    return {
-        rid: Number(rid),
-        vm: vm,
-        domain: domain,
-        stats: stats,
-        gaInfo
-    };
+	return {
+		rid: Number(rid),
+		vm: vm,
+		domain: domain,
+		stats: stats,
+		gaInfo
+	};
 }

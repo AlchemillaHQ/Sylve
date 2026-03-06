@@ -19,7 +19,12 @@ export async function createVMSnapshot(
 }
 
 export async function rollbackVMSnapshot(rid: number, snapshotId: number): Promise<APIResponse> {
-	return await apiRequest(`/vm/snapshots/${rid}/${snapshotId}/rollback`, APIResponseSchema, 'POST', {});
+	return await apiRequest(
+		`/vm/snapshots/${rid}/${snapshotId}/rollback`,
+		APIResponseSchema,
+		'POST',
+		{}
+	);
 }
 
 export async function deleteVMSnapshot(rid: number, snapshotId: number): Promise<APIResponse> {

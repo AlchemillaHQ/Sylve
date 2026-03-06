@@ -82,6 +82,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		s.emitLeftPanelRefresh(fmt.Sprintf("jail_start_%d", ctId))
 		return nil
 
 	case "stop":
@@ -94,6 +95,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		s.emitLeftPanelRefresh(fmt.Sprintf("jail_stop_%d", ctId))
 		return nil
 
 	case "restart":
@@ -119,6 +121,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		s.emitLeftPanelRefresh(fmt.Sprintf("jail_restart_%d", ctId))
 		return nil
 	}
 

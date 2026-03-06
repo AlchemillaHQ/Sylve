@@ -1386,6 +1386,8 @@ func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent
 		"message":      event.Message,
 		"completed_at": event.CompletedAt,
 	}).Error
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("replication_event_finalized_%d", event.ID))
 }
 
 func (s *Service) AppendReplicationEventOutput(eventID uint, chunk string) error {

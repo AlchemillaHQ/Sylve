@@ -52,6 +52,9 @@ type Service struct {
 	hashCacheMutex     sync.RWMutex
 	ctidHashByCTID     map[uint]string
 
+	leftPanelRefreshEmitterMu sync.RWMutex
+	leftPanelRefreshEmitter   func(reason string)
+
 	usagePersistQueue   chan struct{}
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once

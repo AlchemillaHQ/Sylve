@@ -771,6 +771,8 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.RID)
 	}
 
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_%s_%d", action, vm.RID))
+
 	return nil
 }
 

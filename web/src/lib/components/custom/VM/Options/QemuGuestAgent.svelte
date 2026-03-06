@@ -76,9 +76,9 @@
 		</Dialog.Header>
 
 		<span class="text-muted-foreground text-justify text-sm">
-			Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.
-			This improves guest integration for features like shutdown, status, and filesystem operations,
-			when the guest agent is installed inside the VM.
+			Enable this option to provide a QEMU Guest Agent channel via a virtio-console device. This
+			improves guest integration for features like shutdown, status, and filesystem operations, when
+			the guest agent is installed inside the VM.
 		</span>
 		<CustomCheckbox
 			label="Enable QEMU Guest Agent"

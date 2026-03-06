@@ -93,6 +93,15 @@ func main() {
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
 
+	clusterSvc := cS.(*cluster.Service)
+	jailSvc := jS.(*jail.Service)
+	libvirtSvc := lvS.(*libvirt.Service)
+	refreshEmitter := func(reason string) {
+		clusterSvc.EmitLeftPanelRefreshClusterWide(reason)
+	}
+	jailSvc.SetLeftPanelRefreshEmitter(refreshEmitter)
+	libvirtSvc.SetLeftPanelRefreshEmitter(refreshEmitter)
+
 	uS.RegisterJobs()
 	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
@@ -121,7 +130,7 @@ func main() {
 		}
 	}
 
-	if err := cS.(*cluster.Service).StartEmbeddedSSHServer(qCtx); err != nil {
+	if err := clusterSvc.StartEmbeddedSSHServer(qCtx); err != nil {
 		logger.L.Error().Err(err).Msg("Failed to start embedded cluster SSH server")
 	}
 
@@ -153,10 +162,10 @@ func main() {
 		nS.(*network.Service),
 		uS.(*utilities.Service),
 		sysS.(*system.Service),
-		lvS.(*libvirt.Service),
+		libvirtSvc,
 		smbS.(*samba.Service),
-		jS.(*jail.Service),
-		cS.(*cluster.Service),
+		jailSvc,
+		clusterSvc,
 		zeltaS,
 		fsm,
 		d,
@@ -168,8 +177,8 @@ func main() {
 	if enableRepl {
 		replCtx := &repl.Context{
 			Auth:           aS.(*auth.Service),
-			Jail:           jS.(*jail.Service),
-			VirtualMachine: lvS.(*libvirt.Service),
+			Jail:           jailSvc,
+			VirtualMachine: libvirtSvc,
 			Network:        nS.(*network.Service),
 			QuitChan:       sigChan,
 		}

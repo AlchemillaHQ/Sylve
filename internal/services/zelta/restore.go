@@ -379,6 +379,7 @@ func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err err
 		event.Status = "success"
 	}
 	s.DB.Save(event)
+	s.emitLeftPanelRefresh(fmt.Sprintf("restore_event_finalized_%d", event.ID))
 }
 
 // registerRestoreJob registers the restore queue handler with goqite.

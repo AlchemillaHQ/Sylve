@@ -24,7 +24,7 @@
 
 	let { data }: { data: Data } = $props();
 
-    // svelte-ignore state_referenced_locally
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.vm.rid}`,
 		async (key) => {

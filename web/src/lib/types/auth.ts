@@ -42,9 +42,12 @@ export const GroupSchema = z.object({
 });
 
 export const BasicSettingsSchema = z.object({
-    pools: z.array(z.string()).nullable().default([]),
-    services: z.array(z.enum(["dhcp-server", "samba-server"])).nullable().default([]),
-    initialized: z.boolean()
+	pools: z.array(z.string()).nullable().default([]),
+	services: z
+		.array(z.enum(['dhcp-server', 'samba-server']))
+		.nullable()
+		.default([]),
+	initialized: z.boolean()
 });
 
 export type JWTClaims = z.infer<typeof JWTClaimsSchema>;

@@ -65,7 +65,6 @@ export function collectIds(nodes: TreeNode[]): string[] {
 	return ids;
 }
 
-
 export function saveOpenIds(ids: Set<string>) {
 	localStorage.setItem('clusterIds', JSON.stringify(Array.from(ids)));
 }

@@ -101,7 +101,7 @@
 	});
 
 	let editOptions = {
-		name: selectedNetwork ? selectedNetwork.name ?? '' : '',
+		name: selectedNetwork ? (selectedNetwork.name ?? '') : '',
 		ipv4:
 			selectedNetwork && !selectedNetwork.dhcp && selectedNetwork.ipv4Id
 				? selectedNetwork.ipv4Id.toString()

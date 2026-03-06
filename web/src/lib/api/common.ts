@@ -20,127 +20,127 @@ export let ENDPOINT: string;
 export let API_ENDPOINT: string;
 
 if (browser) {
-    ENDPOINT = window.location.origin;
-    API_ENDPOINT = `${window.location.origin}/api`;
+	ENDPOINT = window.location.origin;
+	API_ENDPOINT = `${window.location.origin}/api`;
 } else {
-    ENDPOINT = '';
-    API_ENDPOINT = '';
+	ENDPOINT = '';
+	API_ENDPOINT = '';
 }
 
 export const api: AxiosInstance = axios.create({
-    baseURL: API_ENDPOINT
+	baseURL: API_ENDPOINT
 });
 
 api.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-        if (browser) {
-            if (storage.token) {
-                config.headers['Authorization'] = `Bearer ${storage.token}`;
-            }
+	(config: InternalAxiosRequestConfig) => {
+		if (browser) {
+			if (storage.token) {
+				config.headers['Authorization'] = `Bearer ${storage.token}`;
+			}
 
-            if (storage.clusterToken) {
-                config.headers['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
-            }
+			if (storage.clusterToken) {
+				config.headers['X-Cluster-Token'] = `Bearer ${storage.clusterToken}`;
+			}
 
-            const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
-            const pathBasedHost =
-                routeHost !== '' && routeHost !== 'datacenter' && routeHost !== 'login' ? routeHost : '';
-            const fallbackHost = pathBasedHost || storage.hostname || '';
-            const explicitHost =
-                typeof config.headers['X-Current-Hostname'] === 'string'
-                    ? config.headers['X-Current-Hostname']
-                    : '';
+			const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
+			const pathBasedHost =
+				routeHost !== '' && routeHost !== 'datacenter' && routeHost !== 'login' ? routeHost : '';
+			const fallbackHost = pathBasedHost || storage.hostname || '';
+			const explicitHost =
+				typeof config.headers['X-Current-Hostname'] === 'string'
+					? config.headers['X-Current-Hostname']
+					: '';
 
-            if (explicitHost) {
-                config.headers['X-Current-Hostname'] = explicitHost;
-            } else if (
-                (config.url === '/vm' || config.url === '/jail') &&
-                config.method?.toLowerCase() === 'post'
-            ) {
-                try {
-                    if (config.data?.node) {
-                        config.headers['X-Current-Hostname'] = `${config.data.node}`;
-                    } else if (fallbackHost) {
-                        config.headers['X-Current-Hostname'] = `${fallbackHost}`;
-                    }
-                } catch (e) {
-                    adze.withEmoji.error('Error parsing request data:', e);
-                    if (fallbackHost) {
-                        config.headers['X-Current-Hostname'] = `${fallbackHost}`;
-                    }
-                }
-            } else if (fallbackHost) {
-                config.headers['X-Current-Hostname'] = `${fallbackHost}`;
-            }
-        }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
-    }
+			if (explicitHost) {
+				config.headers['X-Current-Hostname'] = explicitHost;
+			} else if (
+				(config.url === '/vm' || config.url === '/jail') &&
+				config.method?.toLowerCase() === 'post'
+			) {
+				try {
+					if (config.data?.node) {
+						config.headers['X-Current-Hostname'] = `${config.data.node}`;
+					} else if (fallbackHost) {
+						config.headers['X-Current-Hostname'] = `${fallbackHost}`;
+					}
+				} catch (e) {
+					adze.withEmoji.error('Error parsing request data:', e);
+					if (fallbackHost) {
+						config.headers['X-Current-Hostname'] = `${fallbackHost}`;
+					}
+				}
+			} else if (fallbackHost) {
+				config.headers['X-Current-Hostname'] = `${fallbackHost}`;
+			}
+		}
+		return config;
+	},
+	(error) => {
+		return Promise.reject(error);
+	}
 );
 
 api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        if (error.response?.status === 401 && browser) {
-            toast.error('Session expired, please login again', {
-                position: 'bottom-center'
-            });
-            goto('/login');
-            return;
-        }
-        handleAxiosError(error);
-        return Promise.reject(error);
-    }
+	(response) => response,
+	async (error) => {
+		if (error.response?.status === 401 && browser) {
+			toast.error('Session expired, please login again', {
+				position: 'bottom-center'
+			});
+			goto('/login');
+			return;
+		}
+		handleAxiosError(error);
+		return Promise.reject(error);
+	}
 );
 
 export function handleAxiosError(error: unknown): void {
-    if (!browser) return;
+	if (!browser) return;
 
-    if (!axios.isAxiosError(error)) {
-        toast.error('An unexpected error occurred', {
-            position: 'bottom-center'
-        });
-        adze.withEmoji.error('An unexpected error occurred');
-        return;
-    }
+	if (!axios.isAxiosError(error)) {
+		toast.error('An unexpected error occurred', {
+			position: 'bottom-center'
+		});
+		adze.withEmoji.error('An unexpected error occurred');
+		return;
+	}
 
-    const axiosError = error as AxiosError<{ message?: string }>;
-    if (axiosError.response) {
-        const errorMessage =
-            axiosError.response.data?.message || axiosError.message || 'An error occurred';
-        adze.withEmoji.error(
-            JSON.stringify({
-                status: axiosError.response.status,
-                data: axiosError.response.data,
-                message: errorMessage
-            })
-        );
-    } else if (axiosError.request) {
-        adze.withEmoji.error('No response:', axiosError.request);
-    }
+	const axiosError = error as AxiosError<{ message?: string }>;
+	if (axiosError.response) {
+		const errorMessage =
+			axiosError.response.data?.message || axiosError.message || 'An error occurred';
+		adze.withEmoji.error(
+			JSON.stringify({
+				status: axiosError.response.status,
+				data: axiosError.response.data,
+				message: errorMessage
+			})
+		);
+	} else if (axiosError.request) {
+		adze.withEmoji.error('No response:', axiosError.request);
+	}
 }
 
 export function handleAPIResponse(
-    response: APIResponse,
-    messages: {
-        success?: string;
-        error?: string;
-        info?: string;
-        warn?: string;
-    }
+	response: APIResponse,
+	messages: {
+		success?: string;
+		error?: string;
+		info?: string;
+		warn?: string;
+	}
 ): void {
-    if (response.status === 'error') {
-        adze.withEmoji.error(response);
-        toast.error(messages.error || 'Operation failed', {
-            position: 'bottom-center'
-        });
-    }
+	if (response.status === 'error') {
+		adze.withEmoji.error(response);
+		toast.error(messages.error || 'Operation failed', {
+			position: 'bottom-center'
+		});
+	}
 
-    if (response.status === 'success') {
-        toast.success(messages.success || 'Operation successful', {
-            position: 'bottom-center'
-        });
-    }
+	if (response.status === 'success') {
+		toast.success(messages.success || 'Operation successful', {
+			position: 'bottom-center'
+		});
+	}
 }

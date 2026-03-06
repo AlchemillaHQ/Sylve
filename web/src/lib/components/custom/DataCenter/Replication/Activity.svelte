@@ -30,7 +30,9 @@
 					.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
 					.map((event) => ({
 						...event,
-						policyName: event.policyId ? (policyNameById[event.policyId] ?? `Policy ${event.policyId}`) : '-'
+						policyName: event.policyId
+							? (policyNameById[event.policyId] ?? `Policy ${event.policyId}`)
+							: '-'
 					}));
 
 				return {
@@ -129,7 +131,9 @@
 				{#each runningReplicationEvents as event (event.id)}
 					<div class="rounded-md border p-3">
 						<div class="flex items-center justify-between gap-2">
-							<div class="text-sm font-medium">{eventTypeLabel(event.eventType)} - {event.policyName}</div>
+							<div class="text-sm font-medium">
+								{eventTypeLabel(event.eventType)} - {event.policyName}
+							</div>
 							<div class="text-xs text-yellow-500">Running</div>
 						</div>
 						<div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -156,8 +160,12 @@
 		{/if}
 
 		<Dialog.Footer>
-			<Button variant="outline" class="h-7" onclick={() => replicationActivity.refetch()}>Refresh</Button>
-			<Button variant="outline" class="h-7" onclick={() => (replicationModalOpen = false)}>Close</Button>
+			<Button variant="outline" class="h-7" onclick={() => replicationActivity.refetch()}
+				>Refresh</Button
+			>
+			<Button variant="outline" class="h-7" onclick={() => (replicationModalOpen = false)}
+				>Close</Button
+			>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
