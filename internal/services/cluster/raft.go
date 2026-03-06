@@ -181,7 +181,7 @@ func (s *Service) RemovePeer(id raft.ServerID) error {
 		return fmt.Errorf("not_leader")
 	}
 
-	fut := s.Raft.RemoveServer(id, 0, 8000)
+	fut := s.Raft.RemoveServer(id, 0, 8*time.Second)
 
 	if fut.Error() != nil {
 		return fmt.Errorf("failed_to_remove_peer: %v", fut.Error())
