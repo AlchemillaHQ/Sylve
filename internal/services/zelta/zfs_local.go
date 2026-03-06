@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) getLocalDataset(ctx context.Context, name string) (*gzfs.Dataset, error) {
@@ -93,6 +94,67 @@ func (s *Service) destroyLocalDatasetWithRetry(
 		}
 
 		return nil
+	}
+
+	return lastErr
+}
+
+func (s *Service) destroyLocalDatasetIncludingDependentsWithRetry(
+	ctx context.Context,
+	name string,
+	attempts int,
+	delay time.Duration,
+) error {
+	name = normalizeDatasetPath(name)
+	if name == "" {
+		return nil
+	}
+	if attempts < 1 {
+		attempts = 1
+	}
+	if delay <= 0 {
+		delay = 500 * time.Millisecond
+	}
+
+	err := s.destroyLocalDatasetWithRetry(ctx, name, true, attempts, delay)
+	if err == nil || isGZFSDatasetNotFoundError(err) {
+		return nil
+	}
+	if !isLocalDatasetHasDependentClonesError(err) {
+		return err
+	}
+
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		output, destroyErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-R", "-f", name)
+		if destroyErr == nil {
+			return nil
+		}
+
+		combined := strings.TrimSpace(output + " " + destroyErr.Error())
+		if isGZFSDatasetNotFoundError(fmt.Errorf("%s", combined)) {
+			return nil
+		}
+
+		lastErr = fmt.Errorf(
+			"dataset_destroy_with_dependents_failed: zfs destroy -R -f %s failed: %w (stderr: %s)",
+			name,
+			destroyErr,
+			strings.TrimSpace(output),
+		)
+
+		if i == attempts-1 {
+			break
+		}
+		if !isLocalDatasetBusyError(fmt.Errorf("%s", combined)) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("destroy_dataset_with_dependents_retry_canceled: %w", ctx.Err())
+		case <-time.After(delay):
+		}
 	}
 
 	return lastErr
@@ -366,4 +428,14 @@ func isLocalDatasetBusyError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "dataset is busy") ||
 		strings.Contains(lower, "resource busy")
+}
+
+func isLocalDatasetHasDependentClonesError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "dependent clones") ||
+		strings.Contains(lower, "filesystem has dependent clones")
 }

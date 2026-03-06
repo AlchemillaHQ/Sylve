@@ -2626,7 +2626,7 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(ctx context.Cont
 	}
 
 	for _, dataset := range datasets {
-		if err := s.destroyLocalDatasetWithRetry(ctx, dataset, true, 20, 500*time.Millisecond); err != nil {
+		if err := s.destroyLocalDatasetIncludingDependentsWithRetry(ctx, dataset, 20, 500*time.Millisecond); err != nil {
 			cleanupErrs = append(cleanupErrs, fmt.Sprintf("destroy_local_replica_dataset_%s_failed: %v", dataset, err))
 			continue
 		}
