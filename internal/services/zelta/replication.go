@@ -791,6 +791,12 @@ func (s *Service) fenceReplicationGuestDatasets(
 		if ds == nil {
 			continue
 		}
+
+		readonlyProp, propErr := ds.GetProperty(ctx, "readonly")
+		if propErr == nil && strings.EqualFold(strings.TrimSpace(readonlyProp.Value), "on") {
+			// Already fenced; avoid repeated noisy logs every self-fence tick.
+			continue
+		}
 		if setErr := ds.SetProperties(ctx, "readonly", "on"); setErr != nil {
 			fenceErr = appendReplicationFenceDatasetError(fenceErr, dataset, setErr)
 			continue
