@@ -18,6 +18,7 @@
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { resource, watch } from 'runed';
+	import { onMount } from 'svelte';
 
 	interface Data {
 		nodes: ClusterNode[];
@@ -28,6 +29,9 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	let lazyArc = $state<Promise<typeof import('$lib/components/custom/Charts/Arc.svelte')> | null>(
+		null
+	);
 
 	// svelte-ignore state_referenced_locally
 	let nodes = resource(
@@ -167,6 +171,10 @@
 			clusterDetails.refetch();
 		}
 	);
+
+	onMount(() => {
+		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');
+	});
 </script>
 
 <div class="flex h-full w-full flex-col space-y-4">
@@ -237,41 +245,53 @@
 				</Card.Title>
 			</Card.Header>
 			<Card.Content>
-				<div class="flex items-center justify-center">
-					{#if clustered}
-						<div class="flex flex-1 justify-center">
-							<Arc value={total.cpu.usage} title="CPU" subtitle="{total.cpu.total} vCPUs" />
+				{#if lazyArc}
+					{#await lazyArc then { default: Arc }}
+						<div class="flex items-center justify-center">
+							{#if clustered}
+								<div class="flex flex-1 justify-center">
+									<Arc value={total.cpu.usage} title="CPU" subtitle="{total.cpu.total} vCPUs" />
+								</div>
+								<div class="flex flex-1 justify-center">
+									<Arc
+										value={total.ram.usage}
+										title="RAM"
+										subtitle={humanFormat(total.ram.total)}
+									/>
+								</div>
+								<div class="flex flex-1 justify-center">
+									<Arc
+										value={total.disk.usage}
+										subtitle={humanFormat(total.disk.total)}
+										title="Disk"
+									/>
+								</div>
+							{:else}
+								<div class="flex flex-1 justify-center">
+									<Arc
+										value={cpuInfo.current?.usage}
+										title="CPU"
+										subtitle="{cpuInfo.current?.logicalCores} vCPUs"
+									/>
+								</div>
+								<div class="flex flex-1 justify-center">
+									<Arc
+										value={ramInfo.current?.usedPercent}
+										title="RAM"
+										subtitle={humanFormat(ramInfo.current?.total || 0)}
+									/>
+								</div>
+								<div class="flex flex-1 justify-center">
+									<Arc
+										value={diskInfo.current?.usage || 0}
+										title="Disk"
+										subtitle={humanFormat(diskInfo.current?.total || 0)}
+									/>
+								</div>
+							{/if}
 						</div>
-						<div class="flex flex-1 justify-center">
-							<Arc value={total.ram.usage} title="RAM" subtitle={humanFormat(total.ram.total)} />
-						</div>
-						<div class="flex flex-1 justify-center">
-							<Arc value={total.disk.usage} subtitle={humanFormat(total.disk.total)} title="Disk" />
-						</div>
-					{:else}
-						<div class="flex flex-1 justify-center">
-							<Arc
-								value={cpuInfo.current?.usage}
-								title="CPU"
-								subtitle="{cpuInfo.current?.logicalCores} vCPUs"
-							/>
-						</div>
-						<div class="flex flex-1 justify-center">
-							<Arc
-								value={ramInfo.current?.usedPercent}
-								title="RAM"
-								subtitle={humanFormat(ramInfo.current?.total || 0)}
-							/>
-						</div>
-						<div class="flex flex-1 justify-center">
-							<Arc
-								value={diskInfo.current?.usage || 0}
-								title="Disk"
-								subtitle={humanFormat(diskInfo.current?.total || 0)}
-							/>
-						</div>
-					{/if}
-				</div>
+					{/await}
+				{/if}
 			</Card.Content>
 		</Card.Root>
 	</div>
