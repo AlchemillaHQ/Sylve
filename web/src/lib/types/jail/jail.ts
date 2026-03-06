@@ -57,7 +57,7 @@ export const SimpleJailSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	ctId: z.number().int(),
-	state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN']).optional()
+	state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN', '']).optional()
 });
 
 export const NetworkSchema = z.object({

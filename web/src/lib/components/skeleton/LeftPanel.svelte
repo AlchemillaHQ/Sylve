@@ -107,13 +107,15 @@
 				href: `/${node}/vm/${vm.rid}`,
 				state: vm.state === DomainState.DomainRunning ? 'active' : 'inactive'
 			})) || []),
-			...(simpleJails.current.map((jail) => ({
-				id: jail.ctId,
-				label: `${jail.name} (${jail.ctId})`,
-				icon: 'hugeicons--prison',
-				href: `/${node}/jail/${jail.ctId}`,
-				state: jail.state === 'ACTIVE' ? 'active' : 'inactive'
-			})) || [])
+			...(simpleJails.current
+				.filter((jail) => jail.state?.trim() !== '')
+				.map((jail) => ({
+					id: jail.ctId,
+					label: `${jail.name} (${jail.ctId})`,
+					icon: 'hugeicons--prison',
+					href: `/${node}/jail/${jail.ctId}`,
+					state: jail.state === 'ACTIVE' ? 'active' : 'inactive'
+				})) || [])
 		].sort((a, b) => a.id - b.id)
 	) as {
 		id: number;

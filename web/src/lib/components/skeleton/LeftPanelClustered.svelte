@@ -57,14 +57,16 @@
 			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
-					...(n.jails ?? []).map((j) => ({
-						id: `jail-${j.ctId}`,
-						sortId: j.ctId,
-						label: `${j.name} (${j.ctId})`,
-						icon: 'hugeicons--prison',
-						href: `/${nodeLabel}/jail/${j.ctId}`,
-						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
-					})),
+					...(n.jails ?? [])
+						.filter((jail) => jail.state?.trim() !== '')
+						.map((j) => ({
+							id: `jail-${j.ctId}`,
+							sortId: j.ctId,
+							label: `${j.name} (${j.ctId})`,
+							icon: 'hugeicons--prison',
+							href: `/${nodeLabel}/jail/${j.ctId}`,
+							state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+						})),
 					...(n.vms ?? []).map((vm) => ({
 						id: `vm-${vm.rid}`,
 						sortId: vm.rid,
