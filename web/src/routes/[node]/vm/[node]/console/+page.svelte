@@ -5,7 +5,7 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import {
@@ -17,7 +17,6 @@
 		useResizeObserver
 	} from 'runed';
 	import { mode } from 'mode-watcher';
-	import adze from 'adze';
 	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -291,7 +290,7 @@
 
 		ws.onopen = async () => {
 			connected = true;
-			adze.info(`Serial console connected for VM ${data.rid}`);
+			console.log(`Serial console connected for VM ${data.rid}`);
 			if (lastWidth && lastHeight) {
 				resizeTerminal(lastWidth, lastHeight);
 			} else if (terminalContainer) {

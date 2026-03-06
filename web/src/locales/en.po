@@ -3753,10 +3753,8 @@ msgstr "AShift"
 msgid "Select ASHIFT"
 msgstr "Select ASHIFT"
 
-#. placeholder {0}: data.ctId
-#: src/routes/[node]/jail/[node]/console/+page.svelte
-msgid "Jail console connected for jail {0}"
-msgstr "Jail console connected for jail {0}"
+#~ msgid "Jail console connected for jail {0}"
+#~ msgstr "Jail console connected for jail {0}"
 
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
@@ -7309,10 +7307,8 @@ msgstr "<0/> TPM"
 msgid "No Password"
 msgstr "No Password"
 
-#. placeholder {0}: data.rid
-#: src/routes/[node]/vm/[node]/console/+page.svelte
-msgid "Serial console connected for VM {0}"
-msgstr "Serial console connected for VM {0}"
+#~ msgid "Serial console connected for VM {0}"
+#~ msgstr "Serial console connected for VM {0}"
 
 #~ msgid "Shell"
 #~ msgstr "Shell"
@@ -7347,9 +7343,8 @@ msgstr "Host Console Settings"
 #~ msgid "Console Settings"
 #~ msgstr "Console Settings"
 
-#: src/routes/[node]/terminal/+page.svelte
-msgid "Host console connected"
-msgstr "Host console connected"
+#~ msgid "Host console connected"
+#~ msgstr "Host console connected"
 
 #: src/routes/[node]/terminal/+page.svelte
 msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
@@ -7479,15 +7474,14 @@ msgstr "Failed to modify QEMU Guest Agent setting"
 msgid "Modified QEMU Guest Agent setting"
 msgstr "Modified QEMU Guest Agent setting"
 
-#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
-msgid ""
-"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
-"This improves guest integration for features like shutdown, status, and filesystem operations,\n"
-"when the guest agent is installed inside the VM."
-msgstr ""
-"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
-"This improves guest integration for features like shutdown, status, and filesystem operations,\n"
-"when the guest agent is installed inside the VM."
+#~ msgid ""
+#~ "Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
+#~ "This improves guest integration for features like shutdown, status, and filesystem operations,\n"
+#~ "when the guest agent is installed inside the VM."
+#~ msgstr ""
+#~ "Enable this option to provide a QEMU Guest Agent channel via a virtio-console device.\n"
+#~ "This improves guest integration for features like shutdown, status, and filesystem operations,\n"
+#~ "when the guest agent is installed inside the VM."
 
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 msgid "Enable QEMU Guest Agent"
@@ -9687,3 +9681,13 @@ msgstr "Triggering"
 
 #~ msgid "Trigger Failover 1"
 #~ msgstr "Trigger Failover 1"
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid ""
+"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device. This\n"
+"improves guest integration for features like shutdown, status, and filesystem operations, when\n"
+"the guest agent is installed inside the VM."
+msgstr ""
+"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device. This\n"
+"improves guest integration for features like shutdown, status, and filesystem operations, when\n"
+"the guest agent is installed inside the VM."

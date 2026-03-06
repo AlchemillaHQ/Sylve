@@ -223,12 +223,11 @@
 					</div>
 				</div>
 			</Card.Content>
-			<Card.Footer></Card.Footer>
 		</Card.Root>
 	</div>
 
 	<div class="px-4">
-		<Card.Root class="gap-2">
+		<Card.Root class="gap-2 pb-0">
 			<Card.Header>
 				<Card.Title>
 					<div class="flex items-center gap-2">
@@ -274,7 +273,6 @@
 					{/if}
 				</div>
 			</Card.Content>
-			<Card.Footer></Card.Footer>
 		</Card.Root>
 	</div>
 
@@ -320,7 +318,6 @@
 						</Table.Body>
 					</Table.Root>
 				</Card.Content>
-				<Card.Footer></Card.Footer>
 			</Card.Root>
 		</div>
 	{/if}

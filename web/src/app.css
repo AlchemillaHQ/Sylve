@@ -4,9 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "@iconify/tailwind4";
-@source '../node_modules/layerchart/dist';
-@import '@layerstack/tailwind/core.css';
-/* @import '@layerstack/tailwind/themes/basic.css'; */
 
 :root {
 	--radius: 0.3rem;

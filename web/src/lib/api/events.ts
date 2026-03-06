@@ -10,7 +10,19 @@
 
 import { storage } from '$lib';
 import { reload } from '$lib/stores/api.svelte';
-import axios from 'axios';
+
+async function parseJSONResponse(response: Response): Promise<any> {
+	const contentType = response.headers.get('content-type') || '';
+	if (!contentType.includes('application/json') && !contentType.includes('+json')) {
+		return null;
+	}
+
+	try {
+		return await response.json();
+	} catch (_e: unknown) {
+		return null;
+	}
+}
 
 type SSETokenResponse = {
 	token: string;
@@ -55,14 +67,16 @@ async function fetchSSEToken(): Promise<string | null> {
 	}
 
 	try {
-		const response = await axios.get('/api/auth/sse-token', {
+		const response = await fetch('/api/auth/sse-token', {
 			headers: {
 				Authorization: `Bearer ${storage.token}`
 			}
 		});
 
-		if (response.status < 400 && response.data?.data) {
-			const data = response.data.data as SSETokenResponse;
+		const responseData = await parseJSONResponse(response);
+
+		if (response.status < 400 && responseData?.data) {
+			const data = responseData.data as SSETokenResponse;
 			if (data.token) {
 				return data.token;
 			}

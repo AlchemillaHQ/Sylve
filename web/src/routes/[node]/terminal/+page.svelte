@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import { sha256, toHex } from '$lib/utils/string';
-	import adze from 'adze';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount, tick } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
@@ -134,7 +133,7 @@
 		ws.binaryType = 'arraybuffer';
 
 		ws.onopen = () => {
-			adze.info(`Host console connected`);
+			console.log(`Host console connected`);
 			if (lastWidth && lastHeight) resizeTerminal(lastWidth, lastHeight);
 		};
 

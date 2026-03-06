@@ -5,7 +5,6 @@
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
-	import adze from 'adze';
 	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
@@ -233,7 +232,7 @@
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
-			adze.info(`Jail console connected for jail ${data.ctId}`);
+			console.log(`Jail console connected for jail ${data.ctId}`);
 			if (lastWidth && lastHeight) {
 				resizeTerminal(lastWidth, lastHeight);
 			} else if (terminalContainer) {
