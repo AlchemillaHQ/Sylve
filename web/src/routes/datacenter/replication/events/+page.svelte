@@ -11,7 +11,11 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { ReplicationEvent, ReplicationEventProgress, ReplicationPolicy } from '$lib/types/cluster/replication';
+	import type {
+		ReplicationEvent,
+		ReplicationEventProgress,
+		ReplicationPolicy
+	} from '$lib/types/cluster/replication';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { updateCache } from '$lib/utils/http';
 	import { humanFormatBytes } from '$lib/utils/string';
@@ -63,7 +67,10 @@
 		() => `replication-events-${filterPolicyId || 'all'}`,
 		async () => {
 			const policyId = Number.parseInt(filterPolicyId, 10);
-			const res = await listReplicationEvents(200, Number.isFinite(policyId) ? policyId : undefined);
+			const res = await listReplicationEvents(
+				200,
+				Number.isFinite(policyId) ? policyId : undefined
+			);
 			updateCache('replication-events', res);
 			return res;
 		},
@@ -200,7 +207,11 @@
 			case 'failed':
 				return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
 			default:
-				return { icon: 'mdi:help-circle-outline', label: status || '-', className: 'text-muted-foreground' };
+				return {
+					icon: 'mdi:help-circle-outline',
+					label: status || '-',
+					className: 'text-muted-foreground'
+				};
 		}
 	}
 
@@ -267,7 +278,8 @@
 			minWidth: 115,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
-				const icon = row.guestType === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline';
+				const icon =
+					row.guestType === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline';
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
@@ -343,7 +355,13 @@
 			}}
 		/>
 
-		<Button size="sm" variant="outline" class="h-6" onclick={openProgress} disabled={selectedEventId <= 0}>
+		<Button
+			size="sm"
+			variant="outline"
+			class="h-6"
+			onclick={openProgress}
+			disabled={selectedEventId <= 0}
+		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--progress-clock] mr-1 h-4 w-4"></span>
 				<span>Progress</span>

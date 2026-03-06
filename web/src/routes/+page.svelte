@@ -238,4 +238,5 @@
 <span class="icon-[carbon--ibm-data-replication]"></span>
 <span class="icon-[mdi--clipboard-list-outline]"></span>
 <span class="icon-[mdi--help-circle-outline]"></span>
+<span class="icon-[mdi--check-decagram]"></span>
 -->

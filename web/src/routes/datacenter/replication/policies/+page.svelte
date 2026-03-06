@@ -524,6 +524,8 @@
 		failoverModalOpen = false;
 	}
 
+	let failoverLoading = $state(false);
+
 	async function failoverNow() {
 		if (!selectedPolicyId) return;
 		if (failoverModal.mode === 'force' && !failoverModal.confirmDataLoss) {
@@ -531,12 +533,17 @@
 			return;
 		}
 
+		failoverLoading = true;
+
 		const result = await failoverReplicationPolicy(selectedPolicyId, {
 			targetNodeId: failoverModal.targetNodeId.trim() || undefined,
 			mode: failoverModal.mode,
 			confirmDataLoss: failoverModal.mode === 'force' ? true : undefined,
 			movePinnedSource: failoverModal.movePinnedSource
 		});
+
+		failoverLoading = false;
+
 		if (result.status === 'success') {
 			toast.success('Failover requested', { position: 'bottom-center' });
 			failoverModalOpen = false;
@@ -744,10 +751,7 @@
 						{ value: 'auto_force', label: 'Auto Force' }
 					]}
 					onChange={(value) => {
-						policyModal.failoverMode = (value || 'manual') as
-							| 'manual'
-							| 'auto_safe'
-							| 'auto_force';
+						policyModal.failoverMode = (value || 'manual') as 'manual' | 'auto_safe' | 'auto_force';
 					}}
 				/>
 			</div>
@@ -884,7 +888,16 @@
 
 		<Dialog.Footer>
 			<Button variant="outline" onclick={closeFailoverModal}>Cancel</Button>
-			<Button onclick={failoverNow}>Trigger</Button>
+			<Button onclick={failoverNow} disabled={failoverLoading}>
+				{#if failoverLoading}
+					<div class="flex items-center gap-1">
+						<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
+						<span>Triggering</span>
+					</div>
+				{:else}
+					<span>Trigger</span>
+				{/if}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

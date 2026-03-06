@@ -91,6 +91,7 @@ msgstr "Switches"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Manual"
 msgstr "Manual"
 
@@ -454,6 +455,7 @@ msgstr "Minimize"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
@@ -581,6 +583,8 @@ msgstr "Minimize"
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Close"
@@ -1664,6 +1668,7 @@ msgstr "This action cannot be undone. This will permanently delete"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
 msgstr "Cancel"
 
@@ -1964,6 +1969,7 @@ msgid "Metric"
 msgstr "Metric"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Active"
 msgstr "Active"
 
@@ -2293,7 +2299,9 @@ msgid "Backups"
 msgstr "Backups"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
 msgstr "Path"
 
@@ -3929,6 +3937,7 @@ msgstr "Stop"
 msgid "Start"
 msgstr "Start"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -6505,6 +6514,7 @@ msgstr "Volume size is not a multiple of block size, click on this if you'd like
 msgid "Unknown VM"
 msgstr "Unknown VM"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -7594,7 +7604,6 @@ msgstr "Destination Dataset"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Completed"
 msgstr "Completed"
 
@@ -7704,6 +7713,8 @@ msgstr "Snapshot (optional)"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Mode"
 msgstr "Mode"
 
@@ -7717,12 +7728,12 @@ msgstr "Source"
 #~ msgstr "Destination"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Schedule"
 msgstr "Schedule"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Last Status"
-msgstr "Last Status"
+#~ msgid "Last Status"
+#~ msgstr "Last Status"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Backup job updated"
@@ -7820,6 +7831,7 @@ msgstr "Run On Node"
 #~ msgid "Endpoint is required"
 #~ msgstr "Endpoint is required"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -9187,6 +9199,8 @@ msgstr "DC Backup Job - Run"
 msgid "Jail - Update Description"
 msgstr "Jail - Update Description"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Replication"
 msgstr "Replication"
@@ -9200,47 +9214,40 @@ msgstr "Policies"
 msgid "Policy"
 msgstr "Policy"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload"
 msgstr "Workload"
 
-#: src/routes/datacenter/replication/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Source Node"
 msgstr "Source Node"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Source Mode"
 msgstr "Source Mode"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failback"
 msgstr "Failback"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Cron"
-msgstr "Cron"
+#~ msgid "Cron"
+#~ msgstr "Cron"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Next Run"
 msgstr "Next Run"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pinned Primary"
 msgstr "Pinned Primary"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Follow Active"
 msgstr "Follow Active"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Auto"
 msgstr "Auto"
@@ -9345,15 +9352,18 @@ msgstr "Output copied to clipboard"
 msgid "Failed to copy output"
 msgstr "Failed to copy output"
 
-#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Target Node"
 msgstr "Target Node"
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Message"
 msgstr "Message"
 
 #. placeholder {0}: event.policyId
+#. placeholder {0}: event.policyId
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Policy {0}"
 msgstr "Policy {0}"
@@ -9560,3 +9570,120 @@ msgstr "All Nodes"
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload Node"
 msgstr "Workload Node"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto-select by policy target weights"
+msgstr "Auto-select by policy target weights"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Active Node"
+msgstr "Active Node"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Pinned"
+msgstr "Pinned"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Follow"
+msgstr "Follow"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto Force"
+msgstr "Auto Force"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto Safe"
+msgstr "Auto Safe"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failback Auto"
+msgstr "Failback Auto"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failback Manual"
+msgstr "Failback Manual"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force failover requires data-loss confirmation"
+msgstr "Force failover requires data-loss confirmation"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failover requested"
+msgstr "Failover requested"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failed to trigger failover"
+msgstr "Failed to trigger failover"
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failover"
+msgstr "Failover"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Trigger Failover"
+msgstr "Trigger Failover"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe (demote + catch-up)"
+msgstr "Safe (demote + catch-up)"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force (recover from hard-down owner)"
+msgstr "Force (recover from hard-down owner)"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move pinned source to target (avoid immediate auto-failback bounce)"
+msgstr "Move pinned source to target (avoid immediate auto-failback bounce)"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "I understand force failover can lose recent writes from the old owner"
+msgstr "I understand force failover can lose recent writes from the old owner"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Trigger"
+msgstr "Trigger"
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Demoting"
+msgstr "Demoting"
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Promoting"
+msgstr "Promoting"
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Finished"
+msgstr "Finished"
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Failed to load replication activity"
+msgstr "Failed to load replication activity"
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Event"
+msgstr "Event"
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Replication Activity"
+msgstr "Replication Activity"
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "No failover or replication task is running right now."
+msgstr "No failover or replication task is running right now."
+
+#. placeholder {0}: convertDbTime(replicationActivity.current.updatedAt)
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Last updated: {0}"
+msgstr "Last updated: {0}"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Triggering"
+msgstr "Triggering"
+
+#~ msgid "Trigger Failover 1"
+#~ msgstr "Trigger Failover 1"
