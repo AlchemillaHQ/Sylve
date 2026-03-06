@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -30,7 +31,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const replicationJobQueueName = "zelta-replication-run"
+const (
+	replicationJobQueueName         = "zelta-replication-run"
+	replicationFailoverJobQueueName = "zelta-replication-failover"
+)
 
 const (
 	defaultReplicationPruneKeepLast  = 64
@@ -47,10 +51,21 @@ const (
 
 	replicationFailoverRequestSafe  = "safe"
 	replicationFailoverRequestForce = "force"
+
+	replicationControlDefaultTimeout = 30 * time.Second
+	replicationControlCatchupTimeout = 2 * time.Hour
 )
 
 type replicationJobPayload struct {
 	PolicyID uint `json:"policy_id"`
+}
+
+type replicationFailoverJobPayload struct {
+	PolicyID         uint   `json:"policy_id"`
+	TargetNodeID     string `json:"target_node_id"`
+	Mode             string `json:"mode"`
+	ConfirmDataLoss  bool   `json:"confirm_data_loss"`
+	MovePinnedSource bool   `json:"move_pinned_source"`
 }
 
 type ReplicationEventProgress struct {
@@ -88,6 +103,41 @@ func (s *Service) registerReplicationJob() {
 			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
 			return err
 		}
+		return nil
+	})
+}
+
+func (s *Service) registerReplicationFailoverJob() {
+	db.QueueRegisterJSON(replicationFailoverJobQueueName, func(ctx context.Context, payload replicationFailoverJobPayload) error {
+		if payload.PolicyID == 0 {
+			return fmt.Errorf("invalid_policy_id_in_failover_queue_payload")
+		}
+
+		err := s.RequestReplicationPolicyFailover(
+			ctx,
+			payload.PolicyID,
+			strings.TrimSpace(payload.TargetNodeID),
+			payload.Mode,
+			payload.ConfirmDataLoss,
+			payload.MovePinnedSource,
+		)
+		if err != nil {
+			if isReplicationPolicyTransitionRunningError(err) {
+				logger.L.Debug().
+					Uint("policy_id", payload.PolicyID).
+					Str("target_node_id", strings.TrimSpace(payload.TargetNodeID)).
+					Msg("queued_failover_transition_already_running")
+				return nil
+			}
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", payload.PolicyID).
+				Str("target_node_id", strings.TrimSpace(payload.TargetNodeID)).
+				Str("mode", strings.TrimSpace(payload.Mode)).
+				Msg("queued_failover_policy_failed")
+			return err
+		}
+
 		return nil
 	})
 }
@@ -893,7 +943,36 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 				_ = s.AppendReplicationEventOutput(event.ID, out)
 			}
 			if err != nil {
-				if isReplicationTargetModifiedError(err) {
+				if isReplicationResumeStateError(err) {
+					_ = s.AppendReplicationEventOutput(event.ID, "target_resumable_receive_state_detected_attempting_abort")
+					abortOut, abortErr := s.abortTargetResumableReceiveState(ctx, targetSpec, destSuffix)
+					if strings.TrimSpace(abortOut) != "" {
+						_ = s.AppendReplicationEventOutput(event.ID, abortOut)
+					}
+					if abortErr != nil {
+						runErr = fmt.Errorf(
+							"replication_to_target_%s_failed_after_resume_abort_failed: %w (original: %v)",
+							targetNodeID,
+							abortErr,
+							err,
+						)
+						break
+					}
+
+					retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
+					if strings.TrimSpace(retryOut) != "" {
+						_ = s.AppendReplicationEventOutput(event.ID, retryOut)
+					}
+					if retryErr != nil {
+						runErr = fmt.Errorf(
+							"replication_to_target_%s_failed_after_resume_abort_retry: %w (original: %v)",
+							targetNodeID,
+							retryErr,
+							err,
+						)
+						break
+					}
+				} else if isReplicationTargetModifiedError(err) {
 					_ = s.AppendReplicationEventOutput(event.ID, "target_dataset_diverged_attempting_zelta_rotate")
 					rotateOut, rotateErr := s.RotateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
 					if strings.TrimSpace(rotateOut) != "" {
@@ -1228,6 +1307,47 @@ func isReplicationTargetModifiedError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "destination") &&
 		strings.Contains(lower, "has been modified")
+}
+
+func isReplicationResumeStateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "cannot receive resume stream") &&
+		strings.Contains(lower, "partially-complete state")
+}
+
+func isReplicationResumeAbortNoopError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "no such process") ||
+		strings.Contains(lower, "does not exist") ||
+		strings.Contains(lower, "no resumable receive state")
+}
+
+func (s *Service) abortTargetResumableReceiveState(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	destSuffix string,
+) (string, error) {
+	if target == nil {
+		return "", fmt.Errorf("replication_target_required")
+	}
+
+	targetDataset := targetDatasetPath(target.BackupRoot, destSuffix)
+	if targetDataset == "" {
+		return "", fmt.Errorf("replication_target_dataset_required")
+	}
+
+	output, err := s.runTargetSSH(ctx, target, "zfs", "receive", "-A", targetDataset)
+	if err != nil && !isReplicationResumeAbortNoopError(err) {
+		return output, err
+	}
+
+	return output, nil
 }
 
 func (s *Service) replicateWithEventProgress(
@@ -1779,6 +1899,40 @@ func (s *Service) hasFailoverQuorum(nodeByID map[string]clusterModels.ClusterNod
 	return onlineVoters >= required, nil
 }
 
+func (s *Service) EnqueueReplicationPolicyFailover(
+	policyID uint,
+	targetNodeID string,
+	mode string,
+	confirmDataLoss bool,
+	movePinnedSource bool,
+) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft != nil && s.Cluster.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+
+	requestMode := replicationFailoverRequestMode(mode)
+	if requestMode == replicationFailoverRequestForce && !confirmDataLoss {
+		return fmt.Errorf("confirm_data_loss_required_for_force_failover")
+	}
+
+	enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return db.EnqueueJSON(enqueueCtx, replicationFailoverJobQueueName, replicationFailoverJobPayload{
+		PolicyID:         policyID,
+		TargetNodeID:     strings.TrimSpace(targetNodeID),
+		Mode:             requestMode,
+		ConfirmDataLoss:  confirmDataLoss,
+		MovePinnedSource: movePinnedSource,
+	})
+}
+
 func (s *Service) RequestReplicationPolicyFailover(
 	ctx context.Context,
 	policyID uint,
@@ -2258,14 +2412,14 @@ func (s *Service) runPolicyOwnershipTransition(
 func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint) error {
 	return s.forwardReplicationPolicyControl(nodeID, "activate", map[string]any{
 		"policyId": policyID,
-	})
+	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardDemoteReplicationPolicy(nodeID string, policyID uint, ownerEpoch uint64) error {
 	return s.forwardReplicationPolicyControl(nodeID, "demote", map[string]any{
 		"policyId":   policyID,
 		"ownerEpoch": ownerEpoch,
-	})
+	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardCatchupReplicationPolicy(
@@ -2278,19 +2432,19 @@ func (s *Service) forwardCatchupReplicationPolicy(
 		"policyId":     policyID,
 		"targetNodeId": targetNodeID,
 		"ownerEpoch":   ownerEpoch,
-	})
+	}, replicationControlCatchupTimeout)
 }
 
 func (s *Service) forwardRunReplicationPolicy(nodeID string, policyID uint) error {
 	return s.forwardReplicationPolicyControl(nodeID, "run", map[string]any{
 		"policyId": policyID,
-	})
+	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) forwardCleanupReplicationPolicyDelete(nodeID string, policyID uint) error {
 	return s.forwardReplicationPolicyControl(nodeID, "cleanup-policy-delete", map[string]any{
 		"policyId": policyID,
-	})
+	}, replicationControlDefaultTimeout)
 }
 
 func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID uint, targetNodeID string) error {
@@ -2312,7 +2466,7 @@ func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID 
 	return s.forwardRunReplicationPolicy(targetNodeID, policyID)
 }
 
-func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any) error {
+func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any, timeout time.Duration) error {
 	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
 	if err != nil {
 		return err
@@ -2329,11 +2483,23 @@ func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, 
 	}
 
 	url := fmt.Sprintf("https://%s/api/intra-cluster/%s", targetAPI, strings.TrimSpace(action))
-	return utils.HTTPPostJSON(url, payload, map[string]string{
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal_replication_control_payload_failed: %w", err)
+	}
+	if timeout <= 0 {
+		timeout = replicationControlDefaultTimeout
+	}
+
+	_, statusCode, err := utils.HTTPPostJSONWithTimeout(url, body, map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
 		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	})
+	}, timeout)
+	if err != nil {
+		return fmt.Errorf("replication_control_%s_failed_status_%d: %w", strings.TrimSpace(action), statusCode, err)
+	}
+	return nil
 }
 
 func (s *Service) CleanupReplicationPolicyDeleteBestEffort(ctx context.Context, policyID uint) error {
@@ -2631,6 +2797,44 @@ func (s *Service) CatchupReplicationPolicyToNode(
 				Msg("replication_catchup_output")
 		}
 		if runErr == nil {
+			continue
+		}
+		if isReplicationResumeStateError(runErr) {
+			abortOut, abortErr := s.abortTargetResumableReceiveState(ctx, targetSpec, destSuffix)
+			if strings.TrimSpace(abortOut) != "" {
+				logger.L.Debug().
+					Uint("policy_id", policyID).
+					Str("target_node_id", targetNodeID).
+					Str("source_dataset", sourceDataset).
+					Str("output", abortOut).
+					Msg("replication_catchup_resume_abort_output")
+			}
+			if abortErr != nil {
+				return fmt.Errorf(
+					"replication_catchup_to_target_%s_failed_after_resume_abort_failed: %w (original: %v)",
+					targetNodeID,
+					abortErr,
+					runErr,
+				)
+			}
+
+			retryOut, retryErr := s.replicateWithTargetAndPrefix(ctx, targetSpec, sourceDataset, destSuffix, "ha")
+			if strings.TrimSpace(retryOut) != "" {
+				logger.L.Debug().
+					Uint("policy_id", policyID).
+					Str("target_node_id", targetNodeID).
+					Str("source_dataset", sourceDataset).
+					Str("output", retryOut).
+					Msg("replication_catchup_resume_retry_output")
+			}
+			if retryErr != nil {
+				return fmt.Errorf(
+					"replication_catchup_to_target_%s_failed_after_resume_abort_retry: %w (original: %v)",
+					targetNodeID,
+					retryErr,
+					runErr,
+				)
+			}
 			continue
 		}
 		if !isReplicationTargetModifiedError(runErr) {

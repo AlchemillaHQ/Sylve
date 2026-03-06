@@ -217,6 +217,7 @@ func (s *Service) RegisterJobs() {
 	s.registerRestoreJob()
 	s.registerRestoreFromTargetJob()
 	s.registerReplicationJob()
+	s.registerReplicationFailoverJob()
 }
 
 func (s *Service) archiveActiveTargetDatasetForReseed(

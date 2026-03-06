@@ -316,8 +316,7 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			movePinnedSource = *req.MovePinnedSource
 		}
 
-		if err := zS.RequestReplicationPolicyFailover(
-			c.Request.Context(),
+		if err := zS.EnqueueReplicationPolicyFailover(
 			uint(id64),
 			strings.TrimSpace(req.TargetNodeID),
 			mode,
@@ -343,9 +342,9 @@ func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.Handl
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "replication_policy_failover_requested",
+			Message: "replication_policy_failover_queued",
 			Data:    nil,
 		})
 	}

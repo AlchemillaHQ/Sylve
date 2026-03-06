@@ -374,6 +374,10 @@ func ParamUint(c *gin.Context, name string) (uint, error) {
 }
 
 func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]string, timeout time.Duration) ([]byte, int, error) {
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -394,7 +398,11 @@ func HTTPPostJSONWithTimeout(url string, payload []byte, headers map[string]stri
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := intraClusterClient().Do(req)
+	client := intraClusterClient()
+	clientCopy := *client
+	clientCopy.Timeout = 0
+
+	resp, err := clientCopy.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, 0, fmt.Errorf("request timed out after %v", timeout)
