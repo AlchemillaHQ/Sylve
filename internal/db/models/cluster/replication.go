@@ -26,27 +26,61 @@ const (
 
 	ReplicationFailbackManual = "manual"
 	ReplicationFailbackAuto   = "auto"
+
+	ReplicationTransitionStateNone      = "none"
+	ReplicationTransitionStateDemoting  = "demoting"
+	ReplicationTransitionStateCatchup   = "catchup"
+	ReplicationTransitionStatePromoting = "promoting"
+	ReplicationTransitionStateCompleted = "completed"
+	ReplicationTransitionStateFailed    = "failed"
 )
 
 type ReplicationPolicy struct {
-	ID           uint                      `gorm:"primaryKey" json:"id"`
-	Name         string                    `gorm:"not null" json:"name"`
-	GuestType    string                    `gorm:"index:idx_replication_policy_guest,priority:1;not null" json:"guestType"`
-	GuestID      uint                      `gorm:"index:idx_replication_policy_guest,priority:2;not null" json:"guestId"`
-	SourceNodeID string                    `gorm:"index" json:"sourceNodeId"`
-	ActiveNodeID string                    `gorm:"index" json:"activeNodeId"`
-	OwnerEpoch   uint64                    `gorm:"not null;default:1" json:"ownerEpoch"`
-	SourceMode   string                    `gorm:"not null;default:follow_active" json:"sourceMode"`
-	FailbackMode string                    `gorm:"not null;default:manual" json:"failbackMode"`
-	CronExpr     string                    `gorm:"not null" json:"cronExpr"`
-	Enabled      bool                      `gorm:"default:true;index" json:"enabled"`
-	LastRunAt    *time.Time                `json:"lastRunAt"`
-	NextRunAt    *time.Time                `gorm:"index" json:"nextRunAt"`
-	LastStatus   string                    `gorm:"index" json:"lastStatus"`
-	LastError    string                    `gorm:"type:text" json:"lastError"`
-	Targets      []ReplicationPolicyTarget `json:"targets,omitempty" gorm:"foreignKey:PolicyID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	CreatedAt    time.Time                 `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt    time.Time                 `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID                     uint                      `gorm:"primaryKey" json:"id"`
+	Name                   string                    `gorm:"not null" json:"name"`
+	GuestType              string                    `gorm:"index:idx_replication_policy_guest,priority:1;not null" json:"guestType"`
+	GuestID                uint                      `gorm:"index:idx_replication_policy_guest,priority:2;not null" json:"guestId"`
+	SourceNodeID           string                    `gorm:"index" json:"sourceNodeId"`
+	ActiveNodeID           string                    `gorm:"index" json:"activeNodeId"`
+	OwnerEpoch             uint64                    `gorm:"not null;default:1" json:"ownerEpoch"`
+	SourceMode             string                    `gorm:"not null;default:follow_active" json:"sourceMode"`
+	FailbackMode           string                    `gorm:"not null;default:manual" json:"failbackMode"`
+	CronExpr               string                    `gorm:"not null" json:"cronExpr"`
+	Enabled                bool                      `gorm:"default:true;index" json:"enabled"`
+	LastRunAt              *time.Time                `json:"lastRunAt"`
+	NextRunAt              *time.Time                `gorm:"index" json:"nextRunAt"`
+	LastStatus             string                    `gorm:"index" json:"lastStatus"`
+	LastError              string                    `gorm:"type:text" json:"lastError"`
+	TransitionState        string                    `gorm:"not null;default:none;index" json:"transitionState"`
+	TransitionRunID        string                    `gorm:"index" json:"transitionRunId"`
+	TransitionReason       string                    `json:"transitionReason"`
+	TransitionSourceNodeID string                    `gorm:"index" json:"transitionSourceNodeId"`
+	TransitionTargetNodeID string                    `gorm:"index" json:"transitionTargetNodeId"`
+	TransitionOwnerEpoch   uint64                    `json:"transitionOwnerEpoch"`
+	TransitionRequestedAt  *time.Time                `gorm:"index" json:"transitionRequestedAt"`
+	TransitionDemotedAt    *time.Time                `json:"transitionDemotedAt"`
+	TransitionCatchupAt    *time.Time                `json:"transitionCatchupAt"`
+	TransitionPromotedAt   *time.Time                `json:"transitionPromotedAt"`
+	TransitionCompletedAt  *time.Time                `gorm:"index" json:"transitionCompletedAt"`
+	TransitionError        string                    `gorm:"type:text" json:"transitionError"`
+	Targets                []ReplicationPolicyTarget `json:"targets,omitempty" gorm:"foreignKey:PolicyID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	CreatedAt              time.Time                 `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt              time.Time                 `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
+type ReplicationPolicyTransition struct {
+	State        string     `json:"state"`
+	RunID        string     `json:"runId"`
+	Reason       string     `json:"reason"`
+	SourceNodeID string     `json:"sourceNodeId"`
+	TargetNodeID string     `json:"targetNodeId"`
+	OwnerEpoch   uint64     `json:"ownerEpoch"`
+	RequestedAt  *time.Time `json:"requestedAt"`
+	DemotedAt    *time.Time `json:"demotedAt"`
+	CatchupAt    *time.Time `json:"catchupAt"`
+	PromotedAt   *time.Time `json:"promotedAt"`
+	CompletedAt  *time.Time `json:"completedAt"`
+	Error        string     `json:"error"`
 }
 
 type ReplicationPolicyTarget struct {
@@ -119,6 +153,20 @@ func validReplicationFailbackMode(v string) bool {
 	return v == ReplicationFailbackManual || v == ReplicationFailbackAuto
 }
 
+func validReplicationTransitionState(v string) bool {
+	switch v {
+	case ReplicationTransitionStateNone,
+		ReplicationTransitionStateDemoting,
+		ReplicationTransitionStateCatchup,
+		ReplicationTransitionStatePromoting,
+		ReplicationTransitionStateCompleted,
+		ReplicationTransitionStateFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 func normalizeReplicationPolicy(p *ReplicationPolicy) {
 	if p == nil {
 		return
@@ -133,11 +181,20 @@ func normalizeReplicationPolicy(p *ReplicationPolicy) {
 	p.CronExpr = strings.TrimSpace(p.CronExpr)
 	p.LastStatus = strings.TrimSpace(p.LastStatus)
 	p.LastError = strings.TrimSpace(p.LastError)
+	p.TransitionState = strings.TrimSpace(strings.ToLower(p.TransitionState))
+	p.TransitionRunID = strings.TrimSpace(p.TransitionRunID)
+	p.TransitionReason = strings.TrimSpace(p.TransitionReason)
+	p.TransitionSourceNodeID = strings.TrimSpace(p.TransitionSourceNodeID)
+	p.TransitionTargetNodeID = strings.TrimSpace(p.TransitionTargetNodeID)
+	p.TransitionError = strings.TrimSpace(p.TransitionError)
 	if p.SourceMode == "" {
 		p.SourceMode = ReplicationSourceModeFollowActive
 	}
 	if p.FailbackMode == "" {
 		p.FailbackMode = ReplicationFailbackManual
+	}
+	if p.TransitionState == "" {
+		p.TransitionState = ReplicationTransitionStateNone
 	}
 }
 
@@ -158,6 +215,9 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 	}
 	if !validReplicationFailbackMode(policy.FailbackMode) {
 		return fmt.Errorf("invalid_replication_failback_mode")
+	}
+	if !validReplicationTransitionState(policy.TransitionState) {
+		return fmt.Errorf("invalid_replication_transition_state")
 	}
 	if policy.OwnerEpoch == 0 {
 		return fmt.Errorf("replication_policy_owner_epoch_required")
@@ -246,6 +306,55 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 	}).Create(lease).Error
 }
 
+func upsertReplicationPolicyTransition(db *gorm.DB, policyID uint, transition *ReplicationPolicyTransition) error {
+	if policyID == 0 {
+		return fmt.Errorf("replication_policy_id_required")
+	}
+	if transition == nil {
+		return fmt.Errorf("replication_policy_transition_required")
+	}
+
+	transition.State = strings.TrimSpace(strings.ToLower(transition.State))
+	transition.RunID = strings.TrimSpace(transition.RunID)
+	transition.Reason = strings.TrimSpace(transition.Reason)
+	transition.SourceNodeID = strings.TrimSpace(transition.SourceNodeID)
+	transition.TargetNodeID = strings.TrimSpace(transition.TargetNodeID)
+	transition.Error = strings.TrimSpace(transition.Error)
+	if transition.State == "" {
+		transition.State = ReplicationTransitionStateNone
+	}
+	if !validReplicationTransitionState(transition.State) {
+		return fmt.Errorf("invalid_replication_transition_state")
+	}
+
+	updates := map[string]any{
+		"transition_state":          transition.State,
+		"transition_run_id":         transition.RunID,
+		"transition_reason":         transition.Reason,
+		"transition_source_node_id": transition.SourceNodeID,
+		"transition_target_node_id": transition.TargetNodeID,
+		"transition_owner_epoch":    transition.OwnerEpoch,
+		"transition_requested_at":   transition.RequestedAt,
+		"transition_demoted_at":     transition.DemotedAt,
+		"transition_catchup_at":     transition.CatchupAt,
+		"transition_promoted_at":    transition.PromotedAt,
+		"transition_completed_at":   transition.CompletedAt,
+		"transition_error":          transition.Error,
+		"updated_at":                time.Now().UTC(),
+	}
+
+	result := db.Model(&ReplicationPolicy{}).
+		Where("id = ?", policyID).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 	if identity == nil {
 		return fmt.Errorf("cluster_ssh_identity_required")
@@ -290,6 +399,14 @@ func UpsertReplicationPolicyTxn(db *gorm.DB, policy *ReplicationPolicy, targets 
 
 func UpsertReplicationLeaseTxn(db *gorm.DB, lease *ReplicationLease) error {
 	return upsertReplicationLease(db, lease)
+}
+
+func UpsertReplicationPolicyTransitionTxn(
+	db *gorm.DB,
+	policyID uint,
+	transition *ReplicationPolicyTransition,
+) error {
+	return upsertReplicationPolicyTransition(db, policyID, transition)
 }
 
 func UpsertClusterSSHIdentityTxn(db *gorm.DB, identity *ClusterSSHIdentity) error {

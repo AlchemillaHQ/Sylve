@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -131,7 +132,7 @@ func UpdateReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func DeleteReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
+func DeleteReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -147,6 +148,15 @@ func DeleteReplicationPolicy(cS *cluster.Service) gin.HandlerFunc {
 				Data:    nil,
 			})
 			return
+		}
+
+		if zS != nil {
+			if cleanupErr := zS.CleanupReplicationPolicyDeleteBestEffort(c.Request.Context(), uint(id64)); cleanupErr != nil {
+				logger.L.Warn().
+					Uint("policy_id", uint(id64)).
+					Err(cleanupErr).
+					Msg("replication_policy_delete_cleanup_best_effort_failed")
+			}
 		}
 
 		if err := cS.ProposeReplicationPolicyDelete(uint(id64), cS.Raft == nil); err != nil {
@@ -508,6 +518,74 @@ func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "replication_policy_demoted",
+			Data:    nil,
+		})
+	}
+}
+
+func CatchupReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			PolicyID     uint   `json:"policyId"`
+			TargetNodeID string `json:"targetNodeId"`
+			OwnerEpoch   uint64 `json:"ownerEpoch"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 || strings.TrimSpace(req.TargetNodeID) == "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId and targetNodeId are required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.CatchupReplicationPolicyToNode(c.Request.Context(), req.PolicyID, req.TargetNodeID, req.OwnerEpoch); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "catchup_replication_policy_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_catchup_completed",
+			Data:    nil,
+		})
+	}
+}
+
+func CleanupReplicationPolicyDeleteInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			PolicyID uint `json:"policyId"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.CleanupReplicationPolicyDeleteLocalBestEffort(c.Request.Context(), req.PolicyID); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cleanup_replication_policy_delete_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_delete_cleanup_completed",
 			Data:    nil,
 		})
 	}

@@ -111,6 +111,23 @@ func (s *Service) renameLocalDataset(ctx context.Context, from, to string) error
 	return err
 }
 
+func restoreBackupDatasetCandidate(destination, token string, attempt int) string {
+	destination = normalizeRestoreDestinationDataset(destination)
+	token = strings.TrimSpace(token)
+	if destination == "" {
+		return ""
+	}
+	if token == "" {
+		token = compactNowToken()
+	}
+
+	candidate := normalizeDatasetPath(destination + "_restore-backup-" + token)
+	if attempt > 0 {
+		candidate = normalizeDatasetPath(fmt.Sprintf("%s-%d", candidate, attempt))
+	}
+	return candidate
+}
+
 func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, destination string) (string, error) {
 	restorePath = normalizeRestoreDestinationDataset(restorePath)
 	destination = normalizeRestoreDestinationDataset(destination)
@@ -118,23 +135,48 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 		return "", fmt.Errorf("destination_dataset_required")
 	}
 
+	backupDataset := ""
 	destinationExists, err := s.localDatasetExists(ctx, destination)
 	if err != nil {
 		return "", err
 	}
 
 	if destinationExists {
-		// Green-field behavior: replace destination in-place; do not preserve pre-restore copies.
-		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
-			return "", fmt.Errorf("failed_to_remove_destination_dataset_before_restore: %w", err)
+		token := compactNowToken()
+		for attempt := 0; attempt < 32; attempt++ {
+			candidate := restoreBackupDatasetCandidate(destination, token, attempt)
+			if candidate == "" {
+				return "", fmt.Errorf("failed_to_resolve_restore_backup_dataset")
+			}
+			candidateExists, existsErr := s.localDatasetExists(ctx, candidate)
+			if existsErr != nil {
+				return "", existsErr
+			}
+			if candidateExists {
+				continue
+			}
+			backupDataset = candidate
+			break
+		}
+		if backupDataset == "" {
+			return "", fmt.Errorf("failed_to_allocate_restore_backup_dataset_name")
+		}
+
+		if err := s.renameLocalDataset(ctx, destination, backupDataset); err != nil {
+			return "", fmt.Errorf("failed_to_archive_destination_dataset_before_restore: %w", err)
 		}
 	}
 
 	if err := s.renameLocalDataset(ctx, restorePath, destination); err != nil {
+		if backupDataset != "" {
+			if rollbackErr := s.renameLocalDataset(ctx, backupDataset, destination); rollbackErr != nil {
+				return "", fmt.Errorf("failed_to_promote_restored_dataset: %v; rollback_failed: %v", err, rollbackErr)
+			}
+		}
 		return "", fmt.Errorf("failed_to_promote_restored_dataset: %w", err)
 	}
 
-	return "", nil
+	return backupDataset, nil
 }
 
 func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, backupDataset string) error {

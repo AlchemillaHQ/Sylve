@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
+func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
 	localNodeID = strings.TrimSpace(localNodeID)
 
@@ -65,4 +65,8 @@ func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, loc
 
 	return strings.TrimSpace(lease.OwnerNodeID) == localNodeID &&
 		lease.OwnerEpoch == policy.OwnerEpoch, nil
+}
+
+func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
+	return CanNodeMutateProtectedGuest(db, guestType, guestID, localNodeID)
 }

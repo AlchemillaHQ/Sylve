@@ -558,12 +558,13 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 				return nil, false, fmt.Errorf("failed_to_ensure_restored_jail_switch: %w", err)
 			}
 			if resolvedSwitchID == 0 {
-				logger.L.Warn().
-					Uint("ctid", ctid).
-					Uint("switch_id", next.SwitchID).
-					Str("switch_type", next.SwitchType).
-					Msg("skipping_restored_jail_network_with_unresolved_switch")
-				continue
+				return nil, false, fmt.Errorf(
+					"restored_jail_network_switch_unresolved: ctid=%d index=%d switch_id=%d switch_type=%s",
+					ctid,
+					idx,
+					next.SwitchID,
+					strings.TrimSpace(next.SwitchType),
+				)
 			}
 
 			next.SwitchID = resolvedSwitchID
@@ -742,9 +743,7 @@ func (s *Service) ensureRestoredStandardSwitch(
 				if restoredStandardSwitchCompatible(&byName, metadata) {
 					return byName.ID, false, nil
 				}
-				// Respect operator-intent around switch naming collisions:
-				// if a switch with this name already exists but differs, skip this restored network.
-				return 0, false, nil
+				return 0, false, fmt.Errorf("restored_standard_switch_name_conflict: %s", name)
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_name: %w", err)
@@ -930,8 +929,7 @@ func (s *Service) ensureRestoredManualSwitch(
 				if metadataBridge == "" || strings.EqualFold(strings.TrimSpace(byName.Bridge), metadataBridge) {
 					return byName.ID, nil
 				}
-				// Name conflict with different characteristics: skip restoring this network.
-				return 0, nil
+				return 0, fmt.Errorf("restored_manual_switch_name_conflict: %s", name)
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_name: %w", err)

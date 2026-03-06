@@ -1421,6 +1421,21 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 		return fmt.Errorf("invalid_description")
 	}
 
+	var ctid uint
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Select("ct_id").
+		Where("id = ?", id).
+		Take(&ctid).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch_jail_ctid: %w", err)
+	}
+	allowed, leaseErr := s.canMutateProtectedJail(ctid)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	if err := s.DB.Model(&jailModels.Jail{}).
 		Where("id = ?", id).
 		Update("description", description).Error; err != nil {
@@ -1431,12 +1446,7 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 		return fmt.Errorf("failed_to_update_jail_description: %w", err)
 	}
 
-	var ctid uint
-	if err := s.DB.Model(&jailModels.Jail{}).
-		Select("ct_id").
-		Where("id = ?", id).
-		Take(&ctid).Error; err == nil {
-
+	if ctid != 0 {
 		_ = s.WriteJailJSON(ctid)
 	}
 

@@ -98,6 +98,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 				if claims, err := authService.VerifyClusterJWT(wssAuth.Token); err == nil {
 					c.Set("Token", wssAuth.Token)
 					c.Set("AuthScope", "wss-cluster")
+					c.Set("ClusterTokenUse", claims.TokenUse)
 					c.Set("UserID", claims.UserID)
 					c.Set("Username", claims.Username)
 					c.Set("AuthType", claims.AuthType)
@@ -154,6 +155,7 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 
 			c.Set("Token", clusterJWT)
 			c.Set("AuthScope", "cluster")
+			c.Set("ClusterTokenUse", clusterClaims.TokenUse)
 			c.Set("UserID", clusterClaims.UserID)
 			c.Set("Username", clusterClaims.Username)
 			c.Set("AuthType", clusterClaims.AuthType)
@@ -192,6 +194,29 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 		c.Set("Username", claims.Username)
 		c.Set("AuthType", claims.AuthType)
 		authService.UpdateLastUsageTime(claims.UserID)
+		c.Next()
+	}
+}
+
+func RequireClusterScope() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.TrimSpace(c.GetString("AuthScope")) != "cluster" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "cluster_scope_required"})
+			return
+		}
+		if strings.TrimSpace(c.GetString("ClusterTokenUse")) != authService.ClusterTokenUseInternalControl {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "internal_cluster_token_required"})
+			return
+		}
+		if strings.TrimSpace(c.GetString("AuthType")) != authService.ClusterInternalAuthType {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "internal_cluster_auth_type_required"})
+			return
+		}
+		if c.GetUint("UserID") != 0 {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "error", "error": "internal_cluster_user_required"})
+			return
+		}
+
 		c.Next()
 	}
 }

@@ -284,6 +284,10 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 }
 
 func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequest) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return err
@@ -434,6 +438,10 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 }
 
 func (s *Service) ModifyRAM(rid uint, ram int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -494,6 +502,10 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 }
 
 func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequest) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -575,6 +587,10 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 }
 
 func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {

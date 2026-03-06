@@ -42,6 +42,12 @@ type ScopedJWT struct {
 	CustomClaims serviceInterfaces.CustomClaims `json:"custom_claims"`
 }
 
+const (
+	ClusterTokenUseUserProxy       = "user_proxy"
+	ClusterTokenUseInternalControl = "internal_control"
+	ClusterInternalAuthType        = "internal-cluster"
+)
+
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
 	return &Service{
 		DB: db,
@@ -154,7 +160,14 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 	return user.ID, token, nil
 }
 
-func (s *Service) CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error) {
+func (s *Service) createClusterJWTWithUse(
+	userId uint,
+	username string,
+	authType string,
+	tokenUse string,
+	forceSecret string,
+	ttl time.Duration,
+) (string, error) {
 	var clusterKey string
 
 	if forceSecret != "" {
@@ -167,16 +180,29 @@ func (s *Service) CreateClusterJWT(userId uint, username string, authType string
 			return "", fmt.Errorf("failed_to_get_cluster_key: %w", err)
 		}
 	}
+	tokenUse = strings.TrimSpace(strings.ToLower(tokenUse))
+	if tokenUse == "" {
+		tokenUse = ClusterTokenUseUserProxy
+	}
+	switch tokenUse {
+	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
+	default:
+		return "", fmt.Errorf("invalid_cluster_token_use")
+	}
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
 
 	data := JWT{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			ID:        uuid.NewString(),
 		},
 		CustomClaims: serviceInterfaces.CustomClaims{
 			UserID:   userId,
 			Username: username,
 			AuthType: authType,
+			TokenUse: tokenUse,
 		},
 	}
 
@@ -186,6 +212,32 @@ func (s *Service) CreateClusterJWT(userId uint, username string, authType string
 	}
 
 	return token, nil
+}
+
+func (s *Service) CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error) {
+	return s.createClusterJWTWithUse(
+		userId,
+		username,
+		authType,
+		ClusterTokenUseUserProxy,
+		forceSecret,
+		24*time.Hour,
+	)
+}
+
+func (s *Service) CreateInternalClusterJWT(username string, forceSecret string) (string, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		username = "cluster"
+	}
+	return s.createClusterJWTWithUse(
+		0,
+		username,
+		ClusterInternalAuthType,
+		ClusterTokenUseInternalControl,
+		forceSecret,
+		5*time.Minute,
+	)
 }
 
 func (s *Service) CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error) {
@@ -246,6 +298,17 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 	if time.Now().After(claims.ExpiresAt.Time) {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
 	}
+
+	tokenUse := strings.TrimSpace(strings.ToLower(claims.CustomClaims.TokenUse))
+	if tokenUse == "" {
+		tokenUse = ClusterTokenUseUserProxy
+	}
+	switch tokenUse {
+	case ClusterTokenUseUserProxy, ClusterTokenUseInternalControl:
+	default:
+		return serviceInterfaces.CustomClaims{}, fmt.Errorf("invalid_cluster_token_use")
+	}
+	claims.CustomClaims.TokenUse = tokenUse
 
 	return claims.CustomClaims, nil
 }

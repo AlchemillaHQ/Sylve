@@ -65,6 +65,9 @@ func (s *Service) CreateVMSnapshot(
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_rid")
 	}
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return nil, err
+	}
 
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)
@@ -162,6 +165,9 @@ func (s *Service) RollbackVMSnapshot(
 
 	if rid == 0 || snapshotID == 0 {
 		return fmt.Errorf("invalid_request")
+	}
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
 	}
 
 	var record vmModels.VMSnapshot
@@ -334,6 +340,9 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 
 	if rid == 0 || snapshotID == 0 {
 		return fmt.Errorf("invalid_request")
+	}
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
 	}
 
 	var record vmModels.VMSnapshot

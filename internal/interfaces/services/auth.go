@@ -19,6 +19,7 @@ type CustomClaims struct {
 	UserID   uint   `json:"userId"`
 	Username string `json:"username"`
 	AuthType string `json:"authType"`
+	TokenUse string `json:"tokenUse,omitempty"`
 }
 
 type AuthServiceInterface interface {
@@ -27,6 +28,7 @@ type AuthServiceInterface interface {
 	CreateJWT(username, password, authType string, remember bool) (uint, string, error)
 	CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error)
 	CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error)
+	CreateInternalClusterJWT(username string, forceSecret string) (string, error)
 	VerifyClusterJWT(tokenString string) (CustomClaims, error)
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool

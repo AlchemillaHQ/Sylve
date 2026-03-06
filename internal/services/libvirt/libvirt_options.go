@@ -21,6 +21,10 @@ import (
 )
 
 func (s *Service) ModifyWakeOnLan(rid uint, enabled bool) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
@@ -35,6 +39,10 @@ func (s *Service) ModifyWakeOnLan(rid uint, enabled bool) error {
 }
 
 func (s *Service) ModifyBootOrder(rid uint, startAtBoot bool, bootOrder int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
@@ -52,6 +60,10 @@ func (s *Service) ModifyBootOrder(rid uint, startAtBoot bool, bootOrder int) err
 }
 
 func (s *Service) ModifyClock(rid uint, timeOffset string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	if timeOffset != "utc" && timeOffset != "localtime" {
 		return fmt.Errorf("invalid_time_offset: %s", timeOffset)
 	}
@@ -126,6 +138,10 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 }
 
 func (s *Service) ModifySerial(rid uint, enabled bool) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var pre vmModels.VM
 	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).First(&pre).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
@@ -226,6 +242,10 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 }
 
 func (s *Service) ModifyShutdownWaitTime(rid uint, waitTime int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
@@ -240,6 +260,10 @@ func (s *Service) ModifyShutdownWaitTime(rid uint, waitTime int) error {
 }
 
 func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	if data == "" && metadata != "" || data != "" && metadata == "" {
 		return fmt.Errorf("both_data_and_metadata_must_be_provided")
 	}
@@ -273,6 +297,10 @@ func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string, ne
 }
 
 func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
@@ -362,6 +390,10 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 }
 
 func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
@@ -473,6 +505,10 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 }
 
 func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)

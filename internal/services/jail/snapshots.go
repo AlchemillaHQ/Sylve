@@ -63,6 +63,13 @@ func (s *Service) CreateJailSnapshot(
 	if ctID == 0 {
 		return nil, fmt.Errorf("invalid_ct_id")
 	}
+	allowed, leaseErr := s.canMutateProtectedJail(ctID)
+	if leaseErr != nil {
+		return nil, fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return nil, fmt.Errorf("replication_lease_not_owned")
+	}
 
 	name = strings.TrimSpace(name)
 	description = strings.TrimSpace(description)
@@ -155,6 +162,13 @@ func (s *Service) RollbackJailSnapshot(
 
 	if ctID == 0 || snapshotID == 0 {
 		return fmt.Errorf("invalid_request")
+	}
+	allowed, leaseErr := s.canMutateProtectedJail(ctID)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
 	}
 
 	var record jailModels.JailSnapshot
@@ -273,6 +287,13 @@ func (s *Service) DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID 
 
 	if ctID == 0 || snapshotID == 0 {
 		return fmt.Errorf("invalid_request")
+	}
+	allowed, leaseErr := s.canMutateProtectedJail(ctID)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
 	}
 
 	var record jailModels.JailSnapshot

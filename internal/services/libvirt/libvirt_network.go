@@ -23,6 +23,10 @@ import (
 )
 
 func (s *Service) NetworkDetach(rid uint, networkId uint) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	inactive, err := s.IsDomainInactive(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
@@ -123,6 +127,10 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 }
 
 func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachRequest) error {
+	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return err
+	}
+
 	inactive, err := s.IsDomainInactive(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_inactive: %w", err)
@@ -367,10 +375,6 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 }
 
 func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateRequest) error {
-	if req.Emulation == "" || (req.Emulation != "virtio" && req.Emulation != "e1000") {
-		return fmt.Errorf("invalid_emulation_type: %s", req.Emulation)
-	}
-
 	var network vmModels.Network
 	if err := s.DB.
 		Preload("AddressObj").
@@ -382,6 +386,13 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 	var vm vmModels.VM
 	if err := s.DB.First(&vm, "id = ?", network.VMID).Error; err != nil {
 		return fmt.Errorf("failed_to_find_vm: %w", err)
+	}
+	if err := s.requireVMMutationOwnership(vm.RID); err != nil {
+		return err
+	}
+
+	if req.Emulation == "" || (req.Emulation != "virtio" && req.Emulation != "e1000") {
+		return fmt.Errorf("invalid_emulation_type: %s", req.Emulation)
 	}
 
 	inactive, err := s.IsDomainInactive(vm.RID)

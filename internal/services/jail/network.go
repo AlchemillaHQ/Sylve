@@ -23,6 +23,14 @@ import (
 )
 
 func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return err
@@ -191,6 +199,14 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 }
 
 func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) error {
+	allowed, leaseErr := s.canMutateProtectedJail(req.CTID)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	macId := uint(0)
 	ip4 := uint(0)
 	ip4gw := uint(0)
@@ -398,6 +414,14 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 }
 
 func (s *Service) DeleteNetwork(ctId uint, networkId uint) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	var network jailModels.Network
 	err := s.DB.Find(&network, networkId).Error
 	if err != nil {
@@ -737,6 +761,13 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	var jail jailModels.Jail
 	if err := s.DB.Preload("Networks").Where("id = ?", network.JailID).First(&jail).Error; err != nil {
 		return fmt.Errorf("failed_to_find_jail: %w", err)
+	}
+	allowed, leaseErr := s.canMutateProtectedJail(jail.CTID)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
 	}
 
 	if jail.Type == jailModels.JailTypeLinux {

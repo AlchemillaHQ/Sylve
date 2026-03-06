@@ -425,12 +425,15 @@ func RegisterRoutes(r *gin.Engine,
 
 	intraCluster := api.Group("/intra-cluster")
 	intraCluster.Use(middleware.EnsureAuthenticated(authService))
+	intraCluster.Use(middleware.RequireClusterScope())
 	{
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
 		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
 	}
 
 	cluster := api.Group("/cluster")
@@ -495,7 +498,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
 		clusterReplication.POST("/policies", clusterHandlers.CreateReplicationPolicy(clusterService))
 		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService))
-		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService))
+		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
 		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
 
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))

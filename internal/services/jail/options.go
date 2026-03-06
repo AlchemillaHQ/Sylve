@@ -32,6 +32,14 @@ func isManagedAllowedOptionLine(trimmedLine string) bool {
 }
 
 func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	err := s.DB.
 		Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
@@ -49,6 +57,14 @@ func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) er
 }
 
 func (s *Service) ModifyFstab(ctId uint, fstab string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jails_path: %w", err)
@@ -120,6 +136,14 @@ func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 }
 
 func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail_config: %w", err)
@@ -193,6 +217,14 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 }
 
 func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail: %w", err)
@@ -245,6 +277,14 @@ func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
 }
 
 func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail: %w", err)
@@ -371,6 +411,14 @@ func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
 }
 
 func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail_config: %w", err)
@@ -496,6 +544,14 @@ func (s *Service) removeUserManagedHookSection(content string) string {
 }
 
 func (s *Service) ModifyLifecycleHooks(ctId uint, hooks jailServiceInterfaces.Hooks) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail: %w", err)

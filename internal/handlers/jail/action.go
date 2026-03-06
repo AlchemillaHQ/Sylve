@@ -54,6 +54,26 @@ func JailAction(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
+		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctId))
+		if leaseErr != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_lease_check_failed",
+				Error:   leaseErr.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		if !allowed {
+			c.JSON(403, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "standby_mode_edit_not_allowed",
+				Error:   "replication_lease_not_owned",
+				Data:    nil,
+			})
+			return
+		}
+
 		err = jailService.JailAction(ctId, action)
 		if err != nil {
 			c.JSON(500, internal.APIResponse[any]{

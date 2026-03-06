@@ -858,6 +858,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 }
 
 func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, deleteVolumes bool, ctx context.Context) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.
 		Preload("Stats").
@@ -1068,6 +1072,10 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 }
 
 func (s *Service) PerformAction(rid uint, action string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
@@ -1086,6 +1094,10 @@ func (s *Service) PerformAction(rid uint, action string) error {
 }
 
 func (s *Service) UpdateDescription(rid uint, description string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {

@@ -199,7 +199,7 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 		hostname = "cluster"
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, hostname, "", "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname, "")
 	if err != nil {
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}

@@ -356,6 +356,26 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
+		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctidInt))
+		if leaseErr != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_lease_check_failed",
+				Data:    nil,
+				Error:   leaseErr.Error(),
+			})
+			return
+		}
+		if !allowed {
+			c.JSON(403, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "standby_mode_edit_not_allowed",
+				Data:    nil,
+				Error:   "replication_lease_not_owned",
+			})
+			return
+		}
+
 		ctx := c.Request.Context()
 		err = jailService.DeleteJail(ctx, uint(ctidInt), deleteMacs, deleteRootFs)
 

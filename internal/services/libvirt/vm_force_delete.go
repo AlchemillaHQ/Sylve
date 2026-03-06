@@ -29,6 +29,9 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return nil, err
+	}
 
 	warnings := make([]string, 0)
 

@@ -431,6 +431,10 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 }
 
 func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
+	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return err
+	}
+
 	off, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
@@ -773,6 +777,10 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 }
 
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
+	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return err
+	}
+
 	if req.Name == "" ||
 		strings.TrimSpace(req.Name) == "" ||
 		len(req.Name) == 0 ||
@@ -854,6 +862,9 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 	var vm vmModels.VM
 	if err := s.DB.First(&vm, "id = ?", current.VMID).Error; err != nil {
 		return fmt.Errorf("failed_to_find_vm_record: %w", err)
+	}
+	if err := s.requireVMMutationOwnership(vm.RID); err != nil {
+		return err
 	}
 
 	off, err := s.IsDomainShutOff(vm.RID)

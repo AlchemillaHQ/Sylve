@@ -450,6 +450,37 @@ func (s *Service) DeleteReplicationLease(policyID uint, bypassRaft bool) error {
 	})
 }
 
+func (s *Service) UpdateReplicationPolicyTransition(
+	policyID uint,
+	transition clusterModels.ReplicationPolicyTransition,
+	bypassRaft bool,
+) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+
+	if bypassRaft {
+		return clusterModels.UpsertReplicationPolicyTransitionTxn(s.DB, policyID, &transition)
+	}
+
+	data, err := json.Marshal(struct {
+		PolicyID   uint                                      `json:"policyId"`
+		Transition clusterModels.ReplicationPolicyTransition `json:"transition"`
+	}{
+		PolicyID:   policyID,
+		Transition: transition,
+	})
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_replication_policy_transition_payload: %w", err)
+	}
+
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "replication_policy_transition",
+		Action: "update",
+		Data:   data,
+	})
+}
+
 func (s *Service) CreateOrUpdateReplicationEvent(event clusterModels.ReplicationEvent, bypassRaft bool) (uint, error) {
 	action := "create"
 	if event.ID == 0 {

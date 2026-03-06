@@ -413,7 +413,7 @@ func (s *Service) PopulateClusterNodes() error {
 		return err
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
 	if err != nil {
 		return err
 	}

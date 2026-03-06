@@ -727,7 +727,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	}
 
 	if action == "start" {
-		allowed, err := s.canStartProtectedVM(vm.RID)
+		allowed, err := s.canMutateProtectedVM(vm.RID)
 		if err != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", err)
 		}
@@ -775,11 +775,15 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 }
 
 func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVM(rid)
+}
+
+func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
 		return false, err
 	}
-	return clusterService.CanNodeStartProtectedGuest(
+	return clusterService.CanNodeMutateProtectedGuest(
 		s.DB,
 		clusterModels.ReplicationGuestTypeVM,
 		rid,

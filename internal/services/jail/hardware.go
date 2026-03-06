@@ -22,6 +22,14 @@ import (
 )
 
 func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	if memoryBytes < 0 {
 		return fmt.Errorf("invalid memory value: %d", memoryBytes)
 	}
@@ -87,6 +95,14 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 }
 
 func (s *Service) UpdateCPU(ctId uint, cores int64) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	if cores <= 0 {
 		return fmt.Errorf("invalid cores value: %d (must be >= 1)", cores)
 	}
@@ -203,6 +219,14 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 }
 
 func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return err

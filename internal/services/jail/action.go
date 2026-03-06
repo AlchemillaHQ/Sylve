@@ -52,7 +52,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	switch action {
 	case "start":
-		allowed, leaseErr := s.canStartProtectedJail(uint(ctId))
+		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
 		if leaseErr != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
 		}
@@ -97,6 +97,14 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return nil
 
 	case "restart":
+		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+
 		if out, err := run("-f", jailConf, "-r", jailName); err != nil {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
@@ -117,15 +125,23 @@ func (s *Service) JailAction(ctId int, action string) error {
 	return nil
 }
 
-func (s *Service) canStartProtectedJail(ctID uint) (bool, error) {
+func (s *Service) canMutateProtectedJail(ctID uint) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
 		return false, err
 	}
-	return clusterService.CanNodeStartProtectedGuest(
+	return clusterService.CanNodeMutateProtectedGuest(
 		s.DB,
 		clusterModels.ReplicationGuestTypeJail,
 		ctID,
 		strings.TrimSpace(nodeID),
 	)
+}
+
+func (s *Service) CanMutateProtectedJail(ctID uint) (bool, error) {
+	return s.canMutateProtectedJail(ctID)
+}
+
+func (s *Service) canStartProtectedJail(ctID uint) (bool, error) {
+	return s.canMutateProtectedJail(ctID)
 }

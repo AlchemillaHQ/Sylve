@@ -437,6 +437,22 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("replication_policy_transition", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var payload struct {
+				PolicyID   uint                        `json:"policyId"`
+				Transition ReplicationPolicyTransition `json:"transition"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return upsertReplicationPolicyTransition(db, payload.PolicyID, &payload.Transition)
+		default:
+			return nil
+		}
+	})
+
 	fsm.Register("cluster_ssh_identity", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
 		case "upsert":
