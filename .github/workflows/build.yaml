@@ -54,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sylve-${{ matrix.arch }}
-          path: bin/sylve-${{ matrix.arch }}
+          path: bin/sylve

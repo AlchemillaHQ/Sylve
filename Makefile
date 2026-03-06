@@ -11,7 +11,7 @@ build: frontend backend
 backend:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
-	go build -o $(BIN_DIR)/$(BINARY_NAME)-$(ARCH) cmd/sylve/main.go
+	go build -o $(BIN_DIR)/$(BINARY_NAME) cmd/sylve/main.go
 
 frontend:
 	npm ci --prefix web
