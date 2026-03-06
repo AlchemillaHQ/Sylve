@@ -61,6 +61,8 @@ type Service struct {
 
 	replicationMu      sync.Mutex
 	runningReplication map[uint]struct{}
+	transitionMu       sync.Mutex
+	runningTransitions map[uint]struct{}
 	downMisses         map[uint]int
 }
 
@@ -94,6 +96,7 @@ func NewService(
 		GZFS:               gzfsClient,
 		runningJobs:        make(map[uint]struct{}),
 		runningReplication: make(map[uint]struct{}),
+		runningTransitions: make(map[uint]struct{}),
 		downMisses:         make(map[uint]int),
 	}
 }

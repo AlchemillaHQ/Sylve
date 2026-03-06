@@ -168,16 +168,33 @@
 		callback: () => {
 			if (!progressModal.open || progressEventId <= 0) return;
 			const status = progressEvent.current?.event?.status || '';
-			if (status === '' || status === 'running') {
+			if (status === '' || isInProgressStatus(status)) {
 				progressEvent.refetch();
 			}
 		}
 	});
 
+	function isInProgressStatus(status: string): boolean {
+		switch ((status || '').toLowerCase()) {
+			case 'running':
+			case 'demoting':
+			case 'promoting':
+				return true;
+			default:
+				return false;
+		}
+	}
+
 	function statusMeta(status: string): { icon: string; label: string; className: string } {
 		switch ((status || '').toLowerCase()) {
 			case 'running':
 				return { icon: 'mdi:progress-clock', label: 'Running', className: 'text-yellow-500' };
+			case 'demoting':
+				return { icon: 'mdi:arrow-collapse-right', label: 'Demoting', className: 'text-amber-500' };
+			case 'promoting':
+				return { icon: 'mdi:arrow-expand-right', label: 'Promoting', className: 'text-sky-500' };
+			case 'active':
+				return { icon: 'mdi:check-decagram', label: 'Active', className: 'text-green-500' };
 			case 'success':
 				return { icon: 'mdi:check-circle', label: 'Success', className: 'text-green-500' };
 			case 'failed':
@@ -302,7 +319,7 @@
 
 	$effect(() => {
 		const status = progressEvent.current?.event?.status || '';
-		if (progressModal.open && status !== '' && status !== 'running') {
+		if (progressModal.open && status !== '' && !isInProgressStatus(status)) {
 			reload = true;
 		}
 	});

@@ -1318,17 +1318,28 @@ func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, de
 		return err
 	}
 
-	if len(jail.Networks) > 0 {
-		for _, network := range jail.Networks {
-			if err := s.DB.Delete(&network).Error; err != nil {
-				logger.L.Error().Err(err).Msg("delete_jail: failed to delete network")
-				return fmt.Errorf("failed_to_delete_network: %w", err)
-			}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Network{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_networks: %w", err)
 		}
-	}
-
-	if err := s.DB.Delete(&jail).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_jail: %w", err)
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailHooks{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_hooks: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailStats{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_stats: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Storage{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_storages: %w", err)
+		}
+		if err := tx.Delete(&jail).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	jailsPath, err := config.GetJailsPath()

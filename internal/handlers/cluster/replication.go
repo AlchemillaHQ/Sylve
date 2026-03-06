@@ -478,3 +478,37 @@ func ActivateReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) g
 		})
 	}
 }
+
+func DemoteReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			PolicyID   uint   `json:"policyId"`
+			OwnerEpoch uint64 `json:"ownerEpoch"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.DemoteReplicationPolicy(c.Request.Context(), req.PolicyID, req.OwnerEpoch); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "demote_replication_policy_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_demoted",
+			Data:    nil,
+		})
+	}
+}

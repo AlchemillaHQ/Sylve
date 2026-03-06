@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +37,13 @@ const replicationJobQueueName = "zelta-replication-run"
 const (
 	defaultReplicationPruneKeepLast  = 64
 	defaultReplicationLineageKeepOld = 2
+
+	replicationEventStatusRunning   = "running"
+	replicationEventStatusDemoting  = "demoting"
+	replicationEventStatusPromoting = "promoting"
+	replicationEventStatusActive    = "active"
+	replicationEventStatusSuccess   = "success"
+	replicationEventStatusFailed    = "failed"
 )
 
 type replicationJobPayload struct {
@@ -46,6 +55,12 @@ type ReplicationEventProgress struct {
 	MovedBytes      *uint64                         `json:"movedBytes"`
 	TotalBytes      *uint64                         `json:"totalBytes"`
 	ProgressPercent *float64                        `json:"progressPercent"`
+}
+
+var errReplicationPolicyTransitionAlreadyRunning = errors.New("replication_policy_transition_already_running")
+
+func isReplicationPolicyTransitionRunningError(err error) bool {
+	return errors.Is(err, errReplicationPolicyTransitionAlreadyRunning)
 }
 
 func (s *Service) registerReplicationJob() {
@@ -253,7 +268,7 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	event := clusterModels.ReplicationEvent{
 		PolicyID:     &policy.ID,
 		EventType:    "replication",
-		Status:       "running",
+		Status:       replicationEventStatusRunning,
 		SourceNodeID: localNodeID,
 		GuestType:    policy.GuestType,
 		GuestID:      policy.GuestID,
@@ -695,18 +710,11 @@ func (s *Service) replicationSourceDatasets(ctx context.Context, policy *cluster
 		return nil, fmt.Errorf("policy_required")
 	}
 
-	switch strings.TrimSpace(policy.GuestType) {
-	case clusterModels.ReplicationGuestTypeJail:
-		dataset, err := s.resolveJailReplicationSourceDataset(policy.GuestID)
-		if err != nil {
-			return nil, err
-		}
-		return []string{dataset}, nil
-	case clusterModels.ReplicationGuestTypeVM:
-		return s.resolveVMBackupSourceDatasets(ctx, policy.GuestID, "")
-	default:
-		return nil, fmt.Errorf("invalid_guest_type")
+	driver, err := s.replicationGuestDriver(policy.GuestType)
+	if err != nil {
+		return nil, err
 	}
+	return driver.sourceDatasets(ctx, policy.GuestID)
 }
 
 func (s *Service) resolveJailReplicationSourceDataset(ctID uint) (string, error) {
@@ -771,11 +779,11 @@ func (s *Service) finalizeReplicationEvent(event *clusterModels.ReplicationEvent
 	now := time.Now().UTC()
 	event.CompletedAt = &now
 	if runErr != nil {
-		event.Status = "failed"
+		event.Status = replicationEventStatusFailed
 		event.Error = runErr.Error()
 		event.Message = "replication_run_failed"
 	} else {
-		event.Status = "success"
+		event.Status = replicationEventStatusSuccess
 		event.Error = ""
 		event.Message = "replication_run_completed"
 	}
@@ -844,6 +852,26 @@ func (s *Service) releaseReplication(policyID uint) {
 	delete(s.runningReplication, policyID)
 }
 
+func (s *Service) acquirePolicyTransition(policyID uint) bool {
+	if policyID == 0 {
+		return false
+	}
+
+	s.transitionMu.Lock()
+	defer s.transitionMu.Unlock()
+	if _, exists := s.runningTransitions[policyID]; exists {
+		return false
+	}
+	s.runningTransitions[policyID] = struct{}{}
+	return true
+}
+
+func (s *Service) releasePolicyTransition(policyID uint) {
+	s.transitionMu.Lock()
+	defer s.transitionMu.Unlock()
+	delete(s.runningTransitions, policyID)
+}
+
 func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
 		return nil
@@ -909,7 +937,11 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				strings.TrimSpace(policy.SourceNodeID) != owner {
 				sourceNode, ok := nodeByID[strings.TrimSpace(policy.SourceNodeID)]
 				if ok && strings.ToLower(strings.TrimSpace(sourceNode.Status)) == "online" {
-					if err := s.failoverPolicyToNode(ctx, &policy, strings.TrimSpace(policy.SourceNodeID), "auto_failback"); err != nil {
+					if err := s.failoverPolicyToNode(ctx, &policy, strings.TrimSpace(policy.SourceNodeID), "auto_failback", true); err != nil {
+						if isReplicationPolicyTransitionRunningError(err) {
+							logger.L.Debug().Uint("policy_id", policy.ID).Msg("auto_failback_transition_already_running")
+							continue
+						}
 						logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Msg("auto_failback_failed")
 					}
 				}
@@ -927,7 +959,7 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
 				PolicyID:     &policy.ID,
 				EventType:    "failover",
-				Status:       "failed",
+				Status:       replicationEventStatusFailed,
 				Message:      "no_healthy_failover_target",
 				Error:        selectErr.Error(),
 				SourceNodeID: owner,
@@ -939,7 +971,14 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			continue
 		}
 
-		if err := s.failoverPolicyToNode(ctx, &policy, targetNodeID, "node_down_failover"); err != nil {
+		if err := s.failoverPolicyToNode(ctx, &policy, targetNodeID, "node_down_failover", false); err != nil {
+			if isReplicationPolicyTransitionRunningError(err) {
+				logger.L.Debug().
+					Uint("policy_id", policy.ID).
+					Str("target", targetNodeID).
+					Msg("policy_failover_transition_already_running")
+				continue
+			}
 			logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Str("target", targetNodeID).Msg("policy_failover_failed")
 			continue
 		}
@@ -988,9 +1027,33 @@ func (s *Service) selectFailoverTarget(policy *clusterModels.ReplicationPolicy, 
 	return "", fmt.Errorf("no_healthy_target_nodes")
 }
 
-func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModels.ReplicationPolicy, targetNodeID string, reason string) error {
+func (s *Service) failoverPolicyToNode(
+	ctx context.Context,
+	policy *clusterModels.ReplicationPolicy,
+	targetNodeID string,
+	reason string,
+	requireDemoteAck bool,
+) error {
 	if policy == nil || targetNodeID == "" {
 		return fmt.Errorf("invalid_failover_input")
+	}
+	if !s.acquirePolicyTransition(policy.ID) {
+		return errReplicationPolicyTransitionAlreadyRunning
+	}
+	defer s.releasePolicyTransition(policy.ID)
+
+	return s.runPolicyOwnershipTransition(ctx, policy, targetNodeID, reason, requireDemoteAck)
+}
+
+func (s *Service) runPolicyOwnershipTransition(
+	ctx context.Context,
+	policy *clusterModels.ReplicationPolicy,
+	targetNodeID string,
+	reason string,
+	requireDemoteAck bool,
+) error {
+	if policy == nil || targetNodeID == "" {
+		return fmt.Errorf("invalid_policy_transition_input")
 	}
 
 	previousOwner := replicationPolicyOwnerNode(policy)
@@ -1003,6 +1066,64 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 	}
 	nextEpoch := currentEpoch + 1
 
+	eventStartedAt := time.Now().UTC()
+	eventID, _ := s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+		PolicyID:     &policy.ID,
+		EventType:    "failover",
+		Status:       replicationEventStatusDemoting,
+		Message:      reason + "_demoting",
+		SourceNodeID: previousOwner,
+		TargetNodeID: targetNodeID,
+		GuestType:    policy.GuestType,
+		GuestID:      policy.GuestID,
+		StartedAt:    eventStartedAt,
+	}, false)
+	updateTransitionEvent := func(status, message string, transitionErr error, completed bool) {
+		if eventID == 0 {
+			return
+		}
+
+		event := clusterModels.ReplicationEvent{
+			ID:           eventID,
+			PolicyID:     &policy.ID,
+			EventType:    "failover",
+			Status:       status,
+			Message:      message,
+			SourceNodeID: previousOwner,
+			TargetNodeID: targetNodeID,
+			GuestType:    policy.GuestType,
+			GuestID:      policy.GuestID,
+			StartedAt:    eventStartedAt,
+		}
+		if transitionErr != nil {
+			event.Error = transitionErr.Error()
+		}
+		if completed {
+			completedAt := time.Now().UTC()
+			event.CompletedAt = &completedAt
+		}
+		_, _ = s.Cluster.CreateOrUpdateReplicationEvent(event, false)
+	}
+
+	if requireDemoteAck {
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_demote_requested", nil, false)
+
+		var demoteErr error
+		if strings.TrimSpace(previousOwner) == strings.TrimSpace(s.Cluster.LocalNodeID()) {
+			demoteErr = s.DemoteReplicationPolicy(ctx, policy.ID, currentEpoch)
+		} else {
+			demoteErr = s.forwardDemoteReplicationPolicy(previousOwner, policy.ID, currentEpoch)
+		}
+		if demoteErr != nil {
+			updateTransitionEvent(replicationEventStatusFailed, reason+"_demote_failed", demoteErr, true)
+			return demoteErr
+		}
+
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_demote_ack", nil, false)
+	} else {
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_demote_skipped_owner_unreachable", nil, false)
+	}
+
 	req := s.replicationPolicyToReq(policy)
 
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
@@ -1014,6 +1135,7 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 	policy.ActiveNodeID = targetNodeID
 	policy.OwnerEpoch = nextEpoch
 	if err := s.Cluster.ProposeReplicationPolicyUpdate(policy.ID, req, false); err != nil {
+		updateTransitionEvent(replicationEventStatusFailed, reason+"_demoting_failed", err, true)
 		return err
 	}
 
@@ -1029,21 +1151,11 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		LastActor:   s.Cluster.LocalNodeID(),
 	}
 	if err := s.Cluster.UpsertReplicationLease(lease, false); err != nil {
+		updateTransitionEvent(replicationEventStatusFailed, reason+"_demoting_failed", err, true)
 		return err
 	}
 
-	eventStartedAt := time.Now().UTC()
-	eventID, _ := s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-		PolicyID:     &policy.ID,
-		EventType:    "failover",
-		Status:       "running",
-		Message:      reason,
-		SourceNodeID: previousOwner,
-		TargetNodeID: targetNodeID,
-		GuestType:    policy.GuestType,
-		GuestID:      policy.GuestID,
-		StartedAt:    eventStartedAt,
-	}, false)
+	updateTransitionEvent(replicationEventStatusPromoting, reason+"_promoting", nil, false)
 
 	var activateErr error
 	if strings.TrimSpace(targetNodeID) == strings.TrimSpace(s.Cluster.LocalNodeID()) {
@@ -1052,48 +1164,30 @@ func (s *Service) failoverPolicyToNode(ctx context.Context, policy *clusterModel
 		activateErr = s.forwardActivateReplicationPolicy(targetNodeID, policy.ID)
 	}
 
-	eventCompletedAt := time.Now().UTC()
 	if activateErr != nil {
-		if eventID > 0 {
-			_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-				ID:           eventID,
-				PolicyID:     &policy.ID,
-				EventType:    "failover",
-				Status:       "failed",
-				Message:      reason + "_failed",
-				Error:        activateErr.Error(),
-				SourceNodeID: previousOwner,
-				TargetNodeID: targetNodeID,
-				GuestType:    policy.GuestType,
-				GuestID:      policy.GuestID,
-				StartedAt:    eventStartedAt,
-				CompletedAt:  &eventCompletedAt,
-			}, false)
-		}
+		updateTransitionEvent(replicationEventStatusFailed, reason+"_promoting_failed", activateErr, true)
 		return activateErr
 	}
 
-	if eventID > 0 {
-		_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-			ID:           eventID,
-			PolicyID:     &policy.ID,
-			EventType:    "failover",
-			Status:       "success",
-			Message:      reason + "_completed",
-			Error:        "",
-			SourceNodeID: previousOwner,
-			TargetNodeID: targetNodeID,
-			GuestType:    policy.GuestType,
-			GuestID:      policy.GuestID,
-			StartedAt:    eventStartedAt,
-			CompletedAt:  &eventCompletedAt,
-		}, false)
-	}
+	updateTransitionEvent(replicationEventStatusActive, reason+"_active", nil, true)
 
 	return nil
 }
 
 func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint) error {
+	return s.forwardReplicationPolicyControl(nodeID, "activate", map[string]any{
+		"policyId": policyID,
+	})
+}
+
+func (s *Service) forwardDemoteReplicationPolicy(nodeID string, policyID uint, ownerEpoch uint64) error {
+	return s.forwardReplicationPolicyControl(nodeID, "demote", map[string]any{
+		"policyId":   policyID,
+		"ownerEpoch": ownerEpoch,
+	})
+}
+
+func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any) error {
 	targetAPI, err := s.resolveReplicationNodeAPI(nodeID)
 	if err != nil {
 		return err
@@ -1109,14 +1203,54 @@ func (s *Service) forwardActivateReplicationPolicy(nodeID string, policyID uint)
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s/api/intra-cluster/activate", targetAPI)
-	return utils.HTTPPostJSON(url, map[string]any{
-		"policyId": policyID,
-	}, map[string]string{
+	url := fmt.Sprintf("https://%s/api/intra-cluster/%s", targetAPI, strings.TrimSpace(action))
+	return utils.HTTPPostJSON(url, payload, map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",
 		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
 	})
+}
+
+func (s *Service) DemoteReplicationPolicy(ctx context.Context, policyID uint, expectedOwnerEpoch uint64) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+
+	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+	if err != nil {
+		return err
+	}
+
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID == "" {
+		return fmt.Errorf("local_node_id_missing")
+	}
+
+	policyOwner := replicationPolicyOwnerNode(policy)
+	if policyOwner == "" {
+		return fmt.Errorf("replication_policy_owner_missing")
+	}
+	if policyOwner != localNodeID {
+		return fmt.Errorf("replication_policy_not_owned_by_local_node")
+	}
+
+	currentEpoch := replicationPolicyOwnerEpoch(policy)
+	if expectedOwnerEpoch > 0 && currentEpoch != expectedOwnerEpoch {
+		return fmt.Errorf("replication_policy_owner_epoch_mismatch")
+	}
+
+	driver, err := s.replicationGuestDriver(policy.GuestType)
+	if err != nil {
+		return err
+	}
+	if err := driver.demote(ctx, policy.GuestID); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
@@ -1254,14 +1388,11 @@ func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) 
 		return err
 	}
 
-	switch strings.TrimSpace(policy.GuestType) {
-	case clusterModels.ReplicationGuestTypeJail:
-		return s.activateReplicationJail(ctx, policy.GuestID)
-	case clusterModels.ReplicationGuestTypeVM:
-		return s.activateReplicationVM(ctx, policy.GuestID)
-	default:
-		return fmt.Errorf("invalid_guest_type")
+	driver, err := s.replicationGuestDriver(policy.GuestType)
+	if err != nil {
+		return err
 	}
+	return driver.activate(ctx, policy.GuestID)
 }
 
 func (s *Service) activateReplicationJail(ctx context.Context, ctID uint) error {
@@ -1337,11 +1468,14 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 		return nil
 	}
 
-	var jailCount int64
-	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id = ?", ctID).Count(&jailCount).Error; err != nil {
+	var jail jailModels.Jail
+	if err := s.DB.Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
 		return err
 	}
-	if jailCount == 0 {
+	if jail.StoppedAt != nil && (jail.StartedAt == nil || !jail.StoppedAt.Before(*jail.StartedAt)) {
 		return nil
 	}
 
@@ -1356,6 +1490,101 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 	}
 
 	return nil
+}
+
+func (s *Service) retireStaleNonOwnerJailMetadata(ctx context.Context, ctID uint, localNodeID string, expectedOwner string) (bool, error) {
+	if ctID == 0 {
+		return false, nil
+	}
+
+	localNodeID = strings.TrimSpace(localNodeID)
+	expectedOwner = strings.TrimSpace(expectedOwner)
+	if localNodeID == "" || expectedOwner == "" || localNodeID == expectedOwner {
+		return false, nil
+	}
+
+	var jail jailModels.Jail
+	if err := s.DB.Where("ct_id = ?", ctID).First(&jail).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return false, err
+	}
+	jailRoot := filepath.Join(jailsPath, strconv.Itoa(int(ctID)))
+	if _, err := os.Stat(jailRoot); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+
+	if err := s.Jail.DeleteJail(ctx, ctID, false, false); err != nil {
+		return false, fmt.Errorf("retire_stale_non_owner_jail_metadata_failed: %w", err)
+	}
+
+	logger.L.Info().
+		Uint("ctid", ctID).
+		Uint("jail_id", jail.ID).
+		Str("local_node", localNodeID).
+		Str("expected_owner", expectedOwner).
+		Msg("retired_stale_non_owner_jail_metadata")
+	return true, nil
+}
+
+func (s *Service) retireStaleNonOwnerVMMetadata(ctx context.Context, rid uint, localNodeID string, expectedOwner string) (bool, error) {
+	if rid == 0 || s.VM == nil {
+		return false, nil
+	}
+
+	localNodeID = strings.TrimSpace(localNodeID)
+	expectedOwner = strings.TrimSpace(expectedOwner)
+	if localNodeID == "" || expectedOwner == "" || localNodeID == expectedOwner {
+		return false, nil
+	}
+
+	vm, err := s.findVMByRID(rid)
+	if err != nil {
+		return false, err
+	}
+	if vm == nil {
+		return false, nil
+	}
+
+	dataset, err := s.findLocalGuestDataset(ctx, clusterModels.ReplicationGuestTypeVM, rid)
+	if err != nil {
+		return false, err
+	}
+	if dataset != "" {
+		return false, nil
+	}
+
+	vmPathRoot, err := config.GetVMsPath()
+	if err != nil {
+		return false, err
+	}
+
+	vmPath := filepath.Join(vmPathRoot, strconv.Itoa(int(rid)))
+	if _, err := os.Stat(vmPath); err == nil {
+		return false, nil
+	} else if !os.IsNotExist(err) {
+		return false, err
+	}
+
+	if err := s.VM.RetireVMLocalMetadata(rid, false); err != nil {
+		return false, fmt.Errorf("retire_stale_non_owner_vm_metadata_failed: %w", err)
+	}
+
+	logger.L.Info().
+		Uint("rid", rid).
+		Uint("vm_id", vm.ID).
+		Str("local_node", localNodeID).
+		Str("expected_owner", expectedOwner).
+		Msg("retired_stale_non_owner_vm_metadata")
+	return true, nil
 }
 
 func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, rootDataset string) error {
@@ -1467,7 +1696,7 @@ func (s *Service) findLocalGuestDataset(ctx context.Context, guestType string, g
 	return candidates[0], nil
 }
 
-func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
+func (s *Service) selfFenceExpiredLeases(ctx context.Context) error {
 	if s.Cluster == nil {
 		return nil
 	}
@@ -1487,28 +1716,18 @@ func (s *Service) selfFenceExpiredLeases(_ context.Context) error {
 		if expectedOwner == "" || expectedOwner == localNodeID {
 			continue
 		}
-		fenceReason := "policy_owner_mismatch"
 
-		switch strings.TrimSpace(policy.GuestType) {
-		case clusterModels.ReplicationGuestTypeJail:
-			if err := s.stopLocalJailIfPresent(policy.GuestID); err != nil {
-				logger.L.Warn().
-					Err(err).
-					Uint("policy_id", policy.ID).
-					Uint("guest_id", policy.GuestID).
-					Str("reason", fenceReason).
-					Msg("replication_self_fence_jail_stop_failed")
-			}
-		case clusterModels.ReplicationGuestTypeVM:
-			if err := s.stopVMIfPresent(policy.GuestID); err != nil {
-				logger.L.Warn().
-					Err(err).
-					Uint("policy_id", policy.ID).
-					Uint("guest_id", policy.GuestID).
-					Str("reason", fenceReason).
-					Msg("replication_self_fence_vm_stop_failed")
-			}
+		driver, err := s.replicationGuestDriver(policy.GuestType)
+		if err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Uint("guest_id", policy.GuestID).
+				Str("guest_type", strings.TrimSpace(policy.GuestType)).
+				Msg("replication_self_fence_invalid_guest_type")
+			continue
 		}
+		driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner)
 	}
 
 	return nil

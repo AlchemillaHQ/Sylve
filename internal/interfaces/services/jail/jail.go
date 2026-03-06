@@ -122,6 +122,7 @@ type EditJailNetworkRequest struct {
 type JailServiceInterface interface {
 	JailAction(ctid int, action string) error
 	GetJailCTIDFromDataset(dataset string) (uint, error)
+	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
 	StartStatsMonitoring(ctx context.Context)
 
 	StoreJailUsage() error

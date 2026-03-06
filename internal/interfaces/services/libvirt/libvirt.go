@@ -74,6 +74,7 @@ type LibvirtServiceInterface interface {
 	CreateVmXML(vm vmModels.VM, vmPath string) (string, error)
 	CreateLvVm(id int, ctx context.Context) error
 	RemoveLvVm(rid uint) error
+	RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error
 	GetLvDomain(rid uint) (*LvDomain, error)
 	StartTPM() error
 	StopTPM(rid uint) error
