@@ -14,6 +14,7 @@ type ReplicationPolicyReq struct {
 	OwnerEpoch   uint64                       `json:"-"`
 	SourceMode   string                       `json:"sourceMode"`
 	FailbackMode string                       `json:"failbackMode"`
+	FailoverMode string                       `json:"failoverMode"`
 	CronExpr     string                       `json:"cronExpr"`
 	Enabled      *bool                        `json:"enabled"`
 	Targets      []ReplicationPolicyTargetReq `json:"targets" binding:"required"`

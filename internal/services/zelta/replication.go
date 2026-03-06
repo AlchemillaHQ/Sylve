@@ -36,6 +36,7 @@ const (
 	defaultReplicationPruneKeepLast  = 64
 	defaultReplicationLineageKeepOld = 2
 	replicationOrphanCleanupInterval = 5 * time.Minute
+	replicationFailoverDownMissLimit = 3
 
 	replicationEventStatusRunning   = "running"
 	replicationEventStatusDemoting  = "demoting"
@@ -43,6 +44,9 @@ const (
 	replicationEventStatusActive    = "active"
 	replicationEventStatusSuccess   = "success"
 	replicationEventStatusFailed    = "failed"
+
+	replicationFailoverRequestSafe  = "safe"
+	replicationFailoverRequestForce = "force"
 )
 
 type replicationJobPayload struct {
@@ -57,6 +61,12 @@ type ReplicationEventProgress struct {
 }
 
 var errReplicationPolicyTransitionAlreadyRunning = errors.New("replication_policy_transition_already_running")
+
+type replicationTransitionOptions struct {
+	AllowUnsafe          bool
+	MovePinnedSource     bool
+	TriggerValidationRun bool
+}
 
 func isReplicationPolicyTransitionRunningError(err error) bool {
 	return errors.Is(err, errReplicationPolicyTransitionAlreadyRunning)
@@ -165,7 +175,43 @@ func transitionDemoteAckRequired(reason string) bool {
 	if reason == "" {
 		return true
 	}
+	if strings.Contains(reason, "force") {
+		return false
+	}
 	return !strings.Contains(reason, "node_down_failover")
+}
+
+func transitionAllowUnsafe(reason string) bool {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	if reason == "" {
+		return false
+	}
+	return strings.Contains(reason, "force")
+}
+
+func policyFailoverMode(policy *clusterModels.ReplicationPolicy) string {
+	if policy == nil {
+		return clusterModels.ReplicationFailoverManual
+	}
+	mode := strings.ToLower(strings.TrimSpace(policy.FailoverMode))
+	switch mode {
+	case clusterModels.ReplicationFailoverAutoSafe,
+		clusterModels.ReplicationFailoverAutoForce,
+		clusterModels.ReplicationFailoverManual:
+		return mode
+	default:
+		return clusterModels.ReplicationFailoverManual
+	}
+}
+
+func replicationFailoverRequestMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case replicationFailoverRequestForce:
+		return replicationFailoverRequestForce
+	default:
+		return replicationFailoverRequestSafe
+	}
 }
 
 func transitionPayloadFromPolicy(policy *clusterModels.ReplicationPolicy) clusterModels.ReplicationPolicyTransition {
@@ -313,6 +359,11 @@ func (s *Service) resumePolicyTransition(ctx context.Context, policy *clusterMod
 			targetNodeID,
 			reason+"_resume",
 			transitionDemoteAckRequired(reason),
+			replicationTransitionOptions{
+				AllowUnsafe:          transitionAllowUnsafe(reason),
+				MovePinnedSource:     false,
+				TriggerValidationRun: true,
+			},
 		)
 	default:
 		return nil
@@ -1478,7 +1529,18 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 				strings.TrimSpace(policy.SourceNodeID) != owner {
 				sourceNode, ok := nodeByID[strings.TrimSpace(policy.SourceNodeID)]
 				if ok && strings.ToLower(strings.TrimSpace(sourceNode.Status)) == "online" {
-					if err := s.failoverPolicyToNode(ctx, &policy, strings.TrimSpace(policy.SourceNodeID), "auto_failback", true); err != nil {
+					if err := s.failoverPolicyToNode(
+						ctx,
+						&policy,
+						strings.TrimSpace(policy.SourceNodeID),
+						"auto_failback",
+						true,
+						replicationTransitionOptions{
+							AllowUnsafe:          false,
+							MovePinnedSource:     false,
+							TriggerValidationRun: true,
+						},
+					); err != nil {
 						if isReplicationPolicyTransitionRunningError(err) {
 							logger.L.Debug().Uint("policy_id", policy.ID).Msg("auto_failback_transition_already_running")
 							continue
@@ -1491,7 +1553,12 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 		}
 
 		s.downMisses[policy.ID]++
-		if s.downMisses[policy.ID] < 3 {
+		if s.downMisses[policy.ID] < replicationFailoverDownMissLimit {
+			continue
+		}
+
+		failoverMode := policyFailoverMode(&policy)
+		if failoverMode == clusterModels.ReplicationFailoverManual {
 			continue
 		}
 
@@ -1512,7 +1579,62 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 			continue
 		}
 
-		if err := s.failoverPolicyToNode(ctx, &policy, targetNodeID, "node_down_failover", false); err != nil {
+		if failoverMode == clusterModels.ReplicationFailoverAutoSafe {
+			_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+				PolicyID:     &policy.ID,
+				EventType:    "failover",
+				Status:       replicationEventStatusFailed,
+				Message:      "node_down_auto_safe_blocked_owner_unreachable",
+				Error:        "safe_failover_requires_owner_reachable",
+				SourceNodeID: owner,
+				TargetNodeID: targetNodeID,
+				GuestType:    policy.GuestType,
+				GuestID:      policy.GuestID,
+				StartedAt:    now,
+				CompletedAt:  &now,
+			}, false)
+			s.downMisses[policy.ID] = replicationFailoverDownMissLimit - 1
+			continue
+		}
+
+		reason := "node_down_auto_safe"
+		requireDemoteAck := true
+		options := replicationTransitionOptions{
+			AllowUnsafe:          false,
+			MovePinnedSource:     false,
+			TriggerValidationRun: true,
+		}
+		if failoverMode == clusterModels.ReplicationFailoverAutoForce {
+			quorumOK, quorumErr := s.hasFailoverQuorum(nodeByID)
+			if quorumErr != nil {
+				logger.L.Warn().
+					Err(quorumErr).
+					Uint("policy_id", policy.ID).
+					Msg("policy_failover_quorum_check_failed")
+				continue
+			}
+			if !quorumOK {
+				_, _ = s.Cluster.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
+					PolicyID:     &policy.ID,
+					EventType:    "failover",
+					Status:       replicationEventStatusFailed,
+					Message:      "node_down_auto_force_blocked_no_quorum",
+					Error:        "force_failover_requires_quorum",
+					SourceNodeID: owner,
+					TargetNodeID: targetNodeID,
+					GuestType:    policy.GuestType,
+					GuestID:      policy.GuestID,
+					StartedAt:    now,
+					CompletedAt:  &now,
+				}, false)
+				continue
+			}
+			reason = "node_down_auto_force"
+			requireDemoteAck = false
+			options.AllowUnsafe = true
+		}
+
+		if err := s.failoverPolicyToNode(ctx, &policy, targetNodeID, reason, requireDemoteAck, options); err != nil {
 			if isReplicationPolicyTransitionRunningError(err) {
 				logger.L.Debug().
 					Uint("policy_id", policy.ID).
@@ -1591,12 +1713,164 @@ func (s *Service) isClusterNodeOnline(nodeID string) (bool, error) {
 	return false, fmt.Errorf("replication_target_node_not_found")
 }
 
+func nodeOnlineByID(nodeByID map[string]clusterModels.ClusterNode, nodeID string) bool {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false
+	}
+	node, ok := nodeByID[nodeID]
+	if !ok {
+		return false
+	}
+	return strings.ToLower(strings.TrimSpace(node.Status)) == "online"
+}
+
+func replicationPolicyHasTargetNode(policy *clusterModels.ReplicationPolicy, nodeID string) bool {
+	if policy == nil {
+		return false
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false
+	}
+	for _, target := range policy.Targets {
+		if strings.TrimSpace(target.NodeID) == nodeID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) hasFailoverQuorum(nodeByID map[string]clusterModels.ClusterNode) (bool, error) {
+	if s.Cluster == nil || s.Cluster.Raft == nil || s.Cluster.Raft.State() != raft.Leader {
+		return false, fmt.Errorf("not_leader")
+	}
+	if err := s.Cluster.Raft.VerifyLeader().Error(); err != nil {
+		return false, err
+	}
+
+	cfgFuture := s.Cluster.Raft.GetConfiguration()
+	if err := cfgFuture.Error(); err != nil {
+		return false, err
+	}
+
+	totalVoters := 0
+	onlineVoters := 0
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	for _, server := range cfgFuture.Configuration().Servers {
+		if server.Suffrage != raft.Voter {
+			continue
+		}
+		totalVoters++
+		serverID := strings.TrimSpace(string(server.ID))
+		if serverID == "" {
+			continue
+		}
+		if nodeOnlineByID(nodeByID, serverID) || (localNodeID != "" && serverID == localNodeID) {
+			onlineVoters++
+		}
+	}
+	if totalVoters == 0 {
+		return false, fmt.Errorf("raft_voter_set_empty")
+	}
+	required := (totalVoters / 2) + 1
+	return onlineVoters >= required, nil
+}
+
+func (s *Service) RequestReplicationPolicyFailover(
+	ctx context.Context,
+	policyID uint,
+	targetNodeID string,
+	mode string,
+	confirmDataLoss bool,
+	movePinnedSource bool,
+) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft != nil && s.Cluster.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+
+	requestMode := replicationFailoverRequestMode(mode)
+	if requestMode == replicationFailoverRequestForce && !confirmDataLoss {
+		return fmt.Errorf("confirm_data_loss_required_for_force_failover")
+	}
+
+	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+	if err != nil {
+		return err
+	}
+	if policy == nil {
+		return fmt.Errorf("replication_policy_not_found")
+	}
+
+	nodes, err := s.Cluster.Nodes()
+	if err != nil {
+		return err
+	}
+	nodeByID := make(map[string]clusterModels.ClusterNode, len(nodes))
+	for _, node := range nodes {
+		nodeByID[strings.TrimSpace(node.NodeUUID)] = node
+	}
+
+	ownerNodeID := replicationPolicyOwnerNode(policy)
+	if ownerNodeID == "" {
+		return fmt.Errorf("replication_policy_owner_missing")
+	}
+	if requestMode == replicationFailoverRequestSafe && !nodeOnlineByID(nodeByID, ownerNodeID) {
+		return fmt.Errorf("safe_failover_requires_online_owner_use_force_for_owner_down")
+	}
+
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	if targetNodeID == "" {
+		selectedTarget, selectErr := s.selectFailoverTarget(policy, ownerNodeID, nodeByID)
+		if selectErr != nil {
+			return selectErr
+		}
+		targetNodeID = selectedTarget
+	}
+	if targetNodeID == ownerNodeID {
+		return fmt.Errorf("replication_target_same_as_owner")
+	}
+	if !replicationPolicyHasTargetNode(policy, targetNodeID) {
+		return fmt.Errorf("replication_target_not_configured_for_policy")
+	}
+	if !nodeOnlineByID(nodeByID, targetNodeID) {
+		return fmt.Errorf("replication_target_node_offline")
+	}
+
+	options := replicationTransitionOptions{
+		AllowUnsafe:          requestMode == replicationFailoverRequestForce,
+		MovePinnedSource:     movePinnedSource,
+		TriggerValidationRun: true,
+	}
+	requireDemoteAck := requestMode == replicationFailoverRequestSafe
+	reason := "manual_failover"
+	if requestMode == replicationFailoverRequestForce {
+		quorumOK, quorumErr := s.hasFailoverQuorum(nodeByID)
+		if quorumErr != nil {
+			return fmt.Errorf("force_failover_quorum_check_failed: %w", quorumErr)
+		}
+		if !quorumOK {
+			return fmt.Errorf("force_failover_requires_quorum")
+		}
+		reason = "manual_force_failover"
+	}
+
+	return s.failoverPolicyToNode(ctx, policy, targetNodeID, reason, requireDemoteAck, options)
+}
+
 func (s *Service) failoverPolicyToNode(
 	ctx context.Context,
 	policy *clusterModels.ReplicationPolicy,
 	targetNodeID string,
 	reason string,
 	requireDemoteAck bool,
+	options replicationTransitionOptions,
 ) error {
 	if policy == nil || targetNodeID == "" {
 		return fmt.Errorf("invalid_failover_input")
@@ -1606,7 +1880,7 @@ func (s *Service) failoverPolicyToNode(
 	}
 	defer s.releasePolicyTransition(policy.ID)
 
-	return s.runPolicyOwnershipTransition(ctx, policy, targetNodeID, reason, requireDemoteAck)
+	return s.runPolicyOwnershipTransition(ctx, policy, targetNodeID, reason, requireDemoteAck, options)
 }
 
 func (s *Service) runPolicyOwnershipTransition(
@@ -1615,12 +1889,14 @@ func (s *Service) runPolicyOwnershipTransition(
 	targetNodeID string,
 	reason string,
 	requireDemoteAck bool,
+	options replicationTransitionOptions,
 ) error {
 	if policy == nil || targetNodeID == "" {
 		return fmt.Errorf("invalid_policy_transition_input")
 	}
 
 	previousOwner := replicationPolicyOwnerNode(policy)
+	previousSourceNodeID := strings.TrimSpace(policy.SourceNodeID)
 	currentEpoch := replicationPolicyOwnerEpoch(policy)
 	if currentEpoch == 0 {
 		return fmt.Errorf("replication_policy_owner_epoch_missing")
@@ -1723,6 +1999,9 @@ func (s *Service) runPolicyOwnershipTransition(
 		if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 			rollbackReq.SourceNodeID = rollbackOwner
 			policy.SourceNodeID = rollbackOwner
+		} else if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned && previousSourceNodeID != "" {
+			rollbackReq.SourceNodeID = previousSourceNodeID
+			policy.SourceNodeID = previousSourceNodeID
 		}
 		rollbackReq.ActiveNodeID = rollbackOwner
 		rollbackReq.OwnerEpoch = rollbackEpoch
@@ -1831,10 +2110,13 @@ func (s *Service) runPolicyOwnershipTransition(
 			return effectiveErr
 		}
 	} else {
-		transitionErr := fmt.Errorf("unsafe_failover_blocked_without_demote_and_catchup")
-		markTransitionFailed(transitionErr)
-		updateTransitionEvent(replicationEventStatusFailed, reason+"_blocked_without_demote_or_catchup", transitionErr, true)
-		return transitionErr
+		if !options.AllowUnsafe {
+			transitionErr := fmt.Errorf("unsafe_failover_blocked_without_demote_and_catchup")
+			markTransitionFailed(transitionErr)
+			updateTransitionEvent(replicationEventStatusFailed, reason+"_blocked_without_demote_or_catchup", transitionErr, true)
+			return transitionErr
+		}
+		updateTransitionEvent(replicationEventStatusDemoting, reason+"_unsafe_force_allowed", nil, false)
 	}
 
 	targetOnline, targetOnlineErr := s.isClusterNodeOnline(targetNodeID)
@@ -1855,6 +2137,11 @@ func (s *Service) runPolicyOwnershipTransition(
 
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
 		req.SourceNodeID = targetNodeID
+		policy.SourceNodeID = targetNodeID
+	}
+	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned && options.MovePinnedSource {
+		req.SourceNodeID = targetNodeID
+		policy.SourceNodeID = targetNodeID
 	}
 	req.ActiveNodeID = targetNodeID
 	req.OwnerEpoch = nextEpoch
@@ -1953,6 +2240,16 @@ func (s *Service) runPolicyOwnershipTransition(
 		return err
 	}
 
+	if options.TriggerValidationRun {
+		if err := s.enqueueReplicationValidationRun(ctx, policy.ID, targetNodeID); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Str("target_node_id", strings.TrimSpace(targetNodeID)).
+				Msg("replication_post_transition_validation_enqueue_failed")
+		}
+	}
+
 	return nil
 }
 
@@ -1982,10 +2279,35 @@ func (s *Service) forwardCatchupReplicationPolicy(
 	})
 }
 
+func (s *Service) forwardRunReplicationPolicy(nodeID string, policyID uint) error {
+	return s.forwardReplicationPolicyControl(nodeID, "run", map[string]any{
+		"policyId": policyID,
+	})
+}
+
 func (s *Service) forwardCleanupReplicationPolicyDelete(nodeID string, policyID uint) error {
 	return s.forwardReplicationPolicyControl(nodeID, "cleanup-policy-delete", map[string]any{
 		"policyId": policyID,
 	})
+}
+
+func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID uint, targetNodeID string) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	if targetNodeID == "" {
+		return fmt.Errorf("replication_target_node_required")
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID != "" && targetNodeID == localNodeID {
+		return s.EnqueueReplicationPolicyRun(ctx, policyID)
+	}
+	return s.forwardRunReplicationPolicy(targetNodeID, policyID)
 }
 
 func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, payload map[string]any) error {
@@ -2400,6 +2722,7 @@ func (s *Service) replicationPolicyToReq(policy *clusterModels.ReplicationPolicy
 		OwnerEpoch:   replicationPolicyOwnerEpoch(policy),
 		SourceMode:   policy.SourceMode,
 		FailbackMode: policy.FailbackMode,
+		FailoverMode: policy.FailoverMode,
 		CronExpr:     policy.CronExpr,
 		Enabled:      &policy.Enabled,
 		Targets:      make([]clusterServiceInterfaces.ReplicationPolicyTargetReq, 0, len(policy.Targets)),

@@ -2,6 +2,7 @@ import {
 	ReplicationEventProgressSchema,
 	ReplicationEventSchema,
 	ReplicationPolicySchema,
+	type ReplicationFailoverMode,
 	type ReplicationFailbackMode,
 	type ReplicationGuestType,
 	type ReplicationPolicy,
@@ -24,8 +25,16 @@ export type ReplicationPolicyInput = {
 	cronExpr: string;
 	targets: ReplicationPolicyTargetInput[];
 	failbackMode: ReplicationFailbackMode;
+	failoverMode: ReplicationFailoverMode;
 	sourceMode: ReplicationSourceMode;
 	sourceNodeId?: string;
+};
+
+export type ReplicationPolicyFailoverInput = {
+	targetNodeId?: string;
+	mode: 'safe' | 'force';
+	confirmDataLoss?: boolean;
+	movePinnedSource?: boolean;
 };
 
 export async function listReplicationPolicies(): Promise<ReplicationPolicy[]> {
@@ -49,6 +58,13 @@ export async function deleteReplicationPolicy(id: number): Promise<APIResponse> 
 
 export async function runReplicationPolicy(id: number): Promise<APIResponse> {
 	return await apiRequest(`/cluster/replication/policies/${id}/run`, APIResponseSchema, 'POST', {});
+}
+
+export async function failoverReplicationPolicy(
+	id: number,
+	input: ReplicationPolicyFailoverInput
+): Promise<APIResponse> {
+	return await apiRequest(`/cluster/replication/policies/${id}/failover`, APIResponseSchema, 'POST', input);
 }
 
 export async function listReplicationEvents(

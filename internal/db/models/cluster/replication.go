@@ -27,6 +27,10 @@ const (
 	ReplicationFailbackManual = "manual"
 	ReplicationFailbackAuto   = "auto"
 
+	ReplicationFailoverManual    = "manual"
+	ReplicationFailoverAutoSafe  = "auto_safe"
+	ReplicationFailoverAutoForce = "auto_force"
+
 	ReplicationTransitionStateNone      = "none"
 	ReplicationTransitionStateDemoting  = "demoting"
 	ReplicationTransitionStateCatchup   = "catchup"
@@ -45,6 +49,7 @@ type ReplicationPolicy struct {
 	OwnerEpoch             uint64                    `gorm:"not null;default:1" json:"ownerEpoch"`
 	SourceMode             string                    `gorm:"not null;default:follow_active" json:"sourceMode"`
 	FailbackMode           string                    `gorm:"not null;default:manual" json:"failbackMode"`
+	FailoverMode           string                    `gorm:"not null;default:manual" json:"failoverMode"`
 	CronExpr               string                    `gorm:"not null" json:"cronExpr"`
 	Enabled                bool                      `gorm:"default:true;index" json:"enabled"`
 	LastRunAt              *time.Time                `json:"lastRunAt"`
@@ -153,6 +158,10 @@ func validReplicationFailbackMode(v string) bool {
 	return v == ReplicationFailbackManual || v == ReplicationFailbackAuto
 }
 
+func validReplicationFailoverMode(v string) bool {
+	return v == ReplicationFailoverManual || v == ReplicationFailoverAutoSafe || v == ReplicationFailoverAutoForce
+}
+
 func validReplicationTransitionState(v string) bool {
 	switch v {
 	case ReplicationTransitionStateNone,
@@ -178,6 +187,7 @@ func normalizeReplicationPolicy(p *ReplicationPolicy) {
 	p.ActiveNodeID = strings.TrimSpace(p.ActiveNodeID)
 	p.SourceMode = strings.TrimSpace(strings.ToLower(p.SourceMode))
 	p.FailbackMode = strings.TrimSpace(strings.ToLower(p.FailbackMode))
+	p.FailoverMode = strings.TrimSpace(strings.ToLower(p.FailoverMode))
 	p.CronExpr = strings.TrimSpace(p.CronExpr)
 	p.LastStatus = strings.TrimSpace(p.LastStatus)
 	p.LastError = strings.TrimSpace(p.LastError)
@@ -192,6 +202,9 @@ func normalizeReplicationPolicy(p *ReplicationPolicy) {
 	}
 	if p.FailbackMode == "" {
 		p.FailbackMode = ReplicationFailbackManual
+	}
+	if p.FailoverMode == "" {
+		p.FailoverMode = ReplicationFailoverManual
 	}
 	if p.TransitionState == "" {
 		p.TransitionState = ReplicationTransitionStateNone
@@ -216,6 +229,9 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 	if !validReplicationFailbackMode(policy.FailbackMode) {
 		return fmt.Errorf("invalid_replication_failback_mode")
 	}
+	if !validReplicationFailoverMode(policy.FailoverMode) {
+		return fmt.Errorf("invalid_replication_failover_mode")
+	}
 	if !validReplicationTransitionState(policy.TransitionState) {
 		return fmt.Errorf("invalid_replication_transition_state")
 	}
@@ -235,6 +251,7 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 				"owner_epoch",
 				"source_mode",
 				"failback_mode",
+				"failover_mode",
 				"cron_expr",
 				"enabled",
 				"last_run_at",

@@ -3,6 +3,7 @@ import { z } from 'zod/v4';
 export const ReplicationGuestTypeSchema = z.enum(['vm', 'jail']);
 export const ReplicationSourceModeSchema = z.enum(['follow_active', 'pinned_primary']);
 export const ReplicationFailbackModeSchema = z.enum(['manual', 'auto']);
+export const ReplicationFailoverModeSchema = z.enum(['manual', 'auto_safe', 'auto_force']);
 
 export const ReplicationPolicyTargetSchema = z.object({
 	id: z.number().int(),
@@ -22,6 +23,7 @@ export const ReplicationPolicySchema = z.object({
 	activeNodeId: z.string().optional().default(''),
 	sourceMode: ReplicationSourceModeSchema.default('follow_active'),
 	failbackMode: ReplicationFailbackModeSchema.default('manual'),
+	failoverMode: ReplicationFailoverModeSchema.default('manual'),
 	cronExpr: z.string().default(''),
 	enabled: z.boolean().default(true),
 	lastRunAt: z.string().nullable().optional(),
@@ -61,6 +63,7 @@ export const ReplicationEventProgressSchema = z.object({
 export type ReplicationGuestType = z.infer<typeof ReplicationGuestTypeSchema>;
 export type ReplicationSourceMode = z.infer<typeof ReplicationSourceModeSchema>;
 export type ReplicationFailbackMode = z.infer<typeof ReplicationFailbackModeSchema>;
+export type ReplicationFailoverMode = z.infer<typeof ReplicationFailoverModeSchema>;
 export type ReplicationPolicyTarget = z.infer<typeof ReplicationPolicyTargetSchema>;
 export type ReplicationPolicy = z.infer<typeof ReplicationPolicySchema>;
 export type ReplicationEvent = z.infer<typeof ReplicationEventSchema>;

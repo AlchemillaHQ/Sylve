@@ -184,6 +184,19 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		}
 	}
 
+	failoverMode := strings.TrimSpace(strings.ToLower(input.FailoverMode))
+	if failoverMode == "" && existingByIDFound {
+		failoverMode = strings.TrimSpace(strings.ToLower(existingByID.FailoverMode))
+	}
+	if failoverMode == "" {
+		failoverMode = clusterModels.ReplicationFailoverManual
+	}
+	if failoverMode != clusterModels.ReplicationFailoverManual &&
+		failoverMode != clusterModels.ReplicationFailoverAutoSafe &&
+		failoverMode != clusterModels.ReplicationFailoverAutoForce {
+		return nil, nil, fmt.Errorf("invalid_failover_mode")
+	}
+
 	if sourceMode == clusterModels.ReplicationSourceModePinned {
 		if sourceNodeID == "" {
 			return nil, nil, fmt.Errorf("source_node_required_for_pinned_mode")
@@ -260,6 +273,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 		OwnerEpoch:   ownerEpoch,
 		SourceMode:   sourceMode,
 		FailbackMode: failbackMode,
+		FailoverMode: failoverMode,
 		CronExpr:     cronExpr,
 		Enabled:      enabled,
 		NextRunAt:    next,

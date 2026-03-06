@@ -430,6 +430,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
+		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
@@ -500,6 +501,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService))
 		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
 		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
+		clusterReplication.POST("/policies/:id/failover", clusterHandlers.FailoverReplicationPolicy(clusterService, zeltaService))
 
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
 		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))

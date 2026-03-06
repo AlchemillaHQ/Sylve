@@ -9,7 +9,9 @@
 package clusterHandlers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -251,6 +253,104 @@ func RunReplicationPolicyNow(cS *cluster.Service, zS *zelta.Service) gin.Handler
 	}
 }
 
+func FailoverReplicationPolicy(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id64 == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_policy_id",
+				Error:   "invalid_policy_id",
+				Data:    nil,
+			})
+			return
+		}
+		if zS == nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		var req struct {
+			TargetNodeID     string `json:"targetNodeId"`
+			Mode             string `json:"mode"`
+			ConfirmDataLoss  *bool  `json:"confirmDataLoss"`
+			MovePinnedSource *bool  `json:"movePinnedSource"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		mode := strings.ToLower(strings.TrimSpace(req.Mode))
+		if mode == "" {
+			mode = "safe"
+		}
+		if mode != "safe" && mode != "force" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_failover_mode",
+				Error:   "mode must be safe or force",
+				Data:    nil,
+			})
+			return
+		}
+
+		confirmDataLoss := req.ConfirmDataLoss != nil && *req.ConfirmDataLoss
+		movePinnedSource := true
+		if req.MovePinnedSource != nil {
+			movePinnedSource = *req.MovePinnedSource
+		}
+
+		if err := zS.RequestReplicationPolicyFailover(
+			c.Request.Context(),
+			uint(id64),
+			strings.TrimSpace(req.TargetNodeID),
+			mode,
+			confirmDataLoss,
+			movePinnedSource,
+		); err != nil {
+			statusCode := http.StatusBadRequest
+			message := "failover_replication_policy_failed"
+			lowerErr := strings.ToLower(err.Error())
+			if strings.Contains(lowerErr, "transition_already_running") {
+				statusCode = http.StatusConflict
+				message = "replication_policy_transition_already_running"
+			} else if strings.Contains(lowerErr, "not_leader") {
+				statusCode = http.StatusConflict
+				message = "not_leader"
+			}
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_failover_requested",
+			Data:    nil,
+		})
+	}
+}
+
 func forwardReplicationRunToNode(cS *cluster.Service, policyID uint, nodeID string) ([]byte, int, error) {
 	targetAPI, err := resolveClusterNodeAPI(cS, nodeID)
 	if err != nil {
@@ -484,6 +584,55 @@ func ActivateReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) g
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "replication_policy_activated",
+			Data:    nil,
+		})
+	}
+}
+
+func RunReplicationPolicyInternal(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if zS == nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "replication_service_unavailable",
+				Error:   "replication_service_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		var req struct {
+			PolicyID uint `json:"policyId"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.PolicyID == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "policyId is required",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zS.EnqueueReplicationPolicyRun(c.Request.Context(), req.PolicyID); err != nil {
+			status := http.StatusBadRequest
+			msg := "replication_policy_enqueue_failed"
+			if strings.Contains(strings.ToLower(err.Error()), "already_running") {
+				status = http.StatusConflict
+				msg = "replication_policy_already_running"
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: msg,
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_policy_run_started",
 			Data:    nil,
 		})
 	}
