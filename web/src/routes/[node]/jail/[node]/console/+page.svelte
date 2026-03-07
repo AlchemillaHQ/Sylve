@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getJailById, getJailStateById } from '$lib/api/jail/jail';
+	import { getJailById, getJailStateById, getSimpleJailById } from '$lib/api/jail/jail';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
@@ -76,27 +76,14 @@
 
 	// svelte-ignore state_referenced_locally
 	const jail = resource(
-		() => `jail-${data.jail.ctId}`,
+		() => `simple-jail-${data.jail.ctId}`,
 		async () => {
-			const jail = await getJailById(data.jail.ctId, 'ctid');
-			updateCache(`jail-${data.jail.ctId}`, jail);
+			const jail = await getSimpleJailById(data.jail.ctId, 'ctid');
+			updateCache(`simple-jail-${data.jail.ctId}`, jail);
 			return jail;
 		},
 		{
 			initialValue: data.jail
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
-	const jState = resource(
-		() => `jail-${data.state.ctId}-state`,
-		async () => {
-			const state = await getJailStateById(data.state.ctId);
-			updateCache(`jail-${data.state.ctId}-state`, state);
-			return state;
-		},
-		{
-			initialValue: data.state
 		}
 	);
 
@@ -194,7 +181,7 @@
 		cState.current = false;
 
 		if (!jail.current || !jail.current.ctId) return;
-		if (jState.current && jState.current.state === 'INACTIVE') return;
+		if (jail.current && jail.current.state === 'INACTIVE') return;
 		if (!terminalContainer) return;
 
 		await initGhostty();
@@ -301,7 +288,7 @@
 	});
 </script>
 
-{#if jState.current && jState.current.state === 'INACTIVE'}
+{#if jail.current && jail.current.state === 'INACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>

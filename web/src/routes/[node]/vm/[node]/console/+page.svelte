@@ -34,6 +34,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.rid}`,
 		async (key) => {
@@ -47,6 +48,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.rid}`,
 		async (key) => {
@@ -92,7 +94,10 @@
 
 	let consoleType: ConsoleType = $state(resolveInitialConsole());
 
+	// svelte-ignore state_referenced_locally
 	let cState = new PersistedState(`vm-${data.rid}-console-state`, false);
+
+	// svelte-ignore state_referenced_locally
 	let theme = new PersistedState(`vm-${data.rid}-console-theme`, {
 		background: '#282c34',
 		foreground: '#FFFFFF',
@@ -521,7 +526,7 @@
 </div>
 
 <Dialog.Root bind:open={openSettings}>
-	<Dialog.Content class="min-w-[180px]">
+	<Dialog.Content class="min-w-45">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
 				Console settings - {vm.current?.name}

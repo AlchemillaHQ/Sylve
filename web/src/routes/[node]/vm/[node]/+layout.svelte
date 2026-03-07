@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -282,74 +283,95 @@
 
 <div class="flex h-full min-h-0 w-full flex-col">
 	{#if !isSummaryPage}
-		<div class="flex h-10 shrink-0 w-full items-center gap-1 border p-4">
-			{#if vm.current && domain.current}
-				{#if domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
-					<Button
-						onclick={() => handleStart()}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+		<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
+			<div class="min-w-0 flex items-center gap-2">
+				{#if vm.current && domain.current}
+					<Badge
+						variant="outline"
+						class="text-muted-foreground px-1.5"
+						title={domain.current.status}
 					>
-						<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-						{'Start'}
-					</Button>
-
-					<Button
-						onclick={() => openDeleteModal(false)}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						{'Delete'}
-					</Button>
+						{#if normalizedDomainStatus === 'running'}
+							<span class="icon-[mdi--check-circle] text-green-500"></span>
+						{:else if isDomainErrorState}
+							<span class="icon-[mdi--alert-circle] text-red-500"></span>
+						{:else}
+							<span class="icon-[mdi--close-circle] text-gray-500"></span>
+						{/if}
+					</Badge>
+					<p class="truncate text-sm font-semibold">{vm.current.name} ({vm.current.rid})</p>
 				{/if}
+			</div>
 
-				{#if isDomainErrorState}
-					<Button
-						onclick={() => openDeleteModal(true)}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-						{'Force Delete'}
-					</Button>
+			<div class="flex items-center gap-1">
+				{#if vm.current && domain.current}
+					{#if domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
+						<Button
+							onclick={() => handleStart()}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+							{'Start'}
+						</Button>
+
+						<Button
+							onclick={() => openDeleteModal(false)}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+							{'Delete'}
+						</Button>
+					{/if}
+
+					{#if isDomainErrorState}
+						<Button
+							onclick={() => openDeleteModal(true)}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
+							{'Force Delete'}
+						</Button>
+					{/if}
+
+					{#if domain.current.id !== -1 && domain.current.status === 'Running'}
+						<Button
+							onclick={() => handleReboot()}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<div class="flex items-center">
+								<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
+								<span>Reboot</span>
+							</div>
+						</Button>
+
+						<Button
+							onclick={() => handleShutdown()}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<div class="flex items-center">
+								<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
+								<span>Shutdown</span>
+							</div>
+						</Button>
+
+						<Button
+							onclick={() => handleStop()}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<div class="flex items-center">
+								<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
+								<span>Stop</span>
+							</div>
+						</Button>
+					{/if}
 				{/if}
-
-				{#if domain.current.id !== -1 && domain.current.status === 'Running'}
-					<Button
-						onclick={() => handleReboot()}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<div class="flex items-center">
-							<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
-							<span>Reboot</span>
-						</div>
-					</Button>
-
-					<Button
-						onclick={() => handleShutdown()}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<div class="flex items-center">
-							<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
-							<span>Shutdown</span>
-						</div>
-					</Button>
-
-					<Button
-						onclick={() => handleStop()}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<div class="flex items-center">
-							<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-							<span>Stop</span>
-						</div>
-					</Button>
-				{/if}
-			{/if}
+			</div>
 		</div>
 	{/if}
 

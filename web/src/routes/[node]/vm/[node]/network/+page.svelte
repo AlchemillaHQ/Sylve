@@ -31,6 +31,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const interfaces = resource(
 		() => 'networkInterfaces',
 		async (key) => {
@@ -44,6 +45,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const switches = resource(
 		() => 'networkSwitches',
 		async (key) => {
@@ -57,6 +59,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.rid}`,
 		async (key) => {
@@ -70,6 +73,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.vm.rid}`,
 		async (key) => {
@@ -83,6 +87,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => 'networkObjects',
 		async (key) => {

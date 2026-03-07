@@ -31,6 +31,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const vms = resource(
 		() => 'vm-list',
 		async (key) => {
@@ -43,6 +44,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.rid}`,
 		async (key) => {
@@ -55,6 +57,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.rid}`,
 		async (key) => {
@@ -67,6 +70,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'pool-list',
 		async (key) => {
@@ -79,6 +83,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const datasets = resource(
 		() => 'zfs-filesystems',
 		async (key) => {
@@ -97,6 +102,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const downloads = resource(
 		() => 'download-list',
 		async (key) => {

@@ -7,7 +7,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
-	import type { Jail, JailState } from '$lib/types/jail/jail';
+	import type { Jail } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
@@ -16,7 +16,6 @@
 	interface Data {
 		ctId: number;
 		jail: Jail;
-		jailState: JailState;
 	}
 
 	let { data }: { data: Data } = $props();

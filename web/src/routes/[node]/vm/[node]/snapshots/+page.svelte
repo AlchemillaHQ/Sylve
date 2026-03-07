@@ -25,7 +25,6 @@
 
 	interface Data {
 		rid: number;
-		vm: VM;
 		snapshots: VMSnapshot[];
 	}
 

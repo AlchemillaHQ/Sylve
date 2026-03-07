@@ -27,6 +27,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${data.ctId}`,
 		async (key, prevKey, { signal }) => {
@@ -39,6 +40,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const jState = resource(
 		() => `jail-${data.ctId}-state`,
 		async (key, prevKey, { signal }) => {
@@ -51,6 +53,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const networkSwitches = resource(
 		() => `network-switches`,
 		async (key, prevKey, { signal }) => {
@@ -63,6 +66,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => `network-objects`,
 		async (key, prevKey, { signal }) => {

@@ -14,7 +14,6 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { Jail } from '$lib/types/jail/jail';
 	import type { JailSnapshot } from '$lib/types/jail/snapshots';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { dateToAgo } from '$lib/utils/time';
@@ -25,7 +24,6 @@
 
 	interface Data {
 		ctId: number;
-		jail: Jail;
 		snapshots: JailSnapshot[];
 	}
 
@@ -45,6 +43,7 @@
 	);
 
 	let reload = $state(false);
+
 	watch(
 		() => reload,
 		(value) => {
