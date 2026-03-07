@@ -26,6 +26,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
@@ -105,6 +106,13 @@ func (s *Service) registerReplicationJob() {
 		}
 
 		if err := s.runReplicationPolicy(ctx, policy); err != nil {
+			if len(clusterService.ParseReplicationHAIneligibleReasons(err)) > 0 {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", payload.PolicyID).
+					Msg("queued_replication_policy_blocked_ha_constraints")
+				return nil
+			}
 			logger.L.Warn().Err(err).Uint("policy_id", payload.PolicyID).Msg("queued_replication_policy_failed")
 			return err
 		}
@@ -151,11 +159,20 @@ func (s *Service) EnqueueReplicationPolicyRun(ctx context.Context, policyID uint
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
 	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
 
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
 		return err
 	}
+
+	haEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
+	if !haEval.Eligible {
+		return replicationPolicyHAError(haEval)
+	}
+
 	if !s.acquireReplication(policyID) {
 		return fmt.Errorf("replication_policy_already_running")
 	}
@@ -265,6 +282,32 @@ func policyFailoverMode(policy *clusterModels.ReplicationPolicy) string {
 	default:
 		return clusterModels.ReplicationFailoverManual
 	}
+}
+
+func replicationPolicyHAError(eval clusterService.ReplicationPolicyHAEvaluation) error {
+	if eval.Eligible {
+		return nil
+	}
+	return clusterService.NewReplicationHAIneligibleError(eval.Reasons)
+}
+
+func projectedPolicyTopologyAfterFailover(
+	policy *clusterModels.ReplicationPolicy,
+	targetNodeID string,
+	movePinnedSource bool,
+) (string, string) {
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	if policy == nil {
+		return "", targetNodeID
+	}
+
+	sourceNodeID := strings.TrimSpace(policy.SourceNodeID)
+	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModeFollowActive {
+		sourceNodeID = targetNodeID
+	} else if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned && movePinnedSource {
+		sourceNodeID = targetNodeID
+	}
+	return sourceNodeID, targetNodeID
 }
 
 func replicationFailoverRequestMode(mode string) string {
@@ -658,6 +701,9 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 			continue
 		}
 
+		haEval := s.Cluster.EvaluateReplicationPolicyHA(&policy)
+		haErr := replicationPolicyHAError(haEval)
+
 		nextAt, err := nextRunTime(policy.CronExpr, now)
 		if err != nil {
 			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
@@ -669,11 +715,34 @@ func (s *Service) runReplicationSchedulerTick(ctx context.Context) error {
 		}
 
 		if policy.NextRunAt == nil {
-			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Update("next_run_at", nextAt).Error
+			updates := map[string]any{
+				"next_run_at": nextAt,
+			}
+			if haErr != nil {
+				updates["last_status"] = "blocked"
+				updates["last_error"] = haErr.Error()
+				updates["last_run_at"] = now
+			}
+			_ = s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(updates).Error
 			continue
 		}
 
 		if now.Before(*policy.NextRunAt) {
+			continue
+		}
+
+		if haErr != nil {
+			if err := s.DB.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
+				"last_run_at": now,
+				"last_status": "blocked",
+				"last_error":  haErr.Error(),
+				"next_run_at": nextAt,
+			}).Error; err != nil {
+				logger.L.Warn().
+					Err(err).
+					Uint("policy_id", policy.ID).
+					Msg("failed_to_mark_replication_policy_ha_blocked")
+			}
 			continue
 		}
 
@@ -699,7 +768,11 @@ func (s *Service) replicationRunnerNodeID(policy *clusterModels.ReplicationPolic
 	if strings.TrimSpace(policy.SourceMode) == clusterModels.ReplicationSourceModePinned {
 		return strings.TrimSpace(policy.SourceNodeID)
 	}
-	return strings.TrimSpace(policy.ActiveNodeID)
+	activeNodeID := strings.TrimSpace(policy.ActiveNodeID)
+	if activeNodeID != "" {
+		return activeNodeID
+	}
+	return strings.TrimSpace(policy.SourceNodeID)
 }
 
 func replicationPolicyOwnerNode(policy *clusterModels.ReplicationPolicy) string {
@@ -839,6 +912,11 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	if policy == nil || policy.ID == 0 {
 		return fmt.Errorf("invalid_policy")
 	}
+	if s.Cluster == nil {
+		runErr := fmt.Errorf("cluster_service_unavailable")
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
+	}
 	if !s.acquireReplication(policy.ID) {
 		return fmt.Errorf("replication_policy_already_running")
 	}
@@ -852,6 +930,13 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	runner := s.replicationRunnerNodeID(policy)
 	if runner != "" && localNodeID != "" && runner != localNodeID {
 		return fmt.Errorf("policy_runner_mismatch")
+	}
+
+	haEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
+	if !haEval.Eligible {
+		runErr := replicationPolicyHAError(haEval)
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
 	}
 
 	if ownershipErr := s.validateLocalReplicationPolicyLease(policy); ownershipErr != nil {
@@ -1533,6 +1618,9 @@ func (s *Service) updateReplicationPolicyResult(policy *clusterModels.Replicatio
 	}
 	if runErr != nil {
 		updates["last_status"] = "failed"
+		if len(clusterService.ParseReplicationHAIneligibleReasons(runErr)) > 0 {
+			updates["last_status"] = "blocked"
+		}
 		updates["last_error"] = runErr.Error()
 	}
 
@@ -1665,6 +1753,15 @@ func (s *Service) runFailoverControllerTick(ctx context.Context) error {
 	for i := range policies {
 		policy := policies[i]
 		if !policy.Enabled {
+			continue
+		}
+
+		haEval := s.Cluster.EvaluateReplicationPolicyHA(&policy)
+		if !haEval.Eligible {
+			logger.L.Debug().
+				Uint("policy_id", policy.ID).
+				Str("reasons", strings.Join(haEval.Reasons, ",")).
+				Msg("replication_policy_failover_controller_blocked_by_ha_constraints")
 			continue
 		}
 
@@ -1977,12 +2074,41 @@ func (s *Service) EnqueueReplicationPolicyFailover(
 		return fmt.Errorf("confirm_data_loss_required_for_force_failover")
 	}
 
+	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
+	if err != nil {
+		return err
+	}
+	if policy == nil {
+		return fmt.Errorf("replication_policy_not_found")
+	}
+	baseEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
+	if !baseEval.Eligible {
+		return replicationPolicyHAError(baseEval)
+	}
+
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	if targetNodeID != "" {
+		projectedSourceNodeID, projectedActiveNodeID := projectedPolicyTopologyAfterFailover(
+			policy,
+			targetNodeID,
+			movePinnedSource,
+		)
+		transitionEval := s.Cluster.EvaluateReplicationPolicyTransitionHA(
+			policy,
+			projectedSourceNodeID,
+			projectedActiveNodeID,
+		)
+		if !transitionEval.Eligible {
+			return replicationPolicyHAError(transitionEval)
+		}
+	}
+
 	enqueueCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	return db.EnqueueJSON(enqueueCtx, replicationFailoverJobQueueName, replicationFailoverJobPayload{
 		PolicyID:         policyID,
-		TargetNodeID:     strings.TrimSpace(targetNodeID),
+		TargetNodeID:     targetNodeID,
 		Mode:             requestMode,
 		ConfirmDataLoss:  confirmDataLoss,
 		MovePinnedSource: movePinnedSource,
@@ -2019,6 +2145,10 @@ func (s *Service) RequestReplicationPolicyFailover(
 	if policy == nil {
 		return fmt.Errorf("replication_policy_not_found")
 	}
+	baseEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
+	if !baseEval.Eligible {
+		return replicationPolicyHAError(baseEval)
+	}
 
 	nodes, err := s.Cluster.Nodes()
 	if err != nil {
@@ -2053,6 +2183,20 @@ func (s *Service) RequestReplicationPolicyFailover(
 	}
 	if !nodeOnlineByID(nodeByID, targetNodeID) {
 		return fmt.Errorf("replication_target_node_offline")
+	}
+
+	projectedSourceNodeID, projectedActiveNodeID := projectedPolicyTopologyAfterFailover(
+		policy,
+		targetNodeID,
+		movePinnedSource,
+	)
+	transitionEval := s.Cluster.EvaluateReplicationPolicyTransitionHA(
+		policy,
+		projectedSourceNodeID,
+		projectedActiveNodeID,
+	)
+	if !transitionEval.Eligible {
+		return replicationPolicyHAError(transitionEval)
 	}
 
 	options := replicationTransitionOptions{
@@ -2105,6 +2249,25 @@ func (s *Service) runPolicyOwnershipTransition(
 ) error {
 	if policy == nil || targetNodeID == "" {
 		return fmt.Errorf("invalid_policy_transition_input")
+	}
+
+	baseEval := s.Cluster.EvaluateReplicationPolicyHA(policy)
+	if !baseEval.Eligible {
+		return replicationPolicyHAError(baseEval)
+	}
+
+	projectedSourceNodeID, projectedActiveNodeID := projectedPolicyTopologyAfterFailover(
+		policy,
+		targetNodeID,
+		options.MovePinnedSource,
+	)
+	transitionEval := s.Cluster.EvaluateReplicationPolicyTransitionHA(
+		policy,
+		projectedSourceNodeID,
+		projectedActiveNodeID,
+	)
+	if !transitionEval.Eligible {
+		return replicationPolicyHAError(transitionEval)
 	}
 
 	previousOwner := replicationPolicyOwnerNode(policy)

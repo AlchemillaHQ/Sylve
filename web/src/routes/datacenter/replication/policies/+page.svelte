@@ -122,6 +122,22 @@
 	function userFailoverErrorMessage(message: unknown, error: unknown): string {
 		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
 
+		if (combined.includes('cluster_requires_min_three_voters')) {
+			return 'Replication HA requires at least 3 configured Raft voters.';
+		}
+		if (combined.includes('policy_requires_min_two_targets')) {
+			return 'This policy needs at least two distinct target servers.';
+		}
+		if (combined.includes('policy_requires_remote_target')) {
+			return 'At least one target must be different from the effective runner node.';
+		}
+		if (combined.includes('transition_would_remove_remote_target')) {
+			return 'This move would leave no remote target for replication; adjust targets first.';
+		}
+		if (combined.includes('quorum_lost')) {
+			return 'Cluster quorum is unavailable. Bring quorum back before running this action.';
+		}
+
 		if (combined.includes('transition_already_running')) {
 			return 'A move is already running for this policy. Wait for it to finish and try again.';
 		}
@@ -151,6 +167,60 @@
 		}
 
 		return 'Could not start failover. Check cluster status and try again.';
+	}
+
+	function userPolicySaveErrorMessage(message: unknown, error: unknown): string {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+		if (combined.includes('cluster_requires_min_three_voters')) {
+			return 'Replication HA requires at least 3 configured Raft voters.';
+		}
+		if (combined.includes('policy_requires_min_two_targets')) {
+			return 'Add at least two distinct target servers.';
+		}
+		if (combined.includes('policy_requires_remote_target')) {
+			return 'At least one target must be different from the effective runner node.';
+		}
+		if (combined.includes('quorum_lost')) {
+			return 'Cluster quorum is unavailable. Retry after quorum is restored.';
+		}
+		return policyModal.edit ? 'Failed to update policy' : 'Failed to create policy';
+	}
+
+	function userPolicyActionErrorMessage(message: unknown, error: unknown): string {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+		if (combined.includes('cluster_requires_min_three_voters')) {
+			return 'Replication HA requires at least 3 configured Raft voters.';
+		}
+		if (combined.includes('policy_requires_min_two_targets')) {
+			return 'This policy needs at least two distinct target servers.';
+		}
+		if (combined.includes('policy_requires_remote_target')) {
+			return 'This policy needs at least one remote target from its effective runner node.';
+		}
+		if (combined.includes('quorum_lost')) {
+			return 'Cluster quorum is unavailable. Retry after quorum is restored.';
+		}
+		return '';
+	}
+
+	function describePolicyHAReasons(reasons: string[]): string {
+		const values = (reasons || []).map((value) => String(value || '').trim().toLowerCase());
+		if (values.includes('cluster_requires_min_three_voters')) {
+			return 'Replication HA requires at least 3 configured Raft voters.';
+		}
+		if (values.includes('policy_requires_min_two_targets')) {
+			return 'This policy needs at least two distinct target servers.';
+		}
+		if (values.includes('policy_requires_remote_target')) {
+			return 'At least one target must be different from the effective runner node.';
+		}
+		if (values.includes('transition_would_remove_remote_target')) {
+			return 'This move would leave no remote target for replication.';
+		}
+		if (values.includes('quorum_lost')) {
+			return 'Cluster quorum is unavailable.';
+		}
+		return 'This policy is currently blocked by HA constraints.';
 	}
 
 	type SourceModeCard = {
@@ -551,6 +621,8 @@
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
 					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
+				} else if (lastStatus === 'blocked') {
+					icons.push(renderWithIcon('mdi:alert-octagon', 'Blocked', 'text-red-500'));
 				} else if (lastStatus === 'running') {
 					icons.push(renderWithIcon('mdi:progress-clock', 'Running', 'text-yellow-500'));
 				}
@@ -573,6 +645,30 @@
 		},
 		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
 		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
+		{
+			field: 'haState',
+			title: 'HA State',
+			width: 150,
+			minWidth: 130,
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow().getData() as {
+					haEligible: boolean;
+					haDegraded: boolean;
+					haLabel: string;
+				};
+				if (!row.haEligible) {
+					return renderWithIcon('mdi:alert-octagon', row.haLabel || 'Blocked', 'text-red-500');
+				}
+				if (row.haDegraded) {
+					return renderWithIcon(
+						'mdi:alert-circle-outline',
+						row.haLabel || 'Degraded',
+						'text-amber-500'
+					);
+				}
+				return renderWithIcon('mdi:check-circle', row.haLabel || 'Eligible', 'text-green-500');
+			}
+		},
 		{ field: 'targets', title: 'Targets', width: 260, minWidth: 180 },
 		{
 			field: 'targetSync',
@@ -628,6 +724,9 @@
 					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
 					.join(' | ') || '-';
 			const targetSync = resolvePolicyTargetSync(policy);
+			const haEligible = Boolean(policy.haEligible);
+			const haDegraded = Boolean(policy.haDegraded);
+			const haLabel = !haEligible ? 'Blocked' : haDegraded ? 'Degraded' : 'Eligible';
 
 			return {
 				id: policy.id,
@@ -638,6 +737,10 @@
 				workload: workloadLabel,
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
+				haState: haLabel,
+				haLabel,
+				haEligible,
+				haDegraded,
 				targets: targetsLabel,
 				targetSync: targetSync.label,
 				targetSyncState: targetSync.state,
@@ -839,12 +942,37 @@
 		if (!targets) return null;
 
 		const sourceNodeId = policyModal.sourceNodeId.trim();
+		const distinctTargets = Array.from(new Set(targets.map((target) => String(target.nodeId || '').trim())));
+		if (distinctTargets.length < 2) {
+			toast.error('Add at least two distinct target servers for HA.', {
+				position: 'bottom-center'
+			});
+			return null;
+		}
+
 		if (policyModal.sourceMode === 'pinned_primary' && !sourceNodeId) {
 			toast.error('Pick the preferred primary node for this policy.', {
 				position: 'bottom-center'
 			});
 			return null;
 		}
+
+		let effectiveRunnerNodeID = '';
+		if (policyModal.sourceMode === 'pinned_primary') {
+			effectiveRunnerNodeID = sourceNodeId;
+		} else {
+			effectiveRunnerNodeID = String(policyModal.workloadNodeId || '').trim() || sourceNodeId;
+		}
+		if (
+			effectiveRunnerNodeID &&
+			distinctTargets.every((targetNodeID) => targetNodeID === effectiveRunnerNodeID)
+		) {
+			toast.error('At least one target must be a remote node from the effective runner.', {
+				position: 'bottom-center'
+			});
+			return null;
+		}
+
 		if (policyModal.failoverMode === 'auto_force' && !policyModal.confirmAutoForce) {
 			toast.error('Confirm the risk before enabling automatic force recovery.', {
 				position: 'bottom-center'
@@ -884,7 +1012,7 @@
 		}
 
 		handleAPIError(result);
-		toast.error(policyModal.edit ? 'Failed to update policy' : 'Failed to create policy', {
+		toast.error(userPolicySaveErrorMessage(result.message || '', result.error || ''), {
 			position: 'bottom-center'
 		});
 	}
@@ -906,6 +1034,12 @@
 
 	async function runNow() {
 		if (!selectedPolicyId) return;
+		if (selectedPolicy && !selectedPolicy.haEligible) {
+			toast.error(describePolicyHAReasons(selectedPolicy.haReasons || []), {
+				position: 'bottom-center'
+			});
+			return;
+		}
 		const result = await runReplicationPolicy(selectedPolicyId);
 		if (result.status === 'success') {
 			toast.success('Replication run queued', { position: 'bottom-center' });
@@ -914,11 +1048,18 @@
 		}
 
 		handleAPIError(result);
-		toast.error('Failed to start replication run', { position: 'bottom-center' });
+		const msg = userPolicyActionErrorMessage(result.message || '', result.error || '');
+		toast.error(msg || 'Failed to start replication run', { position: 'bottom-center' });
 	}
 
 	function openFailoverModal() {
 		if (!selectedPolicy) return;
+		if (!selectedPolicy.haEligible) {
+			toast.error(describePolicyHAReasons(selectedPolicy.haReasons || []), {
+				position: 'bottom-center'
+			});
+			return;
+		}
 		failoverModal.mode = normalizeFailoverMode('safe', selectedPolicyOwnerOnline);
 		failoverModal.targetNodeId = '';
 		failoverModal.movePinnedSource = true;
@@ -1024,7 +1165,13 @@
 
 {#snippet actionButtons(type: string)}
 	{#if type === 'failover' && selectedPolicyId > 0}
-		<Button onclick={openFailoverModal} size="sm" variant="outline" class="h-6">
+		<Button
+			onclick={openFailoverModal}
+			size="sm"
+			variant="outline"
+			class="h-6"
+			disabled={Boolean(selectedPolicy && !selectedPolicy.haEligible)}
+		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--swap-horizontal-bold] mr-1 h-4 w-4"></span>
 				<span>Move Active</span>
@@ -1033,7 +1180,13 @@
 	{/if}
 
 	{#if type === 'run' && selectedPolicyId > 0}
-		<Button onclick={runNow} size="sm" variant="outline" class="h-6">
+		<Button
+			onclick={runNow}
+			size="sm"
+			variant="outline"
+			class="h-6"
+			disabled={Boolean(selectedPolicy && !selectedPolicy.haEligible)}
+		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
 				<span>Sync Now</span>

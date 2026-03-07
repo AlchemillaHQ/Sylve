@@ -69,6 +69,9 @@ type ReplicationPolicy struct {
 	TransitionPromotedAt   *time.Time                `json:"transitionPromotedAt"`
 	TransitionCompletedAt  *time.Time                `gorm:"index" json:"transitionCompletedAt"`
 	TransitionError        string                    `gorm:"type:text" json:"transitionError"`
+	HAEligible             bool                      `gorm:"-" json:"haEligible"`
+	HADegraded             bool                      `gorm:"-" json:"haDegraded"`
+	HAReasons              []string                  `gorm:"-" json:"haReasons"`
 	Targets                []ReplicationPolicyTarget `json:"targets,omitempty" gorm:"foreignKey:PolicyID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	CreatedAt              time.Time                 `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt              time.Time                 `gorm:"autoUpdateTime" json:"updatedAt"`

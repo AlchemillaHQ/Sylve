@@ -32,8 +32,19 @@ func (s *Service) ListReplicationPolicies() ([]clusterModels.ReplicationPolicy, 
 	s.cleanupOrphanReplicationRows()
 
 	var policies []clusterModels.ReplicationPolicy
-	err := s.DB.Preload("Targets").Order("name ASC").Find(&policies).Error
-	return policies, err
+	if err := s.DB.Preload("Targets").Order("name ASC").Find(&policies).Error; err != nil {
+		return policies, err
+	}
+
+	runtimeSnapshot := s.buildReplicationHARuntimeSnapshot()
+	for idx := range policies {
+		eval := s.evaluateReplicationPolicyHA(&policies[idx], ReplicationPolicyHAEvalOptions{
+			RuntimeSnapshot: &runtimeSnapshot,
+		})
+		s.ApplyReplicationPolicyHAState(&policies[idx], eval)
+	}
+
+	return policies, nil
 }
 
 func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationPolicy, error) {
@@ -45,6 +56,8 @@ func (s *Service) GetReplicationPolicyByID(id uint) (*clusterModels.ReplicationP
 	if err := s.DB.Preload("Targets").First(&policy, id).Error; err != nil {
 		return nil, err
 	}
+	eval := s.EvaluateReplicationPolicyHA(&policy)
+	s.ApplyReplicationPolicyHAState(&policy, eval)
 	return &policy, nil
 }
 
@@ -114,6 +127,13 @@ func (s *Service) ProposeReplicationPolicyUpdate(id uint, input clusterServiceIn
 func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error {
 	if id == 0 {
 		return fmt.Errorf("invalid_policy_id")
+	}
+
+	if !bypassRaft {
+		runtimeSnapshot := s.buildReplicationHARuntimeSnapshot()
+		if !runtimeSnapshot.QuorumAvailable {
+			return NewReplicationHAIneligibleError([]string{ReplicationHAReasonQuorumLost})
+		}
 	}
 
 	if bypassRaft {
@@ -289,6 +309,11 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	}
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, nil, fmt.Errorf("failed_to_check_existing_policy: %w", err)
+	}
+
+	haEval := s.EvaluateReplicationPolicyHAWithTargets(policy, targets)
+	if !haEval.Eligible {
+		return nil, nil, NewReplicationHAIneligibleError(haEval.Reasons)
 	}
 
 	return policy, targets, nil

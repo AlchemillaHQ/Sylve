@@ -30,6 +30,9 @@ export const ReplicationPolicySchema = z.object({
 	nextRunAt: z.string().nullable().optional(),
 	lastStatus: z.string().optional().default(''),
 	lastError: z.string().optional().default(''),
+	haEligible: z.boolean().optional().default(false),
+	haDegraded: z.boolean().optional().default(false),
+	haReasons: z.array(z.string()).optional().default([]),
 	targets: z.array(ReplicationPolicyTargetSchema).default([]),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
