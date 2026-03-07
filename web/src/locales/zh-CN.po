@@ -939,6 +939,7 @@ msgstr "动作"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
@@ -2264,6 +2265,7 @@ msgstr "备份"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
 msgstr "路径"
@@ -3982,6 +3984,9 @@ msgstr "到期"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Never"
 msgstr "永不"
 
@@ -6005,6 +6010,7 @@ msgstr "错误请求"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error"
 msgstr "错误"
 
@@ -7266,12 +7272,16 @@ msgstr ""
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failed"
 msgstr ""
 
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Success"
@@ -8296,6 +8306,7 @@ msgid "Policies"
 msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
@@ -8433,7 +8444,9 @@ msgstr ""
 
 #. placeholder {0}: event.policyId
 #. placeholder {0}: event.policyId
+#. placeholder {0}: receipt.policyId
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Policy {0}"
 msgstr ""
@@ -9199,4 +9212,115 @@ msgstr ""
 #~ msgstr ""
 
 #~ msgid "Schedule (human)"
+#~ msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target Receipts"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "No target-side receipts yet."
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Last Attempt"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Last Success"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Replication HA requires at least 3 configured Raft voters."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least two distinct target servers."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "At least one target must be different from the effective runner node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This move would leave no remote target for replication; adjust targets first."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable. Bring quorum back before running this action."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add at least two distinct target servers."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable. Retry after quorum is restored."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least one remote target from its effective runner node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This move would leave no remote target for replication."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy is currently blocked by HA constraints."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Stale"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Blocked"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "HA State"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Degraded"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Eligible"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target Sync"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add at least two distinct target servers for HA."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "At least one target must be a remote node from the effective runner."
+msgstr ""
+
+#~ msgid "Host: {0}"
+#~ msgstr ""
+
+#~ msgid "C <0/>"
 #~ msgstr ""

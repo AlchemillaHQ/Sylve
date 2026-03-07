@@ -17,6 +17,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let objects = resource(
 		() => 'network-objects',
 		async (key, prevKey, { signal }) => {
@@ -90,7 +92,20 @@
 				}
 
 				return value;
-			}
+			},
+			copyValue: (cell: CellComponent) => {
+				const value = cell.getValue();
+				if (Array.isArray(value)) {
+					if (typeof value === 'object') {
+						if (value && value.length > 0) {
+							return value.map((entry) => entry.value).join(', ');
+						}
+					}
+				}
+
+				return value;
+			},
+			copyOnClick: true
 		},
 		{
 			field: 'updatedAt',

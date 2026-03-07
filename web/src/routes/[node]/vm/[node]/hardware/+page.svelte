@@ -15,7 +15,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import type { CellComponent } from 'tabulator-tables';
+	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
@@ -225,7 +225,7 @@
 						return value;
 					}
 				},
-				copyOnClick: (row: Row) => {
+				copyOnClick: (row: RowComponent) => {
 					try {
 						const property = row.getData().property;
 						if (property === 'VNC') {

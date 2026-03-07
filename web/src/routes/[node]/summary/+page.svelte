@@ -157,7 +157,6 @@
 	useInterval(() => 2000, {
 		callback: () => {
 			if (storage.visible) {
-				console.log(cpuInfo.current, 1);
 				cpuInfo.refetch();
 				ramInfo.refetch();
 			}

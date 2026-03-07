@@ -65,8 +65,6 @@
 		defaultGateway: false
 	};
 
-	$inspect(generateMACOptions(networkObjects));
-
 	let properties = $state(options);
 	let comboBoxes = $state({
 		sw: {

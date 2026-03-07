@@ -58,8 +58,9 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 			fmt.Sprintf("%v", usernameAny),
 			fmt.Sprintf("%v", authTypeAny),
 			"sse",
-			120,
+			600,
 		)
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -76,7 +77,7 @@ func CreateSSEToken(authService *authService.Service) gin.HandlerFunc {
 			Error:   "",
 			Data: CreateSSETokenResponse{
 				Token:     token,
-				ExpiresIn: 120,
+				ExpiresIn: 600,
 			},
 		})
 	}
@@ -132,7 +133,7 @@ func StreamSSE(authService *authService.Service) gin.HandlerFunc {
 		heartbeat := time.NewTicker(25 * time.Second)
 		defer heartbeat.Stop()
 
-		session := time.NewTimer(110 * time.Second)
+		session := time.NewTimer(600 * time.Second)
 		defer session.Stop()
 
 		for {

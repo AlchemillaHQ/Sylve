@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -92,6 +94,25 @@ func NewJailService(
 	})
 
 	return s
+}
+
+func (s *Service) IsJailEnabled() bool {
+	var basicSettings models.BasicSettings
+	err := s.DB.First(&basicSettings).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return false
+		} else {
+			return false
+		}
+	} else {
+		if !slices.Contains(basicSettings.Services, models.Jails) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (s *Service) GetJails() ([]jailModels.Jail, error) {
@@ -221,6 +242,42 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 	}
 
 	return list, nil
+}
+
+func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfaces.SimpleList, error) {
+	if !s.IsJailEnabled() {
+		return jailServiceInterfaces.SimpleList{}, nil
+	}
+
+	var jail jailModels.Jail
+
+	query := s.DB.
+		Model(&jailModels.Jail{}).
+		Select("id", "name", "ct_id")
+
+	if byCTID {
+		query = query.Where("ct_id = ?", identifier)
+	} else {
+		query = query.Where("id = ?", identifier)
+	}
+
+	if err := query.First(&jail).Error; err != nil {
+		return jailServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_jail: %w", err)
+	}
+
+	state, err := s.GetStateByCtId(uint(jail.CTID))
+	if err != nil {
+		state.State = ""
+	}
+
+	simple := jailServiceInterfaces.SimpleList{
+		ID:    jail.ID,
+		CTID:  jail.CTID,
+		Name:  jail.Name,
+		State: state.State,
+	}
+
+	return simple, nil
 }
 
 func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error {
@@ -623,6 +680,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 			lineDHCP := fmt.Sprintf("%s=\"SYNCDHCP\"\n", ifName)
 			ipv6Name := fmt.Sprintf("%s_ipv6", ifName)
 			lineSLAAC := fmt.Sprintf("%s=\"inet6 accept_rtadv\"\n", ipv6Name)
+			lineRTSold := "rtsold_enable=\"YES\"\n"
 
 			rcF, err := os.OpenFile(rcConfPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
@@ -678,6 +736,10 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 				if !strings.Contains(existing, lineSLAAC) {
 					rcToAppend.WriteString(lineSLAAC)
 				}
+
+				if !strings.Contains(existing, lineRTSold) {
+					rcToAppend.WriteString(lineRTSold)
+				}
 			}
 
 			if network.IPv6ID != nil && *network.IPv6ID > 0 {
@@ -715,11 +777,11 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string, mac 
 	var inheritLines strings.Builder
 
 	if data.InheritIPv4 {
-		inheritLines.WriteString(fmt.Sprintf("\tip4=\"inherit\";\n"))
+		inheritLines.WriteString("\tip4=\"inherit\";\n")
 	}
 
 	if data.InheritIPv6 {
-		inheritLines.WriteString(fmt.Sprintf("\tip6=\"inherit\";\n"))
+		inheritLines.WriteString("\tip6=\"inherit\";\n")
 	}
 
 	if inheritLines.Len() > 0 {

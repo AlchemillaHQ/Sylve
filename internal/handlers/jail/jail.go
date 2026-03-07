@@ -52,80 +52,6 @@ func ListJails(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Get a Virtual Machine by RID or ID
-// @Description Retrieve a virtual machine by its RID or ID
-// @Tags VM
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param rid path string true "Virtual Machine RID or ID"
-// @Param type query string false "Type of identifier (rid or id)"  Enums(rid, id) default(rid)
-// @Success 200 {object} internal.APIResponse[vmModels.VM] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 404 {object} internal.APIResponse[any] "Not Found"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /vm/:id [get]
-// func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		vmID := c.Param("id")
-// 		if vmID == "" {
-// 			c.JSON(400, internal.APIResponse[any]{
-// 				Status:  "error",
-// 				Message: "invalid_vm_id",
-// 				Data:    nil,
-// 				Error:   "Virtual Machine ID is required",
-// 			})
-// 			return
-// 		}
-
-// 		var t string = c.DefaultQuery("type", "rid")
-// 		if t != "rid" && t != "id" {
-// 			c.JSON(400, internal.APIResponse[any]{
-// 				Status:  "error",
-// 				Message: "invalid_type_param",
-// 				Data:    nil,
-// 				Error:   "Type parameter must be either 'rid' or 'id'",
-// 			})
-// 			return
-// 		}
-
-// 		identifier, err := strconv.Atoi(vmID)
-// 		if err != nil {
-// 			c.JSON(400, internal.APIResponse[any]{
-// 				Status:  "error",
-// 				Message: "invalid_vm_id_format",
-// 				Data:    nil,
-// 				Error:   "Virtual Machine ID must be a valid integer",
-// 			})
-// 			return
-// 		}
-
-// 		var vm vmModels.VM
-// 		if t == "rid" {
-// 			vm, err = libvirtService.GetVMByRID(uint(identifier))
-// 		} else {
-// 			vm, err = libvirtService.GetVM(identifier)
-// 		}
-
-// 		if err != nil || vm.ID == 0 {
-// 			c.JSON(500, internal.APIResponse[any]{
-// 				Status:  "error",
-// 				Message: "failed_to_get_vm",
-// 				Data:    nil,
-// 				Error:   "failed_to_get_vm: " + err.Error(),
-// 			})
-// 			return
-// 		}
-
-// 		c.JSON(200, internal.APIResponse[vmModels.VM]{
-// 			Status:  "success",
-// 			Message: "vm_retrieved_by_vmid",
-// 			Data:    vm,
-// 			Error:   "",
-// 		})
-// 	}
-// }
-
 // @Summary Get a Jail by an Identifier
 // @Description Retrieve a jail by its CTID or ID
 // @Tags Jail
@@ -222,6 +148,75 @@ func ListJailsSimple(jailService *jail.Service) gin.HandlerFunc {
 			Status:  "success",
 			Message: "jail_listed_simple",
 			Data:    jails,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Get a Jail by CTID or ID (Simple)
+// @Description Retrieve a simple jail by its CTID or ID
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param identifier path string true "Jail CTID or ID"
+// @Param type query string false "Type of identifier (ctid or id)"  Enums(ctid, id) default(ctid)
+// @Success 200 {object} internal.APIResponse[jailServiceInterfaces.SimpleList] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/simple/:id [get]
+func GetSimpleJailByIdentifier(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if id == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_jail_id",
+				Data:    nil,
+				Error:   "Jail ID is required",
+			})
+			return
+		}
+
+		var t string = c.DefaultQuery("type", "ctid")
+		if t != "ctid" && t != "id" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_type_param",
+				Data:    nil,
+				Error:   "Type parameter must be either 'ctid' or 'id'",
+			})
+			return
+		}
+
+		identifier, err := strconv.Atoi(id)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_jail_id_format",
+				Data:    nil,
+				Error:   "Jail ID must be a valid integer",
+			})
+			return
+		}
+
+		jail, err := jailService.GetSimpleJail(identifier, t == "ctid")
+
+		if err != nil || jail.ID == 0 {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_jail_simple",
+				Data:    nil,
+				Error:   "failed_to_get_jail_simple: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[jailServiceInterfaces.SimpleList]{
+			Status:  "success",
+			Message: "jail_retrieved_by_identifier_simple",
+			Data:    jail,
 			Error:   "",
 		})
 	}

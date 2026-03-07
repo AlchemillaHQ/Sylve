@@ -968,6 +968,7 @@ msgstr "क्रिया"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
@@ -2296,6 +2297,7 @@ msgstr "बैकअप्स"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Path"
 msgstr "पाथ"
@@ -4080,6 +4082,9 @@ msgstr "समाप्ति"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Never"
 msgstr "कभी नहीं"
 
@@ -6149,14 +6154,14 @@ msgstr ""
 msgid "CPU cores update failed"
 msgstr "CPU कोर अपडेट विफल"
 
-#. placeholder {0}: cpu.logicalCores
-#: src/lib/components/custom/Jail/Hardware/CPU.svelte
-msgid "msgid"
-msgstr ""
+#~ msgid "msgid"
+#~ msgstr ""
 
 #. placeholder {0}: event.policyId
 #. placeholder {0}: event.policyId
+#. placeholder {0}: receipt.policyId
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Policy {0}"
 msgstr ""
@@ -6213,6 +6218,8 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Started"
 msgstr ""
@@ -6228,6 +6235,8 @@ msgid "Last updated: {0}"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Refresh"
 msgstr ""
@@ -6326,16 +6335,25 @@ msgstr ""
 msgid "No online target server is currently available for this policy."
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Success"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failed"
 msgstr ""
 
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -6357,6 +6375,7 @@ msgstr ""
 msgid "Targets"
 msgstr ""
 
+#: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Schedule"
@@ -6366,7 +6385,9 @@ msgstr ""
 msgid "Next Run"
 msgstr ""
 
+#. placeholder {0}: jailMatch[1]
 #. placeholder {0}: policy.guestId
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail {0}"
 msgstr ""
@@ -6699,6 +6720,8 @@ msgstr ""
 
 #. placeholder {0}: vm.current.name
 #. placeholder {1}: vm.current.rid
+#. placeholder {0}: vm.current.name
+#. placeholder {1}: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
@@ -6914,6 +6937,10 @@ msgstr ""
 msgid "Jail - Update Description"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
 msgstr ""
@@ -6979,6 +7006,8 @@ msgid "Bad Request"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error"
 msgstr ""
@@ -7067,6 +7096,10 @@ msgid "Policies"
 msgstr ""
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[node]/options/+page.svelte
 msgid "QEMU Guest Agent"
 msgstr ""
 
@@ -7078,6 +7111,8 @@ msgstr ""
 msgid "Cloud-Init Network Config"
 msgstr ""
 
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Select a Template"
@@ -7148,10 +7183,12 @@ msgstr ""
 msgid "Event #{0}"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Error copied to clipboard"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Failed to copy error"
 msgstr ""
@@ -7168,6 +7205,7 @@ msgstr ""
 msgid "Finished"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Progress"
 msgstr ""
@@ -7180,14 +7218,17 @@ msgstr ""
 msgid "Replication Progress"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Moved"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Total"
 msgstr ""
 
+#: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Loading progress..."
 msgstr ""
@@ -7296,6 +7337,1446 @@ msgstr ""
 msgid "Sent"
 msgstr ""
 
+#: src/lib/components/custom/Charts/EChartSample.svelte
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 msgid "Save As Image"
+msgstr ""
+
+#: src/routes/swagger/+page.svelte
+msgid "Swagger"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host terminal"
+msgstr ""
+
+#: src/routes/[node]/terminal/+page.svelte
+msgid "Host Console Settings"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Font Size"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Background"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/terminal/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Foreground"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Check to enable"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/SingleValue.svelte
+msgid "Saving"
+msgstr ""
+
+#: src/lib/components/custom/Disk/CreatePartition.svelte
+msgid "Remaining space: <0/>"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error stopping jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail stopped"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Error starting jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+msgid "Jail started"
+msgstr ""
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Prepare passthrough for <b>{0}</b> by <b>{1}</b>? This updates /boot/loader.conf and applies after reboot."
+msgstr ""
+
+#. placeholder {0}: device
+#. placeholder {1}: vendor
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Import <b>{0}</b> by <b>{1}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database."
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Prepare Passthrough"
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Import Passthrough"
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device prepared for passthrough. Reboot required."
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to prepare device for passthrough"
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Device imported into passthrough management"
+msgstr ""
+
+#: src/routes/[node]/settings/device-passthrough/+page.svelte
+msgid "Failed to import device into passthrough management"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "WoL Server"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "At least one ZFS Pool must be selected"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "No changes made to ZFS Pools"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to update ZFS Pools"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "ZFS Pools updated"
+msgstr ""
+
+#. placeholder {0}: activeRow?.property
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Toggle {0}"
+msgstr ""
+
+#. placeholder {0}: enabled ? 'disable' : 'enable'
+#. placeholder {1}: displayName
+#. placeholder {2}: networkWarning
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
+msgstr ""
+
+#. placeholder {0}: serviceName
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Failed to toggle {0}"
+msgstr ""
+
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Enter ZFS Pools"
+msgstr ""
+
+#. placeholder {0}: modal.template?.name
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
+msgid "Template {0} deleted"
+msgstr ""
+
+#. placeholder {0}: modal.template?.name
+#: src/routes/[node]/utilities/cloud-init/+page.svelte
+msgid "Failed to delete template {0}"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Auto-convert to RAW"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Source"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Dest Suffix"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Prune"
+msgstr ""
+
+#. placeholder {0}: value
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Keep {0}"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Off"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job deleted"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to delete job"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Backup job started"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Failed to run job"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Run Now"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "Restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/jobs/+page.svelte
+msgid "OOB Restore"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Interrupted"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Failed to load event progress"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Mode"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Completed"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Backup Target Diverged"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "All Jobs"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Filter by job"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Select node"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "View Progress"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Event Progress <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "Transfer"
+msgstr ""
+
+#. placeholder {0}: errorModal.id
+#: src/routes/datacenter/backups/events/+page.svelte
+msgid "#{0} Event - Error Details"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH Host"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup Root"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Backup target deleted"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Failed to delete target"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Target connectivity validated"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validation failed"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validating"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Validate"
+msgstr ""
+
+#. placeholder {0}: cpu.logicalCores
+#: src/lib/components/custom/Jail/Hardware/CPU.svelte
+msgid "CPU cores larger than logical cores ({0})"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/RAM.svelte
+msgid "Invalid RAM value"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "At least one protocol required"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network inherited"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid "Network disinherited"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will disinherit the network configuration from the host. Choose this if you want\n"
+"to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+"take effect after restarting the jail."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Inherit.svelte
+msgid ""
+"This option will inherit the network configuration from the host. Choose this if you want\n"
+"the jail to share the host's networking. You can select which protocols to inherit below.\n"
+"Changes will take effect after restarting the jail."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Network name already exists"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Default gateway already exists"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Network added successfully"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Failed to update network"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Network updated successfully"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Primary Network"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "IPv4 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select IPv4 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "IPv6 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Select IPv6 Address"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Default Gateway"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Failed to save allowed options"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+msgid "Allowed options saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Failed to save lifecycle hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid "Lifecycle hooks saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "Lifecycle Hooks"
+msgstr ""
+
+#. placeholder {0}: phase.label
+#: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+msgid ""
+"The above script will run during {0}, ensure they are valid for the host or\n"
+"jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "FSTab Entries"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the fstab entries for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+#: src/routes/[node]/jail/[node]/options/+page.svelte
+msgid "DevFS Ruleset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage the devfs ruleset for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage additional options for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta and Env key-value pairs"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Failed to save changes"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Changes saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Meta (Key=Value per line)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "ENV (Key=Value per line)"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "Error updating VM network"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "VM network updated"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enable' : 'disable'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "Failed to {0} TPM emulation"
+msgstr ""
+
+#. placeholder {0}: tpmEmulation ? 'enabled' : 'disabled'
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "TPM emulation {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid ""
+"Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling\n"
+"this option after it has been enabled may lead to boot issues if the guest OS relies on TPM\n"
+"functionality."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/TPM.svelte
+msgid "<0/> TPM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid size format"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Network Config"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+msgid "Cloud Init Network Config"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Failed to modify QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Modified QEMU Guest Agent setting"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid ""
+"Enable this option to provide a QEMU Guest Agent channel via a virtio-console device. This\n"
+"improves guest integration for features like shutdown, status, and filesystem operations, when\n"
+"the guest agent is installed inside the VM."
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
+msgid "Enable QEMU Guest Agent"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "User Data is required"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Meta Data is required"
+msgstr ""
+
+#. placeholder {0}: properties.name
+#. placeholder {1}: isEdit ? 'updated' : 'created'
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Template {0} {1}"
+msgstr ""
+
+#. placeholder {0}: isEdit ? 'update' : 'create'
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Failed to {0} template {1}"
+msgstr ""
+
+#. placeholder {0}: template?.name
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Edit Template - {0}"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Create Template"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Insert a pre-made template"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Meta Data"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD with Static IP"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "FreeBSD Network Config"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian with Static IP"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Debian Network Config"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+msgid "Docker"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Edit.svelte
+msgid "Add spares to enable auto replace"
+msgstr ""
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.latest
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Replacing {0} with {1}"
+msgstr ""
+
+#. placeholder {0}: snapshot.old
+#. placeholder {1}: snapshot.name
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Device replacement started for {0} in {1}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Replace.svelte
+msgid "Error replacing device"
+msgstr ""
+
+#. placeholder {0}: num(vdev.read_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "R:{0}"
+msgstr ""
+
+#. placeholder {0}: num(vdev.write_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "W:{0}"
+msgstr ""
+
+#. placeholder {0}: num(vdev.checksum_errors)
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "C:{0}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Logs"
+msgstr ""
+
+#. placeholder {0}: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#: src/lib/components/custom/ZFS/pools/Status.svelte
+msgid "Errors detected{0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Jail terminal"
+msgstr ""
+
+#. placeholder {0}: jail.current?.name
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Console Settings - {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "ZFS Snapshot Name"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Snapshot name is required"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Snapshot created"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Snapshot rollback started"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Failed to rollback snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Snapshot deleted"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Failed to delete snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Rollback"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+msgid "New Jail Snapshot"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Clean Slate"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Optional note about why this snapshot was taken"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Creating..."
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Rolling Back"
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
+msgstr ""
+
+#. placeholder {0}: selectedSnapshot.name
+#. placeholder {0}: selectedSnapshot.name
+#: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Failed to modify users in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Users modified in group"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Default Sylve Group (sylve_g)"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Edit Users"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/groups/+page.svelte
+msgid "Modify Users"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create Directory"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Delete (File/Directory)"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+msgid "Create File"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/network/+page.svelte
+msgid "VM must be shut off to attach network"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "VM serial terminal"
+msgstr ""
+
+#. placeholder {0}: vm.current?.name
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Console settings - {0}"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/hardware/+page.svelte
+msgid "No Password"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+msgid "New VM Snapshot"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Select a node"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Single Dataset"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Virtual Machine"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Target is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Source dataset is required for dataset mode"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Jail selection is required for jail mode"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "VM selection is required for VM mode"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Prune keep value must be 0 or greater"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Selected jail was not found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Unable to resolve a jail base dataset for the selected jail"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Selected VM was not found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Unable to resolve a VM dataset root for the selected VM"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Backup job updated"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Backup job created"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Failed to update job"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Failed to create job"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Edit Backup Job"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "New Backup Job"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Select target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Run On Node"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Select mode"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Source Dataset"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading jails..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "No jails available"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Select jail"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Loading VMs..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "No VMs available"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Select VM"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Schedule (Cron, 5-field)"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Keep Last Snapshots"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Prune on target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Stop before backup"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Job Summary"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Jail <0/> will be backed up"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "CT ID: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "VM <0/> will be backed up"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "RID: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Dataset <0/> will be backed up"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Schedule: <0/>"
+msgstr ""
+
+#. placeholder {0}: Number.parseInt(form.pruneKeepLast || '0', 10)
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Keep last {0} snapshots"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Pruning: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Target prune: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Stop before backup: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Updating"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Creating"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "SSH Host is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Backup Root is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Backup target updated"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Backup target created"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Backup root not found on target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Failed to update target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Failed to create target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Edit Backup Target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "New Backup Target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "SSH Port"
+msgstr ""
+
+#. placeholder {0}: edit ? '(leave empty to keep existing)' : ''
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "SSH Private Key {0}"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Offsite backup server in datacenter"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+msgid "Create Backup Root"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Current"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Failed to load cluster details"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Failed to validate cluster guest placement"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No backup targets available"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Failed to load target datasets"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Failed to load dataset details"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Destination dataset is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Destination dataset must be fully qualified (for example: zroot/yyy)"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore node is required"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restore job started - check events for progress"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Failed to start restore"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore From Target Dataset"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore On Node"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Loading nodes..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No cluster nodes found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Select restore node"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Dataset on Target"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Loading datasets..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No restorable datasets found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "This backup set includes non-active lineages. Snapshot markers show lineage as <0/>, <1/>, and <2/>."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Generation"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Loading generations..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No generations found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Select generation"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Snapshot"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Loading snapshots..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "No snapshots found"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Select snapshot"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Destination Dataset"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore VM Network Config"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restore Jail Network Config"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Detected Jail Metadata"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Name: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Base Pool: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Detected VM Metadata"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Pools: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restore Warning"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "The destination dataset will be replaced if it already exists."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Selected backup date: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Selected snapshot lineage: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+msgid "Restoring..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Current lineage"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "System-preserved lineage"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Out-of-band lineage"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Failed to load snapshots"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restore from Backup"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Loading snapshots from remote target..."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "No snapshots found on the backup target. Run a backup first."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid ""
+"Some backups are from out-of-band lineages. Regular prune count applies to the current\n"
+"lineage only."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "No snapshots found in the selected generation."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Backup Date"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Used"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Refer"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "The current dataset is replaced in place with the selected restore point"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Data from <0/> will be restored"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "This snapshot is from <0/> and may not be counted by active-lineage prune."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "No deletion on target, all snapshots remain available"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Restoring"
+msgstr ""
+
+#. placeholder {0}: dataset.name
+#. placeholder {1}: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+msgid "Snapshot {0}@{1} already exists"
+msgstr ""
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "Deleted {0} snapshots"
+msgstr ""
+
+#. placeholder {0}: datasets[0].name
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete snapshot {0}"
+msgstr ""
+
+#. placeholder {0}: datasets.length
+#: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+msgid "This will delete {0} snapshots"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshot"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+msgid "Parent pool not found"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size must match block size"
+msgstr ""
+
+#. placeholder {0}: dataset.name
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume {0} edited"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume Size"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Referenced"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Delete Snapshot"
+msgid_plural "Delete # Snapshots"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Target Receipts"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "No target-side receipts yet."
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Last Attempt"
+msgstr ""
+
+#: src/routes/datacenter/replication/events/+page.svelte
+msgid "Last Success"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Replication HA requires at least 3 configured Raft voters."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least two distinct target servers."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "At least one target must be different from the effective runner node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This move would leave no remote target for replication; adjust targets first."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable. Bring quorum back before running this action."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add at least two distinct target servers."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable. Retry after quorum is restored."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least one remote target from its effective runner node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This move would leave no remote target for replication."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Cluster quorum is unavailable."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy is currently blocked by HA constraints."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Stale"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Blocked"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "HA State"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Degraded"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Eligible"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target Sync"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add at least two distinct target servers for HA."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "At least one target must be a remote node from the effective runner."
+msgstr ""
+
+#~ msgid "Host: {0}"
+#~ msgstr ""
+
+#~ msgid "C <0/>"
+#~ msgstr ""
+/button.svelte
+msgid "C <0/>"
 msgstr ""

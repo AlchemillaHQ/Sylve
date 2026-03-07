@@ -26,6 +26,7 @@
 	};
 
 	let properties = $state(options);
+	let loading = $state(false);
 
 	async function join() {
 		let error = '';
@@ -51,6 +52,8 @@
 		}
 
 		if (storage.nodeId) {
+			loading = true;
+
 			const response = await joinCluster(
 				storage.nodeId,
 				properties.ip,
@@ -58,6 +61,8 @@
 				properties.leaderApi,
 				properties.clusterKey
 			);
+
+			loading = false;
 
 			reload = true;
 
@@ -166,7 +171,16 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={join} type="submit" size="sm">{'Join'}</Button>
+				<Button onclick={join} type="submit" size="sm" disabled={loading}>
+					{#if loading}
+						<div class="flex items-center gap-2">
+							<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
+							<span>Joining</span>
+						</div>
+					{:else}
+						Join
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

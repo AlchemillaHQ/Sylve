@@ -91,7 +91,8 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 			for i := 0; i < len(rcLines); i++ {
 				if strings.HasPrefix(rcLines[i], "ifconfig") ||
 					strings.HasPrefix(rcLines[i], "ipv6") ||
-					strings.HasPrefix(rcLines[i], "defaultrouter") {
+					strings.HasPrefix(rcLines[i], "defaultrouter") ||
+					strings.HasPrefix(rcLines[i], "rtsold") {
 					rcLines = append(rcLines[:i], rcLines[i+1:]...)
 					i--
 				}
@@ -482,6 +483,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 				if strings.HasPrefix(rcLines[i], "ifconfig") ||
 					strings.HasPrefix(rcLines[i], "ipv6") ||
 					strings.HasPrefix(rcLines[i], "defaultrouter") ||
+					strings.HasPrefix(rcLines[i], "rtsold") ||
 					strings.HasPrefix(rcLines[i], "# Sylve Network Configuration") {
 					rcLines = append(rcLines[:i], rcLines[i+1:]...)
 					i--
@@ -629,6 +631,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 
 				if n.SLAAC {
 					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 accept_rtadv\"", ctidHash, networkId))
+					rcConfLines = append(rcConfLines, "rtsold_enable=\"YES\"")
 				} else if n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0 {
 					ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
 					if err != nil {

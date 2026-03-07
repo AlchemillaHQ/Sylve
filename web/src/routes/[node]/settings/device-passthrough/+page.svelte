@@ -123,8 +123,6 @@
 		modalState.action = 'remove';
 		modalState.remove.id = id;
 	}
-
-	$inspect(activeRow);
 </script>
 
 {#snippet button(type: string)}

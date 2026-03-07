@@ -12,10 +12,11 @@
 		pool: Zpool;
 	}
 
-	let visible = new IsDocumentVisible();
 	let { open = $bindable(), pool }: Props = $props();
 
-	const guid = $state.raw(pool?.guid || '');
+	let visible = new IsDocumentVisible();
+	let guid = $derived(pool?.guid);
+
 	let status = resource(
 		() => `pool-status-${guid}`,
 		async () => await getPoolStatus(guid)
@@ -98,7 +99,7 @@
 				class:bg-yellow-500={vdev.state === 'DEGRADED'}
 				class:bg-red-500={vdev.state === 'FAULTED'}
 				class:bg-gray-400={!vdev.state || !['ONLINE', 'DEGRADED', 'FAULTED'].includes(vdev.state)}
-			/>
+			></span>
 
 			<span class="font-medium">
 				{vdev.name ?? '(unknown)'}

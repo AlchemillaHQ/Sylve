@@ -1,14 +1,15 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { deleteJail, getJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
+	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { Jail, JailState } from '$lib/types/jail/jail';
+	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
@@ -29,14 +30,14 @@
 	let isConsolePage = $derived.by(() => page.url.pathname.endsWith('/console'));
 
 	const jail = resource(
-		() => `jail-${ctId}`,
-		async (key: string): Promise<Jail | null> => {
+		() => `simple-jail-${ctId}`,
+		async (key: string): Promise<SimpleJail | null> => {
 			if (!ctId) return null;
-			const result = await getJailById(ctId, 'ctid');
+			const result = await getSimpleJailById(ctId, 'ctid');
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: null as Jail | null }
+		{ initialValue: null as SimpleJail | null }
 	);
 
 	const jState = resource(
@@ -191,37 +192,56 @@
 
 <div class="flex h-full min-h-0 w-full flex-col">
 	{#if !isSummaryPage}
-		<div class="flex h-10 shrink-0 w-full items-center gap-1 border p-4">
-			{#if jail.current && jState.current}
-				{#if jState.current.state === 'ACTIVE'}
-					<Button
-						onclick={handleStop}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+		<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
+			<div class="min-w-0 flex items-center gap-2">
+				{#if jail.current && jState.current}
+					<Badge
+						variant="outline"
+						class="text-muted-foreground px-1.5"
+						title={jState.current.state}
 					>
-						<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-						{'Stop'}
-					</Button>
-				{:else}
-					<Button
-						onclick={handleStart}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-						{'Start'}
-					</Button>
-
-					<Button
-						onclick={openDeleteModal}
-						size="sm"
-						class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						{'Delete'}
-					</Button>
+						{#if jState.current.state === 'ACTIVE'}
+							<span class="icon-[mdi--check-circle] text-green-500"></span>
+						{:else}
+							<span class="icon-[mdi--close-circle] text-gray-500"></span>
+						{/if}
+					</Badge>
+					<p class="truncate text-sm font-semibold">{jail.current.name} ({jail.current.ctId})</p>
 				{/if}
-			{/if}
+			</div>
+
+			<div class="flex items-center gap-1">
+				{#if jail.current && jState.current}
+					{#if jState.current.state === 'ACTIVE'}
+						<Button
+							onclick={handleStop}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
+							{'Stop'}
+						</Button>
+					{:else}
+						<Button
+							onclick={handleStart}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+							{'Start'}
+						</Button>
+
+						<Button
+							onclick={openDeleteModal}
+							size="sm"
+							class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+							{'Delete'}
+						</Button>
+					{/if}
+				{/if}
+			</div>
 		</div>
 	{/if}
 

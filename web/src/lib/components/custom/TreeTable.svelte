@@ -203,7 +203,8 @@
 				pagination: true,
 				paginationSize: 25,
 				paginationCounter: 'pages',
-				initialSort: initialSort ? initialSort : []
+				initialSort: initialSort ? initialSort : [],
+                debugInvalidOptions: false
 			});
 		}
 
@@ -250,13 +251,18 @@
 		table?.on('cellClick', (_event: UIEvent, cell) => {
 			const value = cell.getValue();
 			const column = cell.getColumn();
-			const colDef = column.getDefinition() as any;
+			const colDef = column.getDefinition() as Column;
 			const rowData = cell.getRow().getData();
+
 			const shouldCopy =
-				typeof colDef.copyOnClick === 'function' ? colDef.copyOnClick(cell) : !!colDef.copyOnClick;
+				typeof colDef.copyOnClick === 'function'
+					? colDef.copyOnClick(cell.getRow())
+					: !!colDef.copyOnClick;
 
 			if (shouldCopy && value !== undefined && value !== null) {
-				const textToCopy = (rowData.toCopy || value).toString();
+				const textToCopy = colDef.copyValue
+					? colDef.copyValue(cell)
+					: String(rowData.toCopy ?? value);
 
 				navigator.clipboard
 					.writeText(textToCopy)
@@ -267,7 +273,7 @@
 						});
 					})
 					.catch((err) => {
-						console.error('Failed to copy text: ', err);
+						console.error('Failed to copy text:', err);
 					});
 			}
 		});
