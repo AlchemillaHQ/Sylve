@@ -612,3 +612,39 @@ func RestoreBackupJob(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+func UpdateBackupJobStateInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		var req cluster.BackupJobRuntimeStateUpdate
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := cS.UpdateBackupJobRuntimeState(req, cS.Raft == nil); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "update_backup_job_state_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "backup_job_state_updated",
+			Data:    nil,
+		})
+	}
+}

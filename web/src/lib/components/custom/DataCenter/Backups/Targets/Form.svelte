@@ -83,6 +83,7 @@
 				position: 'bottom-center'
 			});
 
+			open = false;
 			reload = true;
 			return;
 		}

@@ -438,6 +438,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
 		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
+		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
 	}
 
 	cluster := api.Group("/cluster")

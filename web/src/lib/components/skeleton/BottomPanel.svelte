@@ -1,19 +1,67 @@
 <script lang="ts">
+	import { storage } from '$lib';
+	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getAuditRecords } from '$lib/api/info/audit';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { fade } from 'svelte/transition';
 
+	interface Props {
+		clustered?: boolean;
+	}
+
+	let { clustered = false }: Props = $props();
+
+	let selectedHostname = $state(storage.hostname || '');
+	const effectiveHostname = $derived(selectedHostname || storage.hostname || '');
+
+	const clusterNodes = resource(
+		() => `cluster-nodes-for-audit-${clustered ? 'clustered' : 'single'}`,
+		async () => {
+			if (!clustered) {
+				return [];
+			}
+
+			return await getNodes();
+		},
+		{
+			initialValue: [] as ClusterNode[]
+		}
+	);
+
+	const hostnameOptions = $derived.by(() => {
+		const names = new Set<string>();
+
+		if (storage.hostname) {
+			names.add(storage.hostname);
+		}
+
+		for (const node of clusterNodes.current) {
+			if (node.hostname) {
+				names.add(node.hostname);
+			}
+		}
+
+		return Array.from(names)
+			.sort((a, b) => a.localeCompare(b))
+			.map((hostname) => ({
+				value: hostname,
+				label: hostname
+			}));
+	});
+
 	const auditRecords = resource(
-		() => 'audit-record',
+		() => `audit-record-${effectiveHostname || 'default'}`,
 		async (key, prevKey, { signal }) => {
-			const results = await getAuditRecords();
+			const results = await getAuditRecords(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
 		}
@@ -35,6 +83,15 @@
 				auditRecords.refetch().then(() => {
 					reload.auditLog = false;
 				});
+			}
+		}
+	);
+
+	watch(
+		() => storage.hostname,
+		(hostname) => {
+			if (!selectedHostname && hostname) {
+				selectedHostname = hostname;
 			}
 		}
 	);
@@ -174,7 +231,10 @@
 
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
-		<div class="flex h-full flex-col overflow-hidden" transition:fade|global={{ duration: 400 }}>
+		<div
+			class="relative flex h-full flex-col overflow-hidden"
+			transition:fade|global={{ duration: 400 }}
+		>
 			<Table.Root class="w-full table-auto border-collapse">
 				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row class="dark:hover:bg-background ">
@@ -184,9 +244,27 @@
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
 							>End Time</Table.Head
 						>
-						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
-							>Node</Table.Head
-						>
+						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white">
+							{#if clustered && hostnameOptions.length > 0}
+								<div class="w-44 max-w-full">
+									<SimpleSelect
+										placeholder="Node"
+										options={hostnameOptions}
+										value={effectiveHostname}
+										onChange={(value) => {
+											selectedHostname = value;
+										}}
+										classes={{
+											parent: 'min-w-0 space-y-0',
+											trigger:
+												'inline-flex h-6 w-full items-center overflow-hidden rounded-sm border-0 bg-transparent px-1.5 text-left text-xs font-medium text-muted-foreground shadow-none ring-0 hover:bg-muted/40 focus:bg-muted/50'
+										}}
+									/>
+								</div>
+							{:else}
+								Node
+							{/if}
+						</Table.Head>
 						<Table.Head class="h-10 px-4 py-2 font-semibold text-black dark:text-white"
 							>User</Table.Head
 						>

@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -373,6 +374,42 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return db.Delete(&BackupJob{}, payload.ID).Error
+		default:
+			return nil
+		}
+	})
+
+	fsm.Register("backup_job_state", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var payload struct {
+				JobID      uint       `json:"jobId"`
+				LastRunAt  *time.Time `json:"lastRunAt"`
+				LastStatus string     `json:"lastStatus"`
+				LastError  string     `json:"lastError"`
+				NextRunAt  *time.Time `json:"nextRunAt"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			if payload.JobID == 0 {
+				return fmt.Errorf("invalid_job_id")
+			}
+
+			status := strings.TrimSpace(strings.ToLower(payload.LastStatus))
+			if status == "" {
+				return fmt.Errorf("last_status_required")
+			}
+			if status != "success" && status != "failed" && status != "running" && status != "blocked" {
+				return fmt.Errorf("invalid_last_status")
+			}
+
+			return db.Model(&BackupJob{}).Where("id = ?", payload.JobID).Updates(map[string]any{
+				"last_run_at": payload.LastRunAt,
+				"last_status": status,
+				"last_error":  strings.TrimSpace(payload.LastError),
+				"next_run_at": payload.NextRunAt,
+			}).Error
 		default:
 			return nil
 		}

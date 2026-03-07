@@ -6,8 +6,7 @@
 	import * as Resizable from '$lib/components/ui/resizable';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
 	import { fade } from 'svelte/transition';
-	import { resource, useInterval, watch } from 'runed';
-	import { storage } from '$lib';
+	import { resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
 
 	interface Props {
@@ -55,7 +54,7 @@
 						autoSaveId="child-left-pane-auto-save"
 					>
 						<Resizable.Pane defaultSize={12} class="border-l">
-							<div transition:fade|global={{ duration: 400 }}>
+							<div class="h-full" transition:fade|global={{ duration: 400 }}>
 								{#if clustered}
 									<LeftPanelClustered />
 								{:else}
@@ -74,7 +73,7 @@
 				<Resizable.Handle withHandle />
 
 				<Resizable.Pane class="h-full min-h-20" defaultSize={10}>
-					<BottomPanel />
+					<BottomPanel {clustered} />
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>

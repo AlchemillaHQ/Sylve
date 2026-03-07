@@ -24,6 +24,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/hashicorp/raft"
 	"github.com/robfig/cron/v3"
 )
 
@@ -43,6 +44,16 @@ type BackupJobInput struct {
 	StopBeforeBackup bool   `json:"stopBeforeBackup"`
 	CronExpr         string `json:"cronExpr"`
 	Enabled          *bool  `json:"enabled"`
+}
+
+// BackupJobRuntimeStateUpdate carries runtime-only fields that should be
+// synchronized cluster-wide after a backup run finishes.
+type BackupJobRuntimeStateUpdate struct {
+	JobID      uint       `json:"jobId"`
+	LastRunAt  *time.Time `json:"lastRunAt"`
+	LastStatus string     `json:"lastStatus"`
+	LastError  string     `json:"lastError"`
+	NextRunAt  *time.Time `json:"nextRunAt"`
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
@@ -226,6 +237,48 @@ func (s *Service) GetBackupJobByID(id uint) (*clusterModels.BackupJob, error) {
 		return nil, err
 	}
 	return &job, nil
+}
+
+func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate, bypassRaft bool) error {
+	if update.JobID == 0 {
+		return fmt.Errorf("invalid_job_id")
+	}
+
+	status := strings.TrimSpace(strings.ToLower(update.LastStatus))
+	if status == "" {
+		return fmt.Errorf("last_status_required")
+	}
+	if status != "success" && status != "failed" && status != "running" && status != "blocked" {
+		return fmt.Errorf("invalid_last_status")
+	}
+	update.LastStatus = status
+
+	if bypassRaft {
+		return s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", update.JobID).Updates(map[string]any{
+			"last_run_at": update.LastRunAt,
+			"last_status": update.LastStatus,
+			"last_error":  strings.TrimSpace(update.LastError),
+			"next_run_at": update.NextRunAt,
+		}).Error
+	}
+
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if s.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+
+	data, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_backup_job_state_payload: %w", err)
+	}
+
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "backup_job_state",
+		Action: "update",
+		Data:   data,
+	})
 }
 
 /*

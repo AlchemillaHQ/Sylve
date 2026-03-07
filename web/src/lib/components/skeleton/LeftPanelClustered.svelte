@@ -158,9 +158,9 @@
 	);
 </script>
 
-<div class="h-full overflow-y-auto px-1.5 pt-1">
-	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar w-full">
-		<ul>
+<div class="flex h-full min-h-0 flex-col px-1.5 pt-1">
+	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
+		<ul class="h-full min-h-0">
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item (item.id)}
 					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} />

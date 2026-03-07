@@ -505,6 +505,7 @@ msgstr "End Time"
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Node"
 msgstr "Node"
 
@@ -1788,12 +1789,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1857,12 +1858,12 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder' : 'File'
+#. 0: isFolder ? 'Folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder' : 'file'
+#. 0: isFolder ? 'folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
@@ -2098,12 +2099,12 @@ msgstr "No groups selected and guests are not allowed"
 msgid "Share cannot have overlapping groups"
 msgstr "Share cannot have overlapping groups"
 
-#. 0: edit ? 'edit' : 'create'
+#. 0: edit ? 'edit' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Failed to {0} Samba share"
 
-#. 0: edit ? 'edited' : 'created'
+#. 0: edit ? 'edited' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
@@ -2568,7 +2569,7 @@ msgstr "Edit {0}"
 msgid "Toggle {0}"
 msgstr "Toggle {0}"
 
-#. 0: enabled ? 'disable' : 'enable'; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
@@ -2652,12 +2653,12 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
 
-#. 0: isFolder ? 'folder' : 'file'; 1: name
+#. 0: isFolder ? 'folder' ; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "Failed to create {0} \"{1}\""
@@ -2703,17 +2704,17 @@ msgstr "<0/> New Folder"
 msgid "{0} items"
 msgstr "{0} items"
 
-#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
+#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} folders, {1} files"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -4992,12 +4993,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5464,12 +5465,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6100,7 +6101,7 @@ msgstr "Error Status"
 msgid "No known data errors"
 msgstr "No known data errors"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
@@ -6716,7 +6717,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7512,8 +7513,8 @@ msgstr "Snapshot {0}@{1} created"
 msgid "Snapshot {0}@{1} already exists"
 msgstr "Snapshot {0}@{1} already exists"
 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` : `${dataset.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` 
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot - {0}"

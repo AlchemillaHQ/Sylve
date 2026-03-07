@@ -1365,21 +1365,81 @@ func (s *Service) updateBackupJobResult(job *clusterModels.BackupJob, runErr err
 		}
 	}
 
-	updates := map[string]any{
-		"last_run_at": now,
-		"last_status": "success",
-		"last_error":  "",
-		"next_run_at": next,
+	status := "success"
+	lastError := ""
+	if runErr != nil {
+		status = "failed"
+		lastError = runErr.Error()
 	}
 
-	if runErr != nil {
-		updates["last_status"] = "failed"
-		updates["last_error"] = runErr.Error()
+	update := cluster.BackupJobRuntimeStateUpdate{
+		JobID:      job.ID,
+		LastRunAt:  &now,
+		LastStatus: status,
+		LastError:  lastError,
+		NextRunAt:  next,
+	}
+
+	if s.syncBackupJobRuntimeState(update) {
+		return
+	}
+
+	updates := map[string]any{
+		"last_run_at": update.LastRunAt,
+		"last_status": update.LastStatus,
+		"last_error":  update.LastError,
+		"next_run_at": update.NextRunAt,
 	}
 
 	if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Updates(updates).Error; err != nil {
 		logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_backup_job_state")
 	}
+}
+
+func (s *Service) syncBackupJobRuntimeState(update cluster.BackupJobRuntimeStateUpdate) bool {
+	if s == nil || s.Cluster == nil {
+		return false
+	}
+
+	bypassRaft := s.Cluster.Raft == nil
+	if err := s.Cluster.UpdateBackupJobRuntimeState(update, bypassRaft); err == nil {
+		return true
+	} else if !bypassRaft && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
+		forwardErr := s.forwardBackupJobStateToLeader(update)
+		if forwardErr == nil {
+			return true
+		}
+		logger.L.Warn().Err(forwardErr).Uint("job_id", update.JobID).Msg("failed_to_forward_backup_job_state_to_leader")
+	} else {
+		logger.L.Warn().Err(err).Uint("job_id", update.JobID).Msg("failed_to_sync_backup_job_state_cluster_wide")
+	}
+
+	return false
+}
+
+func (s *Service) forwardBackupJobStateToLeader(update cluster.BackupJobRuntimeStateUpdate) error {
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Cluster.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	_, leaderID := s.Cluster.Raft.LeaderWithID()
+	leaderNodeID := strings.TrimSpace(string(leaderID))
+	if leaderNodeID == "" {
+		return fmt.Errorf("leader_unknown")
+	}
+
+	payload := map[string]any{
+		"jobId":      update.JobID,
+		"lastRunAt":  update.LastRunAt,
+		"lastStatus": update.LastStatus,
+		"lastError":  update.LastError,
+		"nextRunAt":  update.NextRunAt,
+	}
+
+	return s.forwardReplicationPolicyControl(leaderNodeID, "backup-job-state", payload, 5*time.Second)
 }
 
 func (s *Service) finalizeBackupEvent(event *clusterModels.BackupEvent, runErr error, output string) {
