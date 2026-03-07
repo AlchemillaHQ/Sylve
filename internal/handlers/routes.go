@@ -436,6 +436,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
 		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 	}
 
 	cluster := api.Group("/cluster")
@@ -507,6 +508,7 @@ func RegisterRoutes(r *gin.Engine,
 		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
 		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
 		clusterReplication.GET("/events/:id/progress", clusterHandlers.ReplicationEventProgressByID(clusterService, zeltaService))
+		clusterReplication.GET("/receipts", clusterHandlers.ReplicationReceipts(clusterService))
 	}
 
 	vnc := api.Group("/vnc")

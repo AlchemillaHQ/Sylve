@@ -127,6 +127,9 @@ func (s *Service) ProposeReplicationPolicyDelete(id uint, bypassRaft bool) error
 			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
 				return err
 			}
+			if err := tx.Where("policy_id = ?", id).Delete(&clusterModels.ReplicationReceipt{}).Error; err != nil {
+				return err
+			}
 			return tx.Delete(&clusterModels.ReplicationPolicy{}, id).Error
 		})
 	}
@@ -548,6 +551,186 @@ func (s *Service) ListReplicationEvents(limit int, policyID uint) ([]clusterMode
 	return events, nil
 }
 
+func (s *Service) ListReplicationReceipts(policyID uint) ([]clusterModels.ReplicationReceipt, error) {
+	s.cleanupOrphanReplicationRows()
+
+	query := s.DB.Order("last_attempt_at DESC")
+	if policyID > 0 {
+		query = query.Where("policy_id = ?", policyID)
+	}
+
+	var receipts []clusterModels.ReplicationReceipt
+	if err := query.Find(&receipts).Error; err != nil {
+		return nil, err
+	}
+	if len(receipts) == 0 {
+		return receipts, nil
+	}
+
+	policyIDSet := make(map[uint]struct{}, len(receipts))
+	for _, receipt := range receipts {
+		if receipt.PolicyID > 0 {
+			policyIDSet[receipt.PolicyID] = struct{}{}
+		}
+	}
+
+	policyIDs := make([]uint, 0, len(policyIDSet))
+	for id := range policyIDSet {
+		policyIDs = append(policyIDs, id)
+	}
+
+	type policyIntervalRow struct {
+		ID       uint
+		CronExpr string
+	}
+	var intervalRows []policyIntervalRow
+	if len(policyIDs) > 0 {
+		if err := s.DB.
+			Model(&clusterModels.ReplicationPolicy{}).
+			Select("id", "cron_expr").
+			Where("id IN ?", policyIDs).
+			Find(&intervalRows).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	freshnessByPolicyID := make(map[uint]int64, len(intervalRows))
+	for _, row := range intervalRows {
+		windowSeconds, err := replicationFreshnessWindowSeconds(row.CronExpr)
+		if err != nil || windowSeconds <= 0 {
+			continue
+		}
+		freshnessByPolicyID[row.ID] = windowSeconds
+	}
+
+	for idx := range receipts {
+		if windowSeconds, ok := freshnessByPolicyID[receipts[idx].PolicyID]; ok && windowSeconds > 0 {
+			value := windowSeconds
+			receipts[idx].FreshnessWindowSec = &value
+		}
+	}
+
+	return receipts, nil
+}
+
+func (s *Service) UpsertLocalReplicationReceipt(receipt clusterModels.ReplicationReceipt) error {
+	if receipt.PolicyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	if receipt.LastAttemptAt.IsZero() {
+		return fmt.Errorf("replication_receipt_last_attempt_required")
+	}
+	if strings.TrimSpace(strings.ToLower(receipt.Status)) == "success" && receipt.LastSuccessAt == nil {
+		lastSuccessAt := receipt.LastAttemptAt
+		receipt.LastSuccessAt = &lastSuccessAt
+	}
+	return clusterModels.UpsertReplicationReceiptTxn(s.DB, &receipt)
+}
+
+func (s *Service) DeleteLocalReplicationReceiptsByPolicy(policyID uint) error {
+	if policyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	return s.DB.Where("policy_id = ?", policyID).Delete(&clusterModels.ReplicationReceipt{}).Error
+}
+
+func (s *Service) PruneLocalReplicationReceipts(localNodeID string) error {
+	localNodeID = strings.TrimSpace(localNodeID)
+
+	query := s.DB.Model(&clusterModels.ReplicationReceipt{})
+	if localNodeID != "" {
+		query = query.Where("target_node_id = ?", localNodeID)
+	}
+
+	var receipts []clusterModels.ReplicationReceipt
+	if err := query.Find(&receipts).Error; err != nil {
+		return err
+	}
+	if len(receipts) == 0 {
+		return nil
+	}
+
+	policyIDSet := make(map[uint]struct{}, len(receipts))
+	for _, receipt := range receipts {
+		if receipt.PolicyID > 0 {
+			policyIDSet[receipt.PolicyID] = struct{}{}
+		}
+	}
+
+	policyIDs := make([]uint, 0, len(policyIDSet))
+	for id := range policyIDSet {
+		policyIDs = append(policyIDs, id)
+	}
+
+	var policies []clusterModels.ReplicationPolicy
+	if len(policyIDs) > 0 {
+		if err := s.DB.Preload("Targets").Where("id IN ?", policyIDs).Find(&policies).Error; err != nil {
+			return err
+		}
+	}
+
+	targetSetByPolicy := make(map[uint]map[string]struct{}, len(policies))
+	for _, policy := range policies {
+		targetSet := make(map[string]struct{}, len(policy.Targets))
+		for _, target := range policy.Targets {
+			targetID := strings.TrimSpace(target.NodeID)
+			if targetID == "" {
+				continue
+			}
+			targetSet[targetID] = struct{}{}
+		}
+		targetSetByPolicy[policy.ID] = targetSet
+	}
+
+	staleIDs := make([]uint, 0)
+	for _, receipt := range receipts {
+		if localNodeID != "" && strings.TrimSpace(receipt.TargetNodeID) != localNodeID {
+			staleIDs = append(staleIDs, receipt.ID)
+			continue
+		}
+
+		targetSet, policyExists := targetSetByPolicy[receipt.PolicyID]
+		if !policyExists {
+			staleIDs = append(staleIDs, receipt.ID)
+			continue
+		}
+		if _, ok := targetSet[strings.TrimSpace(receipt.TargetNodeID)]; !ok {
+			staleIDs = append(staleIDs, receipt.ID)
+		}
+	}
+
+	if len(staleIDs) == 0 {
+		return nil
+	}
+
+	return s.DB.Where("id IN ?", staleIDs).Delete(&clusterModels.ReplicationReceipt{}).Error
+}
+
+func replicationFreshnessWindowSeconds(cronExpr string) (int64, error) {
+	spec := strings.TrimSpace(cronExpr)
+	if spec == "" {
+		return 0, fmt.Errorf("cron_expr_required")
+	}
+
+	schedule, err := cron.ParseStandard(spec)
+	if err != nil {
+		return 0, err
+	}
+
+	anchor := time.Now().UTC()
+	first := schedule.Next(anchor)
+	second := schedule.Next(first)
+	if !second.After(first) {
+		return 0, fmt.Errorf("invalid_cron_interval")
+	}
+
+	window := second.Sub(first) * 2
+	if window <= 0 {
+		return 0, fmt.Errorf("invalid_cron_interval")
+	}
+	return int64(window / time.Second), nil
+}
+
 func (s *Service) cleanupOrphanReplicationRows() {
 	if s.DB == nil {
 		return
@@ -561,6 +744,9 @@ func (s *Service) cleanupOrphanReplicationRows() {
 
 	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
 	_ = s.DB.Where("policy_id IS NOT NULL AND policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationEvent{}).Error
+
+	policyIDs = s.DB.Model(&clusterModels.ReplicationPolicy{}).Select("id")
+	_ = s.DB.Where("policy_id NOT IN (?)", policyIDs).Delete(&clusterModels.ReplicationReceipt{}).Error
 }
 
 func (s *Service) GetReplicationEventByID(id uint) (*clusterModels.ReplicationEvent, error) {

@@ -414,6 +414,34 @@ func ReplicationEvents(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+func ReplicationReceipts(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		policyID := uint(0)
+		if q := c.Query("policyId"); q != "" {
+			if parsed, err := strconv.ParseUint(q, 10, 64); err == nil {
+				policyID = uint(parsed)
+			}
+		}
+
+		receipts, err := cS.ListReplicationReceipts(policyID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "list_replication_receipts_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[[]clusterModels.ReplicationReceipt]{
+			Status:  "success",
+			Message: "replication_receipts_listed",
+			Data:    receipts,
+		})
+	}
+}
+
 func ReplicationEventByID(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
@@ -493,6 +521,37 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 			Status:  "success",
 			Message: "replication_event_progress_fetched",
 			Data:    progress,
+		})
+	}
+}
+
+func UpsertReplicationReceiptInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req clusterModels.ReplicationReceipt
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := cS.UpsertLocalReplicationReceipt(req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "upsert_replication_receipt_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "replication_receipt_upserted",
+			Data:    nil,
 		})
 	}
 }

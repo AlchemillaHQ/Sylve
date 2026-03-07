@@ -9,6 +9,7 @@
 package clusterModels
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -128,6 +129,25 @@ type ReplicationEvent struct {
 	CompletedAt  *time.Time `json:"completedAt"`
 	CreatedAt    time.Time  `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt    time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
+type ReplicationReceipt struct {
+	ID                 uint       `gorm:"primaryKey" json:"id"`
+	PolicyID           uint       `gorm:"not null;index:idx_replication_receipt_policy_target,unique;index" json:"policyId"`
+	GuestType          string     `gorm:"index;not null" json:"guestType"`
+	GuestID            uint       `gorm:"index;not null" json:"guestId"`
+	SourceNodeID       string     `gorm:"index;not null" json:"sourceNodeId"`
+	TargetNodeID       string     `gorm:"not null;index:idx_replication_receipt_policy_target,unique;index" json:"targetNodeId"`
+	Status             string     `gorm:"index;not null" json:"status"`
+	Message            string     `json:"message"`
+	Error              string     `gorm:"type:text" json:"error"`
+	LastAttemptAt      time.Time  `gorm:"index;not null" json:"lastAttemptAt"`
+	LastSuccessAt      *time.Time `gorm:"index" json:"lastSuccessAt"`
+	LastSourceDataset  string     `json:"lastSourceDataset"`
+	LastTargetDataset  string     `json:"lastTargetDataset"`
+	FreshnessWindowSec *int64     `gorm:"-" json:"freshnessWindowSeconds,omitempty"`
+	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 type ClusterSSHIdentity struct {
@@ -410,6 +430,106 @@ func upsertClusterSSHIdentity(db *gorm.DB, identity *ClusterSSHIdentity) error {
 	}).Create(identity).Error
 }
 
+func upsertReplicationReceipt(db *gorm.DB, receipt *ReplicationReceipt) error {
+	if receipt == nil {
+		return fmt.Errorf("replication_receipt_required")
+	}
+
+	receipt.GuestType = strings.TrimSpace(strings.ToLower(receipt.GuestType))
+	receipt.SourceNodeID = strings.TrimSpace(receipt.SourceNodeID)
+	receipt.TargetNodeID = strings.TrimSpace(receipt.TargetNodeID)
+	receipt.Status = strings.TrimSpace(strings.ToLower(receipt.Status))
+	receipt.Message = strings.TrimSpace(receipt.Message)
+	receipt.Error = strings.TrimSpace(receipt.Error)
+	receipt.LastSourceDataset = strings.TrimSpace(receipt.LastSourceDataset)
+	receipt.LastTargetDataset = strings.TrimSpace(receipt.LastTargetDataset)
+
+	if receipt.PolicyID == 0 {
+		return fmt.Errorf("replication_receipt_policy_id_required")
+	}
+	if !validReplicationGuestType(receipt.GuestType) {
+		return fmt.Errorf("invalid_replication_receipt_guest_type")
+	}
+	if receipt.SourceNodeID == "" {
+		return fmt.Errorf("replication_receipt_source_node_required")
+	}
+	if receipt.TargetNodeID == "" {
+		return fmt.Errorf("replication_receipt_target_node_required")
+	}
+	if receipt.Status != "success" && receipt.Status != "failed" {
+		return fmt.Errorf("invalid_replication_receipt_status")
+	}
+	if receipt.LastAttemptAt.IsZero() {
+		return fmt.Errorf("replication_receipt_last_attempt_required")
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var existing ReplicationReceipt
+		err := tx.
+			Where("policy_id = ? AND target_node_id = ?", receipt.PolicyID, receipt.TargetNodeID).
+			First(&existing).
+			Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil && existing.LastAttemptAt.After(receipt.LastAttemptAt) {
+			return nil
+		}
+
+		if err == nil {
+			updates := map[string]any{
+				"guest_type":          receipt.GuestType,
+				"guest_id":            receipt.GuestID,
+				"source_node_id":      receipt.SourceNodeID,
+				"status":              receipt.Status,
+				"message":             receipt.Message,
+				"error":               receipt.Error,
+				"last_attempt_at":     receipt.LastAttemptAt,
+				"last_source_dataset": receipt.LastSourceDataset,
+				"last_target_dataset": receipt.LastTargetDataset,
+				"updated_at":          time.Now().UTC(),
+			}
+			if receipt.LastSuccessAt != nil {
+				updates["last_success_at"] = receipt.LastSuccessAt
+			}
+			return tx.Model(&ReplicationReceipt{}).Where("id = ?", existing.ID).Updates(updates).Error
+		}
+
+		if createErr := tx.Create(receipt).Error; createErr == nil {
+			return nil
+		} else {
+			var current ReplicationReceipt
+			readErr := tx.
+				Where("policy_id = ? AND target_node_id = ?", receipt.PolicyID, receipt.TargetNodeID).
+				First(&current).
+				Error
+			if readErr != nil {
+				return createErr
+			}
+			if current.LastAttemptAt.After(receipt.LastAttemptAt) {
+				return nil
+			}
+
+			updates := map[string]any{
+				"guest_type":          receipt.GuestType,
+				"guest_id":            receipt.GuestID,
+				"source_node_id":      receipt.SourceNodeID,
+				"status":              receipt.Status,
+				"message":             receipt.Message,
+				"error":               receipt.Error,
+				"last_attempt_at":     receipt.LastAttemptAt,
+				"last_source_dataset": receipt.LastSourceDataset,
+				"last_target_dataset": receipt.LastTargetDataset,
+				"updated_at":          time.Now().UTC(),
+			}
+			if receipt.LastSuccessAt != nil {
+				updates["last_success_at"] = receipt.LastSuccessAt
+			}
+			return tx.Model(&ReplicationReceipt{}).Where("id = ?", current.ID).Updates(updates).Error
+		}
+	})
+}
+
 func UpsertReplicationPolicyTxn(db *gorm.DB, policy *ReplicationPolicy, targets []ReplicationPolicyTarget) error {
 	return upsertReplicationPolicy(db, policy, targets)
 }
@@ -428,4 +548,8 @@ func UpsertReplicationPolicyTransitionTxn(
 
 func UpsertClusterSSHIdentityTxn(db *gorm.DB, identity *ClusterSSHIdentity) error {
 	return upsertClusterSSHIdentity(db, identity)
+}
+
+func UpsertReplicationReceiptTxn(db *gorm.DB, receipt *ReplicationReceipt) error {
+	return upsertReplicationReceipt(db, receipt)
 }

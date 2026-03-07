@@ -2,7 +2,8 @@
 	import {
 		getReplicationEventProgress,
 		listReplicationEvents,
-		listReplicationPolicies
+		listReplicationPolicies,
+		listReplicationReceipts
 	} from '$lib/api/cluster/replication';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -14,7 +15,8 @@
 	import type {
 		ReplicationEvent,
 		ReplicationEventProgress,
-		ReplicationPolicy
+		ReplicationPolicy,
+		ReplicationReceipt
 	} from '$lib/types/cluster/replication';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { updateCache } from '$lib/utils/http';
@@ -28,6 +30,7 @@
 	interface Data {
 		policies: ReplicationPolicy[];
 		events: ReplicationEvent[];
+		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
 	}
 
@@ -77,12 +80,25 @@
 		{ initialValue: data.events }
 	);
 
+	// svelte-ignore state_referenced_locally
+	let receipts = resource(
+		() => `replication-receipts-${filterPolicyId || 'all'}`,
+		async () => {
+			const policyId = Number.parseInt(filterPolicyId, 10);
+			const res = await listReplicationReceipts(Number.isFinite(policyId) ? policyId : undefined);
+			updateCache('replication-receipts', res);
+			return res;
+		},
+		{ initialValue: data.receipts || [] }
+	);
+
 	watch(
 		() => reload,
 		(value) => {
 			if (!value) return;
 			policies.refetch();
 			events.refetch();
+			receipts.refetch();
 			reload = false;
 		}
 	);
@@ -214,6 +230,27 @@
 				};
 		}
 	}
+
+	function receiptStatusMeta(status: string): { icon: string; label: string; className: string } {
+		switch ((status || '').toLowerCase()) {
+			case 'success':
+				return { icon: 'mdi:check-circle', label: 'Success', className: 'text-green-500' };
+			case 'failed':
+				return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
+			default:
+				return {
+					icon: 'mdi:help-circle-outline',
+					label: status || '-',
+					className: 'text-muted-foreground'
+				};
+		}
+	}
+
+	let receiptRows = $derived.by(() =>
+		(receipts.current || [])
+			.slice()
+			.sort((a, b) => Date.parse(b.lastAttemptAt || '') - Date.parse(a.lastAttemptAt || ''))
+	);
 
 	function openProgress() {
 		if (!selectedEvent || selectedEventId <= 0) return;
@@ -403,6 +440,59 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
+		<div class="border-b p-2">
+			<div class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				Target Receipts
+			</div>
+			{#if receiptRows.length === 0}
+				<div class="text-xs text-muted-foreground">No target-side receipts yet.</div>
+			{:else}
+				<div class="max-h-40 overflow-auto rounded-md border">
+					<table class="w-full text-xs">
+						<thead class="bg-muted/40 text-muted-foreground">
+							<tr>
+								<th class="p-2 text-left">Policy</th>
+								<th class="p-2 text-left">Path</th>
+								<th class="p-2 text-left">Status</th>
+								<th class="p-2 text-left">Last Attempt</th>
+								<th class="p-2 text-left">Last Success</th>
+								<th class="p-2 text-left">Error</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each receiptRows as receipt (`${receipt.policyId}-${receipt.targetNodeId}`)}
+								{@const status = receiptStatusMeta(receipt.status || '')}
+								<tr class="border-t align-top">
+									<td class="p-2">
+										{policyNameByID[receipt.policyId] ?? `Policy ${receipt.policyId}`}
+									</td>
+									<td class="p-2">
+										{compactNodeLabel(receipt.sourceNodeId || '')} ->
+										{compactNodeLabel(receipt.targetNodeId || '')}
+									</td>
+									<td class="p-2">
+										<span class={`inline-flex items-center gap-1 ${status.className}`}>
+											<span class={status.icon + ' h-4 w-4'}></span>
+											<span>{status.label}</span>
+										</span>
+									</td>
+									<td class="p-2">
+										{receipt.lastAttemptAt ? convertDbTime(receipt.lastAttemptAt) : '-'}
+									</td>
+									<td class="p-2">
+										{receipt.lastSuccessAt ? convertDbTime(receipt.lastSuccessAt) : '-'}
+									</td>
+									<td class="max-w-[300px] truncate p-2" title={receipt.error || ''}>
+										{receipt.error || '-'}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</div>
+
 		<TreeTable
 			data={tableData}
 			name="replication-events-tt"

@@ -37,10 +37,11 @@ const (
 )
 
 const (
-	defaultReplicationPruneKeepLast  = 64
-	defaultReplicationLineageKeepOld = 2
-	replicationOrphanCleanupInterval = 5 * time.Minute
-	replicationFailoverDownMissLimit = 3
+	defaultReplicationPruneKeepLast   = 64
+	defaultReplicationLineageKeepOld  = 2
+	replicationOrphanCleanupInterval  = 5 * time.Minute
+	replicationReceiptCleanupInterval = 5 * time.Minute
+	replicationFailoverDownMissLimit  = 3
 
 	replicationEventStatusRunning   = "running"
 	replicationEventStatusDemoting  = "demoting"
@@ -54,6 +55,10 @@ const (
 
 	replicationControlDefaultTimeout = 30 * time.Second
 	replicationControlCatchupTimeout = 2 * time.Hour
+	replicationControlReceiptTimeout = 10 * time.Second
+
+	replicationReceiptForwardAttempts = 3
+	replicationReceiptForwardBackoff  = 500 * time.Millisecond
 )
 
 type replicationJobPayload struct {
@@ -169,6 +174,7 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 
 	lastSSHSync := time.Time{}
 	lastOrphanCleanup := time.Time{}
+	lastReceiptCleanup := time.Time{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -194,6 +200,13 @@ func (s *Service) StartReplicationScheduler(ctx context.Context) {
 					logger.L.Warn().Err(err).Msg("replication_orphan_snapshot_cleanup_tick_failed")
 				}
 				lastOrphanCleanup = time.Now()
+			}
+
+			if time.Since(lastReceiptCleanup) > replicationReceiptCleanupInterval {
+				if err := s.pruneLocalReplicationReceipts(); err != nil {
+					logger.L.Warn().Err(err).Msg("replication_receipt_prune_tick_failed")
+				}
+				lastReceiptCleanup = time.Now()
 			}
 
 			if s.Cluster != nil && s.Cluster.Raft != nil && s.Cluster.Raft.State() == raft.Leader {
@@ -937,6 +950,8 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 				BackupRoot: backupRoot,
 				Enabled:    true,
 			}
+			targetDataset := targetDatasetPath(targetSpec.BackupRoot, destSuffix)
+			attemptAt := time.Now().UTC()
 			event.TargetNodeID = targetNodeID
 			event.Message = fmt.Sprintf("replicating_%s_to_%s", sourceDataset, targetNodeID)
 			_ = s.DB.Model(&clusterModels.ReplicationEvent{}).Where("id = ?", event.ID).Updates(map[string]any{
@@ -948,6 +963,7 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 			if strings.TrimSpace(out) != "" {
 				_ = s.AppendReplicationEventOutput(event.ID, out)
 			}
+			attemptErr := error(nil)
 			if err != nil {
 				if isReplicationResumeStateError(err) {
 					_ = s.AppendReplicationEventOutput(event.ID, "target_resumable_receive_state_detected_attempting_abort")
@@ -956,27 +972,25 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 						_ = s.AppendReplicationEventOutput(event.ID, abortOut)
 					}
 					if abortErr != nil {
-						runErr = fmt.Errorf(
+						attemptErr = fmt.Errorf(
 							"replication_to_target_%s_failed_after_resume_abort_failed: %w (original: %v)",
 							targetNodeID,
 							abortErr,
 							err,
 						)
-						break
-					}
-
-					retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
-					if strings.TrimSpace(retryOut) != "" {
-						_ = s.AppendReplicationEventOutput(event.ID, retryOut)
-					}
-					if retryErr != nil {
-						runErr = fmt.Errorf(
-							"replication_to_target_%s_failed_after_resume_abort_retry: %w (original: %v)",
-							targetNodeID,
-							retryErr,
-							err,
-						)
-						break
+					} else {
+						retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
+						if strings.TrimSpace(retryOut) != "" {
+							_ = s.AppendReplicationEventOutput(event.ID, retryOut)
+						}
+						if retryErr != nil {
+							attemptErr = fmt.Errorf(
+								"replication_to_target_%s_failed_after_resume_abort_retry: %w (original: %v)",
+								targetNodeID,
+								retryErr,
+								err,
+							)
+						}
 					}
 				} else if isReplicationTargetModifiedError(err) {
 					_ = s.AppendReplicationEventOutput(event.ID, "target_dataset_diverged_attempting_zelta_rotate")
@@ -985,42 +999,78 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 						_ = s.AppendReplicationEventOutput(event.ID, rotateOut)
 					}
 					if rotateErr != nil {
-						runErr = fmt.Errorf(
+						attemptErr = fmt.Errorf(
 							"replication_to_target_%s_failed_after_diverged_target_rotate_failed: %w (original: %v)",
 							targetNodeID,
 							rotateErr,
 							err,
 						)
-						break
-					}
-
-					retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
-					if strings.TrimSpace(retryOut) != "" {
-						_ = s.AppendReplicationEventOutput(event.ID, retryOut)
-					}
-					if retryErr != nil {
-						runErr = fmt.Errorf(
-							"replication_to_target_%s_failed_after_diverged_target_rotate: %w (original: %v)",
-							targetNodeID,
-							retryErr,
-							err,
-						)
-						break
+					} else {
+						retryOut, retryErr := s.replicateWithEventProgress(ctx, targetSpec, sourceDataset, destSuffix, event.ID)
+						if strings.TrimSpace(retryOut) != "" {
+							_ = s.AppendReplicationEventOutput(event.ID, retryOut)
+						}
+						if retryErr != nil {
+							attemptErr = fmt.Errorf(
+								"replication_to_target_%s_failed_after_diverged_target_rotate: %w (original: %v)",
+								targetNodeID,
+								retryErr,
+								err,
+							)
+						}
 					}
 				} else {
-					runErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
-					break
+					attemptErr = fmt.Errorf("replication_to_target_%s_failed: %w", targetNodeID, err)
 				}
 			}
 
-			if retentionErr := s.applyReplicationRetention(ctx, targetSpec, sourceDataset, destSuffix, event.ID); retentionErr != nil {
+			if attemptErr == nil {
+				if retentionErr := s.applyReplicationRetention(ctx, targetSpec, sourceDataset, destSuffix, event.ID); retentionErr != nil {
+					logger.L.Warn().
+						Err(retentionErr).
+						Uint("policy_id", policy.ID).
+						Str("source_dataset", sourceDataset).
+						Str("target_node_id", targetNodeID).
+						Msg("replication_retention_post_run_failed")
+					_ = s.AppendReplicationEventOutput(event.ID, fmt.Sprintf("replication_retention_warning: %v", retentionErr))
+				}
+			}
+
+			receiptStatus := "success"
+			receiptMessage := "replication_delivery_succeeded"
+			receiptError := ""
+			if attemptErr != nil {
+				receiptStatus = "failed"
+				receiptMessage = "replication_delivery_failed"
+				receiptError = attemptErr.Error()
+			}
+			if receiptErr := s.emitReplicationReceiptBestEffort(
+				targetNodeID,
+				clusterModels.ReplicationReceipt{
+					PolicyID:          policy.ID,
+					GuestType:         policy.GuestType,
+					GuestID:           policy.GuestID,
+					SourceNodeID:      localNodeID,
+					TargetNodeID:      targetNodeID,
+					Status:            receiptStatus,
+					Message:           receiptMessage,
+					Error:             receiptError,
+					LastAttemptAt:     attemptAt,
+					LastSourceDataset: sourceDataset,
+					LastTargetDataset: targetDataset,
+				},
+			); receiptErr != nil {
 				logger.L.Warn().
-					Err(retentionErr).
+					Err(receiptErr).
 					Uint("policy_id", policy.ID).
 					Str("source_dataset", sourceDataset).
 					Str("target_node_id", targetNodeID).
-					Msg("replication_retention_post_run_failed")
-				_ = s.AppendReplicationEventOutput(event.ID, fmt.Sprintf("replication_retention_warning: %v", retentionErr))
+					Msg("replication_receipt_emit_failed")
+			}
+
+			if attemptErr != nil {
+				runErr = attemptErr
+				break
 			}
 		}
 
@@ -2453,6 +2503,65 @@ func (s *Service) forwardCleanupReplicationPolicyDelete(nodeID string, policyID 
 	}, replicationControlDefaultTimeout)
 }
 
+func (s *Service) forwardReplicationReceipt(nodeID string, receipt clusterModels.ReplicationReceipt) error {
+	payload := map[string]any{
+		"policyId":          receipt.PolicyID,
+		"guestType":         strings.TrimSpace(receipt.GuestType),
+		"guestId":           receipt.GuestID,
+		"sourceNodeId":      strings.TrimSpace(receipt.SourceNodeID),
+		"targetNodeId":      strings.TrimSpace(receipt.TargetNodeID),
+		"status":            strings.TrimSpace(receipt.Status),
+		"message":           strings.TrimSpace(receipt.Message),
+		"error":             strings.TrimSpace(receipt.Error),
+		"lastAttemptAt":     receipt.LastAttemptAt,
+		"lastSourceDataset": strings.TrimSpace(receipt.LastSourceDataset),
+		"lastTargetDataset": strings.TrimSpace(receipt.LastTargetDataset),
+	}
+	if receipt.LastSuccessAt != nil {
+		payload["lastSuccessAt"] = receipt.LastSuccessAt
+	}
+
+	return s.forwardReplicationPolicyControl(nodeID, "replication-receipt", payload, replicationControlReceiptTimeout)
+}
+
+func (s *Service) emitReplicationReceiptBestEffort(nodeID string, receipt clusterModels.ReplicationReceipt) error {
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("replication_target_node_required")
+	}
+	if receipt.PolicyID == 0 {
+		return fmt.Errorf("invalid_policy_id")
+	}
+	receipt.TargetNodeID = nodeID
+	if receipt.LastAttemptAt.IsZero() {
+		receipt.LastAttemptAt = time.Now().UTC()
+	}
+	if strings.TrimSpace(strings.ToLower(receipt.Status)) == "success" && receipt.LastSuccessAt == nil {
+		lastSuccessAt := receipt.LastAttemptAt
+		receipt.LastSuccessAt = &lastSuccessAt
+	}
+
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID != "" && localNodeID == nodeID {
+		return s.Cluster.UpsertLocalReplicationReceipt(receipt)
+	}
+
+	var lastErr error
+	for attempt := 0; attempt < replicationReceiptForwardAttempts; attempt++ {
+		if err := s.forwardReplicationReceipt(nodeID, receipt); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(replicationReceiptForwardBackoff * time.Duration(attempt+1))
+	}
+
+	return lastErr
+}
+
 func (s *Service) enqueueReplicationValidationRun(ctx context.Context, policyID uint, targetNodeID string) error {
 	if policyID == 0 {
 		return fmt.Errorf("invalid_policy_id")
@@ -2506,6 +2615,13 @@ func (s *Service) forwardReplicationPolicyControl(nodeID string, action string, 
 		return fmt.Errorf("replication_control_%s_failed_status_%d: %w", strings.TrimSpace(action), statusCode, err)
 	}
 	return nil
+}
+
+func (s *Service) pruneLocalReplicationReceipts() error {
+	if s == nil || s.Cluster == nil {
+		return nil
+	}
+	return s.Cluster.PruneLocalReplicationReceipts(strings.TrimSpace(s.Cluster.LocalNodeID()))
 }
 
 func (s *Service) CleanupReplicationPolicyDeleteBestEffort(ctx context.Context, policyID uint) error {
@@ -2581,8 +2697,16 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(ctx context.Cont
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 
+	cleanupErrs := make([]string, 0)
+	if err := s.Cluster.DeleteLocalReplicationReceiptsByPolicy(policyID); err != nil {
+		cleanupErrs = append(cleanupErrs, fmt.Sprintf("delete_local_replication_receipts_failed: %v", err))
+	}
+
 	policy, err := s.Cluster.GetReplicationPolicyByID(policyID)
 	if err != nil {
+		if len(cleanupErrs) > 0 {
+			return fmt.Errorf("replication_policy_delete_local_cleanup_failed: %s; policy_lookup_failed: %v", strings.Join(cleanupErrs, "; "), err)
+		}
 		return err
 	}
 
@@ -2602,8 +2726,6 @@ func (s *Service) CleanupReplicationPolicyDeleteLocalBestEffort(ctx context.Cont
 	if len(datasets) == 0 {
 		return nil
 	}
-
-	cleanupErrs := make([]string, 0)
 
 	// Never remove the active owner's primary dataset during policy delete.
 	if localNodeID == ownerNodeID {

@@ -4,6 +4,7 @@
 		deleteReplicationPolicy,
 		failoverReplicationPolicy,
 		listReplicationPolicies,
+		listReplicationReceipts,
 		runReplicationPolicy,
 		updateReplicationPolicy,
 		type ReplicationPolicyInput,
@@ -23,7 +24,7 @@
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
-	import type { ReplicationPolicy } from '$lib/types/cluster/replication';
+	import type { ReplicationPolicy, ReplicationReceipt } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
@@ -36,6 +37,7 @@
 
 	interface Data {
 		policies: ReplicationPolicy[];
+		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
 		jails: SimpleJail[];
 		vms: SimpleVm[];
@@ -225,11 +227,23 @@
 		{ initialValue: data.policies }
 	);
 
+	// svelte-ignore state_referenced_locally
+	let receipts = resource(
+		() => 'replication-receipts-policies',
+		async () => {
+			const res = await listReplicationReceipts();
+			updateCache('replication-receipts', res);
+			return res;
+		},
+		{ initialValue: data.receipts || [] }
+	);
+
 	watch(
 		() => reload,
 		(value) => {
 			if (!value) return;
 			policies.refetch();
+			receipts.refetch();
 			reload = false;
 		}
 	);
@@ -356,6 +370,94 @@
 		return `${failoverModeSummary(policy.failoverMode)} | ${sourceModeSummary(policy.sourceMode)} | ${failbackModeSummary(policy.failbackMode)}`;
 	}
 
+	let receiptsByPolicyID = $derived.by(() => {
+		const out: Record<number, ReplicationReceipt[]> = {};
+		for (const receipt of receipts.current || []) {
+			const policyID = Number(receipt.policyId || 0);
+			if (!Number.isFinite(policyID) || policyID <= 0) continue;
+			if (!out[policyID]) out[policyID] = [];
+			out[policyID].push(receipt);
+		}
+		return out;
+	});
+
+	function resolvePolicyTargetSync(
+		policy: ReplicationPolicy
+	): { state: 'ok' | 'failed' | 'stale' | 'never'; label: string } {
+		const ownerNodeID = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+		const targetNodeIDs = Array.from(
+			new Set(
+				(policy.targets || [])
+					.map((target) => String(target.nodeId || '').trim())
+					.filter((nodeID) => nodeID.length > 0 && nodeID !== ownerNodeID)
+			)
+		);
+
+		if (targetNodeIDs.length === 0) {
+			return { state: 'never', label: 'Never' };
+		}
+
+		const receiptsForPolicy = receiptsByPolicyID[policy.id] || [];
+		const receiptByTargetID: Record<string, ReplicationReceipt> = {};
+		for (const receipt of receiptsForPolicy) {
+			const targetID = String(receipt.targetNodeId || '').trim();
+			if (!targetID || !targetNodeIDs.includes(targetID)) continue;
+			const existing = receiptByTargetID[targetID];
+			if (!existing) {
+				receiptByTargetID[targetID] = receipt;
+				continue;
+			}
+			const existingAt = Date.parse(existing.lastAttemptAt || '');
+			const candidateAt = Date.parse(receipt.lastAttemptAt || '');
+			if (!Number.isFinite(existingAt) || (Number.isFinite(candidateAt) && candidateAt > existingAt)) {
+				receiptByTargetID[targetID] = receipt;
+			}
+		}
+
+		let hasFailed = false;
+		let hasStale = false;
+		let hasNever = false;
+		const now = Date.now();
+
+		for (const targetNodeID of targetNodeIDs) {
+			const receipt = receiptByTargetID[targetNodeID];
+			if (!receipt) {
+				hasNever = true;
+				continue;
+			}
+
+			const status = String(receipt.status || '')
+				.trim()
+				.toLowerCase();
+			if (status === 'failed') {
+				hasFailed = true;
+				continue;
+			}
+
+			const lastSuccessRaw = receipt.lastSuccessAt || '';
+			const lastSuccessAt = Date.parse(lastSuccessRaw);
+			const freshnessWindowSeconds = Number(receipt.freshnessWindowSeconds || 0);
+			if (
+				!Number.isFinite(lastSuccessAt) ||
+				!Number.isFinite(freshnessWindowSeconds) ||
+				freshnessWindowSeconds <= 0
+			) {
+				hasStale = true;
+				continue;
+			}
+
+			const ageSeconds = (now - lastSuccessAt) / 1000;
+			if (ageSeconds > freshnessWindowSeconds) {
+				hasStale = true;
+			}
+		}
+
+		if (hasFailed) return { state: 'failed', label: 'Failed' };
+		if (hasStale) return { state: 'stale', label: 'Stale' };
+		if (hasNever) return { state: 'never', label: 'Never' };
+		return { state: 'ok', label: 'OK' };
+	}
+
 	let nodeOptions = $derived.by(() =>
 		nodes.map((node) => ({
 			value: node.nodeUUID,
@@ -472,6 +574,26 @@
 		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
 		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
 		{ field: 'targets', title: 'Targets', width: 260, minWidth: 180 },
+		{
+			field: 'targetSync',
+			title: 'Target Sync',
+			width: 140,
+			minWidth: 120,
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow().getData() as { targetSyncState: string; targetSyncLabel: string };
+				const state = String(row.targetSyncState || '').toLowerCase();
+				if (state === 'ok') {
+					return renderWithIcon('mdi:check-circle', row.targetSyncLabel || 'OK', 'text-green-500');
+				}
+				if (state === 'failed') {
+					return renderWithIcon('mdi:close-circle', row.targetSyncLabel || 'Failed', 'text-red-500');
+				}
+				if (state === 'stale') {
+					return renderWithIcon('mdi:clock-alert-outline', row.targetSyncLabel || 'Stale', 'text-amber-500');
+				}
+				return renderWithIcon('mdi:progress-question', row.targetSyncLabel || 'Never', 'text-muted-foreground');
+			}
+		},
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
 		{
 			field: 'lastRunAt',
@@ -505,6 +627,7 @@
 				policy.targets
 					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
 					.join(' | ') || '-';
+			const targetSync = resolvePolicyTargetSync(policy);
 
 			return {
 				id: policy.id,
@@ -516,6 +639,9 @@
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
 				targets: targetsLabel,
+				targetSync: targetSync.label,
+				targetSyncState: targetSync.state,
+				targetSyncLabel: targetSync.label,
 				schedule: scheduleLabel(policy.cronExpr),
 				lastStatus: policy.lastStatus,
 				lastRunAt: policy.lastRunAt,

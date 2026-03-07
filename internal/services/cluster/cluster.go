@@ -515,6 +515,10 @@ func (s *Service) ClearClusteredData() error {
 			return fmt.Errorf("failed_to_clean_replication_events: %w", err)
 		}
 
+		if err := tx.Exec("DELETE FROM replication_receipts").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_receipts: %w", err)
+		}
+
 		if err := tx.Exec("DELETE FROM replication_leases").Error; err != nil {
 			return fmt.Errorf("failed_to_clean_replication_leases: %w", err)
 		}

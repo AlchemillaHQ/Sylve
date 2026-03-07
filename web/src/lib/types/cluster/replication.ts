@@ -53,6 +53,25 @@ export const ReplicationEventSchema = z.object({
 	updatedAt: z.string().optional()
 });
 
+export const ReplicationReceiptSchema = z.object({
+	id: z.number().int(),
+	policyId: z.number().int(),
+	guestType: ReplicationGuestTypeSchema,
+	guestId: z.number().int(),
+	sourceNodeId: z.string().optional().default(''),
+	targetNodeId: z.string().optional().default(''),
+	status: z.string().optional().default(''),
+	message: z.string().optional().default(''),
+	error: z.string().optional().default(''),
+	lastAttemptAt: z.string(),
+	lastSuccessAt: z.string().nullable().optional(),
+	lastSourceDataset: z.string().optional().default(''),
+	lastTargetDataset: z.string().optional().default(''),
+	freshnessWindowSeconds: z.number().int().nullable().optional(),
+	createdAt: z.string().optional(),
+	updatedAt: z.string().optional()
+});
+
 export const ReplicationEventProgressSchema = z.object({
 	event: ReplicationEventSchema,
 	movedBytes: z.number().nullable().optional(),
@@ -67,4 +86,5 @@ export type ReplicationFailoverMode = z.infer<typeof ReplicationFailoverModeSche
 export type ReplicationPolicyTarget = z.infer<typeof ReplicationPolicyTargetSchema>;
 export type ReplicationPolicy = z.infer<typeof ReplicationPolicySchema>;
 export type ReplicationEvent = z.infer<typeof ReplicationEventSchema>;
+export type ReplicationReceipt = z.infer<typeof ReplicationReceiptSchema>;
 export type ReplicationEventProgress = z.infer<typeof ReplicationEventProgressSchema>;
