@@ -64,6 +64,9 @@ type Service struct {
 	transitionMu       sync.Mutex
 	runningTransitions map[uint]struct{}
 	downMisses         map[uint]int
+
+	workloadOpMu      sync.Mutex
+	runningWorkloadOp map[string]string
 }
 
 type BackupEventProgress struct {
@@ -98,6 +101,7 @@ func NewService(
 		runningReplication: make(map[uint]struct{}),
 		runningTransitions: make(map[uint]struct{}),
 		downMisses:         make(map[uint]int),
+		runningWorkloadOp:  make(map[string]string),
 	}
 }
 
@@ -439,6 +443,33 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	defer s.releaseJob(job.ID)
+
+	jobGuestType, jobGuestID := backupJobGuestIdentity(job)
+	if jobGuestType != "" && jobGuestID > 0 && s.Cluster != nil {
+		localNodeID := s.localNodeID()
+		allowed, leaseErr := cluster.CanNodeMutateProtectedGuest(s.DB, jobGuestType, jobGuestID, localNodeID)
+		if leaseErr != nil {
+			runErr := fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
+		if !allowed {
+			runErr := fmt.Errorf("replication_lease_not_owned")
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
+	}
+	if ok, holder := s.acquireWorkloadOperation(jobGuestType, jobGuestID, fmt.Sprintf("backup_job:%d", job.ID)); !ok {
+		runErr := fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			holder,
+			jobGuestType,
+			jobGuestID,
+		)
+		s.updateBackupJobResult(job, runErr)
+		return runErr
+	}
+	defer s.releaseWorkloadOperation(jobGuestType, jobGuestID)
 
 	if job.StopBeforeBackup {
 		fmt.Println("StopBeforeBackup is checked for job", job.ID)
@@ -1694,6 +1725,53 @@ func (s *Service) releaseJob(jobID uint) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	delete(s.runningJobs, jobID)
+}
+
+func workloadOperationKey(guestType string, guestID uint) string {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	if guestID == 0 {
+		return ""
+	}
+	if guestType != clusterModels.BackupJobModeVM && guestType != clusterModels.BackupJobModeJail {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", guestType, guestID)
+}
+
+func (s *Service) acquireWorkloadOperation(guestType string, guestID uint, operation string) (bool, string) {
+	key := workloadOperationKey(guestType, guestID)
+	if key == "" {
+		return true, ""
+	}
+
+	op := strings.TrimSpace(operation)
+	if op == "" {
+		op = "unknown"
+	}
+
+	s.workloadOpMu.Lock()
+	defer s.workloadOpMu.Unlock()
+	if s.runningWorkloadOp == nil {
+		s.runningWorkloadOp = make(map[string]string)
+	}
+
+	if existing, exists := s.runningWorkloadOp[key]; exists {
+		return false, existing
+	}
+
+	s.runningWorkloadOp[key] = op
+	return true, ""
+}
+
+func (s *Service) releaseWorkloadOperation(guestType string, guestID uint) {
+	key := workloadOperationKey(guestType, guestID)
+	if key == "" {
+		return
+	}
+
+	s.workloadOpMu.Lock()
+	defer s.workloadOpMu.Unlock()
+	delete(s.runningWorkloadOp, key)
 }
 
 func (s *Service) localNodeID() string {

@@ -125,8 +125,11 @@
 		if (combined.includes('cluster_requires_min_three_voters')) {
 			return 'Replication HA requires at least 3 configured Raft voters.';
 		}
-		if (combined.includes('policy_requires_min_two_targets')) {
-			return 'This policy needs at least two distinct target servers.';
+		if (
+			combined.includes('policy_requires_min_one_target') ||
+			combined.includes('policy_requires_min_two_targets')
+		) {
+			return 'This policy needs at least one target server.';
 		}
 		if (combined.includes('policy_requires_remote_target')) {
 			return 'At least one target must be different from the effective runner node.';
@@ -174,8 +177,11 @@
 		if (combined.includes('cluster_requires_min_three_voters')) {
 			return 'Replication HA requires at least 3 configured Raft voters.';
 		}
-		if (combined.includes('policy_requires_min_two_targets')) {
-			return 'Add at least two distinct target servers.';
+		if (
+			combined.includes('policy_requires_min_one_target') ||
+			combined.includes('policy_requires_min_two_targets')
+		) {
+			return 'Add at least one target server.';
 		}
 		if (combined.includes('policy_requires_remote_target')) {
 			return 'At least one target must be different from the effective runner node.';
@@ -191,8 +197,11 @@
 		if (combined.includes('cluster_requires_min_three_voters')) {
 			return 'Replication HA requires at least 3 configured Raft voters.';
 		}
-		if (combined.includes('policy_requires_min_two_targets')) {
-			return 'This policy needs at least two distinct target servers.';
+		if (
+			combined.includes('policy_requires_min_one_target') ||
+			combined.includes('policy_requires_min_two_targets')
+		) {
+			return 'This policy needs at least one target server.';
 		}
 		if (combined.includes('policy_requires_remote_target')) {
 			return 'This policy needs at least one remote target from its effective runner node.';
@@ -212,8 +221,11 @@
 		if (values.includes('cluster_requires_min_three_voters')) {
 			return 'Replication HA requires at least 3 configured Raft voters.';
 		}
-		if (values.includes('policy_requires_min_two_targets')) {
-			return 'This policy needs at least two distinct target servers.';
+		if (
+			values.includes('policy_requires_min_one_target') ||
+			values.includes('policy_requires_min_two_targets')
+		) {
+			return 'This policy needs at least one target server.';
 		}
 		if (values.includes('policy_requires_remote_target')) {
 			return 'At least one target must be different from the effective runner node.';
@@ -986,12 +998,6 @@
 		const distinctTargets = Array.from(
 			new Set(targets.map((target) => String(target.nodeId || '').trim()))
 		);
-		if (distinctTargets.length < 2) {
-			toast.error('Add at least two distinct target servers for HA.', {
-				position: 'bottom-center'
-			});
-			return null;
-		}
 
 		if (policyModal.sourceMode === 'pinned_primary' && !sourceNodeId) {
 			toast.error('Pick the preferred primary node for this policy.', {

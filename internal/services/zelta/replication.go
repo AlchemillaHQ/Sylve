@@ -922,6 +922,22 @@ func (s *Service) runReplicationPolicy(ctx context.Context, policy *clusterModel
 	}
 	defer s.releaseReplication(policy.ID)
 
+	if ok, holder := s.acquireWorkloadOperation(
+		policy.GuestType,
+		policy.GuestID,
+		fmt.Sprintf("replication_policy:%d", policy.ID),
+	); !ok {
+		runErr := fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			holder,
+			strings.ToLower(strings.TrimSpace(policy.GuestType)),
+			policy.GuestID,
+		)
+		s.updateReplicationPolicyResult(policy, runErr)
+		return runErr
+	}
+	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
+
 	localNodeID := ""
 	if s.Cluster != nil {
 		localNodeID = strings.TrimSpace(s.Cluster.LocalNodeID())
@@ -2615,6 +2631,14 @@ func (s *Service) runPolicyOwnershipTransition(
 		return err
 	}
 
+	if err := s.rebindReplicationGuestBackupJobRunners(policy, targetNodeID); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("policy_id", policy.ID).
+			Str("target_node_id", strings.TrimSpace(targetNodeID)).
+			Msg("replication_backup_job_runner_rebind_failed")
+	}
+
 	if options.TriggerValidationRun {
 		if err := s.enqueueReplicationValidationRun(ctx, policy.ID, targetNodeID); err != nil {
 			logger.L.Warn().
@@ -2685,6 +2709,109 @@ func (s *Service) forwardReplicationReceipt(nodeID string, receipt clusterModels
 	}
 
 	return s.forwardReplicationPolicyControl(nodeID, "replication-receipt", payload, replicationControlReceiptTimeout)
+}
+
+func backupJobGuestIdentity(job *clusterModels.BackupJob) (string, uint) {
+	if job == nil {
+		return "", 0
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(job.Mode))
+	if mode != clusterModels.BackupJobModeJail && mode != clusterModels.BackupJobModeVM {
+		return "", 0
+	}
+
+	kind, guestID := inferRestoreDatasetKind(strings.TrimSpace(job.JailRootDataset))
+	if guestID == 0 {
+		kind, guestID = inferRestoreDatasetKind(strings.TrimSpace(job.SourceDataset))
+	}
+	if guestID == 0 {
+		return "", 0
+	}
+	if kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM {
+		return "", 0
+	}
+
+	return kind, guestID
+}
+
+func backupJobToReqWithRunner(job *clusterModels.BackupJob, runnerNodeID string) clusterServiceInterfaces.BackupJobReq {
+	enabled := false
+	if job != nil {
+		enabled = job.Enabled
+	}
+
+	req := clusterServiceInterfaces.BackupJobReq{
+		RunnerNodeID: strings.TrimSpace(runnerNodeID),
+		Enabled:      &enabled,
+	}
+	if job == nil {
+		return req
+	}
+
+	req.Name = strings.TrimSpace(job.Name)
+	req.TargetID = job.TargetID
+	req.Mode = strings.TrimSpace(job.Mode)
+	req.SourceDataset = strings.TrimSpace(job.SourceDataset)
+	req.JailRootDataset = strings.TrimSpace(job.JailRootDataset)
+	req.PruneKeepLast = job.PruneKeepLast
+	req.PruneTarget = job.PruneTarget
+	req.StopBeforeBackup = job.StopBeforeBackup
+	req.CronExpr = strings.TrimSpace(job.CronExpr)
+	return req
+}
+
+func (s *Service) rebindReplicationGuestBackupJobRunners(policy *clusterModels.ReplicationPolicy, runnerNodeID string) error {
+	if s == nil || s.Cluster == nil || policy == nil || policy.ID == 0 {
+		return nil
+	}
+
+	runnerNodeID = strings.TrimSpace(runnerNodeID)
+	if runnerNodeID == "" {
+		return nil
+	}
+
+	policyGuestType := strings.ToLower(strings.TrimSpace(policy.GuestType))
+	policyGuestID := policy.GuestID
+	if policyGuestType == "" || policyGuestID == 0 {
+		return nil
+	}
+
+	jobs, err := s.Cluster.ListBackupJobs()
+	if err != nil {
+		return fmt.Errorf("list_backup_jobs_failed: %w", err)
+	}
+
+	updateErrs := make([]string, 0)
+	for i := range jobs {
+		job := jobs[i]
+		jobGuestType, jobGuestID := backupJobGuestIdentity(&job)
+		if jobGuestType != policyGuestType || jobGuestID != policyGuestID {
+			continue
+		}
+		if strings.TrimSpace(job.RunnerNodeID) == runnerNodeID {
+			continue
+		}
+
+		req := backupJobToReqWithRunner(&job, runnerNodeID)
+		if err := s.Cluster.ProposeBackupJobUpdate(job.ID, req, false); err != nil {
+			updateErrs = append(updateErrs, fmt.Sprintf("job_%d_update_failed: %v", job.ID, err))
+			continue
+		}
+
+		logger.L.Info().
+			Uint("policy_id", policy.ID).
+			Uint("job_id", job.ID).
+			Str("guest_type", policyGuestType).
+			Uint("guest_id", policyGuestID).
+			Str("runner_node_id", runnerNodeID).
+			Msg("replication_backup_job_runner_rebound")
+	}
+
+	if len(updateErrs) > 0 {
+		return fmt.Errorf("backup_job_runner_rebind_partial_failure: %s", strings.Join(updateErrs, "; "))
+	}
+	return nil
 }
 
 func (s *Service) emitReplicationReceiptBestEffort(nodeID string, receipt clusterModels.ReplicationReceipt) error {
@@ -2966,6 +3093,20 @@ func (s *Service) DemoteReplicationPolicy(ctx context.Context, policyID uint, ex
 		return fmt.Errorf("replication_policy_owner_epoch_mismatch")
 	}
 
+	if ok, holder := s.acquireWorkloadOperation(
+		policy.GuestType,
+		policy.GuestID,
+		fmt.Sprintf("replication_demote:%d", policy.ID),
+	); !ok {
+		return fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			holder,
+			strings.ToLower(strings.TrimSpace(policy.GuestType)),
+			policy.GuestID,
+		)
+	}
+	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
+
 	driver, err := s.replicationGuestDriver(policy.GuestType)
 	if err != nil {
 		return err
@@ -3016,6 +3157,20 @@ func (s *Service) CatchupReplicationPolicyToNode(
 	if expectedOwnerEpoch > 0 && currentEpoch != expectedOwnerEpoch {
 		return fmt.Errorf("replication_policy_owner_epoch_mismatch")
 	}
+
+	if ok, holder := s.acquireWorkloadOperation(
+		policy.GuestType,
+		policy.GuestID,
+		fmt.Sprintf("replication_catchup:%d", policy.ID),
+	); !ok {
+		return fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			holder,
+			strings.ToLower(strings.TrimSpace(policy.GuestType)),
+			policy.GuestID,
+		)
+	}
+	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
 
 	nodes, err := s.Cluster.Nodes()
 	if err == nil {
@@ -3308,6 +3463,20 @@ func (s *Service) ActivateReplicationPolicy(ctx context.Context, policyID uint) 
 	if err != nil {
 		return err
 	}
+
+	if ok, holder := s.acquireWorkloadOperation(
+		policy.GuestType,
+		policy.GuestID,
+		fmt.Sprintf("replication_activate:%d", policy.ID),
+	); !ok {
+		return fmt.Errorf(
+			"workload_operation_conflict_with_%s guest_type=%s guest_id=%d",
+			holder,
+			strings.ToLower(strings.TrimSpace(policy.GuestType)),
+			policy.GuestID,
+		)
+	}
+	defer s.releaseWorkloadOperation(policy.GuestType, policy.GuestID)
 
 	driver, err := s.replicationGuestDriver(policy.GuestType)
 	if err != nil {

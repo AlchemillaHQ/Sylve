@@ -20,7 +20,7 @@ import (
 
 const (
 	ReplicationHAReasonMinThreeVoters            = "cluster_requires_min_three_voters"
-	ReplicationHAReasonMinTwoTargets             = "policy_requires_min_two_targets"
+	ReplicationHAReasonMinOneTarget              = "policy_requires_min_one_target"
 	ReplicationHAReasonRemoteTarget              = "policy_requires_remote_target"
 	ReplicationHAReasonTransitionRemoteTarget    = "transition_would_remove_remote_target"
 	ReplicationHAReasonReducedRedundancy         = "reduced_redundancy_one_voter_down"
@@ -33,7 +33,7 @@ const (
 
 var replicationHAStaticReasonSet = map[string]struct{}{
 	ReplicationHAReasonMinThreeVoters:       {},
-	ReplicationHAReasonMinTwoTargets:        {},
+	ReplicationHAReasonMinOneTarget:         {},
 	ReplicationHAReasonRemoteTarget:         {},
 	replicationHAStaticReasonsKeyTransition: {},
 }
@@ -249,8 +249,8 @@ func (s *Service) evaluateReplicationPolicyHA(
 	if runtime.TotalVoters < 3 {
 		blockingReasons = appendReasonIfMissing(blockingReasons, ReplicationHAReasonMinThreeVoters)
 	}
-	if eval.DistinctTargetCount < 2 {
-		blockingReasons = appendReasonIfMissing(blockingReasons, ReplicationHAReasonMinTwoTargets)
+	if eval.DistinctTargetCount < 1 {
+		blockingReasons = appendReasonIfMissing(blockingReasons, ReplicationHAReasonMinOneTarget)
 	}
 	if eval.RemoteTargetCount < 1 {
 		blockingReasons = appendReasonIfMissing(blockingReasons, remoteReason)
