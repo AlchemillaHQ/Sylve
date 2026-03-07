@@ -2,9 +2,61 @@
 	import { listReplicationEvents, listReplicationPolicies } from '$lib/api/cluster/replication';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { filterInProgressReplicationEvents } from '$lib/utils/replication-activity';
+	import type { ReplicationEvent } from '$lib/types/cluster/replication';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
+
+	const IN_PROGRESS_STATUSES = new Set([
+		'running',
+		'demoting',
+		'promoting',
+		'catchup',
+		'catch-up',
+		'catching_up',
+		'catching-up'
+	]);
+
+	function hasCatchupHint(message: string): boolean {
+		const normalized = String(message || '')
+			.trim()
+			.toLowerCase();
+		if (!normalized) return false;
+		return (
+			normalized.includes('catchup') ||
+			normalized.includes('catch-up') ||
+			normalized.includes('catch_up') ||
+			normalized.includes('catching_up') ||
+			normalized.includes('catching-up')
+		);
+	}
+
+	function isReplicationEventInProgress(
+		event: Pick<ReplicationEvent, 'eventType' | 'status' | 'message'>
+	): boolean {
+		const eventType = String(event.eventType || '')
+			.trim()
+			.toLowerCase();
+		if (eventType !== 'replication' && eventType !== 'failover') {
+			return false;
+		}
+
+		const status = String(event.status || '')
+			.trim()
+			.toLowerCase();
+		if (IN_PROGRESS_STATUSES.has(status)) {
+			return true;
+		}
+
+		if ((status === 'demoting' || status === 'running') && hasCatchupHint(event.message || '')) {
+			return true;
+		}
+
+		return false;
+	}
+
+	function filterInProgressReplicationEvents(events: ReplicationEvent[]): ReplicationEvent[] {
+		return events.filter((event) => isReplicationEventInProgress(event));
+	}
 
 	let replicationModalOpen = $state(false);
 
@@ -72,7 +124,11 @@
 	}
 
 	function inProgressLabel(status: string): string {
-		switch (String(status || '').trim().toLowerCase()) {
+		switch (
+			String(status || '')
+				.trim()
+				.toLowerCase()
+		) {
 			case 'demoting':
 				return 'Demoting';
 			case 'promoting':

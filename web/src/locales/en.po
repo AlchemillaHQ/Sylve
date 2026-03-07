@@ -1147,6 +1147,7 @@ msgstr "Bulk Delete"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "New"
 msgstr "New"
@@ -2342,6 +2343,8 @@ msgstr "Basic"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "None"
 msgstr "None"
 
@@ -2885,6 +2888,7 @@ msgstr "CPU Pinning"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Advanced"
 msgstr "Advanced"
 
@@ -3307,6 +3311,7 @@ msgstr "VNC"
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enabled"
 msgstr "Enabled"
 
@@ -3525,6 +3530,7 @@ msgstr "Select Auto Expand"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Yes"
 msgstr "Yes"
 
@@ -3547,6 +3553,7 @@ msgstr "Yes"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "No"
 msgstr "No"
 
@@ -7566,6 +7573,8 @@ msgstr "Login required after initializing cluster"
 
 #: src/routes/datacenter/+layout.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Targets"
 msgstr "Targets"
 
@@ -7712,6 +7721,7 @@ msgstr "Source"
 #~ msgstr "Destination"
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Schedule"
 msgstr "Schedule"
@@ -9192,11 +9202,14 @@ msgstr "Policies"
 
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy"
 msgstr "Policy"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload"
 msgstr "Workload"
@@ -9204,11 +9217,13 @@ msgstr "Workload"
 #~ msgid "Source Node"
 #~ msgstr "Source Node"
 
-#~ msgid "Source Mode"
-#~ msgstr "Source Mode"
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Source Mode"
+msgstr "Source Mode"
 
-#~ msgid "Failback"
-#~ msgstr "Failback"
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Failback"
+msgstr "Failback"
 
 #~ msgid "Cron"
 #~ msgstr "Cron"
@@ -9565,6 +9580,8 @@ msgstr "Active Node"
 #~ msgstr "Failed to trigger failover"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failover"
 msgstr "Failover"
 
@@ -9785,9 +9802,8 @@ msgstr "Move Active"
 msgid "Sync Now"
 msgstr "Sync Now"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "New Policy"
-msgstr "New Policy"
+#~ msgid "New Policy"
+#~ msgstr "New Policy"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Edit Protection Policy"
@@ -9797,13 +9813,12 @@ msgstr "Edit Protection Policy"
 msgid "New Protection Policy"
 msgstr "New Protection Policy"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid ""
-"Use the guided settings below for normal HA behavior. Advanced controls are available at the\n"
-"end."
-msgstr ""
-"Use the guided settings below for normal HA behavior. Advanced controls are available at the\n"
-"end."
+#~ msgid ""
+#~ "Use the guided settings below for normal HA behavior. Advanced controls are available at the\n"
+#~ "end."
+#~ msgstr ""
+#~ "Use the guided settings below for normal HA behavior. Advanced controls are available at the\n"
+#~ "end."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy name"
@@ -9885,9 +9900,8 @@ msgstr "Choose target"
 msgid "Priority"
 msgstr "Priority"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Advanced options"
-msgstr "Advanced options"
+#~ msgid "Advanced options"
+#~ msgstr "Advanced options"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "When preferred primary comes back"
@@ -9960,9 +9974,11 @@ msgid "Requesting"
 msgstr "Requesting"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Force recovery"
 msgstr "Force recovery"
 
+#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Safe move"
 msgstr "Safe move"
@@ -9970,3 +9986,118 @@ msgstr "Safe move"
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 msgid "Catching up"
 msgstr "Catching up"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move service cleanly to another node."
+msgstr "Move service cleanly to another node."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Current active node is demoted and data is synced before promotion."
+msgstr "Current active node is demoted and data is synced before promotion."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Recover quickly when current active node is unreachable."
+msgstr "Recover quickly when current active node is unreachable."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "May lose the newest writes that never reached other nodes."
+msgstr "May lose the newest writes that never reached other nodes."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe move is unavailable because the current active node appears down. Use Force recovery."
+msgstr "Safe move is unavailable because the current active node appears down. Use Force recovery."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force recovery requires data-loss acknowledgement before you can continue."
+msgstr "Force recovery requires data-loss acknowledgement before you can continue."
+
+#. placeholder {0}: FORCE_RECOVERY_CONFIRM_TEXT
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Type {0} to confirm Force recovery."
+msgstr "Type {0} to confirm Force recovery."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "A move is already running for this policy. Wait for it to finish and try again."
+msgstr "A move is already running for this policy. Wait for it to finish and try again."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe move needs the current active node online. Use Force recovery only if the node is down."
+msgstr "Safe move needs the current active node online. Use Force recovery only if the node is down."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force recovery needs data-loss confirmation before starting."
+msgstr "Force recovery needs data-loss confirmation before starting."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The selected target server is not in this policy's target list."
+msgstr "The selected target server is not in this policy's target list."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The selected target server is offline. Choose an online target."
+msgstr "The selected target server is offline. Choose an online target."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "No healthy target server is available for this policy right now."
+msgstr "No healthy target server is available for this policy right now."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "The target server must be different from the current active server."
+msgstr "The target server must be different from the current active server."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force recovery requires cluster quorum. Bring enough nodes online and try again."
+msgstr "Force recovery requires cluster quorum. Bring enough nodes online and try again."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This node is no longer cluster leader. Retry in a few seconds."
+msgstr "This node is no longer cluster leader. Retry in a few seconds."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Could not start failover. Check cluster status and try again."
+msgstr "Could not start failover. Check cluster status and try again."
+
+#~ msgid "Choose whether the source follows the active node or stays pinned to one preferred node."
+#~ msgstr "Choose whether the source follows the active node or stays pinned to one preferred node."
+
+#~ msgid ""
+#~ "Use the guided settings below for normal HA behavior. Advanced controls are available at\n"
+#~ "the end."
+#~ msgstr ""
+#~ "Use the guided settings below for normal HA behavior. Advanced controls are available at\n"
+#~ "the end."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Review"
+msgstr "Review"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Name the policy and choose the workload this policy protects."
+msgstr "Name the policy and choose the workload this policy protects."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Review your settings before saving."
+msgstr "Review your settings before saving."
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Back"
+msgstr "Back"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Next"
+msgstr "Next"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "You cannot add more targets than available cluster nodes."
+msgstr "You cannot add more targets than available cluster nodes."
+
+#. placeholder {0}: policyModal.targets.length
+#. placeholder {1}: maxTargetRows
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "{0}/{1} targets configured"
+msgstr "{0}/{1} targets configured"
+
+#~ msgid "Schedule (cron)"
+#~ msgstr "Schedule (cron)"
+
+#~ msgid "Schedule (human)"
+#~ msgstr "Schedule (human)"
