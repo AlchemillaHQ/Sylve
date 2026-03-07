@@ -263,7 +263,7 @@ func forwardBackupJobRunToRunner(cS *cluster.Service, jobID uint, runnerNodeID s
 		return nil, 0, fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	runURL := fmt.Sprintf("https://%s/api/cluster/backups/jobs/%d/run", targetAPI, jobID)
+	runURL := fmt.Sprintf("https://%s/api/cluster/backups/jobs/run/%d", targetAPI, jobID)
 	body, statusCode, err := utils.HTTPPostJSONRead(runURL, map[string]any{}, map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",

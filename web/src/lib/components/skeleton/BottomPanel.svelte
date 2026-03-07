@@ -251,7 +251,7 @@
 										placeholder="Node"
 										options={hostnameOptions}
 										value={effectiveHostname}
-										onChange={(value) => {
+										onChange={(value: string) => {
 											selectedHostname = value;
 										}}
 										classes={{

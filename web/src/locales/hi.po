@@ -1789,12 +1789,12 @@ msgstr "सक्षम करने के लिए टिक करें"
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "विभाजन{0} बनाया गया"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
@@ -1858,12 +1858,12 @@ msgstr "फ़ोल्डर"
 msgid "File"
 msgstr "फ़ाइल"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> {0} बनाएँ"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "{0} का नाम दर्ज करें"
@@ -2099,12 +2099,12 @@ msgstr "कोई समूह नहीं चुना गया और मे
 msgid "Share cannot have overlapping groups"
 msgstr "शेयर में ओवरलैपिंग समूह नहीं हो सकते"
 
-#. 0: edit ? 'edit' 
+#. 0: edit ? 'edit'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Samba शेयर {0} करने में विफल"
 
-#. 0: edit ? 'edited' 
+#. 0: edit ? 'edited'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba शेयर {0}"
@@ -2185,7 +2185,7 @@ msgstr "कमांड पैलेट"
 msgid "Search for a command to run"
 msgstr "चलाने के लिए कमांड खोजें"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. 0: (selectedCount || 0) + (hasSelection ? 0
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -2714,7 +2714,7 @@ msgstr "{0} फ़ोल्डर, {1} फ़ाइलें"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "{0} \"{1}\" को हटाने में विफल।"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "{0} आइटम{1} को हटाने में विफल।"
@@ -4993,7 +4993,7 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
@@ -5465,12 +5465,12 @@ msgstr "VirtIO ब्लॉक"
 msgid "Attach Storage"
 msgstr "स्टोरेज संलग्न करें"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "TPM एमुलेशन {0} करने में विफल रहा"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM एमुलेशन {0}"
@@ -6101,7 +6101,7 @@ msgstr "त्रुटि स्थिति"
 msgid "No known data errors"
 msgstr "कोई ज्ञात डेटा त्रुटि नहीं"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "त्रुटियां मिलीं{0}"
@@ -6717,7 +6717,7 @@ msgstr "बंद"
 msgid "Serial"
 msgstr "सीरियल"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "{0} कंसोल पर स्विच करें"
@@ -7365,7 +7365,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7453,7 +7453,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -7513,8 +7513,8 @@ msgstr "स्नैपशॉट {0}@{1} बनाया गया"
 msgid "Snapshot {0}@{1} already exists"
 msgstr "स्नैपशॉट {0}@{1} पहले से मौजूद है"
 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` 
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot - {0}"
