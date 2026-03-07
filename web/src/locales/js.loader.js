@@ -1,5 +1,5 @@
-import { loadCatalog, loadIDs } from './.wuchale/js.proxy.js'
 import { registerLoaders } from 'wuchale/load-utils'
+import { loadCatalog, loadIDs } from './.wuchale/js.proxy.js'
 
 const key = 'js'
 

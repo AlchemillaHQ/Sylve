@@ -64,8 +64,8 @@
 	},
 	"dependencies": {
 		"@fontsource/noto-sans": "^5.2.7",
-		"@wuchale/svelte": "^0.17.5",
-		"@wuchale/vite-plugin": "^0.15.3",
+		"@wuchale/svelte": "^0.19.0",
+		"@wuchale/vite-plugin": "^0.17.1",
 		"cronstrue": "^3.0.0",
 		"date-fns": "^4.1.0",
 		"date-fns-tz": "^3.2.0",
@@ -84,7 +84,7 @@
 		"svelte-echarts": "^1.0.0",
 		"tabulator-tables": "^6.3.1",
 		"validator": "^13.15.20",
-		"wuchale": "^0.18.5",
+		"wuchale": "^0.21.0",
 		"zod": "^3.25.67"
 	},
 	"overrides": {
