@@ -21,6 +21,7 @@ export type ReplicationPolicyTargetInput = {
 
 export type ReplicationPolicyInput = {
 	name: string;
+	description?: string;
 	guestType: ReplicationGuestType;
 	guestId: number;
 	enabled: boolean;

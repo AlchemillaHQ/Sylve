@@ -3213,6 +3213,7 @@ func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
 func (s *Service) replicationPolicyToReq(policy *clusterModels.ReplicationPolicy) clusterServiceInterfaces.ReplicationPolicyReq {
 	req := clusterServiceInterfaces.ReplicationPolicyReq{
 		Name:         policy.Name,
+		Description:  policy.Description,
 		GuestType:    policy.GuestType,
 		GuestID:      policy.GuestID,
 		SourceNodeID: policy.SourceNodeID,

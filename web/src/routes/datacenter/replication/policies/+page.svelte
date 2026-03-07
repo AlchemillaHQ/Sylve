@@ -204,7 +204,11 @@
 	}
 
 	function describePolicyHAReasons(reasons: string[]): string {
-		const values = (reasons || []).map((value) => String(value || '').trim().toLowerCase());
+		const values = (reasons || []).map((value) =>
+			String(value || '')
+				.trim()
+				.toLowerCase()
+		);
 		if (values.includes('cluster_requires_min_three_voters')) {
 			return 'Replication HA requires at least 3 configured Raft voters.';
 		}
@@ -273,9 +277,16 @@
 	];
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
+
+	// svelte-ignore state_referenced_locally
 	let jails = $state(data.jails);
+
+	// svelte-ignore state_referenced_locally
 	let vms = $state(data.vms);
+
 	let reload = $state(false);
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -329,6 +340,7 @@
 		open: false,
 		edit: false,
 		name: '',
+		description: '',
 		guestType: 'vm' as 'vm' | 'jail',
 		workloadNodeId: '',
 		guestId: '',
@@ -451,9 +463,10 @@
 		return out;
 	});
 
-	function resolvePolicyTargetSync(
-		policy: ReplicationPolicy
-	): { state: 'ok' | 'failed' | 'stale' | 'never'; label: string } {
+	function resolvePolicyTargetSync(policy: ReplicationPolicy): {
+		state: 'ok' | 'failed' | 'stale' | 'never';
+		label: string;
+	} {
 		const ownerNodeID = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
 		const targetNodeIDs = Array.from(
 			new Set(
@@ -479,7 +492,10 @@
 			}
 			const existingAt = Date.parse(existing.lastAttemptAt || '');
 			const candidateAt = Date.parse(receipt.lastAttemptAt || '');
-			if (!Number.isFinite(existingAt) || (Number.isFinite(candidateAt) && candidateAt > existingAt)) {
+			if (
+				!Number.isFinite(existingAt) ||
+				(Number.isFinite(candidateAt) && candidateAt > existingAt)
+			) {
 				receiptByTargetID[targetID] = receipt;
 			}
 		}
@@ -550,7 +566,7 @@
 	}
 
 	let sourceNodeOptions = $derived.by(() => [{ value: '', label: 'None' }, ...nodeOptions]);
-	let workloadNodeOptions = $derived.by(() => [{ value: '', label: 'All Nodes' }, ...nodeOptions]);
+	let workloadNodeOptions = $derived.by(() => [...nodeOptions]);
 	let selectedPolicyOwnerNodeId = $derived.by(() =>
 		String(selectedPolicy?.activeNodeId || selectedPolicy?.sourceNodeId || '').trim()
 	);
@@ -596,9 +612,13 @@
 		jails.map((jail) => ({ value: String(jail.ctId), label: `${jail.name} (CTID ${jail.ctId})` }))
 	);
 
-	let guestOptions = $derived.by(() =>
-		policyModal.guestType === 'vm' ? [...vmOptions] : [...jailOptions]
-	);
+	let guestOptions = $derived.by(() => {
+		if (!String(policyModal.workloadNodeId || '').trim()) {
+			return [];
+		}
+
+		return policyModal.guestType === 'vm' ? [...vmOptions] : [...jailOptions];
+	});
 
 	const policyColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
@@ -682,12 +702,24 @@
 					return renderWithIcon('mdi:check-circle', row.targetSyncLabel || 'OK', 'text-green-500');
 				}
 				if (state === 'failed') {
-					return renderWithIcon('mdi:close-circle', row.targetSyncLabel || 'Failed', 'text-red-500');
+					return renderWithIcon(
+						'mdi:close-circle',
+						row.targetSyncLabel || 'Failed',
+						'text-red-500'
+					);
 				}
 				if (state === 'stale') {
-					return renderWithIcon('mdi:clock-alert-outline', row.targetSyncLabel || 'Stale', 'text-amber-500');
+					return renderWithIcon(
+						'mdi:clock-alert-outline',
+						row.targetSyncLabel || 'Stale',
+						'text-amber-500'
+					);
 				}
-				return renderWithIcon('mdi:progress-question', row.targetSyncLabel || 'Never', 'text-muted-foreground');
+				return renderWithIcon(
+					'mdi:progress-question',
+					row.targetSyncLabel || 'Never',
+					'text-muted-foreground'
+				);
 			}
 		},
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
@@ -759,6 +791,7 @@
 		policyStep = 'workload';
 		policyModal.edit = false;
 		policyModal.name = '';
+		policyModal.description = '';
 		policyModal.guestType = 'vm';
 		policyModal.workloadNodeId = '';
 		policyModal.guestId = '';
@@ -788,6 +821,7 @@
 		policyModal.open = true;
 		policyModal.edit = true;
 		policyModal.name = policy.name;
+		policyModal.description = policy.description || '';
 		policyModal.guestType = policy.guestType;
 		policyModal.workloadNodeId = policy.activeNodeId || policy.sourceNodeId || '';
 		policyModal.guestId = String(policy.guestId);
@@ -931,6 +965,13 @@
 			toast.error('Give this policy a name.', { position: 'bottom-center' });
 			return null;
 		}
+		const description = String(policyModal.description || '').trim();
+		if (description.length > 1024) {
+			toast.error('Description is too long. Keep it within 1024 characters.', {
+				position: 'bottom-center'
+			});
+			return null;
+		}
 
 		const guestId = Number.parseInt(policyModal.guestId, 10);
 		if (!Number.isFinite(guestId) || guestId <= 0) {
@@ -942,7 +983,9 @@
 		if (!targets) return null;
 
 		const sourceNodeId = policyModal.sourceNodeId.trim();
-		const distinctTargets = Array.from(new Set(targets.map((target) => String(target.nodeId || '').trim())));
+		const distinctTargets = Array.from(
+			new Set(targets.map((target) => String(target.nodeId || '').trim()))
+		);
 		if (distinctTargets.length < 2) {
 			toast.error('Add at least two distinct target servers for HA.', {
 				position: 'bottom-center'
@@ -982,6 +1025,7 @@
 
 		return {
 			name,
+			description,
 			guestType: policyModal.guestType,
 			guestId,
 			sourceMode: policyModal.sourceMode,
@@ -1268,14 +1312,19 @@
 				<div class="min-h-0 h-full flex-1 overflow-y-auto pr-1">
 					<Tabs.Content value="workload">
 						<div class="space-y-4">
-							<p class="text-muted-foreground text-sm">
-								Name the policy and choose the workload this policy protects.
-							</p>
-
 							<CustomValueInput
 								label="Policy name"
 								placeholder="critical-vm-ha"
 								bind:value={policyModal.name}
+								classes="space-y-1"
+							/>
+
+							<CustomValueInput
+								label="Description"
+								placeholder="Optional description for this policy"
+								type="textarea"
+								textAreaClasses="min-h-24"
+								bind:value={policyModal.description}
 								classes="space-y-1"
 							/>
 
@@ -1520,6 +1569,10 @@
 									<Table.Row>
 										<Table.Cell class="text-muted-foreground w-44">Policy</Table.Cell>
 										<Table.Cell>{policyModal.name.trim() || '-'}</Table.Cell>
+									</Table.Row>
+									<Table.Row>
+										<Table.Cell class="text-muted-foreground w-44">Description</Table.Cell>
+										<Table.Cell>{policyModal.description.trim() || '-'}</Table.Cell>
 									</Table.Row>
 									<Table.Row>
 										<Table.Cell class="text-muted-foreground">Workload</Table.Cell>

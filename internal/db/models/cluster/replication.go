@@ -43,6 +43,7 @@ const (
 type ReplicationPolicy struct {
 	ID                     uint                      `gorm:"primaryKey" json:"id"`
 	Name                   string                    `gorm:"not null" json:"name"`
+	Description            string                    `gorm:"type:text" json:"description"`
 	GuestType              string                    `gorm:"index:idx_replication_policy_guest,priority:1;not null" json:"guestType"`
 	GuestID                uint                      `gorm:"index:idx_replication_policy_guest,priority:2;not null" json:"guestId"`
 	SourceNodeID           string                    `gorm:"index" json:"sourceNodeId"`
@@ -205,6 +206,7 @@ func normalizeReplicationPolicy(p *ReplicationPolicy) {
 	}
 
 	p.Name = strings.TrimSpace(p.Name)
+	p.Description = strings.TrimSpace(p.Description)
 	p.GuestType = strings.TrimSpace(strings.ToLower(p.GuestType))
 	p.SourceNodeID = strings.TrimSpace(p.SourceNodeID)
 	p.ActiveNodeID = strings.TrimSpace(p.ActiveNodeID)
@@ -243,6 +245,9 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 	if policy.Name == "" {
 		return fmt.Errorf("replication_policy_name_required")
 	}
+	if len(policy.Description) > 1024 {
+		return fmt.Errorf("replication_policy_description_too_long")
+	}
 	if !validReplicationGuestType(policy.GuestType) {
 		return fmt.Errorf("invalid_replication_guest_type")
 	}
@@ -267,6 +272,7 @@ func upsertReplicationPolicy(db *gorm.DB, policy *ReplicationPolicy, targets []R
 			Columns: []clause.Column{{Name: "id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"name",
+				"description",
 				"guest_type",
 				"guest_id",
 				"source_node_id",

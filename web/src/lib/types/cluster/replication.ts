@@ -17,6 +17,7 @@ export const ReplicationPolicyTargetSchema = z.object({
 export const ReplicationPolicySchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
+	description: z.string().optional().default(''),
 	guestType: ReplicationGuestTypeSchema,
 	guestId: z.number().int(),
 	sourceNodeId: z.string().optional().default(''),

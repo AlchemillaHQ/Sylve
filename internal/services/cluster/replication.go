@@ -173,6 +173,10 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	if name == "" {
 		return nil, nil, fmt.Errorf("name_required")
 	}
+	description := strings.TrimSpace(input.Description)
+	if len(description) > 1024 {
+		return nil, nil, fmt.Errorf("description_too_long")
+	}
 
 	guestType := strings.TrimSpace(strings.ToLower(input.GuestType))
 	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
@@ -289,6 +293,7 @@ func (s *Service) buildReplicationPolicy(id uint, input clusterServiceInterfaces
 	policy := &clusterModels.ReplicationPolicy{
 		ID:           id,
 		Name:         name,
+		Description:  description,
 		GuestType:    guestType,
 		GuestID:      input.GuestID,
 		SourceNodeID: sourceNodeID,
