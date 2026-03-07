@@ -4,7 +4,7 @@
 	import { storage } from '$lib';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
-	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
 	import { onMount, tick } from 'svelte';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
@@ -116,6 +116,15 @@
 	let lastHeight = 0;
 	let connectionToken = 0;
 	let destroyed = $state(false);
+	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
+
+	function loadGhostty() {
+		if (!ghosttyModulePromise) {
+			ghosttyModulePromise = import('ghostty-web');
+		}
+
+		return ghosttyModulePromise;
+	}
 
 	useInterval(() => 1000, {
 		callback: () => {
@@ -278,12 +287,13 @@
 		if (domain.current.status === 'Shutoff') return;
 		if (!terminalContainer) return;
 
-		await initGhostty();
+		const ghostty = await loadGhostty();
+		await ghostty.init();
 		if (destroyed) return;
 
 		cleanupSerial(false);
 
-		terminal = new GhosttyTerminal({
+		terminal = new ghostty.Terminal({
 			cursorBlink: true,
 			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',

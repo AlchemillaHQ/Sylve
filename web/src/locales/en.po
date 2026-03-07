@@ -350,6 +350,9 @@ msgid "Object ({0} properties)"
 msgstr "Object ({0} properties)"
 
 #: src/lib/components/custom/Login.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -10225,3 +10228,16 @@ msgstr "At least one target must be a remote node from the effective runner."
 
 #~ msgid "C <0/>"
 #~ msgstr "C <0/>"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Joining"
+msgstr "Joining"
+
+#. placeholder {0}: disk.device.split('/').pop()
+#. placeholder {1}: id + 1
+#. placeholder {0}: partition.name.split('/').pop()
+#. placeholder {1}: id + 1
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Remove {0} from VDEV {1}"
+msgstr "Remove {0} from VDEV {1}"

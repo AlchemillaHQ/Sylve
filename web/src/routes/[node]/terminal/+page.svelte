@@ -3,7 +3,7 @@
 	import { sha256, toHex } from '$lib/utils/string';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
-	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -17,6 +17,15 @@
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let connectionToken = 0;
+	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
+
+	function loadGhostty() {
+		if (!ghosttyModulePromise) {
+			ghosttyModulePromise = import('ghostty-web');
+		}
+
+		return ghosttyModulePromise;
+	}
 
 	let cState = new PersistedState(`host-console-state`, false);
 	let theme = new PersistedState(`host-console-theme`, {
@@ -148,10 +157,11 @@
 
 		if (!terminalContainer) return;
 
-		await initGhostty();
+		const ghostty = await loadGhostty();
+		await ghostty.init();
 		if (destroyed) return;
 
-		terminal = new GhosttyTerminal({
+		terminal = new ghostty.Terminal({
 			cursorBlink: true,
 			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
@@ -306,7 +316,7 @@
 </div>
 
 <Dialog.Root bind:open={openSettings}>
-	<Dialog.Content class="min-w-[180px]">
+	<Dialog.Content class="min-w-45">
 		<Dialog.Header class="p-0">
 			<Dialog.Title>Host Console Settings</Dialog.Title>
 		</Dialog.Header>

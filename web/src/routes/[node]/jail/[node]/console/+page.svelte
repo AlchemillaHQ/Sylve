@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getJailById, getJailStateById, getSimpleJailById } from '$lib/api/jail/jail';
+	import { getSimpleJailById } from '$lib/api/jail/jail';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
 	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
-	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
+	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -28,6 +28,15 @@
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let connectionToken = 0;
+	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
+
+	function loadGhostty() {
+		if (!ghosttyModulePromise) {
+			ghosttyModulePromise = import('ghostty-web');
+		}
+
+		return ghosttyModulePromise;
+	}
 
 	// svelte-ignore state_referenced_locally
 	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
@@ -184,10 +193,11 @@
 		if (jail.current && jail.current.state === 'INACTIVE') return;
 		if (!terminalContainer) return;
 
-		await initGhostty();
+		const ghostty = await loadGhostty();
+		await ghostty.init();
 		if (destroyed) return;
 
-		terminal = new GhosttyTerminal({
+		terminal = new ghostty.Terminal({
 			cursorBlink: true,
 			cursorStyle: 'bar',
 			fontFamily: 'Monaco, Menlo, "Courier New", monospace',

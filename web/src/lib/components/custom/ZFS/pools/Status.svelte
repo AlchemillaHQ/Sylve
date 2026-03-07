@@ -193,7 +193,7 @@
 												aria-valuemin="0"
 												aria-valuemax="100"
 												aria-valuenow={scanActivity.progressPercent}
-											/>
+											></div>
 										</div>
 									</div>
 								{/if}
@@ -286,8 +286,8 @@
 								? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
 								: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'}"
 						>
-							<span class="icon-[mdi--check-circle] h-5 w-5" class:hidden={hasAnyErrors} />
-							<span class="icon-[mdi--alert-circle] h-5 w-5" class:hidden={!hasAnyErrors} />
+							<span class="icon-[mdi--check-circle] h-5 w-5" class:hidden={hasAnyErrors}></span>
+							<span class="icon-[mdi--alert-circle] h-5 w-5" class:hidden={!hasAnyErrors}></span>
 
 							<span>
 								{!hasAnyErrors
