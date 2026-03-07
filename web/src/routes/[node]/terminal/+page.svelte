@@ -2,7 +2,7 @@
 	import { storage } from '$lib';
 	import { sha256, toHex } from '$lib/utils/string';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { init as initGhostty, Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -16,6 +16,7 @@
 	let terminalContainer = $state<HTMLElement | null>(null);
 	let lastWidth = 0;
 	let lastHeight = 0;
+	let connectionToken = 0;
 
 	let cState = new PersistedState(`host-console-state`, false);
 	let theme = new PersistedState(`host-console-theme`, {
@@ -38,6 +39,14 @@
 
 	const applyThemeDebounced = useDebounce(() => {
 		if (!terminal) return;
+
+		if (
+			theme.current.background === bgThemeBindable &&
+			theme.current.foreground === fgThemeBindable
+		) {
+			return;
+		}
+
 		theme.current.background = bgThemeBindable;
 		theme.current.foreground = fgThemeBindable;
 		terminal.options.theme = {
@@ -55,15 +64,35 @@
 
 	function disconnect() {
 		cState.current = true;
-		ws?.close();
+		connectionToken += 1;
+
+		const socket = ws;
+		ws = null;
+
+		if (socket) {
+			socket.onopen = null;
+			socket.onmessage = null;
+			socket.onerror = null;
+			socket.onclose = null;
+		}
+
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			const payload = JSON.stringify({ kill: '' });
+			const data = new TextEncoder().encode('\x02' + payload);
+
+			socket.send(data);
+			socket.close();
+		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
+			socket.close();
+		}
+
 		terminal?.dispose?.();
 		terminal = null;
 		ws = null;
 	}
 
-	async function reconnect() {
+	function reconnect() {
 		cState.current = false;
-		await tick();
 		setup();
 	}
 
@@ -78,12 +107,27 @@
 		const currentRows = terminal.rows || 24;
 		const cellWidth = canvas.clientWidth / currentCols || 8;
 		const cellHeight = canvas.clientHeight / currentRows || 16;
+		if (!cellWidth || !cellHeight) return;
 
 		const cols = Math.max(2, Math.floor(width / cellWidth));
 		const rows = Math.max(2, Math.floor(height / cellHeight));
+		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
 
 		terminal.resize(cols, rows);
 		sendSize(cols, rows);
+	}
+
+	function syncTerminalSizeAfterOpen() {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!terminalContainer) return;
+				const rect = terminalContainer.getBoundingClientRect();
+				if (!rect.width || !rect.height) return;
+				lastWidth = rect.width;
+				lastHeight = rect.height;
+				resizeTerminal(rect.width, rect.height);
+			});
+		});
 	}
 
 	useResizeObserver(
@@ -98,9 +142,11 @@
 		}
 	);
 
-	let destroyed = false;
+	let destroyed = $state(false);
 	const setup = async () => {
-		if (cState.current || !terminalContainer) return;
+		cState.current = false;
+
+		if (!terminalContainer) return;
 
 		await initGhostty();
 		if (destroyed) return;
@@ -129,49 +175,84 @@
 			})
 		);
 
-		ws = new WebSocket(`/api/info/terminal?auth=${encodeURIComponent(wsAuth)}`);
-		ws.binaryType = 'arraybuffer';
+		const activeConnectionToken = ++connectionToken;
+		const activeTerminal = terminal;
+		const socket = new WebSocket(`/api/info/terminal?auth=${encodeURIComponent(wsAuth)}`);
+		socket.binaryType = 'arraybuffer';
+		ws = socket;
 
-		ws.onopen = () => {
+		socket.onopen = () => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			console.log(`Host console connected`);
-			if (lastWidth && lastHeight) resizeTerminal(lastWidth, lastHeight);
+			if (lastWidth && lastHeight) {
+				resizeTerminal(lastWidth, lastHeight);
+			} else if (terminalContainer) {
+				const rect = terminalContainer.getBoundingClientRect();
+				resizeTerminal(rect.width, rect.height);
+			}
+
+			syncTerminalSizeAfterOpen();
 		};
 
-		ws.onmessage = (e) => {
+		socket.onmessage = (e) => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			if (e.data instanceof ArrayBuffer) {
-				terminal?.write(new Uint8Array(e.data));
+				try {
+					activeTerminal?.write(new Uint8Array(e.data));
+				} catch {
+					return;
+				}
 			} else {
-				terminal?.write(e.data);
+				try {
+					activeTerminal?.write(e.data as string);
+				} catch {
+					return;
+				}
 			}
 		};
 
 		terminal.onData((data: string) => {
-			const normalizedData = data.replace(/\n/g, '\r');
-
-			if (ws && ws.readyState === WebSocket.OPEN) {
-				ws.send(new TextEncoder().encode('\x00' + normalizedData));
-			}
+			if (socket.readyState !== WebSocket.OPEN) return;
+			socket.send(new TextEncoder().encode('\x00' + data));
 		});
 	};
 
 	onMount(() => {
-		setup();
+		if (!cState.current) {
+			setup();
+		}
+
 		return () => {
 			destroyed = true;
+			connectionToken += 1;
+
+			if (ws) {
+				ws.onopen = null;
+				ws.onmessage = null;
+				ws.onerror = null;
+				ws.onclose = null;
+				ws.close();
+				ws = null;
+			}
+
 			if (terminal) {
 				terminal.clear?.();
 				terminal.reset?.();
 			}
 
-			ws?.close();
 			terminal?.dispose?.();
+			terminal = null;
 		};
 	});
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border p-4 bg-background">
-		{#if ws && !cState.current}
+		{#if ws?.readyState === WebSocket.OPEN}
 			<Button
 				size="sm"
 				class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-yellow-600 dark:text-white"

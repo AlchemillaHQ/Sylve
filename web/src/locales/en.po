@@ -1398,6 +1398,7 @@ msgstr "Resources"
 
 #: src/routes/datacenter/summary/+page.svelte
 #: src/routes/datacenter/summary/+page.svelte
+#: src/routes/datacenter/summary/+page.svelte
 msgid "Disk"
 msgstr "Disk"
 
@@ -6304,9 +6305,7 @@ msgstr "Auto-convert to RAW"
 #~ msgid "LOADER"
 #~ msgstr "LOADER"
 
-#. placeholder {0}: jail.current?.name
 #. placeholder {0}: vm.current?.name
-#: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Console settings - {0}"
 msgstr "Console settings - {0}"
@@ -9691,3 +9690,17 @@ msgstr ""
 "Enable this option to provide a QEMU Guest Agent channel via a virtio-console device. This\n"
 "improves guest integration for features like shutdown, status, and filesystem operations, when\n"
 "the guest agent is installed inside the VM."
+
+#. placeholder {0}: jail.current?.name
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+msgid "Console Settings - {0}"
+msgstr "Console Settings - {0}"
+
+#. placeholder {0}: metric
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Loading {0} chart..."
+msgstr "Loading {0} chart..."
+
+#: src/routes/datacenter/summary/+page.svelte
+msgid "Unable to load charts."
+msgstr "Unable to load charts."

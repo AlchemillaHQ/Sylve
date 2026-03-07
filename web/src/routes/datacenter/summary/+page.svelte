@@ -3,7 +3,6 @@
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
-	import Arc from '$lib/components/custom/Charts/Arc.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
@@ -19,6 +18,7 @@
 	import humanFormat from 'human-format';
 	import { resource, watch } from 'runed';
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 
 	interface Data {
 		nodes: ClusterNode[];
@@ -175,6 +175,10 @@
 	onMount(() => {
 		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');
 	});
+
+	const resourceGridClass = 'grid grid-cols-1 gap-2 md:grid-cols-3';
+	const resourceSlotClass = 'flex items-center justify-center';
+	const resourceChartBoxClass = 'h-35 w-50';
 </script>
 
 <div class="flex h-full w-full flex-col space-y-4">
@@ -246,49 +250,84 @@
 			</Card.Header>
 			<Card.Content>
 				{#if lazyArc}
-					{#await lazyArc then { default: Arc }}
-						<div class="flex items-center justify-center">
+					{#await lazyArc}
+						<div class={resourceGridClass} aria-live="polite">
+							{#each ['CPU', 'RAM', 'Disk'] as metric}
+								<div class={resourceSlotClass}>
+									<div
+										class={`${resourceChartBoxClass} flex flex-col items-center justify-center gap-2`}
+									>
+										<div
+											class="h-24 w-24 animate-pulse rounded-full border-8 border-muted bg-muted/30"
+										></div>
+										<div class="h-3.5 w-14 animate-pulse rounded bg-muted/70"></div>
+										<div class="h-3 w-18 animate-pulse rounded bg-muted/40"></div>
+										<span class="sr-only">Loading {metric} chart...</span>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{:then { default: Arc }}
+						<div class={resourceGridClass} in:fade={{ duration: 200 }}>
 							{#if clustered}
-								<div class="flex flex-1 justify-center">
-									<Arc value={total.cpu.usage} title="CPU" subtitle="{total.cpu.total} vCPUs" />
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc value={total.cpu.usage} title="CPU" subtitle="{total.cpu.total} vCPUs" />
+									</div>
 								</div>
-								<div class="flex flex-1 justify-center">
-									<Arc
-										value={total.ram.usage}
-										title="RAM"
-										subtitle={humanFormat(total.ram.total)}
-									/>
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc
+											value={total.ram.usage}
+											title="RAM"
+											subtitle={humanFormat(total.ram.total)}
+										/>
+									</div>
 								</div>
-								<div class="flex flex-1 justify-center">
-									<Arc
-										value={total.disk.usage}
-										subtitle={humanFormat(total.disk.total)}
-										title="Disk"
-									/>
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc
+											value={total.disk.usage}
+											subtitle={humanFormat(total.disk.total)}
+											title="Disk"
+										/>
+									</div>
 								</div>
 							{:else}
-								<div class="flex flex-1 justify-center">
-									<Arc
-										value={cpuInfo.current?.usage}
-										title="CPU"
-										subtitle="{cpuInfo.current?.logicalCores} vCPUs"
-									/>
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc
+											value={cpuInfo.current?.usage}
+											title="CPU"
+											subtitle="{cpuInfo.current?.logicalCores} vCPUs"
+										/>
+									</div>
 								</div>
-								<div class="flex flex-1 justify-center">
-									<Arc
-										value={ramInfo.current?.usedPercent}
-										title="RAM"
-										subtitle={humanFormat(ramInfo.current?.total || 0)}
-									/>
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc
+											value={ramInfo.current?.usedPercent}
+											title="RAM"
+											subtitle={humanFormat(ramInfo.current?.total || 0)}
+										/>
+									</div>
 								</div>
-								<div class="flex flex-1 justify-center">
-									<Arc
-										value={diskInfo.current?.usage || 0}
-										title="Disk"
-										subtitle={humanFormat(diskInfo.current?.total || 0)}
-									/>
+								<div class={resourceSlotClass}>
+									<div class={resourceChartBoxClass}>
+										<Arc
+											value={diskInfo.current?.usage || 0}
+											title="Disk"
+											subtitle={humanFormat(diskInfo.current?.total || 0)}
+										/>
+									</div>
 								</div>
 							{/if}
+						</div>
+					{:catch}
+						<div
+							class={`${resourceChartBoxClass} mx-auto place-content-center text-center text-sm text-muted-foreground`}
+						>
+							Unable to load charts.
 						</div>
 					{/await}
 				{/if}

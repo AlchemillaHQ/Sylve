@@ -28,7 +28,11 @@
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let connectionToken = 0;
+
+	// svelte-ignore state_referenced_locally
 	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
+
+	// svelte-ignore state_referenced_locally
 	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
 		background: '#282c34',
 		foreground: '#FFFFFF',
@@ -263,10 +267,8 @@
 		};
 
 		terminal.onData((data: string) => {
-			const normalizedData = data.replace(/\n/g, '\r');
-
 			if (socket.readyState !== WebSocket.OPEN) return;
-			socket.send(new TextEncoder().encode('\x00' + normalizedData));
+			socket.send(new TextEncoder().encode('\x00' + data));
 		});
 	};
 
@@ -376,10 +378,13 @@
 {/if}
 
 <Dialog.Root bind:open={openSettings}>
-	<Dialog.Content class="min-w-[180px]">
+	<Dialog.Content class="min-w-45">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex items-center justify-between text-left">
-				Console settings - {jail.current?.name}
+				<div class="flex items-center gap-2">
+					<span class="icon-[tdesign--ai-terminal] w-6 h-6"></span>
+					<span>Console Settings - {jail.current?.name}</span>
+				</div>
 			</Dialog.Title>
 		</Dialog.Header>
 

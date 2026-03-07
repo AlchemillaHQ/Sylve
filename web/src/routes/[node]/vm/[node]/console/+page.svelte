@@ -91,7 +91,6 @@
 	}
 
 	let consoleType: ConsoleType = $state(resolveInitialConsole());
-	let connected = $state(false);
 
 	let cState = new PersistedState(`vm-${data.rid}-console-state`, false);
 	let theme = new PersistedState(`vm-${data.rid}-console-theme`, {
@@ -106,10 +105,11 @@
 	let openSettings = $state(false);
 
 	let terminal = $state<GhosttyTerminal | null>(null);
-	let ws: WebSocket | null = null;
+	let ws = $state<WebSocket | null>(null);
 	let terminalContainer = $state<HTMLElement | null>(null);
 	let lastWidth = 0;
 	let lastHeight = 0;
+	let connectionToken = 0;
 	let destroyed = $state(false);
 
 	useInterval(() => 1000, {
@@ -154,7 +154,7 @@
 		};
 
 		if (ws?.readyState === WebSocket.OPEN) {
-			cleanupSerial(false);
+			cleanupSerial(true);
 			serialConnect();
 		}
 	}, 300);
@@ -178,19 +178,27 @@
 	}
 
 	function cleanupSerial(forceKill = false) {
-		connected = false;
+		connectionToken += 1;
 
-		if (ws) {
-			ws.onclose = null;
-			if (ws.readyState === WebSocket.OPEN) {
-				if (forceKill) {
-					const payload = JSON.stringify({ kill: '' });
-					const data = new TextEncoder().encode('\x02' + payload);
-					ws.send(data);
-				}
-				ws.close();
+		const socket = ws;
+		ws = null;
+
+		if (socket) {
+			socket.onopen = null;
+			socket.onmessage = null;
+			socket.onerror = null;
+			socket.onclose = null;
+		}
+
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			if (forceKill) {
+				const payload = JSON.stringify({ kill: '' });
+				const data = new TextEncoder().encode('\x02' + payload);
+				socket.send(data);
 			}
-			ws = null;
+			socket.close();
+		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
+			socket.close();
 		}
 
 		terminal?.dispose?.();
@@ -285,11 +293,17 @@
 
 		const wssAuth = getWSSAuth();
 		const url = `/api/vm/console?rid=${vm.current.rid}&auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
-		ws = new WebSocket(url);
-		ws.binaryType = 'arraybuffer';
 
-		ws.onopen = async () => {
-			connected = true;
+		const activeConnectionToken = ++connectionToken;
+		const activeTerminal = terminal;
+		const socket = new WebSocket(url);
+		socket.binaryType = 'arraybuffer';
+		ws = socket;
+
+		socket.onopen = async () => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			console.log(`Serial console connected for VM ${data.rid}`);
 			if (lastWidth && lastHeight) {
 				resizeTerminal(lastWidth, lastHeight);
@@ -301,24 +315,35 @@
 			syncTerminalSizeAfterOpen();
 		};
 
-		ws.onmessage = (e) => {
+		socket.onmessage = (e) => {
+			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+				return;
+
 			if (e.data instanceof ArrayBuffer) {
-				terminal?.write(new Uint8Array(e.data));
+				try {
+					activeTerminal?.write(new Uint8Array(e.data));
+				} catch {
+					return;
+				}
 			} else {
-				terminal?.write(e.data as string);
+				try {
+					activeTerminal?.write(e.data as string);
+				} catch {
+					return;
+				}
 			}
 		};
 
 		terminal.onData((data: string) => {
-			const normalizedData = data.replace(/\n/g, '\r');
-
-			if (ws && ws.readyState === WebSocket.OPEN) {
-				ws.send(new TextEncoder().encode('\x00' + normalizedData));
-			}
+			if (socket.readyState !== WebSocket.OPEN) return;
+			socket.send(new TextEncoder().encode('\x00' + data));
 		});
 
-		ws.onclose = ws.onerror = () => {
-			connected = false;
+		socket.onclose = socket.onerror = () => {
+			if (activeConnectionToken !== connectionToken) return;
+			if (ws === socket) {
+				ws = null;
+			}
 		};
 	};
 
@@ -333,15 +358,26 @@
 
 		return () => {
 			destroyed = true;
+			connectionToken += 1;
+
+			if (ws) {
+				ws.onopen = null;
+				ws.onmessage = null;
+				ws.onerror = null;
+				ws.onclose = null;
+				ws.close();
+				ws = null;
+			}
+
 			if (terminal) {
 				terminal.clear?.();
 				terminal.reset?.();
 			}
 
-			cleanupSerial(false);
 			applyFontSize.cancel?.();
 			applyThemeDebounced.cancel?.();
 			terminal?.dispose?.();
+			terminal = null;
 		};
 	});
 
@@ -387,7 +423,7 @@
 			{/if}
 
 			{#if consoleType === 'serial' && vm.current.serial}
-				{#if connected}
+				{#if ws?.readyState === WebSocket.OPEN}
 					<Button
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"

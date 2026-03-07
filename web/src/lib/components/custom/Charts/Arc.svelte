@@ -29,10 +29,10 @@
 				{
 					type: 'text',
 					left: 'center',
-					top: 40,
+					top: 36,
 					style: {
 						text: title,
-						fontSize: 16,
+						fontSize: 15,
 						fontWeight: 'bold',
 						fill: mode.current === 'dark' ? '#ffffff' : '#000000'
 					}
@@ -42,10 +42,10 @@
 							{
 								type: 'text',
 								left: 'center',
-								top: 65,
+								top: 60,
 								style: {
 									text: subtitle,
-									fontSize: 12,
+									fontSize: 14,
 									fontWeight: 500,
 									fill: mode.current === 'dark' ? '#a1a1aa' : '#71717a'
 								}
@@ -55,7 +55,7 @@
 				{
 					type: 'text',
 					left: 'center',
-					top: 85,
+					top: 82,
 					style: {
 						text: `${Math.round(value)}%`,
 						fontSize: 30,
@@ -104,6 +104,4 @@
 	});
 </script>
 
-<div class="h-37.5 w-50 overflow-hidden rounded-sm">
-	<Chart {init} {options} class="h-full w-full" />
-</div>
+<Chart {init} {options} class="h-full w-full" />
