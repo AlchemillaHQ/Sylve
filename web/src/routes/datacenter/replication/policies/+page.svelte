@@ -19,12 +19,20 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { ReplicationPolicy } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		FORCE_RECOVERY_CONFIRM_TEXT,
+		failoverModeOptions,
+		normalizeFailoverMode,
+		userFailoverErrorMessage,
+		validateFailoverAction
+	} from '$lib/utils/replication-failover';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource, watch } from 'runed';
@@ -42,6 +50,55 @@
 		nodeId: string;
 		weight: string;
 	};
+
+	type SourceModeCard = {
+		value: 'follow_active' | 'pinned_primary';
+		title: string;
+		description: string;
+	};
+
+	type FailoverCard = {
+		value: 'manual' | 'auto_safe' | 'auto_force';
+		title: string;
+		description: string;
+		impact: string;
+		dangerous?: boolean;
+	};
+
+	const sourceModeCards: SourceModeCard[] = [
+		{
+			value: 'follow_active',
+			title: 'Stay with whichever node is currently active',
+			description: 'After any move, this new active node becomes the new source.'
+		},
+		{
+			value: 'pinned_primary',
+			title: 'Keep one preferred primary node',
+			description: 'Use one fixed primary node as the source until you change it.'
+		}
+	];
+
+	const failoverCards: FailoverCard[] = [
+		{
+			value: 'manual',
+			title: 'Manual only',
+			description: 'No automatic move when the active node goes down.',
+			impact: 'An admin chooses when and where to move the workload.'
+		},
+		{
+			value: 'auto_safe',
+			title: 'Automatic safe move',
+			description: 'Automatically move after a safe demote and sync.',
+			impact: 'Protects data first, then promotes a target.'
+		},
+		{
+			value: 'auto_force',
+			title: 'Automatic force recovery',
+			description: 'Automatically recover even when clean handoff is impossible.',
+			impact: 'Fastest recovery, but newest writes may be lost.',
+			dangerous: true
+		}
+	];
 
 	let { data }: { data: Data } = $props();
 	let nodes = $state(data.nodes);
@@ -95,6 +152,7 @@
 		sourceNodeId: '',
 		failbackMode: 'manual' as 'manual' | 'auto',
 		failoverMode: 'manual' as 'manual' | 'auto_safe' | 'auto_force',
+		confirmAutoForce: false,
 		cronExpr: '*/15 * * * *',
 		enabled: true,
 		targets: [{ nodeId: '', weight: '100' }] as EditableTarget[]
@@ -104,7 +162,8 @@
 		mode: 'safe' as 'safe' | 'force',
 		targetNodeId: '',
 		movePinnedSource: true,
-		confirmDataLoss: false
+		confirmDataLoss: false,
+		forceConfirmText: ''
 	});
 
 	let selectedPolicyName = $derived.by(() => {
@@ -143,6 +202,24 @@
 		}
 	}
 
+	function sourceModeSummary(sourceMode: string): string {
+		return sourceMode === 'pinned_primary' ? 'Preferred primary node' : 'Follow current active node';
+	}
+
+	function failoverModeSummary(failoverMode: string): string {
+		if (failoverMode === 'auto_force') return 'Auto force recovery';
+		if (failoverMode === 'auto_safe') return 'Auto safe move';
+		return 'Manual moves only';
+	}
+
+	function failbackModeSummary(failbackMode: string): string {
+		return failbackMode === 'auto' ? 'Auto move back' : 'Manual move back';
+	}
+
+	function policyModeSummary(policy: ReplicationPolicy): string {
+		return `${failoverModeSummary(policy.failoverMode)} | ${sourceModeSummary(policy.sourceMode)} | ${failbackModeSummary(policy.failbackMode)}`;
+	}
+
 	let nodeOptions = $derived.by(() =>
 		nodes.map((node) => ({
 			value: node.nodeUUID,
@@ -150,12 +227,32 @@
 		}))
 	);
 
+	let nodeStatusByID = $derived.by(() => {
+		const out: Record<string, string> = {};
+		for (const node of nodes) {
+			out[node.nodeUUID] = String(node.status || '').trim().toLowerCase();
+		}
+		return out;
+	});
+
+	function isOnlineNode(nodeId: string): boolean {
+		return nodeStatusByID[String(nodeId || '').trim()] === 'online';
+	}
+
 	let sourceNodeOptions = $derived.by(() => [{ value: '', label: 'None' }, ...nodeOptions]);
 	let workloadNodeOptions = $derived.by(() => [{ value: '', label: 'All Nodes' }, ...nodeOptions]);
+	let selectedPolicyOwnerNodeId = $derived.by(() =>
+		String(selectedPolicy?.activeNodeId || selectedPolicy?.sourceNodeId || '').trim()
+	);
+	let selectedPolicyOwnerOnline = $derived.by(() =>
+		selectedPolicyOwnerNodeId ? isOnlineNode(selectedPolicyOwnerNodeId) : true
+	);
+	let failoverModeCards = $derived.by(() => failoverModeOptions(selectedPolicyOwnerOnline));
+
 	let failoverTargetOptions = $derived.by(() => {
 		const policy = selectedPolicy;
 		if (!policy) {
-			return [{ value: '', label: 'Auto-select by policy target weights' }, ...nodeOptions];
+			return [{ value: '', label: 'Auto-pick the best target from policy priority' }, ...nodeOptions];
 		}
 
 		const ownerNodeID = (policy.activeNodeId || policy.sourceNodeId || '').trim();
@@ -164,8 +261,15 @@
 				.map((target) => String(target.nodeId || '').trim())
 				.filter((value) => value.length > 0 && value !== ownerNodeID)
 		);
-		const scopedOptions = nodeOptions.filter((option) => configuredTargets.has(option.value));
-		return [{ value: '', label: 'Auto-select by policy target weights' }, ...scopedOptions];
+		const scopedOptions = nodeOptions.filter(
+			(option) => configuredTargets.has(option.value) && isOnlineNode(option.value)
+		);
+		return [{ value: '', label: 'Auto-pick the best target from policy priority' }, ...scopedOptions];
+	});
+	let failoverTargetHint = $derived.by(() => {
+		if (!selectedPolicy) return '';
+		if (failoverTargetOptions.length > 1) return '';
+		return 'No online target server is currently available for this policy.';
 	});
 
 	let vmOptions = $derived.by(() =>
@@ -222,7 +326,7 @@
 			}
 		},
 		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
-		{ field: 'mode', title: 'Mode', width: 280, minWidth: 220 },
+		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
 		{ field: 'targets', title: 'Targets', width: 260, minWidth: 180 },
 		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
 		{
@@ -258,24 +362,18 @@
 					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
 					.join(' | ') || '-';
 
-			return {
-				id: policy.id,
-				status: policy.id,
-				enabled: policy.enabled,
-				name: policy.name,
-				guestType: policy.guestType,
-				workload: workloadLabel,
-				activeNode: sourceLabel,
-				mode: `${policy.sourceMode === 'pinned_primary' ? 'Pinned' : 'Follow'} / ${
-					policy.failoverMode === 'auto_force'
-						? 'Auto Force'
-						: policy.failoverMode === 'auto_safe'
-							? 'Auto Safe'
-							: 'Manual'
-				} / ${policy.failbackMode === 'auto' ? 'Failback Auto' : 'Failback Manual'}`,
-				targets: targetsLabel,
-				schedule: scheduleLabel(policy.cronExpr),
-				lastStatus: policy.lastStatus,
+				return {
+					id: policy.id,
+					status: policy.id,
+					enabled: policy.enabled,
+					name: policy.name,
+					guestType: policy.guestType,
+					workload: workloadLabel,
+					activeNode: sourceLabel,
+					mode: policyModeSummary(policy),
+					targets: targetsLabel,
+					schedule: scheduleLabel(policy.cronExpr),
+					lastStatus: policy.lastStatus,
 				lastRunAt: policy.lastRunAt,
 				nextRunAt: policy.nextRunAt
 			};
@@ -294,6 +392,7 @@
 		policyModal.sourceNodeId = '';
 		policyModal.failbackMode = 'manual';
 		policyModal.failoverMode = 'manual';
+		policyModal.confirmAutoForce = false;
 		policyModal.cronExpr = '*/15 * * * *';
 		policyModal.enabled = true;
 		policyModal.targets = [{ nodeId: '', weight: '100' }];
@@ -320,6 +419,7 @@
 		policyModal.sourceNodeId = policy.sourceNodeId || '';
 		policyModal.failbackMode = policy.failbackMode;
 		policyModal.failoverMode = policy.failoverMode || 'manual';
+		policyModal.confirmAutoForce = (policy.failoverMode || 'manual') === 'auto_force';
 		policyModal.cronExpr = policy.cronExpr || '';
 		policyModal.enabled = policy.enabled;
 		policyModal.targets =
@@ -403,7 +503,7 @@
 				continue;
 			}
 			if (seen.has(nodeId)) {
-				toast.error('Target nodes must be unique', { position: 'bottom-center' });
+				toast.error('Each target server can be added only once.', { position: 'bottom-center' });
 				return null;
 			}
 			seen.add(nodeId);
@@ -417,7 +517,7 @@
 		}
 
 		if (parsedTargets.length === 0) {
-			toast.error('At least one target node is required', { position: 'bottom-center' });
+			toast.error('Add at least one target server.', { position: 'bottom-center' });
 			return null;
 		}
 
@@ -427,13 +527,13 @@
 	function buildPolicyPayload(): ReplicationPolicyInput | null {
 		const name = policyModal.name.trim();
 		if (!name) {
-			toast.error('Policy name is required', { position: 'bottom-center' });
+			toast.error('Give this policy a name.', { position: 'bottom-center' });
 			return null;
 		}
 
 		const guestId = Number.parseInt(policyModal.guestId, 10);
 		if (!Number.isFinite(guestId) || guestId <= 0) {
-			toast.error('Select a valid workload', { position: 'bottom-center' });
+			toast.error('Choose the VM or jail to protect.', { position: 'bottom-center' });
 			return null;
 		}
 
@@ -442,7 +542,13 @@
 
 		const sourceNodeId = policyModal.sourceNodeId.trim();
 		if (policyModal.sourceMode === 'pinned_primary' && !sourceNodeId) {
-			toast.error('Source node is required for pinned primary mode', { position: 'bottom-center' });
+			toast.error('Pick the preferred primary node for this policy.', { position: 'bottom-center' });
+			return null;
+		}
+		if (policyModal.failoverMode === 'auto_force' && !policyModal.confirmAutoForce) {
+			toast.error('Confirm the risk before enabling automatic force recovery.', {
+				position: 'bottom-center'
+			});
 			return null;
 		}
 
@@ -513,10 +619,11 @@
 
 	function openFailoverModal() {
 		if (!selectedPolicy) return;
-		failoverModal.mode = 'safe';
+		failoverModal.mode = normalizeFailoverMode('safe', selectedPolicyOwnerOnline);
 		failoverModal.targetNodeId = '';
 		failoverModal.movePinnedSource = true;
 		failoverModal.confirmDataLoss = false;
+		failoverModal.forceConfirmText = '';
 		failoverModalOpen = true;
 	}
 
@@ -528,8 +635,14 @@
 
 	async function failoverNow() {
 		if (!selectedPolicyId) return;
-		if (failoverModal.mode === 'force' && !failoverModal.confirmDataLoss) {
-			toast.error('Force failover requires data-loss confirmation', { position: 'bottom-center' });
+		const validationError = validateFailoverAction({
+			mode: failoverModal.mode,
+			ownerOnline: selectedPolicyOwnerOnline,
+			confirmDataLoss: failoverModal.confirmDataLoss,
+			forceConfirmationText: failoverModal.forceConfirmText
+		});
+		if (validationError) {
+			toast.error(validationError, { position: 'bottom-center' });
 			return;
 		}
 
@@ -545,14 +658,21 @@
 		failoverLoading = false;
 
 		if (result.status === 'success') {
-			toast.success('Failover requested', { position: 'bottom-center' });
+			toast.success(
+				failoverModal.mode === 'force'
+					? 'Force recovery requested.'
+					: 'Safe move requested.',
+				{ position: 'bottom-center' }
+			);
 			failoverModalOpen = false;
 			reload = true;
 			return;
 		}
 
 		handleAPIError(result);
-		toast.error('Failed to trigger failover', { position: 'bottom-center' });
+		toast.error(userFailoverErrorMessage(result.message || '', result.error || ''), {
+			position: 'bottom-center'
+		});
 	}
 
 	watch(
@@ -564,6 +684,37 @@
 				return;
 			}
 			void loadVMsForNode(true);
+		}
+	);
+
+	watch(
+		[() => failoverModalOpen, () => selectedPolicyOwnerOnline],
+		([isOpen, ownerOnline]) => {
+			if (!isOpen) return;
+			failoverModal.mode = normalizeFailoverMode(failoverModal.mode, ownerOnline);
+			if (failoverModal.mode !== 'force') {
+				failoverModal.confirmDataLoss = false;
+				failoverModal.forceConfirmText = '';
+			}
+		}
+	);
+
+	watch(
+		() => policyModal.failoverMode,
+		(mode) => {
+			if (mode !== 'auto_force') {
+				policyModal.confirmAutoForce = false;
+			}
+		}
+	);
+
+	watch(
+		() => failoverModal.mode,
+		(mode) => {
+			if (mode !== 'force') {
+				failoverModal.confirmDataLoss = false;
+				failoverModal.forceConfirmText = '';
+			}
 		}
 	);
 
@@ -581,7 +732,7 @@
 		<Button onclick={openFailoverModal} size="sm" variant="outline" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[mdi--swap-horizontal-bold] mr-1 h-4 w-4"></span>
-				<span>Failover</span>
+				<span>Move Active</span>
 			</div>
 		</Button>
 	{/if}
@@ -590,7 +741,7 @@
 		<Button onclick={runNow} size="sm" variant="outline" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-				<span>Run Now</span>
+				<span>Sync Now</span>
 			</div>
 		</Button>
 	{/if}
@@ -621,7 +772,7 @@
 		<Button onclick={openCreatePolicy} size="sm" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-				<span>New</span>
+				<span>New Policy</span>
 			</div>
 		</Button>
 
@@ -643,10 +794,10 @@
 </div>
 
 <Dialog.Root bind:open={policyModal.open}>
-	<Dialog.Content class="w-[90%] max-w-3xl overflow-hidden p-5">
+	<Dialog.Content class="w-[90%] max-w-4xl overflow-hidden p-5">
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
-				<span>{policyModal.edit ? 'Edit Replication Policy' : 'New Replication Policy'}</span>
+				<span>{policyModal.edit ? 'Edit Protection Policy' : 'New Protection Policy'}</span>
 				<Button size="sm" variant="link" class="h-4" title="Close" onclick={closePolicyModal}>
 					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">Close</span>
@@ -655,20 +806,25 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
+			<p class="text-muted-foreground text-sm">
+				Use the guided settings below for normal HA behavior. Advanced controls are available at the
+				end.
+			</p>
+
 			<CustomValueInput
-				label="Policy Name"
+				label="Policy name"
 				placeholder="critical-vm-ha"
 				bind:value={policyModal.name}
 				classes="space-y-1"
 			/>
 
-			<div class="grid grid-cols-3 gap-3">
+			<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 				<SimpleSelect
-					label="Workload Type"
+					label="Protect"
 					value={policyModal.guestType}
 					options={[
-						{ value: 'vm', label: 'VM' },
-						{ value: 'jail', label: 'Jail' }
+						{ value: 'vm', label: 'Virtual machine (VM)' },
+						{ value: 'jail', label: 'Jail (container)' }
 					]}
 					onChange={(value) => {
 						policyModal.guestType = (value || 'vm') as 'vm' | 'jail';
@@ -682,7 +838,7 @@
 				/>
 
 				<SimpleSelect
-					label="Workload Node"
+					label="Find workload on"
 					value={policyModal.workloadNodeId}
 					options={workloadNodeOptions}
 					onChange={(value) => {
@@ -692,10 +848,10 @@
 				/>
 
 				<SimpleSelect
-					label="Workload"
+					label="Workload to protect"
 					value={policyModal.guestId}
 					options={guestOptions}
-					placeholder={policyModal.guestType === 'vm' ? 'Select VM' : 'Select Jail'}
+					placeholder={policyModal.guestType === 'vm' ? 'Choose VM' : 'Choose Jail'}
 					disabled={policyModal.guestType === 'vm'
 						? vmsLoading || guestOptions.length === 0
 						: jailsLoading || guestOptions.length === 0}
@@ -705,105 +861,100 @@
 				/>
 			</div>
 
-			<div class="grid grid-cols-4 gap-3">
-				<SimpleSelect
-					label="Source Mode"
-					value={policyModal.sourceMode}
-					options={[
-						{ value: 'follow_active', label: 'Follow Active' },
-						{ value: 'pinned_primary', label: 'Pinned Primary' }
-					]}
-					onChange={(value) => {
-						policyModal.sourceMode = (value || 'follow_active') as
-							| 'follow_active'
-							| 'pinned_primary';
-					}}
-				/>
-
-				<SimpleSelect
-					label="Source Node"
-					value={policyModal.sourceNodeId}
-					options={sourceNodeOptions}
-					disabled={policyModal.sourceMode !== 'pinned_primary'}
-					onChange={(value) => {
-						policyModal.sourceNodeId = value;
-					}}
-				/>
-
-				<SimpleSelect
-					label="Failback"
-					value={policyModal.failbackMode}
-					options={[
-						{ value: 'manual', label: 'Manual' },
-						{ value: 'auto', label: 'Auto' }
-					]}
-					onChange={(value) => {
-						policyModal.failbackMode = (value || 'manual') as 'manual' | 'auto';
-					}}
-				/>
-
-				<SimpleSelect
-					label="Failover"
-					value={policyModal.failoverMode}
-					options={[
-						{ value: 'manual', label: 'Manual' },
-						{ value: 'auto_safe', label: 'Auto Safe' },
-						{ value: 'auto_force', label: 'Auto Force' }
-					]}
-					onChange={(value) => {
-						policyModal.failoverMode = (value || 'manual') as 'manual' | 'auto_safe' | 'auto_force';
-					}}
-				/>
+			<div class="rounded-md border p-3">
+				<div class="mb-2">
+					<p class="text-sm font-medium">If the active server goes down</p>
+					<p class="text-muted-foreground text-xs">
+						Choose what should happen automatically.
+					</p>
+				</div>
+				<RadioGroup.Root bind:value={policyModal.failoverMode} class="gap-2">
+					{#each failoverCards as card (card.value)}
+						<label
+							for={`policy-failover-${card.value}`}
+							class={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
+								policyModal.failoverMode === card.value ? 'border-primary bg-muted/30' : 'border-border'
+							} ${card.dangerous ? 'border-red-500/40' : ''}`}
+						>
+							<RadioGroup.Item value={card.value} id={`policy-failover-${card.value}`} class="mt-1" />
+							<div class="space-y-1">
+								<p class="text-sm font-medium">{card.title}</p>
+								<p class="text-muted-foreground text-xs">{card.description}</p>
+								<p class={`text-xs ${card.dangerous ? 'text-red-300' : 'text-muted-foreground'}`}>
+									{card.impact}
+								</p>
+							</div>
+						</label>
+					{/each}
+				</RadioGroup.Root>
+				{#if policyModal.failoverMode === 'auto_force'}
+					<div class="mt-3 rounded-md border border-red-500/40 bg-red-500/10 p-2">
+						<CustomCheckbox
+							label="I understand automatic force recovery can lose the newest writes."
+							bind:checked={policyModal.confirmAutoForce}
+							classes="flex items-start gap-2"
+						/>
+					</div>
+				{/if}
 			</div>
 
-			<div class="grid grid-cols-[1fr_auto] items-end gap-3">
-				<CustomValueInput
-					placeholder="*/15 * * * *"
-					bind:value={policyModal.cronExpr}
-					classes="space-y-1"
-					labelHTML={true}
-					label={`
-                    <span class="text-sm font-medium text-gray-200">
-                        Cron Expression${
-													cronToHuman(policyModal.cronExpr)
-														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(policyModal.cronExpr)})</span>`
-														: ''
-												}
-                    </span>`}
-				/>
-				<CustomCheckbox
-					label="Enabled"
-					bind:checked={policyModal.enabled}
-					classes="mb-2 flex items-center gap-2"
-				/>
+			<div class="rounded-md border p-3">
+				<div class="mb-2">
+					<p class="text-sm font-medium">Normal source behavior</p>
+					<p class="text-muted-foreground text-xs">
+						Choose whether the source follows the active node or stays pinned to one preferred
+						node.
+					</p>
+				</div>
+				<RadioGroup.Root bind:value={policyModal.sourceMode} class="gap-2">
+					{#each sourceModeCards as card (card.value)}
+						<label
+							for={`policy-source-${card.value}`}
+							class={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
+								policyModal.sourceMode === card.value ? 'border-primary bg-muted/30' : 'border-border'
+							}`}
+						>
+							<RadioGroup.Item value={card.value} id={`policy-source-${card.value}`} class="mt-1" />
+							<div class="space-y-1">
+								<p class="text-sm font-medium">{card.title}</p>
+								<p class="text-muted-foreground text-xs">{card.description}</p>
+							</div>
+						</label>
+					{/each}
+				</RadioGroup.Root>
 			</div>
 
 			<div class="rounded-md border p-3">
 				<div class="mb-2 flex items-center justify-between">
-					<span class="text-sm font-medium">Target Nodes (Weight)</span>
+					<div>
+						<p class="text-sm font-medium">Target servers</p>
+						<p class="text-muted-foreground text-xs">
+							Higher priority gets picked first when auto-selecting a target.
+						</p>
+					</div>
 					<Button size="sm" variant="outline" class="h-6" onclick={addTargetRow}>
 						<div class="flex items-center">
 							<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-							<span>Add Target</span>
+							<span>Add target</span>
 						</div>
 					</Button>
 				</div>
 
 				<div class="space-y-2">
 					{#each policyModal.targets as target, idx (idx)}
-						<div class="grid grid-cols-[1fr_120px_auto] items-end gap-2">
+						<div class="grid grid-cols-1 items-end gap-2 md:grid-cols-[1fr_140px_auto]">
 							<SimpleSelect
-								label={idx === 0 ? 'Node' : ''}
+								label={idx === 0 ? 'Target server' : ''}
 								value={target.nodeId}
 								options={nodeOptions}
-								placeholder="Select node"
+								placeholder="Choose target"
 								onChange={(value) => {
 									policyModal.targets[idx].nodeId = value;
 								}}
 							/>
 
 							<CustomValueInput
-								label={idx === 0 ? 'Weight' : ''}
+								label={idx === 0 ? 'Priority' : ''}
 								placeholder="100"
 								type="number"
 								bind:value={policyModal.targets[idx].weight}
@@ -823,6 +974,54 @@
 					{/each}
 				</div>
 			</div>
+
+			<details class="rounded-md border p-3">
+				<summary class="cursor-pointer text-sm font-medium">Advanced options</summary>
+				<div class="mt-3 grid gap-3">
+					<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+						<SimpleSelect
+							label="Preferred primary node"
+							value={policyModal.sourceNodeId}
+							options={sourceNodeOptions}
+							disabled={policyModal.sourceMode !== 'pinned_primary'}
+							onChange={(value) => {
+								policyModal.sourceNodeId = value;
+							}}
+						/>
+
+						<SimpleSelect
+							label="When preferred primary comes back"
+							value={policyModal.failbackMode}
+							options={[
+								{ value: 'manual', label: 'Stay on current active node until admin moves it' },
+								{ value: 'auto', label: 'Automatically move back to preferred primary node' }
+							]}
+							onChange={(value) => {
+								policyModal.failbackMode = (value || 'manual') as 'manual' | 'auto';
+							}}
+						/>
+					</div>
+
+					<div class="grid grid-cols-[1fr_auto] items-end gap-3">
+						<CustomValueInput
+							label="Sync schedule (cron)"
+							placeholder="*/15 * * * *"
+							bind:value={policyModal.cronExpr}
+							classes="space-y-1"
+						/>
+						<CustomCheckbox
+							label="Policy enabled"
+							bind:checked={policyModal.enabled}
+							classes="mb-2 flex items-center gap-2"
+						/>
+					</div>
+					<p class="text-muted-foreground text-xs">
+						{humanCron
+							? `Current schedule: ${humanCron}.`
+							: 'Enter a valid cron schedule, for example: */15 * * * *'}
+					</p>
+				</div>
+			</details>
 		</div>
 
 		<Dialog.Footer>
@@ -836,7 +1035,7 @@
 	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
-				<span>Trigger Failover</span>
+				<span>Move Active Workload</span>
 				<Button size="sm" variant="link" class="h-4" title="Close" onclick={closeFailoverModal}>
 					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 					<span class="sr-only">Close</span>
@@ -845,57 +1044,98 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
-			<SimpleSelect
-				label="Mode"
-				value={failoverModal.mode}
-				options={[
-					{ value: 'safe', label: 'Safe (demote + catch-up)' },
-					{ value: 'force', label: 'Force (recover from hard-down owner)' }
-				]}
-				onChange={(value) => {
-					failoverModal.mode = (value || 'safe') as 'safe' | 'force';
-					if (failoverModal.mode !== 'force') {
-						failoverModal.confirmDataLoss = false;
-					}
-				}}
-			/>
+			<p class="text-muted-foreground text-sm">
+				Choose how to move policy <span class="font-medium">{selectedPolicyName || '-'}</span>.
+			</p>
+
+			{#if !selectedPolicyOwnerOnline}
+				<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+					Safe move is unavailable because the current active node appears down.
+				</div>
+			{/if}
+
+			<div class="rounded-md border p-3">
+				<div class="mb-2">
+					<p class="text-sm font-medium">Move type</p>
+					<p class="text-muted-foreground text-xs">
+						Use Safe move when possible. Use Force recovery only for hard-down owner scenarios.
+					</p>
+				</div>
+				<RadioGroup.Root bind:value={failoverModal.mode} class="gap-2">
+					{#each failoverModeCards as card (card.value)}
+						<label
+							for={`failover-mode-${card.value}`}
+							class={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
+								failoverModal.mode === card.value ? 'border-primary bg-muted/30' : 'border-border'
+							} ${card.value === 'force' ? 'border-red-500/40' : ''}`}
+						>
+							<RadioGroup.Item value={card.value} id={`failover-mode-${card.value}`} class="mt-1" />
+							<div class="space-y-1">
+								<p class="text-sm font-medium">{card.title}</p>
+								<p class="text-muted-foreground text-xs">{card.description}</p>
+								<p class={`text-xs ${card.value === 'force' ? 'text-red-300' : 'text-muted-foreground'}`}>
+									{card.impact}
+								</p>
+							</div>
+						</label>
+					{/each}
+				</RadioGroup.Root>
+			</div>
 
 			<SimpleSelect
-				label="Target Node"
+				label="Move to (optional)"
 				value={failoverModal.targetNodeId}
 				options={failoverTargetOptions}
+				disabled={failoverTargetOptions.length <= 1}
 				onChange={(value) => {
 					failoverModal.targetNodeId = value;
 				}}
 			/>
+			{#if failoverTargetHint}
+				<p class="text-xs text-amber-300">{failoverTargetHint}</p>
+			{/if}
 
 			{#if selectedPolicy?.sourceMode === 'pinned_primary'}
 				<CustomCheckbox
-					label="Move pinned source to target (avoid immediate auto-failback bounce)"
+					label="Also set this target as the new preferred primary (prevents bounce-back)"
 					bind:checked={failoverModal.movePinnedSource}
 					classes="flex items-center gap-2"
 				/>
 			{/if}
 
 			{#if failoverModal.mode === 'force'}
-				<CustomCheckbox
-					label="I understand force failover can lose recent writes from the old owner"
-					bind:checked={failoverModal.confirmDataLoss}
-					classes="flex items-center gap-2"
-				/>
+				<div class="rounded-md border border-red-500/40 bg-red-500/10 p-3">
+					<div class="space-y-3">
+						<CustomCheckbox
+							label="I understand Force recovery may lose the newest writes from the old active node."
+							bind:checked={failoverModal.confirmDataLoss}
+							classes="flex items-start gap-2"
+						/>
+						<CustomValueInput
+							label={`Type ${FORCE_RECOVERY_CONFIRM_TEXT} to continue`}
+							placeholder={FORCE_RECOVERY_CONFIRM_TEXT}
+							bind:value={failoverModal.forceConfirmText}
+							classes="space-y-1"
+						/>
+					</div>
+				</div>
 			{/if}
 		</div>
 
 		<Dialog.Footer>
 			<Button variant="outline" onclick={closeFailoverModal}>Cancel</Button>
-			<Button onclick={failoverNow} disabled={failoverLoading}>
+			<Button
+				variant={failoverModal.mode === 'force' ? 'destructive' : 'default'}
+				onclick={failoverNow}
+				disabled={failoverLoading || failoverTargetOptions.length <= 1}
+			>
 				{#if failoverLoading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
-						<span>Triggering</span>
+						<span>Requesting</span>
 					</div>
 				{:else}
-					<span>Trigger</span>
+					<span>{failoverModal.mode === 'force' ? 'Force recovery' : 'Safe move'}</span>
 				{/if}
 			</Button>
 		</Dialog.Footer>

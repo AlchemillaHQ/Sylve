@@ -1,7 +1,8 @@
-<script>
+<script lang="ts">
 	import { listReplicationEvents, listReplicationPolicies } from '$lib/api/cluster/replication';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { filterInProgressReplicationEvents } from '$lib/utils/replication-activity';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
 
@@ -16,17 +17,12 @@
 					listReplicationPolicies(),
 					listReplicationEvents(200)
 				]);
-				const policyNameById = {};
+				const policyNameById: Record<number, string> = {};
 				for (const policy of policies) {
 					policyNameById[policy.id] = policy.name;
 				}
 
-				const running = events
-					.filter(
-						(event) =>
-							String(event.status || '').toLowerCase() === 'running' &&
-							(event.eventType === 'replication' || event.eventType === 'failover')
-					)
+				const running = filterInProgressReplicationEvents(events)
 					.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
 					.map((event) => ({
 						...event,
@@ -41,7 +37,7 @@
 					updatedAt: new Date().toISOString(),
 					error: ''
 				};
-			} catch (error) {
+			} catch (error: any) {
 				return {
 					available: false,
 					running: [],
@@ -63,16 +59,32 @@
 	let runningReplicationEvents = $derived(replicationActivity.current.running || []);
 	let runningReplicationCount = $derived(runningReplicationEvents.length);
 
-	function eventTypeLabel(value) {
+	function eventTypeLabel(value: string): string {
 		if (value === 'failover') return 'Failover';
 		if (value === 'replication') return 'Replication';
 		return value || 'Event';
 	}
 
-	function compactNodeLabel(value) {
+	function compactNodeLabel(value: string): string {
 		const nodeId = String(value || '').trim();
 		if (!nodeId) return '-';
 		return nodeId.length > 12 ? `${nodeId.slice(0, 8)}...` : nodeId;
+	}
+
+	function inProgressLabel(status: string): string {
+		switch (String(status || '').trim().toLowerCase()) {
+			case 'demoting':
+				return 'Demoting';
+			case 'promoting':
+				return 'Promoting';
+			case 'catchup':
+			case 'catch-up':
+			case 'catching_up':
+			case 'catching-up':
+				return 'Catching up';
+			default:
+				return 'Running';
+		}
 	}
 
 	useInterval(5000, {
@@ -89,7 +101,7 @@
 	});
 </script>
 
-{#if replicationActivity.current.available || runningReplicationCount > 0}
+{#if runningReplicationCount > 0}
 	<Button
 		class="relative h-6"
 		size="sm"
@@ -134,7 +146,7 @@
 							<div class="text-sm font-medium">
 								{eventTypeLabel(event.eventType)} - {event.policyName}
 							</div>
-							<div class="text-xs text-yellow-500">Running</div>
+							<div class="text-xs text-yellow-500">{inProgressLabel(event.status)}</div>
 						</div>
 						<div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
 							<div>Workload</div>

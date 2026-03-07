@@ -91,9 +91,6 @@ msgstr "交换机"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Manual"
 msgstr "手动"
 
@@ -917,7 +914,6 @@ msgstr "结束时间"
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Node"
 msgstr "节点"
 
@@ -1120,7 +1116,6 @@ msgstr "批量删除"
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/storage/+page.svelte
 msgid "New"
 msgstr "新键"
@@ -3241,7 +3236,6 @@ msgstr "VNC"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enabled"
 msgstr "已启用"
@@ -6199,7 +6193,6 @@ msgstr "{0} 切换失败"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/RestoreForm.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/restore/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail"
 msgstr "Jail"
 
@@ -6834,8 +6827,6 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Mode"
 msgstr ""
 
@@ -6892,7 +6883,6 @@ msgstr ""
 #~ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Run Now"
 msgstr ""
 
@@ -7004,7 +6994,6 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select node"
 msgstr ""
 
@@ -7953,7 +7942,6 @@ msgid "No VMs available"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Select VM"
 msgstr ""
 
@@ -8305,21 +8293,17 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Workload"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Source Node"
-msgstr ""
+#~ msgid "Source Node"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Source Mode"
-msgstr ""
+#~ msgid "Source Mode"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failback"
-msgstr ""
+#~ msgid "Failback"
+#~ msgstr ""
 
 #~ msgid "Cron"
 #~ msgstr ""
@@ -8328,37 +8312,29 @@ msgstr ""
 msgid "Next Run"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Pinned Primary"
-msgstr ""
+#~ msgid "Pinned Primary"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Follow Active"
-msgstr ""
+#~ msgid "Follow Active"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto"
-msgstr ""
+#~ msgid "Auto"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Target nodes must be unique"
-msgstr ""
+#~ msgid "Target nodes must be unique"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "At least one target node is required"
-msgstr ""
+#~ msgid "At least one target node is required"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Policy name is required"
-msgstr ""
+#~ msgid "Policy name is required"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Select a valid workload"
-msgstr ""
+#~ msgid "Select a valid workload"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Source node is required for pinned primary mode"
-msgstr ""
+#~ msgid "Source node is required for pinned primary mode"
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Policy updated"
@@ -8392,37 +8368,29 @@ msgstr ""
 msgid "Failed to start replication run"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Edit Replication Policy"
-msgstr ""
+#~ msgid "Edit Replication Policy"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "New Replication Policy"
-msgstr ""
+#~ msgid "New Replication Policy"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Policy Name"
-msgstr ""
+#~ msgid "Policy Name"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Workload Type"
-msgstr ""
+#~ msgid "Workload Type"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Select Jail"
-msgstr ""
+#~ msgid "Select Jail"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Target Nodes (Weight)"
-msgstr ""
+#~ msgid "Target Nodes (Weight)"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Add Target"
-msgstr ""
+#~ msgid "Add Target"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Weight"
-msgstr ""
+#~ msgid "Weight"
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "All policies"
@@ -8440,9 +8408,8 @@ msgstr ""
 msgid "Failed to copy output"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Target Node"
-msgstr ""
+#~ msgid "Target Node"
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -8668,86 +8635,64 @@ msgstr ""
 msgid "All Nodes"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Workload Node"
-msgstr ""
+#~ msgid "Workload Node"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto-select by policy target weights"
-msgstr ""
+#~ msgid "Auto-select by policy target weights"
+#~ msgstr ""
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Active Node"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Pinned"
-msgstr ""
+#~ msgid "Pinned"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Follow"
-msgstr ""
+#~ msgid "Follow"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto Force"
-msgstr ""
+#~ msgid "Auto Force"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Auto Safe"
-msgstr ""
+#~ msgid "Auto Safe"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failback Auto"
-msgstr ""
+#~ msgid "Failback Auto"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failback Manual"
-msgstr ""
+#~ msgid "Failback Manual"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Force failover requires data-loss confirmation"
-msgstr ""
+#~ msgid "Force failover requires data-loss confirmation"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failover requested"
-msgstr ""
+#~ msgid "Failover requested"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Failed to trigger failover"
-msgstr ""
+#~ msgid "Failed to trigger failover"
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Failover"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Trigger Failover"
-msgstr ""
+#~ msgid "Trigger Failover"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Safe (demote + catch-up)"
-msgstr ""
+#~ msgid "Safe (demote + catch-up)"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Force (recover from hard-down owner)"
-msgstr ""
+#~ msgid "Force (recover from hard-down owner)"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Move pinned source to target (avoid immediate auto-failback bounce)"
-msgstr ""
+#~ msgid "Move pinned source to target (avoid immediate auto-failback bounce)"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "I understand force failover can lose recent writes from the old owner"
-msgstr ""
+#~ msgid "I understand force failover can lose recent writes from the old owner"
+#~ msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Trigger"
-msgstr ""
+#~ msgid "Trigger"
+#~ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 msgid "Failed to load replication activity"
@@ -8770,10 +8715,12 @@ msgstr ""
 msgid "Last updated: {0}"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Demoting"
 msgstr ""
 
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Promoting"
 msgstr ""
@@ -8782,9 +8729,8 @@ msgstr ""
 msgid "Finished"
 msgstr ""
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Triggering"
-msgstr ""
+#~ msgid "Triggering"
+#~ msgstr ""
 
 #~ msgid "Trigger Failover 1"
 #~ msgstr ""
@@ -8808,4 +8754,320 @@ msgstr ""
 
 #: src/routes/datacenter/summary/+page.svelte
 msgid "Unable to load charts."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Stay with whichever node is currently active"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "After any move, this new active node becomes the new source."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Keep one preferred primary node"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Use one fixed primary node as the source until you change it."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Manual only"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "No automatic move when the active node goes down."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "An admin chooses when and where to move the workload."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatic safe move"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatically move after a safe demote and sync."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Protects data first, then promotes a target."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatic force recovery"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatically recover even when clean handoff is impossible."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Fastest recovery, but newest writes may be lost."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Preferred primary node"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Follow current active node"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto force recovery"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto safe move"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Manual moves only"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto move back"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Manual move back"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Auto-pick the best target from policy priority"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "No online target server is currently available for this policy."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Behavior"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Each target server can be added only once."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add at least one target server."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Give this policy a name."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose the VM or jail to protect."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Pick the preferred primary node for this policy."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Confirm the risk before enabling automatic force recovery."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force recovery requested."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe move requested."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move Active"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Sync Now"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "New Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Edit Protection Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "New Protection Policy"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid ""
+"Use the guided settings below for normal HA behavior. Advanced controls are available at the\n"
+"end."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy name"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Protect"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Virtual machine (VM)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Jail (container)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Find workload on"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Workload to protect"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose VM"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose Jail"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "If the active server goes down"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose what should happen automatically."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "I understand automatic force recovery can lose the newest writes."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Normal source behavior"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid ""
+"Choose whether the source follows the active node or stays pinned to one preferred\n"
+"node."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target servers"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Higher priority gets picked first when auto-selecting a target."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Add target"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Target server"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose target"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Priority"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Advanced options"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "When preferred primary comes back"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Stay on current active node until admin moves it"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Automatically move back to preferred primary node"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Sync schedule (cron)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Policy enabled"
+msgstr ""
+
+#. placeholder {0}: humanCron
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Current schedule: {0}."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Enter a valid cron schedule, for example: */15 * * * *"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move Active Workload"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Choose how to move policy <0/>."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe move is unavailable because the current active node appears down."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move type"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Use Safe move when possible. Use Force recovery only for hard-down owner scenarios."
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Move to (optional)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Also set this target as the new preferred primary (prevents bounce-back)"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "I understand Force recovery may lose the newest writes from the old active node."
+msgstr ""
+
+#. placeholder {0}: FORCE_RECOVERY_CONFIRM_TEXT
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Type {0} to continue"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Requesting"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Force recovery"
+msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "Safe move"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+msgid "Catching up"
 msgstr ""
