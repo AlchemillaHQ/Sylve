@@ -11,11 +11,18 @@ package utils
 import (
 	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mackerelio/go-osstat/loadavg"
 )
+
+func resetHostnameCacheForTest() {
+	hostnameOnce = sync.Once{}
+	cachedHostname = ""
+	hostnameErr = nil
+}
 
 func TestGetSystemUUID_Success(t *testing.T) {
 	original := getSysctlString
@@ -53,6 +60,8 @@ func TestGetSystemUUID_Error(t *testing.T) {
 
 func TestGetSystemHostname_Success(t *testing.T) {
 	original := getHostname
+	resetHostnameCacheForTest()
+	defer resetHostnameCacheForTest()
 	defer func() { getHostname = original }()
 
 	getHostname = func() (string, error) {
@@ -70,6 +79,8 @@ func TestGetSystemHostname_Success(t *testing.T) {
 
 func TestGetSystemHostname_Error(t *testing.T) {
 	original := getHostname
+	resetHostnameCacheForTest()
+	defer resetHostnameCacheForTest()
 	defer func() { getHostname = original }()
 
 	getHostname = func() (string, error) {

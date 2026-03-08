@@ -8,10 +8,10 @@
     "dist"
   ],
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "react",
     "baseUrl": ".",
     "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"],
       "@/*": [
         "./src/*"
       ]

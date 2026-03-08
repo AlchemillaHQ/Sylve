@@ -24,6 +24,13 @@ import (
 	"github.com/hashicorp/raft"
 )
 
+type backupTargetZelta interface {
+	ValidateTarget(ctx context.Context, target *clusterModels.BackupTarget) error
+	RemoveSSHKey(targetID uint)
+}
+
+var saveBackupTargetSSHKey = zelta.SaveSSHKey
+
 func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		targets, err := cS.ListBackupTargets()
@@ -45,7 +52,7 @@ func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
-func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -71,7 +78,7 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 		sshKeyPath := ""
 		tmpID := uint(time.Now().UnixNano() % 1000000)
 		if strings.TrimSpace(req.SSHKey) != "" {
-			path, err := zelta.SaveSSHKey(tmpID, req.SSHKey)
+			path, err := saveBackupTargetSSHKey(tmpID, req.SSHKey)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 					Status:  "error",
@@ -130,7 +137,7 @@ func CreateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 	}
 }
 
-func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func UpdateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -177,7 +184,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 
 		sshKeyPath := existing.SSHKeyPath
 		if strings.TrimSpace(req.SSHKey) != "" {
-			path, err := zelta.SaveSSHKey(uint(id64), req.SSHKey)
+			path, err := saveBackupTargetSSHKey(uint(id64), req.SSHKey)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 					Status:  "error",
@@ -239,7 +246,7 @@ func UpdateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 	}
 }
 
-func DeleteBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func DeleteBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
@@ -278,7 +285,7 @@ func DeleteBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 	}
 }
 
-func ValidateBackupTarget(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc {
+func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id64, err := strconv.ParseUint(c.Param("id"), 10, 64)
 		if err != nil || id64 == 0 {

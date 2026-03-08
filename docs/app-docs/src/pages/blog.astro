@@ -2,9 +2,7 @@
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { getCollection } from "astro:content";
 
-const posts = await getCollection("blog", ({ id }) => {
-  return !id.startsWith("ml/");
-});
+const posts = await getCollection("blog");
 const sortedPosts = posts.sort(
   (a, b) =>
     new Date(b.data.pubDate).getTime() - new Date(a.data.pubDate).getTime(),
@@ -13,8 +11,8 @@ const sortedPosts = posts.sort(
 
 <BaseLayout title="Blog - FreeBSD Bhyve, Jails & ZFS Guides | Sylve">
   <div class="min-h-screen pt-32 px-8 max-w-4xl mx-auto mb-24">
-    <h1 class="text-4xl font-bold mb-4">Sylve Blog</h1>
-    <p class="mb-8 text-muted-foreground">
+    <h1 class="text-4xl font-bold mb-4" data-i18n="sylveBlog">Sylve Blog</h1>
+    <p class="mb-8 text-muted-foreground" data-i18n="blogIntro">
       Discover articles, tutorials, and insights about managing FreeBSD. Whether
       you're deploying Bhyve VMs, mastering ZFS, or configuring Jails—everything
       you need to run production FreeBSD servers.

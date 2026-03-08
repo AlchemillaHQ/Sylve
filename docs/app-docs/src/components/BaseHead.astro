@@ -9,7 +9,7 @@ export interface Props {
   image?: string;
 }
 
-const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+// const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 
 const { title, description, image = "/og.png" } = Astro.props;
 ---
@@ -21,7 +21,7 @@ const { title, description, image = "/og.png" } = Astro.props;
 <meta name="generator" content={Astro.generator} />
 
 <!-- Canonical URL -->
-<link rel="canonical" href={canonicalURL} />
+<!-- <link rel="canonical" href={canonicalURL} /> -->
 
 <!-- Primary Meta Tags -->
 <title>{title}</title>
@@ -43,7 +43,7 @@ const { title, description, image = "/og.png" } = Astro.props;
 <meta property="twitter:image" content={new URL(image, Astro.url)} />
 
 <!-- Apple Touch Icon -->
-<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
 <!-- Additional SEO Meta Tags -->
 <meta name="robots" content="index, follow" />

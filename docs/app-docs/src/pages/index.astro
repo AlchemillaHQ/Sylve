@@ -1,10 +1,10 @@
 ---
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import Hero from "@/components/sections/Hero.astro";
-import SylveExplainer from "@/components/sections/SylveExplainer.tsx";
-import Architecture from "@/components/sections/Architecture.astro";
+import SylveExplainer from "@/components/sections/SylveExplainer.svelte";
+import Sponsors from "@/components/sections/Sponsors.astro";
 import Community from "@/components/sections/Community.astro";
-import FAQ from "@/components/sections/FAQ";
+import FAQ from "@/components/sections/FAQ.svelte";
 ---
 
 <BaseLayout>
@@ -12,11 +12,8 @@ import FAQ from "@/components/sections/FAQ";
     <Hero />
     <div class="relative py-12 px-4 sm:px-6 lg:px-8">
       <SylveExplainer client:load />
-
-      <Architecture />
-
+      <Sponsors />
       <FAQ client:load />
-
       <Community />
     </div>
   </div>

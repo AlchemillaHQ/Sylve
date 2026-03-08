@@ -12,15 +12,61 @@ const { title, description } = Astro.props;
 ---
 
 <!doctype html>
-<html lang={Astro.currentLocale ?? "en"}>
+<html lang="en">
   <head>
+    <script is:inline>
+      (() => {
+        const storageKey = "sylve_theme";
+        const root = document.documentElement;
+        const storedTheme = window.localStorage.getItem(storageKey);
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = storedTheme === "light" || storedTheme === "dark"
+          ? storedTheme
+          : prefersDark
+            ? "dark"
+            : "light";
+
+        root.classList.toggle("dark", theme === "dark");
+        root.dataset.websiteTheme = theme;
+      })();
+    </script>
     <BaseHead
       title={title ?? SITE_TITLE}
       description={description ?? SITE_DESCRIPTION}
     />
   </head>
-  <body class="dark">
-    <div class="min-h-screen bg-background text-foreground">
+  <body>
+    <script is:inline>
+      (() => {
+        const storageKey = "sylve_theme";
+        const root = document.documentElement;
+
+        const getTheme = () => (root.classList.contains("dark") ? "dark" : "light");
+        const setTheme = (theme) => {
+          root.classList.toggle("dark", theme === "dark");
+          root.dataset.websiteTheme = theme;
+          window.localStorage.setItem(storageKey, theme);
+        };
+
+        document.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) {
+            return;
+          }
+
+          const toggle = target.closest("[data-theme-toggle]");
+          if (!toggle) {
+            return;
+          }
+
+          const nextTheme = getTheme() === "dark" ? "light" : "dark";
+          setTheme(nextTheme);
+        });
+
+        document.documentElement.lang = "en";
+      })();
+    </script>
+    <div class="min-h-screen overflow-x-clip bg-background text-foreground">
       <Header title="Sylve" />
       <div>
         <slot />

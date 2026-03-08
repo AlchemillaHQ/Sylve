@@ -167,10 +167,6 @@ func (s *Service) ValidateTarget(ctx context.Context, target *clusterModels.Back
 
 	poolExists, poolOutput, poolErr := s.remoteZFSPoolExists(ctx, target, pool)
 	if poolErr != nil {
-		if !poolExists {
-			return fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
-		}
-
 		return fmt.Errorf("backup_pool_check_failed: %s", poolOutput)
 	}
 

@@ -199,6 +199,7 @@ func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 					Error:   err.Error(),
 					Data:    nil,
 				})
+				return
 			}
 
 			c.JSON(200, internal.APIResponse[any]{

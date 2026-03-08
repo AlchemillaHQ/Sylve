@@ -2,14 +2,18 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
+import svelte from '@astrojs/svelte';
 
-import react from '@astrojs/react';
-
-const site = "http://localhost:4322/";
+const site = "https://sylve.io";
 
 // https://astro.build/config
 export default defineConfig({
+    output: "static",
     site,
+    redirects: {
+        '/docs': '/getting-started/',
+        '/docs/': '/getting-started/',
+    },
     integrations: [starlight({
         title: 'Sylve',
         defaultLocale: 'root',
@@ -18,17 +22,12 @@ export default defineConfig({
                 label: 'English',
                 lang: 'en',
             },
-            ml: {
-                label: 'മലയാളം',
-                lang: 'ml',
-            },
         },
         logo: {
             light: './src/assets/logo-black.svg',
             dark: './src/assets/logo-white.svg',
         },
         favicon: './src/assets/logo-white.svg',
-
         social: [
             {
                 icon: 'github',
@@ -38,25 +37,19 @@ export default defineConfig({
             },
         ],
         components: {
+            FallbackContentNotice: './src/components/starlight/FallbackContentNotice.astro',
+            SiteTitle: './src/components/starlight/SiteTitle.astro'
         },
         sidebar: [
             {
-                label: 'Guides',
-                items: [
-                    // Each item here is one entry in the navigation menu.
-                    { label: 'Example Guide', slug: 'guides/example' },
-                ],
+                label: 'Docuementation',
+                autogenerate: { directory: 'getting-started' },
             },
-            {
-                label: 'Reference',
-                autogenerate: { directory: 'reference' },
-            },
-
         ],
 
         customCss: ['./src/styles/global.css', './src/assets/landing.css'],
-    }), react()],
+    }), svelte()],
     vite: {
-        plugins: [tailwindcss(),],
-    },
+        plugins: [tailwindcss()],
+    }
 });

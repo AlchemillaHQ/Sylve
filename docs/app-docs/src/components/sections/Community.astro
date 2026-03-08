@@ -1,46 +1,69 @@
----
-import { motion } from "framer-motion";
----
-
-<motion.section
-  initial={{ y: 40, opacity: 0 }}
-  whileInView={{ y: 0, opacity: 1 }}
-  transition={{ duration: 0.7, ease: "easeOut" }}
-  viewport={{ once: true }}
-  className="pt-10 pb-16"
-  client:load
+<section
+  class="pt-10 pb-16 -translate-y-4 animate-fade-in opacity-0"
+  style="--animation-delay: 120ms"
 >
   <div class="container mx-auto px-4 text-center">
-    <h2 class="text-3xl md:text-5xl font-bold mb-6 text-gradient">
+    <h2 class="text-3xl md:text-5xl font-bold mb-5 text-gradient">
       Join the Community
     </h2>
-    <p class="text-muted-foreground text-lg max-w-2xl mx-auto mb-12">
-      Sylve is a community-driven project. Whether you're a developer, a
-      sysadmin, or just a FreeBSD enthusiast, we'd love to have you on board.
+    <p class="text-muted-foreground text-lg max-w-3xl mx-auto mb-10">
+      Build with the open-source community or reach out directly for enterprise support.
+      Sylve is here for both fast-moving teams and production operators.
     </p>
 
-    <div class="flex flex-col sm:flex-row justify-center items-center gap-6">
-      <a
-        href="https://github.com/AlchemillaHQ/Sylve"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="flex items-center gap-3 px-8 py-4 rounded-full bg-foreground text-background font-bold transition-transform hover:scale-105"
-      >
-        <span class="icon-[mdi--github] text-2xl"></span>
-        Star on GitHub
-      </a>
-      <a
-        href="https://astro.build/chat"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="flex items-center gap-3 px-8 py-4 rounded-full border border-muted hover:bg-muted/20 font-bold transition-transform hover:scale-105"
-      >
-        <span class="icon-[mdi--discord] text-2xl text-[#5865F2]"></span>
-        Join Discord
-      </a>
+    <div class="mx-auto grid w-full max-w-5xl gap-4 text-left md:grid-cols-2">
+      <article class="rounded-2xl border border-border/70 bg-background/70 p-6 shadow-sm backdrop-blur">
+        <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/25 px-3 py-1 text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground">
+          <span class="icon-[lucide--users] size-3.5"></span>
+          Community
+        </div>
+        <h3 class="text-2xl font-semibold tracking-tight">Build in Public</h3>
+        <p class="mt-3 text-sm leading-relaxed text-muted-foreground">
+          Share ideas, report issues, and shape Sylve with other users.
+        </p>
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+          <a
+            href="https://github.com/AlchemillaHQ/Sylve"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition-transform hover:scale-[1.02]"
+          >
+            <span class="icon-[mdi--github] size-4.5"></span>
+            Our GitHub
+          </a>
+          <a
+            href="https://discord.gg/bJB826JvXK"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 rounded-full border border-muted bg-background px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-muted/25"
+          >
+            <span class="icon-[mdi--discord] size-4.5 text-[#5865F2]"></span>
+            Join Discord
+          </a>
+        </div>
+      </article>
+
+      <article class="relative overflow-hidden rounded-2xl border border-primary/20 bg-linear-to-br from-primary/8 via-background to-background p-6 shadow-sm">
+        <div class="absolute -right-8 -top-8 size-28 rounded-full bg-primary/10 blur-2xl" aria-hidden="true"></div>
+        <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-background/70 px-3 py-1 text-xs font-semibold tracking-[0.08em] uppercase text-muted-foreground">
+          <span class="icon-[lucide--briefcase-business] size-3.5"></span>
+          Enterprise Support
+        </div>
+        <h3 class="text-2xl font-semibold tracking-tight">Need Production Help?</h3>
+        <p class="mt-3 text-sm leading-relaxed text-muted-foreground">
+          Contact the Sylve team for enterprise support, architecture guidance, and deployment planning.
+        </p>
+        <a
+          href="mailto:hello@sylve.io?subject=Sylve%20Enterprise%20Support"
+          class="mt-6 inline-flex items-center gap-2 rounded-full border border-primary/35 bg-background px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-primary/10"
+        >
+          <span class="icon-[lucide--mail] size-4"></span>
+          hello@sylve.io
+        </a>
+      </article>
     </div>
 
-    <div class="mt-16 grid grid-cols-2 md:grid-cols-4 gap-8 opacity-50">
+    <div class="mt-16 grid grid-cols-3 gap-8 opacity-50">
       <div class="flex flex-col items-center">
         <span class="text-2xl font-bold">100%</span>
         <span class="text-sm text-muted-foreground uppercase tracking-wider"
@@ -48,13 +71,7 @@ import { motion } from "framer-motion";
         >
       </div>
       <div class="flex flex-col items-center">
-        <span class="text-2xl font-bold">FreeBSD</span>
-        <span class="text-sm text-muted-foreground uppercase tracking-wider"
-          >First</span
-        >
-      </div>
-      <div class="flex flex-col items-center">
-        <span class="text-2xl font-bold">MIT</span>
+        <span class="text-2xl font-bold">BSD-2-CLAUSE</span>
         <span class="text-sm text-muted-foreground uppercase tracking-wider"
           >Licensed</span
         >
@@ -67,4 +84,4 @@ import { motion } from "framer-motion";
       </div>
     </div>
   </div>
-</motion.section>
+</section>
