@@ -30,6 +30,7 @@ import (
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
 	sambaHandlers "github.com/alchemillahq/sylve/internal/handlers/samba"
 	systemHandlers "github.com/alchemillahq/sylve/internal/handlers/system"
+	taskHandlers "github.com/alchemillahq/sylve/internal/handlers/task"
 	utilitiesHandlers "github.com/alchemillahq/sylve/internal/handlers/utilities"
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
@@ -40,6 +41,7 @@ import (
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
@@ -80,6 +82,7 @@ func RegisterRoutes(r *gin.Engine,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	jailService *jail.Service,
+	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
 	zeltaService *zelta.Service,
 	fsm *clusterModels.FSMDispatcher,
@@ -286,7 +289,7 @@ func RegisterRoutes(r *gin.Engine,
 	vm.Use(EnsureCorrectHost(db, authService))
 	vm.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
-		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(libvirtService))
+		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
 		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
 		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
@@ -343,7 +346,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
 		jail.POST("/snapshots/:id/:snapshotId/rollback", jailHandlers.RollbackJailSnapshot(jailService))
 		jail.DELETE("/snapshots/:id/:snapshotId", jailHandlers.DeleteJailSnapshot(jailService))
-		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService))
+		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
@@ -519,6 +522,19 @@ func RegisterRoutes(r *gin.Engine,
 	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(db, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler)
+
+	tasks := api.Group("/tasks")
+	tasks.Use(middleware.EnsureAuthenticated(authService))
+	tasks.Use(EnsureCorrectHost(db, authService))
+	tasks.Use(middleware.RequestLoggerMiddleware(db, authService))
+	{
+		lifecycleTasks := tasks.Group("/lifecycle")
+		{
+			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService))
+			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService))
+			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService))
+		}
+	}
 
 	if proxyToVite {
 		r.NoRoute(func(c *gin.Context) {

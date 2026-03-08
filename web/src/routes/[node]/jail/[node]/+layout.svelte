@@ -4,11 +4,13 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
@@ -57,6 +59,15 @@
 		{ initialValue: null as JailState | null }
 	);
 
+	const lifecycleTask = resource(
+		() => `jail-lifecycle-task-${ctId}`,
+		async (): Promise<LifecycleTask | null> => {
+			if (!ctId) return null;
+			return await getActiveLifecycleTaskForGuest('jail', ctId);
+		},
+		{ initialValue: null as LifecycleTask | null }
+	);
+
 	const visible = new IsDocumentVisible();
 
 	let modalState = $state({
@@ -73,7 +84,7 @@
 	});
 
 	async function refreshJailState() {
-		await Promise.all([jail.refetch(), jState.refetch()]);
+		await Promise.all([jail.refetch(), jState.refetch(), lifecycleTask.refetch()]);
 	}
 
 	watch(
@@ -89,6 +100,14 @@
 		callback: () => {
 			if (visible.current && ctId) {
 				jState.refetch();
+			}
+		}
+	});
+
+	useInterval(() => 1500, {
+		callback: () => {
+			if (visible.current && ctId) {
+				lifecycleTask.refetch();
 			}
 		}
 	});
@@ -143,18 +162,11 @@
 
 	async function handleStop() {
 		if (!jail.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Stopping Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being stopped`;
-		modalState.loading.iconColor = 'text-red-500';
-
-		await sleep(1000);
 		const result = await jailAction(jail.current.ctId, 'stop');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
 
 		if (result.status === 'error') {
-			toast.error('Error stopping jail', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error stopping jail', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -163,7 +175,7 @@
 			jailPowerSignal.ctId = jail.current.ctId;
 			jailPowerSignal.action = 'stop';
 
-			toast.success('Jail stopped', {
+			toast.success('Jail stop queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -174,18 +186,11 @@
 
 	async function handleStart() {
 		if (!jail.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Starting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being started`;
-		modalState.loading.iconColor = 'text-green-500';
-
-		await sleep(1000);
 		const result = await jailAction(jail.current.ctId, 'start');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
 
 		if (result.status === 'error') {
-			toast.error('Error starting jail', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error starting jail', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -194,7 +199,7 @@
 			jailPowerSignal.ctId = jail.current.ctId;
 			jailPowerSignal.action = 'start';
 
-			toast.success('Jail started', {
+			toast.success('Jail start queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -202,6 +207,9 @@
 
 		await refreshJailState();
 	}
+
+	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -221,6 +229,12 @@
 						{/if}
 					</Badge>
 					<p class="truncate text-sm font-semibold">{jail.current.name} ({jail.current.ctId})</p>
+					{#if hasActiveLifecycleTask}
+						<Badge variant="outline" class="px-1.5 text-xs">
+							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+							{activeLifecycleAction}
+						</Badge>
+					{/if}
 				{/if}
 			</div>
 
@@ -229,6 +243,7 @@
 					{#if jState.current.state === 'ACTIVE'}
 						<Button
 							onclick={handleStop}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -238,6 +253,7 @@
 					{:else}
 						<Button
 							onclick={handleStart}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -247,6 +263,7 @@
 
 						<Button
 							onclick={openDeleteModal}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>

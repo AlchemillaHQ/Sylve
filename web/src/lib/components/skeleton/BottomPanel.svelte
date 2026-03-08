@@ -2,15 +2,17 @@
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getAuditRecords } from '$lib/api/info/audit';
+	import { getActiveLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
-	import { resource, watch } from 'runed';
+	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { fade } from 'svelte/transition';
 
@@ -75,6 +77,22 @@
 			return results;
 		}
 	);
+
+	const activeLifecycleTasks = resource(
+		() => `active-lifecycle-tasks-${effectiveHostname || 'default'}`,
+		async () => {
+			return await getActiveLifecycleTasks(undefined, undefined, effectiveHostname || undefined);
+		},
+		{
+			initialValue: [] as LifecycleTask[]
+		}
+	);
+
+	useInterval(() => 2000, {
+		callback: () => {
+			activeLifecycleTasks.refetch();
+		}
+	});
 
 	watch(
 		() => reload.auditLog,
@@ -213,6 +231,13 @@
 		});
 	});
 
+	let activeLifecycleCount = $derived(activeLifecycleTasks.current.length);
+
+	function lifecycleGuestLabel(task: LifecycleTask): string {
+		const prefix = task.guestType === 'vm' ? 'VM' : 'Jail';
+		return `${prefix} ${task.guestId}`;
+	}
+
 	export function formatStatus(status: string): string {
 		switch (status) {
 			case 'started':
@@ -235,6 +260,24 @@
 			class="relative flex h-full flex-col overflow-hidden"
 			transition:fade|global={{ duration: 400 }}
 		>
+			{#if activeLifecycleCount > 0}
+				<div class="bg-muted/35 border-b px-3 py-1.5 text-xs">
+					<div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
+						<span class="inline-flex items-center gap-1 font-medium">
+							<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
+							{activeLifecycleCount}
+							lifecycle action{activeLifecycleCount === 1 ? '' : 's'} in progress
+						</span>
+
+						{#each activeLifecycleTasks.current as task (task.id)}
+							<span class="bg-background rounded border px-2 py-0.5">
+								{lifecycleGuestLabel(task)} {task.action} ({task.status})
+							</span>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
 			<Table.Root class="w-full table-auto border-collapse">
 				<Table.Header class="bg-background sticky top-0 z-50">
 					<Table.Row class="dark:hover:bg-background ">

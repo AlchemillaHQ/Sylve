@@ -25,6 +25,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
@@ -855,6 +856,14 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 			return s.forceDestroy(domain, vm)
 
 		case <-ticker.C:
+			overrideRequested, overrideErr := s.hasShutdownOverrideRequested(vm.RID)
+			if overrideErr != nil {
+				logger.L.Warn().Err(overrideErr).Uint("rid", vm.RID).Msg("failed_to_check_vm_shutdown_override")
+			} else if overrideRequested {
+				logger.L.Warn().Uint("rid", vm.RID).Msg("vm_shutdown_override_requested_force_stopping")
+				return s.forceDestroy(domain, vm)
+			}
+
 			state, _, err := s.Conn.DomainGetState(*domain, 0)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_state: %w", err)
@@ -865,6 +874,27 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 			}
 		}
 	}
+}
+
+func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
+	if rid == 0 {
+		return false, nil
+	}
+
+	var count int64
+	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+		Where("guest_type = ? AND guest_id = ? AND action = ? AND status IN ? AND override_requested = ?",
+			taskModels.GuestTypeVM,
+			rid,
+			"shutdown",
+			[]string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning},
+			true,
+		).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {

@@ -18,6 +18,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
@@ -145,6 +146,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ReplicationReceipt{},
 		&clusterModels.ClusterSSHIdentity{},
+		&taskModels.GuestLifecycleTask{},
 
 		&models.Migrations{},
 	)

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
+	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { goto } from '$app/navigation';
@@ -9,6 +10,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -56,6 +58,15 @@
 		{ initialValue: null as VMDomain | null }
 	);
 
+	const lifecycleTask = resource(
+		() => `vm-lifecycle-task-${rid}`,
+		async (): Promise<LifecycleTask | null> => {
+			if (!rid) return null;
+			return await getActiveLifecycleTaskForGuest('vm', rid);
+		},
+		{ initialValue: null as LifecycleTask | null }
+	);
+
 	let normalizedDomainStatus = $derived.by(() =>
 		String(domain.current?.status || '')
 			.trim()
@@ -63,6 +74,11 @@
 	);
 
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
+	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let isShutdownTaskActive = $derived.by(
+		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
+	);
 	let vmChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
 		const vmIndex = segments.indexOf('vm');
@@ -90,7 +106,7 @@
 	});
 
 	async function refreshVmDomain() {
-		await Promise.all([vm.refetch(), domain.refetch()]);
+		await Promise.all([vm.refetch(), domain.refetch(), lifecycleTask.refetch()]);
 	}
 
 	watch(
@@ -106,6 +122,14 @@
 		callback: () => {
 			if (visible.current && rid) {
 				domain.refetch();
+			}
+		}
+	});
+
+	useInterval(() => 1500, {
+		callback: () => {
+			if (visible.current && rid) {
+				lifecycleTask.refetch();
 			}
 		}
 	});
@@ -176,17 +200,11 @@
 
 	async function handleStart() {
 		if (!vm.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Starting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being started.`;
-		modalState.loading.iconColor = 'text-green-500';
-
 		const result = await actionVm(vm.current.rid, 'start');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			modalState.loading.open = false;
-			toast.error('Error starting VM', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error starting VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -195,9 +213,7 @@
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'start';
 
-			await sleep(1000);
-			modalState.loading.open = false;
-			toast.success('VM started', {
+			toast.success('VM start queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -208,17 +224,11 @@
 
 	async function handleStop() {
 		if (!vm.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Stopping Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being stopped`;
-		modalState.loading.iconColor = 'text-red-500';
-
 		const result = await actionVm(vm.current.rid, 'stop');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			modalState.loading.open = false;
-			toast.error('Error stopping VM', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error stopping VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -227,9 +237,34 @@
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'stop';
 
-			await sleep(1000);
-			modalState.loading.open = false;
-			toast.success('VM stopped', {
+			if (result.message === 'vm_force_stop_requested') {
+				toast.warning('Force stop requested', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else {
+				toast.success('VM stop queued', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
+		}
+
+		await refreshVmDomain();
+	}
+
+	async function handleForceStop() {
+		if (!vm.current) return;
+		const result = await actionVm(vm.current.rid, 'stop');
+		reload.leftPanel = true;
+
+		if (result.status === 'error') {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error requesting force stop', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else {
+			toast.warning('Force stop requested', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -240,17 +275,11 @@
 
 	async function handleShutdown() {
 		if (!vm.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Shutting Down Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is shutting down`;
-		modalState.loading.iconColor = 'text-yellow-500';
-
 		const result = await actionVm(vm.current.rid, 'shutdown');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			modalState.loading.open = false;
-			toast.error('Error shutting down VM', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error shutting down VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -259,9 +288,7 @@
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'shutdown';
 
-			await sleep(1000);
-			modalState.loading.open = false;
-			toast.success('VM shutdown started', {
+			toast.success('VM shutdown queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -272,17 +299,11 @@
 
 	async function handleReboot() {
 		if (!vm.current) return;
-		modalState.loading.open = true;
-		modalState.loading.title = 'Rebooting Virtual Machine';
-		modalState.loading.description = `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being rebooted`;
-		modalState.loading.iconColor = 'text-yellow-500';
-
 		const result = await actionVm(vm.current.rid, 'reboot');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			modalState.loading.open = false;
-			toast.error('Error rebooting VM', {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error rebooting VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -291,9 +312,7 @@
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'reboot';
 
-			await sleep(1000);
-			modalState.loading.open = false;
-			toast.success('VM rebooted', {
+			toast.success('VM reboot queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -322,6 +341,12 @@
 						{/if}
 					</Badge>
 					<p class="truncate text-sm font-semibold">{vm.current.name} ({vm.current.rid})</p>
+					{#if hasActiveLifecycleTask}
+						<Badge variant="outline" class="px-1.5 text-xs">
+							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+							{activeLifecycleAction}
+						</Badge>
+					{/if}
 				{/if}
 			</div>
 
@@ -330,6 +355,7 @@
 					{#if domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 						<Button
 							onclick={() => handleStart()}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -339,6 +365,7 @@
 
 						<Button
 							onclick={() => openDeleteModal(false)}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -350,6 +377,7 @@
 					{#if isDomainErrorState}
 						<Button
 							onclick={() => openDeleteModal(true)}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -359,8 +387,22 @@
 					{/if}
 
 					{#if domain.current.id !== -1 && domain.current.status === 'Running'}
+						{#if isShutdownTaskActive}
+							<Button
+								onclick={() => handleForceStop()}
+								size="sm"
+								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+							>
+								<div class="flex items-center">
+									<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
+									<span>Force Stop</span>
+								</div>
+							</Button>
+						{/if}
+
 						<Button
 							onclick={() => handleReboot()}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -372,6 +414,7 @@
 
 						<Button
 							onclick={() => handleShutdown()}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -383,6 +426,7 @@
 
 						<Button
 							onclick={() => handleStop()}
+							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>

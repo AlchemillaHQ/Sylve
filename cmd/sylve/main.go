@@ -34,6 +34,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
@@ -96,6 +97,7 @@ func main() {
 	clusterSvc := cS.(*cluster.Service)
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
+	lifecycleSvc := lifecycle.NewService(d, libvirtSvc, jailSvc)
 	refreshEmitter := func(reason string) {
 		clusterSvc.EmitLeftPanelRefreshClusterWide(reason)
 	}
@@ -105,6 +107,7 @@ func main() {
 	uS.RegisterJobs()
 	zS.RegisterJobs()
 	zeltaS.RegisterJobs()
+	lifecycleSvc.RegisterJobs()
 
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
@@ -119,6 +122,12 @@ func main() {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	} else {
 		logger.L.Info().Msg("Basic initializations complete")
+
+		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
+			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
+		}
+		enqueueCancel()
 	}
 
 	err = cS.InitRaft(fsm)
@@ -165,6 +174,7 @@ func main() {
 		libvirtSvc,
 		smbS.(*samba.Service),
 		jailSvc,
+		lifecycleSvc,
 		clusterSvc,
 		zeltaS,
 		fsm,

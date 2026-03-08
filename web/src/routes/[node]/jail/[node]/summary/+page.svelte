@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
+	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
 		deleteJail,
@@ -25,7 +26,7 @@
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
-	import { sleep } from '$lib/utils';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { updateCache } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
@@ -88,6 +89,16 @@
 		},
 		{
 			initialValue: data.state
+		}
+	);
+
+	const lifecycleTask = resource(
+		() => `jail-lifecycle-task-${ctId}`,
+		async () => {
+			return await getActiveLifecycleTaskForGuest('jail', ctId);
+		},
+		{
+			initialValue: null as LifecycleTask | null
 		}
 	);
 
@@ -155,6 +166,7 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+				lifecycleTask.refetch();
 
 				if (showLogs || modalState.loading.open) {
 					logs.refetch();
@@ -170,6 +182,7 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+				lifecycleTask.refetch();
 
 				if (showLogs || modalState.loading.open) {
 					logs.refetch();
@@ -262,33 +275,39 @@
 	}
 
 	async function handleStop() {
-		modalState.loading.open = true;
-		modalState.loading.title = 'Stopping Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being stopped`;
-		modalState.loading.iconColor = 'text-red-500';
-		await logs.refetch();
-
-		await sleep(1000);
-		await jailAction(jail.current.ctId, 'stop');
-		await logs.refetch();
-
+		const result = await jailAction(jail.current.ctId, 'stop');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
+		if (result.status === 'error') {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error stopping jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else {
+			toast.success('Jail stop queued', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		lifecycleTask.refetch();
 	}
 
 	async function handleStart() {
-		modalState.loading.open = true;
-		modalState.loading.title = 'Starting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being started`;
-		modalState.loading.iconColor = 'text-green-500';
-		await logs.refetch();
-
-		await sleep(1000);
-		await jailAction(jail.current.ctId, 'start');
-		await logs.refetch();
-
+		const result = await jailAction(jail.current.ctId, 'start');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
+		if (result.status === 'error') {
+			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error starting jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else {
+			toast.success('Jail start queued', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		lifecycleTask.refetch();
 	}
 
 	$effect(() => {
@@ -316,6 +335,9 @@
 			});
 		}
 	});
+
+	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -324,6 +346,7 @@
 			{#if jState.current.state === 'ACTIVE'}
 				<Button
 					onclick={handleStop}
+					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -334,6 +357,7 @@
 			{:else}
 				<Button
 					onclick={handleStart}
+					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -345,6 +369,7 @@
 					onclick={() => {
 						modalState.isDeleteOpen = true;
 					}}
+					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -352,6 +377,13 @@
 					{'Delete'}
 				</Button>
 			{/if}
+		{/if}
+
+		{#if hasActiveLifecycleTask}
+			<span class="ml-1 inline-flex items-center text-xs text-muted-foreground">
+				<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+				{activeLifecycleAction}
+			</span>
 		{/if}
 
 		<div class="ml-auto flex h-full items-center gap-2">

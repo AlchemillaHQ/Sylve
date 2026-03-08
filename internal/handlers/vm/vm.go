@@ -9,13 +9,17 @@
 package libvirtHandlers
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
 	"github.com/gin-gonic/gin"
 )
@@ -435,7 +439,7 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /vm/{action}/:rid [post]
-func VMActionHandler(libvirtService *libvirt.Service) gin.HandlerFunc {
+func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid := c.Param("rid")
 		action := c.Param("action")
@@ -461,21 +465,55 @@ func VMActionHandler(libvirtService *libvirt.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = libvirtService.PerformAction(uint(ridInt), action)
+		username := strings.TrimSpace(c.GetString("Username"))
+
+		task, outcome, err := lifecycleService.RequestAction(
+			c.Request.Context(),
+			taskModels.GuestTypeVM,
+			uint(ridInt),
+			action,
+			taskModels.LifecycleTaskSourceUser,
+			username,
+		)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			if errors.Is(err, lifecycle.ErrTaskInProgress) {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "lifecycle_task_in_progress",
+					Data:    gin.H{"task": task},
+					Error:   err.Error(),
+				})
+				return
+			}
+
+			if errors.Is(err, lifecycle.ErrInvalidAction) || errors.Is(err, lifecycle.ErrInvalidGuest) {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_action",
+					Data:    nil,
+					Error:   err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_perform_action",
+				Message: "failed_to_enqueue_lifecycle_task",
 				Data:    nil,
-				Error:   "failed_to_perform_action: " + err.Error(),
+				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		message := "vm_action_queued"
+		if outcome == lifecycle.RequestOutcomeForceStopOverride {
+			message = "vm_force_stop_requested"
+		}
+
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "action_performed",
-			Data:    nil,
+			Message: message,
+			Data:    gin.H{"task": task, "outcome": outcome},
 			Error:   "",
 		})
 	}
