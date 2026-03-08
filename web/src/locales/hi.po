@@ -91,6 +91,7 @@ msgstr "इंटरफेस"
 msgid "Switches"
 msgstr "स्विच"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
@@ -251,7 +252,6 @@ msgstr "रेप्लिकेशन"
 msgid "Policies"
 msgstr "नीतियाँ"
 
-#: src/lib/components/skeleton/LeftPanel.svelte
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
@@ -2185,7 +2185,7 @@ msgstr "कमांड पैलेट"
 msgid "Search for a command to run"
 msgstr "चलाने के लिए कमांड खोजें"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0
+#. 0: (selectedCount || 0) + (hasSelection ? 0 
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -4993,12 +4993,12 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "टेम्पलेट {1} को {0} करने में विफल"
@@ -5465,12 +5465,12 @@ msgstr "VirtIO ब्लॉक"
 msgid "Attach Storage"
 msgstr "स्टोरेज संलग्न करें"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "TPM एमुलेशन {0} करने में विफल रहा"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM एमुलेशन {0}"
@@ -6717,7 +6717,7 @@ msgstr "बंद"
 msgid "Serial"
 msgstr "सीरियल"
 
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "{0} कंसोल पर स्विच करें"
@@ -8086,3 +8086,46 @@ msgstr "वॉल्यूम GUID नहीं मिला"
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "This will delete {0}. This action cannot be undone."
 msgstr "यह {0} को हटा देगा। इस क्रिया को पूर्ववत नहीं किया जा सकता।"
+
+#~ msgid "Populate /etc/resolv.conf"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage resolv.conf content for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Populate DNS Resolver Configuration"
+msgstr ""
+
+#~ msgid "Predefined Configurations"
+#~ msgstr ""
+
+#~ msgid "Cloudflare"
+#~ msgstr ""
+
+#~ msgid "Google"
+#~ msgstr ""
+
+#~ msgid "Quad9"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "DNS Preset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Select DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Cloudflare DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Google DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Quad9 DNS"
+msgstr ""

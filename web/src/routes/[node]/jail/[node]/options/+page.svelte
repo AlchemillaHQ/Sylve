@@ -67,6 +67,14 @@
 					: '—'
 			},
 			{
+				id: generateNanoId('resolvConf'),
+				property: '/etc/resolv.conf',
+				value: jail?.current.resolvConf
+					? jail.current.resolvConf.split('\n')[0] +
+						(jail.current.resolvConf.includes('\n') ? '…' : '')
+					: '—'
+			},
+			{
 				id: generateNanoId('devfsRules'),
 				property: 'DevFS Ruleset',
 				value: jail?.current.devfsRuleset
@@ -133,6 +141,7 @@
 	let properties = $state({
 		startOrder: { open: false },
 		fstab: { open: false },
+		resolvConf: { open: false },
 		devfsRules: { open: false },
 		additionalOptions: { open: false },
 		allowedOptions: { open: false },
@@ -155,6 +164,7 @@
 	type:
 		| 'startOrder'
 		| 'fstab'
+		| 'resolvConf'
 		| 'devfsRules'
 		| 'additionalOptions'
 		| 'allowedOptions'
@@ -184,6 +194,8 @@
 				{@render button('startOrder', 'Start At Boot / Start Order')}
 			{:else if activeRow.property === 'FSTab Entries'}
 				{@render button('fstab', 'FSTab Entries')}
+			{:else if activeRow.property === '/etc/resolv.conf'}
+				{@render button('resolvConf', '/etc/resolv.conf')}
 			{:else if activeRow.property === 'DevFS Ruleset'}
 				{@render button('devfsRules', 'DevFS Ruleset')}
 			{:else if activeRow.property === 'Additional Options'}
@@ -215,6 +227,15 @@
 
 {#if properties.fstab.open && jail.current}
 	<TextEdit bind:open={properties.fstab.open} jail={jail.current} type="fstab" bind:reload />
+{/if}
+
+{#if properties.resolvConf.open && jail.current}
+	<TextEdit
+		bind:open={properties.resolvConf.open}
+		jail={jail.current}
+		type="resolvConf"
+		bind:reload
+	/>
 {/if}
 
 {#if properties.devfsRules.open && jail.current}

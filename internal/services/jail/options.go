@@ -135,6 +135,48 @@ func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 	return nil
 }
 
+func (s *Service) ModifyResolvConf(ctId uint, resolvConf string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
+	if strings.TrimSpace(resolvConf) != "" {
+		mountPoint, err := s.GetJailBaseMountPoint(ctId)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
+		}
+
+		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
+		if err := os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
+			return fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)
+		}
+
+		if err := utils.AtomicWriteFile(resolvPath, []byte(resolvConf), 0644); err != nil {
+			return fmt.Errorf("failed_to_write_resolv_conf_file: %w", err)
+		}
+	}
+
+	err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Update("resolv_conf", resolvConf).
+		Error
+	if err != nil {
+		return fmt.Errorf("failed_to_update_resolv_conf_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after resolv.conf update")
+	}
+
+	return nil
+}
+
 func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 	allowed, leaseErr := s.canMutateProtectedJail(ctId)
 	if leaseErr != nil {

@@ -10,13 +10,14 @@
 		modifyAdditionalOptions,
 		modifyDevFSRules,
 		modifyFstab,
-		modifyMetadata
+		modifyMetadata,
+		modifyResolvConf
 	} from '$lib/api/jail/jail';
 
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 
-	type DialogType = 'fstab' | 'devfsRules' | 'additionalOptions' | 'metadata';
+	type DialogType = 'fstab' | 'resolvConf' | 'devfsRules' | 'additionalOptions' | 'metadata';
 
 	type MetadataValue = {
 		meta: string;
@@ -37,21 +38,28 @@
 			icon: 'icon-[material-symbols--table-outline]',
 			title: 'FSTab Entries',
 			description: 'Manage the fstab entries for this jail',
-			initial: jail.fstab || '',
+			initial: () => jail.fstab || '',
 			saveFn: modifyFstab
+		},
+		resolvConf: {
+			icon: 'icon-[mdi--dns]',
+			title: '/etc/resolv.conf',
+			description: 'Manage resolv.conf content for this jail',
+			initial: () => jail.resolvConf || '',
+			saveFn: modifyResolvConf
 		},
 		devfsRules: {
 			icon: 'icon-[material-symbols--settings-outline]',
 			title: 'DevFS Ruleset',
 			description: 'Manage the devfs ruleset for this jail',
-			initial: jail.devfsRuleset || '',
+			initial: () => jail.devfsRuleset || '',
 			saveFn: modifyDevFSRules
 		},
 		additionalOptions: {
 			icon: 'icon-[material-symbols--settings-outline]',
 			title: 'Additional Options',
 			description: 'Manage additional options for this jail',
-			initial: jail.additionalOptions || '',
+			initial: () => jail.additionalOptions || '',
 			saveFn: modifyAdditionalOptions
 		},
 		metadata: {
@@ -72,7 +80,7 @@
 				env: jail.metadataEnv || ''
 			};
 		} else {
-			textValue = related[type].initial;
+			textValue = related[type].initial();
 		}
 	});
 
@@ -103,7 +111,7 @@
 				env: jail.metadataEnv || ''
 			};
 		} else {
-			textValue = related[type].initial;
+			textValue = related[type].initial();
 		}
 	}
 </script>

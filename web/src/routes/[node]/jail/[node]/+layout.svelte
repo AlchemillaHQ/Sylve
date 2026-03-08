@@ -26,8 +26,14 @@
 		return Number.isFinite(value) ? value : 0;
 	});
 
-	let isSummaryPage = $derived.by(() => page.url.pathname.endsWith('/summary'));
-	let isConsolePage = $derived.by(() => page.url.pathname.endsWith('/console'));
+	let jailChildRoute = $derived.by(() => {
+		const segments = page.url.pathname.split('/').filter(Boolean);
+		const jailIndex = segments.indexOf('jail');
+		if (jailIndex === -1) return '';
+		return segments[jailIndex + 2] ?? '';
+	});
+	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
+	let isConsolePage = $derived.by(() => jailChildRoute === 'console');
 
 	const jail = resource(
 		() => `simple-jail-${ctId}`,

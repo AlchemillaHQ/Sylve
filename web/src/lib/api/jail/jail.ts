@@ -27,6 +27,7 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
         pool: data.storage.pool,
         base: data.storage.base,
         fstab: data.storage.fstab,
+        resolvConf: data.network.resolvConf,
         switchName: data.network.switch,
         dhcp: data.network.dhcp,
         slaac: data.network.slaac,
@@ -206,6 +207,12 @@ export async function modifyBootOrder(
 export async function modifyFstab(ctId: number, fstab: string): Promise<APIResponse> {
     return await apiRequest(`/jail/options/fstab/${ctId}`, APIResponseSchema, 'PUT', {
         fstab
+    });
+}
+
+export async function modifyResolvConf(ctId: number, resolvConf: string): Promise<APIResponse> {
+    return await apiRequest(`/jail/options/resolv-conf/${ctId}`, APIResponseSchema, 'PUT', {
+        resolvConf
     });
 }
 

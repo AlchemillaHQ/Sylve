@@ -1000,6 +1000,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	jail.ResourceLimits = data.ResourceLimits
 	jail.AdditionalOptions = data.AdditionalOptions
 	jail.Fstab = data.Fstab
+	jail.ResolvConf = data.ResolvConf
 	jail.AllowedOptions = data.AllowedOptions
 	jail.Type = data.Type
 	jail.MetadataEnv = data.MetadataEnv
@@ -1343,6 +1344,19 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	if err = os.WriteFile(fstabPath, []byte(jail.Fstab), 0644); err != nil {
 		err = fmt.Errorf("failed_to_write_fstab_file: %w", err)
 		return
+	}
+
+	if strings.TrimSpace(jail.ResolvConf) != "" {
+		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
+		if err = os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
+			err = fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)
+			return
+		}
+
+		if err = os.WriteFile(resolvPath, []byte(jail.ResolvConf), 0644); err != nil {
+			err = fmt.Errorf("failed_to_write_resolv_conf_file: %w", err)
+			return
+		}
 	}
 
 	var jCfg string

@@ -23,6 +23,7 @@ export interface CreateData {
         ipv6Gateway: number;
         dhcp: boolean;
         slaac: boolean;
+        resolvConf: string;
     };
     hardware: {
         cpuCores: number;
@@ -102,6 +103,7 @@ export const JailSchema = SimpleJailSchema.extend({
     storages: z.array(JailStorageSchema).optional().default([]),
     type: z.enum(['freebsd', 'linux']),
     fstab: z.string(),
+    resolvConf: z.string(),
     devfsRuleset: z.string(),
     additionalOptions: z.string(),
     allowedOptions: z.array(z.string()).default([]),

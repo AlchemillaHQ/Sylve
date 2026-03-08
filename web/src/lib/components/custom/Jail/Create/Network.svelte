@@ -12,7 +12,10 @@
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { watch } from 'runed';
+	import SimpleSelect from '../../SimpleSelect.svelte';
+	import { dnsConfigPresets } from '$lib/utils/jail/jail';
 
 	interface Props {
 		switch: string;
@@ -25,6 +28,7 @@
 		ipv6Gateway: number;
 		dhcp: boolean;
 		slaac: boolean;
+		resolvConf: string;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
 	}
@@ -40,6 +44,7 @@
 		ipv6Gateway = $bindable(),
 		dhcp = $bindable(),
 		slaac = $bindable(),
+		resolvConf = $bindable(),
 		switches,
 		networkObjects
 	}: Props = $props();
@@ -95,8 +100,27 @@
 
 	let checkBoxes = $state({
 		dhcp: false,
-		slaac: false
+		slaac: false,
+		resolvConf: false
 	});
+
+	watch(
+		() => resolvConf,
+		(current) => {
+			if (current.trim().length > 0) {
+				checkBoxes.resolvConf = true;
+			}
+		}
+	);
+
+	watch(
+		() => checkBoxes.resolvConf,
+		(current) => {
+			if (!current) {
+				resolvConf = '';
+			}
+		}
+	);
 
 	watch(
 		() => nwSwitch,
@@ -175,6 +199,8 @@
 			ipv6Gateway = parse(v6Gw);
 		}
 	);
+
+	let selectedDnsPreset = $state('');
 </script>
 
 {#snippet radioItem(
@@ -296,4 +322,47 @@
 			></CustomCheckbox>
 		</div>
 	{/if}
+
+	<div class="mt-1">
+		<CustomCheckbox
+			label="Populate DNS Resolver Configuration"
+			bind:checked={checkBoxes.resolvConf}
+			classes="flex items-center gap-2"
+		/>
+
+		{#if checkBoxes.resolvConf}
+			<div class="mt-2 space-y-2">
+				<SimpleSelect
+					label="DNS Preset"
+					placeholder="Select DNS"
+					options={[
+						{ value: 'manual', label: 'Manual' },
+						{ value: 'cloudflare', label: 'Cloudflare DNS' },
+						{ value: 'google', label: 'Google DNS' },
+						{ value: 'quad9', label: 'Quad9 DNS' }
+					]}
+					value={selectedDnsPreset}
+					onChange={(v) => {
+						selectedDnsPreset = v;
+
+						if (v === 'manual') {
+							resolvConf = '';
+							return;
+						}
+
+						resolvConf = dnsConfigPresets(v as any);
+					}}
+				/>
+
+				<CustomValueInput
+					label=""
+					placeholder={'nameserver 1.1.1.1\nnameserver 8.8.8.8\nsearch localdomain'}
+					type="textarea"
+					textAreaClasses="min-h-28 text-xs/6"
+					bind:value={resolvConf}
+					classes="flex-1 space-y-1 text-xs/6"
+				/>
+			</div>
+		{/if}
+	</div>
 </div>

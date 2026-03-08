@@ -40,9 +40,10 @@ type CreateJailRequest struct {
 	Hostname    string `json:"hostname"`
 	Description string `json:"description"`
 
-	Pool  string `json:"pool" binding:"required"`
-	Base  string `json:"base"`
-	Fstab string `json:"fstab"`
+	Pool       string `json:"pool" binding:"required"`
+	Base       string `json:"base"`
+	Fstab      string `json:"fstab"`
+	ResolvConf string `json:"resolvConf"`
 
 	SwitchName string `json:"switchName"`
 

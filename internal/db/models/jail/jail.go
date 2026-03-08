@@ -203,6 +203,7 @@ type Jail struct {
 	DevFSRuleset   string `json:"devfsRuleset"`
 
 	Fstab             string      `json:"fstab"`
+	ResolvConf        string      `json:"resolvConf"`
 	CleanEnvironment  bool        `json:"cleanEnvironment"`
 	AdditionalOptions string      `json:"additionalOptions"`
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`

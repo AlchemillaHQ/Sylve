@@ -136,6 +136,7 @@
 		return merged.map(({ sortId: _sortId, ...item }) => item);
 	}) as TreeItem[];
 
+	// @wc-ignore
 	const tree = $derived([
 		{
 			id: 'datacenter',

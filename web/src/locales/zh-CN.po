@@ -91,6 +91,7 @@ msgstr "接口"
 msgid "Switches"
 msgstr "交换机"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/routes/[node]/+layout.svelte
@@ -251,7 +252,6 @@ msgstr "复制"
 msgid "Policies"
 msgstr "策略"
 
-#: src/lib/components/skeleton/LeftPanel.svelte
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Data Center"
@@ -2185,7 +2185,7 @@ msgstr "命令面板"
 msgid "Search for a command to run"
 msgstr "搜索要运行的命令"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0
+#. 0: (selectedCount || 0) + (hasSelection ? 0 
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -4993,12 +4993,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -5465,12 +5465,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -6717,7 +6717,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -8086,3 +8086,46 @@ msgstr "未找到卷 GUID"
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "This will delete {0}. This action cannot be undone."
 msgstr "这将删除 {0}。此操作无法撤销。"
+
+#~ msgid "Populate /etc/resolv.conf"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Options/TextEdit.svelte
+msgid "Manage resolv.conf content for this jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Populate DNS Resolver Configuration"
+msgstr ""
+
+#~ msgid "Predefined Configurations"
+#~ msgstr ""
+
+#~ msgid "Cloudflare"
+#~ msgstr ""
+
+#~ msgid "Google"
+#~ msgstr ""
+
+#~ msgid "Quad9"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "DNS Preset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Select DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Cloudflare DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Google DNS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Quad9 DNS"
+msgstr ""

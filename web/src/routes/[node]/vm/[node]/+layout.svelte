@@ -63,8 +63,14 @@
 	);
 
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-	let isSummaryPage = $derived.by(() => page.url.pathname.endsWith('/summary'));
-	let isConsolePage = $derived.by(() => page.url.pathname.endsWith('/console'));
+	let vmChildRoute = $derived.by(() => {
+		const segments = page.url.pathname.split('/').filter(Boolean);
+		const vmIndex = segments.indexOf('vm');
+		if (vmIndex === -1) return '';
+		return segments[vmIndex + 2] ?? '';
+	});
+	let isSummaryPage = $derived.by(() => vmChildRoute === '' || vmChildRoute === 'summary');
+	let isConsolePage = $derived.by(() => vmChildRoute === 'console');
 
 	const visible = new IsDocumentVisible();
 

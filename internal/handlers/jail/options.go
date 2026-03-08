@@ -27,6 +27,10 @@ type ModifyFstabRequest struct {
 	Fstab *string `json:"fstab"`
 }
 
+type ModifyResolvConfRequest struct {
+	ResolvConf *string `json:"resolvConf"`
+}
+
 type ModifyDevFSRulesRequest struct {
 	DevFSRules *string `json:"devFSRules"`
 }
@@ -165,6 +169,65 @@ func ModifyFstab(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "fstab_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify resolv.conf of a Jail
+// @Description Modify /etc/resolv.conf content for a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyResolvConfRequest true "Modify resolv.conf Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/resolv-conf/:rid [put]
+func ModifyResolvConf(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyResolvConfRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		resolvConf := ""
+		if req.ResolvConf != nil {
+			resolvConf = *req.ResolvConf
+		}
+
+		if err := jailService.ModifyResolvConf(rid, resolvConf); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "resolv_conf_modified",
 			Data:    nil,
 			Error:   "",
 		})

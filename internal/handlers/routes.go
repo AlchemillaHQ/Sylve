@@ -364,6 +364,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
 		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/options/resolv-conf/:rid", jailHandlers.ModifyResolvConf(jailService))
 		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
 		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
 		jail.PUT("/options/allowed-options/:rid", jailHandlers.ModifyAllowedOptions(jailService))

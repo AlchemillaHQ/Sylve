@@ -150,7 +150,8 @@
 			ipv6: 0,
 			ipv6Gateway: 0,
 			dhcp: false,
-			slaac: false
+			slaac: false,
+			resolvConf: ''
 		},
 		hardware: {
 			cpuCores: 1,
@@ -338,6 +339,7 @@
 									bind:ipv6Gateway={modal.network.ipv6Gateway}
 									bind:dhcp={modal.network.dhcp}
 									bind:slaac={modal.network.slaac}
+									bind:resolvConf={modal.network.resolvConf}
 									switches={networkSwitches.current}
 									networkObjects={networkObjects.current}
 								/>

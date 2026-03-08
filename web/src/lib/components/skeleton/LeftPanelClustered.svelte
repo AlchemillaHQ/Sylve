@@ -17,7 +17,12 @@
 	import { page } from '$app/state';
 	import { onDestroy } from 'svelte';
 
-	let openIds = $state(new Set<string>(['datacenter']));
+	let openIds = $state(
+		(() => {
+			const savedIds = loadClusterIds();
+			return savedIds.size > 0 ? savedIds : new Set<string>(['datacenter']);
+		})()
+	);
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 	let hasInitializedOpenIds = $state(false);
 
@@ -157,10 +162,18 @@
 		() => tree,
 		(currentTree) => {
 			if (currentTree.length > 0) {
+				const hasClusterNodes = cluster.current.length > 0;
 				const allCurrentIds = new Set(collectIds(currentTree));
 
 				if (!hasInitializedOpenIds) {
-					if (!hasSavedClusterIds()) {
+					const hasSavedIds = hasSavedClusterIds();
+
+					// Wait for cluster data before pruning saved IDs to avoid collapsing everything on refresh.
+					if (hasSavedIds && !hasClusterNodes) {
+						return;
+					}
+
+					if (!hasSavedIds) {
 						openIds = new Set(allCurrentIds);
 						saveOpenIds(openIds);
 					} else {
@@ -172,6 +185,10 @@
 					}
 
 					hasInitializedOpenIds = true;
+					return;
+				}
+
+				if (!hasClusterNodes) {
 					return;
 				}
 
