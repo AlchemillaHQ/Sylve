@@ -54,8 +54,10 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
     });
 }
 
-export async function getSimpleJails(): Promise<SimpleJail[]> {
-    return await apiRequest('/jail/simple', z.array(SimpleJailSchema), 'GET');
+export async function getSimpleJails(hostname?: string): Promise<SimpleJail[]> {
+    return await apiRequest('/jail/simple', z.array(SimpleJailSchema), 'GET', undefined, {
+        hostname
+    });
 }
 
 export async function getJails(hostname?: string): Promise<Jail[]> {

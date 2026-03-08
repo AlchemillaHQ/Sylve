@@ -23,8 +23,8 @@ export async function getVMs(hostname?: string): Promise<VM[]> {
 	return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
 }
 
-export async function getSimpleVMs(): Promise<SimpleVm[]> {
-	return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET');
+export async function getSimpleVMs(hostname?: string): Promise<SimpleVm[]> {
+	return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, { hostname });
 }
 
 export async function getSimpleVMById(id: number, type: 'rid' | 'id'): Promise<SimpleVm> {

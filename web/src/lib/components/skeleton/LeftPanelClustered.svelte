@@ -3,6 +3,7 @@
 		collectIds,
 		getClusterResources,
 		getNodes,
+		hasSavedClusterIds,
 		loadClusterIds,
 		saveOpenIds
 	} from '$lib/api/cluster/cluster';
@@ -14,8 +15,25 @@
 	import { storage } from '$lib';
 	import { resource, watch } from 'runed';
 	import { page } from '$app/state';
+	import { onDestroy } from 'svelte';
 
 	let openIds = $state(new Set<string>(['datacenter']));
+	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let hasInitializedOpenIds = $state(false);
+
+	function isSameSet(a: Set<string>, b: Set<string>): boolean {
+		if (a.size !== b.size) {
+			return false;
+		}
+
+		for (const value of a) {
+			if (!b.has(value)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	const toggleOpen = (id: string) => {
 		if (openIds.has(id)) openIds.delete(id);
@@ -23,6 +41,32 @@
 		openIds = new Set(openIds);
 		saveOpenIds(openIds);
 	};
+
+	async function refetchClusterResources() {
+		await Promise.all([cluster.refetch(), nodes.refetch()]);
+	}
+
+	function scheduleTrailingRefetch() {
+		if (trailingRefetchTimer) {
+			clearTimeout(trailingRefetchTimer);
+		}
+
+		trailingRefetchTimer = setTimeout(() => {
+			trailingRefetchTimer = null;
+			void refetchClusterResources();
+		}, 1200);
+	}
+
+	function refreshClusterResources() {
+		void refetchClusterResources();
+		scheduleTrailingRefetch();
+	}
+
+	onDestroy(() => {
+		if (trailingRefetchTimer) {
+			clearTimeout(trailingRefetchTimer);
+		}
+	});
 
 	const cluster = resource(
 		() => 'cluster-resources',
@@ -97,8 +141,7 @@
 		() => storage.idle,
 		(idle) => {
 			if (!idle) {
-				cluster.refetch();
-				nodes.refetch();
+				refreshClusterResources();
 			}
 		}
 	);
@@ -106,22 +149,36 @@
 	watch(
 		() => storage.enabledServices,
 		() => {
-			cluster.refetch();
-			nodes.refetch();
+			refreshClusterResources();
 		}
 	);
 
 	watch(
-		() => tree.length,
-		(length) => {
-			if (length > 0) {
-				const storedIds = loadClusterIds();
-				if (storedIds.size === 0) {
-					openIds = new Set(collectIds(tree));
+		() => tree,
+		(currentTree) => {
+			if (currentTree.length > 0) {
+				const allCurrentIds = new Set(collectIds(currentTree));
+
+				if (!hasInitializedOpenIds) {
+					if (!hasSavedClusterIds()) {
+						openIds = new Set(allCurrentIds);
+						saveOpenIds(openIds);
+					} else {
+						const storedIds = loadClusterIds();
+						openIds = new Set(Array.from(storedIds).filter((id) => allCurrentIds.has(id)));
+						if (!isSameSet(openIds, storedIds)) {
+							saveOpenIds(openIds);
+						}
+					}
+
+					hasInitializedOpenIds = true;
+					return;
+				}
+
+				const filteredIds = new Set(Array.from(openIds).filter((id) => allCurrentIds.has(id)));
+				if (!isSameSet(filteredIds, openIds)) {
+					openIds = filteredIds;
 					saveOpenIds(openIds);
-				} else {
-					const allCurrentIds = new Set(collectIds(tree));
-					openIds = new Set(Array.from(storedIds).filter((id) => allCurrentIds.has(id)));
 				}
 			}
 		}
@@ -131,8 +188,7 @@
 		() => reload.leftPanel,
 		(value) => {
 			if (value) {
-				cluster.refetch();
-				nodes.refetch();
+				refreshClusterResources();
 				reload.leftPanel = false;
 			}
 		}

@@ -81,3 +81,11 @@ export function loadClusterIds(): Set<string> {
 	}
 	return new Set();
 }
+
+export function hasSavedClusterIds(): boolean {
+	if (typeof localStorage === 'undefined') {
+		return false;
+	}
+
+	return localStorage.getItem('clusterIds') !== null;
+}
