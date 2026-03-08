@@ -55,27 +55,6 @@ import (
 	"unsafe"
 )
 
-type Attribute struct {
-	ID        uint32
-	Name      string
-	Value     int
-	Worst     int
-	Threshold int
-	RawValue  uint64
-	RawBytes  []byte
-	TextValue string
-	IsText    bool
-}
-
-type DeviceInfo struct {
-	Device          string
-	Protocol        string
-	Temperature     int
-	PowerOnHours    int
-	PowerCycleCount int
-	Attributes      []Attribute
-}
-
 func Read(devicePath string) (*DeviceInfo, error) {
 	if !strings.HasPrefix(devicePath, "/dev/") {
 		devicePath = "/dev/" + devicePath
