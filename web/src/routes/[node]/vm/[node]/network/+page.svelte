@@ -2,6 +2,7 @@
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import { detachNetwork } from '$lib/api/vm/network';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -19,6 +20,7 @@
 	import { resource, useInterval, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import { storage } from '$lib';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		vm: VM;
@@ -121,6 +123,48 @@
 			domain.refetch();
 			networkObjects.refetch();
 		}
+	);
+
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vm.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
 	);
 
 	function generateTableData() {

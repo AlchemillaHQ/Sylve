@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -19,6 +20,7 @@
 	import { resource, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		rid: number;
@@ -110,6 +112,48 @@
 			pptDevices.refetch();
 			domain.refetch();
 		}
+	);
+
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vms.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
 	);
 
 	// svelte-ignore state_referenced_locally

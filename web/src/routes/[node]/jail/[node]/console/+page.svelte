@@ -2,10 +2,18 @@
 	import { page } from '$app/state';
 	import { storage } from '$lib';
 	import { getSimpleJailById } from '$lib/api/jail/jail';
+	import { jailPowerSignal } from '$lib/stores/api.svelte';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { sha256, toHex } from '$lib/utils/string';
-	import { resource, useResizeObserver, PersistedState, useDebounce } from 'runed';
+	import {
+		resource,
+		useResizeObserver,
+		PersistedState,
+		useDebounce,
+		useInterval,
+		watch
+	} from 'runed';
 	import { onMount } from 'svelte';
 	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -13,6 +21,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		jail: Jail;
@@ -101,8 +110,16 @@
 		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
 	}
 
+	function isSocketActive() {
+		return ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING;
+	}
+
 	function disconnect() {
 		cState.current = true;
+		disconnectSocket(true);
+	}
+
+	function disconnectSocket(forceKill: boolean) {
 		connectionToken += 1;
 
 		const socket = ws;
@@ -116,10 +133,11 @@
 		}
 
 		if (socket && socket.readyState === WebSocket.OPEN) {
-			const payload = JSON.stringify({ kill: '' });
-			const data = new TextEncoder().encode('\x02' + payload);
-
-			socket.send(data);
+			if (forceKill) {
+				const payload = JSON.stringify({ kill: '' });
+				const data = new TextEncoder().encode('\x02' + payload);
+				socket.send(data);
+			}
 			socket.close();
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
@@ -130,9 +148,27 @@
 		ws = null;
 	}
 
+	function disconnectForStateChange() {
+		cState.current = false;
+		disconnectSocket(false);
+	}
+
 	function reconnect() {
+		if (isSocketActive()) return;
 		cState.current = false;
 		setup();
+	}
+
+	async function refetchUntilState(targetState: 'ACTIVE' | 'INACTIVE', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await jail.refetch();
+			if (jail.current?.state === targetState) return true;
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return jail.current?.state === targetState;
 	}
 
 	function resizeTerminal(width: number, height: number) {
@@ -192,6 +228,7 @@
 		if (!jail.current || !jail.current.ctId) return;
 		if (jail.current && jail.current.state === 'INACTIVE') return;
 		if (!terminalContainer) return;
+		if (isSocketActive()) return;
 
 		const ghostty = await loadGhostty();
 		await ghostty.init();
@@ -267,7 +304,67 @@
 			if (socket.readyState !== WebSocket.OPEN) return;
 			socket.send(new TextEncoder().encode('\x00' + data));
 		});
+
+		socket.onclose = socket.onerror = () => {
+			if (activeConnectionToken !== connectionToken) return;
+			if (ws === socket) {
+				ws = null;
+			}
+		};
 	};
+
+	useInterval(() => 1000, {
+		callback: () => {
+			jail.refetch();
+		}
+	});
+
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				jail.refetch();
+			}
+		}
+	);
+
+	watch(
+		() => jail.current?.state,
+		(state) => {
+			if (state === 'INACTIVE') {
+				disconnectForStateChange();
+				return;
+			}
+
+			if (state === 'ACTIVE' && !cState.current && !isSocketActive()) {
+				reconnect();
+			}
+		},
+		{ lazy: true }
+	);
+
+	watch(
+		() => jailPowerSignal.token,
+		() => {
+			void (async () => {
+				if (jailPowerSignal.ctId !== data.ctId) return;
+				if (jailPowerSignal.action === 'stop') {
+					disconnectForStateChange();
+					await refetchUntilState('INACTIVE');
+					return;
+				}
+
+				if (jailPowerSignal.action === 'start') {
+					cState.current = false;
+					const isActive = await refetchUntilState('ACTIVE');
+					if (isActive) {
+						reconnect();
+					}
+				}
+			})();
+		},
+		{ lazy: true }
+	);
 
 	onMount(() => {
 		if (!cState.current) {
@@ -292,6 +389,8 @@
 				terminal.reset?.();
 			}
 
+			applyFontSize.cancel?.();
+			applyThemeDebounced.cancel?.();
 			terminal?.dispose?.();
 			terminal = null;
 		};
@@ -311,7 +410,7 @@
 {:else}
 	<div class="flex h-full w-full flex-col">
 		<div class="flex h-10 shrink-0 w-full items-center gap-2 border p-4">
-			{#if ws?.OPEN === 1}
+			{#if ws?.readyState === WebSocket.OPEN}
 				<Button
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"

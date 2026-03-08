@@ -15,6 +15,7 @@
 	import { resource, watch } from 'runed';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CPUInfo } from '$lib/types/info/cpu';
+	import { jailPowerSignal } from '$lib/stores/api.svelte';
 
 	interface Data {
 		jail: Jail;
@@ -66,6 +67,13 @@
 					reload = false;
 				});
 			}
+		}
+	);
+
+	watch(
+		() => jailPowerSignal.token,
+		() => {
+			reload = true;
 		}
 	);
 

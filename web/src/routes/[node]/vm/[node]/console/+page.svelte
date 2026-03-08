@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
 	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
@@ -22,6 +23,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
+	import { sleep } from '$lib/utils';
 
 	type ConsoleType = 'vnc' | 'serial' | 'none';
 
@@ -191,6 +193,10 @@
 		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ cols, rows })));
 	}
 
+	function isSerialSocketActive() {
+		return ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING;
+	}
+
 	function cleanupSerial(forceKill = false) {
 		connectionToken += 1;
 
@@ -224,9 +230,38 @@
 		cleanupSerial(true);
 	}
 
+	function disconnectSerialForStateChange() {
+		cState.current = false;
+		cleanupSerial(false);
+	}
+
 	function reconnectSerial() {
+		if (isSerialSocketActive()) return;
 		cState.current = false;
 		serialConnect();
+	}
+
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 10) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vm.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
 	}
 
 	function resizeTerminal(width: number, height: number) {
@@ -286,6 +321,7 @@
 		if (!vm.current.serial) return;
 		if (domain.current.status === 'Shutoff') return;
 		if (!terminalContainer) return;
+		if (isSerialSocketActive()) return;
 
 		const ghostty = await loadGhostty();
 		await ghostty.init();
@@ -411,6 +447,58 @@
 					});
 				}
 			}
+		},
+		{ lazy: true }
+	);
+
+	watch(
+		() =>
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase(),
+		(status, previousStatus) => {
+			if (status === 'shutoff') {
+				disconnectSerialForStateChange();
+				return;
+			}
+
+			if (status === 'running') {
+				if (consoleType === 'serial' && vm.current.serial && !cState.current) {
+					reconnectSerial();
+				}
+
+				if (consoleType === 'vnc' && vm.current.vncEnabled && previousStatus !== 'running') {
+					startVncLoading();
+				}
+			}
+		},
+		{ lazy: true }
+	);
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					disconnectSerialForStateChange();
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					const isRunning = await refetchUntilDomainStatus('running');
+					if (!isRunning) return;
+
+					if (consoleType === 'serial' && vm.current.serial) {
+						cState.current = false;
+						reconnectSerial();
+					} else if (consoleType === 'vnc' && vm.current.vncEnabled) {
+						startVncLoading();
+					}
+				}
+			})();
 		},
 		{ lazy: true }
 	);

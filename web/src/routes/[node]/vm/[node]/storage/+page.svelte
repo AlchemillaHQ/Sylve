@@ -4,6 +4,7 @@
 	import { getVmById, getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import { getPools } from '$lib/api/zfs/pool';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
@@ -17,6 +18,7 @@
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		vms: VM[];
@@ -124,6 +126,29 @@
 		downloads.refetch();
 	}
 
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vm.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
 	let activeRows: Row[] = $state([]);
 	let query: string = $state('');
 	let tableData = $derived(generateTableData(vm.current, datasets.current, downloads.current));
@@ -152,6 +177,25 @@
 			refreshData();
 			reload = false;
 		}
+	);
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
 	);
 </script>
 

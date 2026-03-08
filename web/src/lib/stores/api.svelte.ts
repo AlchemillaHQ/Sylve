@@ -9,7 +9,19 @@
  */
 
 export const reload = $state({
-	leftPanel: false,
-	auditLog: false,
-	clusterDetails: false
+    leftPanel: false,
+    auditLog: false,
+    clusterDetails: false
+});
+
+export const jailPowerSignal = $state({
+    token: 0,
+    ctId: 0,
+    action: '' as '' | 'start' | 'stop'
+});
+
+export const vmPowerSignal = $state({
+    token: 0,
+    rid: 0,
+    action: '' as '' | 'start' | 'stop' | 'shutdown' | 'reboot'
 });

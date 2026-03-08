@@ -8,7 +8,7 @@
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
-	import { reload } from '$lib/stores/api.svelte';
+	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
 	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
@@ -159,6 +159,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			jailPowerSignal.token += 1;
+			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.action = 'stop';
+
 			toast.success('Jail stopped', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -186,6 +190,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			jailPowerSignal.token += 1;
+			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.action = 'start';
+
 			toast.success('Jail started', {
 				duration: 5000,
 				position: 'bottom-center'

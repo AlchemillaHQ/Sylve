@@ -8,7 +8,7 @@
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
-	import { reload } from '$lib/stores/api.svelte';
+	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -191,6 +191,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			vmPowerSignal.token += 1;
+			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.action = 'start';
+
 			await sleep(1000);
 			modalState.loading.open = false;
 			toast.success('VM started', {
@@ -219,6 +223,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			vmPowerSignal.token += 1;
+			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.action = 'stop';
+
 			await sleep(1000);
 			modalState.loading.open = false;
 			toast.success('VM stopped', {
@@ -247,6 +255,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			vmPowerSignal.token += 1;
+			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.action = 'shutdown';
+
 			await sleep(1000);
 			modalState.loading.open = false;
 			toast.success('VM shutdown started', {
@@ -275,6 +287,10 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			vmPowerSignal.token += 1;
+			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.action = 'reboot';
+
 			await sleep(1000);
 			modalState.loading.open = false;
 			toast.success('VM rebooted', {
