@@ -1,4 +1,8 @@
-import type { CreateData } from '$lib/types/jail/jail';
+import type {
+    CreateData,
+    JailLifecycleAction,
+    JailLifecycleBadgeStyle
+} from '$lib/types/jail/jail';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 
@@ -132,4 +136,54 @@ export function dnsConfigPresets(
     resolver: keyof typeof DNS_PRESETS
 ): string {
     return DNS_PRESETS[resolver];
+}
+
+const jailLifecycleBadgeStyles: Record<JailLifecycleAction, JailLifecycleBadgeStyle> = {
+    start: {
+        variant: 'outline',
+        className: 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300',
+        label: 'Start'
+    },
+    stop: {
+        variant: 'outline',
+        className: 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300',
+        label: 'Stop'
+    }
+};
+
+export function getEffectiveJailLifecycleAction(
+    activeAction: string,
+    pendingAction: JailLifecycleAction | ''
+): string {
+    return activeAction || pendingAction;
+}
+
+export function getJailLifecyclePendingTimeoutMs(_action: JailLifecycleAction): number {
+    return 7000;
+}
+
+export function isJailLifecycleTransitionPending(
+    pendingAction: JailLifecycleAction | '',
+    hasActiveLifecycleTask: boolean
+): boolean {
+    return pendingAction !== '' && !hasActiveLifecycleTask;
+}
+
+export function shouldHideJailLifecycleButtons(
+    hasActiveLifecycleTask: boolean,
+    pendingAction: JailLifecycleAction | ''
+): boolean {
+    return hasActiveLifecycleTask || isJailLifecycleTransitionPending(pendingAction, hasActiveLifecycleTask);
+}
+
+export function getJailLifecycleBadgeStyle(action: string): JailLifecycleBadgeStyle {
+    if (action in jailLifecycleBadgeStyles) {
+        return jailLifecycleBadgeStyles[action as JailLifecycleAction];
+    }
+
+    return {
+        variant: 'outline',
+        className: 'text-muted-foreground',
+        label: action ? action.charAt(0).toUpperCase() + action.slice(1) : 'Working'
+    };
 }

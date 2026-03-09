@@ -23,6 +23,7 @@
 		VMStatSchema,
 		type QGAInfo,
 		type VM,
+		type VMLifecycleAction,
 		type VMDomain,
 		type VMStat
 	} from '$lib/types/vm/vm';
@@ -37,8 +38,17 @@
 	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
-	import { getVMIconByGaId } from '$lib/utils/vm/vm';
+	import {
+		getEffectiveVMLifecycleAction,
+		getVMIconByGaId,
+		getVMLifecyclePendingTimeoutMs,
+		getVMLifecycleBadgeStyle,
+		isVMLifecycleTransitionPending,
+		shouldHideVMLifecycleButtons
+	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
+	import { fade } from 'svelte/transition';
+	import Badge from '$lib/components/ui/badge/badge.svelte';
 
 	interface Data {
 		rid: number;
@@ -149,6 +159,8 @@
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
 	let isDescInitialized = false;
+	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
+	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	watch(
 		() => debouncedDesc.current,
@@ -188,6 +200,27 @@
 		modalState.deleteVolumes = forceDelete;
 		modalState.title = `${vm.current.name} (${vm.current.rid})`;
 		modalState.isDeleteOpen = true;
+	}
+
+	function beginPendingLifecycleAction(action: VMLifecycleAction) {
+		pendingLifecycleAction = action;
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+		}
+
+		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
+		pendingLifecycleTimer = setTimeout(() => {
+			pendingLifecycleAction = '';
+			pendingLifecycleTimer = null;
+		}, getVMLifecyclePendingTimeoutMs(action));
+	}
+
+	function clearPendingLifecycleAction() {
+		pendingLifecycleAction = '';
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+			pendingLifecycleTimer = null;
+		}
 	}
 
 	async function handleDelete() {
@@ -235,15 +268,22 @@
 	}
 
 	async function handleStart() {
+		beginPendingLifecycleAction('start');
 		const result = await actionVm(vm.current.rid, 'start');
 
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error starting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error starting VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			toast.success('VM start queued', {
 				duration: 5000,
@@ -256,15 +296,22 @@
 	}
 
 	async function handleStop() {
+		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
 
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error stopping VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error stopping VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			if (result.message === 'vm_force_stop_requested') {
 				toast.warning('Force stop requested', {
@@ -283,14 +330,21 @@
 	}
 
 	async function handleForceStop() {
+		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error requesting force stop', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error requesting force stop',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else {
 			toast.warning('Force stop requested', {
 				duration: 5000,
@@ -302,14 +356,21 @@
 	}
 
 	async function handleShutdown() {
+		beginPendingLifecycleAction('shutdown');
 		const result = await actionVm(vm.current.rid, 'shutdown');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error shutting down VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error shutting down VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			toast.success('VM shutdown queued', {
 				duration: 5000,
@@ -321,14 +382,21 @@
 	}
 
 	async function handleReboot() {
+		beginPendingLifecycleAction('reboot');
 		const result = await actionVm(vm.current.rid, 'reboot');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error rebooting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error rebooting VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			toast.success('VM reboot queued', {
 				duration: 5000,
@@ -361,16 +429,34 @@
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let effectiveLifecycleAction = $derived(
+		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	);
+	let isLifecycleTransitionPending = $derived(
+		isVMLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+	);
+	let shouldHideActionButtons = $derived(
+		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
+	);
+	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
 	let isShutdownTaskActive = $derived.by(
 		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
+	);
+
+	watch(
+		() => lifecycleTask.current,
+		(task) => {
+			if (task) {
+				clearPendingLifecycleAction();
+			}
+		}
 	);
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && domain.current.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
+	{#if type === 'start' && !shouldHideActionButtons && domain.current.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 		<Button
 			onclick={() => handleStart()}
-			disabled={hasActiveLifecycleTask}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -380,7 +466,6 @@
 
 		<Button
 			onclick={() => openDeleteModal(false)}
-			disabled={hasActiveLifecycleTask}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -388,10 +473,9 @@
 
 			{'Delete'}
 		</Button>
-	{:else if type === 'force-delete' && isDomainErrorState}
+	{:else if type === 'force-delete' && !shouldHideActionButtons && isDomainErrorState}
 		<Button
 			onclick={() => openDeleteModal(true)}
-			disabled={hasActiveLifecycleTask}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -409,11 +493,10 @@
 				<span>Force Stop</span>
 			</div>
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && domain.current.id !== -1 && domain.current.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && domain.current.id !== -1 && domain.current.status === 'Running'}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
-			disabled={hasActiveLifecycleTask}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -439,18 +522,26 @@
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
-		{@render button('start')}
-		{@render button('force-delete')}
-		{@render button('force-stop')}
-		{@render button('reboot')}
-		{@render button('shutdown')}
-		{@render button('stop')}
-		{#if hasActiveLifecycleTask}
-			<span class="ml-1 inline-flex items-center text-xs text-muted-foreground">
-				<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-				{activeLifecycleAction}
-			</span>
-		{/if}
+		{#key data.vm.rid}
+			<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
+				{@render button('start')}
+				{@render button('force-delete')}
+				{@render button('force-stop')}
+				{@render button('reboot')}
+				{@render button('shutdown')}
+				{@render button('stop')}
+
+				{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+					<Badge
+						variant={lifecycleActionBadge.variant}
+						class={`mt-0.5 ml-2 ${lifecycleActionBadge.className}`}
+					>
+						<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+						{lifecycleActionBadge.label}
+					</Badge>
+				{/if}
+			</div>
+		{/key}
 
 		<!-- Towards the right we should have another button -->
 		<div class="ml-auto flex h-full items-center">

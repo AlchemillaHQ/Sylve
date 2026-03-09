@@ -113,10 +113,13 @@
 
 	let terminal = $state<GhosttyTerminal | null>(null);
 	let ws = $state<WebSocket | null>(null);
+	let serialConnectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
 	let terminalContainer = $state<HTMLElement | null>(null);
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let connectionToken = 0;
+	let serialSetupToken = 0;
+	let serialSetupPromise: Promise<void> | null = null;
 	let destroyed = $state(false);
 	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
 
@@ -171,7 +174,7 @@
 
 		if (ws?.readyState === WebSocket.OPEN) {
 			cleanupSerial(true);
-			serialConnect();
+			void serialConnect();
 		}
 	}, 300);
 
@@ -194,11 +197,14 @@
 	}
 
 	function isSerialSocketActive() {
-		return ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING;
+		return serialConnectionState === 'connected' || serialConnectionState === 'connecting';
 	}
 
 	function cleanupSerial(forceKill = false) {
+		serialSetupToken += 1;
+		serialSetupPromise = null;
 		connectionToken += 1;
+		serialConnectionState = 'disconnected';
 
 		const socket = ws;
 		ws = null;
@@ -238,7 +244,7 @@
 	function reconnectSerial() {
 		if (isSerialSocketActive()) return;
 		cState.current = false;
-		serialConnect();
+		void serialConnect();
 	}
 
 	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 10) {
@@ -315,7 +321,7 @@
 		}
 	);
 
-	const serialConnect = async () => {
+	const serialConnectInternal = async (activeSerialSetupToken: number) => {
 		cState.current = false;
 
 		if (!vm.current.serial) return;
@@ -325,9 +331,10 @@
 
 		const ghostty = await loadGhostty();
 		await ghostty.init();
-		if (destroyed) return;
+		if (destroyed || activeSerialSetupToken !== serialSetupToken) return;
 
-		cleanupSerial(false);
+		terminal?.dispose?.();
+		terminal = null;
 
 		terminal = new ghostty.Terminal({
 			cursorBlink: true,
@@ -342,6 +349,12 @@
 
 		terminal.open(terminalContainer);
 
+		if (destroyed || activeSerialSetupToken !== serialSetupToken) {
+			terminal?.dispose?.();
+			terminal = null;
+			return;
+		}
+
 		const wssAuth = getWSSAuth();
 		const url = `/api/vm/console?rid=${vm.current.rid}&auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
 
@@ -350,10 +363,13 @@
 		const socket = new WebSocket(url);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
+		serialConnectionState = 'connecting';
 
 		socket.onopen = async () => {
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
+
+			serialConnectionState = 'connected';
 
 			console.log(`Serial console connected for VM ${data.rid}`);
 			if (lastWidth && lastHeight) {
@@ -395,7 +411,22 @@
 			if (ws === socket) {
 				ws = null;
 			}
+			serialConnectionState = 'disconnected';
 		};
+	};
+
+	const serialConnect = () => {
+		if (serialSetupPromise) return serialSetupPromise;
+
+		const activeSerialSetupToken = ++serialSetupToken;
+		const currentSetup = serialConnectInternal(activeSerialSetupToken).finally(() => {
+			if (serialSetupPromise === currentSetup) {
+				serialSetupPromise = null;
+			}
+		});
+
+		serialSetupPromise = currentSetup;
+		return currentSetup;
 	};
 
 	onMount(() => {
@@ -403,13 +434,14 @@
 			startVncLoading();
 		} else if (consoleType === 'serial' && vm.current.serial && !cState.current) {
 			tick().then(() => {
-				serialConnect();
+				void serialConnect();
 			});
 		}
 
 		return () => {
 			destroyed = true;
 			connectionToken += 1;
+			serialConnectionState = 'disconnected';
 
 			if (ws) {
 				ws.onopen = null;
@@ -443,7 +475,7 @@
 				localStorage.setItem(`vm-${vm.current.rid}-console-preferred`, 'serial');
 				if (!cState.current) {
 					tick().then(() => {
-						serialConnect();
+						void serialConnect();
 					});
 				}
 			}
@@ -526,7 +558,7 @@
 			{/if}
 
 			{#if consoleType === 'serial' && vm.current.serial}
-				{#if ws?.readyState === WebSocket.OPEN}
+				{#if serialConnectionState === 'connected'}
 					<Button
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
@@ -541,11 +573,12 @@
 					<Button
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+						disabled={serialConnectionState === 'connecting'}
 						onclick={reconnectSerial}
 					>
 						<div class="flex items-center gap-2">
 							<span class="icon-[mdi--refresh] h-4 w-4"></span>
-							<span>Reconnect</span>
+							<span>{serialConnectionState === 'connecting' ? 'Connecting...' : 'Reconnect'}</span>
 						</div>
 					</Button>
 				{/if}

@@ -36,6 +36,22 @@
 
 	let details = $derived(clusterDetails.current);
 	let clustered = $derived(details?.cluster?.enabled || false);
+
+	let leftPaneDefaultSize = $state(12);
+	let topPaneDefaultSize = $state(90);
+	let bottomPaneDefaultSize = $state(10);
+	let lifecyclePaneActive = $state(false);
+	let childPaneAutoSaveId = $derived(
+		lifecyclePaneActive ? 'child-pane-auto-save-lifecycle' : 'child-pane-auto-save'
+	);
+
+	const lifecyclePaneBoost = 6;
+
+	function handleLifecycleActiveChange(active: boolean) {
+		lifecyclePaneActive = active;
+		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
+		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
+	}
 </script>
 
 <div class="flex min-h-screen w-full flex-col">
@@ -45,15 +61,15 @@
 			<Resizable.PaneGroup
 				direction="vertical"
 				id="child-pane-auto"
-				autoSaveId="child-pane-auto-save"
+				autoSaveId={childPaneAutoSaveId}
 			>
-				<Resizable.Pane>
+				<Resizable.Pane defaultSize={topPaneDefaultSize}>
 					<Resizable.PaneGroup
 						direction="horizontal"
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
 					>
-						<Resizable.Pane defaultSize={12} class="border-l">
+						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
 							<div class="h-full" transition:fade|global={{ duration: 400 }}>
 								{#if clustered}
 									<LeftPanelClustered />
@@ -72,8 +88,8 @@
 
 				<Resizable.Handle withHandle />
 
-				<Resizable.Pane class="h-full min-h-20" defaultSize={10}>
-					<BottomPanel {clustered} />
+				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
+					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>

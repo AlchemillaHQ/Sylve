@@ -34,9 +34,12 @@
 	let terminal = $state<GhosttyTerminal | null>(null);
 	let ws = $state<WebSocket | null>(null);
 	let terminalContainer = $state<HTMLElement | null>(null);
+	let connectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
 	let lastWidth = 0;
 	let lastHeight = 0;
 	let connectionToken = 0;
+	let setupToken = 0;
+	let setupPromise: Promise<void> | null = null;
 	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
 
 	function loadGhostty() {
@@ -111,7 +114,7 @@
 	}
 
 	function isSocketActive() {
-		return ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING;
+		return connectionState === 'connected' || connectionState === 'connecting';
 	}
 
 	function disconnect() {
@@ -120,7 +123,10 @@
 	}
 
 	function disconnectSocket(forceKill: boolean) {
+		setupToken += 1;
+		setupPromise = null;
 		connectionToken += 1;
+		connectionState = 'disconnected';
 
 		const socket = ws;
 		ws = null;
@@ -156,7 +162,7 @@
 	function reconnect() {
 		if (isSocketActive()) return;
 		cState.current = false;
-		setup();
+		void setup();
 	}
 
 	async function refetchUntilState(targetState: 'ACTIVE' | 'INACTIVE', attempts = 8) {
@@ -222,7 +228,7 @@
 
 	let destroyed = $state(false);
 
-	const setup = async () => {
+	const setupInternal = async (activeSetupToken: number) => {
 		cState.current = false;
 
 		if (!jail.current || !jail.current.ctId) return;
@@ -232,7 +238,10 @@
 
 		const ghostty = await loadGhostty();
 		await ghostty.init();
-		if (destroyed) return;
+		if (destroyed || activeSetupToken !== setupToken) return;
+
+		terminal?.dispose?.();
+		terminal = null;
 
 		terminal = new ghostty.Terminal({
 			cursorBlink: true,
@@ -246,6 +255,12 @@
 		});
 
 		terminal.open(terminalContainer);
+
+		if (destroyed || activeSetupToken !== setupToken) {
+			terminal?.dispose?.();
+			terminal = null;
+			return;
+		}
 
 		const hash = await sha256(storage.token || '', 1);
 		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
@@ -265,10 +280,13 @@
 		);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
+		connectionState = 'connecting';
 
 		socket.onopen = () => {
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
+
+			connectionState = 'connected';
 
 			console.log(`Jail console connected for jail ${data.ctId}`);
 			if (lastWidth && lastHeight) {
@@ -310,7 +328,22 @@
 			if (ws === socket) {
 				ws = null;
 			}
+			connectionState = 'disconnected';
 		};
+	};
+
+	const setup = () => {
+		if (setupPromise) return setupPromise;
+
+		const activeSetupToken = ++setupToken;
+		const currentSetup = setupInternal(activeSetupToken).finally(() => {
+			if (setupPromise === currentSetup) {
+				setupPromise = null;
+			}
+		});
+
+		setupPromise = currentSetup;
+		return currentSetup;
 	};
 
 	useInterval(() => 1000, {
@@ -368,12 +401,13 @@
 
 	onMount(() => {
 		if (!cState.current) {
-			setup();
+			void setup();
 		}
 
 		return () => {
 			destroyed = true;
 			connectionToken += 1;
+			connectionState = 'disconnected';
 
 			if (ws) {
 				ws.onopen = null;
@@ -410,7 +444,7 @@
 {:else}
 	<div class="flex h-full w-full flex-col">
 		<div class="flex h-10 shrink-0 w-full items-center gap-2 border p-4">
-			{#if ws?.readyState === WebSocket.OPEN}
+			{#if connectionState === 'connected'}
 				<Button
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
@@ -425,11 +459,12 @@
 				<Button
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+					disabled={connectionState === 'connecting'}
 					onclick={reconnect}
 				>
 					<div class="flex items-center gap-2">
 						<span class="icon-[mdi--refresh] h-4 w-4"></span>
-						<span>Reconnect</span>
+						<span>{connectionState === 'connecting' ? 'Connecting...' : 'Reconnect'}</span>
 					</div>
 				</Button>
 			{/if}

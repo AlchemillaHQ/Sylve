@@ -18,9 +18,10 @@
 
 	interface Props {
 		clustered?: boolean;
+		onLifecycleActiveChange?: (active: boolean) => void;
 	}
 
-	let { clustered = false }: Props = $props();
+	let { clustered = false, onLifecycleActiveChange }: Props = $props();
 
 	let selectedHostname = $state(storage.hostname || '');
 	const effectiveHostname = $derived(selectedHostname || storage.hostname || '');
@@ -232,6 +233,14 @@
 	});
 
 	let activeLifecycleCount = $derived(activeLifecycleTasks.current.length);
+	let lifecycleActive = $derived(activeLifecycleCount > 0);
+
+	watch(
+		() => lifecycleActive,
+		(active) => {
+			onLifecycleActiveChange?.(active);
+		}
+	);
 
 	function lifecycleGuestLabel(task: LifecycleTask): string {
 		const prefix = task.guestType === 'vm' ? 'VM' : 'Jail';
@@ -271,7 +280,8 @@
 
 						{#each activeLifecycleTasks.current as task (task.id)}
 							<span class="bg-background rounded border px-2 py-0.5">
-								{lifecycleGuestLabel(task)} {task.action} ({task.status})
+								{lifecycleGuestLabel(task)}
+								{task.action} ({task.status})
 							</span>
 						{/each}
 					</div>

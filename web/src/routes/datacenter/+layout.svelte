@@ -81,7 +81,7 @@
 			// }
 		];
 
-		if (clusterEnabled) {
+		if (clusterEnabled && storage.showReplication) {
 			items.push({
 				label: 'Replication',
 				icon: 'carbon--ibm-data-replication',

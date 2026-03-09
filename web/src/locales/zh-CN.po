@@ -242,6 +242,7 @@ msgstr "任务"
 msgid "Events"
 msgstr "事件"
 
+#: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -411,6 +412,7 @@ msgstr "Jail - 更新描述"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -587,9 +589,8 @@ msgstr "Sylve 标志"
 msgid "Sylve"
 msgstr "Sylve"
 
-#: src/lib/components/custom/About.svelte
-msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
-msgstr "Sylve 是一个用于 <0>FreeBSD 生态系统</0> 的轻量级控制平面，将 Bhyve、Jails、ZFS、PF 等整合进一个精简的管理界面。它由高性能的 Go 后端和响应迅速的 SvelteKit 前端驱动，让复杂的基础设施变得简单。"
+#~ msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+#~ msgstr "Sylve 是一个用于 <0>FreeBSD 生态系统</0> 的轻量级控制平面，将 Bhyve、Jails、ZFS、PF 等整合进一个精简的管理界面。它由高性能的 Go 后端和响应迅速的 SvelteKit 前端驱动，让复杂的基础设施变得简单。"
 
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors"
@@ -2185,7 +2186,7 @@ msgstr "命令面板"
 msgid "Search for a command to run"
 msgstr "搜索要运行的命令"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 
+#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -2226,45 +2227,33 @@ msgstr "删除 Jail 时出错"
 msgid "Jail deleted"
 msgstr "Jail 已删除"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Stopping Jail"
-msgstr "正在停止 Jail"
+#~ msgid "Stopping Jail"
+#~ msgstr "正在停止 Jail"
 
-#. 0: jail.current.name; 1: jail.current.ctId
-#. 0: jail.current.name; 1: jail.current.ctId
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
-msgstr "请稍候，Jail <b>{0} ({1})</b> 正在停止中"
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+#~ msgstr "请稍候，Jail <b>{0} ({1})</b> 正在停止中"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error stopping jail"
 msgstr "停止 Jail 时出错"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-msgid "Jail stopped"
-msgstr "Jail 已停止"
+#~ msgid "Jail stopped"
+#~ msgstr "Jail 已停止"
+
+#~ msgid "Starting Jail"
+#~ msgstr "正在启动 Jail"
+
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
+#~ msgstr "请稍候，Jail <b>{0} ({1})</b> 正在启动中"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Starting Jail"
-msgstr "正在启动 Jail"
-
-#. 0: jail.current.name; 1: jail.current.ctId
-#. 0: jail.current.name; 1: jail.current.ctId
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
-msgstr "请稍候，Jail <b>{0} ({1})</b> 正在启动中"
-
-#: src/routes/[node]/jail/[node]/+layout.svelte
 msgid "Error starting jail"
 msgstr "启动 Jail 时出错"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-msgid "Jail started"
-msgstr "Jail 已启动"
+#~ msgid "Jail started"
+#~ msgstr "Jail 已启动"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -2866,90 +2855,61 @@ msgstr "虚拟机已强制删除"
 msgid "VM deleted"
 msgstr "虚拟机已删除"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Starting Virtual Machine"
-msgstr "正在启动虚拟机"
+#~ msgid "Starting Virtual Machine"
+#~ msgstr "正在启动虚拟机"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being started."
-msgstr "请稍候，正在启动虚拟机 <b>{0} ({1})</b>。"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being started."
+#~ msgstr "请稍候，正在启动虚拟机 <b>{0} ({1})</b>。"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error starting VM"
 msgstr "启动虚拟机时出错"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM started"
-msgstr "虚拟机已启动"
+#~ msgid "VM started"
+#~ msgstr "虚拟机已启动"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Stopping Virtual Machine"
-msgstr "正在停止虚拟机"
+#~ msgid "Stopping Virtual Machine"
+#~ msgstr "正在停止虚拟机"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
-msgstr "请稍候，正在停止虚拟机 <b>{0} ({1})</b>"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
+#~ msgstr "请稍候，正在停止虚拟机 <b>{0} ({1})</b>"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error stopping VM"
 msgstr "停止虚拟机时出错"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM stopped"
-msgstr "虚拟机已停止"
+#~ msgid "VM stopped"
+#~ msgstr "虚拟机已停止"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Shutting Down Virtual Machine"
-msgstr "正在关闭虚拟机"
+#~ msgid "Shutting Down Virtual Machine"
+#~ msgstr "正在关闭虚拟机"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
-msgstr "请稍候，虚拟机 <b>{0} ({1})</b> 正在关机"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
+#~ msgstr "请稍候，虚拟机 <b>{0} ({1})</b> 正在关机"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error shutting down VM"
 msgstr "关闭虚拟机时出错"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "VM shutdown started"
-msgstr "虚拟机已开始关机"
+#~ msgid "VM shutdown started"
+#~ msgstr "虚拟机已开始关机"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Rebooting Virtual Machine"
-msgstr "正在重启虚拟机"
+#~ msgid "Rebooting Virtual Machine"
+#~ msgstr "正在重启虚拟机"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
-msgstr "请稍候，正在重启虚拟机 <b>{0} ({1})</b>"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
+#~ msgstr "请稍候，正在重启虚拟机 <b>{0} ({1})</b>"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error rebooting VM"
 msgstr "重启虚拟机时出错"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM rebooted"
-msgstr "虚拟机已重启"
+#~ msgid "VM rebooted"
+#~ msgstr "虚拟机已重启"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2961,6 +2921,7 @@ msgstr "强制删除"
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3403,11 +3364,8 @@ msgstr "输入 {0} 以确认强制恢复。"
 msgid "Replication HA requires at least 3 configured Raft voters."
 msgstr "复制 HA 需要至少 3 个已配置 Raft 投票者。"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "This policy needs at least two distinct target servers."
-msgstr "此策略需要至少两个不同的目标服务器。"
+#~ msgid "This policy needs at least two distinct target servers."
+#~ msgstr "此策略需要至少两个不同的目标服务器。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3463,9 +3421,8 @@ msgstr "此节点不再是集群领导者。请在几秒钟后重试。"
 msgid "Could not start failover. Check cluster status and try again."
 msgstr "无法启动故障转移。请检查集群状态并重试。"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Add at least two distinct target servers."
-msgstr "添加至少两个不同的目标服务器。"
+#~ msgid "Add at least two distinct target servers."
+#~ msgstr "添加至少两个不同的目标服务器。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3680,6 +3637,7 @@ msgid "Each target server can be added only once."
 msgstr "每个目标服务器只能添加一次。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Add at least one target server."
 msgstr "添加至少一个目标服务器。"
 
@@ -3695,9 +3653,8 @@ msgstr "描述太长。请保持在 1024 个字符以内。"
 msgid "Choose the VM or jail to protect."
 msgstr "选择要保护的虚拟机或 Jail。"
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Add at least two distinct target servers for HA."
-msgstr "为 HA 添加至少两个不同的目标服务器。"
+#~ msgid "Add at least two distinct target servers for HA."
+#~ msgstr "为 HA 添加至少两个不同的目标服务器。"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pick the preferred primary node for this policy."
@@ -4993,12 +4950,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -6816,14 +6773,11 @@ msgstr "未配置"
 msgid "Ignore Unimplemented MSRs Accesses"
 msgstr "忽略未实现的 MSR 访问"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
-msgstr "请稍候，正在关闭虚拟机 <b>{0} ({1})</b>"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
+#~ msgstr "请稍候，正在关闭虚拟机 <b>{0} ({1})</b>"
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM shut down"
-msgstr "虚拟机已关闭"
+#~ msgid "VM shut down"
+#~ msgstr "虚拟机已关闭"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Notes about VM"
@@ -8129,3 +8083,106 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Quad9 DNS"
 msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM action already in progress"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM start queued"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force stop requested"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM stop queued"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error requesting force stop"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM shutdown queued"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM reboot queued"
+msgstr ""
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Stop"
+msgstr ""
+
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "<0/> {0} lifecycle action{1} in progress"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail action already in progress"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail stop queued"
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail start queued"
+msgstr ""
+
+#~ msgid "Working"
+#~ msgstr ""
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least one target server."
+msgstr ""
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Connecting..."
+msgstr ""
+
+#: src/lib/components/custom/About.svelte
+msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+msgstr ""
+
+#: src/lib/components/custom/About.svelte
+msgid "Experimental Features"
+msgstr ""
+
+#~ msgid "Live Console Stream"
+#~ msgstr ""
+
+#~ msgid "Task Pipeline Preview"
+#~ msgstr ""
+
+#~ msgid "Edge Telemetry Mode"
+#~ msgstr ""

@@ -14,14 +14,24 @@
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
+	import { fade } from 'svelte/transition';
+	import type { SimpleVm, VMDomain, VMLifecycleAction } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		getEffectiveVMLifecycleAction,
+		getVMLifecyclePendingTimeoutMs,
+		getVMLifecycleBadgeStyle,
+		isVMLifecycleTransitionPending,
+		shouldHideVMLifecycleButtons
+	} from '$lib/utils/vm/vm';
 
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
 
 	let { children }: Props = $props();
+	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
+	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let rid = $derived.by(() => {
 		const value = Number(page.url.pathname.split('/')[3]);
@@ -76,6 +86,16 @@
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let effectiveLifecycleAction = $derived(
+		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	);
+	let isLifecycleTransitionPending = $derived(
+		isVMLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+	);
+	let shouldHideActionButtons = $derived(
+		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
+	);
+	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
 	let isShutdownTaskActive = $derived.by(
 		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
 	);
@@ -143,6 +163,15 @@
 		}
 	);
 
+	watch(
+		() => lifecycleTask.current,
+		(task) => {
+			if (task) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
+
 	function openDeleteModal(forceDelete: boolean = false) {
 		if (!vm.current) return;
 		modalState.forceDelete = forceDelete;
@@ -151,6 +180,27 @@
 		modalState.deleteVolumes = forceDelete;
 		modalState.title = `${vm.current.name} (${vm.current.rid})`;
 		modalState.isDeleteOpen = true;
+	}
+
+	function beginPendingLifecycleAction(action: VMLifecycleAction) {
+		pendingLifecycleAction = action;
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+		}
+
+		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
+		pendingLifecycleTimer = setTimeout(() => {
+			pendingLifecycleAction = '';
+			pendingLifecycleTimer = null;
+		}, getVMLifecyclePendingTimeoutMs(action));
+	}
+
+	function clearPendingLifecycleAction() {
+		pendingLifecycleAction = '';
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+			pendingLifecycleTimer = null;
+		}
 	}
 
 	async function handleDelete() {
@@ -200,14 +250,21 @@
 
 	async function handleStart() {
 		if (!vm.current) return;
+		beginPendingLifecycleAction('start');
 		const result = await actionVm(vm.current.rid, 'start');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error starting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error starting VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
@@ -224,14 +281,21 @@
 
 	async function handleStop() {
 		if (!vm.current) return;
+		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error stopping VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error stopping VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
@@ -255,14 +319,21 @@
 
 	async function handleForceStop() {
 		if (!vm.current) return;
+		beginPendingLifecycleAction('stop');
 		const result = await actionVm(vm.current.rid, 'stop');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error requesting force stop', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error requesting force stop',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else {
 			toast.warning('Force stop requested', {
 				duration: 5000,
@@ -275,14 +346,21 @@
 
 	async function handleShutdown() {
 		if (!vm.current) return;
+		beginPendingLifecycleAction('shutdown');
 		const result = await actionVm(vm.current.rid, 'shutdown');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error shutting down VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error shutting down VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
@@ -299,14 +377,21 @@
 
 	async function handleReboot() {
 		if (!vm.current) return;
+		beginPendingLifecycleAction('reboot');
 		const result = await actionVm(vm.current.rid, 'reboot');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'VM action already in progress' : 'Error rebooting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'VM action already in progress'
+					: 'Error rebooting VM',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
@@ -341,103 +426,104 @@
 						{/if}
 					</Badge>
 					<p class="truncate text-sm font-semibold">{vm.current.name} ({vm.current.rid})</p>
-					{#if hasActiveLifecycleTask}
-						<Badge variant="outline" class="px-1.5 text-xs">
+					{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+						<Badge
+							variant={lifecycleActionBadge.variant}
+							class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
+						>
 							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-							{activeLifecycleAction}
+							{lifecycleActionBadge.label}
 						</Badge>
 					{/if}
 				{/if}
 			</div>
 
-			<div class="flex items-center gap-1">
-				{#if vm.current && domain.current}
-					{#if domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
-						<Button
-							onclick={() => handleStart()}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-							{'Start'}
-						</Button>
-
-						<Button
-							onclick={() => openDeleteModal(false)}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-							{'Delete'}
-						</Button>
-					{/if}
-
-					{#if isDomainErrorState}
-						<Button
-							onclick={() => openDeleteModal(true)}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-							{'Force Delete'}
-						</Button>
-					{/if}
-
-					{#if domain.current.id !== -1 && domain.current.status === 'Running'}
-						{#if isShutdownTaskActive}
+			{#key rid}
+				<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
+					{#if vm.current && domain.current}
+						{#if !shouldHideActionButtons && domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 							<Button
-								onclick={() => handleForceStop()}
+								onclick={() => handleStart()}
 								size="sm"
-								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<div class="flex items-center">
-									<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
-									<span>Force Stop</span>
-								</div>
+								<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+								{'Start'}
+							</Button>
+
+							<Button
+								onclick={() => openDeleteModal(false)}
+								size="sm"
+								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+							>
+								<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+								{'Delete'}
 							</Button>
 						{/if}
 
-						<Button
-							onclick={() => handleReboot()}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<div class="flex items-center">
-								<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
-								<span>Reboot</span>
-							</div>
-						</Button>
+						{#if !shouldHideActionButtons && isDomainErrorState}
+							<Button
+								onclick={() => openDeleteModal(true)}
+								size="sm"
+								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
+							>
+								<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
+								{'Force Delete'}
+							</Button>
+						{/if}
 
-						<Button
-							onclick={() => handleShutdown()}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<div class="flex items-center">
-								<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
-								<span>Shutdown</span>
-							</div>
-						</Button>
+						{#if domain.current.id !== -1 && domain.current.status === 'Running'}
+							{#if isShutdownTaskActive}
+								<Button
+									onclick={() => handleForceStop()}
+									size="sm"
+									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+								>
+									<div class="flex items-center">
+										<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
+										<span>Force Stop</span>
+									</div>
+								</Button>
+							{/if}
 
-						<Button
-							onclick={() => handleStop()}
-							disabled={hasActiveLifecycleTask}
-							size="sm"
-							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
-						>
-							<div class="flex items-center">
-								<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-								<span>Stop</span>
-							</div>
-						</Button>
+							{#if !shouldHideActionButtons}
+								<Button
+									onclick={() => handleReboot()}
+									size="sm"
+									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+								>
+									<div class="flex items-center">
+										<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
+										<span>Reboot</span>
+									</div>
+								</Button>
+
+								<Button
+									onclick={() => handleShutdown()}
+									size="sm"
+									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+								>
+									<div class="flex items-center">
+										<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
+										<span>Shutdown</span>
+									</div>
+								</Button>
+
+								<Button
+									onclick={() => handleStop()}
+									size="sm"
+									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+								>
+									<div class="flex items-center">
+										<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
+										<span>Stop</span>
+									</div>
+								</Button>
+							{/if}
+						{/if}
 					{/if}
-				{/if}
-			</div>
+				</div>
+			{/key}
 		</div>
 	{/if}
 

@@ -11,7 +11,14 @@
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
-	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
+	import type { JailLifecycleAction, JailState, SimpleJail } from '$lib/types/jail/jail';
+	import {
+		getEffectiveJailLifecycleAction,
+		getJailLifecycleBadgeStyle,
+		getJailLifecyclePendingTimeoutMs,
+		isJailLifecycleTransitionPending,
+		shouldHideJailLifecycleButtons
+	} from '$lib/utils/jail/jail';
 	import { sleep } from '$lib/utils';
 	import { updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
@@ -22,6 +29,8 @@
 	}
 
 	let { children }: Props = $props();
+	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
+	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let ctId = $derived.by(() => {
 		const value = Number(page.url.pathname.split('/')[3]);
@@ -121,12 +130,41 @@
 		}
 	);
 
+	watch(
+		() => lifecycleTask.current,
+		(task) => {
+			if (task) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
+
 	function openDeleteModal() {
 		if (!jail.current) return;
 		modalState.deleteMacs = false;
 		modalState.deleteRootFS = false;
 		modalState.title = `${jail.current.name} (${jail.current.ctId})`;
 		modalState.isDeleteOpen = true;
+	}
+
+	function beginPendingLifecycleAction(action: JailLifecycleAction) {
+		pendingLifecycleAction = action;
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+		}
+
+		pendingLifecycleTimer = setTimeout(() => {
+			pendingLifecycleAction = '';
+			pendingLifecycleTimer = null;
+		}, getJailLifecyclePendingTimeoutMs(action));
+	}
+
+	function clearPendingLifecycleAction() {
+		pendingLifecycleAction = '';
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+			pendingLifecycleTimer = null;
+		}
 	}
 
 	async function handleDelete() {
@@ -162,14 +200,21 @@
 
 	async function handleStop() {
 		if (!jail.current) return;
+		beginPendingLifecycleAction('stop');
 		const result = await jailAction(jail.current.ctId, 'stop');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error stopping jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error stopping jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			jailPowerSignal.token += 1;
 			jailPowerSignal.ctId = jail.current.ctId;
@@ -186,14 +231,21 @@
 
 	async function handleStart() {
 		if (!jail.current) return;
+		beginPendingLifecycleAction('start');
 		const result = await jailAction(jail.current.ctId, 'start');
 		reload.leftPanel = true;
 
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error starting jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error starting jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else if (result.status === 'success') {
 			jailPowerSignal.token += 1;
 			jailPowerSignal.ctId = jail.current.ctId;
@@ -210,6 +262,16 @@
 
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let effectiveLifecycleAction = $derived(
+		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	);
+	let isLifecycleTransitionPending = $derived(
+		isJailLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+	);
+	let shouldHideActionButtons = $derived(
+		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
+	);
+	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -229,31 +291,23 @@
 						{/if}
 					</Badge>
 					<p class="truncate text-sm font-semibold">{jail.current.name} ({jail.current.ctId})</p>
-					{#if hasActiveLifecycleTask}
-						<Badge variant="outline" class="px-1.5 text-xs">
-							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-							{activeLifecycleAction}
-						</Badge>
-					{/if}
 				{/if}
 			</div>
 
 			<div class="flex items-center gap-1">
 				{#if jail.current && jState.current}
-					{#if jState.current.state === 'ACTIVE'}
+					{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 						<Button
 							onclick={handleStop}
-							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
 							<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
 							{'Stop'}
 						</Button>
-					{:else}
+					{:else if !shouldHideActionButtons}
 						<Button
 							onclick={handleStart}
-							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
@@ -263,13 +317,22 @@
 
 						<Button
 							onclick={openDeleteModal}
-							disabled={hasActiveLifecycleTask}
 							size="sm"
 							class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 						>
 							<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 							{'Delete'}
 						</Button>
+					{/if}
+
+					{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+						<Badge
+							variant={lifecycleActionBadge.variant}
+							class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
+						>
+							<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+							{lifecycleActionBadge.label}
+						</Badge>
 					{/if}
 				{/if}
 			</div>

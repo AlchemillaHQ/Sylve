@@ -183,3 +183,13 @@ export type JailHook = z.infer<typeof JailHookSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;
+
+export type JailLifecycleAction = 'start' | 'stop';
+
+export type JailLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
+
+export interface JailLifecycleBadgeStyle {
+    variant: JailLifecycleBadgeVariant;
+    className: string;
+    label: string;
+}

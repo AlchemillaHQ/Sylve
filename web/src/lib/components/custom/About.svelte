@@ -1,6 +1,9 @@
 <script lang="ts">
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Accordion from '$lib/components/ui/accordion/index.js';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { mode } from 'mode-watcher';
+	import { storage } from '$lib';
 
 	interface Props {
 		open: boolean;
@@ -28,6 +31,10 @@
 			dark: '/logo/sponsors/IP-Technics-White.webp'
 		}
 	];
+
+	let featureLiveConsole = $state(false);
+	let featureTaskPreview = $state(false);
+	let featureEdgeTelemetry = $state(false);
 </script>
 
 <Dialog.Root bind:open>
@@ -53,7 +60,7 @@
 		<div class="max-h-[80vh] overflow-y-auto px-5 pt-0 pb-6 space-y-5">
 			<p class="text-sm leading-relaxed text-foreground/80 text-justify">
 				Sylve is a lightweight control plane for the <strong>FreeBSD ecosystem</strong>, unifying
-				Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a
+				Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a
 				high-performance Go backend and a responsive SvelteKit frontend, it makes complex
 				infrastructure simple.
 			</p>
@@ -90,6 +97,25 @@
 						<span class="mt-1 text-[9px] font-bold uppercase text-primary">Join us</span>
 					</a>
 				</div>
+			</div>
+
+			<div class="rounded-md border bg-muted/10 px-4">
+				<Accordion.Root type="single">
+					<Accordion.Item value="experimental-features" class="border-b-0">
+						<Accordion.Trigger
+							class="py-3 text-xs uppercase tracking-widest text-muted-foreground hover:no-underline"
+						>
+							Experimental Features
+						</Accordion.Trigger>
+						<Accordion.Content class="pb-4">
+							<div class="space-y-3">
+								<div class="flex items-center space-x-2">
+									<CustomCheckbox label="Replication" bind:checked={storage.showReplication} />
+								</div>
+							</div>
+						</Accordion.Content>
+					</Accordion.Item>
+				</Accordion.Root>
 			</div>
 
 			<div class="flex items-center justify-between border-t pt-4">

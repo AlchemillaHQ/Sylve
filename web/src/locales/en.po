@@ -242,6 +242,7 @@ msgstr "Jobs"
 msgid "Events"
 msgstr "Events"
 
+#: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -411,6 +412,7 @@ msgstr "Jail - Update Description"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -587,9 +589,8 @@ msgstr "Sylve Logo"
 msgid "Sylve"
 msgstr "Sylve"
 
-#: src/lib/components/custom/About.svelte
-msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
-msgstr "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+#~ msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+#~ msgstr "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
 
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors"
@@ -2185,7 +2186,7 @@ msgstr "Command Palette"
 msgid "Search for a command to run"
 msgstr "Search for a command to run"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 
+#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -2226,45 +2227,33 @@ msgstr "Error deleting jail"
 msgid "Jail deleted"
 msgstr "Jail deleted"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Stopping Jail"
-msgstr "Stopping Jail"
+#~ msgid "Stopping Jail"
+#~ msgstr "Stopping Jail"
 
-#. 0: jail.current.name; 1: jail.current.ctId
-#. 0: jail.current.name; 1: jail.current.ctId
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
-msgstr "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+#~ msgstr "Please wait while Jail <b>{0} ({1})</b> is being stopped"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error stopping jail"
 msgstr "Error stopping jail"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-msgid "Jail stopped"
-msgstr "Jail stopped"
+#~ msgid "Jail stopped"
+#~ msgstr "Jail stopped"
+
+#~ msgid "Starting Jail"
+#~ msgstr "Starting Jail"
+
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
+#~ msgstr "Please wait while Jail <b>{0} ({1})</b> is being started"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Starting Jail"
-msgstr "Starting Jail"
-
-#. 0: jail.current.name; 1: jail.current.ctId
-#. 0: jail.current.name; 1: jail.current.ctId
-#: src/routes/[node]/jail/[node]/+layout.svelte
-#: src/routes/[node]/jail/[node]/summary/+page.svelte
-msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
-msgstr "Please wait while Jail <b>{0} ({1})</b> is being started"
-
-#: src/routes/[node]/jail/[node]/+layout.svelte
 msgid "Error starting jail"
 msgstr "Error starting jail"
 
-#: src/routes/[node]/jail/[node]/+layout.svelte
-msgid "Jail started"
-msgstr "Jail started"
+#~ msgid "Jail started"
+#~ msgstr "Jail started"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -2866,90 +2855,61 @@ msgstr "VM force deleted"
 msgid "VM deleted"
 msgstr "VM deleted"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Starting Virtual Machine"
-msgstr "Starting Virtual Machine"
+#~ msgid "Starting Virtual Machine"
+#~ msgstr "Starting Virtual Machine"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being started."
-msgstr "Please wait while VM <b>{0} ({1})</b> is being started."
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being started."
+#~ msgstr "Please wait while VM <b>{0} ({1})</b> is being started."
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error starting VM"
 msgstr "Error starting VM"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM started"
-msgstr "VM started"
+#~ msgid "VM started"
+#~ msgstr "VM started"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Stopping Virtual Machine"
-msgstr "Stopping Virtual Machine"
+#~ msgid "Stopping Virtual Machine"
+#~ msgstr "Stopping Virtual Machine"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
-msgstr "Please wait while VM <b>{0} ({1})</b> is being stopped"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
+#~ msgstr "Please wait while VM <b>{0} ({1})</b> is being stopped"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error stopping VM"
 msgstr "Error stopping VM"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM stopped"
-msgstr "VM stopped"
+#~ msgid "VM stopped"
+#~ msgstr "VM stopped"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Shutting Down Virtual Machine"
-msgstr "Shutting Down Virtual Machine"
+#~ msgid "Shutting Down Virtual Machine"
+#~ msgstr "Shutting Down Virtual Machine"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
-msgstr "Please wait while VM <b>{0} ({1})</b> is shutting down"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
+#~ msgstr "Please wait while VM <b>{0} ({1})</b> is shutting down"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error shutting down VM"
 msgstr "Error shutting down VM"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-msgid "VM shutdown started"
-msgstr "VM shutdown started"
+#~ msgid "VM shutdown started"
+#~ msgstr "VM shutdown started"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Rebooting Virtual Machine"
-msgstr "Rebooting Virtual Machine"
+#~ msgid "Rebooting Virtual Machine"
+#~ msgstr "Rebooting Virtual Machine"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
-msgstr "Please wait while VM <b>{0} ({1})</b> is being rebooted"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
+#~ msgstr "Please wait while VM <b>{0} ({1})</b> is being rebooted"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Error rebooting VM"
 msgstr "Error rebooting VM"
 
-#: src/routes/[node]/vm/[node]/+layout.svelte
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM rebooted"
-msgstr "VM rebooted"
+#~ msgid "VM rebooted"
+#~ msgstr "VM rebooted"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2961,6 +2921,7 @@ msgstr "Force Delete"
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -3403,11 +3364,8 @@ msgstr "Type {0} to confirm Force recovery."
 msgid "Replication HA requires at least 3 configured Raft voters."
 msgstr "Replication HA requires at least 3 configured Raft voters."
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "This policy needs at least two distinct target servers."
-msgstr "This policy needs at least two distinct target servers."
+#~ msgid "This policy needs at least two distinct target servers."
+#~ msgstr "This policy needs at least two distinct target servers."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3463,9 +3421,8 @@ msgstr "This node is no longer cluster leader. Retry in a few seconds."
 msgid "Could not start failover. Check cluster status and try again."
 msgstr "Could not start failover. Check cluster status and try again."
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Add at least two distinct target servers."
-msgstr "Add at least two distinct target servers."
+#~ msgid "Add at least two distinct target servers."
+#~ msgstr "Add at least two distinct target servers."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3680,6 +3637,7 @@ msgid "Each target server can be added only once."
 msgstr "Each target server can be added only once."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Add at least one target server."
 msgstr "Add at least one target server."
 
@@ -3695,9 +3653,8 @@ msgstr "Description is too long. Keep it within 1024 characters."
 msgid "Choose the VM or jail to protect."
 msgstr "Choose the VM or jail to protect."
 
-#: src/routes/datacenter/replication/policies/+page.svelte
-msgid "Add at least two distinct target servers for HA."
-msgstr "Add at least two distinct target servers for HA."
+#~ msgid "Add at least two distinct target servers for HA."
+#~ msgstr "Add at least two distinct target servers for HA."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Pick the preferred primary node for this policy."
@@ -4993,12 +4950,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -6816,14 +6773,11 @@ msgstr "Not Configured"
 msgid "Ignore Unimplemented MSRs Accesses"
 msgstr "Ignore Unimplemented MSRs Accesses"
 
-#. 0: vm.current.name; 1: vm.current.rid
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
-msgstr "Please wait while VM <b>{0} ({1})</b> is being shut down"
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
+#~ msgstr "Please wait while VM <b>{0} ({1})</b> is being shut down"
 
-#: src/routes/[node]/vm/[node]/summary/+page.svelte
-msgid "VM shut down"
-msgstr "VM shut down"
+#~ msgid "VM shut down"
+#~ msgstr "VM shut down"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "Notes about VM"
@@ -8129,3 +8083,106 @@ msgstr "Google DNS"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Quad9 DNS"
 msgstr "Quad9 DNS"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM action already in progress"
+msgstr "VM action already in progress"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM start queued"
+msgstr "VM start queued"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force stop requested"
+msgstr "Force stop requested"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM stop queued"
+msgstr "VM stop queued"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Error requesting force stop"
+msgstr "Error requesting force stop"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM shutdown queued"
+msgstr "VM shutdown queued"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "VM reboot queued"
+msgstr "VM reboot queued"
+
+#: src/routes/[node]/vm/[node]/+layout.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+msgid "Force Stop"
+msgstr "Force Stop"
+
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "<0/> {0} lifecycle action{1} in progress"
+msgstr "<0/> {0} lifecycle action{1} in progress"
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail action already in progress"
+msgstr "Jail action already in progress"
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail stop queued"
+msgstr "Jail stop queued"
+
+#: src/routes/[node]/jail/[node]/+layout.svelte
+#: src/routes/[node]/jail/[node]/summary/+page.svelte
+msgid "Jail start queued"
+msgstr "Jail start queued"
+
+#~ msgid "Working"
+#~ msgstr "Working"
+
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+#: src/routes/datacenter/replication/policies/+page.svelte
+msgid "This policy needs at least one target server."
+msgstr "This policy needs at least one target server."
+
+#: src/routes/[node]/jail/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[node]/console/+page.svelte
+msgid "Connecting..."
+msgstr "Connecting..."
+
+#: src/lib/components/custom/About.svelte
+msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+msgstr "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+
+#: src/lib/components/custom/About.svelte
+msgid "Experimental Features"
+msgstr "Experimental Features"
+
+#~ msgid "Live Console Stream"
+#~ msgstr "Live Console Stream"
+
+#~ msgid "Task Pipeline Preview"
+#~ msgstr "Task Pipeline Preview"
+
+#~ msgid "Edge Telemetry Mode"
+#~ msgstr "Edge Telemetry Mode"

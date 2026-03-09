@@ -16,6 +16,7 @@
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -25,9 +26,16 @@
 	import { storage } from '$lib';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
-	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
+	import type { Jail, JailLifecycleAction, JailStat, JailState } from '$lib/types/jail/jail';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { updateCache } from '$lib/utils/http';
+	import {
+		getEffectiveJailLifecycleAction,
+		getJailLifecycleBadgeStyle,
+		getJailLifecyclePendingTimeoutMs,
+		isJailLifecycleTransitionPending,
+		shouldHideJailLifecycleButtons
+	} from '$lib/utils/jail/jail';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
@@ -200,6 +208,8 @@
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let isDescInitialized = false;
+	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
+	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function isNearLogsBottom(element: HTMLDivElement): boolean {
 		return (
@@ -274,14 +284,41 @@
 		}
 	}
 
+	function beginPendingLifecycleAction(action: JailLifecycleAction) {
+		pendingLifecycleAction = action;
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+		}
+
+		pendingLifecycleTimer = setTimeout(() => {
+			pendingLifecycleAction = '';
+			pendingLifecycleTimer = null;
+		}, getJailLifecyclePendingTimeoutMs(action));
+	}
+
+	function clearPendingLifecycleAction() {
+		pendingLifecycleAction = '';
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+			pendingLifecycleTimer = null;
+		}
+	}
+
 	async function handleStop() {
+		beginPendingLifecycleAction('stop');
 		const result = await jailAction(jail.current.ctId, 'stop');
 		reload.leftPanel = true;
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error stopping jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error stopping jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else {
 			toast.success('Jail stop queued', {
 				duration: 5000,
@@ -293,13 +330,20 @@
 	}
 
 	async function handleStart() {
+		beginPendingLifecycleAction('start');
 		const result = await jailAction(jail.current.ctId, 'start');
 		reload.leftPanel = true;
 		if (result.status === 'error') {
-			toast.error(result.message === 'lifecycle_task_in_progress' ? 'Jail action already in progress' : 'Error starting jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error starting jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
 		} else {
 			toast.success('Jail start queued', {
 				duration: 5000,
@@ -338,15 +382,33 @@
 
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let effectiveLifecycleAction = $derived(
+		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	);
+	let isLifecycleTransitionPending = $derived(
+		isJailLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+	);
+	let shouldHideActionButtons = $derived(
+		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
+	);
+	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
+
+	watch(
+		() => lifecycleTask.current,
+		(task) => {
+			if (task) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#if jState.current}
-			{#if jState.current.state === 'ACTIVE'}
+			{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 				<Button
 					onclick={handleStop}
-					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -354,10 +416,9 @@
 
 					{'Stop'}
 				</Button>
-			{:else}
+			{:else if !shouldHideActionButtons}
 				<Button
 					onclick={handleStart}
-					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -369,7 +430,6 @@
 					onclick={() => {
 						modalState.isDeleteOpen = true;
 					}}
-					disabled={hasActiveLifecycleTask}
 					size="sm"
 					class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 				>
@@ -379,11 +439,14 @@
 			{/if}
 		{/if}
 
-		{#if hasActiveLifecycleTask}
-			<span class="ml-1 inline-flex items-center text-xs text-muted-foreground">
+		{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+			<Badge
+				variant={lifecycleActionBadge.variant}
+				class={`ml-1 px-1.5 text-xs ${lifecycleActionBadge.className}`}
+			>
 				<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
-				{activeLifecycleAction}
-			</span>
+				{lifecycleActionBadge.label}
+			</Badge>
 		{/if}
 
 		<div class="ml-auto flex h-full items-center gap-2">
