@@ -1,6 +1,8 @@
 name: Build
 on:
   push:
+    branches:
+      - "**"
     tags-ignore:
       - tip
 
