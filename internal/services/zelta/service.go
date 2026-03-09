@@ -58,6 +58,7 @@ type Service struct {
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
+	queuedJobs  map[uint]struct{}
 
 	replicationMu      sync.Mutex
 	runningReplication map[uint]struct{}
@@ -98,6 +99,7 @@ func NewService(
 		VM:                 vmService,
 		GZFS:               gzfsClient,
 		runningJobs:        make(map[uint]struct{}),
+		queuedJobs:         make(map[uint]struct{}),
 		runningReplication: make(map[uint]struct{}),
 		runningTransitions: make(map[uint]struct{}),
 		downMisses:         make(map[uint]int),
@@ -201,16 +203,23 @@ func (s *Service) Rotate(ctx context.Context, target *clusterModels.BackupTarget
 func (s *Service) RegisterJobs() {
 	db.QueueRegisterJSON(backupJobQueueName, func(ctx context.Context, payload backupJobPayload) error {
 		if payload.JobID == 0 {
-			return fmt.Errorf("invalid_job_id_in_queue_payload")
+			logger.L.Warn().Msg("queued_backup_job_invalid_payload_job_id")
+			return nil
 		}
 
 		var job clusterModels.BackupJob
 		if err := s.DB.Preload("Target").First(&job, payload.JobID).Error; err != nil {
+			s.releaseReservedJob(payload.JobID)
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_not_found")
-			return fmt.Errorf("backup_job_not_found: %w", err)
+			return nil
 		}
 
 		if err := s.runBackupJob(ctx, &job); err != nil {
+			if isJobAlreadyRunningErr(err) {
+				s.releaseReservedJob(payload.JobID)
+				logger.L.Info().Uint("job_id", payload.JobID).Msg("queued_backup_job_already_running_discarded")
+				return nil
+			}
 			logger.L.Warn().Err(err).Uint("job_id", payload.JobID).Msg("queued_backup_job_failed")
 			return err
 		}
@@ -403,13 +412,20 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			continue
 		}
 
+		if !s.reserveJob(job.ID) {
+			logger.L.Debug().Uint("job_id", job.ID).Msg("scheduled_backup_skip_job_already_queued_or_running")
+			continue
+		}
+
 		if err := s.DB.Model(&clusterModels.BackupJob{}).Where("id = ?", job.ID).Update("next_run_at", nextAt).Error; err != nil {
+			s.releaseReservedJob(job.ID)
 			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_update_next_run_at")
 			continue
 		}
 
 		enqueueCtx, enqueueCancel := context.WithTimeout(ctx, 5*time.Second)
 		if err := db.EnqueueJSON(enqueueCtx, backupJobQueueName, backupJobPayload{JobID: job.ID}); err != nil {
+			s.releaseReservedJob(job.ID)
 			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("failed_to_enqueue_scheduled_backup")
 		}
 		enqueueCancel()
@@ -428,17 +444,18 @@ func (s *Service) EnqueueBackupJob(ctx context.Context, jobID uint) error {
 		return err
 	}
 
-	if !s.acquireJob(jobID) {
+	if !s.reserveJob(jobID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
-
-	s.releaseJob(jobID)
-
-	return db.EnqueueJSON(ctx, backupJobQueueName, backupJobPayload{JobID: jobID})
+	if err := db.EnqueueJSON(ctx, backupJobQueueName, backupJobPayload{JobID: jobID}); err != nil {
+		s.releaseReservedJob(jobID)
+		return err
+	}
+	return nil
 }
 
 func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob) error {
-	if !s.acquireJob(job.ID) {
+	if !s.beginJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}
 
@@ -572,6 +589,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		s.updateBackupJobResult(job, runErr)
 		return runErr
 	}
+	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 
 	logger.L.Info().
 		Uint("job_id", job.ID).
@@ -629,6 +647,7 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 	}
 
 	defer func() {
+		stopHeartbeat()
 		s.finalizeBackupEvent(&event, runErr, output)
 		s.updateBackupJobResult(job, runErr)
 
@@ -686,6 +705,51 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 					Str("source", sourceDataset).
 					Str("target", event.TargetEndpoint).
 					Msg("backup_up_to_date_noop")
+			}
+		}
+	}
+
+	if runErr != nil && isReplicationResumeStateError(runErr) {
+		resumeSource := sourceDataset
+		resumeDestSuffix := destSuffix
+		if job.Mode == clusterModels.BackupJobModeVM {
+			if strings.TrimSpace(lastVMFailedSource) != "" && strings.TrimSpace(lastVMFailedDestSuffix) != "" {
+				resumeSource = lastVMFailedSource
+				resumeDestSuffix = lastVMFailedDestSuffix
+			} else if len(vmSourceDatasets) > 0 {
+				resumeSource = vmSourceDatasets[0]
+				resumeDestSuffix = s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), resumeSource)
+			}
+		}
+
+		logger.L.Info().
+			Uint("job_id", job.ID).
+			Str("source", resumeSource).
+			Str("target", job.Target.ZeltaEndpoint(resumeDestSuffix)).
+			Err(runErr).
+			Msg("backup_resume_state_abort_starting")
+
+		abortOut, abortErr := s.abortTargetResumableReceiveState(ctx, &job.Target, resumeDestSuffix)
+		output = appendOutput(output, abortOut)
+		if abortErr != nil {
+			runErr = fmt.Errorf("backup_resume_abort_failed: %w (original: %v)", abortErr, runErr)
+		} else if job.Mode == clusterModels.BackupJobModeVM {
+			runErr = runVMBackupPass()
+		} else {
+			retryOutput, retryErr := s.backupWithEventProgress(ctx, &job.Target, sourceDataset, destSuffix, event.ID, backupSnapPrefix)
+			output = appendOutput(output, retryOutput)
+			runErr = retryErr
+			if runErr == nil {
+				retryOutcome := classifyBackupOutput(retryOutput)
+				if code := retryOutcome.errorCode(); code != "" {
+					runErr = errors.New(code)
+				} else if retryOutcome == backupOutputUpToDate {
+					logger.L.Info().
+						Uint("job_id", job.ID).
+						Str("source", sourceDataset).
+						Str("target", event.TargetEndpoint).
+						Msg("backup_up_to_date_noop_after_resume_abort")
+				}
 			}
 		}
 	}
@@ -1678,13 +1742,61 @@ func (s *Service) ListLocalBackupEventsPaginated(page, size int, sortField, sort
 
 func (s *Service) CleanupStaleEvents(_ context.Context, maxAge time.Duration) error {
 	cutoff := time.Now().UTC().Add(-maxAge)
+	query := s.DB.Model(&clusterModels.BackupEvent{}).
+		Where("status = ? AND updated_at < ?", "running", cutoff)
+
+	activeJobIDs := s.activeJobIDs()
+	if len(activeJobIDs) > 0 {
+		query = query.Where("(job_id IS NULL OR job_id NOT IN ?)", activeJobIDs)
+	}
+
+	return query.Updates(map[string]any{
+		"status":       "interrupted",
+		"error":        "process_crashed_or_restarted",
+		"completed_at": time.Now().UTC(),
+	}).Error
+}
+
+func (s *Service) touchBackupEvent(eventID uint) error {
+	if s == nil || s.DB == nil || eventID == 0 {
+		return nil
+	}
+
 	return s.DB.Model(&clusterModels.BackupEvent{}).
-		Where("status = ? AND started_at < ?", "running", cutoff).
-		Updates(map[string]any{
-			"status":       "interrupted",
-			"error":        "process_crashed_or_restarted",
-			"completed_at": time.Now().UTC(),
-		}).Error
+		Where("id = ? AND status = ?", eventID, "running").
+		Update("updated_at", time.Now().UTC()).
+		Error
+}
+
+func (s *Service) startBackupEventHeartbeat(ctx context.Context, eventID uint, interval time.Duration) func() {
+	if s == nil || s.DB == nil || eventID == 0 {
+		return func() {}
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	ticker := time.NewTicker(interval)
+
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if err := s.touchBackupEvent(eventID); err != nil {
+					logger.L.Debug().
+						Uint("event_id", eventID).
+						Err(err).
+						Msg("backup_event_heartbeat_failed")
+				}
+			}
+		}
+	}()
+
+	return cancel
 }
 
 func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
@@ -1711,6 +1823,51 @@ func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
 	}
 }
 
+func isJobAlreadyRunningErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(err.Error())), "already_running")
+}
+
+func (s *Service) reserveJob(jobID uint) bool {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+
+	if jobID == 0 {
+		return false
+	}
+	if _, exists := s.runningJobs[jobID]; exists {
+		return false
+	}
+	if _, exists := s.queuedJobs[jobID]; exists {
+		return false
+	}
+	s.queuedJobs[jobID] = struct{}{}
+	return true
+}
+
+func (s *Service) releaseReservedJob(jobID uint) {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+	delete(s.queuedJobs, jobID)
+}
+
+func (s *Service) beginJob(jobID uint) bool {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+
+	if jobID == 0 {
+		return false
+	}
+	if _, exists := s.runningJobs[jobID]; exists {
+		return false
+	}
+	delete(s.queuedJobs, jobID)
+	s.runningJobs[jobID] = struct{}{}
+	return true
+}
+
 func (s *Service) acquireJob(jobID uint) bool {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
@@ -1725,6 +1882,21 @@ func (s *Service) releaseJob(jobID uint) {
 	s.jobMu.Lock()
 	defer s.jobMu.Unlock()
 	delete(s.runningJobs, jobID)
+}
+
+func (s *Service) activeJobIDs() []uint {
+	s.jobMu.Lock()
+	defer s.jobMu.Unlock()
+
+	ids := make([]uint, 0, len(s.runningJobs))
+	for jobID := range s.runningJobs {
+		if jobID == 0 {
+			continue
+		}
+		ids = append(ids, jobID)
+	}
+
+	return ids
 }
 
 func workloadOperationKey(guestType string, guestID uint) string {

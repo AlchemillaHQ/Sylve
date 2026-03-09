@@ -163,7 +163,11 @@ func (s *Service) runRestoreJob(ctx context.Context, job *clusterModels.BackupJo
 		TargetEndpoint: sourceDataset,
 		StartedAt:      time.Now().UTC(),
 	}
-	s.DB.Create(&event)
+	if err := s.DB.Create(&event).Error; err != nil {
+		return fmt.Errorf("create_restore_event_failed: %w", err)
+	}
+	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
+	defer stopHeartbeat()
 
 	logger.L.Info().
 		Uint("job_id", job.ID).
@@ -369,6 +373,10 @@ func (s *Service) fixRestoredProperties(ctx context.Context, dataset string) {
 }
 
 func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err error, output string) {
+	if event == nil || event.ID == 0 {
+		return
+	}
+
 	now := time.Now().UTC()
 	event.CompletedAt = &now
 	event.Output = output
@@ -377,8 +385,11 @@ func (s *Service) finalizeRestoreEvent(event *clusterModels.BackupEvent, err err
 		event.Error = err.Error()
 	} else {
 		event.Status = "success"
+		event.Error = ""
 	}
-	s.DB.Save(event)
+	if saveErr := s.DB.Save(event).Error; saveErr != nil {
+		logger.L.Warn().Err(saveErr).Uint("event_id", event.ID).Msg("failed_to_finalize_restore_event")
+	}
 	s.emitLeftPanelRefresh(fmt.Sprintf("restore_event_finalized_%d", event.ID))
 }
 

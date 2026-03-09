@@ -19,7 +19,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
 	"maragu.dev/goqite"
-	"maragu.dev/goqite/jobs"
 )
 
 const queueSchema = `
@@ -45,7 +44,7 @@ create index if not exists goqite_queue_priority_created_idx
 var (
 	dbConn *sql.DB
 	q      *goqite.Queue
-	r      *jobs.Runner
+	r      *jobRunner
 )
 
 type QueueHandler[T any] func(ctx context.Context, payload T) error
@@ -71,7 +70,7 @@ func SetupQueue(cfg *internal.SylveConfig, isTest bool, log zerolog.Logger) erro
 		Name: "jobs",
 	})
 
-	r = jobs.NewRunner(jobs.NewRunnerOpts{
+	r = newJobRunner(jobRunnerOpts{
 		Limit:        32,
 		Log:          zerologJobLogger{Logger: log},
 		PollInterval: 2 * time.Second,
@@ -115,7 +114,7 @@ func Enqueue(ctx context.Context, name string, body []byte) error {
 	if q == nil {
 		panic("queue.Enqueue called before SetupQueue")
 	}
-	return jobs.Create(ctx, q, name, body)
+	return createJobMessage(ctx, q, name, body)
 }
 
 func EnqueueJSON[T any](ctx context.Context, name string, payload T) error {

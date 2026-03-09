@@ -419,8 +419,12 @@ func (s *Service) runRestoreFromTargetVM(
 		TargetEndpoint: destinationDataset,
 		StartedAt:      time.Now().UTC(),
 	}
-	s.DB.Create(&event)
+	if err := s.DB.Create(&event).Error; err != nil {
+		return fmt.Errorf("create_restore_event_failed: %w", err)
+	}
+	stopHeartbeat := s.startBackupEventHeartbeat(ctx, event.ID, time.Minute)
 	defer func() {
+		stopHeartbeat()
 		output := ""
 		if current, err := s.GetLocalBackupEvent(event.ID); err == nil && current != nil {
 			output = current.Output
@@ -669,9 +673,16 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 			TargetEndpoint: destinationDataset,
 			StartedAt:      time.Now().UTC(),
 		}
-		s.DB.Create(&event)
+		if err := s.DB.Create(&event).Error; err != nil {
+			return "", fmt.Errorf("create_restore_event_failed: %w", err)
+		}
 		activeEventID = event.ID
 		ownsEvent = true
+	}
+	stopHeartbeat := func() {}
+	if ownsEvent {
+		stopHeartbeat = s.startBackupEventHeartbeat(ctx, activeEventID, time.Minute)
+		defer stopHeartbeat()
 	}
 
 	appendEventOutput := func(chunk string) {
