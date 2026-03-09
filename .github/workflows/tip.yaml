@@ -182,7 +182,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload tip "sylve-web-assets.tar.gz" --clobber
+          ASSET_NAME="sylve-web-assets.tar.gz"
+          gh release view tip --json assets --jq '.assets[] | select(.name == "'"${ASSET_NAME}"'") | .id' | while read -r ASSET_ID; do
+            [ -n "${ASSET_ID}" ] || continue
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${ASSET_ID}"
+          done
+          gh release upload tip "sylve-web-assets.tar.gz"
 
   build-freebsd:
     needs:
@@ -243,5 +248,9 @@ jobs:
         run: |
           set -euo pipefail
           ASSET_NAME="sylve-${{ matrix.arch }}"
+          gh release view tip --json assets --jq '.assets[] | select(.name == "'"${ASSET_NAME}"'") | .id' | while read -r ASSET_ID; do
+            [ -n "${ASSET_ID}" ] || continue
+            gh api -X DELETE "repos/${{ github.repository }}/releases/assets/${ASSET_ID}"
+          done
           cp bin/sylve "${ASSET_NAME}"
-          gh release upload tip "${ASSET_NAME}" --clobber
+          gh release upload tip "${ASSET_NAME}"
