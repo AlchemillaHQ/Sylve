@@ -27,12 +27,19 @@ try {
   lightScreens = [];
   darkScreens = [];
 }
-
 ---
 
 <div class="hero-section text-center pt-5 mt-0">
-  <div class="-translate-y-4 animate-fade-in opacity-0" style="--animation-delay: 80ms">
-    <span class:list={[buttonVariants({ variant: "outline" }), "rounded-full inline-flex"]}>
+  <div
+    class="-translate-y-4 animate-fade-in opacity-0"
+    style="--animation-delay: 80ms"
+  >
+    <span
+      class:list={[
+        buttonVariants({ variant: "outline" }),
+        "rounded-full inline-flex",
+      ]}
+    >
       <div class="size-2 animate-pulse bg-emerald-500 rounded-full"></div>
       Free & Open Source
     </span>
@@ -51,7 +58,9 @@ try {
     style="--animation-delay: 240ms"
   >
     Utilize your rock solid
-    <span class="icon-[mdi--freebsd] text-[#b5010f] inline-block align-text-bottom mx-1 size-[1.1em]"></span>FreeBSD&trade; environment through a
+    <span
+      class="icon-[mdi--freebsd] text-[#b5010f] inline-block align-text-bottom mx-1 size-[1.1em]"
+    ></span>FreeBSD&trade; environment through a
     <br class="hidden md:block" />
     unified, high-performance management layer.
   </p>

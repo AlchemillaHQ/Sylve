@@ -128,20 +128,43 @@
       }
     };
 
-    currentFeatureSwiperEl?.addEventListener?.("swiperslidechange", onFeatureSlideChange);
-    currentImageSwiperEl?.addEventListener?.("swiperslidechange", onImageSlideChange);
+    currentFeatureSwiperEl?.addEventListener?.(
+      "swiperslidechange",
+      onFeatureSlideChange,
+    );
+    currentImageSwiperEl?.addEventListener?.(
+      "swiperslidechange",
+      onImageSlideChange,
+    );
 
     return () => {
-      currentFeatureSwiperEl?.removeEventListener?.("swiperslidechange", onFeatureSlideChange);
-      currentImageSwiperEl?.removeEventListener?.("swiperslidechange", onImageSlideChange);
+      currentFeatureSwiperEl?.removeEventListener?.(
+        "swiperslidechange",
+        onFeatureSlideChange,
+      );
+      currentImageSwiperEl?.removeEventListener?.(
+        "swiperslidechange",
+        onImageSlideChange,
+      );
     };
   });
 </script>
 
-<section class="max-w-6xl mx-auto flex w-full flex-col items-center mt-12 lg:mt-24 -translate-y-4 animate-fade-in opacity-0" style="--animation-delay: 120ms">
-  <h2 class="text-gradient mb-2 text-center text-3xl font-semibold tracking-tight md:text-5xl">A Modern Control Plane for FreeBSD</h2>
-  <div class="mb-4 mt-2 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs text-muted-foreground">
-    <span class="mr-1 uppercase tracking-[0.18em] text-muted-foreground/80">Powered by</span>
+<section
+  class="max-w-6xl mx-auto flex w-full flex-col items-center mt-12 lg:mt-24 -translate-y-4 animate-fade-in opacity-0"
+  style="--animation-delay: 120ms"
+>
+  <h2
+    class="text-gradient mb-2 text-center text-3xl font-semibold tracking-tight md:text-5xl"
+  >
+    A Modern Control Plane for FreeBSD
+  </h2>
+  <div
+    class="mb-4 mt-2 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-2 text-xs text-muted-foreground"
+  >
+    <span class="mr-1 uppercase tracking-[0.18em] text-muted-foreground/80"
+      >Powered by</span
+    >
     {#each platformPartners as partner}
       <a
         href={partner.href}
@@ -151,7 +174,9 @@
         class="inline-flex items-center rounded-md border border-border/60 bg-background/55 px-2.5 py-1.5 transition-colors hover:border-primary/30"
       >
         {#if partner.iconClass}
-          <span class={`${partner.iconClass} ${partner.iconColorClass ?? "text-foreground"} size-11 shrink-0`}></span>
+          <span
+            class={`${partner.iconClass} ${partner.iconColorClass ?? "text-foreground"} size-11 shrink-0`}
+          ></span>
         {:else}
           <img
             src={partner.lightLogo}
@@ -172,9 +197,11 @@
     {/each}
   </div>
 
-  <p class="block max-w-2xl text-center text-base leading-relaxed text-muted-foreground md:text-lg">
-    Sylve brings virtualization, containers, storage, and networking together in one intuitive interface
-    giving you complete control of your FreeBSD systems.
+  <p
+    class="block max-w-2xl text-center text-base leading-relaxed text-muted-foreground md:text-lg"
+  >
+    Sylve brings virtualization, containers, storage, and networking together in
+    one intuitive interface giving you complete control of your FreeBSD systems.
   </p>
 
   <section class="w-full py-12 md:pb-24 lg:pb-28">
@@ -202,14 +229,20 @@
                 aria-label={`Show ${feature.title}`}
               >
                 <h3 class="text-lg font-semibold">{feature.title}</h3>
-                <p class="mt-1 text-sm text-muted-foreground">{feature.description}</p>
+                <p class="mt-1 text-sm text-muted-foreground">
+                  {feature.description}
+                </p>
               </button>
             </swiper-slide>
           {/each}
         </swiper-container>
 
         <div class="mt-4 flex items-center justify-center gap-2">
-          <button class="hero-nav-btn" onclick={prevSlide} aria-label="Previous feature image">
+          <button
+            class="hero-nav-btn"
+            onclick={prevSlide}
+            aria-label="Previous feature image"
+          >
             <span class="icon-[lucide--chevron-left] size-4"></span>
           </button>
           <div class="flex items-center gap-1.5">
@@ -221,14 +254,23 @@
               ></button>
             {/each}
           </div>
-          <button class="hero-nav-btn" onclick={nextSlide} aria-label="Next feature image">
+          <button
+            class="hero-nav-btn"
+            onclick={nextSlide}
+            aria-label="Next feature image"
+          >
             <span class="icon-[lucide--chevron-right] size-4"></span>
           </button>
         </div>
 
-        <div class="relative mt-5 overflow-hidden rounded-2xl">
-          <div class="hidden lg:block absolute inset-0 bg-linear-to-r from-blue-500/45 to-orange-500/40 rounded-2xl blur-3xl opacity-20"></div>
-          <div class="relative z-20 mx-auto w-full overflow-hidden rounded-2xl border border-border/70 bg-transparent shadow-xl lg:max-w-4xl">
+        <div class="relative mt-5">
+          <div
+            class="explainer-glow pointer-events-none absolute inset-0 z-10 hidden lg:block"
+            aria-hidden="true"
+          ></div>
+          <div
+            class="relative z-20 mx-auto w-full overflow-hidden rounded-2xl border border-border/70 bg-transparent shadow-xl lg:max-w-4xl"
+          >
             <swiper-container
               bind:this={imageSwiperEl}
               class="explainer-swiper h-full w-full"
@@ -267,6 +309,31 @@
 </section>
 
 <style>
+  .explainer-glow {
+    left: 50%;
+    top: 52%;
+    width: min(70rem, 95%);
+    height: 92%;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    background: radial-gradient(
+        62% 58% at 35% 50%,
+        rgb(59 130 246 / 36%),
+        transparent 70%
+      ),
+      radial-gradient(
+        58% 52% at 68% 52%,
+        rgb(249 115 22 / 34%),
+        transparent 74%
+      );
+    filter: blur(44px);
+    opacity: 0.46;
+  }
+
+  :global(.dark) .explainer-glow {
+    opacity: 0.34;
+  }
+
   .hero-nav-btn {
     display: inline-flex;
     height: 2rem;
@@ -278,8 +345,13 @@
     background: linear-gradient(180deg, rgb(18 18 18 / 78%), rgb(6 6 6 / 58%));
     color: rgb(245 245 245 / 95%);
     backdrop-filter: blur(8px);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 28%), inset 0 1px 0 rgb(255 255 255 / 14%);
-    transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
+    box-shadow:
+      0 8px 24px rgb(0 0 0 / 28%),
+      inset 0 1px 0 rgb(255 255 255 / 14%);
+    transition:
+      transform 180ms ease,
+      background-color 180ms ease,
+      border-color 180ms ease;
   }
 
   .hero-nav-btn:hover {
@@ -300,8 +372,14 @@
 
   .hero-dot-active {
     width: 1.5rem;
-    background: linear-gradient(90deg, rgb(255 255 255 / 95%), rgb(219 234 254 / 92%));
+    background: linear-gradient(
+      90deg,
+      rgb(255 255 255 / 95%),
+      rgb(219 234 254 / 92%)
+    );
     border-color: rgb(255 255 255 / 65%);
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 16%), 0 4px 14px rgb(59 130 246 / 22%);
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 16%),
+      0 4px 14px rgb(59 130 246 / 22%);
   }
 </style>
