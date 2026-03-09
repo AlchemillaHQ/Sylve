@@ -162,6 +162,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/groups/members": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the members of a specified group",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Groups"
+                ],
+                "summary": "Update Group Members",
+                "parameters": [
+                    {
+                        "description": "Update group members request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_auth.AddUsersToGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Group members updated successfully",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/groups/users": {
             "post": {
                 "security": [
@@ -889,6 +940,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/cluster/resync-state": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replays current cluster-backed state through Raft and forces a snapshot from the leader",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Resync Cluster State",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/disk/create-partitions": {
             "post": {
                 "security": [
@@ -1496,6 +1587,40 @@ const docTemplate = `{
                 }
             }
         },
+        "/info/node": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the node information about the system (mainly for cluster stuff)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Info"
+                ],
+                "summary": "Get Node Info",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_info_BasicInfo"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/info/notes": {
             "get": {
                 "security": [
@@ -1687,6 +1812,62 @@ const docTemplate = `{
             }
         },
         "/info/notes/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update an existing note in the cluster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Update a Cluster Note",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Note ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update Note Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_cluster.NoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -1850,6 +2031,60 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_info_Swap"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/intra-cluster/sync-health": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Internal endpoint used by the Raft Leader to broadcast cluster health to followers",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster Internal"
+                ],
+                "summary": "Sync Cluster Health",
+                "parameters": [
+                    {
+                        "description": "Array of node health states",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
                     "500": {
@@ -2251,6 +2486,49 @@ const docTemplate = `{
             }
         },
         "/jail/network": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edit a network switch on a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Edit Network Switch for Jail",
+                "parameters": [
+                    {
+                        "description": "Edit Network Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.EditJailNetworkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -2464,6 +2742,72 @@ const docTemplate = `{
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/jail/simple/:id": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a simple jail by its CTID or ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Get a Jail by CTID or ID (Simple)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Jail CTID or ID",
+                        "name": "identifier",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "ctid",
+                            "id"
+                        ],
+                        "type": "string",
+                        "default": "ctid",
+                        "description": "Type of identifier (ctid or id)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
                     "500": {
@@ -3738,6 +4082,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/network/update": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a network interface attached to a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Update Network Switch for a Virtual Machine",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/options/additional-options/:rid": {
             "put": {
                 "security": [
@@ -3764,6 +4148,57 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/internal_handlers_jail.ModifyAdditionalOptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/allowed-options/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify allowed options configuration of a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify Allowed Options of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify Allowed Options Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyAllowedOptionsRequest"
                         }
                     }
                 ],
@@ -4095,6 +4530,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/options/lifecycle-hooks/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify jail exec.* lifecycle hooks in one request",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify Lifecycle Hooks of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify Lifecycle Hooks Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyLifecycleHooksRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/options/metadata/:rid": {
             "put": {
                 "security": [
@@ -4121,6 +4607,108 @@ const docTemplate = `{
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/internal_handlers_jail.ModifyMetadataRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/qemu-guest-agent/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the QEMU Guest Agent configuration of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify QEMU Guest Agent of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify QEMU Guest Agent Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyQemuGuestAgentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/resolv-conf/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify /etc/resolv.conf content for a jail",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Modify resolv.conf of a Jail",
+                "parameters": [
+                    {
+                        "description": "Modify resolv.conf Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyResolvConfRequest"
                         }
                     }
                 ],
@@ -4248,6 +4836,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/options/tpm/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the TPM configuration of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify TPM of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify TPM Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyTPMRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/options/wol/:rid": {
             "put": {
                 "security": [
@@ -4277,6 +4916,46 @@ const docTemplate = `{
                         }
                     }
                 ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/qga/:rid": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve QEMU Guest Agent OS and network info of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Get QEMU Guest Agent info of a Virtual Machine",
                 "responses": {
                     "200": {
                         "description": "Success",
@@ -5452,6 +6131,108 @@ const docTemplate = `{
                 }
             }
         },
+        "/system/ppt-devices/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Import an existing ppt device into Sylve passthrough management",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Import Passed Through Device",
+                "parameters": [
+                    {
+                        "description": "Device ID",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_system.AddPassthroughDeviceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/system/ppt-devices/prepare": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a device to loader.conf for passthrough on next boot",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Prepare Passed Through Device",
+                "parameters": [
+                    {
+                        "description": "Device ID",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_system.AddPassthroughDeviceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/system/ppt-devices/{id}": {
             "delete": {
                 "security": [
@@ -5488,6 +6269,181 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/utilities/cloud-init/templates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all Cloud-Init templates",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "List Cloud-Init Templates",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a new Cloud-Init template",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Add Cloud-Init Template",
+                "parameters": [
+                    {
+                        "description": "Add Template Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_utilities.AddTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/utilities/cloud-init/templates/:id": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edit an existing Cloud-Init template",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Edit Cloud-Init Template",
+                "parameters": [
+                    {
+                        "description": "Edit Template Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_utilities.EditTemplateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a Cloud-Init template by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Delete Cloud-Init Template",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Template ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -6071,6 +7027,66 @@ const docTemplate = `{
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_SimpleList"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/vm/simple/:id": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a simple virtual machine object by its RID or ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Get a simple Virtual Machine by RID or ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Virtual Machine RID or ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "rid",
+                            "id"
+                        ],
+                        "type": "string",
+                        "default": "rid",
+                        "description": "Type of identifier (rid or id)",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_SimpleList"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
                     "500": {
@@ -7761,6 +8777,26 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.CloudInitTemplate"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_Downloads": {
             "type": "object",
             "properties": {
@@ -8171,6 +9207,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleList"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_State": {
             "type": "object",
             "properties": {
@@ -8193,6 +9246,23 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.LvDomain"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_SimpleList": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList"
                 },
                 "error": {
                     "type": "string"
@@ -8479,6 +9549,12 @@ const docTemplate = `{
                 "email": {
                     "type": "string"
                 },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group"
+                    }
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -8548,6 +9624,12 @@ const docTemplate = `{
                 },
                 "diskUsage": {
                     "type": "number"
+                },
+                "guestIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "hostname": {
                     "type": "string"
@@ -8773,8 +9855,17 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network"
                     }
                 },
+                "resolvConf": {
+                    "type": "string"
+                },
                 "resourceLimits": {
                     "type": "boolean"
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailSnapshot"
+                    }
                 },
                 "startAtBoot": {
                     "type": "boolean"
@@ -8833,6 +9924,9 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "id": {
+                    "type": "integer"
+                },
                 "jid": {
                     "type": "integer"
                 },
@@ -8840,6 +9934,41 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailHookPhase"
                 },
                 "script": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_jail.JailSnapshot": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "ctId": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "jid": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentSnapshotId": {
+                    "type": "integer"
+                },
+                "rootDataset": {
+                    "type": "string"
+                },
+                "snapshotName": {
+                    "type": "string"
+                },
+                "updatedAt": {
                     "type": "string"
                 }
             }
@@ -8920,11 +10049,17 @@ const docTemplate = `{
                 "macObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "manualSwitch": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch"
+                },
                 "name": {
                     "type": "string"
                 },
                 "slaac": {
                     "type": "boolean"
+                },
+                "standardSwitch": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch"
                 },
                 "switchId": {
                     "type": "integer"
@@ -9106,6 +10241,10 @@ const docTemplate = `{
                 },
                 "isUsed": {
                     "type": "boolean"
+                },
+                "isUsedBy": {
+                    "description": "\"\", \"dhcp\" for now",
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -9361,6 +10500,32 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_utilities.CloudInitTemplate": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "meta": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "networkConfig": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadStatus": {
             "type": "string",
             "enum": [
@@ -9502,6 +10667,12 @@ const docTemplate = `{
                 "macObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "manualSwitch": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch"
+                },
+                "standardSwitch": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch"
+                },
                 "switchId": {
                     "type": "integer"
                 },
@@ -9583,6 +10754,9 @@ const docTemplate = `{
                 "cloudInitMetaData": {
                     "type": "string"
                 },
+                "cloudInitNetworkConfig": {
+                    "type": "string"
+                },
                 "cpuCores": {
                     "type": "integer"
                 },
@@ -9625,6 +10799,9 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "qemuGuestAgent": {
+                    "type": "boolean"
+                },
                 "ram": {
                     "type": "integer"
                 },
@@ -9636,6 +10813,12 @@ const docTemplate = `{
                 },
                 "shutdownWaitTime": {
                     "type": "integer"
+                },
+                "snapshots": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMSnapshot"
+                    }
                 },
                 "startAtBoot": {
                     "type": "boolean"
@@ -9701,6 +10884,44 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "vmId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMSnapshot": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentSnapshotId": {
+                    "type": "integer"
+                },
+                "rid": {
+                    "type": "integer"
+                },
+                "rootDatasets": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "snapshotName": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
                 },
                 "vmId": {
                     "type": "integer"
@@ -9861,6 +11082,47 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync": {
+            "type": "object",
+            "properties": {
+                "api": {
+                    "type": "string"
+                },
+                "cpu": {
+                    "type": "integer"
+                },
+                "cpuUsage": {
+                    "type": "number"
+                },
+                "disk": {
+                    "type": "integer"
+                },
+                "diskUsage": {
+                    "type": "number"
+                },
+                "guestIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "memory": {
+                    "type": "integer"
+                },
+                "memoryUsage": {
+                    "type": "number"
+                },
+                "nodeUuid": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources": {
             "type": "object",
             "properties": {
@@ -9889,6 +11151,12 @@ const docTemplate = `{
             "properties": {
                 "address": {
                     "type": "string"
+                },
+                "guestIDs": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "id": {
                     "type": "string"
@@ -9957,6 +11225,33 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture": {
+            "type": "string",
+            "enum": [
+                "amd64",
+                "386",
+                "arm",
+                "arm64",
+                "riscv64",
+                "ppc64",
+                "ppc64le",
+                "s390x",
+                "wasm",
+                "loong64"
+            ],
+            "x-enum-varnames": [
+                "ArchAMD64",
+                "Arch386",
+                "ArchARM",
+                "ArchARM64",
+                "ArchRISCV64",
+                "ArchPPC64",
+                "ArchPPC64LE",
+                "ArchS390X",
+                "ArchWASM",
+                "ArchLOONG64"
+            ]
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_info.BasicInfo": {
             "type": "object",
             "properties": {
@@ -9983,6 +11278,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_info.CPUInfo": {
             "type": "object",
             "properties": {
+                "architecture": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture"
+                },
                 "cache": {
                     "type": "object",
                     "properties": {
@@ -10207,6 +11505,9 @@ const docTemplate = `{
                 "pool": {
                     "type": "string"
                 },
+                "resolvConf": {
+                    "type": "string"
+                },
                 "resourceLimits": {
                     "type": "boolean"
                 },
@@ -10224,6 +11525,49 @@ const docTemplate = `{
                 },
                 "type": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.EditJailNetworkRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "networkId",
+                "switchName"
+            ],
+            "properties": {
+                "defaultGateway": {
+                    "type": "boolean"
+                },
+                "dhcp": {
+                    "type": "boolean"
+                },
+                "ip4": {
+                    "type": "integer"
+                },
+                "ip4gw": {
+                    "type": "integer"
+                },
+                "ip6": {
+                    "type": "integer"
+                },
+                "ip6gw": {
+                    "type": "integer"
+                },
+                "macId": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "networkId": {
+                    "type": "integer"
+                },
+                "slaac": {
+                    "type": "boolean"
+                },
+                "switchName": {
+                    "type": "string"
                 }
             }
         },
@@ -10343,6 +11687,9 @@ const docTemplate = `{
                 "cloudInitMetaData": {
                     "type": "string"
                 },
+                "cloudInitNetworkConfig": {
+                    "type": "string"
+                },
                 "cpuCores": {
                     "type": "integer"
                 },
@@ -10378,6 +11725,9 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
+                },
+                "qemuGuestAgent": {
+                    "type": "boolean"
                 },
                 "ram": {
                     "type": "integer"
@@ -10502,6 +11852,12 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList": {
             "type": "object",
             "properties": {
+                "cpuPinning": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning"
+                    }
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -10818,6 +12174,49 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_utilities.AddTemplateRequest": {
+            "type": "object",
+            "required": [
+                "meta",
+                "name",
+                "user"
+            ],
+            "properties": {
+                "meta": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                },
+                "networkConfig": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_utilities.EditTemplateRequest": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "minLength": 1
+                },
+                "networkConfig": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_utilities.UTypeGroupedDownload": {
             "type": "object",
             "properties": {
@@ -10881,7 +12280,8 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreateZPoolRequest": {
             "type": "object",
             "required": [
-                "name"
+                "name",
+                "raidType"
             ],
             "properties": {
                 "createForce": {
@@ -11922,23 +13322,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers_cluster.CreateNoteRequest": {
-            "type": "object",
-            "required": [
-                "content",
-                "title"
-            ],
-            "properties": {
-                "content": {
-                    "type": "string",
-                    "minLength": 3
-                },
-                "title": {
-                    "type": "string",
-                    "minLength": 3
-                }
-            }
-        },
         "internal_handlers_cluster.JoinClusterRequest": {
             "type": "object",
             "required": [
@@ -11965,6 +13348,23 @@ const docTemplate = `{
                     "type": "integer",
                     "maximum": 65535,
                     "minimum": 1024
+                }
+            }
+        },
+        "internal_handlers_cluster.NoteRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "title"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "minLength": 3
+                },
+                "title": {
+                    "type": "string",
+                    "minLength": 3
                 }
             }
         },
@@ -12102,6 +13502,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers_jail.ModifyAllowedOptionsRequest": {
+            "type": "object",
+            "properties": {
+                "allowedOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "internal_handlers_jail.ModifyBootOrderRequest": {
             "type": "object",
             "properties": {
@@ -12129,6 +13540,14 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers_jail.ModifyLifecycleHooksRequest": {
+            "type": "object",
+            "properties": {
+                "hooks": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.Hooks"
+                }
+            }
+        },
         "internal_handlers_jail.ModifyMetadataRequest": {
             "type": "object",
             "properties": {
@@ -12136,6 +13555,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "metadata": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyResolvConfRequest": {
+            "type": "object",
+            "properties": {
+                "resolvConf": {
                     "type": "string"
                 }
             }
@@ -12515,6 +13942,9 @@ const docTemplate = `{
                 },
                 "metadata": {
                     "type": "string"
+                },
+                "networkConfig": {
+                    "type": "string"
                 }
             }
         },
@@ -12537,6 +13967,14 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyQemuGuestAgentRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12564,6 +14002,14 @@ const docTemplate = `{
             "properties": {
                 "waitTime": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyTPMRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },

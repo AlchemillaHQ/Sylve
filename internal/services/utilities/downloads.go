@@ -587,6 +587,28 @@ func (s *Service) StartPostProcess(id *uint) error {
 	return s.finishDownload(&d, extractedPath)
 }
 
+func (s *Service) enqueuePostProcOnce(id uint) error {
+	s.inflightMu.Lock()
+	if _, ok := s.inflight[id]; ok {
+		s.inflightMu.Unlock()
+		return nil
+	}
+	s.inflight[id] = struct{}{}
+	s.inflightMu.Unlock()
+
+	err := db.EnqueueJSON(context.Background(), "utils-download-postproc", &utilitiesServiceInterfaces.DownloadPostProcPayload{
+		ID: id,
+	})
+	if err != nil {
+		s.inflightMu.Lock()
+		delete(s.inflight, id)
+		s.inflightMu.Unlock()
+		return err
+	}
+
+	return nil
+}
+
 func (s *Service) flipToProcessing(id uint) bool {
 	res := s.DB.Model(&utilitiesModels.Downloads{}).
 		Where("id = ? AND status = ?", id, utilitiesModels.DownloadStatusPending).
@@ -710,16 +732,17 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 				download.Error = err.Error()
 				download.Status = "failed"
 				failed = true
-			} else if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending {
-				if s.flipToProcessing(download.ID) {
-					logger.L.Debug().Msgf("syncHTTP: queued postproc job for download ID=%d", download.ID)
-				} else {
-					logger.L.Debug().Msgf("syncHTTP: flipToProcessing failed for download ID=%d", download.ID)
+			} else if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending ||
+				download.Status == utilitiesModels.DownloadStatusProcessing {
+				if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending {
+					if s.flipToProcessing(download.ID) {
+						logger.L.Debug().Msgf("syncHTTP: flipped to processing for download ID=%d", download.ID)
+					} else {
+						logger.L.Debug().Msgf("syncHTTP: flipToProcessing failed for download ID=%d", download.ID)
+					}
 				}
 
-				if err := db.EnqueueJSON(context.Background(), "utils-download-postproc",
-					&utilitiesServiceInterfaces.DownloadPostProcPayload{ID: download.ID},
-				); err != nil {
+				if err := s.enqueuePostProcOnce(download.ID); err != nil {
 					logger.L.Error().Msgf("syncHTTP: failed to enqueue postproc job for download ID=%d: %v", download.ID, err)
 				}
 			}
@@ -761,6 +784,26 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		download.Status = "failed"
 		s.DB.Model(download).Select("Error", "Status").Updates(download)
 		return
+	}
+
+	// Recover processing records that lost in-memory HTTP response state (e.g. after restart).
+	if download.Status == utilitiesModels.DownloadStatusProcessing {
+		if info, err := os.Stat(download.Path); err == nil {
+			download.Size = info.Size()
+		}
+
+		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
+			download.Progress = 100
+			download.Status = utilitiesModels.DownloadStatusDone
+			if err := s.DB.Model(download).Select("Progress", "Size", "Status").Updates(download).Error; err != nil {
+				logger.L.Error().Msgf("syncHTTP: failed to finalize processing download ID=%d: %v", download.ID, err)
+			}
+			return
+		}
+
+		if err := s.enqueuePostProcOnce(download.ID); err != nil {
+			logger.L.Error().Msgf("syncHTTP: failed to recover postproc enqueue for download ID=%d: %v", download.ID, err)
+		}
 	}
 }
 

@@ -3,15 +3,66 @@
 [![Discord](https://img.shields.io/discord/1075365732143071232)](https://discord.gg/bJB826JvXK)
 [![Build](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml)
 [![Test](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml)
+[![Documentation](https://img.shields.io/badge/docs-sylve.io-blue)](https://sylve.io/docs)
 
-> [!WARNING]
-> This project is still in development so expect breaking changes!
+> [!NOTE]
+> Sylve is under active development. Some features and APIs may change.
 
 https://gist.github.com/user-attachments/assets/7a9d002c-f647-4872-8b55-6b0cb1ce563b
 
-Sylve aims to be a lightweight, open-source virtualization platform for FreeBSD, leveraging [Bhyve](https://wiki.freebsd.org/bhyve) for VMs and [Jails](https://wiki.freebsd.org/Jails) for containerization, with deep [ZFS](https://docs.freebsd.org/en/books/handbook/zfs/) integration. It seeks to provide a streamlined, Proxmox-like experience tailored for FreeBSD environments. Its backend is written in Go and the frontend is written in Svelte (with Kit).
+Sylve is a lightweight, open-source virtualization platform for FreeBSD. It combines **Bhyve virtual machines**, **FreeBSD Jails**, and **ZFS storage** into a modern web interface designed to deliver a streamlined, Proxmox-like experience tailored for FreeBSD environments.
 
-## Sponsors
+The backend is written in **Go**, while the frontend is built with **SvelteKit**.
+
+**Full documentation:** https://sylve.io/docs
+
+# Features
+
+- **Bhyve Virtual Machine Management**
+- **FreeBSD Jail Management**
+- **ZFS-first storage architecture**
+- **Modern web UI**
+- **Built-in clustering support**
+- **Integrated networking tooling**
+- **Zelta integration for backups**
+
+Sylve aims to make FreeBSD virtualization easier to manage without relying on complex shell scripts.
+
+# Quick Start
+
+Sylve is designed to run on **FreeBSD 15.0 or later**.
+
+Install dependencies:
+
+```sh
+# Other optional dependencies like libirt, bhyve-firmware, qemu-tools
+# swtpm, samba4XX, etc. might be needed if you enable those features.
+# Read the docs to be sure!
+
+pkg install git node24 npm-node24 go
+````
+
+Clone the repository and build:
+
+```sh
+git clone https://github.com/AlchemillaHQ/Sylve.git
+cd Sylve
+make
+```
+
+Run Sylve:
+
+```sh
+cd bin
+cp ../config.example.json config.json
+./sylve
+```
+
+For full installation instructions, dependency details, and configuration guides, see the documentation:
+
+[https://sylve.io/docs](https://sylve.io/docs)
+
+# Sponsors
 
 We’re proud to be supported by:
 
@@ -36,95 +87,20 @@ We’re proud to be supported by:
   </a>
 </p>
 
-- [FreeBSD Foundation](https://freebsdfoundation.org)
-- [Alchemilla](https://alchemilla.io)
-- [IPTechnics](https://iptechnics.com)
+* [https://freebsdfoundation.org](https://freebsdfoundation.org)
+* [https://alchemilla.io](https://alchemilla.io)
+* [https://iptechnics.com](https://iptechnics.com)
 
-You can also support the project by [sponsoring us on GitHub](https://github.com/sponsors/AlchemillaHQ).
+You can also support the project by sponsoring us on GitHub:
 
-# Development Requirements
-
-These only apply to the development version of Sylve, the production version will be a single binary.
-
-- Go >= 1.24
-- Node.js >= v20.18.2
-- NPM >= v10.9.2
-
-# Runtime Requirements
-
-Sylve is designed to run on FreeBSD 15.0 or later, and it is recommended to use the latest version of FreeBSD for the best experience.
-
-## Dependencies
-
-Running Sylve is pretty easy, but `sylve` depends on some packages that you can install using `pkg` or the corresponding port to that package. Here's a list of what you'd need:
-
-| Dependency     | Min. version | Vendored | Optional | Purpose                                    |
-| -------------- | ------------ | -------- | -------- | ------------------------------------------ |
-| libvirt        | 11.7.0       | No       | Yes      | Virtualization API, used for Bhyve         |
-| bhyve-firmware | 1.0_2        | No       | Yes      | Collection of Firmware for bhyve           |
-| samba4XX       | 4.XX         | No       | Yes      | SMB file sharing service                   |
-| swtpm          | 0.10.1       | No       | Yes      | TPM emulator for VMs                       |
-| qemu-tools     | 10.1.0_1     | No       | Yes      | QEMU utilities for disk image manipulation |
-
-We also need to enable some services in order to run Sylve, you can drop these into `/etc/rc.conf` if you don't have it already:
-
-```sh
-sysrc ntpd_enable="YES" # Optional
-sysrc ntpd_sync_on_start="YES" # Optional
-sysrc zfs_enable="YES"
-sysrc libvirtd_enable="YES" # Optional
-sysrc dnsmasq_enable="YES" # Optional
-sysrc samba_server_enable="YES" # Optional
-```
-
-Enabling `rctl` is required if you're using Jails with Sylve. Do this by adding the following line to `/boot/loader.conf`:
-
-```sh
-kern.racct.enable=1
-```
-
-> [!IMPORTANT]
-> Please reboot your system after adding those entries to ensure that the
-> services are started correctly and the kernel modules are loaded.
-
-# Installation
-
-## From source
-
-Install required (and optional) packages:
-
-```sh
-pkg install git node24 npm-node24 go libvirt bhyve-firmware samba422 swtpm qemu-tools
-```
-
-Clone the repo and build Sylve.
-
-```sh
-git clone https://github.com/AlchemillaHQ/Sylve.git
-cd Sylve
-make
-```
-
-# Usage
-
-```sh
-cd bin/
-cp -rf ../config.example.json config.json # Edit the config.json file to your liking
-./sylve
-```
-
-# Notes
-
-1. Root access is required to run Sylve, as it manages system-level resources like networking, storage, jails, and virtual machines. Running without sufficient privileges will result in limited functionality and/or failures.
-
-2. Since Bhyve doesn't support bootorders yet, you'll need to configure the order using the UEFI boot menu. You can download OS ISOs and Jail bases using the downloader present in Node > Utilities > Downloader menu.
-
-3. ARM64 support is still pending for Libvirt so the support is not there yet, for everything else it should just work out of the box.
+[https://github.com/sponsors/AlchemillaHQ](https://github.com/sponsors/AlchemillaHQ)
 
 # Contributing
 
-Please read [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details on our contributing guidelines.
+Contributions are welcome. Please read docs/CONTRIBUTING.md before submitting pull requests.
 
 # License
 
-This project is licensed under the BSD 2-Clause License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **BSD 2-Clause License**.
+
+See the LICENSE file for details.

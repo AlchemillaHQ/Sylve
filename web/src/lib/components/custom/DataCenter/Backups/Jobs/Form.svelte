@@ -28,6 +28,8 @@
 		selectedJob: BackupJob | null;
 		targets: BackupTarget[];
 		nodes: ClusterNode[];
+		localNodeId?: string;
+		standaloneMode?: boolean;
 		reload: boolean;
 	}
 
@@ -52,6 +54,8 @@
 		selectedJob,
 		targets,
 		nodes,
+		localNodeId = '',
+		standaloneMode = false,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -87,13 +91,22 @@
 		}))
 	);
 
-	let nodeOptions = $derived([
-		{ value: '', label: 'Select a node' },
-		...nodes.map((node) => ({
-			value: node.nodeUUID,
-			label: node.hostname
-		}))
-	]);
+	let nodeOptions = $derived.by(() => {
+		if (standaloneMode) {
+			return nodes.map((node) => ({
+				value: node.nodeUUID,
+				label: node.hostname
+			}));
+		}
+
+		return [
+			{ value: '', label: 'Select a node' },
+			...nodes.map((node) => ({
+				value: node.nodeUUID,
+				label: node.hostname
+			}))
+		];
+	});
 
 	const modeOptions: Array<{ value: BackupJobMode; label: string }> = [
 		{ value: 'dataset', label: 'Single Dataset' },
@@ -193,7 +206,9 @@
 	function applyDefaults() {
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
-		form.runnerNodeId = nodes[0]?.nodeUUID ?? '';
+		form.runnerNodeId = standaloneMode
+			? (localNodeId || nodes[0]?.nodeUUID || '')
+			: (nodes[0]?.nodeUUID ?? '');
 		form.mode = 'dataset';
 		form.sourceDataset = '';
 		form.selectedJailId = '';
@@ -209,7 +224,11 @@
 	async function applyFromJob(job: BackupJob) {
 		form.name = job.name;
 		form.targetId = String(job.targetId);
-		form.runnerNodeId = job.runnerNodeId || nodes[0]?.nodeUUID || '';
+		form.runnerNodeId =
+			job.runnerNodeId ||
+			(standaloneMode ? localNodeId : '') ||
+			nodes[0]?.nodeUUID ||
+			'';
 		form.mode = (job.mode as BackupJobMode) || 'dataset';
 		form.sourceDataset = job.sourceDataset || '';
 		form.selectedJailId = '';
@@ -343,7 +362,10 @@
 		const payload: BackupJobInput = {
 			name: form.name,
 			targetId: Number.parseInt(form.targetId, 10),
-			runnerNodeId: form.runnerNodeId,
+			runnerNodeId:
+				standaloneMode && (localNodeId || '').trim() !== ''
+					? form.runnerNodeId.trim() || localNodeId.trim()
+					: form.runnerNodeId,
 			mode: form.mode,
 			sourceDataset:
 				form.mode === 'dataset' ? form.sourceDataset : form.mode === 'vm' ? vmDataset : '',

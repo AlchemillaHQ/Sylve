@@ -192,6 +192,19 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.CloudInitTemplate'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_Downloads:
     properties:
       data:
@@ -458,6 +471,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleList'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_State:
     properties:
       data:
@@ -473,6 +497,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.LvDomain'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_SimpleList:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList'
       error:
         type: string
       message:
@@ -661,6 +696,10 @@ definitions:
         type: string
       email:
         type: string
+      groups:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group'
+        type: array
       id:
         type: integer
       lastLoginTime:
@@ -707,6 +746,10 @@ definitions:
         type: integer
       diskUsage:
         type: number
+      guestIDs:
+        items:
+          type: integer
+        type: array
       hostname:
         type: string
       id:
@@ -854,8 +897,14 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network'
         type: array
+      resolvConf:
+        type: string
       resourceLimits:
         type: boolean
+      snapshots:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailSnapshot'
+        type: array
       startAtBoot:
         type: boolean
       startLogs:
@@ -897,11 +946,36 @@ definitions:
     properties:
       enabled:
         type: boolean
+      id:
+        type: integer
       jid:
         type: integer
       phase:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailHookPhase'
       script:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_jail.JailSnapshot:
+    properties:
+      createdAt:
+        type: string
+      ctId:
+        type: integer
+      description:
+        type: string
+      id:
+        type: integer
+      jid:
+        type: integer
+      name:
+        type: string
+      parentSnapshotId:
+        type: integer
+      rootDataset:
+        type: string
+      snapshotName:
+        type: string
+      updatedAt:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_jail.JailStats:
@@ -955,10 +1029,14 @@ definitions:
         type: integer
       macObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      manualSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch'
       name:
         type: string
       slaac:
         type: boolean
+      standardSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch'
       switchId:
         type: integer
       switchType:
@@ -1079,6 +1157,9 @@ definitions:
         type: integer
       isUsed:
         type: boolean
+      isUsedBy:
+        description: '"", "dhcp" for now'
+        type: string
       name:
         type: string
       resolutions:
@@ -1247,6 +1328,23 @@ definitions:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group'
         type: array
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_utilities.CloudInitTemplate:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: integer
+      meta:
+        type: string
+      name:
+        type: string
+      networkConfig:
+        type: string
+      updatedAt:
+        type: string
+      user:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadStatus:
     enum:
     - pending
@@ -1345,6 +1443,10 @@ definitions:
         type: integer
       macObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      manualSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch'
+      standardSwitch:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch'
       switchId:
         type: integer
       switchType:
@@ -1399,6 +1501,8 @@ definitions:
         type: string
       cloudInitMetaData:
         type: string
+      cloudInitNetworkConfig:
+        type: string
       cpuCores:
         type: integer
       cpuPinning:
@@ -1427,6 +1531,8 @@ definitions:
         items:
           type: integer
         type: array
+      qemuGuestAgent:
+        type: boolean
       ram:
         type: integer
       rid:
@@ -1435,6 +1541,10 @@ definitions:
         type: boolean
       shutdownWaitTime:
         type: integer
+      snapshots:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMSnapshot'
+        type: array
       startAtBoot:
         type: boolean
       startOrder:
@@ -1478,6 +1588,31 @@ definitions:
         type: integer
       id:
         type: integer
+      vmId:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_vm.VMSnapshot:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      parentSnapshotId:
+        type: integer
+      rid:
+        type: integer
+      rootDatasets:
+        items:
+          type: string
+        type: array
+      snapshotName:
+        type: string
+      updatedAt:
+        type: string
       vmId:
         type: integer
     type: object
@@ -1588,6 +1723,33 @@ definitions:
       partial:
         type: boolean
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync:
+    properties:
+      api:
+        type: string
+      cpu:
+        type: integer
+      cpuUsage:
+        type: number
+      disk:
+        type: integer
+      diskUsage:
+        type: number
+      guestIds:
+        items:
+          type: integer
+        type: array
+      hostname:
+        type: string
+      memory:
+        type: integer
+      memoryUsage:
+        type: number
+      nodeUuid:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources:
     properties:
       hostname:
@@ -1607,6 +1769,10 @@ definitions:
     properties:
       address:
         type: string
+      guestIDs:
+        items:
+          type: integer
+        type: array
       id:
         type: string
       isLeader:
@@ -1651,6 +1817,30 @@ definitions:
       uuid:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture:
+    enum:
+    - amd64
+    - "386"
+    - arm
+    - arm64
+    - riscv64
+    - ppc64
+    - ppc64le
+    - s390x
+    - wasm
+    - loong64
+    type: string
+    x-enum-varnames:
+    - ArchAMD64
+    - Arch386
+    - ArchARM
+    - ArchARM64
+    - ArchRISCV64
+    - ArchPPC64
+    - ArchPPC64LE
+    - ArchS390X
+    - ArchWASM
+    - ArchLOONG64
   github_com_alchemillahq_sylve_internal_interfaces_services_info.BasicInfo:
     properties:
       bootMode:
@@ -1668,6 +1858,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.CPUInfo:
     properties:
+      architecture:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_info.Architecture'
       cache:
         properties:
           l1d:
@@ -1812,6 +2004,8 @@ definitions:
         type: string
       pool:
         type: string
+      resolvConf:
+        type: string
       resourceLimits:
         type: boolean
       slaac:
@@ -1829,6 +2023,35 @@ definitions:
     - name
     - pool
     - type
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.EditJailNetworkRequest:
+    properties:
+      defaultGateway:
+        type: boolean
+      dhcp:
+        type: boolean
+      ip4:
+        type: integer
+      ip4gw:
+        type: integer
+      ip6:
+        type: integer
+      ip6gw:
+        type: integer
+      macId:
+        type: integer
+      name:
+        type: string
+      networkId:
+        type: integer
+      slaac:
+        type: boolean
+      switchName:
+        type: string
+    required:
+    - name
+    - networkId
+    - switchName
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase:
     properties:
@@ -1900,6 +2123,8 @@ definitions:
         type: string
       cloudInitMetaData:
         type: string
+      cloudInitNetworkConfig:
+        type: string
       cpuCores:
         type: integer
       cpuPinning:
@@ -1924,6 +2149,8 @@ definitions:
         items:
           type: integer
         type: array
+      qemuGuestAgent:
+        type: boolean
       ram:
         type: integer
       rid:
@@ -2015,6 +2242,10 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList:
     properties:
+      cpuPinning:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning'
+        type: array
       id:
         type: integer
       name:
@@ -2228,6 +2459,36 @@ definitions:
     - pools
     - services
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_utilities.AddTemplateRequest:
+    properties:
+      meta:
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      networkConfig:
+        type: string
+      user:
+        type: string
+    required:
+    - meta
+    - name
+    - user
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_utilities.EditTemplateRequest:
+    properties:
+      meta:
+        type: string
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+      networkConfig:
+        type: string
+      user:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_utilities.UTypeGroupedDownload:
     properties:
       label:
@@ -2292,6 +2553,7 @@ definitions:
         type: array
     required:
     - name
+    - raidType
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.EditVolumeRequest:
     properties:
@@ -2970,18 +3232,6 @@ definitions:
     - nodeIp
     - nodePort
     type: object
-  internal_handlers_cluster.CreateNoteRequest:
-    properties:
-      content:
-        minLength: 3
-        type: string
-      title:
-        minLength: 3
-        type: string
-    required:
-    - content
-    - title
-    type: object
   internal_handlers_cluster.JoinClusterRequest:
     properties:
       clusterKey:
@@ -3002,6 +3252,18 @@ definitions:
     - nodeId
     - nodeIp
     - nodePort
+    type: object
+  internal_handlers_cluster.NoteRequest:
+    properties:
+      content:
+        minLength: 3
+        type: string
+      title:
+        minLength: 3
+        type: string
+    required:
+    - content
+    - title
     type: object
   internal_handlers_cluster.RemovePeerRequest:
     properties:
@@ -3091,6 +3353,13 @@ definitions:
       additionalOptions:
         type: string
     type: object
+  internal_handlers_jail.ModifyAllowedOptionsRequest:
+    properties:
+      allowedOptions:
+        items:
+          type: string
+        type: array
+    type: object
   internal_handlers_jail.ModifyBootOrderRequest:
     properties:
       bootOrder:
@@ -3108,11 +3377,21 @@ definitions:
       fstab:
         type: string
     type: object
+  internal_handlers_jail.ModifyLifecycleHooksRequest:
+    properties:
+      hooks:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.Hooks'
+    type: object
   internal_handlers_jail.ModifyMetadataRequest:
     properties:
       env:
         type: string
       metadata:
+        type: string
+    type: object
+  internal_handlers_jail.ModifyResolvConfRequest:
+    properties:
+      resolvConf:
         type: string
     type: object
   internal_handlers_jail.SetInheritanceRequest:
@@ -3364,6 +3643,8 @@ definitions:
         type: string
       metadata:
         type: string
+      networkConfig:
+        type: string
     type: object
   internal_handlers_vm.ModifyIgnoreUMSRsRequest:
     properties:
@@ -3378,6 +3659,11 @@ definitions:
         type: array
     required:
     - pciDevices
+    type: object
+  internal_handlers_vm.ModifyQemuGuestAgentRequest:
+    properties:
+      enabled:
+        type: boolean
     type: object
   internal_handlers_vm.ModifyRAMRequest:
     properties:
@@ -3395,6 +3681,11 @@ definitions:
     properties:
       waitTime:
         type: integer
+    type: object
+  internal_handlers_vm.ModifyTPMRequest:
+    properties:
+      enabled:
+        type: boolean
     type: object
   internal_handlers_vm.ModifyWakeOnLanRequest:
     properties:
@@ -3697,6 +3988,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete Group
+      tags:
+      - Groups
+  /auth/groups/members:
+    put:
+      consumes:
+      - application/json
+      description: Update the members of a specified group
+      parameters:
+      - description: Update group members request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_auth.AddUsersToGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group members updated successfully
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update Group Members
       tags:
       - Groups
   /auth/groups/users:
@@ -4155,6 +4478,32 @@ paths:
       summary: Get Cluster Resources (per node)
       tags:
       - Cluster
+  /cluster/resync-state:
+    post:
+      consumes:
+      - application/json
+      description: Replays current cluster-backed state through Raft and forces a
+        snapshot from the leader
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Resync Cluster State
+      tags:
+      - Cluster
   /disk/create-partitions:
     post:
       consumes:
@@ -4536,6 +4885,27 @@ paths:
       summary: Get Historical Network information
       tags:
       - system
+  /info/node:
+    get:
+      consumes:
+      - application/json
+      description: Get the node information about the system (mainly for cluster stuff)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_info_BasicInfo'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get Node Info
+      tags:
+      - Info
   /info/notes:
     get:
       consumes:
@@ -4661,6 +5031,42 @@ paths:
       summary: Delete a Cluster Note
       tags:
       - Cluster
+    put:
+      consumes:
+      - application/json
+      description: Update an existing note in the cluster
+      parameters:
+      - description: Note ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Update Note Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_cluster.NoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update a Cluster Note
+      tags:
+      - Cluster
   /info/notes/bulk-delete:
     post:
       consumes:
@@ -4766,6 +5172,41 @@ paths:
       summary: Get Historical Swap information
       tags:
       - system
+  /intra-cluster/sync-health:
+    post:
+      consumes:
+      - application/json
+      description: Internal endpoint used by the Raft Leader to broadcast cluster
+        health to followers
+      parameters:
+      - description: Array of node health states
+        in: body
+        name: payload
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeHealthSync'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Sync Cluster Health
+      tags:
+      - Cluster Internal
   /jail:
     get:
       consumes:
@@ -5080,6 +5521,33 @@ paths:
       summary: Add Network Switch to Jail
       tags:
       - Jail
+    put:
+      consumes:
+      - application/json
+      description: Edit a network switch on a jail
+      parameters:
+      - description: Edit Network Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.EditJailNetworkRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Edit Network Switch for Jail
+      tags:
+      - Jail
   /jail/network/{ctId}/{networkId}:
     delete:
       consumes:
@@ -5193,6 +5661,49 @@ paths:
       security:
       - BearerAuth: []
       summary: List all Jails (Simple)
+      tags:
+      - Jail
+  /jail/simple/:id:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a simple jail by its CTID or ID
+      parameters:
+      - description: Jail CTID or ID
+        in: path
+        name: identifier
+        required: true
+        type: string
+      - default: ctid
+        description: Type of identifier (ctid or id)
+        enum:
+        - ctid
+        - id
+        in: query
+        name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get a Jail by CTID or ID (Simple)
       tags:
       - Jail
   /jail/state:
@@ -5953,6 +6464,31 @@ paths:
       summary: Delete a Standard Switch
       tags:
       - Network
+  /network/update:
+    put:
+      consumes:
+      - application/json
+      description: Update a network interface attached to a virtual machine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update Network Switch for a Virtual Machine
+      tags:
+      - VM
   /options/additional-options/:rid:
     put:
       consumes:
@@ -5983,6 +6519,38 @@ paths:
       security:
       - BearerAuth: []
       summary: Modify Additional Options of a Jail
+      tags:
+      - Jail
+  /options/allowed-options/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify allowed options configuration of a jail
+      parameters:
+      - description: Modify Allowed Options Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_jail.ModifyAllowedOptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Allowed Options of a Jail
       tags:
       - Jail
   /options/boot-order/:rid:
@@ -6177,6 +6745,38 @@ paths:
       summary: Modify Ignore UMSRs of a Virtual Machine
       tags:
       - VM
+  /options/lifecycle-hooks/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify jail exec.* lifecycle hooks in one request
+      parameters:
+      - description: Modify Lifecycle Hooks Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_jail.ModifyLifecycleHooksRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Lifecycle Hooks of a Jail
+      tags:
+      - Jail
   /options/metadata/:rid:
     put:
       consumes:
@@ -6207,6 +6807,70 @@ paths:
       security:
       - BearerAuth: []
       summary: Modify Metadata of a Jail
+      tags:
+      - Jail
+  /options/qemu-guest-agent/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify the QEMU Guest Agent configuration of a virtual machine
+      parameters:
+      - description: Modify QEMU Guest Agent Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifyQemuGuestAgentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify QEMU Guest Agent of a Virtual Machine
+      tags:
+      - VM
+  /options/resolv-conf/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify /etc/resolv.conf content for a jail
+      parameters:
+      - description: Modify resolv.conf Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_jail.ModifyResolvConfRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify resolv.conf of a Jail
       tags:
       - Jail
   /options/serial-console/:rid:
@@ -6273,6 +6937,38 @@ paths:
       summary: Modify Shutdown Wait Time of a Virtual Machine
       tags:
       - VM
+  /options/tpm/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify the TPM configuration of a virtual machine
+      parameters:
+      - description: Modify TPM Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifyTPMRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify TPM of a Virtual Machine
+      tags:
+      - VM
   /options/wol/:rid:
     put:
       consumes:
@@ -6303,6 +6999,31 @@ paths:
       security:
       - BearerAuth: []
       summary: Modify Wake-on-LAN of a Virtual Machine
+      tags:
+      - VM
+  /qga/:rid:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve QEMU Guest Agent OS and network info of a virtual machine
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get QEMU Guest Agent info of a Virtual Machine
       tags:
       - VM
   /samba/audit-logs:
@@ -7072,6 +7793,180 @@ paths:
       summary: Remove Passed Through Device
       tags:
       - System
+  /system/ppt-devices/import:
+    post:
+      consumes:
+      - application/json
+      description: Import an existing ppt device into Sylve passthrough management
+      parameters:
+      - description: Device ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_system.AddPassthroughDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Import Passed Through Device
+      tags:
+      - System
+  /system/ppt-devices/prepare:
+    post:
+      consumes:
+      - application/json
+      description: Add a device to loader.conf for passthrough on next boot
+      parameters:
+      - description: Device ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_system.AddPassthroughDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Prepare Passed Through Device
+      tags:
+      - System
+  /utilities/cloud-init/templates:
+    get:
+      consumes:
+      - application/json
+      description: List all Cloud-Init templates
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List Cloud-Init Templates
+      tags:
+      - Utilities
+    post:
+      consumes:
+      - application/json
+      description: Add a new Cloud-Init template
+      parameters:
+      - description: Add Template Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_utilities.AddTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Add Cloud-Init Template
+      tags:
+      - Utilities
+  /utilities/cloud-init/templates/:id:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a Cloud-Init template by ID
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete Cloud-Init Template
+      tags:
+      - Utilities
+    put:
+      consumes:
+      - application/json
+      description: Edit an existing Cloud-Init template
+      parameters:
+      - description: Edit Template Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_utilities.EditTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Edit Cloud-Init Template
+      tags:
+      - Utilities
   /utilities/downloads:
     get:
       consumes:
@@ -7518,6 +8413,45 @@ paths:
       security:
       - BearerAuth: []
       summary: List all VMs (Simple)
+      tags:
+      - VM
+  /vm/simple/:id:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a simple virtual machine object by its RID or ID
+      parameters:
+      - description: Virtual Machine RID or ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: rid
+        description: Type of identifier (rid or id)
+        enum:
+        - rid
+        - id
+        in: query
+        name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_libvirt_SimpleList'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get a simple Virtual Machine by RID or ID
       tags:
       - VM
   /vm/stats/:rid/:step:

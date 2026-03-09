@@ -5,7 +5,6 @@ import logoBlack from "@/assets/logo-black.svg";
 
 const navButtonClass =
   "inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3 py-1.5 text-sm font-medium text-card-foreground shadow-sm backdrop-blur transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent hover:text-primary";
-
 ---
 
 <header
@@ -17,25 +16,23 @@ const navButtonClass =
       class="flex flex-row items-center gap-3 hover:text-primary transition-colors duration-300"
     >
       <img src={logoBlack.src} alt="Sylve Logo" class="size-6 dark:hidden" />
-      <img src={logoWhite.src} alt="Sylve Logo" class="hidden size-6 dark:block" />
+      <img
+        src={logoWhite.src}
+        alt="Sylve Logo"
+        class="hidden size-6 dark:block"
+      />
       <span class="font-normal tracking-[.45em] text-xl">SYLVE</span>
     </a>
     <div class="hidden md:flex flex-row items-center gap-4">
       <div class="flex flex-row items-center gap-3 text-card-foreground">
-        <a
-          href="/docs"
-          class={navButtonClass}
-          title="Documentation"
-        >
-          <span class="icon-[lucide--book-open-text] size-4" aria-hidden="true"></span>
+        <a href="/docs" class={navButtonClass} title="Documentation">
+          <span class="icon-[lucide--book-open-text] size-4" aria-hidden="true"
+          ></span>
           <span data-i18n="documentation">Documentation</span>
         </a>
-        <a
-          href="/blog"
-          class={navButtonClass}
-          title="Blog"
-        >
-          <span class="icon-[lucide--newspaper] size-4" aria-hidden="true"></span>
+        <a href="/blog" class={navButtonClass} title="Blog">
+          <span class="icon-[lucide--newspaper] size-4" aria-hidden="true"
+          ></span>
           <span data-i18n="blog">Blog</span>
         </a>
       </div>

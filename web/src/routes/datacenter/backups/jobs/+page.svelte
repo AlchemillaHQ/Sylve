@@ -29,6 +29,8 @@
 			targets: BackupTarget[];
 			jobs: BackupJob[];
 			nodes: ClusterNode[];
+			localNodeId: string;
+			standaloneMode: boolean;
 		};
 	} = $props();
 
@@ -398,6 +400,8 @@
 	{selectedJob}
 	targets={targets.current}
 	{nodes}
+	localNodeId={data.localNodeId}
+	standaloneMode={data.standaloneMode}
 />
 
 <Restore bind:open={restoreModalOpen} bind:reload {selectedJob} {nodes} />

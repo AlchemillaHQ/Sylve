@@ -4,74 +4,54 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tailwindcss";
-@source not "../locales/";
 
-/* Light mode colors. */
+[data-theme="dark"] .logo-dark {
+  display: block;
+}
+
+[data-theme="dark"] .logo-light {
+  display: none;
+}
+
+:root {
+  --sl-content-width: 45rem;
+  --sl-text-5xl: 3.5rem;
+  --sl-sidebar-width: 18rem;
+}
+
+:root {
+  --sl-color-accent: #3447ff;
+  --sl-color-accent-high: #b3c7ff;
+}
 :root[data-theme="light"] {
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --muted: oklch(0.623 0.214 259.815);
+  --sl-color-accent: #364bff;
+  --sl-color-accent-high: #182775;
 }
 
-:root[data-theme="dark"] {
-  --background: #0a0a0a;
-  --foreground: oklch(0.985 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --muted: oklch(0.269 0 0);
-}
+@theme {
+  --font-mono: "IBM Plex Mono";
 
-@layer base {
-  * {
-    border: var(--border);
-    outline-color: var(--sidebar);
-  }
-  body {
-    background-color: var(--background);
-    color: var(--foreground);
-  }
-}
+  --color-accent-50: oklch(0.97 0 0);
+  --color-accent-100: oklch(0.94 0 0);
+  --color-accent-200: oklch(0.88 0 0);
+  --color-accent-300: oklch(0.8 0 0);
+  --color-accent-400: oklch(0.7 0 0);
+  --color-accent-500: oklch(0.6 0 0);
+  --color-accent-600: oklch(0.5 0 0);
+  --color-accent-700: oklch(0.4 0 0);
+  --color-accent-800: oklch(0.3 0 0);
+  --color-accent-900: oklch(0.25 0 0);
+  --color-accent-950: oklch(0.2 0 0);
 
-.sl-container {
-  margin: 0 !important;
-  @apply mx-auto!;
-}
-
-.page {
-  background-color: var(--background);
-}
-
-.header {
-  background-color: var(--sidebar);
-}
-
-.header a {
-  color: var(--foreground) !important;
-}
-
-.header .social-icons a {
-  color: var(--foreground) !important;
-}
-
-.sidebar-content {
-  background-color: var(--sidebar);
-}
-
-.sidebar-content a,
-.sidebar-content .large {
-  color: var(--foreground) !important;
-}
-
-.sidebar-content a:hover {
-  background-color: var(--muted) !important;
-  color: var(--foreground) !important;
-}
-
-.sidebar-content [aria-current="page"] {
-  background-color: var(--muted) !important;
-  border-radius: 0.4rem !important;
-  color: white !important;
-  font-weight: 600;
+  --color-gray-50: oklch(0.98 0 0);
+  --color-gray-100: oklch(0.95 0 0);
+  --color-gray-200: oklch(0.9 0 0);
+  --color-gray-300: oklch(0.85 0 0);
+  --color-gray-400: oklch(0.7 0 0);
+  --color-gray-500: oklch(0.55 0 0);
+  --color-gray-600: oklch(0.45 0 0);
+  --color-gray-700: oklch(0.35 0 0);
+  --color-gray-800: oklch(0.26 0 0);
+  --color-gray-900: oklch(0.2 0 0);
+  --color-gray-950: oklch(0.15 0 0);
 }
