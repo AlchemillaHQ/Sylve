@@ -18,7 +18,6 @@
 		useResizeObserver
 	} from 'runed';
 	import { mode } from 'mode-watcher';
-	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
@@ -190,6 +189,12 @@
 		vncLoading = true;
 		setTimeout(() => (vncLoading = false), 1500);
 	}
+
+	let showConsoleToolbar = $derived(
+		domain.current.status !== 'Shutoff' &&
+			((vm.current.vncEnabled && vm.current.serial) ||
+				(consoleType === 'serial' && vm.current.serial))
+	);
 
 	function sendSize(cols: number, rows: number) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -537,7 +542,7 @@
 </script>
 
 <div class="flex h-full w-full flex-col">
-	{#if (vm.current.vncEnabled || vm.current.serial) && domain.current.status !== 'Shutoff'}
+	{#if showConsoleToolbar}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if vm.current.vncEnabled && vm.current.serial}
 				<Button
@@ -599,7 +604,7 @@
 
 	{#if domain.current.status !== 'Shutoff'}
 		{#if consoleType === 'vnc' && vm.current.vncEnabled}
-			<div class="relative flex min-h-0 flex-1 flex-col">
+			<div class="relative flex min-h-0 w-full flex-1 flex-col">
 				<iframe
 					class="w-full flex-1 transition-opacity duration-500"
 					class:opacity-0={vncLoading}
@@ -614,10 +619,10 @@
 				{/if}
 			</div>
 		{:else if consoleType === 'serial' && vm.current.serial}
-			<div class="flex h-full w-full flex-col" transition:fade|global={{ duration: 200 }}>
+			<div class="flex min-h-0 w-full flex-1 flex-col">
 				{#if cState.current}
 					<div
-						class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center"
+						class="dark:text-secondary text-primary/70 flex min-h-0 w-full flex-1 flex-col items-center justify-center space-y-3 text-center"
 					>
 						<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
 						<div class="max-w-md">
@@ -628,7 +633,7 @@
 				{/if}
 
 				<div
-					class="terminal-wrapper h-full w-full focus:outline-none caret-transparent"
+					class="terminal-wrapper min-h-0 w-full flex-1 focus:outline-none caret-transparent"
 					class:hidden={cState.current}
 					role="application"
 					aria-label="VM serial terminal"
