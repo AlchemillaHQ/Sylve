@@ -29,7 +29,9 @@
 }
 
 @theme {
-  --font-mono: "IBM Plex Mono";
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
   --color-accent-50: oklch(0.97 0 0);
   --color-accent-100: oklch(0.94 0 0);

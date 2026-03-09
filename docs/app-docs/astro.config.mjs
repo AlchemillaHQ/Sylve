@@ -10,9 +10,6 @@ const site = 'https://sylve.io';
 export default defineConfig({
     output: 'static',
     site,
-    redirects: {
-        '/docs': '/introduction/',
-    },
     integrations: [
         starlight({
             title: 'Sylve',
@@ -42,7 +39,7 @@ export default defineConfig({
                 {
                     label: 'Start Here',
                     collapsed: false,
-                    items: ['introduction', 'getting-started'],
+                    items: ['docs', 'getting-started'],
                 },
                 {
                     label: 'Guides',
@@ -51,7 +48,7 @@ export default defineConfig({
                         'guides',
                         {
                             label: 'Node',
-                            collapsed: false,
+                            collapsed: true,
                             items: [
                                 'guides/node',
                                 'guides/node/notes',
@@ -103,6 +100,7 @@ export default defineConfig({
                                             items: [
                                                 'guides/node/storage/samba/shares',
                                                 'guides/node/storage/samba/settings',
+                                                'guides/node/storage/samba/audit-logs',
                                             ],
                                         },
                                     ],
@@ -124,7 +122,10 @@ export default defineConfig({
                                         {
                                             label: 'Authentication',
                                             collapsed: true,
-                                            items: ['guides/node/settings/authentication/users'],
+                                            items: [
+                                                'guides/node/settings/authentication/users',
+                                                'guides/node/settings/authentication/groups',
+                                            ],
                                         },
                                     ],
                                 },
@@ -134,10 +135,10 @@ export default defineConfig({
                                     items: [
                                         'guides/node/virtual-machines/creation',
                                         'guides/node/virtual-machines/summary',
-                                        'guides/node/virtual-machines/console',
-                                        'guides/node/virtual-machines/storage',
                                         'guides/node/virtual-machines/hardware',
+                                        'guides/node/virtual-machines/storage',
                                         'guides/node/virtual-machines/network',
+                                        'guides/node/virtual-machines/console',
                                         'guides/node/virtual-machines/snapshots',
                                         'guides/node/virtual-machines/options',
                                     ],
@@ -148,9 +149,9 @@ export default defineConfig({
                                     items: [
                                         'guides/node/jails/creation',
                                         'guides/node/jails/summary',
-                                        'guides/node/jails/console',
                                         'guides/node/jails/hardware',
                                         'guides/node/jails/network',
+                                        'guides/node/jails/console',
                                         'guides/node/jails/snapshots',
                                         'guides/node/jails/options',
                                     ],
@@ -159,7 +160,7 @@ export default defineConfig({
                         },
                         {
                             label: 'Data Center',
-                            collapsed: false,
+                            collapsed: true,
                             items: [
                                 'guides/data-center/clustering',
                                 {

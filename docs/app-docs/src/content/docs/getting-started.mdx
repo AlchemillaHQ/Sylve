@@ -10,7 +10,7 @@ As of the latest release, Sylve requires **FreeBSD 15.0-RELEASE or later**. You 
 :::note
 Although we list support for FreeBSD **15.0-RELEASE**, we **strongly recommend** using **-CURRENT** with pkgbase or at least **-STABLE**. Bhyve and related libraries such as `libvirt` are evolving rapidly.
 
-Coming from Linux system administration, it can be tempting to run the oldest possible release to still have all your toys and not have things break. However, the FreeBSD ecosystem works a bit differently in this regard. If it is good enough for **[Netflix](https://freebsdfoundation.org/netflix-case-study/)**, it is probably good enough for us. 
+Coming from Linux system administration, it can be tempting to run the oldest possible release to still have all your toys and not have things break. However, the FreeBSD ecosystem works a bit differently in this regard. If it is good enough for **[Netflix](https://freebsdfoundation.org/netflix-case-study/)**, it is probably good enough for us.
 
 That said, if your use case requires maximum stability and you do not need the latest features or bug fixes, **15.0-RELEASE** or quarterly releases should work perfectly fine.
 :::
@@ -29,12 +29,12 @@ Sylve is designed to run using only **base FreeBSD dependencies** if you prefer.
 
 We run several Sylve instances in production with the specifications listed below (Jails only), and they are more than sufficient for most use cases. If you plan to run **Bhyve virtual machines**, we recommend at least **2 vCPUs and 4 GB of RAM**.
 
-- **CPU**: 1 vCPU (2+ recommended for better performance)  
-- **RAM**: 512 MB (1 GB+ recommended)  
-- **Storage**: 10 GB (ZFS pool with at least 20 GB recommended)  
+- **CPU**: 1 vCPU (2+ recommended for better performance)
+- **RAM**: 512 MB (1 GB+ recommended)
+- **Storage**: 10 GB (ZFS pool with at least 20 GB recommended)
 - **Network**: 50 Mbps (100 Mbps+ recommended)
 
-As mentioned in the [Introduction](/introduction/), Sylve is extremely lightweight. As part of this guide (and as a practical example), we will set up Sylve on a **CX23** machine on [Hetzner Cloud](https://hetzner.cloud/?ref=uD5CjfBFJSR9). This instance includes **2 vCPUs**, **4 GB of RAM**, a single **IPv4 address**, and an **IPv6 /64 subnet**, which is more than enough to run Sylve and explore its features.
+As mentioned in the [Introduction](/docs/), Sylve is extremely lightweight. As part of this guide (and as a practical example), we will set up Sylve on a **CX23** machine on [Hetzner Cloud](https://hetzner.cloud/?ref=uD5CjfBFJSR9). This instance includes **2 vCPUs**, **4 GB of RAM**, a single **IPv4 address**, and an **IPv6 /64 subnet**, which is more than enough to run Sylve and explore its features.
 
 :::note
 The **CPX23**, and most machines advertised as VPS instances, typically **do not support nested virtualization**. This means you will not be able to run **Bhyve virtual machines** on them. However, you can still run **Jails**, which act as lightweight, VM-like environments.
@@ -42,10 +42,9 @@ The **CPX23**, and most machines advertised as VPS instances, typically **do not
 The FreeBSD ports tree also provides an excellent collection of applications that can be installed directly inside Jails.
 :::
 
-On most of these providers, you will also probably need to mount a FreeBSD ISO and manually install it as they don't provide FreeBSD images by default. 
+On most of these providers, you will also probably need to mount a FreeBSD ISO and manually install it as they don't provide FreeBSD images by default.
 
 ![Mounting FreeBSD ISO on Hetzner Cloud](assets/hetzner-console.webp)
-
 
 You can mount that drive, and install as you usually would. If you're new to FreeBSD, this [section](https://docs.freebsd.org/en/books/handbook/bsdinstall/) of it is an excellent resource to get you up and running.
 
@@ -103,44 +102,44 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
 
 ```json
 {
-    "environment": "production",
-    "proxyToVite": false,
-    "dataPath": "/var/db/sylve",
-    "admin": {
-        "email": "admin@sylve.local",
-        "password": "replace-this-with-something-strong"
+  "environment": "production",
+  "proxyToVite": false,
+  "dataPath": "/var/db/sylve",
+  "admin": {
+    "email": "admin@sylve.local",
+    "password": "replace-this-with-something-strong"
+  },
+  "tlsConfig": {
+    "certFile": "/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
+    "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem"
+  },
+  "logLevel": 3,
+  "port": 8181,
+  "httpPort": 8182,
+  "raft": {
+    "reset": false
+  },
+  "btt": {
+    "rpc": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 6890
     },
-    "tlsConfig": {
-        "certFile": "/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
-        "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem"
-    },
-    "logLevel": 3,
-    "port": 8181,
-    "httpPort": 8182,
-    "raft": {
-        "reset": false
-    },
-    "btt": {
-        "rpc": {
-            "enabled": false,
-            "host": "127.0.0.1",
-            "port": 6890
-        },
-        "dht": {
-            "enabled": true,
-            "port": 7246
-        }
+    "dht": {
+      "enabled": true,
+      "port": 7246
     }
+  }
 }
 ```
 
 Most of the above config is self-explanatory, we will discuss the ones that aren't:
 
-* `proxyToVite`: This is a development setting that allows the backend to proxy requests to the Vite development server. It should be set to `false` in production.
+- `proxyToVite`: This is a development setting that allows the backend to proxy requests to the Vite development server. It should be set to `false` in production.
 
-* `tlsConfig`: This is where you specify the paths to your TLS certificate and key files. If you want to use HTTPS (which is highly recommended), you need to provide valid paths here. You can use Let's Encrypt or any other certificate authority to obtain your certificates. This is also important if you're going to setup Passkey based authentication.
+- `tlsConfig`: This is where you specify the paths to your TLS certificate and key files. If you want to use HTTPS (which is highly recommended), you need to provide valid paths here. You can use Let's Encrypt or any other certificate authority to obtain your certificates. This is also important if you're going to setup Passkey based authentication.
 
-* `logLevel`: This controls the verbosity of the logs. The levels are as follows:
+- `logLevel`: This controls the verbosity of the logs. The levels are as follows:
   - `0`: Debug
   - `1`: Info
   - `2`: Warning
@@ -152,9 +151,9 @@ Most of the above config is self-explanatory, we will discuss the ones that aren
 
 We recommend setting it to `3` for production to only log errors, but you can adjust this based on your needs. Setting it to `0` will log everything, which can be useful for debugging but may generate a lot of logs in a busy environment.
 
-* `raft.reset`: If something goes catestrophically wrong with your cluster, you can set this to `true` to reset the Raft state. This will essentially start the cluster from scratch, on *this* node. Use with caution, and only if you know what you're doing.
+- `raft.reset`: If something goes catestrophically wrong with your cluster, you can set this to `true` to reset the Raft state. This will essentially start the cluster from scratch, on _this_ node. Use with caution, and only if you know what you're doing.
 
-* `btt.dht`: This enables the Bittorrent DHT, which is used for peer discovery in the BTT network. It is recommended to keep this enabled unless you have a specific reason to disable it, downloading ISOs over magnets is one of the best features of Sylve and DHT makes it a whole lot better.
+- `btt.dht`: This enables the Bittorrent DHT, which is used for peer discovery in the BTT network. It is recommended to keep this enabled unless you have a specific reason to disable it, downloading ISOs over magnets is one of the best features of Sylve and DHT makes it a whole lot better.
 
 Now once you have the above config filled out, you need to place it in `/usr/local/etc/sylve/config.json`:
 
@@ -266,6 +265,7 @@ We also recommend capping **vfs.zfs.arc_max** to something reasonable based on y
 ```bash
 vfs.zfs.arc_max="67108864"
 ```
+
 :::
 
 Instead of starting like the command given below, at this stage it's good to reboot your machine to see if everything is in order with the system and that Sylve starts up correctly on boot. If you want to start it without rebooting, you can use the following command:

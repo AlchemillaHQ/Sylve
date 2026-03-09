@@ -60,8 +60,12 @@
       transition:fly={{ x: 320, duration: 220, opacity: 0.2 }}
     >
       <div class="flex h-full flex-col">
-        <div class="flex items-center justify-between border-b border-border px-4 py-4">
-          <h2 class="text-left text-base font-semibold tracking-tight">{labels.menu}</h2>
+        <div
+          class="flex items-center justify-between border-b border-border px-4 py-4"
+        >
+          <h2 class="text-left text-base font-semibold tracking-tight">
+            {labels.menu}
+          </h2>
           <button
             class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent"
             onclick={() => {
@@ -75,7 +79,7 @@
 
         <nav class="flex flex-col gap-1 px-2 py-3">
           <a
-            href="/docs"
+            href="/docs/"
             class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             onclick={() => {
               open = false;

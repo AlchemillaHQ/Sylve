@@ -45,11 +45,18 @@
   }
 </script>
 
-<section class="pt-10 pb-24 relative -translate-y-4 animate-fade-in opacity-0" style="--animation-delay: 120ms">
+<section
+  class="pt-10 pb-24 relative -translate-y-4 animate-fade-in opacity-0"
+  style="--animation-delay: 120ms"
+>
   <div class="container mx-auto px-4 max-w-4xl">
     <div class="text-center mb-16">
-      <h2 class="text-3xl md:text-5xl font-bold mb-4 text-gradient">Frequently Asked Questions</h2>
-      <p class="text-muted-foreground text-lg">Everything you need to know about Sylve.</p>
+      <h2 class="text-3xl md:text-5xl font-bold mb-4 text-gradient">
+        Frequently Asked Questions
+      </h2>
+      <p class="text-muted-foreground text-lg">
+        Everything you need to know about Sylve.
+      </p>
     </div>
 
     <div class="w-full border rounded-xl divide-y">
@@ -61,7 +68,9 @@
             aria-expanded={openItem === item.value}
           >
             <span class="text-xl font-bold">{item.question}</span>
-            <span class={`icon-[lucide--chevron-down] size-4 text-muted-foreground transition-transform ${openItem === item.value ? "rotate-180" : ""}`}></span>
+            <span
+              class={`icon-[lucide--chevron-down] size-4 text-muted-foreground transition-transform ${openItem === item.value ? "rotate-180" : ""}`}
+            ></span>
           </button>
           {#if openItem === item.value}
             <p class="text-base text-muted-foreground pb-4">{item.answer}</p>
@@ -73,9 +82,16 @@
     <div class="mt-12 text-center">
       <p class="text-muted-foreground">
         Still have questions?
-        <a href="https://discord.gg/bJB826JvXK" class="text-primary hover:underline"> Join our Discord </a>
+        <a
+          href="https://discord.gg/bJB826JvXK"
+          class="text-primary hover:underline"
+        >
+          Join our Discord
+        </a>
         or
-        <a href="/docs" class="text-primary hover:underline"> read the documentation </a>.
+        <a href="/docs/" class="text-primary hover:underline">
+          read the documentation
+        </a>.
       </p>
     </div>
   </div>
