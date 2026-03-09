@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - "**"
+    paths-ignore:
+      - "docs/**"
     tags-ignore:
       - tip
 jobs:
