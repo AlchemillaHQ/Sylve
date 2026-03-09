@@ -7,12 +7,15 @@
 		listUserPasskeys
 	} from '$lib/api/auth/passkeys';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import { Label } from '$lib/components/ui/label/index.js';
 	import type { Passkey } from '$lib/types/auth';
 	import { handleAPIError } from '$lib/utils/http';
-	import { buildRegistrationOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
+	import {
+		buildRegistrationOptions,
+		isPasskeySupported,
+		serializeCredential
+	} from '$lib/utils/passkeys';
 	import { convertDbTime } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 
@@ -136,7 +139,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[95%] max-w-3xl gap-4 p-5">
+	<Dialog.Content class="w-full min-w-xl gap-4 p-5">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between text-left">
 				<div class="flex items-center gap-2">
@@ -158,16 +161,14 @@
 		</Dialog.Header>
 
 		<div class="space-y-2">
-			<Label for="passkey-label" class="text-sm">Label (optional)</Label>
 			<div class="flex items-center gap-2">
-				<Input
-					id="passkey-label"
-					placeholder="Laptop, Phone, Security Key..."
+				<CustomValueInput
+					placeholder="Hayzam's Laptop"
 					bind:value={label}
-					class="w-full"
+					classes="w-full"
 					autocomplete="off"
 				/>
-				<Button onclick={registerPasskey} disabled={registering}>
+				<Button onclick={registerPasskey} disabled={registering || label.trim() === ''}>
 					{#if registering}
 						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
 					{:else}
@@ -206,7 +207,8 @@
 											void removePasskey(passkey.credentialId);
 										}}
 									>
-										Delete
+										<span class="icon-[material-symbols--delete-outline] h-4 w-4"></span>
+										<span class="sr-only">Delete</span>
 									</Button>
 								</td>
 							</tr>

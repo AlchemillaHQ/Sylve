@@ -167,8 +167,8 @@
 		</Button>
 
 		{@render button('edit')}
-		{@render button('passkeys')}
 		{@render button('delete')}
+		{@render button('passkeys')}
 	</div>
 
 	<TreeTable

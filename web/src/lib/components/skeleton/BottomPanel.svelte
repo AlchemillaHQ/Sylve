@@ -116,6 +116,8 @@
 	);
 
 	const pathToActionMap: Record<string, string> = $derived({
+		'/api/auth/passkeys/login/begin': 'Login - Passkey - Begin',
+		'/api/auth/passkeys/login/finish': 'Login - Passkey - Finish',
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',

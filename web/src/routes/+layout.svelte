@@ -5,7 +5,13 @@
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { goto, preloadData } from '$app/navigation';
-	import { isClusterTokenValid, isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
+	import {
+		isClusterTokenValid,
+		isTokenValid,
+		login,
+		loginWithPasskey,
+		isInitialized
+	} from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -38,6 +44,7 @@
 	let loading = $state({
 		throbber: false,
 		login: false,
+		passkey: false,
 		initialization: false
 	});
 
@@ -159,11 +166,11 @@
 
 	async function handlePasskeyLogin(remember: boolean, toLoginPath: string = '') {
 		let isError = false;
-		loading.login = true;
+		loading.passkey = true;
 
 		try {
 			if (await loginWithPasskey(remember)) {
-				loading.login = false;
+				loading.passkey = false;
 				loading.throbber = true;
 				loading.initialization = true;
 
@@ -198,18 +205,18 @@
 				return;
 			} else {
 				isError = true;
-				loading.login = false;
+				loading.passkey = false;
 			}
 		} catch (error) {
 			isError = true;
-			loading.login = false;
+			loading.passkey = false;
 		} finally {
 			if (!isError) {
 				await sleep(800);
 			}
 		}
 
-		loading.login = false;
+		loading.passkey = false;
 		await sleep(800);
 		loading.throbber = false;
 	}
@@ -287,7 +294,12 @@
 	{/if}
 {:else}
 	<div transition:fade|global={{ duration: 400 }}>
-		<Login onLogin={handleLogin} onPasskeyLogin={handlePasskeyLogin} loading={loading.login} />
+		<Login
+			onLogin={handleLogin}
+			onPasskeyLogin={handlePasskeyLogin}
+			loading={loading.login}
+			loadingPasskey={loading.passkey}
+		/>
 	</div>
 {/if}
 

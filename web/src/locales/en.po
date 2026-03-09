@@ -516,6 +516,7 @@ msgstr "Node"
 msgid "User"
 msgstr "User"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Action"
@@ -784,6 +785,7 @@ msgstr "Failed to create note"
 msgid "Name"
 msgstr "Name"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -804,6 +806,7 @@ msgstr "Updated"
 msgid "View"
 msgstr "View"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1010,6 +1013,7 @@ msgstr "Reset"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
@@ -2558,7 +2562,7 @@ msgstr "Edit {0}"
 msgid "Toggle {0}"
 msgstr "Toggle {0}"
 
-#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' : 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
@@ -5422,12 +5426,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -5549,7 +5553,7 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update "
-msgstr "Update"
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -6674,7 +6678,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7254,7 +7258,7 @@ msgstr "New Backup Target"
 msgid "SSH Port"
 msgstr "SSH Port"
 
-#. 0: edit ? '(leave empty to keep existing)' : ''
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH Private Key {0}"
@@ -8186,3 +8190,104 @@ msgstr "Experimental Features"
 
 #~ msgid "Edge Telemetry Mode"
 #~ msgstr "Edge Telemetry Mode"
+
+#: src/lib/components/custom/Login.svelte
+msgid "<0/> Passkey"
+msgstr "<0/> Passkey"
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Passkeys"
+msgstr "Passkeys"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkeys require HTTPS and browser WebAuthn support"
+msgstr "Passkeys require HTTPS and browser WebAuthn support"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Could not start passkey registration"
+msgstr "Could not start passkey registration"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Invalid registration challenge payload"
+msgstr "Invalid registration challenge payload"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey registration failed"
+msgstr "Passkey registration failed"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Could not finish passkey registration"
+msgstr "Could not finish passkey registration"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey registered"
+msgstr "Passkey registered"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "NotAllowedError"
+msgstr "NotAllowedError"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey request cancelled or timed out"
+msgstr "Passkey request cancelled or timed out"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Failed to register passkey"
+msgstr "Failed to register passkey"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Failed to delete passkey"
+msgstr "Failed to delete passkey"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey deleted"
+msgstr "Passkey deleted"
+
+#. 0: username
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkeys - {0}"
+msgstr "Passkeys - {0}"
+
+#~ msgid "Label (optional)"
+#~ msgstr "Label (optional)"
+
+#~ msgid "Laptop, Phone, Security Key..."
+#~ msgstr "Laptop, Phone, Security Key..."
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Register"
+msgstr "Register"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Loading passkeys..."
+msgstr "Loading passkeys..."
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "No passkeys registered."
+msgstr "No passkeys registered."
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Label"
+msgstr "Label"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Credential ID"
+msgstr "Credential ID"
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Hayzam's Laptop"
+msgstr "Hayzam's Laptop"
+
+#~ msgid "<0/> Scanning"
+#~ msgstr "<0/> Scanning"
+
+#~ msgid "<0/> Touch ID"
+#~ msgstr "<0/> Touch ID"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Begin"
+msgstr "Login - Passkey - Begin"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Finish"
+msgstr "Login - Passkey - Finish"

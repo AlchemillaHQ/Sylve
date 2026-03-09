@@ -516,6 +516,7 @@ msgstr "节点"
 msgid "User"
 msgstr "用户"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Action"
@@ -784,6 +785,7 @@ msgstr "创建笔记失败"
 msgid "Name"
 msgstr "名称"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -804,6 +806,7 @@ msgstr "已更新"
 msgid "View"
 msgstr "查看"
 
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1010,6 +1013,7 @@ msgstr "重置"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Create.svelte
 #: src/lib/components/custom/Cluster/Join.svelte
@@ -2558,7 +2562,7 @@ msgstr "编辑 {0}"
 msgid "Toggle {0}"
 msgstr "切换 {0}"
 
-#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' : 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "您即将 {0} {1}，{2}您将需要重启 Sylve 或主机系统以使更改生效"
@@ -5422,12 +5426,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -6674,7 +6678,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -7254,7 +7258,7 @@ msgstr "新建备份目标"
 msgid "SSH Port"
 msgstr "SSH 端口"
 
-#. 0: edit ? '(leave empty to keep existing)' : ''
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH 私钥 {0}"
@@ -8186,3 +8190,104 @@ msgstr ""
 
 #~ msgid "Edge Telemetry Mode"
 #~ msgstr ""
+
+#: src/lib/components/custom/Login.svelte
+msgid "<0/> Passkey"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/+page.svelte
+msgid "Passkeys"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkeys require HTTPS and browser WebAuthn support"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Could not start passkey registration"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Invalid registration challenge payload"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey registration failed"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Could not finish passkey registration"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey registered"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "NotAllowedError"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey request cancelled or timed out"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Failed to register passkey"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Failed to delete passkey"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkey deleted"
+msgstr ""
+
+#. 0: username
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Passkeys - {0}"
+msgstr ""
+
+#~ msgid "Label (optional)"
+#~ msgstr ""
+
+#~ msgid "Laptop, Phone, Security Key..."
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Register"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Loading passkeys..."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "No passkeys registered."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Label"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Credential ID"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Hayzam's Laptop"
+msgstr ""
+
+#~ msgid "<0/> Scanning"
+#~ msgstr ""
+
+#~ msgid "<0/> Touch ID"
+#~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Begin"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Finish"
+msgstr ""
