@@ -2190,7 +2190,7 @@ msgstr "Command Palette"
 msgid "Search for a command to run"
 msgstr "Search for a command to run"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. 0: (selectedCount || 0) + (hasSelection ? 0
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -2562,7 +2562,7 @@ msgstr "Edit {0}"
 msgid "Toggle {0}"
 msgstr "Toggle {0}"
 
-#. 0: enabled ? 'disable' : 'enable'; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
@@ -5553,7 +5553,7 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update "
-msgstr "Update "
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -8248,11 +8248,13 @@ msgstr "Passkey deleted"
 msgid "Passkeys - {0}"
 msgstr "Passkeys - {0}"
 
-#~ msgid "Label (optional)"
-#~ msgstr "Label (optional)"
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Label (optional)"
+msgstr "Label (optional)"
 
-#~ msgid "Laptop, Phone, Security Key..."
-#~ msgstr "Laptop, Phone, Security Key..."
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Laptop, Phone, Security Key..."
+msgstr "Laptop, Phone, Security Key..."
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Register"
@@ -8274,9 +8276,8 @@ msgstr "Label"
 msgid "Credential ID"
 msgstr "Credential ID"
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Hayzam's Laptop"
-msgstr "Hayzam's Laptop"
+#~ msgid "Hayzam's Laptop"
+#~ msgstr "Hayzam's Laptop"
 
 #~ msgid "<0/> Scanning"
 #~ msgstr "<0/> Scanning"
@@ -8284,10 +8285,8 @@ msgstr "Hayzam's Laptop"
 #~ msgid "<0/> Touch ID"
 #~ msgstr "<0/> Touch ID"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Login - Passkey - Begin"
-msgstr "Login - Passkey - Begin"
+#~ msgid "Login - Passkey - Begin"
+#~ msgstr "Login - Passkey - Begin"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Login - Passkey - Finish"
-msgstr "Login - Passkey - Finish"
+#~ msgid "Login - Passkey - Finish"
+#~ msgstr "Login - Passkey - Finish"

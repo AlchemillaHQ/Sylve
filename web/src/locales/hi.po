@@ -2190,7 +2190,7 @@ msgstr "कमांड पैलेट"
 msgid "Search for a command to run"
 msgstr "चलाने के लिए कमांड खोजें"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. 0: (selectedCount || 0) + (hasSelection ? 0
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -2562,7 +2562,7 @@ msgstr "{0} संपादित करें"
 msgid "Toggle {0}"
 msgstr "{0} टॉगल करें"
 
-#. 0: enabled ? 'disable' : 'enable'; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "आप {1} को {0} करने वाले हैं, {2}बदलावों के प्रभावी होने के लिए आपको Sylve और/या होस्ट सिस्टम को रीस्टार्ट करना होगा"
@@ -8248,11 +8248,13 @@ msgstr ""
 msgid "Passkeys - {0}"
 msgstr ""
 
-#~ msgid "Label (optional)"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Label (optional)"
+msgstr ""
 
-#~ msgid "Laptop, Phone, Security Key..."
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Laptop, Phone, Security Key..."
+msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Register"
@@ -8274,9 +8276,8 @@ msgstr ""
 msgid "Credential ID"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Hayzam's Laptop"
-msgstr ""
+#~ msgid "Hayzam's Laptop"
+#~ msgstr ""
 
 #~ msgid "<0/> Scanning"
 #~ msgstr ""
@@ -8284,10 +8285,8 @@ msgstr ""
 #~ msgid "<0/> Touch ID"
 #~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Login - Passkey - Begin"
-msgstr ""
+#~ msgid "Login - Passkey - Begin"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Login - Passkey - Finish"
-msgstr ""
+#~ msgid "Login - Passkey - Finish"
+#~ msgstr ""
