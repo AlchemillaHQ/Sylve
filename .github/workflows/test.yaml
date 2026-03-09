@@ -1,5 +1,8 @@
 name: Test
-on: [push]
+on:
+  push:
+    tags-ignore:
+      - tip
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -1,0 +1,161 @@
+name: Tip
+
+on:
+  workflow_run:
+    workflows:
+      - Test
+    branches:
+      - master
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: tip-release-master
+  cancel-in-progress: true
+
+jobs:
+  prepare-release:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      head_sha: ${{ steps.vars.outputs.head_sha }}
+      should_publish: ${{ steps.vars.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Decide if this run should publish
+        id: vars
+        run: |
+          set -euo pipefail
+
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          MASTER_SHA="$(git ls-remote --heads origin master | awk '{print $1}')"
+
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+          if [ "${HEAD_SHA}" != "${MASTER_SHA}" ]; then
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale run for ${HEAD_SHA}; master is ${MASTER_SHA}."
+            exit 0
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Move tip tag
+        if: steps.vars.outputs.should_publish == 'true'
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa tip -m "Latest Continuous Release" "${{ steps.vars.outputs.head_sha }}"
+          git push --force origin tip
+
+      - name: Ensure tip prerelease exists
+        if: steps.vars.outputs.should_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view tip >/dev/null 2>&1; then
+            echo "tip release already exists"
+            exit 0
+          fi
+
+          gh release create tip \
+            --title "tip" \
+            --target "${{ steps.vars.outputs.head_sha }}" \
+            --prerelease \
+            --notes "Rolling prerelease for Sylve tip."
+
+  build-web:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.head_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build Web Assets
+        run: |
+          make frontend
+
+      - name: Upload Web Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: tip-web-assets
+          path: internal/assets/web-files/
+
+  build-freebsd:
+    needs:
+      - prepare-release
+      - build-web
+    if: needs.prepare-release.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            vm_arch: x86_64
+          - arch: arm64
+            vm_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.head_sha }}
+
+      - name: Download Web Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: tip-web-assets
+          path: internal/assets/web-files
+
+      - name: Build on FreeBSD ${{ matrix.arch }}
+        uses: vmactions/freebsd-vm@v1
+        with:
+          arch: ${{ matrix.vm_arch }}
+          sync: scp
+          usesh: true
+          prepare: pkg install -y go git
+          run: |
+            make backend ARCH=${{ matrix.arch }}
+
+      - name: Verify tip still points to this commit
+        id: freshness
+        run: |
+          set -euo pipefail
+
+          EXPECTED_SHA="${{ needs.prepare-release.outputs.head_sha }}"
+          TIP_SHA="$(git ls-remote --tags --refs origin refs/tags/tip | awk '{print $1}')"
+
+          if [ -z "${TIP_SHA}" ] || [ "${TIP_SHA}" != "${EXPECTED_SHA}" ]; then
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping upload; tip points to '${TIP_SHA}' and this run built '${EXPECTED_SHA}'."
+            exit 0
+          fi
+
+          echo "upload=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload binary to tip prerelease
+        if: steps.freshness.outputs.upload == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload tip "bin/sylve#sylve-${{ matrix.arch }}" --clobber
