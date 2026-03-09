@@ -27,6 +27,7 @@ jobs:
         id: pick
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
           script: |
             const selfHosted = ["self-hosted", "linux", "x64"];
             let selected = ["ubuntu-latest"];
@@ -50,7 +51,18 @@ jobs:
                 selected = selfHosted;
               }
             } catch (error) {
-              core.warning(`Falling back to ubuntu-latest: ${error.message}`);
+              const message = `${error?.message || ""}`;
+              const accessDenied =
+                error?.status === 403 ||
+                /resource not accessible by integration/i.test(message);
+
+              if (accessDenied) {
+                core.info(
+                  "No permission to list self-hosted runners with current token; falling back to ubuntu-latest.",
+                );
+              } else {
+                core.warning(`Falling back to ubuntu-latest: ${message}`);
+              }
             }
 
             core.info(`Selected runner labels: ${selected.join(", ")}`);
@@ -148,7 +160,7 @@ jobs:
           set -euo pipefail
 
           EXPECTED_SHA="${{ needs.prepare-release.outputs.head_sha }}"
-          TIP_SHA="$(git ls-remote --tags --refs origin refs/tags/tip | awk '{print $1}')"
+          TIP_SHA="$(git ls-remote origin "refs/tags/tip^{}" | awk '{print $1}')"
 
           if [ -z "${TIP_SHA}" ] || [ "${TIP_SHA}" != "${EXPECTED_SHA}" ]; then
             echo "upload=false" >> "$GITHUB_OUTPUT"
@@ -214,7 +226,7 @@ jobs:
           set -euo pipefail
 
           EXPECTED_SHA="${{ needs.prepare-release.outputs.head_sha }}"
-          TIP_SHA="$(git ls-remote --tags --refs origin refs/tags/tip | awk '{print $1}')"
+          TIP_SHA="$(git ls-remote origin "refs/tags/tip^{}" | awk '{print $1}')"
 
           if [ -z "${TIP_SHA}" ] || [ "${TIP_SHA}" != "${EXPECTED_SHA}" ]; then
             echo "upload=false" >> "$GITHUB_OUTPUT"
