@@ -8,7 +8,7 @@
 > [!NOTE]
 > Sylve is under active development. Some features and APIs may change.
 
-https://gist.github.com/user-attachments/assets/7a9d002c-f647-4872-8b55-6b0cb1ce563b
+https://github.com/user-attachments/assets/61ed410e-58f6-405f-80da-c4a6bcb469b8
 
 Sylve is a lightweight, open-source virtualization platform for FreeBSD. It combines **Bhyve virtual machines**, **FreeBSD Jails**, and **ZFS storage** into a modern web interface designed to deliver a streamlined, Proxmox-like experience tailored for FreeBSD environments.
 
