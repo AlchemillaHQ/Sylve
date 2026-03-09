@@ -5,7 +5,7 @@
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
 	import { goto, preloadData } from '$app/navigation';
-	import { isClusterTokenValid, isTokenValid, login, isInitialized } from '$lib/api/auth';
+	import { isClusterTokenValid, isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
@@ -157,6 +157,63 @@
 		return;
 	}
 
+	async function handlePasskeyLogin(remember: boolean, toLoginPath: string = '') {
+		let isError = false;
+		loading.login = true;
+
+		try {
+			if (await loginWithPasskey(remember)) {
+				loading.login = false;
+				loading.throbber = true;
+				loading.initialization = true;
+
+				try {
+					[initialized, rebooted] = await isInitialized();
+				} catch (error) {
+					console.error('Initialization check error:', error);
+					initialized = false;
+					rebooted = false;
+				}
+
+				await goto('/');
+
+				loading.initialization = false;
+
+				const basicSettings = await getBasicSettings();
+				storage.enabledServices = basicSettings.services;
+
+				let target = toLoginPath;
+				if (!target) {
+					target = page.url.pathname;
+				}
+				if (target === '/') {
+					target = '/datacenter/summary';
+				}
+
+				await preloadData(target);
+				await goto(target, { replaceState: true });
+
+				await sleep(1500);
+				loading.throbber = false;
+				return;
+			} else {
+				isError = true;
+				loading.login = false;
+			}
+		} catch (error) {
+			isError = true;
+			loading.login = false;
+		} finally {
+			if (!isError) {
+				await sleep(800);
+			}
+		}
+
+		loading.login = false;
+		await sleep(800);
+		loading.throbber = false;
+	}
+
 	const visible = new IsDocumentVisible();
 	const idle = new IsIdle({ timeout: 10000 });
 
@@ -230,7 +287,7 @@
 	{/if}
 {:else}
 	<div transition:fade|global={{ duration: 400 }}>
-		<Login onLogin={handleLogin} loading={loading.login} />
+		<Login onLogin={handleLogin} onPasskeyLogin={handlePasskeyLogin} loading={loading.login} />
 	</div>
 {/if}
 

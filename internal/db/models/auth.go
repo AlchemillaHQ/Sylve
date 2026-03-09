@@ -49,6 +49,30 @@ type Token struct {
 	User *User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL" json:"user,omitempty"`
 }
 
+type WebAuthnCredential struct {
+	ID           uint      `gorm:"primarykey" json:"id"`
+	UserID       uint      `gorm:"index;not null" json:"userId"`
+	CredentialID string    `gorm:"uniqueIndex;not null" json:"credentialId"`
+	Label        string    `gorm:"default:''" json:"label"`
+	Data         []byte    `gorm:"type:blob;not null" json:"-"`
+	CreatedAt    time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+
+	User *User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"user,omitempty"`
+}
+
+type WebAuthnChallenge struct {
+	ID          uint      `gorm:"primarykey" json:"id"`
+	RequestID   string    `gorm:"uniqueIndex;not null" json:"requestId"`
+	UserID      *uint     `gorm:"index" json:"userId,omitempty"`
+	Type        string    `gorm:"index;not null" json:"type"`
+	SessionData []byte    `gorm:"type:blob;not null" json:"-"`
+	Used        bool      `gorm:"index;default:false" json:"used"`
+	ExpiresAt   time.Time `gorm:"index;not null" json:"expiresAt"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
 type SystemSecrets struct {
 	ID        uint   `gorm:"primarykey"`
 	Name      string `gorm:"primarykey,unique"`

@@ -21,11 +21,12 @@
 			remember: boolean,
 			toLoginPath: string
 		) => void;
+		onPasskeyLogin: (remember: boolean, toLoginPath: string) => void;
 		loading: boolean;
 	}
 
 	let toLoginPath = $derived(page.url.pathname);
-	let { onLogin, loading = $bindable() }: Props = $props();
+	let { onLogin, onPasskeyLogin, loading = $bindable() }: Props = $props();
 
 	let username = $state('');
 	let password = $state('');
@@ -143,19 +144,33 @@
 				<Checkbox id="remember" bind:checked={remember} />
 				<Label for="remember" class="text-sm font-medium">Remember Me</Label>
 			</div>
-			<Button
-				onclick={() => {
-					onLogin(username, password, authType, remember, toLoginPath);
-				}}
-				size="sm"
-				class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
-			>
-				{#if loading}
-					<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
-				{:else}
-					Login
-				{/if}
-			</Button>
+			<div class="flex items-center gap-2">
+				<Button
+					onclick={() => {
+						onPasskeyLogin(remember, toLoginPath);
+					}}
+					size="sm"
+					variant="outline"
+					class="rounded-md"
+				>
+					<span class="icon-[mdi--fingerprint] mr-1 h-4 w-4"></span>
+					Passkey
+				</Button>
+
+				<Button
+					onclick={() => {
+						onLogin(username, password, authType, remember, toLoginPath);
+					}}
+					size="sm"
+					class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
+				>
+					{#if loading}
+						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
+					{:else}
+						Login
+					{/if}
+				</Button>
+			</div>
 		</Card.Footer>
 	</Card.Root>
 </div>

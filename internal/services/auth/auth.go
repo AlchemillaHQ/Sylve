@@ -46,6 +46,7 @@ const (
 	ClusterTokenUseUserProxy       = "user_proxy"
 	ClusterTokenUseInternalControl = "internal_control"
 	ClusterInternalAuthType        = "internal-cluster"
+	AuthTypeSylvePasskey           = "sylve-passkey"
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
@@ -71,6 +72,61 @@ func (s *Service) GetClusterKey() (string, error) {
 	}
 
 	return c.Key, nil
+}
+
+func (s *Service) getTokenExpiry(remember bool) time.Time {
+	if remember {
+		return time.Now().Add(7 * 24 * time.Hour)
+	}
+
+	return time.Now().Add(24 * time.Hour)
+}
+
+func (s *Service) issueJWT(user models.User, authType string, remember bool) (string, error) {
+	expiry := s.getTokenExpiry(remember)
+
+	data := JWT{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiry),
+			ID:        uuid.NewString(),
+		},
+		CustomClaims: serviceInterfaces.CustomClaims{
+			UserID:   user.ID,
+			Username: user.Username,
+			AuthType: authType,
+		},
+	}
+
+	secret, err := s.GetJWTSecret()
+	if err != nil {
+		return "", fmt.Errorf("jwt_secret_not_found")
+	}
+
+	token, err := (jwt.NewWithClaims(jwt.SigningMethodHS256, data)).SignedString([]byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("jwt_signing_failed")
+	}
+
+	tokenRecord := models.Token{
+		Token:    token,
+		AuthType: authType,
+		UserID:   user.ID,
+		Expiry:   expiry,
+	}
+
+	if err = s.DB.Create(&tokenRecord).Error; err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: tokens.token") {
+			if updateErr := s.DB.Model(&tokenRecord).
+				Where("token = ?", tokenRecord.Token).
+				Updates(models.Token{UserID: tokenRecord.UserID}).Error; updateErr != nil {
+				return "", fmt.Errorf("token_update_failed: %v", updateErr)
+			}
+		} else {
+			return "", fmt.Errorf("token_save_failed: %v", err)
+		}
+	}
+
+	return token, nil
 }
 
 func (s *Service) CreateJWT(username, password, authType string, remember bool) (uint, string, error) {
@@ -105,56 +161,9 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 		return 0, "", fmt.Errorf("invalid_auth_type")
 	}
 
-	var expiry time.Time
-
-	if remember {
-		expiry = time.Now().Add(time.Hour * 24 * 7)
-	} else {
-		expiry = time.Now().Add(time.Hour * 24)
-	}
-
-	data := JWT{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expiry),
-			ID:        uuid.NewString(),
-		},
-		CustomClaims: serviceInterfaces.CustomClaims{
-			UserID:   user.ID,
-			Username: user.Username,
-			AuthType: authType,
-		},
-	}
-
-	secret, err := s.GetJWTSecret()
-
+	token, err := s.issueJWT(user, authType, remember)
 	if err != nil {
-		return 0, "", fmt.Errorf("jwt_secret_not_found")
-	}
-
-	token, err := (jwt.NewWithClaims(jwt.SigningMethodHS256, data)).SignedString([]byte(secret))
-
-	if err != nil {
-		return 0, "", fmt.Errorf("jwt_signing_failed")
-	}
-
-	tokenRecord := models.Token{
-		Token:    token,
-		AuthType: authType,
-		UserID:   user.ID,
-		Expiry:   expiry,
-	}
-
-	err = s.DB.Create(&tokenRecord).Error
-	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed: tokens.token") {
-			if updateErr := s.DB.Model(&tokenRecord).
-				Where("token = ?", tokenRecord.Token).
-				Updates(models.Token{UserID: tokenRecord.UserID}).Error; updateErr != nil {
-				return 0, "", fmt.Errorf("token_update_failed: %v", updateErr)
-			}
-		} else {
-			return 0, "", fmt.Errorf("token_save_failed: %v", err)
-		}
+		return 0, "", err
 	}
 
 	return user.ID, token, nil
@@ -526,6 +535,18 @@ func (s *Service) performTokenCleanup() {
 		logger.L.Info().
 			Int64("count", result.RowsAffected).
 			Msg("Cleared expired JWT tokens")
+	}
+
+	challengeResult := s.DB.Where("expires_at < ?", time.Now()).Delete(&models.WebAuthnChallenge{})
+	if challengeResult.Error != nil {
+		logger.L.Error().Err(challengeResult.Error).Msg("Failed to clear expired WebAuthn challenges")
+		return
+	}
+
+	if challengeResult.RowsAffected > 0 {
+		logger.L.Info().
+			Int64("count", challengeResult.RowsAffected).
+			Msg("Cleared expired WebAuthn challenges")
 	}
 }
 

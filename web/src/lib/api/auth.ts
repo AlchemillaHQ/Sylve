@@ -14,6 +14,7 @@ import { storage } from '$lib';
 import type { JWTClaims } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
 import { handleAPIError } from '$lib/utils/http';
+import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
 import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
 
@@ -28,6 +29,19 @@ async function parseJSONResponse(response: Response): Promise<any> {
     } catch (_e: unknown) {
         return null;
     }
+}
+
+function applySuccessfulLogin(payload: any): boolean {
+    if (!payload?.hostname || !payload?.token) {
+        return false;
+    }
+
+    storage.hostname = payload.hostname;
+    storage.nodeId = payload.nodeId || '';
+    storage.token = payload.token || '';
+    storage.clusterToken = payload.clusterToken || '';
+
+    return true;
 }
 
 export async function login(
@@ -69,15 +83,7 @@ export async function login(
         const responseData = await parseJSONResponse(response);
 
         if (response.status === 200 && responseData) {
-            if (responseData.data?.hostname && responseData.data?.token) {
-                console.log('Received login data:', responseData.data);
-
-                storage.hostname = responseData.data.hostname;
-                storage.nodeId = responseData.data.nodeId || '';
-                storage.token = responseData.data.token || '';
-                storage.clusterToken = responseData.data.clusterToken || '';
-
-                console.log('Login response:', responseData);
+            if (applySuccessfulLogin(responseData.data)) {
                 return true;
             } else {
                 toast.error('Invalid response received', {
@@ -117,6 +123,87 @@ export async function login(
     }
 
     return false;
+}
+
+export async function loginWithPasskey(remember: boolean): Promise<boolean> {
+    try {
+        if (!isPasskeySupported()) {
+            toast.error('Passkeys require HTTPS and browser WebAuthn support', {
+                position: 'bottom-center'
+            });
+            return false;
+        }
+
+        const beginResponse = await fetch('/api/auth/passkeys/login/begin', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        const beginData = await parseJSONResponse(beginResponse);
+        if (beginResponse.status !== 200 || !beginData?.data?.requestId || !beginData?.data?.publicKey) {
+            const data = (beginData || {}) as APIResponse;
+            handleAPIError(data);
+            toast.error('Passkey login could not be started', {
+                position: 'bottom-center'
+            });
+            return false;
+        }
+
+        const publicKey = buildLoginOptions(beginData.data.publicKey);
+        const credential = await navigator.credentials.get({ publicKey });
+        if (!credential || !(credential instanceof PublicKeyCredential)) {
+            toast.error('Passkey authentication failed', {
+                position: 'bottom-center'
+            });
+            return false;
+        }
+
+        const finishResponse = await fetch('/api/auth/passkeys/login/finish', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                requestId: beginData.data.requestId,
+                credential: serializeCredential(credential),
+                remember
+            })
+        });
+
+        const finishData = await parseJSONResponse(finishResponse);
+        if (finishResponse.status === 200 && finishData?.data && applySuccessfulLogin(finishData.data)) {
+            return true;
+        }
+
+        const data = (finishData || {}) as APIResponse;
+        handleAPIError(data);
+        if (data.error && typeof data.error === 'string' && data.error.includes('only_admin_allowed')) {
+            toast.error('Only admin users can log in', {
+                position: 'bottom-center'
+            });
+        } else {
+            toast.error('Passkey authentication failed', {
+                position: 'bottom-center'
+            });
+        }
+        return false;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'NotAllowedError') {
+            toast.error('Passkey request cancelled or timed out', {
+                position: 'bottom-center'
+            });
+            return false;
+        }
+
+        console.error('Passkey login error:', error);
+        toast.error('Fatal error during passkey login', {
+            position: 'bottom-center'
+        });
+        return false;
+    }
 }
 
 export function getToken(): string | null {

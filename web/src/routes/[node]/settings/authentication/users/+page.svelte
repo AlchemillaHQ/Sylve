@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
+	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -92,7 +93,8 @@
 	let modals = $state({
 		create: { open: false },
 		delete: { open: false },
-		edit: { open: false }
+		edit: { open: false },
+		passkeys: { open: false }
 	});
 </script>
 
@@ -134,6 +136,22 @@
 				</div>
 			</Button>
 		{/if}
+
+		{#if type === 'passkeys'}
+			<Button
+				onclick={() => {
+					modals.passkeys.open = !modals.passkeys.open;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5 pointer-events-auto!"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--fingerprint] mr-1 h-4 w-4"></span>
+					<span>Passkeys</span>
+				</div>
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -149,6 +167,7 @@
 		</Button>
 
 		{@render button('edit')}
+		{@render button('passkeys')}
 		{@render button('delete')}
 	</div>
 
@@ -171,6 +190,15 @@
 		users={users.current}
 		edit={true}
 		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
+		bind:reload
+	/>
+{/if}
+
+{#if modals.passkeys.open && activeRow}
+	<Passkeys
+		bind:open={modals.passkeys.open}
+		userId={activeRow.id as number}
+		username={String(activeRow.name || '')}
 		bind:reload
 	/>
 {/if}

@@ -399,6 +399,8 @@ func RegisterRoutes(r *gin.Engine,
 	auth.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		auth.POST("/login", authHandlers.LoginHandler(authService))
+		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
+		auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
 		auth.GET("/logout", authHandlers.LogoutHandler(authService))
 		auth.GET("/sse-token", eventsHandlers.CreateSSEToken(authService))
 	}
@@ -411,6 +413,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	users := auth.Group("/users")
 	users.Use(EnsureCorrectHost(db, authService))
+	users.Use(middleware.RequireLocalAdmin(authService))
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
 		users.POST("", authHandlers.CreateUserHandler(authService))
@@ -420,12 +423,23 @@ func RegisterRoutes(r *gin.Engine,
 
 	groups := auth.Group("/groups")
 	groups.Use(EnsureCorrectHost(db, authService))
+	groups.Use(middleware.RequireLocalAdmin(authService))
 	{
 		groups.GET("", authHandlers.ListGroupsHandler(authService))
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
 		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
 		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
 		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
+	}
+
+	passkeys := auth.Group("/passkeys")
+	passkeys.Use(EnsureCorrectHost(db, authService))
+	passkeys.Use(middleware.RequireLocalAdmin(authService))
+	{
+		passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))
+		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
+		passkeys.GET("/users/:id", authHandlers.ListUserPasskeysHandler(authService))
+		passkeys.DELETE("/users/:id/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
 	}
 
 	intraCluster := api.Group("/intra-cluster")

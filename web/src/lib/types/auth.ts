@@ -41,6 +41,15 @@ export const GroupSchema = z.object({
 	users: z.array(UserSchema).optional()
 });
 
+export const PasskeySchema = z.object({
+	id: z.number().int(),
+	userId: z.number().int(),
+	credentialId: z.string(),
+	label: z.string(),
+	createdAt: z.string(),
+	updatedAt: z.string()
+});
+
 export const BasicSettingsSchema = z.object({
 	pools: z.array(z.string()).nullable().default([]),
 	services: z
@@ -53,3 +62,4 @@ export const BasicSettingsSchema = z.object({
 export type JWTClaims = z.infer<typeof JWTClaimsSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type Group = z.infer<typeof GroupSchema>;
+export type Passkey = z.infer<typeof PasskeySchema>;

@@ -43,7 +43,9 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			}
 		}
 
-		if path == "/api/auth/login" {
+		if path == "/api/auth/login" ||
+			path == "/api/auth/passkeys/login/begin" ||
+			path == "/api/auth/passkeys/login/finish" {
 			c.Next()
 			return
 		}

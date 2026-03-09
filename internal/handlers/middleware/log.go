@@ -125,6 +125,8 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 		var claims claim
 		claims, err := getClaims(c, authService)
 		if err != nil && (c.Request.URL.Path == "/api/auth/login" ||
+			c.Request.URL.Path == "/api/auth/passkeys/login/begin" ||
+			c.Request.URL.Path == "/api/auth/passkeys/login/finish" ||
 			c.Request.URL.Path == "/api/utilities/downloads/signed-url" ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/cluster")) {
 
@@ -221,7 +223,7 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 		log.Ended = time.Now()
 		log.Duration = time.Since(log.Started)
 
-		if c.Request.URL.Path == "/api/auth/login" && cStatus == 200 {
+		if (c.Request.URL.Path == "/api/auth/login" || c.Request.URL.Path == "/api/auth/passkeys/login/finish") && cStatus == 200 {
 			var resBody struct {
 				Data struct {
 					Token string `json:"token"`

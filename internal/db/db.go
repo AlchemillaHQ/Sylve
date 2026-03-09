@@ -80,6 +80,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.User{},
 		&models.Group{},
 		&models.Token{},
+		&models.WebAuthnCredential{},
+		&models.WebAuthnChallenge{},
 		&models.SystemSecrets{},
 
 		&vmModels.Storage{},
