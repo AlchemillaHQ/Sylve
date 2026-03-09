@@ -339,19 +339,21 @@ func (s *Service) GetActiveTaskForGuest(guestType string, guestID uint) (*taskMo
 	guestType = normalizeGuestType(guestType)
 
 	var task taskModels.GuestLifecycleTask
-	err := s.DB.
+	tx := s.DB.
 		Where("guest_type = ? AND guest_id = ? AND status IN ?", guestType, guestID, []string{
 			taskModels.LifecycleTaskStatusQueued,
 			taskModels.LifecycleTaskStatusRunning,
 		}).
 		Order("created_at DESC").
 		Order("id DESC").
-		First(&task).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
+		Limit(1).
+		Find(&task)
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+
+	if tx.RowsAffected == 0 {
+		return nil, nil
 	}
 
 	return &task, nil
