@@ -13,7 +13,7 @@ This is not extensively tested but a cool thing to try out nonetheless. If you h
 
 To run Sylve inside a jail environment, allow the permissions below and adjust the settings as shown:
 
-```ucl
+```
 devfs_ruleset=5;
 allow.vmm;
 allow.nfsd;
@@ -45,7 +45,7 @@ Notes:
 
 Here is the example for your `devfs.rules` file:
 
-```devfs
+```
 [devfsrules_jail_sylve=6]
 add include $devfsrules_hide_all
 add include $devfsrules_unhide_basic

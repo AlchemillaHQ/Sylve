@@ -12,7 +12,7 @@ We **highly** recommend running Sylve with a proper TLS certificate, or if you'r
 
 An example Caddyfile for Sylve would look like this:
 
-```caddy
+```
 subdomain.example.org {
     /*
       The HTTP port will suffice here as this
@@ -21,9 +21,10 @@ subdomain.example.org {
       Traffic is only between the reverse proxy
       and the local service.
     */
-    reverse_proxy 127.0.0.1:8180
+    reverse_proxy 127.0.0.1:8182
 }
 ```
+
 :::
 
 Navigating to `https://<your-server-ip>:8181` or `https://subdomain.example.org` you should see the login page, enter your credentials and log in. You should now be greeted with this page:

@@ -11,13 +11,13 @@ export interface Props {
 
 // const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 
-const { title, description, image = "/og.png" } = Astro.props;
+const { title, description, image = "/og-default.png" } = Astro.props;
 ---
 
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="icon" type="image/x-icon" href="/src/assets/logo-white.svg" />
+<link rel="icon" type="image/svg+xml" href="/white.svg" />
 <meta name="generator" content={Astro.generator} />
 
 <!-- Canonical URL -->

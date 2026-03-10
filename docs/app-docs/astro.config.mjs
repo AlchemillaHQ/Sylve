@@ -24,7 +24,7 @@ export default defineConfig({
                 light: './src/assets/logo-black.svg',
                 dark: './src/assets/logo-white.svg',
             },
-            favicon: './src/assets/logo-white.svg',
+            favicon: '/white.svg',
             social: [
                 {
                     icon: 'github',
@@ -33,6 +33,7 @@ export default defineConfig({
                 },
             ],
             components: {
+                Head: './src/components/starlight/Head.astro',
                 SiteTitle: './src/components/starlight/SiteTitle.astro',
             },
             sidebar: [
