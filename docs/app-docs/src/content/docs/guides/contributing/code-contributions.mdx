@@ -1,0 +1,51 @@
+---
+title: Code Contributions
+description: Set up a local development environment for backend and frontend changes.
+---
+
+Sylve is built with Go (backend) and SvelteKit in SPA mode (frontend).
+
+For the best development experience, we recommend a FreeBSD `-CURRENT` machine.
+
+## Clone The Repository
+
+```bash
+git clone https://github.com/AlchemillaHQ/Sylve
+cd Sylve
+```
+
+## Install Live-Reload Tooling
+
+Install `air`:
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+## Run Backend And Frontend Together
+
+Use `tmux`, `zellij`, or `screen` and split into two panes:
+
+1. In the repository root:
+
+```bash
+air .
+```
+
+2. In the `web/` directory:
+
+```bash
+npm run dev
+```
+
+## Use A Single Development Entry Point
+
+In `config.json`, set:
+
+```json
+{
+  "proxyToVite": true
+}
+```
+
+With `proxyToVite` enabled, the Go backend proxies frontend requests to Vite, so you do not need to work with two separate ports directly.

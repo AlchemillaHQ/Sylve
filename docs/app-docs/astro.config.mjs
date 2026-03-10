@@ -40,7 +40,18 @@ export default defineConfig({
                 {
                     label: 'Start Here',
                     collapsed: false,
-                    items: ['docs', 'getting-started'],
+                    items: [
+                        'docs',
+                        'getting-started',
+                        {
+                            label: 'Contributing',
+                            collapsed: false,
+                            items: [
+                                'guides/contributing/translations',
+                                'guides/contributing/code-contributions',
+                            ],
+                        },
+                    ],
                 },
                 {
                     label: 'Guides',
