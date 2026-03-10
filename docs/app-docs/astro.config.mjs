@@ -47,8 +47,9 @@ export default defineConfig({
                             label: 'Contributing',
                             collapsed: false,
                             items: [
-                                'guides/contributing/translations',
                                 'guides/contributing/code-contributions',
+                                'guides/contributing/docs-contributions',
+                                'guides/contributing/translations',
                             ],
                         },
                     ],
