@@ -16,6 +16,7 @@ export const collections = {
 			description: z.string(),
 			pubDate: z.coerce.date(),
 			author: z.string(),
+			draft: z.boolean().default(false),
 			layout: z.string().optional(),
 			// Add dummy sidebar to prevent Starlight crashes if it scans this collection
 			sidebar: z.object({
