@@ -8,11 +8,11 @@ description: This guide helps you set up Sylve and reach your first successful r
 As of the latest release, Sylve requires **FreeBSD 15.0-RELEASE or later**. You will also need to have a **ZFS pool** available for Sylve to use. Other filesystems such as UFS are not currently supported.
 
 :::note
-Although we list support for FreeBSD **15.0-RELEASE**, we **strongly recommend** using **-CURRENT** with pkgbase or at least **-STABLE**. Bhyve and related libraries such as `libvirt` are evolving rapidly.
+Although we list support for FreeBSD **15.0-RELEASE**, we **strongly recommend** using **-STABLE** with pkgbase, **-CURRENT** is also supported, but remember to disable any debug features in the config if you're using it in production!
 
 Coming from Linux system administration, it can be tempting to run the oldest possible release to still have all your toys and not have things break. However, the FreeBSD ecosystem works a bit differently in this regard. If it is good enough for **[Netflix](https://freebsdfoundation.org/netflix-case-study/)**, it is probably good enough for us.
 
-That said, if your use case requires maximum stability and you do not need the latest features or bug fixes, **15.0-RELEASE** or quarterly releases should work perfectly fine.
+That said, if your use case requires maximum stability and you do not need the latest features or bug fixes, **15.0-RELEASE** should work perfectly fine.
 :::
 
 ## Software Dependencies
