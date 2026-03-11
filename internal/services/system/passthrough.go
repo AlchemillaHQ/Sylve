@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/logger"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/system/pciconf"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -647,15 +648,32 @@ func (s *Service) RemovePPTDevice(id string) error {
 
 	pciAddr := pciAddress(existing.Domain, parts)
 
+	if err := s.DB.Delete(&existing).Error; err != nil {
+		return fmt.Errorf("failed to delete passthrough mapping for %s: %w", existing.DeviceID, err)
+	}
+
+	if err := s.removeLoaderPPTDevice(existing.DeviceID); err != nil {
+		if rollbackErr := s.DB.Create(&existing).Error; rollbackErr != nil {
+			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to remove %s from loader.conf (%v), and failed to restore DB row (%v)", existing.DeviceID, err, rollbackErr)
+		}
+
+		return err
+	}
+
 	detach, err := utils.RunCommand(
 		"/usr/sbin/devctl",
 		"detach",
 		"-f",
 		pciAddr,
 	)
-
 	if err != nil {
-		return fmt.Errorf("detaching device %s failed %s: %w", existing.DeviceID, detach, err)
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("output", strings.TrimSpace(detach)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime detach failed; reboot may be required")
+		return nil
 	}
 
 	clearDriver, err := utils.RunCommand(
@@ -665,9 +683,14 @@ func (s *Service) RemovePPTDevice(id string) error {
 		"-f",
 		pciAddr,
 	)
-
 	if err != nil {
-		return fmt.Errorf("clearing driver for device %s failed %s: %w", existing.DeviceID, clearDriver, err)
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("output", strings.TrimSpace(clearDriver)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver clear failed; reboot may be required")
+		return nil
 	}
 
 	if strings.TrimSpace(existing.OldDriver) == "" {
@@ -676,36 +699,34 @@ func (s *Service) RemovePPTDevice(id string) error {
 			"rescan",
 			pciAddr,
 		)
-
 		if err != nil {
-			return fmt.Errorf("rescanning device %s failed %s: %w", existing.DeviceID, rescanOutput, err)
-		}
-	} else {
-		setDriver, err := utils.RunCommand(
-			"/usr/sbin/devctl",
-			"set",
-			"driver",
-			pciAddr,
-			existing.OldDriver,
-		)
-
-		if err != nil {
-			return fmt.Errorf("setting driver for device %s failed %s: %w", existing.DeviceID, setDriver, err)
-		}
-	}
-
-	if err := s.DB.Delete(&existing).Error; err != nil {
-		_, rollbackErr := utils.RunCommand("/usr/sbin/devctl", "set", "driver", pciAddr, "ppt")
-		if rollbackErr != nil {
-			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to delete from DB (%v), and failed to revert device %s back to ppt (%v)", err, existing.DeviceID, rollbackErr)
+			logger.L.Warn().
+				Err(err).
+				Str("device_id", existing.DeviceID).
+				Str("pci_addr", pciAddr).
+				Str("output", strings.TrimSpace(rescanOutput)).
+				Msg("Passthrough mapping removed from DB/loader.conf, but runtime PCI rescan failed; reboot may be required")
 		}
 
-		return fmt.Errorf("database delete failed, hardware state reverted to ppt: %w", err)
+		return nil
 	}
 
-	if err := s.removeLoaderPPTDevice(existing.DeviceID); err != nil {
-		return err
+	setDriver, err := utils.RunCommand(
+		"/usr/sbin/devctl",
+		"set",
+		"driver",
+		pciAddr,
+		existing.OldDriver,
+	)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("driver", existing.OldDriver).
+			Str("output", strings.TrimSpace(setDriver)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver restore failed; reboot may be required")
 	}
 
-	return s.SyncPPTDevices()
+	return nil
 }
