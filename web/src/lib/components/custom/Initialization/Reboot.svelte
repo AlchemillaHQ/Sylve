@@ -7,18 +7,13 @@
 
 	let rebootInitiated = $state(false);
 
-	type HealthResponse = {
-		initialized?: boolean;
-		restarted?: boolean;
-	};
-
 	async function waitForRebootCycle({ intervalMs = 2000, timeoutMs = 60 * 60 * 1000 } = {}) {
 		const start = Date.now();
 		let wentDown = false;
 
 		while (Date.now() - start < timeoutMs) {
 			try {
-				const health = (await getBasicHealth()) as HealthResponse;
+				const health = await getBasicHealth();
 
 				if (!wentDown) {
 					// still up → wait for it to go down
