@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -99,24 +98,22 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		}
 	}
 
-	toCreate := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
-	var newSets []*gzfs.Dataset
+	var newSets []string
 
 	for _, poolName := range pools {
-		for _, dataset := range toCreate {
-			datasetPath := fmt.Sprintf("%s/%s", poolName, dataset)
-			_, err := s.GZFS.ZFS.Get(ctx, datasetPath, false)
-			if err != nil {
-				created, err := s.GZFS.ZFS.CreateFilesystem(ctx, datasetPath, nil)
-				if err != nil {
-					for i := len(newSets) - 1; i >= 0; i-- {
-						newSets[i].Destroy(ctx, true, false)
-					}
-					return fmt.Errorf("failed_to_create_dataset_%s: %w", datasetPath, err)
+		created, err := s.ensureSylveDatasetsOnPool(ctx, poolName)
+		if err != nil {
+			for i := len(newSets) - 1; i >= 0; i-- {
+				if ds, getErr := s.GZFS.ZFS.Get(ctx, newSets[i], false); getErr == nil && ds != nil {
+					_ = ds.Destroy(ctx, true, false)
 				}
-
-				newSets = append(newSets, created)
 			}
+
+			return err
+		}
+
+		for _, ds := range created {
+			newSets = append(newSets, ds.Name)
 		}
 	}
 

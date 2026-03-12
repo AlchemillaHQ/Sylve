@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -56,10 +55,6 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 		return []error{fmt.Errorf("system_already_initialized")}
 	}
 
-	if len(req.Pools) == 0 {
-		return []error{fmt.Errorf("no_pools_provided")}
-	}
-
 	var newSets []*gzfs.Dataset
 
 	for _, poolName := range req.Pools {
@@ -72,32 +67,16 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 			return []error{fmt.Errorf("pool_not_found_%s", poolName)}
 		}
 
-		toCreate := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
-		for _, dataset := range toCreate {
-			fullDatasetName := fmt.Sprintf("%s/%s", pool.Name, dataset)
-
-			sets, err := s.GZFS.ZFS.List(ctx, false, fullDatasetName)
-			if err != nil {
-				if !strings.Contains(err.Error(), "dataset does not exist") {
-					return []error{fmt.Errorf("error_checking_dataset_%s: %w", fullDatasetName, err)}
-				}
+		created, err := s.ensureSylveDatasetsOnPool(ctx, pool.Name)
+		if err != nil {
+			for i := len(newSets) - 1; i >= 0; i-- {
+				newSets[i].Destroy(ctx, true, false)
 			}
 
-			exists := len(sets) > 0
-			props := map[string]string{}
-
-			if !exists {
-				created, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, props)
-				if err != nil {
-					for i := len(newSets) - 1; i >= 0; i-- {
-						newSets[i].Destroy(ctx, true, false)
-					}
-
-					return []error{fmt.Errorf("error_creating_dataset_%s: %w", fullDatasetName, err)}
-				}
-				newSets = append(newSets, created)
-			}
+			return []error{err}
 		}
+
+		newSets = append(newSets, created...)
 	}
 
 	var errs []error
