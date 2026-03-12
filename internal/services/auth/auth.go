@@ -155,8 +155,13 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("invalid_credentials")
 		}
 
-		user.ID = utils.StringToUintId(username)
-		user.Username = username
+		pamIdentity, err := s.getOrCreatePAMIdentity(username)
+		if err != nil {
+			return 0, "", fmt.Errorf("pam_identity_error")
+		}
+
+		user.ID = pamIdentity.ID
+		user.Username = pamIdentity.Username
 	} else {
 		return 0, "", fmt.Errorf("invalid_auth_type")
 	}
@@ -333,12 +338,6 @@ func (s *Service) RevokeJWT(token string) error {
 		return fmt.Errorf("token_delete_failed")
 	}
 
-	var user models.User
-
-	if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
-		return fmt.Errorf("user_not_found")
-	}
-
 	return nil
 }
 
@@ -350,11 +349,20 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 		return false
 	}
 
-	var user models.User
+	if tokenRecord.AuthType == "pam" {
+		var pamIdentity models.PAMIdentity
 
-	if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
-		logger.L.Error().Msgf("User not found: %v", err)
-		return false
+		if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&pamIdentity).Error; err != nil {
+			logger.L.Error().Msgf("PAM identity not found: %v", err)
+			return false
+		}
+	} else {
+		var user models.User
+
+		if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
+			logger.L.Error().Msgf("User not found: %v", err)
+			return false
+		}
 	}
 
 	return true

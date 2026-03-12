@@ -37,6 +37,13 @@ type Group struct {
 	Users     []User    `gorm:"many2many:user_groups;constraint:OnDelete:CASCADE" json:"users,omitempty"`
 }
 
+type PAMIdentity struct {
+	ID        uint      `gorm:"primarykey" json:"id"`
+	Username  string    `gorm:"uniqueIndex;not null" json:"username"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+}
+
 type Token struct {
 	ID        uint      `gorm:"primarykey" json:"id,omitempty"`
 	UserID    uint      `json:"userId,omitempty"`

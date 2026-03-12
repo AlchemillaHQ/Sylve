@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 
@@ -42,8 +43,73 @@ type action struct {
 	Response interface{} `json:"response,omitempty"`
 }
 
+func parseClaimUserID(raw interface{}) (*uint, bool) {
+	switch v := raw.(type) {
+	case uint:
+		uid := v
+		return &uid, true
+	case *uint:
+		return v, v != nil
+	case int:
+		if v < 0 {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case int64:
+		if v < 0 {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case uint64:
+		if v > uint64(math.MaxInt64) {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > float64(math.MaxInt64) || v != math.Trunc(v) {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil || n < 0 {
+			return nil, false
+		}
+		uid := uint(n)
+		return &uid, true
+	default:
+		return nil, false
+	}
+}
+
 func getClaims(c *gin.Context, authService *authService.Service) (claim, error) {
 	var claims claim
+
+	if uidAny, hasUserID := c.Get("UserID"); hasUserID {
+		usernameAny, hasUsername := c.Get("Username")
+		authTypeAny, hasAuthType := c.Get("AuthType")
+		if hasUsername && hasAuthType {
+			var uid *uint
+			if parsed, ok := parseClaimUserID(uidAny); ok {
+				uid = parsed
+			}
+
+			claims = claim{
+				UserID:   uid,
+				Username: fmt.Sprintf("%v", usernameAny),
+				AuthType: fmt.Sprintf("%v", authTypeAny),
+			}
+
+			if strings.TrimSpace(claims.Username) != "" && strings.TrimSpace(claims.AuthType) != "" {
+				return claims, nil
+			}
+		}
+	}
+
 	token := c.GetString("Token")
 
 	if token == "" {
@@ -72,13 +138,25 @@ func getClaims(c *gin.Context, authService *authService.Service) (claim, error) 
 		return claims, fmt.Errorf("invalid_claims_format")
 	}
 
-	all := cMap["custom_claims"].(map[string]interface{})
-	userID := uint(all["userId"].(float64))
-	user := all["username"].(string)
-	authType := all["authType"].(string)
+	allAny, ok := cMap["custom_claims"]
+	if !ok {
+		return claims, fmt.Errorf("custom_claims_missing")
+	}
+
+	all, ok := allAny.(map[string]interface{})
+	if !ok {
+		return claims, fmt.Errorf("invalid_custom_claims_format")
+	}
+
+	userID, _ := parseClaimUserID(all["userId"])
+	user := fmt.Sprintf("%v", all["username"])
+	authType := fmt.Sprintf("%v", all["authType"])
+	if strings.TrimSpace(user) == "" || strings.TrimSpace(authType) == "" {
+		return claims, fmt.Errorf("invalid_custom_claims")
+	}
 
 	claims = claim{
-		UserID:   &userID,
+		UserID:   userID,
 		Username: user,
 		AuthType: authType,
 	}
@@ -232,13 +310,15 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			if err := json.Unmarshal(bw.body.Bytes(), &resBody); err == nil && resBody.Data.Token != "" {
 				if newClaims, err := utils.ParseJWT(resBody.Data.Token); err == nil {
 					if cMap, ok := newClaims.(map[string]interface{}); ok {
-						all := cMap["custom_claims"].(map[string]interface{})
-						uid := uint(all["userId"].(float64))
-						user := all["username"].(string)
-						authType := all["authType"].(string)
-						log.UserID = &uid
-						log.User = user
-						log.AuthType = authType
+						if allAny, ok := cMap["custom_claims"]; ok {
+							if all, ok := allAny.(map[string]interface{}); ok {
+								if uid, ok := parseClaimUserID(all["userId"]); ok {
+									log.UserID = uid
+								}
+								log.User = fmt.Sprintf("%v", all["username"])
+								log.AuthType = fmt.Sprintf("%v", all["authType"])
+							}
+						}
 					}
 				}
 			}

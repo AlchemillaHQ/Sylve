@@ -10,6 +10,7 @@ package utils
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
@@ -157,29 +158,35 @@ func TestRemoveSpaces(t *testing.T) {
 }
 
 func TestStringToUintId(t *testing.T) {
+	const signedInt64Mask = (uint64(1) << 63) - 1
+
 	tests := []struct {
 		input    string
 		expected uint
 	}{
 		{
 			input:    "hello",
-			expected: uint(FNVHash("hello")),
+			expected: uint(FNVHash("hello") & signedInt64Mask),
 		},
 		{
 			input:    "world",
-			expected: uint(FNVHash("world")),
+			expected: uint(FNVHash("world") & signedInt64Mask),
 		},
 		{
 			input:    "",
-			expected: uint(FNVHash("")),
+			expected: uint(FNVHash("") & signedInt64Mask),
 		},
 		{
 			input:    "12345",
-			expected: uint(FNVHash("12345")),
+			expected: uint(FNVHash("12345") & signedInt64Mask),
 		},
 		{
 			input:    "special@chars!",
-			expected: uint(FNVHash("special@chars!")),
+			expected: uint(FNVHash("special@chars!") & signedInt64Mask),
+		},
+		{
+			input:    "root",
+			expected: uint(FNVHash("root") & signedInt64Mask),
 		},
 	}
 
@@ -188,6 +195,10 @@ func TestStringToUintId(t *testing.T) {
 			result := StringToUintId(tt.input)
 			if result != tt.expected {
 				t.Errorf("StringToUintId(%q) = %d; want %d", tt.input, result, tt.expected)
+			}
+
+			if result > uint(math.MaxInt64) {
+				t.Errorf("StringToUintId(%q) = %d; expected <= %d", tt.input, result, uint(math.MaxInt64))
 			}
 		})
 	}
