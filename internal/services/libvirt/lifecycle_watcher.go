@@ -20,11 +20,6 @@ import (
 const lifecycleWatcherRetryDelay = 2 * time.Second
 
 func (s *Service) StartLifecycleWatcher(ctx context.Context) {
-	if err := s.requireConnection(); err != nil {
-		logger.L.Debug().Err(err).Msg("Skipping libvirt lifecycle watcher")
-		return
-	}
-
 	go func() {
 		for {
 			if ctx.Err() != nil {
@@ -32,7 +27,20 @@ func (s *Service) StartLifecycleWatcher(ctx context.Context) {
 				return
 			}
 
-			events, err := s.Conn.LifecycleEvents(ctx)
+			conn, err := s.ensureConnection()
+			if err != nil {
+				logger.L.Error().Err(err).Msg("Failed to establish libvirt connection for lifecycle watcher")
+
+				select {
+				case <-ctx.Done():
+					logger.L.Debug().Msg("Stopped libvirt lifecycle watcher")
+					return
+				case <-time.After(lifecycleWatcherRetryDelay):
+					continue
+				}
+			}
+
+			events, err := conn.LifecycleEvents(ctx)
 			if err != nil {
 				logger.L.Error().Err(err).Msg("Failed to subscribe to libvirt lifecycle events")
 

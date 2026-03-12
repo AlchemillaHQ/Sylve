@@ -35,7 +35,10 @@ type Service struct {
 
 	System systemServiceInterfaces.SystemServiceInterface
 
-	Conn *libvirt.Libvirt
+	connMu      sync.RWMutex
+	reconnectMu sync.Mutex
+	Conn        *libvirt.Libvirt
+	uri         string
 
 	actionMutex sync.Mutex
 	crudMutex   sync.Mutex
@@ -52,6 +55,7 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 		System: system,
 		Conn:   nil,
 		GZFS:   gzfs,
+		uri:    "bhyve:///system",
 	}
 
 	var basicSettings models.BasicSettings
@@ -70,36 +74,26 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 		}
 	}
 
-	uri, _ := url.Parse("bhyve:///system")
-	l, err := libvirt.ConnectToURI(uri)
+	l, version, err := skeleton.connect()
 	if err != nil {
-		logger.L.Fatal().Err(err).Msg("failed to connect to libvirt")
+		logger.L.Warn().Err(err).Msg("failed to initialize libvirt connection; will retry on demand")
+		return skeleton
 	}
 
-	v, err := l.ConnectGetLibVersion()
-
-	if err != nil {
-		logger.L.Fatal().Err(err).Msg("failed to retrieve libvirt version")
-	}
-
-	logger.L.Info().Msgf("Libvirt version: %d", v)
-
-	skeleton.Conn = l
+	logger.L.Info().Msgf("Libvirt version: %d", version)
+	skeleton.setConn(l)
 
 	return skeleton
 }
 
 func (s *Service) CheckVersion() error {
-	if err := s.requireConnection(); err != nil {
-		return err
-	}
-
-	_, err := s.Conn.ConnectGetLibVersion()
+	conn, err := s.ensureConnection()
 	if err != nil {
 		return err
 	}
 
-	return nil
+	_, err = conn.ConnectGetLibVersion()
+	return err
 }
 
 func (s *Service) IsVirtualizationEnabled() bool {
@@ -122,11 +116,93 @@ func (s *Service) IsVirtualizationEnabled() bool {
 }
 
 func (s *Service) requireConnection() error {
-	if s == nil || s.Conn == nil {
-		return fmt.Errorf("libvirt_not_initialized")
+	_, err := s.ensureConnection()
+	return err
+}
+
+func (s *Service) conn() *libvirt.Libvirt {
+	if s == nil {
+		return nil
 	}
 
-	return nil
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+
+	return s.Conn
+}
+
+func (s *Service) setConn(conn *libvirt.Libvirt) {
+	s.connMu.Lock()
+	defer s.connMu.Unlock()
+
+	s.Conn = conn
+}
+
+func (s *Service) connect() (*libvirt.Libvirt, uint64, error) {
+	if s == nil {
+		return nil, 0, fmt.Errorf("libvirt_not_initialized")
+	}
+
+	uri, err := url.Parse(s.uri)
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid_libvirt_uri: %w", err)
+	}
+
+	conn, err := libvirt.ConnectToURI(uri)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	version, err := conn.ConnectGetLibVersion()
+	if err != nil {
+		_ = conn.Disconnect()
+		return nil, 0, fmt.Errorf("failed_to_retrieve_libvirt_version: %w", err)
+	}
+
+	return conn, version, nil
+}
+
+func (s *Service) ensureConnection() (*libvirt.Libvirt, error) {
+	if s == nil {
+		return nil, fmt.Errorf("libvirt_not_initialized")
+	}
+
+	conn := s.conn()
+	if conn != nil {
+		if _, err := conn.ConnectGetLibVersion(); err == nil {
+			return conn, nil
+		}
+	}
+
+	return s.reconnect()
+}
+
+func (s *Service) reconnect() (*libvirt.Libvirt, error) {
+	s.reconnectMu.Lock()
+	defer s.reconnectMu.Unlock()
+
+	current := s.conn()
+	if current != nil {
+		if _, err := current.ConnectGetLibVersion(); err == nil {
+			return current, nil
+		}
+	}
+
+	conn, version, err := s.connect()
+	if err != nil {
+		return nil, err
+	}
+
+	oldConn := s.conn()
+	s.setConn(conn)
+
+	if oldConn != nil && oldConn != conn {
+		_ = oldConn.Disconnect()
+	}
+
+	logger.L.Info().Msgf("Reconnected to libvirt version: %d", version)
+
+	return conn, nil
 }
 
 func (s *Service) WriteVMJson(rid uint) error {

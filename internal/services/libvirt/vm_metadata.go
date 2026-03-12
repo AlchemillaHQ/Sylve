@@ -25,12 +25,13 @@ func (s *Service) RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error {
 		return fmt.Errorf("invalid_vm_rid")
 	}
 
-	if s.Conn != nil {
+	if _, err := s.ensureConnection(); err == nil {
 		if err := s.RemoveLvVm(rid); err != nil {
 			return fmt.Errorf("failed_to_remove_lv_vm: %w", err)
 		}
 	} else {
 		warnings := make([]string, 0)
+		logger.L.Warn().Uint("rid", rid).Err(err).Msg("libvirt_connection_not_available_during_vm_retire")
 		s.forceRemoveVMRuntimeArtifacts(rid, &warnings)
 		for _, warning := range warnings {
 			logger.L.Warn().

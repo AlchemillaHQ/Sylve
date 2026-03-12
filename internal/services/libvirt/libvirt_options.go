@@ -63,17 +63,20 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	if timeOffset != "utc" && timeOffset != "localtime" {
 		return fmt.Errorf("invalid_time_offset: %s", timeOffset)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -82,7 +85,7 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -114,11 +117,11 @@ func (s *Service) ModifyClock(rid uint, timeOffset string) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -141,6 +144,9 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	var pre vmModels.VM
 	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).First(&pre).Error; err != nil {
@@ -151,12 +157,12 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 		return nil
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -165,7 +171,7 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -219,11 +225,11 @@ func (s *Service) ModifySerial(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -300,18 +306,21 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -320,7 +329,7 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -368,11 +377,11 @@ func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -393,18 +402,21 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -413,7 +425,7 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -480,11 +492,11 @@ func (s *Service) ModifyQemuGuestAgent(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -508,18 +520,21 @@ func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	var vm vmModels.VM
 	if err := s.DB.Where("rid = ?", rid).First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -528,7 +543,7 @@ func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -591,11 +606,11 @@ func (s *Service) ModifyTPMEmulation(rid uint, enabled bool) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 

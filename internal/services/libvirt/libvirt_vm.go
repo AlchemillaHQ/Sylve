@@ -453,7 +453,7 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return fmt.Errorf("failed to generate VM XML: %w", err)
 	}
 
-	_, err = s.Conn.DomainDefineXML(generated)
+	_, err = s.conn().DomainDefineXML(generated)
 
 	if err != nil {
 		return fmt.Errorf("failed to define VM domain: %w", err)
@@ -475,7 +475,7 @@ func (s *Service) RemoveLvVm(rid uint) error {
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	domainGone := false
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Domain for VM RID %d not found, assuming already removed", rid)
@@ -483,13 +483,13 @@ func (s *Service) RemoveLvVm(rid uint) error {
 	}
 
 	if !domainGone {
-		if err := s.Conn.DomainDestroy(domain); err != nil {
+		if err := s.conn().DomainDestroy(domain); err != nil {
 			if !strings.Contains(err.Error(), "is not running") {
 				return fmt.Errorf("failed_to_destroy_domain: %w", err)
 			}
 		}
 
-		if err := s.Conn.DomainUndefine(domain); err != nil {
+		if err := s.conn().DomainUndefine(domain); err != nil {
 			return fmt.Errorf("failed_to_undefine_domain: %w", err)
 		}
 	}
@@ -521,7 +521,7 @@ func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, err
 
 	var dom libvirtServiceInterfaces.LvDomain
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -537,7 +537,7 @@ func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, err
 		7: "PMSuspended",
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -700,12 +700,12 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 			continue
 		}
 
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(other.RID)))
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(other.RID)))
 		if err != nil {
 			continue
 		}
 
-		state, _, _ := s.Conn.DomainGetState(domain, 0)
+		state, _, _ := s.conn().DomainGetState(domain, 0)
 		if state != 1 {
 			continue
 		}
@@ -740,7 +740,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(vm.RID)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -799,7 +799,7 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
 	}
 
-	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("could_not_get_state: %w", err)
 	}
@@ -812,11 +812,11 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 		return fmt.Errorf("failed_to_start_tpm: %w", err)
 	}
 
-	if err := s.Conn.DomainCreate(*domain); err != nil {
+	if err := s.conn().DomainCreate(*domain); err != nil {
 		return fmt.Errorf("failed_to_start_domain: %w", err)
 	}
 
-	newState, _, err := s.Conn.DomainGetState(*domain, 0)
+	newState, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("could_not_verify_run: %w", err)
 	}
@@ -828,7 +828,7 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 }
 
 func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.Conn.DomainDestroy(*domain); err != nil {
+	if err := s.conn().DomainDestroy(*domain); err != nil {
 		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
 	}
 
@@ -836,7 +836,7 @@ func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
 }
 
 func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.Conn.DomainShutdown(*domain); err != nil {
+	if err := s.conn().DomainShutdown(*domain); err != nil {
 		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
 	}
 
@@ -864,7 +864,7 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 				return s.forceDestroy(domain, vm)
 			}
 
-			state, _, err := s.Conn.DomainGetState(*domain, 0)
+			state, _, err := s.conn().DomainGetState(*domain, 0)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_state: %w", err)
 			}
@@ -898,14 +898,14 @@ func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
 }
 
 func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.Conn.DomainDestroy(*domain); err != nil {
-		state, _, _ := s.Conn.DomainGetState(*domain, 0)
+	if err := s.conn().DomainDestroy(*domain); err != nil {
+		state, _, _ := s.conn().DomainGetState(*domain, 0)
 		if state != 5 {
 			return fmt.Errorf("failed_to_force_destroy: %w", err)
 		}
 	}
 
-	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_verify_stop: %w", err)
 	}
@@ -918,7 +918,7 @@ func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
 }
 
 func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	state, _, err := s.Conn.DomainGetState(*domain, 0)
+	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("could_not_get_state: %w", err)
 	}
@@ -1000,12 +1000,12 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 }
 
 func (s *Service) GetVMXML(rid uint) (string, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return "", fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
 
-	xmlDesc, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xmlDesc, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return "", fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -1014,12 +1014,12 @@ func (s *Service) GetVMXML(rid uint) (string, error) {
 }
 
 func (s *Service) IsDomainInactive(rid uint) (bool, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 
 	if err != nil {
 		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)
@@ -1033,12 +1033,12 @@ func (s *Service) IsDomainInactive(rid uint) (bool, error) {
 }
 
 func (s *Service) GetDomainState(rid int) (libvirt.DomainState, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(rid))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(rid))
 	if err != nil {
 		return libvirt.DomainState(libvirt.DomainNostate), err
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return libvirt.DomainState(libvirt.DomainNostate), err
 	}

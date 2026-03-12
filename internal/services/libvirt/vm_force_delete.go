@@ -35,12 +35,12 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 
 	warnings := make([]string, 0)
 
-	if s.Conn != nil {
+	if _, err := s.ensureConnection(); err == nil {
 		if err := s.RemoveLvVm(rid); err != nil {
 			appendForceRemoveWarning(&warnings, rid, "failed_to_remove_vm_domain", err)
 		}
 	} else {
-		appendForceRemoveWarning(&warnings, rid, "libvirt_connection_not_available", nil)
+		appendForceRemoveWarning(&warnings, rid, "libvirt_connection_not_available", err)
 	}
 
 	s.forceRemoveVMRuntimeArtifacts(rid, &warnings)

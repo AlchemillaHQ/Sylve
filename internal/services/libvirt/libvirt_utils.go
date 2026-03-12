@@ -225,13 +225,13 @@ func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, err
 	}
 
 	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
-	domains, _, err := s.Conn.ConnectListAllDomains(1, flags)
+	domains, _, err := s.conn().ConnectListAllDomains(1, flags)
 	if err != nil {
 		return states, err
 	}
 
 	for _, d := range domains {
-		state, reason, err := s.Conn.DomainGetState(d, 0)
+		state, reason, err := s.conn().DomainGetState(d, 0)
 		if err != nil {
 			fmt.Printf("failed to get domain state: %v\n", err)
 		}
@@ -252,12 +252,12 @@ func (s *Service) IsDomainShutOff(rid uint) (bool, error) {
 		return false, err
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 
 	if err != nil {
 		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)

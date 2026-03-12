@@ -26,6 +26,9 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	inactive, err := s.IsDomainInactive(rid)
 	if err != nil {
@@ -100,16 +103,16 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 			return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
 		}
 
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 		if err != nil {
 			return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 		}
 
-		if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 			return fmt.Errorf("failed_to_undefine_domain: %w", err)
 		}
 
-		if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
+		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
 			return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 		}
 	}
@@ -128,6 +131,9 @@ func (s *Service) NetworkDetach(rid uint, networkId uint) error {
 
 func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachRequest) error {
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
@@ -353,16 +359,16 @@ func (s *Service) NetworkAttach(req libvirtServiceInterfaces.NetworkAttachReques
 		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(req.RID)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(req.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -388,6 +394,9 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 		return fmt.Errorf("failed_to_find_vm: %w", err)
 	}
 	if err := s.requireVMMutationOwnership(vm.RID); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
@@ -599,16 +608,16 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 		return fmt.Errorf("failed_to_serialize_modified_xml: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(vm.RID)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -641,12 +650,16 @@ func (s *Service) NetworkUpdate(req libvirtServiceInterfaces.NetworkUpdateReques
 }
 
 func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -676,11 +689,11 @@ func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 		return fmt.Errorf("failed to serialize XML: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 

@@ -174,6 +174,10 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 }
 
 func (s *Service) SyncVMDisks(rid uint) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	off, err := s.IsDomainShutOff(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
@@ -183,12 +187,12 @@ func (s *Service) SyncVMDisks(rid uint) error {
 		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -327,11 +331,11 @@ func (s *Service) SyncVMDisks(rid uint) error {
 		return fmt.Errorf("failed to serialize XML: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(newXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -344,12 +348,16 @@ func (s *Service) SyncVMDisks(rid uint) error {
 }
 
 func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	xml, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -419,11 +427,11 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 		return fmt.Errorf("failed_to_serialize_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(out); err != nil {
+	if _, err := s.conn().DomainDefineXML(out); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 

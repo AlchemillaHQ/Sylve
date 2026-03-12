@@ -184,7 +184,7 @@ func (s *Service) RollbackVMSnapshot(
 
 	startAfter := false
 	rollbackSucceeded := false
-	if s.Conn != nil {
+	if _, err := s.ensureConnection(); err == nil {
 		isShutOff, err := s.IsDomainShutOff(rid)
 		if err != nil {
 			if !isVMDomainNotFoundError(err) {
@@ -202,6 +202,8 @@ func (s *Service) RollbackVMSnapshot(
 			}
 			startAfter = true
 		}
+	} else {
+		logger.L.Warn().Uint("rid", rid).Err(err).Msg("libvirt_connection_not_available_during_snapshot_rollback")
 	}
 
 	defer func() {
@@ -308,10 +310,12 @@ func (s *Service) RollbackVMSnapshot(
 		return fmt.Errorf("failed_to_restore_vm_config_from_snapshot: %w", err)
 	}
 
-	if s.Conn != nil {
+	if _, err := s.ensureConnection(); err == nil {
 		if err := s.redefineVMDomainFromDatabase(rid); err != nil {
 			return fmt.Errorf("failed_to_redefine_vm_domain_after_snapshot_rollback: %w", err)
 		}
+	} else {
+		logger.L.Warn().Uint("rid", rid).Err(err).Msg("skipping_vm_domain_redefine_after_snapshot_rollback")
 	}
 
 	if err := s.DB.
@@ -1262,11 +1266,11 @@ func (s *Service) redefineVMDomainFromDatabase(rid uint) error {
 		}
 	}
 
-	domain, err := s.Conn.DomainLookupByName(fmt.Sprintf("%d", rid))
+	domain, err := s.conn().DomainLookupByName(fmt.Sprintf("%d", rid))
 	if err == nil {
-		if state, _, stateErr := s.Conn.DomainGetState(domain, 0); stateErr == nil {
+		if state, _, stateErr := s.conn().DomainGetState(domain, 0); stateErr == nil {
 			if state != int32(libvirt.DomainShutoff) {
-				if destroyErr := s.Conn.DomainDestroy(domain); destroyErr != nil {
+				if destroyErr := s.conn().DomainDestroy(domain); destroyErr != nil {
 					lower := strings.ToLower(destroyErr.Error())
 					if !strings.Contains(lower, "is not running") {
 						return fmt.Errorf("failed_to_destroy_vm_domain_before_redefine: %w", destroyErr)
@@ -1275,7 +1279,7 @@ func (s *Service) redefineVMDomainFromDatabase(rid uint) error {
 			}
 		}
 
-		if err := s.Conn.DomainUndefine(domain); err != nil {
+		if err := s.conn().DomainUndefine(domain); err != nil {
 			return fmt.Errorf("failed_to_undefine_vm_domain_before_redefine: %w", err)
 		}
 	} else {
@@ -1291,7 +1295,7 @@ func (s *Service) redefineVMDomainFromDatabase(rid uint) error {
 		return fmt.Errorf("failed_to_generate_vm_xml_after_snapshot_rollback: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(xml); err != nil {
+	if _, err := s.conn().DomainDefineXML(xml); err != nil {
 		return fmt.Errorf("failed_to_define_vm_domain_after_snapshot_rollback: %w", err)
 	}
 

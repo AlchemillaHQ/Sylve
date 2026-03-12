@@ -287,6 +287,9 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
 	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
 
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
@@ -405,12 +408,12 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_commit_cpu_update_transaction: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -421,11 +424,11 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_update_cpu_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -439,6 +442,9 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 
 func (s *Service) ModifyRAM(rid uint, ram int) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
@@ -462,12 +468,12 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -485,11 +491,11 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 		return fmt.Errorf("failed_to_update_memory_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -503,6 +509,9 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 
 func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequest) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
@@ -542,12 +551,12 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -570,11 +579,11 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
@@ -588,6 +597,9 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 
 func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
@@ -607,12 +619,12 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -638,11 +650,11 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 		return fmt.Errorf("failed_to_update_passthrough_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
 	}
 
