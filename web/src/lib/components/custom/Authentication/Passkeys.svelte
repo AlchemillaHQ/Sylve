@@ -139,7 +139,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full min-w-xl gap-4 p-5">
+	<Dialog.Content class="w-full min-w-2xl gap-4 p-5">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between text-left">
 				<div class="flex items-center gap-2">

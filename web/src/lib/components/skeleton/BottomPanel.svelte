@@ -118,6 +118,9 @@
 	const pathToActionMap: Record<string, string> = $derived({
 		'/api/auth/passkeys/login/begin': 'Login - Passkey - Begin',
 		'/api/auth/passkeys/login/finish': 'Login - Passkey - Finish',
+		'/api/auth/passkeys/register/begin': 'Passkey - Register - Begin',
+		'/api/auth/passkeys/register/finish': ' Passkey - Register - Finish',
+		'/api/auth/passkeys/users': 'Passkey',
 		'/api/auth/login': 'Login',
 		'/api/info/notes': 'Notes',
 		'/api/network/switch': 'Standard Switch',
