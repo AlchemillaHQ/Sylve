@@ -2190,7 +2190,7 @@ msgstr "Command Palette"
 msgid "Search for a command to run"
 msgstr "Search for a command to run"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0
+#. 0: (selectedCount || 0) + (hasSelection ? 0 
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -5553,7 +5553,7 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update "
-msgstr "Update"
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -8248,13 +8248,11 @@ msgstr "Passkey deleted"
 msgid "Passkeys - {0}"
 msgstr "Passkeys - {0}"
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Label (optional)"
-msgstr "Label (optional)"
+#~ msgid "Label (optional)"
+#~ msgstr "Label (optional)"
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Laptop, Phone, Security Key..."
-msgstr "Laptop, Phone, Security Key..."
+#~ msgid "Laptop, Phone, Security Key..."
+#~ msgstr "Laptop, Phone, Security Key..."
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Register"
@@ -8276,8 +8274,9 @@ msgstr "Label"
 msgid "Credential ID"
 msgstr "Credential ID"
 
-#~ msgid "Hayzam's Laptop"
-#~ msgstr "Hayzam's Laptop"
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Hayzam's Laptop"
+msgstr "Hayzam's Laptop"
 
 #~ msgid "<0/> Scanning"
 #~ msgstr "<0/> Scanning"
@@ -8285,8 +8284,24 @@ msgstr "Credential ID"
 #~ msgid "<0/> Touch ID"
 #~ msgstr "<0/> Touch ID"
 
-#~ msgid "Login - Passkey - Begin"
-#~ msgstr "Login - Passkey - Begin"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Begin"
+msgstr "Login - Passkey - Begin"
 
-#~ msgid "Login - Passkey - Finish"
-#~ msgstr "Login - Passkey - Finish"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Finish"
+msgstr "Login - Passkey - Finish"
+
+#~ msgid "Register - Passkey - Finish"
+#~ msgstr "Register - Passkey - Finish"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey"
+msgstr "Passkey"
+
+#~ msgid "Register - Passkey - Begin"
+#~ msgstr "Register - Passkey - Begin"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey - Register - Begin"
+msgstr "Passkey - Register - Begin"

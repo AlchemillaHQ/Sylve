@@ -2190,7 +2190,7 @@ msgstr "कमांड पैलेट"
 msgid "Search for a command to run"
 msgstr "चलाने के लिए कमांड खोजें"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0
+#. 0: (selectedCount || 0) + (hasSelection ? 0 
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -8248,13 +8248,11 @@ msgstr ""
 msgid "Passkeys - {0}"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Label (optional)"
-msgstr ""
+#~ msgid "Label (optional)"
+#~ msgstr ""
 
-#: src/lib/components/custom/Authentication/Passkeys.svelte
-msgid "Laptop, Phone, Security Key..."
-msgstr ""
+#~ msgid "Laptop, Phone, Security Key..."
+#~ msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 msgid "Register"
@@ -8276,8 +8274,9 @@ msgstr ""
 msgid "Credential ID"
 msgstr ""
 
-#~ msgid "Hayzam's Laptop"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/Passkeys.svelte
+msgid "Hayzam's Laptop"
+msgstr ""
 
 #~ msgid "<0/> Scanning"
 #~ msgstr ""
@@ -8285,8 +8284,24 @@ msgstr ""
 #~ msgid "<0/> Touch ID"
 #~ msgstr ""
 
-#~ msgid "Login - Passkey - Begin"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Begin"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Login - Passkey - Finish"
+msgstr ""
+
+#~ msgid "Register - Passkey - Finish"
 #~ msgstr ""
 
-#~ msgid "Login - Passkey - Finish"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey"
+msgstr ""
+
+#~ msgid "Register - Passkey - Begin"
 #~ msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey - Register - Begin"
+msgstr ""
