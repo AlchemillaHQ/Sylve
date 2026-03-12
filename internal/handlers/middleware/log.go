@@ -46,10 +46,19 @@ type action struct {
 func parseClaimUserID(raw interface{}) (*uint, bool) {
 	switch v := raw.(type) {
 	case uint:
+		if uint64(v) > uint64(math.MaxInt64) {
+			return nil, false
+		}
 		uid := v
 		return &uid, true
 	case *uint:
-		return v, v != nil
+		if v == nil {
+			return nil, false
+		}
+		if uint64(*v) > uint64(math.MaxInt64) {
+			return nil, false
+		}
+		return v, true
 	case int:
 		if v < 0 {
 			return nil, false
