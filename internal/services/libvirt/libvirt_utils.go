@@ -344,6 +344,13 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 		return fmt.Errorf("invalid_host_logical_cores")
 	}
 
+	if hostLogicalPerSocket <= 0 {
+		hostLogicalPerSocket = hostLogicalCores / hostSocketCount
+		if hostLogicalPerSocket <= 0 {
+			hostLogicalPerSocket = hostLogicalCores
+		}
+	}
+
 	seenSockets := make(map[int]struct{}, len(pins))
 	for i, pin := range pins {
 		if pin.Socket < 0 || pin.Socket >= hostSocketCount {
@@ -358,26 +365,33 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 		}
 	}
 
-	seenCores := make(map[int]struct{}, 128)
+	actualHostCores := make(map[int]struct{}, 128)
 	perSocketCounts := make(map[int]int, hostSocketCount)
 	totalPinned := 0
 
 	for _, pin := range pins {
+		baseCore := pin.Socket * hostLogicalPerSocket
 		perSocketSeen := make(map[int]struct{}, len(pin.Cores))
 		for j, c := range pin.Cores {
-			if c < 0 || c >= hostLogicalCores {
+			if c < 0 || c >= hostLogicalPerSocket {
 				return fmt.Errorf("core_index_out_of_range: core=%d (max=%d) socket=%d pos=%d",
-					c, hostLogicalCores-1, pin.Socket, j)
+					c, hostLogicalPerSocket-1, pin.Socket, j)
 			}
 			if _, dup := perSocketSeen[c]; dup {
 				return fmt.Errorf("duplicate_core_within_socket: core=%d socket=%d", c, pin.Socket)
 			}
 			perSocketSeen[c] = struct{}{}
 
-			if _, dup := seenCores[c]; dup {
-				return fmt.Errorf("duplicate_core_across_sockets: core=%d", c)
+			actualHostCore := baseCore + c
+			if actualHostCore >= hostLogicalCores {
+				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
+					pin.Socket, c, actualHostCore, hostLogicalCores-1)
 			}
-			seenCores[c] = struct{}{}
+
+			if _, dup := actualHostCores[actualHostCore]; dup {
+				return fmt.Errorf("duplicate_core_across_sockets: core=%d", actualHostCore)
+			}
+			actualHostCores[actualHostCore] = struct{}{}
 		}
 		perSocketCounts[pin.Socket] += len(pin.Cores)
 		totalPinned += len(pin.Cores)
@@ -407,13 +421,18 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 			continue
 		}
 		for _, p := range vm.CPUPinning {
+			baseCore := p.HostSocket * hostLogicalPerSocket
 			for _, c := range p.HostCPU {
-				occupied[c] = uint(vm.RID)
+				globalCore := baseCore + c
+				if globalCore < 0 || globalCore >= hostLogicalCores {
+					continue
+				}
+				occupied[globalCore] = uint(vm.RID)
 			}
 		}
 	}
 
-	for c := range seenCores {
+	for c := range actualHostCores {
 		if owner, taken := occupied[c]; taken {
 			return fmt.Errorf("core_conflict: core=%d already_pinned_by_rid=%d", c, owner)
 		}

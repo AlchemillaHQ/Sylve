@@ -204,26 +204,33 @@ func validateCPUPins(
 	}
 
 	// 3) Core range + duplicates + optional (core->socket) strictness
-	seenCores := make(map[int]struct{}, 128)
+	actualHostCores := make(map[int]struct{}, 128)
 	perSocketCounts := make(map[int]int, hostSocketCount)
 	totalPinned := 0
 
 	for _, pin := range req.CPUPinning {
+		baseCore := pin.Socket * hostLogicalPerSocket
 		perSocketSeen := make(map[int]struct{}, len(pin.Cores))
 		for j, c := range pin.Cores {
-			if c < 0 || c >= hostLogicalCores {
+			if c < 0 || c >= hostLogicalPerSocket {
 				return fmt.Errorf("core_index_out_of_range: core=%d (max=%d) socket=%d pos=%d",
-					c, hostLogicalCores-1, pin.Socket, j)
+					c, hostLogicalPerSocket-1, pin.Socket, j)
 			}
 			if _, dup := perSocketSeen[c]; dup {
 				return fmt.Errorf("duplicate_core_within_socket: core=%d socket=%d", c, pin.Socket)
 			}
 			perSocketSeen[c] = struct{}{}
 
-			if _, dup := seenCores[c]; dup {
-				return fmt.Errorf("duplicate_core_across_sockets: core=%d", c)
+			actualHostCore := baseCore + c
+			if actualHostCore >= hostLogicalCores {
+				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
+					pin.Socket, c, actualHostCore, hostLogicalCores-1)
 			}
-			seenCores[c] = struct{}{}
+
+			if _, dup := actualHostCores[actualHostCore]; dup {
+				return fmt.Errorf("duplicate_core_across_sockets: core=%d", actualHostCore)
+			}
+			actualHostCores[actualHostCore] = struct{}{}
 		}
 		perSocketCounts[pin.Socket] += len(pin.Cores)
 		totalPinned += len(pin.Cores)
@@ -269,19 +276,6 @@ func validateCPUPins(
 				globalCore := baseCore + coreIdx
 				occupied[globalCore] = vm.RID
 			}
-		}
-	}
-
-	actualHostCores := make(map[int]struct{}, totalPinned)
-	for _, pin := range req.CPUPinning {
-		baseCore := pin.Socket * hostLogicalPerSocket
-		for _, coreIdx := range pin.Cores {
-			actualHostCore := baseCore + coreIdx
-			if actualHostCore >= hostLogicalCores {
-				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
-					pin.Socket, coreIdx, actualHostCore, hostLogicalCores-1)
-			}
-			actualHostCores[actualHostCore] = struct{}{}
 		}
 	}
 
