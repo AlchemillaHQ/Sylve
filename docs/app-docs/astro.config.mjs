@@ -193,6 +193,13 @@ export default defineConfig({
                                 'guides/advanced-topics/jailing-sylve',
                             ],
                         },
+                        {
+                            label: 'Deployments',
+                            collapsed: true,
+                            items: [
+                                'guides/deployments/jellyfin-jail',
+                            ],
+                        },
                     ],
                 },
             ],
