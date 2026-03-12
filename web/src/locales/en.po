@@ -1794,12 +1794,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' : ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -2646,7 +2646,7 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
@@ -4954,12 +4954,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5426,12 +5426,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6348,6 +6348,7 @@ msgstr "Start IP"
 msgid "End IP"
 msgstr "End IP"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 msgid "DHCP Range"
 msgstr "DHCP Range"
@@ -6678,7 +6679,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7323,7 +7324,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit'
+#. 0: selectedLease ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7411,7 +7412,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit'
+#. 0: selectedRange ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -8305,3 +8306,27 @@ msgstr "Passkey"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Passkey - Register - Begin"
 msgstr "Passkey - Register - Begin"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Passkey - Register - Finish"
+msgstr "Passkey - Register - Finish"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Snapshot"
+msgstr "VM Snapshot"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Snapshot - Rollback"
+msgstr "VM Snapshot - Rollback"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Snapshot - Rollback"
+msgstr "Jail Snapshot - Rollback"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Snapshot"
+msgstr "Jail Snapshot"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease"
+msgstr "DHCP Lease"
