@@ -156,7 +156,6 @@
 	]) as TreeItem[];
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-
 	async function refetchPanelResources() {
 		await Promise.all([simpleVMs.refetch(), simpleJails.refetch()]);
 	}

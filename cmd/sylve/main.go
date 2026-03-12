@@ -116,6 +116,7 @@ func main() {
 
 	go sysS.StartNetlinkWatcher(qCtx)
 	go sysS.NetlinkEventsCleaner(qCtx)
+	go libvirtSvc.StartLifecycleWatcher(qCtx)
 	go db.StartQueue(qCtx)
 
 	if err != nil {
