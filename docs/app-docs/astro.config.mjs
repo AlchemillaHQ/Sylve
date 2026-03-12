@@ -195,7 +195,7 @@ export default defineConfig({
                         },
                         {
                             label: 'Deployments',
-                            collapsed: true,
+                            collapsed: false,
                             items: [
                                 'guides/deployments/jellyfin-jail',
                             ],
