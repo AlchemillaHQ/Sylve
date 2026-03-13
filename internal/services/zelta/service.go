@@ -561,7 +561,14 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		}
 		vmSourceDatasets = sources
 
+		preferredVMSource := normalizeDatasetPath(sourceDataset)
+		validatedSources := make([]string, 0, len(vmSourceDatasets))
 		for _, vmSource := range vmSourceDatasets {
+			vmSource = normalizeDatasetPath(vmSource)
+			if vmSource == "" {
+				continue
+			}
+
 			exists, err := s.localDatasetExists(ctx, vmSource)
 			if err != nil {
 				runErr := fmt.Errorf("failed_to_check_vm_backup_source_dataset_%s: %w", vmSource, err)
@@ -569,12 +576,51 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 				return runErr
 			}
 			if !exists {
+				if preferredVMSource != "" && vmSource == preferredVMSource {
+					logger.L.Warn().
+						Uint("job_id", job.ID).
+						Uint("vm_rid", vmRID).
+						Str("dataset", vmSource).
+						Msg("skipping_missing_preferred_vm_backup_source_dataset")
+					continue
+				}
+
 				runErr := fmt.Errorf("vm_backup_source_dataset_not_found: %s", vmSource)
 				s.updateBackupJobResult(job, runErr)
 				return runErr
 			}
+
+			validatedSources = append(validatedSources, vmSource)
+		}
+
+		if len(validatedSources) == 0 {
+			runErr := fmt.Errorf("vm_source_datasets_not_found")
+			s.updateBackupJobResult(job, runErr)
+			return runErr
+		}
+
+		vmSourceDatasets = validatedSources
+		if preferredVMSource != "" && preferredVMSource != vmSourceDatasets[0] {
+			foundPreferred := false
+			for _, vmSource := range vmSourceDatasets {
+				if vmSource == preferredVMSource {
+					foundPreferred = true
+					break
+				}
+			}
+			if !foundPreferred {
+				logger.L.Info().
+					Uint("job_id", job.ID).
+					Uint("vm_rid", vmRID).
+					Str("missing_source", preferredVMSource).
+					Str("fallback_source", vmSourceDatasets[0]).
+					Msg("vm_backup_source_fallback_selected")
+				sourceDataset = vmSourceDatasets[0]
+			}
 		}
 	}
+
+	event.SourceDataset = sourceDataset
 
 	destSuffix := s.backupDestSuffixForMode(job.Mode, strings.TrimSpace(job.DestSuffix), sourceDataset)
 	if job.Mode == clusterModels.BackupJobModeVM {
@@ -823,52 +869,89 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 		s.syncTargetBackupJobMetadata(ctx, job, sourceDataset, destSuffix)
 	}
 
-	if job.Mode != clusterModels.BackupJobModeVM && runErr == nil && job.PruneKeepLast > 0 {
-		localSnapshots, localListErr := s.listLocalSnapshotsForDataset(ctx, sourceDataset)
-		if localListErr != nil {
-			logger.L.Warn().Err(localListErr).Uint("job_id", job.ID).Str("source", sourceDataset).Msg("backup_prune_local_snapshot_list_failed")
+	if runErr == nil && job.PruneKeepLast > 0 {
+		type pruneScope struct {
+			sourceDataset string
+			destSuffix    string
 		}
 
-		pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, sourceDataset, destSuffix, 0)
-		output = appendOutput(output, pruneOutput)
-
-		if pruneErr != nil {
-			logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Msg("backup_prune_scan_failed")
-		} else if localListErr == nil {
-			pruneCandidates = buildBKRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, snapshotCandidateSet(pruneCandidates), backupSnapPrefix)
-		} else {
-			pruneCandidates = []string{}
-		}
-
-		if len(pruneCandidates) > 0 {
-			if err := s.DestroySnapshots(ctx, pruneCandidates); err != nil {
-				logger.L.Warn().Err(err).Uint("job_id", job.ID).Int("candidate_count", len(pruneCandidates)).Msg("backup_prune_destroy_failed")
-			} else {
-				logger.L.Info().Uint("job_id", job.ID).Int("pruned", len(pruneCandidates)).Msg("backup_prune_completed")
+		pruneScopes := make([]pruneScope, 0, 1)
+		if job.Mode == clusterModels.BackupJobModeVM {
+			for _, vmSource := range vmSourceDatasets {
+				vmDestSuffix := s.backupDestSuffixForVMSource(strings.TrimSpace(job.DestSuffix), vmSource)
+				pruneScopes = append(pruneScopes, pruneScope{
+					sourceDataset: vmSource,
+					destSuffix:    vmDestSuffix,
+				})
 			}
 		} else {
-			logger.L.Debug().Uint("job_id", job.ID).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_no_candidates")
+			pruneScopes = append(pruneScopes, pruneScope{
+				sourceDataset: sourceDataset,
+				destSuffix:    destSuffix,
+			})
 		}
 
-		if job.PruneTarget {
-			remoteDataset := normalizeDatasetPath(strings.TrimSpace(job.Target.BackupRoot))
-			if ds := normalizeDatasetPath(destSuffix); ds != "" {
-				if remoteDataset == "" {
-					remoteDataset = ds
+		for _, scope := range pruneScopes {
+			scopeSource := normalizeDatasetPath(scope.sourceDataset)
+			scopeDestSuffix := normalizeDatasetPath(scope.destSuffix)
+			if scopeSource == "" {
+				logger.L.Warn().Uint("job_id", job.ID).Msg("backup_prune_skipped_invalid_scope_source_dataset")
+				continue
+			}
+
+			localSnapshots, localListErr := s.listLocalSnapshotsForDataset(ctx, scopeSource)
+			if localListErr != nil {
+				logger.L.Warn().Err(localListErr).Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_local_snapshot_list_failed")
+			}
+
+			pruneCandidates, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
+			output = appendOutput(output, pruneOutput)
+
+			if pruneErr != nil {
+				logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("dest_suffix", scopeDestSuffix).Msg("backup_prune_scan_failed")
+			} else if localListErr == nil {
+				pruneCandidates = buildBKRetentionPruneCandidates(localSnapshots, job.PruneKeepLast, snapshotCandidateSet(pruneCandidates), backupSnapPrefix)
+			} else {
+				pruneCandidates = []string{}
+			}
+
+			if len(pruneCandidates) > 0 {
+				if err := s.DestroySnapshots(ctx, pruneCandidates); err != nil {
+					logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(pruneCandidates)).Msg("backup_prune_destroy_failed")
 				} else {
-					remoteDataset = normalizeDatasetPath(remoteDataset + "/" + ds)
+					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(pruneCandidates)).Msg("backup_prune_completed")
+				}
+			} else {
+				logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_no_candidates")
+			}
+
+			if !job.PruneTarget {
+				continue
+			}
+
+			remoteDataset := normalizeDatasetPath(strings.TrimSpace(job.Target.BackupRoot))
+			if scopeDestSuffix != "" {
+				if remoteDataset == "" {
+					remoteDataset = scopeDestSuffix
+				} else {
+					remoteDataset = normalizeDatasetPath(remoteDataset + "/" + scopeDestSuffix)
 				}
 			}
-			remoteSnapshots, remoteListErr := s.listRemoteSnapshotsForDataset(ctx, &job.Target, remoteDataset)
-			if remoteListErr != nil {
-				logger.L.Warn().Err(remoteListErr).Uint("job_id", job.ID).Str("remote_dataset", remoteDataset).Msg("backup_prune_target_snapshot_list_failed")
+			if remoteDataset == "" {
+				logger.L.Warn().Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_target_skipped_remote_dataset_empty")
+				continue
 			}
 
-			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, sourceDataset, destSuffix, 0)
+			remoteSnapshots, remoteListErr := s.listRemoteSnapshotsForDataset(ctx, &job.Target, remoteDataset)
+			if remoteListErr != nil {
+				logger.L.Warn().Err(remoteListErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("remote_dataset", remoteDataset).Msg("backup_prune_target_snapshot_list_failed")
+			}
+
+			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
 			output = appendOutput(output, targetPruneOutput)
 
 			if targetPruneErr != nil {
-				logger.L.Warn().Err(targetPruneErr).Uint("job_id", job.ID).Msg("backup_prune_target_scan_failed")
+				logger.L.Warn().Err(targetPruneErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("dest_suffix", scopeDestSuffix).Msg("backup_prune_target_scan_failed")
 			} else if remoteListErr == nil {
 				targetPruneCandidates = buildBKRetentionPruneCandidates(remoteSnapshots, job.PruneKeepLast, snapshotCandidateSet(targetPruneCandidates), backupSnapPrefix)
 			} else {
@@ -877,22 +960,22 @@ func (s *Service) runBackupJob(ctx context.Context, job *clusterModels.BackupJob
 
 			if len(targetPruneCandidates) > 0 {
 				if err := s.DestroyTargetSnapshotsByName(ctx, &job.Target, targetPruneCandidates); err != nil {
-					logger.L.Warn().Err(err).Uint("job_id", job.ID).Int("candidate_count", len(targetPruneCandidates)).Msg("backup_prune_target_destroy_failed")
+					logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(targetPruneCandidates)).Msg("backup_prune_target_destroy_failed")
 				} else {
-					logger.L.Info().Uint("job_id", job.ID).Int("pruned", len(targetPruneCandidates)).Msg("backup_prune_target_completed")
+					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(targetPruneCandidates)).Msg("backup_prune_target_completed")
 				}
 			} else {
-				fallbackCandidates, fallbackErr := s.buildTargetRetentionPruneCandidates(ctx, job, job.PruneKeepLast+1, backupSnapPrefix)
+				fallbackCandidates, fallbackErr := s.buildTargetRetentionPruneCandidatesForDataset(ctx, &job.Target, remoteDataset, job.PruneKeepLast+1, backupSnapPrefix)
 				if fallbackErr != nil {
-					logger.L.Warn().Err(fallbackErr).Uint("job_id", job.ID).Msg("backup_prune_target_retention_scan_failed")
+					logger.L.Warn().Err(fallbackErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("remote_dataset", remoteDataset).Msg("backup_prune_target_retention_scan_failed")
 				} else if len(fallbackCandidates) > 0 {
 					if err := s.DestroyTargetSnapshotsByName(ctx, &job.Target, fallbackCandidates); err != nil {
-						logger.L.Warn().Err(err).Uint("job_id", job.ID).Int("candidate_count", len(fallbackCandidates)).Msg("backup_prune_target_retention_destroy_failed")
+						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(fallbackCandidates)).Msg("backup_prune_target_retention_destroy_failed")
 					} else {
-						logger.L.Info().Uint("job_id", job.ID).Int("pruned", len(fallbackCandidates)).Msg("backup_prune_target_retention_completed")
+						logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(fallbackCandidates)).Msg("backup_prune_target_retention_completed")
 					}
 				} else {
-					logger.L.Debug().Uint("job_id", job.ID).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
+					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
 				}
 			}
 		}
@@ -1305,18 +1388,45 @@ func isVMDomainNotFoundError(err error) bool {
 		(strings.Contains(lower, "not found") || strings.Contains(lower, "no domain"))
 }
 
-func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int, snapPrefix string) ([]string, error) {
+func (s *Service) buildTargetRetentionPruneCandidatesForDataset(
+	ctx context.Context,
+	target *clusterModels.BackupTarget,
+	remoteDataset string,
+	keepCount int,
+	snapPrefix string,
+) ([]string, error) {
 	if keepCount < 1 {
 		keepCount = 1
 	}
 
-	remoteDataset := remoteDatasetForJob(job)
-	snapshots, err := s.listRemoteSnapshotsForDataset(ctx, &job.Target, remoteDataset)
+	remoteDataset = normalizeDatasetPath(remoteDataset)
+	if remoteDataset == "" {
+		return nil, fmt.Errorf("remote_dataset_required")
+	}
+	if target == nil {
+		return nil, fmt.Errorf("backup_target_required")
+	}
+
+	snapshots, err := s.listRemoteSnapshotsForDataset(ctx, target, remoteDataset)
 	if err != nil {
 		return nil, err
 	}
 
 	return buildBKRetentionPruneCandidates(snapshots, keepCount, nil, snapPrefix), nil
+}
+
+func (s *Service) buildTargetRetentionPruneCandidates(ctx context.Context, job *clusterModels.BackupJob, keepCount int, snapPrefix string) ([]string, error) {
+	if job == nil {
+		return nil, fmt.Errorf("backup_job_required")
+	}
+
+	return s.buildTargetRetentionPruneCandidatesForDataset(
+		ctx,
+		&job.Target,
+		remoteDatasetForJob(job),
+		keepCount,
+		snapPrefix,
+	)
 }
 
 func (s *Service) listLocalSnapshotsForDataset(ctx context.Context, dataset string) ([]SnapshotInfo, error) {
