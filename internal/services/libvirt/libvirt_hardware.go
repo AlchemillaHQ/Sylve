@@ -199,7 +199,7 @@ func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string
 		}
 	}
 
-	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
+	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
 
 	if vnc != "" && vncEnabled {
 		arg := bhyveCommandline.CreateElement("bhyve:arg")

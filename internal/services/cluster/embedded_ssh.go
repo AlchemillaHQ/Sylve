@@ -49,7 +49,7 @@ func (s *Service) StartEmbeddedSSHServer(ctx context.Context) error {
 		}
 		serverConfig.AddHostKey(hostSigner)
 
-		listenAddr := fmt.Sprintf("0.0.0.0:%d", ClusterEmbeddedSSHPort)
+		listenAddr := fmt.Sprintf("[::]:%d", ClusterEmbeddedSSHPort)
 		listener, err := net.Listen("tcp", listenAddr)
 		if err != nil {
 			startErr = fmt.Errorf("embedded_ssh_listen_failed: %w", err)

@@ -337,7 +337,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 	*/
 
-	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%s,h=%s,password=%s%s",
+	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%s,h=%s,password=%s%s",
 		sIndex,
 		vm.VNCPort,
 		width,
