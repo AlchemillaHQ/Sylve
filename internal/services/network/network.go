@@ -20,8 +20,9 @@ import (
 var _ networkServiceInterfaces.NetworkServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB        *gorm.DB
-	syncMutex sync.Mutex
+	DB             *gorm.DB
+	syncMutex      sync.Mutex
+	epairSyncMutex sync.Mutex
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)

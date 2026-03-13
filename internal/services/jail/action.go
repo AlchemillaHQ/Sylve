@@ -50,6 +50,19 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	now := time.Now().UTC()
 
+	ensureNetworkReady := func() error {
+		var jailWithNetworks jailModels.Jail
+		if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jailWithNetworks).Error; err != nil {
+			return fmt.Errorf("failed to load jail networks before start: %w", err)
+		}
+
+		if err := s.SyncNetwork(uint(ctId), jailWithNetworks); err != nil {
+			return fmt.Errorf("failed to sync jail network before start: %w", err)
+		}
+
+		return nil
+	}
+
 	switch action {
 	case "start":
 		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
@@ -69,9 +82,8 @@ func (s *Service) JailAction(ctId int, action string) error {
 			return nil
 		}
 
-		err = s.NetworkService.SyncEpairs(true)
-		if err != nil {
-			return fmt.Errorf("failed to sync epairs: %w", err)
+		if err := ensureNetworkReady(); err != nil {
+			return err
 		}
 
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
@@ -111,6 +123,10 @@ func (s *Service) JailAction(ctId int, action string) error {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
 			}
+		}
+
+		if err := ensureNetworkReady(); err != nil {
+			return err
 		}
 
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {

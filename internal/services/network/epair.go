@@ -79,6 +79,9 @@ func (s *Service) DeleteEpair(name string) error {
 }
 
 func (s *Service) SyncEpairs(_ bool) error {
+	s.epairSyncMutex.Lock()
+	defer s.epairSyncMutex.Unlock()
+
 	var jails []jailModels.Jail
 	if err := s.DB.Preload("Networks").Find(&jails).Error; err != nil {
 		return fmt.Errorf("failed to find jails: %w", err)
