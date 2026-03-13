@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+      - "!tip"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  select-runner:
+    if: github.ref_name != 'tip'
+    runs-on: ubuntu-latest
+    outputs:
+      linux_runner: ${{ steps.pick.outputs.linux_runner }}
+    steps:
+      - name: Pick self-hosted runner when available
+        id: pick
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
+          script: |
+            const selfHosted = ["self-hosted", "linux", "x64"];
+            let selected = ["ubuntu-latest"];
+
+            try {
+              const { owner, repo } = context.repo;
+              const runners = await github.paginate(
+                github.rest.actions.listSelfHostedRunnersForRepo,
+                { owner, repo, per_page: 100 },
+              );
+
+              const available = runners.some((runner) => {
+                if (runner.status !== "online" || runner.busy) {
+                  return false;
+                }
+                const labels = runner.labels.map((label) => label.name);
+                return selfHosted.every((required) => labels.includes(required));
+              });
+
+              if (available) {
+                selected = selfHosted;
+              }
+            } catch (error) {
+              const message = `${error?.message || ""}`;
+              const accessDenied =
+                error?.status === 403 ||
+                /resource not accessible by integration/i.test(message);
+
+              if (accessDenied) {
+                core.info(
+                  "No permission to list self-hosted runners with current token; falling back to ubuntu-latest.",
+                );
+              } else {
+                core.warning(`Falling back to ubuntu-latest: ${message}`);
+              }
+            }
+
+            core.info(`Selected runner labels: ${selected.join(", ")}`);
+            core.setOutput("linux_runner", JSON.stringify(selected));
+
+  prepare-release:
+    needs: select-runner
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    outputs:
+      tag_name: ${{ steps.vars.outputs.tag_name }}
+      target_sha: ${{ steps.vars.outputs.target_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Capture release metadata
+        id: vars
+        run: |
+          set -euo pipefail
+          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.vars.outputs.tag_name }}"
+          TARGET_SHA="${{ steps.vars.outputs.target_sha }}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists"
+            exit 0
+          fi
+
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --target "${TARGET_SHA}" \
+            --notes "TODO: add release notes."
+
+  build-web:
+    needs:
+      - select-runner
+      - prepare-release
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build Web Assets
+        run: |
+          make frontend
+
+      - name: Upload Web Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-web-assets
+          path: internal/assets/web-files/
+
+      - name: Package Web Assets
+        run: |
+          set -euo pipefail
+          tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
+
+      - name: Upload web assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "sylve-web-assets.tar.gz" --clobber
+
+  build-freebsd:
+    needs:
+      - select-runner
+      - prepare-release
+      - build-web
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            vm_arch: x86_64
+          - arch: arm64
+            vm_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
+
+      - name: Download Web Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-web-assets
+          path: internal/assets/web-files
+
+      - name: Build on FreeBSD ${{ matrix.arch }}
+        uses: vmactions/freebsd-vm@v1
+        with:
+          arch: ${{ matrix.vm_arch }}
+          sync: scp
+          usesh: true
+          prepare: pkg install -y go git
+          run: |
+            make backend ARCH=${{ matrix.arch }}
+
+      - name: Upload binary to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ASSET_NAME="sylve-${{ matrix.arch }}"
+          cp bin/sylve "${ASSET_NAME}"
+          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "${ASSET_NAME}" --clobber
