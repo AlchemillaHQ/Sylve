@@ -643,6 +643,21 @@ func isInterfaceMissingError(err error) bool {
 		strings.Contains(msg, "no such interface")
 }
 
+func normalizeIPv6GatewayForRoute(gateway, ifaceName string) string {
+	gateway = strings.TrimSpace(gateway)
+	if gateway == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(strings.ToLower(gateway), "fe80:") &&
+		!strings.Contains(gateway, "%") &&
+		ifaceName != "" {
+		return gateway + "%" + ifaceName
+	}
+
+	return gateway
+}
+
 func createStandardBridge(sw networkModels.StandardSwitch) error {
 	raw, err := utils.RunCommand("/sbin/ifconfig", "bridge", "create")
 	if err != nil {
@@ -693,13 +708,23 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	gateway6 := sw.Gateway(6)
 
 	if network6 != "" && gateway6 != "" && !sw.DisableIPv6 {
-		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6); err != nil {
+		routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
+
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6, "-no_dad"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
 
-		if !strings.HasPrefix(gateway6, "fe80::") {
-			if gwOut, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", network6, gateway6); err != nil {
-				if !strings.Contains(gwOut, "route already in table") {
+		if gwOut, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", network6, routeGateway6); err != nil {
+			if !strings.Contains(gwOut, "route already in table") {
+				if routeGateway6 != gateway6 {
+					logger.L.Warn().Msgf(
+						"create_standard_bridge: failed_to_add_scoped_linklocal_route network=%s gateway=%s bridge=%s err=%v (continuing)",
+						network6,
+						routeGateway6,
+						sw.BridgeName,
+						err,
+					)
+				} else {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
 				}
 			}
@@ -850,14 +875,16 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 
 	if old6Gateway != new6Gateway {
-		if old6Gateway != "" {
-			if _, err := utils.RunCommand("/sbin/route", "-6", "delete", "-net", old6Network, old6Gateway); err != nil {
+		if old6Gateway != "" && old6Network != "" {
+			oldRouteGateway := normalizeIPv6GatewayForRoute(old6Gateway, br)
+			if _, err := utils.RunCommand("/sbin/route", "-6", "delete", "-net", old6Network, oldRouteGateway); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: del route %s via %s: %v", old6Network, old6Gateway, err)
 			}
 		}
 
-		if new6Gateway != "" {
-			if _, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", new6Network, new6Gateway); err != nil {
+		if new6Gateway != "" && new6Network != "" {
+			newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
+			if _, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", new6Network, newRouteGateway); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: add route %s via %s: %v", new6Network, new6Gateway, err)
 			}
 		}

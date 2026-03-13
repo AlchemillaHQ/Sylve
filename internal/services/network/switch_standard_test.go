@@ -59,6 +59,30 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 }
 
+func TestNormalizeIPv6GatewayForRouteAddsInterfaceScopeForLinkLocal(t *testing.T) {
+	got := normalizeIPv6GatewayForRoute("fe80::1", "vm-abcd1")
+	want := "fe80::1%vm-abcd1"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestNormalizeIPv6GatewayForRoutePreservesExistingScope(t *testing.T) {
+	got := normalizeIPv6GatewayForRoute("fe80::1%igb0", "vm-abcd1")
+	want := "fe80::1%igb0"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestNormalizeIPv6GatewayForRouteKeepsGlobalAddressUnchanged(t *testing.T) {
+	got := normalizeIPv6GatewayForRoute("2001:db8::1", "vm-abcd1")
+	want := "2001:db8::1"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t,
 		&networkModels.ManualSwitch{},
