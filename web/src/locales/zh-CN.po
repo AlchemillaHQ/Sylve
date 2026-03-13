@@ -196,8 +196,6 @@ msgid "Node — <0/>"
 msgstr "节点 — <0/>"
 
 #: src/lib/components/custom/About.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -576,6 +574,9 @@ msgstr "IPTechnics"
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
@@ -621,24 +622,27 @@ msgstr "颜色主题"
 msgid "Toggle navigation menu"
 msgstr "切换导航菜单"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Virtual Environment 0.0.1"
-msgstr "虚拟环境 0.0.1"
+#~ msgid "Virtual Environment 0.0.1"
+#~ msgstr "虚拟环境 0.0.1"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Create VM"
 msgstr "创建虚拟机"
 
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "VM creation form minimized"
 msgstr "虚拟机创建表单已最小化"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
 msgstr "创建 Jail"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Jail creation form minimized"
 msgstr "Jail 创建表单已最小化"
@@ -1555,6 +1559,7 @@ msgstr "管理员"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1794,12 +1799,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -2646,7 +2651,7 @@ msgstr "无法擦除忙碌中的磁盘"
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
@@ -5426,12 +5431,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -6679,7 +6684,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -7324,7 +7329,7 @@ msgstr "编辑租约失败"
 msgid "Lease edited"
 msgstr "租约已编辑"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP 租约"
@@ -7412,7 +7417,7 @@ msgstr ""
 msgid "Updated DHCP range"
 msgstr ""
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr ""
@@ -8139,7 +8144,7 @@ msgstr ""
 msgid "Force Stop"
 msgstr ""
 
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "<0/> {0} lifecycle action{1} in progress"
 msgstr ""
@@ -8329,4 +8334,17 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DHCP Lease"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "Quick actions"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "No create actions are available."
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Documentation"
 msgstr ""

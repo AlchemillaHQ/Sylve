@@ -196,8 +196,6 @@ msgid "Node — <0/>"
 msgstr "नोड — <0/>"
 
 #: src/lib/components/custom/About.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Discord"
 msgstr "डिस्कॉर्ड"
 
@@ -576,6 +574,9 @@ msgstr "IPTechnics"
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
@@ -621,24 +622,27 @@ msgstr "कलर थीम"
 msgid "Toggle navigation menu"
 msgstr "नेविगेशन मेनू टॉगल करें"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Virtual Environment 0.0.1"
-msgstr "वर्चुअल एनवायरनमेंट 0.0.1"
+#~ msgid "Virtual Environment 0.0.1"
+#~ msgstr "वर्चुअल एनवायरनमेंट 0.0.1"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Create VM"
 msgstr "VM बनाएं"
 
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "VM creation form minimized"
 msgstr "VM निर्माण फ़ॉर्म छोटा किया गया"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
 msgstr "जेल बनाएं"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Jail creation form minimized"
 msgstr "जेल निर्माण फ़ॉर्म छोटा किया गया"
@@ -1555,6 +1559,7 @@ msgstr "एडमिन"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1794,12 +1799,12 @@ msgstr "सक्षम करने के लिए टिक करें"
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "विभाजन{0} बनाया गया"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
@@ -2646,7 +2651,7 @@ msgstr "व्यस्त डिस्क को वाइप करने म�
 msgid "Unable to delete busy partition"
 msgstr "व्यस्त पार्टीशन को हटाने में असमर्थ"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "त्रुटि {0}: {1}"
@@ -5426,12 +5431,12 @@ msgstr "VirtIO ब्लॉक"
 msgid "Attach Storage"
 msgstr "स्टोरेज संलग्न करें"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "TPM एमुलेशन {0} करने में विफल रहा"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM एमुलेशन {0}"
@@ -6679,7 +6684,7 @@ msgstr "बंद"
 msgid "Serial"
 msgstr "सीरियल"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "{0} कंसोल पर स्विच करें"
@@ -7324,7 +7329,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7412,7 +7417,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -8139,7 +8144,7 @@ msgstr ""
 msgid "Force Stop"
 msgstr ""
 
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "<0/> {0} lifecycle action{1} in progress"
 msgstr ""
@@ -8329,4 +8334,17 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DHCP Lease"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "Quick actions"
+msgstr ""
+
+#: src/lib/components/custom/Header.svelte
+msgid "No create actions are available."
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Documentation"
 msgstr ""

@@ -196,8 +196,6 @@ msgid "Node — <0/>"
 msgstr "Node — <0/>"
 
 #: src/lib/components/custom/About.svelte
-#: src/routes/[node]/+layout.svelte
-#: src/routes/datacenter/+layout.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -576,6 +574,9 @@ msgstr "IPTechnics"
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
@@ -621,24 +622,27 @@ msgstr "Color Theme"
 msgid "Toggle navigation menu"
 msgstr "Toggle navigation menu"
 
-#: src/lib/components/custom/Header.svelte
-msgid "Virtual Environment 0.0.1"
-msgstr "Virtual Environment 0.0.1"
+#~ msgid "Virtual Environment 0.0.1"
+#~ msgstr "Virtual Environment 0.0.1"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Create VM"
 msgstr "Create VM"
 
 #: src/lib/components/custom/Header.svelte
+#: src/lib/components/custom/Header.svelte
 msgid "VM creation form minimized"
 msgstr "VM creation form minimized"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Create Jail"
 msgstr "Create Jail"
 
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Header.svelte
 msgid "Jail creation form minimized"
 msgstr "Jail creation form minimized"
@@ -1555,6 +1559,7 @@ msgstr "Admin"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
+#: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1794,12 +1799,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -2646,7 +2651,7 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
@@ -5426,12 +5431,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6679,7 +6684,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7324,7 +7329,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7412,7 +7417,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -8139,7 +8144,7 @@ msgstr "VM reboot queued"
 msgid "Force Stop"
 msgstr "Force Stop"
 
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "<0/> {0} lifecycle action{1} in progress"
 msgstr "<0/> {0} lifecycle action{1} in progress"
@@ -8330,3 +8335,16 @@ msgstr "Jail Snapshot"
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DHCP Lease"
 msgstr "DHCP Lease"
+
+#: src/lib/components/custom/Header.svelte
+msgid "Quick actions"
+msgstr "Quick actions"
+
+#: src/lib/components/custom/Header.svelte
+msgid "No create actions are available."
+msgstr "No create actions are available."
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/datacenter/+layout.svelte
+msgid "Documentation"
+msgstr "Documentation"

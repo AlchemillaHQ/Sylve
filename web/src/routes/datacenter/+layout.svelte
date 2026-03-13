@@ -117,8 +117,8 @@
 			<Button
 				size="sm"
 				class="h-6"
-				onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
-				title="Discord"
+				onclick={() => window.open('https://sylve.io/docs', '_blank')}
+				title="Documentation"
 			>
 				<div class="flex items-center">
 					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
