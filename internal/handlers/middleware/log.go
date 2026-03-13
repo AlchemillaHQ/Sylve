@@ -43,6 +43,82 @@ type action struct {
 	Response interface{} `json:"response,omitempty"`
 }
 
+func shouldRedactAuditPayload(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+
+	// These endpoints can carry credentials, cluster keys, or signed download URLs.
+	return strings.HasPrefix(path, "/api/auth/") ||
+		strings.HasPrefix(path, "/api/cluster/") ||
+		path == "/api/utilities/downloads/signed-url"
+}
+
+func isSensitiveAuditKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	key = strings.ReplaceAll(key, "_", "")
+	key = strings.ReplaceAll(key, "-", "")
+
+	switch key {
+	case "password",
+		"token",
+		"accesstoken",
+		"refreshtoken",
+		"clustertoken",
+		"hash",
+		"authorization",
+		"clusterauthorization",
+		"clusterkey",
+		"secret",
+		"signature",
+		"sig",
+		"totp",
+		"otp",
+		"privatekey",
+		"sshkey",
+		"credential",
+		"sessiondata",
+		"assertion",
+		"challenge":
+		return true
+	}
+
+	return strings.Contains(key, "password") ||
+		strings.Contains(key, "token") ||
+		strings.Contains(key, "secret") ||
+		strings.Contains(key, "privatekey") ||
+		strings.Contains(key, "signature")
+}
+
+func sanitizeAuditPayload(v interface{}) interface{} {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for k, value := range typed {
+			if isSensitiveAuditKey(k) {
+				out[k] = "[REDACTED]"
+				continue
+			}
+			out[k] = sanitizeAuditPayload(value)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, value := range typed {
+			out[i] = sanitizeAuditPayload(value)
+		}
+		return out
+	case string:
+		if len(typed) > 4096 {
+			return typed[:4096] + "...[truncated]"
+		}
+		return typed
+	default:
+		return typed
+	}
+}
+
 func parseClaimUserID(raw interface{}) (*uint, bool) {
 	switch v := raw.(type) {
 	case uint:
@@ -248,7 +324,11 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			if err := json.NewDecoder(tee).Decode(&body); err != nil {
 				logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 			} else {
-				act.Body = body
+				if shouldRedactAuditPayload(c.Request.URL.Path) {
+					act.Body = "[REDACTED]"
+				} else {
+					act.Body = sanitizeAuditPayload(body)
+				}
 			}
 
 			c.Request.Body = io.NopCloser(buf)
@@ -287,7 +367,11 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			response = nil
 		}
 
-		act.Response = response
+		if shouldRedactAuditPayload(c.Request.URL.Path) {
+			act.Response = "[REDACTED]"
+		} else {
+			act.Response = sanitizeAuditPayload(response)
+		}
 		actJSON, err = json.Marshal(act)
 		if err != nil {
 			logger.L.Error().Msgf("Failed to marshal final action: %v", err)

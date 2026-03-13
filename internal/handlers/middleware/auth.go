@@ -14,14 +14,33 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+func isPublicSignedDownloadRequest(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+
+	const downloadPrefix = "/api/utilities/downloads/"
+	if !strings.HasPrefix(path, downloadPrefix) {
+		return false
+	}
+
+	subpath := strings.TrimPrefix(path, downloadPrefix)
+	if subpath == "" || strings.Contains(subpath, "/") {
+		return false
+	}
+
+	_, err := uuid.Parse(subpath)
+	return err == nil
+}
 
 func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -32,15 +51,9 @@ func EnsureAuthenticated(authService *authService.Service) gin.HandlerFunc {
 			path == "/api/jail/console"
 		isSSEPath := path == "/api/events/stream"
 
-		if strings.HasPrefix(path, "/api/utilities/downloads/") &&
-			!strings.HasPrefix(path, "/api/utilities/downloads/bulk-delete") &&
-			!strings.HasPrefix(path, "/api/utilities/downloads/signed-url") {
-
-			subpath := strings.TrimPrefix(path, "/api/utilities/downloads/")
-			if subpath != "" && !regexp.MustCompile(`^\d+$`).MatchString(subpath) {
-				c.Next()
-				return
-			}
+		if isPublicSignedDownloadRequest(c.Request.Method, path) {
+			c.Next()
+			return
 		}
 
 		if path == "/api/auth/login" ||

@@ -118,21 +118,33 @@ func (s *Service) GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.
 		return nil, nil, err
 	}
 
-	var file utilitiesModels.DownloadedFile
+	if download.Type != utilitiesModels.DownloadTypeTorrent {
+		return nil, nil, fmt.Errorf("download_is_not_torrent")
+	}
 
-	if download.Type == "torrent" {
-		for _, f := range download.Files {
-			if f.Name == name {
-				file = f
-				break
-			}
+	var file utilitiesModels.DownloadedFile
+	found := false
+
+	for _, f := range download.Files {
+		if f.Name == name {
+			file = f
+			found = true
+			break
 		}
+	}
+
+	if !found {
+		return nil, nil, fmt.Errorf("file_not_found")
 	}
 
 	return &download, &file, nil
 }
 
 func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
+	if strings.TrimSpace(uuid) == "" || id <= 0 {
+		return "", fmt.Errorf("invalid_download_reference")
+	}
+
 	dl, err := s.GetDownload(uuid)
 	if err != nil {
 		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
@@ -146,6 +158,9 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 			logger.L.Error().Msgf("Failed to get file by ID: %v", err)
 			return "", err
 		}
+		if file.DownloadID != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
 
 		var download utilitiesModels.Downloads
 		if err := s.DB.Where("id = ?", file.DownloadID).First(&download).Error; err != nil {
@@ -157,6 +172,9 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 
 		return fullPath, nil
 	case "http":
+		if id != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
 		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
 	}
 

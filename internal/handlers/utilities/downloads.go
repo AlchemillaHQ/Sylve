@@ -19,7 +19,6 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
-	"github.com/alchemillahq/sylve/pkg/crypto"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -247,6 +246,7 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
+			return
 		}
 
 		download, err := utilitiesService.GetDownload(request.ParentUUID)
@@ -271,10 +271,20 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 					Error:   err.Error(),
 					Data:    nil,
 				})
+				return
 			}
 
 			input := fmt.Sprintf("%s:%d", download.UUID, file.ID)
-			sig := crypto.GenerateSignature(input, expires, []byte("download_secret"))
+			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
+			if sigErr != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_sign_download_url",
+					Error:   sigErr.Error(),
+					Data:    nil,
+				})
+				return
+			}
 			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, file.ID)
 
 			c.JSON(http.StatusOK, internal.APIResponse[string]{
@@ -285,7 +295,16 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 			})
 		} else if download.Type == "http" {
 			input := fmt.Sprintf("%s:%d", download.UUID, download.ID)
-			sig := crypto.GenerateSignature(input, expires, []byte("download_secret"))
+			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
+			if sigErr != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_sign_download_url",
+					Error:   sigErr.Error(),
+					Data:    nil,
+				})
+				return
+			}
 			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, download.ID)
 
 			c.JSON(http.StatusOK, internal.APIResponse[string]{
@@ -294,6 +313,13 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 				Error:   "",
 				Data:    signedURL,
 			})
+		} else {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "unsupported_download_type",
+				Data:    nil,
+			})
+			return
 		}
 	}
 }
@@ -345,8 +371,16 @@ func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerF
 		}
 
 		input := fmt.Sprintf("%s:%d", uuid, id)
-		expectedSig := crypto.GenerateSignature(input, expires, []byte("download_secret"))
-		if sig != expectedSig {
+		validSig, sigErr := utilitiesService.ValidateDownloadSignature(input, expires, sig)
+		if sigErr != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_validate_signature",
+				Error:   sigErr.Error(),
+			})
+			return
+		}
+		if !validSig {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "signature_mismatch",
@@ -356,7 +390,7 @@ func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerF
 
 		filePath, err := utilitiesService.GetFilePathById(uuid, id)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "file_not_found",
 				Error:   err.Error(),
