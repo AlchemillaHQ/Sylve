@@ -17,6 +17,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -63,6 +64,18 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return nil
 	}
 
+	emitWithFreshState := func(reason string) {
+		if _, refreshErr := s.refreshLiveStates(); refreshErr != nil {
+			logger.L.Warn().
+				Err(refreshErr).
+				Int("ct_id", ctId).
+				Str("action", action).
+				Msg("failed_to_refresh_jail_live_states_after_action")
+		}
+
+		s.emitLeftPanelRefresh(reason)
+	}
+
 	switch action {
 	case "start":
 		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
@@ -94,7 +107,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
-		s.emitLeftPanelRefresh(fmt.Sprintf("jail_start_%d", ctId))
+		emitWithFreshState(fmt.Sprintf("jail_start_%d", ctId))
 		return nil
 
 	case "stop":
@@ -107,7 +120,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
-		s.emitLeftPanelRefresh(fmt.Sprintf("jail_stop_%d", ctId))
+		emitWithFreshState(fmt.Sprintf("jail_stop_%d", ctId))
 		return nil
 
 	case "restart":
@@ -137,7 +150,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
-		s.emitLeftPanelRefresh(fmt.Sprintf("jail_restart_%d", ctId))
+		emitWithFreshState(fmt.Sprintf("jail_restart_%d", ctId))
 		return nil
 	}
 
