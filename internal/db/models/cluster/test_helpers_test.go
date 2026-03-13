@@ -13,32 +13,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func newClusterModelTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
-	t.Helper()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite db: %v", err)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("failed to get sql db handle: %v", err)
-	}
-	sqlDB.SetMaxOpenConns(1)
-
-	if len(migrateModels) > 0 {
-		if err := db.AutoMigrate(migrateModels...); err != nil {
-			t.Fatalf("failed to migrate test tables: %v", err)
-		}
-	}
-
-	return db
+	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
 func applyFSMRaftLog(t *testing.T, fsm *FSMDispatcher, cmdBytes []byte) error {

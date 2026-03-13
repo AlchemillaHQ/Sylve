@@ -15,22 +15,14 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func newPasskeyHandlerTestAuthService(t *testing.T) *auth.Service {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed_to_open_db: %v", err)
-	}
-
-	if err := db.AutoMigrate(&models.User{}); err != nil {
-		t.Fatalf("failed_to_migrate_db: %v", err)
-	}
+	db := testutil.NewSQLiteTestDB(t, &models.User{})
 
 	return &auth.Service{DB: db}
 }

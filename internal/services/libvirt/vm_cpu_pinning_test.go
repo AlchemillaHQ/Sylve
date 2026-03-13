@@ -14,23 +14,12 @@ import (
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"gorm.io/driver/sqlite"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
 func newCPUPinValidationTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite db: %v", err)
-	}
-
-	if err := db.AutoMigrate(&vmModels.VM{}, &vmModels.VMCPUPinning{}); err != nil {
-		t.Fatalf("failed to migrate vm tables: %v", err)
-	}
-
-	return db
+	return testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMCPUPinning{})
 }
 
 func seedPinnedVM(t *testing.T, db *gorm.DB, rid uint, socket int, cores []int) {

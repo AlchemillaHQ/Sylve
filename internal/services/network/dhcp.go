@@ -82,14 +82,14 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		}
 	}
 
-	var domainRegex = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
-	if !domainRegex.MatchString(req.Domain) {
+	var domainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
+	if req.Domain != "" && !domainRegex.MatchString(req.Domain) {
 		return fmt.Errorf("invalid_domain: %s", req.Domain)
 	}
 
 	sameCount := 0
 
-	if current.StandardSwitches != nil && len(current.StandardSwitches) == len(req.StandardSwitches) {
+	if len(current.StandardSwitches) == len(req.StandardSwitches) {
 		switchMap := make(map[uint]bool, len(req.StandardSwitches))
 		for _, id := range req.StandardSwitches {
 			switchMap[id] = true
@@ -106,7 +106,7 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		}
 	}
 
-	if current.ManualSwitches != nil && len(current.ManualSwitches) == len(req.ManualSwitches) {
+	if len(current.ManualSwitches) == len(req.ManualSwitches) {
 		switchMap := make(map[uint]bool, len(req.ManualSwitches))
 		for _, id := range req.ManualSwitches {
 			switchMap[id] = true
@@ -123,7 +123,7 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		}
 	}
 
-	if current.DNSServers != nil && len(current.DNSServers) == len(req.DNSServers) {
+	if len(current.DNSServers) == len(req.DNSServers) {
 		dnsMap := make(map[string]bool, len(req.DNSServers))
 		for _, d := range req.DNSServers {
 			dnsMap[d] = true
@@ -144,7 +144,7 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		sameCount++
 	}
 
-	if req.ExpandHosts != nil && current.ExpandHosts == *req.ExpandHosts {
+	if req.ExpandHosts == nil || current.ExpandHosts == *req.ExpandHosts {
 		sameCount++
 	}
 
@@ -178,8 +178,6 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		current.Domain = req.Domain
 		if req.ExpandHosts != nil {
 			current.ExpandHosts = *req.ExpandHosts
-		} else {
-			current.ExpandHosts = true
 		}
 
 		return tx.Save(current).Error

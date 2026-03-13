@@ -15,28 +15,21 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func newPasskeyTestService(t *testing.T) *Service {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed_to_open_db: %v", err)
-	}
-
-	if err := db.AutoMigrate(
+	db := testutil.NewSQLiteTestDB(
+		t,
 		&models.User{},
 		&models.Token{},
 		&models.SystemSecrets{},
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
-	); err != nil {
-		t.Fatalf("failed_to_migrate_db: %v", err)
-	}
+	)
 
 	return &Service{DB: db}
 }

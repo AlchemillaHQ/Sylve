@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"gorm.io/driver/sqlite"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
@@ -65,30 +65,14 @@ func resetZeltaTestGlobals(t *testing.T) {
 }
 
 func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
-	t.Helper()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite db: %v", err)
-	}
-
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("failed to get sql db handle: %v", err)
-	}
-	sqlDB.SetMaxOpenConns(1)
-
 	if len(migrateModels) == 0 {
 		migrateModels = []any{
 			&clusterModels.BackupTarget{},
 			&clusterModels.BackupJob{},
 		}
 	}
-	if err := db.AutoMigrate(migrateModels...); err != nil {
-		t.Fatalf("failed to migrate zelta test tables: %v", err)
-	}
 
-	return db
+	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
 func newFakeSSHHarness(t *testing.T) *fakeSSHHarness {

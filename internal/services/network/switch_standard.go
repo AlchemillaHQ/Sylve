@@ -23,6 +23,14 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+var (
+	syncIfaceGet     = iface.Get
+	syncRunCommand   = utils.RunCommand
+	syncCreateBridge = createStandardBridge
+	syncEditBridge   = editStandardBridge
+	syncDeleteBridge = deleteStandardBridge
+)
+
 func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) {
 	var switches []networkModels.StandardSwitch
 	if err := s.DB.
@@ -530,59 +538,66 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			return fmt.Errorf("db_error_checking_switches: %v", err)
 		}
 
-		var nonDbPorts = make(map[string][]string)
-
 		for _, sw := range switches {
-			var dbPorts []string
-
+			dbPorts := make(map[string]bool, len(sw.Ports)*2)
 			for _, port := range sw.Ports {
-				dbPorts = append(dbPorts, port.Name)
-			}
-
-			iface, _ := iface.Get(sw.BridgeName)
-			if iface != nil {
-				for _, member := range iface.BridgeMembers {
-					if utils.Contains(dbPorts, member.Name) {
-						continue
-					}
-
-					if _, exists := nonDbPorts[sw.BridgeName]; !exists {
-						nonDbPorts[sw.BridgeName] = []string{}
-					}
-
-					nonDbPorts[sw.BridgeName] = append(nonDbPorts[sw.BridgeName], member.Name)
+				dbPorts[port.Name] = true
+				if sw.VLAN > 0 {
+					dbPorts[fmt.Sprintf("%s.%d", port.Name, sw.VLAN)] = true
 				}
 			}
-		}
 
-		for _, sw := range switches {
-			if err := deleteStandardBridge(sw); err != nil {
-				return fmt.Errorf("sync_standard_switches: failed_to_delete: %v", err)
-			}
+			preservedMembers := make(map[string]bool)
+			bridgeExists := false
 
-			if err := createStandardBridge(sw); err != nil {
-				return fmt.Errorf("sync_standard_switches: failed_to_create: %v", err)
-			}
-		}
-
-		for br, members := range nonDbPorts {
-			ifaceObj, err := iface.Get(br)
+			ifaceObj, err := syncIfaceGet(sw.BridgeName)
 			if err != nil {
-				return fmt.Errorf("sync_standard_switches: get %s: %v", br, err)
+				if !isInterfaceMissingError(err) {
+					return fmt.Errorf("sync_standard_switches: get %s: %v", sw.BridgeName, err)
+				}
+			} else if ifaceObj != nil {
+				bridgeExists = true
+				for _, member := range ifaceObj.BridgeMembers {
+					if dbPorts[member.Name] {
+						continue
+					}
+					preservedMembers[member.Name] = true
+				}
+			}
+
+			if bridgeExists {
+				if err := syncEditBridge(sw, sw); err != nil {
+					return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %v", sw.BridgeName, err)
+				}
+			} else {
+				if err := syncCreateBridge(sw); err != nil {
+					return fmt.Errorf("sync_standard_switches: failed_to_create %s: %v", sw.BridgeName, err)
+				}
+			}
+
+			if len(preservedMembers) == 0 {
+				continue
+			}
+
+			freshIface, err := syncIfaceGet(sw.BridgeName)
+			if err != nil {
+				return fmt.Errorf("sync_standard_switches: get %s after reconcile: %v", sw.BridgeName, err)
 			}
 
 			existingMembers := make(map[string]bool)
-			for _, m := range ifaceObj.BridgeMembers {
-				existingMembers[m.Name] = true
+			if freshIface != nil {
+				for _, m := range freshIface.BridgeMembers {
+					existingMembers[m.Name] = true
+				}
 			}
 
-			for _, member := range members {
+			for member := range preservedMembers {
 				if _, exists := existingMembers[member]; !exists {
-					if _, err := utils.RunCommand("/sbin/ifconfig", br, "addm", member, "up"); err != nil {
-						return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, br, err)
+					if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "addm", member, "up"); err != nil {
+						return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, sw.BridgeName, err)
 					}
 
-					if _, err := utils.RunCommand("/sbin/ifconfig", member, "up"); err != nil {
+					if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
 						return fmt.Errorf("sync_standard_switches: bring up member %s: %v", member, err)
 					}
 				}
@@ -590,12 +605,12 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 		}
 
 	case "create":
-		if err := createStandardBridge(*sw); err != nil {
+		if err := syncCreateBridge(*sw); err != nil {
 			return err
 		}
 
 	case "delete":
-		if err := deleteStandardBridge(*sw); err != nil {
+		if err := syncDeleteBridge(*sw); err != nil {
 			return err
 		}
 
@@ -609,12 +624,23 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			First(&newSw, sw.ID).Error; err != nil {
 			return fmt.Errorf("switch_not_found")
 		}
-		if err := editStandardBridge(*sw, newSw); err != nil {
+		if err := syncEditBridge(*sw, newSw); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func isInterfaceMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "no such interface")
 }
 
 func createStandardBridge(sw networkModels.StandardSwitch) error {

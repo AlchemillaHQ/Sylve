@@ -152,7 +152,7 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 		InfoService:      infoService.(infoServiceInterfaces.InfoServiceInterface),
 		ZfsService:       zfsService.(*zfs.Service),
 		DiskService:      diskService.(*disk.Service),
-		NetworkService:   NewService[network.Service](db, libvirtService).(*network.Service),
+		NetworkService:   networkService.(networkServiceInterfaces.NetworkServiceInterface),
 		LibvirtService:   libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
 		UtilitiesService: utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
 		SystemService:    systemService.(systemServiceInterfaces.SystemServiceInterface),

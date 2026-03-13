@@ -10,27 +10,18 @@ package middleware
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	authSvc "github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func newAuthzTestService(t *testing.T) *authSvc.Service {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed_to_open_db: %v", err)
-	}
-
-	if err := db.AutoMigrate(&models.User{}, &models.Group{}); err != nil {
-		t.Fatalf("failed_to_migrate_db: %v", err)
-	}
+	db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Group{})
 
 	return &authSvc.Service{DB: db}
 }
@@ -54,9 +45,7 @@ func performAuthzRequest(t *testing.T, service *authSvc.Service, authType string
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/secure", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	rec := testutil.PerformRequest(t, r, http.MethodGet, "/secure", nil, nil)
 
 	return rec.Code
 }

@@ -10,19 +10,17 @@ package libvirtHandlers
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -36,14 +34,7 @@ type vmActionTestResponse struct {
 func setupVMActionHandlerTest(t *testing.T) (*gin.Engine, *lifecycle.Service, *gorm.DB) {
 	t.Helper()
 
-	dbConn, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open test db: %v", err)
-	}
-
-	if err := dbConn.AutoMigrate(&taskModels.GuestLifecycleTask{}); err != nil {
-		t.Fatalf("failed to migrate task table: %v", err)
-	}
+	dbConn := testutil.NewSQLiteTestDB(t, &taskModels.GuestLifecycleTask{})
 
 	cfg := &internal.SylveConfig{
 		Environment: internal.Development,
@@ -65,28 +56,16 @@ func setupVMActionHandlerTest(t *testing.T) (*gin.Engine, *lifecycle.Service, *g
 	return r, lifecycleSvc, dbConn
 }
 
-func decodeVMActionResponse(t *testing.T, rr *httptest.ResponseRecorder) vmActionTestResponse {
-	t.Helper()
-
-	var resp vmActionTestResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	return resp
-}
-
 func TestVMActionHandlerQueuedAccepted(t *testing.T) {
 	r, _, _ := setupVMActionHandlerTest(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/vm/start/101", nil)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+	rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/start/101", nil, nil)
 
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rr.Code, rr.Body.String())
 	}
 
-	resp := decodeVMActionResponse(t, rr)
+	resp := testutil.DecodeJSONResponse[vmActionTestResponse](t, rr)
 	if resp.Status != "success" {
 		t.Fatalf("expected success status, got %q", resp.Status)
 	}
@@ -114,15 +93,13 @@ func TestVMActionHandlerConflictWhenTaskActive(t *testing.T) {
 		t.Fatalf("failed to seed active lifecycle task: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/vm/start/101", nil)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+	rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/start/101", nil, nil)
 
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusConflict, rr.Code, rr.Body.String())
 	}
 
-	resp := decodeVMActionResponse(t, rr)
+	resp := testutil.DecodeJSONResponse[vmActionTestResponse](t, rr)
 	if resp.Message != "lifecycle_task_in_progress" {
 		t.Fatalf("expected lifecycle_task_in_progress message, got %q", resp.Message)
 	}
@@ -143,15 +120,13 @@ func TestVMActionHandlerStopOverrideForShutdown(t *testing.T) {
 		t.Fatalf("failed to seed shutdown task: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/vm/stop/101", nil)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+	rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/stop/101", nil, nil)
 
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected status %d, got %d body=%s", http.StatusAccepted, rr.Code, rr.Body.String())
 	}
 
-	resp := decodeVMActionResponse(t, rr)
+	resp := testutil.DecodeJSONResponse[vmActionTestResponse](t, rr)
 	if resp.Message != "vm_force_stop_requested" {
 		t.Fatalf("expected vm_force_stop_requested message, got %q", resp.Message)
 	}

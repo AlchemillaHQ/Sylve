@@ -18,7 +18,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"gorm.io/driver/sqlite"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
@@ -29,18 +29,12 @@ func boolPtr(v bool) *bool {
 func newLifecycleTestService(t *testing.T) (*Service, *gorm.DB) {
 	t.Helper()
 
-	dbConn, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open test db: %v", err)
-	}
-
-	if err := dbConn.AutoMigrate(
+	dbConn := testutil.NewSQLiteTestDB(
+		t,
 		&taskModels.GuestLifecycleTask{},
 		&vmModels.VM{},
 		&jailModels.Jail{},
-	); err != nil {
-		t.Fatalf("failed to migrate test db: %v", err)
-	}
+	)
 
 	s := NewService(dbConn, nil, nil)
 	s.vmActionFn = func(_ uint, _ string) error { return nil }
