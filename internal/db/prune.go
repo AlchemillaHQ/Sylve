@@ -1,6 +1,8 @@
 package db
 
 import (
+	"time"
+
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"gorm.io/gorm"
@@ -23,7 +25,13 @@ func CleanupOrphanBackupEvents(db *gorm.DB) error {
 }
 
 func PruneJobs(db *gorm.DB) error {
-	/* Add more jobs here if needed in the future */
+	if err := CleanupOrphanBackupEvents(db); err != nil {
+		return err
+	}
 
-	return CleanupOrphanBackupEvents(db)
+	if err := EnforceAuditRecordRetention(db, time.Now()); err != nil {
+		return err
+	}
+
+	return nil
 }

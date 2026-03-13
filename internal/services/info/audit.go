@@ -9,7 +9,11 @@
 package info
 
 import (
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) GetAuditRecords(limit int) ([]infoModels.AuditRecord, error) {
@@ -17,4 +21,10 @@ func (s *Service) GetAuditRecords(limit int) ([]infoModels.AuditRecord, error) {
 	err := s.DB.Order("created_at desc").Limit(limit).Find(&records).Error
 
 	return records, err
+}
+
+func (s *Service) PruneAuditRecords(now time.Time) {
+	if err := db.EnforceAuditRecordRetention(s.DB, now); err != nil {
+		logger.L.Error().Err(err).Msg("failed to apply audit records retention")
+	}
 }

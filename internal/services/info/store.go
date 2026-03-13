@@ -19,6 +19,7 @@ import (
 )
 
 const netRetention = 2 * time.Hour
+const auditRetentionInterval = 6 * time.Hour
 
 func (s *Service) StoreStats() {
 	now := time.Now()
@@ -167,11 +168,14 @@ func (s *Service) StoreNetworkInterfaceStats() {
 func (s *Service) Cron(ctx context.Context) {
 	s.StoreStats()
 	s.StoreNetworkInterfaceStats()
+	s.PruneAuditRecords(time.Now())
 
 	statsTicker := time.NewTicker(10 * time.Second)
 	netTicker := time.NewTicker(2 * time.Minute)
+	auditRetentionTicker := time.NewTicker(auditRetentionInterval)
 	defer statsTicker.Stop()
 	defer netTicker.Stop()
+	defer auditRetentionTicker.Stop()
 
 	logger.L.Info().Msg("Info service cron workers started")
 
@@ -186,6 +190,9 @@ func (s *Service) Cron(ctx context.Context) {
 
 		case <-netTicker.C:
 			s.StoreNetworkInterfaceStats()
+
+		case <-auditRetentionTicker.C:
+			s.PruneAuditRecords(time.Now())
 		}
 	}
 }
