@@ -39,8 +39,10 @@
 	watch(
 		() => node,
 		() => {
-			storage.hostname = node;
-			refetch = true;
+			if (node && node.trim() !== '') {
+				storage.hostname = node;
+				refetch = true;
+			}
 		}
 	);
 </script>
