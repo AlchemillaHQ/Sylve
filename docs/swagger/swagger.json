@@ -13,7 +13,7 @@
             "name": "BSD-2-Clause",
             "url": "https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE"
         },
-        "version": "0.0.1"
+        "version": "0.1.0"
     },
     "host": "sylve.lan:8181",
     "basePath": "/api",
@@ -12150,7 +12150,6 @@
         "github_com_alchemillahq_sylve_internal_interfaces_services_system.InitializeRequest": {
             "type": "object",
             "required": [
-                "pools",
                 "services"
             ],
             "properties": {

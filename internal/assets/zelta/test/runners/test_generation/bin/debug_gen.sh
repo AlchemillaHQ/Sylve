@@ -1,3 +1,11 @@
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Copyright (c) 2025 The FreeBSD Foundation.
+#
+# This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+# of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+# under sponsorship from the FreeBSD Foundation.
+
 # This is a helper for debugging and testing your generated tests
 # This can be helpful if you use the generate_new_tests.sh approach
 # and your test confirmation fails.

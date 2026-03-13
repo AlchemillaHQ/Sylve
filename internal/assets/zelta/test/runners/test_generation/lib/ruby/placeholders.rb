@@ -1,3 +1,11 @@
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Copyright (c) 2025 The FreeBSD Foundation.
+#
+# This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+# of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+# under sponsorship from the FreeBSD Foundation.
+
 # Performs variable substitution in a string using the values from an object's instance variables.
 # The substitution is performed using the %{variable_name} syntax.
 #

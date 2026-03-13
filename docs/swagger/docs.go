@@ -12156,7 +12156,6 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_system.InitializeRequest": {
             "type": "object",
             "required": [
-                "pools",
                 "services"
             ],
             "properties": {
@@ -14317,7 +14316,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.0.1",
+	Version:          "0.1.0",
 	Host:             "sylve.lan:8181",
 	BasePath:         "/api",
 	Schemes:          []string{},
