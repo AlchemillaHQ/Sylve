@@ -31,6 +31,7 @@
 		resolvConf: string;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
+		jailType: 'freebsd' | 'linux';
 	}
 
 	let {
@@ -46,7 +47,8 @@
 		slaac = $bindable(),
 		resolvConf = $bindable(),
 		switches,
-		networkObjects
+		networkObjects,
+		jailType
 	}: Props = $props();
 
 	let usable = $derived({
@@ -200,7 +202,27 @@
 		}
 	);
 
+	watch(
+		() => nwSwitch,
+		() => {
+			comboBoxes.ipv4.value = '0';
+			comboBoxes.ipv4Gateway.value = '0';
+			comboBoxes.ipv6.value = '0';
+			comboBoxes.ipv6Gateway.value = '0';
+		}
+	);
+
 	let selectedDnsPreset = $state('');
+
+	watch(
+		() => jailType,
+		(current) => {
+			if (current === 'linux') {
+				checkBoxes.resolvConf = false;
+				resolvConf = '';
+			}
+		}
+	);
 </script>
 
 {#snippet radioItem(
@@ -328,6 +350,8 @@
 			label="Populate DNS Resolver Configuration"
 			bind:checked={checkBoxes.resolvConf}
 			classes="flex items-center gap-2"
+			disabled={jailType === 'linux'}
+			title={jailType === 'linux' ? 'This option is not available for Linux jails' : ''}
 		/>
 
 		{#if checkBoxes.resolvConf}

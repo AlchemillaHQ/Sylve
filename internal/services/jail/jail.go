@@ -280,6 +280,22 @@ func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfa
 	return simple, nil
 }
 
+func (s *Service) GetJailType(ctId uint) (jailModels.JailType, error) {
+	var jail struct {
+		Type jailModels.JailType
+	}
+
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Select("type").
+		Where("ct_id = ?", ctId).
+		First(&jail).Error; err != nil {
+		logger.L.Error().Err(err).Msgf("get_jail_type: failed to fetch jail type for ct_id %d", ctId)
+		return "", fmt.Errorf("failed_to_get_jail_type: %w", err)
+	}
+
+	return jail.Type, nil
+}
+
 func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error {
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
@@ -1000,7 +1016,13 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	jail.ResourceLimits = data.ResourceLimits
 	jail.AdditionalOptions = data.AdditionalOptions
 	jail.Fstab = data.Fstab
-	jail.ResolvConf = data.ResolvConf
+
+	if data.Type == jailModels.JailTypeFreeBSD {
+		jail.ResolvConf = data.ResolvConf
+	} else {
+		jail.ResolvConf = ""
+	}
+
 	jail.AllowedOptions = data.AllowedOptions
 	jail.Type = data.Type
 	jail.MetadataEnv = data.MetadataEnv
@@ -1346,7 +1368,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		return
 	}
 
-	if strings.TrimSpace(jail.ResolvConf) != "" {
+	if strings.TrimSpace(jail.ResolvConf) != "" && jail.Type == jailModels.JailTypeFreeBSD {
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
 		if err = os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
 			err = fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)

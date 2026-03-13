@@ -262,46 +262,46 @@
 <Toaster />
 <ModeWatcher />
 
-{#if loading.throbber}
-	<Throbber />
-{:else if storage.token && !loading.throbber && !loading.login}
-	{#if initialized === null}
+<Tooltip.Provider>
+	{#if loading.throbber}
 		<Throbber />
-	{:else if initialized === false || rebooted === false}
-		{#if !initialized}
+	{:else if storage.token && !loading.throbber && !loading.login}
+		{#if initialized === null}
+			<Throbber />
+		{:else if initialized === false || rebooted === false}
+			{#if !initialized}
+				<div transition:fade|global={{ duration: 400 }}>
+					<Initialize bind:initialized />
+				</div>
+			{:else if !rebooted}
+				<div transition:fade|global={{ duration: 400 }}>
+					<Reboot />
+				</div>
+			{/if}
+		{:else}
 			<div transition:fade|global={{ duration: 400 }}>
-				<Initialize bind:initialized />
-			</div>
-		{:else if !rebooted}
-			<div transition:fade|global={{ duration: 400 }}>
-				<Reboot />
+				<ProgressBar
+					id="top-loader"
+					class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
+					bind:busy
+				/>
+				<Shell>
+					<Index />
+					{@render children()}
+				</Shell>
 			</div>
 		{/if}
 	{:else}
 		<div transition:fade|global={{ duration: 400 }}>
-			<ProgressBar
-				id="top-loader"
-				class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
-				bind:busy
+			<Login
+				onLogin={handleLogin}
+				onPasskeyLogin={handlePasskeyLogin}
+				loading={loading.login}
+				loadingPasskey={loading.passkey}
 			/>
-			<Shell>
-				<Index />
-				<Tooltip.Provider>
-					{@render children()}
-				</Tooltip.Provider>
-			</Shell>
 		</div>
 	{/if}
-{:else}
-	<div transition:fade|global={{ duration: 400 }}>
-		<Login
-			onLogin={handleLogin}
-			onPasskeyLogin={handlePasskeyLogin}
-			loading={loading.login}
-			loadingPasskey={loading.passkey}
-		/>
-	</div>
-{/if}
+</Tooltip.Provider>
 
 <About bind:open={storage.openAbout} />
 

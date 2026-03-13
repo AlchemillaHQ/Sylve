@@ -340,6 +340,7 @@
 									bind:dhcp={modal.network.dhcp}
 									bind:slaac={modal.network.slaac}
 									bind:resolvConf={modal.network.resolvConf}
+									jailType={modal.advanced.jailType}
 									switches={networkSwitches.current}
 									networkObjects={networkObjects.current}
 								/>

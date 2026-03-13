@@ -4959,12 +4959,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -8348,3 +8348,7 @@ msgstr "No create actions are available."
 #: src/routes/datacenter/+layout.svelte
 msgid "Documentation"
 msgstr "Documentation"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "This option is not available for Linux jails"
+msgstr "This option is not available for Linux jails"

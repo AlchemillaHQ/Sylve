@@ -66,14 +66,18 @@
 					? jail.current.fstab.split('\n')[0] + (jail.current.fstab.includes('\n') ? '…' : '')
 					: '—'
 			},
-			{
-				id: generateNanoId('resolvConf'),
-				property: '/etc/resolv.conf',
-				value: jail?.current.resolvConf
-					? jail.current.resolvConf.split('\n')[0] +
-						(jail.current.resolvConf.includes('\n') ? '…' : '')
-					: '—'
-			},
+			...(jail?.current.type === 'freebsd'
+				? [
+						{
+							id: generateNanoId('resolvConf'),
+							property: '/etc/resolv.conf',
+							value: jail?.current.resolvConf
+								? jail.current.resolvConf.split('\n')[0] +
+									(jail.current.resolvConf.includes('\n') ? '…' : '')
+								: '—'
+						}
+					]
+				: []),
 			{
 				id: generateNanoId('devfsRules'),
 				property: 'DevFS Ruleset',
@@ -229,7 +233,7 @@
 	<TextEdit bind:open={properties.fstab.open} jail={jail.current} type="fstab" bind:reload />
 {/if}
 
-{#if properties.resolvConf.open && jail.current}
+{#if properties.resolvConf.open && jail.current && jail.current.type === 'freebsd'}
 	<TextEdit
 		bind:open={properties.resolvConf.open}
 		jail={jail.current}
