@@ -275,3 +275,15 @@ service sylve start
 ```
 
 Now you should have Sylve up and running, you can access the web UI by navigating to `https://<your-server-ip>:8181` in your browser and login with the credentials you setup in the `config.json` file.
+
+### Default Network Ports
+
+Sylve uses these ports by default:
+
+- `8181/tcp`: Main API and web UI (HTTPS). Change in `config.json` with `port`.
+
+- `8182/tcp`: Main API and web UI over HTTP only. This is insecure and can break features like passkeys and serial/VNC console, so use it only when needed (for example, behind a reverse proxy on a trusted network). Change in `config.json` with `httpPort`.
+
+- `8180/tcp`: RAFT communication between cluster nodes. You can choose this value during cluster setup, but every node must use the same RAFT port.
+
+- `7246/udp`: BTT DHT peer discovery. Used only when `btt.dht.enabled` is `true`. Change in `config.json` with `btt.dht.port`.
