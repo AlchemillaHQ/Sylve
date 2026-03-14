@@ -3900,7 +3900,7 @@ info:
     url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   termsOfService: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   title: Sylve API
-  version: 0.1.0
+  version: 0.1.1
 paths:
   /auth/groups:
     get:
