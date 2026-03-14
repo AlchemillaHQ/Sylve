@@ -32,6 +32,7 @@
 	let { children }: Props = $props();
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
+	let isDeleteInFlight = $state(false);
 
 	let rid = $derived.by(() => {
 		const value = Number(page.url.pathname.split('/')[3]);
@@ -126,6 +127,7 @@
 	});
 
 	async function refreshVmDomain() {
+		if (!rid || isDeleteInFlight) return;
 		await Promise.all([vm.refetch(), domain.refetch(), lifecycleTask.refetch()]);
 	}
 
@@ -140,7 +142,7 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
-			if (visible.current && rid) {
+			if (visible.current && rid && !isDeleteInFlight) {
 				domain.refetch();
 			}
 		}
@@ -148,7 +150,7 @@
 
 	useInterval(() => 1500, {
 		callback: () => {
-			if (visible.current && rid) {
+			if (visible.current && rid && !isDeleteInFlight) {
 				lifecycleTask.refetch();
 			}
 		}
@@ -157,7 +159,7 @@
 	watch(
 		() => storage.idle,
 		(idle) => {
-			if (!idle && rid) {
+			if (!idle && rid && !isDeleteInFlight) {
 				refreshVmDomain();
 			}
 		}
@@ -205,6 +207,7 @@
 
 	async function handleDelete() {
 		if (!vm.current) return;
+		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = modalState.forceDelete
@@ -228,6 +231,8 @@
 		modalState.forceDelete = false;
 
 		if (result.status === 'error') {
+			isDeleteInFlight = false;
+			await refreshVmDomain();
 			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
 				duration: 5000,
 				position: 'bottom-center'

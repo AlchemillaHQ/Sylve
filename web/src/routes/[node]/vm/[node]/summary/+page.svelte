@@ -107,7 +107,7 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
-			if (visible.current) {
+			if (visible.current && !isDeleteInFlight) {
 				domain.refetch();
 			}
 		}
@@ -115,7 +115,7 @@
 
 	useInterval(() => 1500, {
 		callback: () => {
-			if (visible.current) {
+			if (visible.current && !isDeleteInFlight) {
 				lifecycleTask.refetch();
 			}
 		}
@@ -123,7 +123,7 @@
 
 	useInterval(() => 3000, {
 		callback: () => {
-			if (visible.current) {
+			if (visible.current && !isDeleteInFlight) {
 				stats.refetch();
 			}
 		}
@@ -141,7 +141,7 @@
 	watch(
 		() => storage.idle,
 		(idle) => {
-			if (!idle) {
+			if (!idle && !isDeleteInFlight) {
 				vm.refetch();
 				domain.refetch();
 				stats.refetch();
@@ -161,6 +161,7 @@
 	let isDescInitialized = false;
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
+	let isDeleteInFlight = $state(false);
 
 	watch(
 		() => debouncedDesc.current,
@@ -224,6 +225,7 @@
 	}
 
 	async function handleDelete() {
+		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = modalState.forceDelete
@@ -247,12 +249,14 @@
 		modalState.forceDelete = false;
 
 		if (result.status === 'error') {
+			isDeleteInFlight = false;
+			await Promise.all([vm.refetch(), domain.refetch(), stats.refetch(), lifecycleTask.refetch()]);
 			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
-			goto(`/${storage.hostname}/summary`);
+			await goto(`/${storage.hostname}/summary`);
 			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,

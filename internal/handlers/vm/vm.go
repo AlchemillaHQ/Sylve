@@ -29,6 +29,19 @@ type VMEditDescRequest struct {
 	Description string `json:"description"`
 }
 
+func isVMNotFoundError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "vm_not_found")
+}
+
+func isVMDomainNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "failed_to_lookup_domain")
+}
+
 // @Summary Get a Virtual Machine by RID or ID
 // @Description Retrieve a virtual machine by its RID or ID
 // @Tags VM
@@ -85,6 +98,16 @@ func GetVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 		}
 
 		if err != nil || vm.ID == 0 {
+			if isVMNotFoundError(err) || vm.ID == 0 {
+				c.JSON(404, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "vm_not_found",
+					Data:    nil,
+					Error:   "vm_not_found",
+				})
+				return
+			}
+
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_vm",
@@ -182,6 +205,16 @@ func GetLvDomain(libvirtService *libvirt.Service) gin.HandlerFunc {
 
 		domain, err := libvirtService.GetLvDomain(uint(ridInt))
 		if err != nil {
+			if isVMDomainNotFoundError(err) {
+				c.JSON(404, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "vm_domain_not_found",
+					Error:   "vm_domain_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_domain",
@@ -313,6 +346,16 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 			ctx := c.Request.Context()
 			warnings, removeErr := libvirtService.ForceRemoveVM(uint(vmInt), deleteMacs, ctx)
 			if removeErr != nil {
+				if isVMNotFoundError(removeErr) {
+					c.JSON(404, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "vm_not_found",
+						Data:    nil,
+						Error:   "vm_not_found",
+					})
+					return
+				}
+
 				c.JSON(500, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "failed_to_force_remove_vm",
@@ -408,6 +451,16 @@ func RemoveVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 		err = libvirtService.RemoveVM(uint(vmInt), deleteMacs, deleteRawDisks, deleteVolumes, ctx)
 
 		if err != nil {
+			if isVMNotFoundError(err) {
+				c.JSON(404, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "vm_not_found",
+					Data:    nil,
+					Error:   "vm_not_found",
+				})
+				return
+			}
+
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_remove_vm",
@@ -638,6 +691,16 @@ func GetSimpleVMByIdentifier(libvirtService *libvirt.Service) gin.HandlerFunc {
 
 		simple, err := libvirtService.GetSimpleVM(identifier, t == "rid")
 		if err != nil {
+			if isVMNotFoundError(err) {
+				c.JSON(404, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "vm_not_found",
+					Data:    nil,
+					Error:   "vm_not_found",
+				})
+				return
+			}
+
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_vm",

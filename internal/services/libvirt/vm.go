@@ -1029,37 +1029,48 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		return fmt.Errorf("failed_to_delete_vm: %w", err)
 	}
 
-	if cleanUpMacs {
-		tx := s.DB.Begin()
-
-		if len(usedMACS) > 0 {
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectEntry{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_entries: %w", err)
-			}
-
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectResolution{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
-			}
-
-			if err := tx.Delete(&networkModels.Object{}, usedMACS).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_objects: %w", err)
-			}
-
-			if err := tx.Commit().Error; err != nil {
-				return fmt.Errorf("failed_to_commit_cleanup: %w", err)
-			}
-		}
+	if err := s.cleanupVMMACObjects(cleanUpMacs, usedMACS); err != nil {
+		return err
 	}
 
 	for _, p := range vm.CPUPinning {
 		if err := s.DB.Delete(&p).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_cpupinning: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (s *Service) cleanupVMMACObjects(cleanUpMacs bool, usedMACS []uint) error {
+	if !cleanUpMacs || len(usedMACS) == 0 {
+		return nil
+	}
+
+	tx := s.DB.Begin()
+	if err := tx.Error; err != nil {
+		return fmt.Errorf("failed_to_begin_mac_cleanup: %w", err)
+	}
+
+	if err := tx.Where("object_id IN ?", usedMACS).
+		Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_object_entries: %w", err)
+	}
+
+	if err := tx.Where("object_id IN ?", usedMACS).
+		Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
+	}
+
+	if err := tx.Delete(&networkModels.Object{}, usedMACS).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_objects: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_cleanup: %w", err)
 	}
 
 	return nil
