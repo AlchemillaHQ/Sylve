@@ -100,36 +100,36 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
 
 1. Create a `config.json` file:
 
-```json
+```jsonc
 {
   "environment": "production",
   "proxyToVite": false,
   "dataPath": "/var/db/sylve",
   "admin": {
     "email": "admin@sylve.local",
-    "password": "replace-this-with-something-strong"
+    "password": "replace-this-with-something-strong",
   },
   "tlsConfig": {
     "certFile": "/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
-    "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem"
+    "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem",
   },
   "logLevel": 3,
-  "port": 8181,
-  "httpPort": 8182,
+  "port": 8181, // You can set to 0 to disable HTTPS entirely
+  "httpPort": 8182, // You can set to 0 to disable HTTP entirely
   "raft": {
-    "reset": false
+    "reset": false,
   },
   "btt": {
     "rpc": {
       "enabled": false,
       "host": "127.0.0.1",
-      "port": 6890
+      "port": 6890,
     },
     "dht": {
       "enabled": true,
-      "port": 7246
-    }
-  }
+      "port": 7246,
+    },
+  },
 }
 ```
 

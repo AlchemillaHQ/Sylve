@@ -217,21 +217,25 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go func() {
-		defer wg.Done()
-		logger.L.Info().Msgf("HTTPS server started on %s:%d", cfg.IP, cfg.Port)
-		if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
-		}
-	}()
+	if cfg.Port != 0 {
+		go func() {
+			defer wg.Done()
+			logger.L.Info().Msgf("HTTPS server started on %s:%d", cfg.IP, cfg.Port)
+			if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
+			}
+		}()
+	}
 
-	go func() {
-		defer wg.Done()
-		logger.L.Info().Msgf("HTTP server started on %s:%d", cfg.IP, cfg.HTTPPort)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.L.Fatal().Err(err).Msg("Failed to start HTTP server")
-		}
-	}()
+	if cfg.HTTPPort != 0 {
+		go func() {
+			defer wg.Done()
+			logger.L.Info().Msgf("HTTP server started on %s:%d", cfg.IP, cfg.HTTPPort)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.L.Fatal().Err(err).Msg("Failed to start HTTP server")
+			}
+		}()
+	}
 
 	<-sigChan
 
