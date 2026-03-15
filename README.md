@@ -10,7 +10,7 @@
 
 https://github.com/user-attachments/assets/61ed410e-58f6-405f-80da-c4a6bcb469b8
 
-Sylve is a lightweight, open-source virtualization platform for FreeBSD. It combines **Bhyve virtual machines**, **FreeBSD Jails**, and **ZFS storage** into a modern web interface designed to deliver a streamlined, Proxmox-like experience tailored for FreeBSD environments.
+Sylve is a lightweight, open-source management platform for FreeBSD. It combines **Bhyve virtual machines**, **FreeBSD Jails**, and **ZFS storage** into a modern web interface designed to deliver a streamlined, Proxmox-like experience tailored for FreeBSD environments.
 
 The backend is written in **Go**, while the frontend is built with **SvelteKit**.
 
@@ -18,15 +18,15 @@ The backend is written in **Go**, while the frontend is built with **SvelteKit**
 
 # Features
 
+- **Modern Web UI**
 - **Bhyve Virtual Machine Management**
 - **FreeBSD Jail Management**
 - **ZFS-first storage architecture**
-- **Modern web UI**
 - **Built-in clustering support**
 - **Integrated networking tooling**
 - **Zelta integration for backups**
 
-Sylve aims to make FreeBSD virtualization easier to manage without relying on complex shell scripts.
+Sylve aims to make FreeBSD management easier to manage without relying on complex shell scripts.
 
 # Quick Start
 
@@ -97,10 +97,10 @@ You can also support the project by sponsoring us on GitHub:
 
 # Contributing
 
-Contributions are welcome. Please read docs/CONTRIBUTING.md before submitting pull requests.
+Contributions are welcome. Please read [contributors guide](https://sylve.io/guides/contributing/code-contributions/) before submitting pull requests.
 
 # License
 
 This project is licensed under the **BSD 2-Clause License**.
 
-See the LICENSE file for details.
+See the [LICENSE](LICENSE) file for details.
