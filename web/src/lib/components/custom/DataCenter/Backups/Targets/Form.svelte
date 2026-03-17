@@ -234,7 +234,15 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (reload = true)}>Cancel</Button>
+			<Button
+				variant="outline"
+				onclick={() => {
+					reset(false);
+				}}
+				disabled={loading}
+			>
+				Cancel
+			</Button>
 			<Button onclick={saveTarget} disabled={loading}>
 				{#if loading}
 					<div class="flex items-center gap-1">
