@@ -102,8 +102,23 @@
 		return clusterDetails?.current.cluster.enabled ?? false;
 	});
 
+	function clampPercent(value: number | null | undefined): number {
+		const safe = Number(value ?? 0);
+		if (!Number.isFinite(safe)) return 0;
+		return Math.min(100, Math.max(0, safe));
+	}
+
+	function safeUsage(used: number, total: number): number {
+		if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return 0;
+		return clampPercent((used / total) * 100);
+	}
+
 	let total = $derived.by(() => {
-		if (nodes.current.length === 0) {
+		const onlineNodes = nodes.current.filter(
+			(node) => String(node.status || '').toLowerCase() === 'online'
+		);
+
+		if (onlineNodes.length === 0) {
 			return {
 				cpu: { total: 0, usage: 0 },
 				ram: { total: 0, usage: 0 },
@@ -111,33 +126,49 @@
 			};
 		}
 
-		const totalCPUs = nodes.current.reduce((acc, node) => acc + node.cpu, 0);
-		const used = nodes.current.reduce((acc, node) => acc + (node.cpu * node.cpuUsage) / 100, 0);
+		const localNodeId = clusterDetails.current?.nodeId;
+		const normalizedNodes = onlineNodes.map((node) => {
+			if (node.nodeUUID !== localNodeId) return node;
 
-		const totalMemory = nodes.current.reduce((acc, node) => acc + node.memory, 0);
-		const usedMemory = nodes.current.reduce(
-			(acc, node) => acc + ((node.memory ?? 0) * (node.memoryUsage ?? 0)) / 100,
+			return {
+				...node,
+				// Use live local CPU stats to avoid stale 0% values from cluster snapshots.
+				cpu: node.cpu > 0 ? node.cpu : (cpuInfo.current?.logicalCores ?? 0),
+				cpuUsage: clampPercent(cpuInfo.current?.usage ?? node.cpuUsage)
+			};
+		});
+
+		const totalCPUs = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.cpu ?? 0), 0);
+		const used = normalizedNodes.reduce(
+			(acc, node) =>
+				acc + (Math.max(0, node.cpu ?? 0) * clampPercent(node.cpuUsage ?? 0)) / 100,
 			0
 		);
 
-		const totalDisk = nodes.current.reduce((acc, node) => acc + node.disk, 0);
-		const usedDisk = nodes.current.reduce(
-			(acc, node) => acc + (node.disk * node.diskUsage) / 100,
+		const totalMemory = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.memory ?? 0), 0);
+		const usedMemory = normalizedNodes.reduce(
+			(acc, node) => acc + (Math.max(0, node.memory ?? 0) * clampPercent(node.memoryUsage ?? 0)) / 100,
+			0
+		);
+
+		const totalDisk = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.disk ?? 0), 0);
+		const usedDisk = normalizedNodes.reduce(
+			(acc, node) => acc + (Math.max(0, node.disk ?? 0) * clampPercent(node.diskUsage ?? 0)) / 100,
 			0
 		);
 
 		return {
 			cpu: {
 				total: totalCPUs,
-				usage: (used / totalCPUs) * 100
+				usage: safeUsage(used, totalCPUs)
 			},
 			ram: {
 				total: totalMemory,
-				usage: (usedMemory / totalMemory) * 100
+				usage: safeUsage(usedMemory, totalMemory)
 			},
 			disk: {
 				total: totalDisk,
-				usage: (usedDisk / totalDisk) * 100
+				usage: safeUsage(usedDisk, totalDisk)
 			}
 		};
 	});

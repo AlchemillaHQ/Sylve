@@ -53,7 +53,12 @@ type curInfo struct {
 This is used to gauge whether we actually write about the cluster node to db or not,
 to prevent unnecessary churn DB writes if nothing significant has changed.
 */
-const usageThreshold = 5.0
+const (
+	// Keep CPU updates more sensitive so low non-zero usage doesn't appear stuck at 0%.
+	cpuUsageThreshold = 1.0
+	// Memory and disk can keep a wider threshold to avoid unnecessary write churn.
+	resourceUsageThreshold = 5.0
+)
 
 const (
 	nodeStatusOnline  = "online"
@@ -222,15 +227,15 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 			return true
 		}
 
-		if math.Abs(ex.CPUUsage-cur.cpuUsage) >= usageThreshold {
+		if math.Abs(ex.CPUUsage-cur.cpuUsage) >= cpuUsageThreshold {
 			return true
 		}
 
-		if math.Abs(ex.MemoryUsage-cur.memUsage) >= usageThreshold {
+		if math.Abs(ex.MemoryUsage-cur.memUsage) >= resourceUsageThreshold {
 			return true
 		}
 
-		if math.Abs(ex.DiskUsage-cur.diskUsage) >= usageThreshold {
+		if math.Abs(ex.DiskUsage-cur.diskUsage) >= resourceUsageThreshold {
 			return true
 		}
 	}
