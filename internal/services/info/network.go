@@ -66,7 +66,7 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	buckets := make(map[int64]*infoServiceInterfaces.HistoricalNetworkInterface)
 
 	for _, cur := range rows {
-		sec := cur.CreatedAt.Truncate(time.Minute).Unix()
+		sec := cur.CreatedAt.Truncate(time.Second).Unix()
 
 		b, ok := buckets[sec]
 		if !ok {

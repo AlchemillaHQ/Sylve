@@ -20,6 +20,7 @@ import (
 
 const netRetention = 2 * time.Hour
 const auditRetentionInterval = 6 * time.Hour
+const netSampleInterval = 2 * time.Minute
 
 func (s *Service) StoreStats() {
 	now := time.Now()
@@ -114,6 +115,7 @@ func (s *Service) StoreNetworkInterfaceStats() {
 
 		if !exists {
 			rows = append(rows, infoModels.NetworkInterface{
+				CreatedAt:       now,
 				Name:            iface.Name,
 				Flags:           iface.Flags,
 				Network:         iface.Network,
@@ -128,11 +130,12 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		}
 
 		rows = append(rows, infoModels.NetworkInterface{
-			Name:    iface.Name,
-			Flags:   iface.Flags,
-			Network: iface.Network,
-			Address: iface.Address,
-			IsDelta: true,
+			CreatedAt: now,
+			Name:      iface.Name,
+			Flags:     iface.Flags,
+			Network:   iface.Network,
+			Address:   iface.Address,
+			IsDelta:   true,
 
 			ReceivedPackets: delta(iface.ReceivedPackets, prev.ReceivedPackets),
 			ReceivedErrors:  delta(iface.ReceivedErrors, prev.ReceivedErrors),
@@ -171,7 +174,7 @@ func (s *Service) Cron(ctx context.Context) {
 	s.PruneAuditRecords(time.Now())
 
 	statsTicker := time.NewTicker(10 * time.Second)
-	netTicker := time.NewTicker(2 * time.Minute)
+	netTicker := time.NewTicker(netSampleInterval)
 	auditRetentionTicker := time.NewTicker(auditRetentionInterval)
 	defer statsTicker.Stop()
 	defer netTicker.Stop()

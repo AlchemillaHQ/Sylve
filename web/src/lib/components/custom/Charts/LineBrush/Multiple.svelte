@@ -36,12 +36,16 @@
 		color: 'one' | 'two' | 'three' | 'four';
 	}
 
+	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond';
+
 	interface Props {
 		title: string;
 		titleIconClass?: string;
 		series: SeriesData[];
 		percentage: boolean;
 		data: boolean;
+		types?: ValueType;
+		smooth?: boolean;
 		containerClass?: string;
 		containerContentHeight?: string;
 	}
@@ -52,6 +56,8 @@
 		series,
 		percentage,
 		data,
+		types = 'auto',
+		smooth = true,
 		containerClass = 'p-5',
 		containerContentHeight = 'h-[360px]'
 	}: Props = $props();
@@ -124,6 +130,34 @@
 			.filter(Boolean) as [number, number | null][];
 	}
 
+	function getEffectiveValueType():
+		| 'percentage'
+		| 'number'
+		| 'human'
+		| Exclude<ValueType, 'auto'> {
+		if (types !== 'auto') return types;
+		if (percentage) return 'percentage';
+		if (data) return 'human';
+		return 'number';
+	}
+
+	function formatValue(value: number, axis = false): string {
+		const type = getEffectiveValueType();
+
+		switch (type) {
+			case 'percentage':
+				return axis ? `${value}%` : `${Number(value).toFixed(2)}%`;
+			case 'human':
+				return humanFormat(value);
+			case 'bytes':
+				return humanFormat(value, { unit: 'B' });
+			case 'bytesPerSecond':
+				return humanFormat(value, { unit: 'B/s' });
+			default:
+				return axis ? value.toString() : Number(value).toFixed(2);
+		}
+	}
+
 	function getOptions(): EChartsOption {
 		return {
 			title: {
@@ -169,13 +203,7 @@
 
 							let formattedValue = '';
 							if (value !== undefined && value !== null) {
-								if (percentage) {
-									formattedValue = `${Number(value).toFixed(2)}%`;
-								} else if (data) {
-									formattedValue = humanFormat(Number(value));
-								} else {
-									formattedValue = Number(value).toFixed(2);
-								}
+								formattedValue = formatValue(Number(value));
 							}
 
 							tooltipHtml += `<div class="font-semi" style="color:${colors.tooltip.text}">${seriesName}: ${formattedValue}</div>`;
@@ -213,12 +241,7 @@
 				min: percentage ? 0 : undefined,
 				axisLabel: {
 					formatter: function (value: number) {
-						if (percentage) {
-							return `${value}%`;
-						} else if (data) {
-							return `${humanFormat(value)}`;
-						}
-						return value.toString();
+						return formatValue(value, true);
 					}
 				},
 				splitLine: {
@@ -271,7 +294,7 @@
 				name: s.name,
 				type: 'line',
 				showSymbol: false,
-				smooth: true,
+				smooth,
 				data: cleanPoints(s.points)
 			})),
 			toolbox: {
@@ -298,6 +321,8 @@
 			() => series,
 			() => percentage,
 			() => data,
+			() => types,
+			() => smooth,
 			() => titleIconClass
 		],
 		() => {
