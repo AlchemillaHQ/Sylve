@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -3357,7 +3356,7 @@ func (s *Service) resolveReplicationNodeAPI(nodeID string) (string, error) {
 				if host == "" {
 					continue
 				}
-				return net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port)), nil
+				return net.JoinHostPort(host, strconv.Itoa(clusterService.ClusterEmbeddedHTTPSPort)), nil
 			}
 		}
 	}

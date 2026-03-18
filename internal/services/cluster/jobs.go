@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	hub "github.com/alchemillahq/sylve/internal/events"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
@@ -287,7 +286,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 
 			uuid := serverID
 			host := raftAddressHost(serverAddr)
-			api := fmt.Sprintf("%s:%d", host, config.ParsedConfig.Port)
+			api := fmt.Sprintf("%s:%d", host, ClusterEmbeddedHTTPSPort)
 
 			ci := curInfo{
 				nodeUUID: uuid,
@@ -296,7 +295,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 				healthOK: false,
 			}
 
-			nodeInfo, err := s.GetNodeInfo(host, config.ParsedConfig.Port, clusterToken)
+			nodeInfo, err := s.GetNodeInfo(host, ClusterEmbeddedHTTPSPort, clusterToken)
 			if err == nil {
 				ci.healthOK = true
 				ci.canonHost = nodeInfo.Hostname
@@ -503,7 +502,7 @@ func (s *Service) PopulateClusterNodes() error {
 
 		go func(addr string) {
 			host := raftAddressHost(addr)
-			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, config.ParsedConfig.Port)
+			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
 
 			_, statusCode, err := utils.HTTPPostJSONWithTimeout(
 				url,
@@ -548,7 +547,7 @@ func (s *Service) classifyPeerStatuses(results map[string]string) ([]string, []s
 
 func (s *Service) probePeerStatus(raftAddr string, headers map[string]string) string {
 	host := raftAddressHost(raftAddr)
-	url := fmt.Sprintf("https://%s:%d/api/health/http", host, config.ParsedConfig.Port)
+	url := fmt.Sprintf("https://%s:%d/api/health/http", host, ClusterEmbeddedHTTPSPort)
 	if _, err := utils.HTTPGetStatus(url, headers); err == nil {
 		return nodeStatusOnline
 	}

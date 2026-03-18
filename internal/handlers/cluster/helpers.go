@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +31,7 @@ func mapRaftAddrToAPI(raftAddr string) (string, error) {
 	}
 
 	scheme := "https"
-	apiPort := config.ParsedConfig.Port
+	apiPort := cluster.ClusterEmbeddedHTTPSPort
 
 	return (&url.URL{
 		Scheme: scheme,

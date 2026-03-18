@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -338,7 +337,7 @@ func resolveClusterNodeAPI(cS *cluster.Service, nodeID string) (string, error) {
 						host = string(server.Address)
 					}
 
-					targetAPI = net.JoinHostPort(host, strconv.Itoa(config.ParsedConfig.Port))
+					targetAPI = net.JoinHostPort(host, strconv.Itoa(cluster.ClusterEmbeddedHTTPSPort))
 					break
 				}
 			}

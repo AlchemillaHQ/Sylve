@@ -252,7 +252,7 @@ func (s *Service) ResetRaftNode() error {
 		}
 
 		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s:%d/api/cluster/remove-peer", host, config.ParsedConfig.Port), payload, headers)
+			fmt.Sprintf("https://%s:%d/api/cluster/remove-peer", host, ClusterEmbeddedHTTPSPort), payload, headers)
 
 		if err != nil {
 			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)

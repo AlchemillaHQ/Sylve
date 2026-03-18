@@ -26,8 +26,6 @@ const (
 	clusterSSHDirName         = "cluster/ssh"
 	clusterSSHPrivateFileName = "id_ed25519"
 	clusterSSHPublicFileName  = "id_ed25519.pub"
-
-	ClusterEmbeddedSSHPort = 8122
 )
 
 func (s *Service) clusterSSHDir() (string, error) {
@@ -204,7 +202,7 @@ func (s *Service) forwardSSHIdentityToLeader(identity clusterModels.ClusterSSHId
 		return fmt.Errorf("create_cluster_token_failed: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s:%d/api/intra-cluster/ssh-identity", host, config.ParsedConfig.Port)
+	url := fmt.Sprintf("https://%s:%d/api/intra-cluster/ssh-identity", host, ClusterEmbeddedHTTPSPort)
 	headers := map[string]string{
 		"Accept":          "application/json",
 		"Content-Type":    "application/json",

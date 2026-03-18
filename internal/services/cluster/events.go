@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -106,7 +105,7 @@ func (s *Service) EmitLeftPanelRefreshClusterWide(reason string) {
 		url := fmt.Sprintf(
 			"https://%s:%d/api/intra-cluster/events/left-panel-refresh",
 			host,
-			config.ParsedConfig.Port,
+			ClusterEmbeddedHTTPSPort,
 		)
 
 		go func(nodeID, endpoint string) {

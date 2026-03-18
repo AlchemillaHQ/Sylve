@@ -203,7 +203,7 @@ func main() {
 		logger.L.Fatal().Err(err).Msg("Failed to get TLS config")
 	}
 
-	server := &http.Server{
+	httpsServer := &http.Server{
 		Addr:      fmt.Sprintf(":%d", cfg.Port),
 		Handler:   r,
 		TLSConfig: tlsConfig,
@@ -214,20 +214,41 @@ func main() {
 		Handler: r,
 	}
 
+	clusterHTTPSServer := &http.Server{
+		Addr:      fmt.Sprintf(":%d", cluster.ClusterEmbeddedHTTPSPort),
+		Handler:   r,
+		TLSConfig: tlsConfig,
+	}
+
+	if cfg.HTTPPort == cluster.ClusterEmbeddedHTTPSPort {
+		logger.L.Fatal().
+			Int("http_port", cfg.HTTPPort).
+			Int("intra_cluster_https_port", cluster.ClusterEmbeddedHTTPSPort).
+			Msg("Configured HTTP port conflicts with reserved intra-cluster HTTPS port")
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(2)
+	type namedServer struct {
+		name string
+		srv  *http.Server
+	}
+	startedServers := make([]namedServer, 0, 3)
 
 	if cfg.Port != 0 {
+		startedServers = append(startedServers, namedServer{name: "HTTPS", srv: httpsServer})
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			logger.L.Info().Msgf("HTTPS server started on %s:%d", cfg.IP, cfg.Port)
-			if err := server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
 			}
 		}()
 	}
 
 	if cfg.HTTPPort != 0 {
+		startedServers = append(startedServers, namedServer{name: "HTTP", srv: httpServer})
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			logger.L.Info().Msgf("HTTP server started on %s:%d", cfg.IP, cfg.HTTPPort)
@@ -237,6 +258,21 @@ func main() {
 		}()
 	}
 
+	startDedicatedClusterHTTPS := cfg.Port == 0 || cfg.Port != cluster.ClusterEmbeddedHTTPSPort
+	if startDedicatedClusterHTTPS {
+		startedServers = append(startedServers, namedServer{name: "Intra-cluster HTTPS", srv: clusterHTTPSServer})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", cfg.IP, cluster.ClusterEmbeddedHTTPSPort)
+			if err := clusterHTTPSServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
+			}
+		}()
+	} else {
+		logger.L.Info().Msgf("Intra-cluster HTTPS is served by configured HTTPS port on %s:%d", cfg.IP, cfg.Port)
+	}
+
 	<-sigChan
 
 	logger.L.Info().Msg("Shutting down servers gracefully")
@@ -244,11 +280,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		logger.L.Error().Err(err).Msg("HTTPS server forced to shutdown")
-	}
-	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.L.Error().Err(err).Msg("HTTP server forced to shutdown")
+	for _, ns := range startedServers {
+		if err := ns.srv.Shutdown(ctx); err != nil {
+			logger.L.Error().Err(err).Msgf("%s server forced to shutdown", ns.name)
+		}
 	}
 
 	wg.Wait()
