@@ -48,15 +48,19 @@ import (
 )
 
 func main() {
-	cmd.AsciiArt()
+	cmd.AsciiArt(os.Stdout)
 
 	if !sysU.IsRoot() {
 		logger.BootstrapFatal("Root privileges required!")
 	}
 
-	cfgPath, enableRepl := cmd.ParseFlags()
+	cfgResult, err := cmd.ParseFlags(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
-	cfg := config.ParseConfig(cfgPath)
+	cfg := config.ParseConfig(cfgResult.ConfigPath)
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 	if err := preflightRequiredPorts(cfg, portnetwork.TryBindToPort); err != nil {
 		logger.L.Fatal().Err(err).Msg("startup_port_preflight_failed")
@@ -119,7 +123,7 @@ func main() {
 	initContext, initCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer initCancel()
 
-	err := sS.Initialize(aS.(*auth.Service), initContext, qCtx)
+	err = sS.Initialize(aS.(*auth.Service), initContext, qCtx)
 
 	go sysS.StartNetlinkWatcher(qCtx)
 	go sysS.NetlinkEventsCleaner(qCtx)
@@ -188,7 +192,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	if enableRepl {
+	if cfgResult.REPL {
 		replCtx := &repl.Context{
 			Auth:           aS.(*auth.Service),
 			Jail:           jailSvc,

@@ -17,6 +17,7 @@ import (
 )
 
 var execCommand = exec.Command
+var execCommandContext = exec.CommandContext
 
 func RunCommand(command string, args ...string) (string, error) {
 	cmd := execCommand(command, args...)
@@ -36,7 +37,7 @@ func RunCommand(command string, args ...string) (string, error) {
 }
 
 func RunCommandWithInput(command string, input string, args ...string) (string, error) {
-	cmd := exec.Command(command, args...)
+	cmd := execCommand(command, args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -49,7 +50,7 @@ func RunCommandWithInput(command string, input string, args ...string) (string, 
 }
 
 func RunCommandWithContext(ctx context.Context, command string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
+	cmd := execCommandContext(ctx, command, args...)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -66,7 +67,7 @@ func RunCommandWithContext(ctx context.Context, command string, args ...string) 
 }
 
 func RunCommandAllowExitCode(command string, allowed []int, args ...string) (string, error) {
-	cmd := exec.Command(command, args...)
+	cmd := execCommand(command, args...)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
