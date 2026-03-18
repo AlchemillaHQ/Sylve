@@ -3221,36 +3221,26 @@ definitions:
         type: string
       nodeIp:
         type: string
-      nodePort:
-        maximum: 65535
-        minimum: 1024
-        type: integer
     required:
     - clusterKey
     - nodeId
     - nodeIp
-    - nodePort
     type: object
   internal_handlers_cluster.JoinClusterRequest:
     properties:
       clusterKey:
         type: string
-      leaderApi:
+      leaderIp:
         type: string
       nodeId:
         type: string
       nodeIp:
         type: string
-      nodePort:
-        maximum: 65535
-        minimum: 1024
-        type: integer
     required:
     - clusterKey
-    - leaderApi
+    - leaderIp
     - nodeId
     - nodeIp
-    - nodePort
     type: object
   internal_handlers_cluster.NoteRequest:
     properties:
@@ -4293,7 +4283,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a cluster given a bootstrapping nodes IP and Port
+      description: Create a cluster given a bootstrapping node IP
       produces:
       - application/json
       responses:

@@ -24,27 +24,28 @@ import (
 )
 
 type CreateClusterRequest struct {
-	IP   string `json:"ip" binding:"required,ip"`
-	Port int    `json:"port" binding:"required,min=1024,max=65535"`
+	IP string `json:"ip" binding:"required,ip"`
 }
 
 type JoinClusterRequest struct {
 	NodeID     string `json:"nodeId" binding:"required"`
 	NodeIP     string `json:"nodeIp" binding:"required,ip"`
-	NodePort   int    `json:"nodePort" binding:"required,min=1024,max=65535"`
-	LeaderAPI  string `json:"leaderApi" binding:"required"`
+	LeaderIP   string `json:"leaderIp" binding:"required,ip"`
 	ClusterKey string `json:"clusterKey" binding:"required"`
 }
 
 type AcceptJoinRequest struct {
 	NodeID     string `json:"nodeId" binding:"required"`
 	NodeIP     string `json:"nodeIp" binding:"required,ip"`
-	NodePort   int    `json:"nodePort" binding:"required,min=1024,max=65535"`
 	ClusterKey string `json:"clusterKey" binding:"required"`
 }
 
 type RemovePeerRequest struct {
 	NodeID string `json:"nodeId" binding:"required"`
+}
+
+func joinLeaderAPIHost(leaderIP string) string {
+	return cluster.ClusterAPIHost(leaderIP)
 }
 
 // @Summary Get Cluster
@@ -79,7 +80,7 @@ func GetCluster(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Create Cluster
-// @Description Create a cluster given a bootstrapping nodes IP and Port
+// @Description Create a cluster given a bootstrapping node IP
 // @Tags Cluster
 // @Accept json
 // @Produce json
@@ -101,7 +102,7 @@ func CreateCluster(as *auth.Service, cS *cluster.Service, fsm raft.FSM) gin.Hand
 			return
 		}
 
-		if err := cS.CreateCluster(req.IP, req.Port, fsm); err != nil {
+		if err := cS.CreateCluster(req.IP, fsm); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_creating_cluster",
@@ -170,15 +171,17 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			return
 		}
 
-		if !utils.IsValidIPPort(req.LeaderAPI) {
+		if !utils.IsValidIP(req.LeaderIP) {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_leader_api",
-				Error:   "leader_api_must_be_in_host_port_format",
+				Message: "invalid_leader_ip",
+				Error:   "leader_ip_must_be_valid",
 				Data:    nil,
 			})
 			return
 		}
+
+		leaderAPIHost := joinLeaderAPIHost(req.LeaderIP)
 
 		userId := c.GetUint("UserID")
 		username := c.GetString("Username")
@@ -190,7 +193,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 
 		healthURL := fmt.Sprintf(
 			"https://%s/api/health/basic",
-			req.LeaderAPI,
+			leaderAPIHost,
 		)
 
 		if err := utils.HTTPPostJSON(healthURL, req, headers); err != nil {
@@ -203,7 +206,7 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			return
 		}
 
-		err = cS.StartAsJoiner(fsm, req.NodeIP, req.NodePort, req.ClusterKey)
+		err = cS.StartAsJoiner(fsm, req.NodeIP, req.ClusterKey)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -214,11 +217,10 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			return
 		}
 
-		acceptURL := fmt.Sprintf("https://%s/api/cluster/accept-join", req.LeaderAPI)
+		acceptURL := fmt.Sprintf("https://%s/api/cluster/accept-join", leaderAPIHost)
 		payload := map[string]any{
 			"nodeId":     req.NodeID,
 			"nodeIp":     req.NodeIP,
-			"nodePort":   req.NodePort,
 			"clusterKey": req.ClusterKey,
 		}
 
@@ -275,7 +277,7 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.AcceptJoin(req.NodeID, req.NodeIP, req.NodePort, req.ClusterKey); err != nil {
+		if err := cS.AcceptJoin(req.NodeID, req.NodeIP, req.ClusterKey); err != nil {
 			if strings.HasPrefix(err.Error(), "not_leader;") {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",

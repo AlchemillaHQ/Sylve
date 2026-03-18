@@ -114,8 +114,8 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
     "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem",
   },
   "logLevel": 3,
-  "port": 8181, // You can set to 0 to disable HTTPS entirely
-  "httpPort": 8182, // You can set to 0 to disable HTTP entirely
+  "port": 8181, // You can set to 0 to disable the main/public HTTPS listener
+  "httpPort": 8182, // You can set to 0 to disable the main/public HTTP listener
   "raft": {
     "reset": false,
   },
@@ -284,6 +284,10 @@ Sylve uses these ports by default:
 
 - `8182/tcp`: Main API and web UI over HTTP only. This is insecure and can break features like passkeys and serial/VNC console, so use it only when needed (for example, behind a reverse proxy on a trusted network). Change in `config.json` with `httpPort`.
 
-- `8180/tcp`: RAFT communication between cluster nodes. You can choose this value during cluster setup, but every node must use the same RAFT port.
+- `8180/tcp`: RAFT communication between cluster nodes. This port is fixed in Sylve and is not configurable.
+
+- `8183/tcp`: Cluster SSH channel used for intra-cluster operations. This port is fixed in Sylve and is not configurable.
+
+- `8184/tcp`: Intra-cluster HTTPS API used for node-to-node control plane traffic (including cluster join flows). This port is fixed in Sylve and is not configurable.
 
 - `7246/udp`: BTT DHT peer discovery. Used only when `btt.dht.enabled` is `true`. Change in `config.json` with `btt.dht.port`.

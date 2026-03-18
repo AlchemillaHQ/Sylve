@@ -646,7 +646,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a cluster given a bootstrapping nodes IP and Port",
+                "description": "Create a cluster given a bootstrapping node IP",
                 "consumes": [
                     "application/json"
                 ],
@@ -13301,8 +13301,7 @@ const docTemplate = `{
             "required": [
                 "clusterKey",
                 "nodeId",
-                "nodeIp",
-                "nodePort"
+                "nodeIp"
             ],
             "properties": {
                 "clusterKey": {
@@ -13313,11 +13312,6 @@ const docTemplate = `{
                 },
                 "nodeIp": {
                     "type": "string"
-                },
-                "nodePort": {
-                    "type": "integer",
-                    "maximum": 65535,
-                    "minimum": 1024
                 }
             }
         },
@@ -13325,16 +13319,15 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "clusterKey",
-                "leaderApi",
+                "leaderIp",
                 "nodeId",
-                "nodeIp",
-                "nodePort"
+                "nodeIp"
             ],
             "properties": {
                 "clusterKey": {
                     "type": "string"
                 },
-                "leaderApi": {
+                "leaderIp": {
                     "type": "string"
                 },
                 "nodeId": {
@@ -13342,11 +13335,6 @@ const docTemplate = `{
                 },
                 "nodeIp": {
                     "type": "string"
-                },
-                "nodePort": {
-                    "type": "integer",
-                    "maximum": 65535,
-                    "minimum": 1024
                 }
             }
         },

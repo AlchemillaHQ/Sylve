@@ -23,7 +23,7 @@ The upcoming replication feature is also disabled on nodes with less than 3 node
 
 ## Setting up a Cluster
 
-Setting up a cluster is pretty straightforward, all you need to do is to navigate to Datacenter -> Cluster and then click on "Create Cluster". Once you do that a modal opens up where you can fill out the IP of your node that will be used for clustering and the port as well, this port must be **identical** on all nodes in the cluster, the default port is 8180.
+Setting up a cluster is pretty straightforward, all you need to do is to navigate to Datacenter -> Cluster and then click on "Create Cluster". Once you do that a modal opens up where you can fill out the IP of your node that will be used for clustering. RAFT uses the fixed intra-cluster port `8180/tcp` on every node.
 
 ![Creating a cluster](create-cluster.png)
 
@@ -39,7 +39,7 @@ Treat the cluster key like a password, anyone with the cluster key can join the 
 
 ## Joining a Cluster
 
-To join a cluster, copy the cluster key from the first node or the **LEADER NODE** and click on "Join Cluster" on the node that you want to join the cluster. This will open up a modal where you can paste the cluster key, and the API of the **LEADER NODE**, the API is NOT running on port 8180 or whatever your RAFT port is, it will be running on "192.168.172.203:8181" or whatever ip:port you use to access the WebUI of the leader. Once that is done click on "Join". Once you do that, the node will attempt to join the cluster and if successful, it will be added to the cluster view. This is what the join modal looks like:
+To join a cluster, copy the cluster key from the first node or the **LEADER NODE** and click on "Join Cluster" on the node that you want to join the cluster. This opens a modal where you provide the cluster key and the IP of the **LEADER NODE** (IP only, no port). Sylve uses the fixed intra-cluster HTTPS port `8184/tcp` internally for leader API communication, and fixed RAFT port `8180/tcp` for consensus. Once that is done click on "Join". Once you do that, the node will attempt to join the cluster and if successful, it will be added to the cluster view. This is what the join modal looks like:
 
 ![Joining a cluster](join-cluster.png)
 

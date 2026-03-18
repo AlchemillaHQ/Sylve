@@ -49,7 +49,9 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
 	}
 
-	err := network.TryBindToPort(c.RaftIP, c.RaftPort, "tcp")
+	port := ClusterRaftPort
+
+	err := network.TryBindToPort(c.RaftIP, port, "tcp")
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_bind_raft_port: %v", err)
 	}
@@ -84,7 +86,7 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_create_snap_store")
 	}
 
-	bindAddr := fmt.Sprintf("%s:%d", c.RaftIP, c.RaftPort)
+	bindAddr := RaftServerAddress(c.RaftIP)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
 	if err != nil {
 		return nil, fmt.Errorf("Could not resolve address: %s", err)
@@ -252,7 +254,7 @@ func (s *Service) ResetRaftNode() error {
 		}
 
 		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s:%d/api/cluster/remove-peer", host, ClusterEmbeddedHTTPSPort), payload, headers)
+			fmt.Sprintf("https://%s/api/cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
 
 		if err != nil {
 			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)

@@ -301,7 +301,7 @@ func initClusterRecord(db *gorm.DB) error {
 				Key:           "",
 				RaftBootstrap: nil,
 				RaftIP:        "",
-				RaftPort:      0,
+				RaftPort:      8180,
 			}
 
 			if err := db.Create(defaultCluster).Error; err != nil {

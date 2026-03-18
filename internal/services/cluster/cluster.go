@@ -346,10 +346,12 @@ func (s *Service) ResyncClusterState() error {
 	return nil
 }
 
-func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
+func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
 	}
+
+	port := ClusterRaftPort
 
 	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
 		return err
@@ -419,14 +421,12 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 	return nil
 }
 
-func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey string) error {
+func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, clusterKey string) error {
 	if !utils.IsValidIP(ip) {
 		return errors.New("invalid_ip_address")
 	}
 
-	if !utils.IsValidPort(port) {
-		return errors.New("invalid_port_number")
-	}
+	port := ClusterRaftPort
 
 	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
 		return fmt.Errorf("failed_to_bind_to_port: %v", err)
@@ -471,7 +471,7 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 	_, err = s.SetupRaft(false, fsm)
 	if err != nil {
 		c.RaftIP = ""
-		c.RaftPort = 0
+		c.RaftPort = ClusterRaftPort
 		c.Enabled = false
 		c.Key = ""
 
@@ -539,7 +539,7 @@ func (s *Service) ClearClusteredData() error {
 	})
 }
 
-func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey string) error {
+func (s *Service) AcceptJoin(nodeID, nodeIp string, providedKey string) error {
 	details, err := s.GetClusterDetails()
 	if err != nil {
 		return err
@@ -569,7 +569,7 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey st
 
 	conf := fut.Configuration()
 	sid := raft.ServerID(nodeID)
-	saddr := raft.ServerAddress(fmt.Sprintf("%s:%d", nodeIp, nodePort))
+	saddr := raft.ServerAddress(RaftServerAddress(nodeIp))
 
 	for _, srv := range conf.Servers {
 		if srv.ID == sid {
@@ -623,7 +623,7 @@ func (s *Service) MarkDeclustered() error {
 	c.Key = ""
 	c.RaftBootstrap = nil
 	c.RaftIP = ""
-	c.RaftPort = 0
+	c.RaftPort = ClusterRaftPort
 
 	if err := s.DB.Save(&c).Error; err != nil {
 		return err

@@ -8,7 +8,22 @@
 
 package cluster
 
-const (
-	ClusterEmbeddedSSHPort   = 8122
-	ClusterEmbeddedHTTPSPort = 8124
+import (
+	"net"
+	"strconv"
+	"strings"
 )
+
+const (
+	ClusterRaftPort          = 8180
+	ClusterEmbeddedSSHPort   = 8183
+	ClusterEmbeddedHTTPSPort = 8184
+)
+
+func ClusterAPIHost(ip string) string {
+	return net.JoinHostPort(strings.TrimSpace(ip), strconv.Itoa(ClusterEmbeddedHTTPSPort))
+}
+
+func RaftServerAddress(ip string) string {
+	return net.JoinHostPort(strings.TrimSpace(ip), strconv.Itoa(ClusterRaftPort))
+}

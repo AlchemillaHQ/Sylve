@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,13 +34,14 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
-	"github.com/alchemillahq/sylve/internal/services/network"
+	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
+	portnetwork "github.com/alchemillahq/sylve/pkg/network"
 	sysU "github.com/alchemillahq/sylve/pkg/system"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -58,6 +58,9 @@ func main() {
 
 	cfg := config.ParseConfig(cfgPath)
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
+	if err := preflightRequiredPorts(cfg, portnetwork.TryBindToPort); err != nil {
+		logger.L.Fatal().Err(err).Msg("startup_port_preflight_failed")
+	}
 
 	d := db.SetupDatabase(cfg, false)
 	_ = db.SetupCache(cfg)
@@ -95,6 +98,10 @@ func main() {
 	zeltaS := serviceRegistry.ZeltaService
 
 	clusterSvc := cS.(*cluster.Service)
+	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_cluster_ports")
+	}
+
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
 	lifecycleSvc := lifecycle.NewService(d, libvirtSvc, jailSvc)
@@ -133,11 +140,7 @@ func main() {
 
 	err = cS.InitRaft(fsm)
 	if err != nil {
-		if !strings.Contains(err.Error(), "record not found") {
-			logger.L.Error().Err(err).Msg("Failed to initialize RAFT")
-		} else {
-			logger.L.Info().Msg("Not initializing RAFT")
-		}
+		logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
 	}
 
 	if err := clusterSvc.StartEmbeddedSSHServer(qCtx); err != nil {
@@ -169,7 +172,7 @@ func main() {
 		iS.(*info.Service),
 		zS.(*zfs.Service),
 		dS.(*disk.Service),
-		nS.(*network.Service),
+		nS.(*networkService.Service),
 		uS.(*utilities.Service),
 		sysS.(*system.Service),
 		libvirtSvc,
@@ -190,7 +193,7 @@ func main() {
 			Auth:           aS.(*auth.Service),
 			Jail:           jailSvc,
 			VirtualMachine: libvirtSvc,
-			Network:        nS.(*network.Service),
+			Network:        nS.(*networkService.Service),
 			QuitChan:       sigChan,
 		}
 
@@ -218,13 +221,6 @@ func main() {
 		Addr:      fmt.Sprintf(":%d", cluster.ClusterEmbeddedHTTPSPort),
 		Handler:   r,
 		TLSConfig: tlsConfig,
-	}
-
-	if cfg.HTTPPort == cluster.ClusterEmbeddedHTTPSPort {
-		logger.L.Fatal().
-			Int("http_port", cfg.HTTPPort).
-			Int("intra_cluster_https_port", cluster.ClusterEmbeddedHTTPSPort).
-			Msg("Configured HTTP port conflicts with reserved intra-cluster HTTPS port")
 	}
 
 	var wg sync.WaitGroup
@@ -258,20 +254,15 @@ func main() {
 		}()
 	}
 
-	startDedicatedClusterHTTPS := cfg.Port == 0 || cfg.Port != cluster.ClusterEmbeddedHTTPSPort
-	if startDedicatedClusterHTTPS {
-		startedServers = append(startedServers, namedServer{name: "Intra-cluster HTTPS", srv: clusterHTTPSServer})
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", cfg.IP, cluster.ClusterEmbeddedHTTPSPort)
-			if err := clusterHTTPSServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
-			}
-		}()
-	} else {
-		logger.L.Info().Msgf("Intra-cluster HTTPS is served by configured HTTPS port on %s:%d", cfg.IP, cfg.Port)
-	}
+	startedServers = append(startedServers, namedServer{name: "Intra-cluster HTTPS", srv: clusterHTTPSServer})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		logger.L.Info().Msgf("Intra-cluster HTTPS server started on %s:%d", cfg.IP, cluster.ClusterEmbeddedHTTPSPort)
+		if err := clusterHTTPSServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			logger.L.Fatal().Err(err).Msg("Failed to start intra-cluster HTTPS server")
+		}
+	}()
 
 	<-sigChan
 
