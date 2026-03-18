@@ -4,7 +4,7 @@ tmp_dir = "tmp"
 
 [build]
   bin = "./tmp/main"
-  cmd = "go build -o ./tmp/main cmd/sylve/main.go"
+  cmd = "go build -o ./tmp/main ./cmd/sylve"
   delay = 500
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "views", "node_modules", "data", "web", "scripts", "utils/testdir", ".vscode", ".idea", "new-web", "bin", "docs/app-docs"]
   exclude_unchanged = false
