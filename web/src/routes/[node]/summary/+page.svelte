@@ -154,52 +154,23 @@
 		}
 	);
 
-	function toNetworkRatePoints(
+	function toNetworkDeltaPoints(
 		history: HistoricalNetworkInterface[],
 		direction: 'receivedBytes' | 'sentBytes'
 	): { date: number; value: number }[] {
-		const rows = history
+		return history
 			.map((sample) => {
 				const date = new Date(sample.createdAt).getTime();
 				const bytes = Number(sample[direction]);
-
-				if (!Number.isFinite(date)) {
-					return null;
-				}
+				if (!Number.isFinite(date)) return null;
 
 				return {
 					date,
-					bytes: Number.isFinite(bytes) && bytes > 0 ? bytes : 0
+					value: Number.isFinite(bytes) && bytes > 0 ? bytes : 0
 				};
 			})
 			.filter(Boolean)
-			.sort((a, b) => a.date - b.date) as { date: number; bytes: number }[];
-
-		if (rows.length === 0) {
-			return [];
-		}
-
-		const sampleIntervals = rows
-			.slice(1)
-			.map((row, index) => Math.max((row.date - rows[index].date) / 1000, 1))
-			.sort((a, b) => a - b);
-
-		const fallbackSeconds =
-			sampleIntervals.length > 0
-				? sampleIntervals[Math.floor(sampleIntervals.length / 2)]
-				: 120;
-
-		return rows.map((row, index) => {
-			const previous = rows[index - 1];
-			const elapsedSeconds = previous
-				? Math.max((row.date - previous.date) / 1000, 1)
-				: fallbackSeconds;
-
-			return {
-				date: row.date,
-				value: row.bytes / elapsedSeconds
-			};
-		});
+			.sort((a, b) => a.date - b.date) as { date: number; value: number }[];
 	}
 
 	useInterval(() => 2000, {
@@ -379,18 +350,18 @@
 					title="Network Usage"
 					percentage={false}
 					data={true}
-					types="bytesPerSecond"
+					types="bytes"
 					smooth={false}
 					series={[
 						{
 							name: 'Received',
 							color: 'two',
-							points: toNetworkRatePoints(networkUsageHistorical.current, 'receivedBytes')
+							points: toNetworkDeltaPoints(networkUsageHistorical.current, 'receivedBytes')
 						},
 						{
 							name: 'Sent',
 							color: 'one',
-							points: toNetworkRatePoints(networkUsageHistorical.current, 'sentBytes')
+							points: toNetworkDeltaPoints(networkUsageHistorical.current, 'sentBytes')
 						}
 					]}
 					titleIconClass="icon-[mdi--network]"

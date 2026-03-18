@@ -80,41 +80,12 @@ func (s *Service) StoreNetworkInterfaceStats() {
 	}
 
 	now := time.Now()
-	var recentRows []infoModels.NetworkInterface
-
-	cutoffSearch := now.Add(-5 * time.Minute)
-	err = s.DB.Where("created_at >= ?", cutoffSearch).
-		Order("created_at DESC").
-		Find(&recentRows).Error
-
-	if err != nil {
-		logger.L.Err(err).Msg("failed loading previous network interface stats")
-		return
-	}
-
-	last := make(map[string]infoModels.NetworkInterface)
-	for _, r := range recentRows {
-		key := r.Name + "|" + r.Network
-		if _, exists := last[key]; !exists {
-			last[key] = r
-		}
-	}
-
-	rows := make([]infoModels.NetworkInterface, 0, len(interfaces))
-
-	delta := func(cur, old int64) int64 {
-		if cur < old {
-			return 0
-		}
-		return cur - old
-	}
-
+	rowsByKey := make(map[string]infoModels.NetworkInterface, len(interfaces))
 	for _, iface := range interfaces {
 		key := iface.Name + "|" + iface.Network
-		prev, exists := last[key]
-
+		row, exists := rowsByKey[key]
 		if !exists {
-			rows = append(rows, infoModels.NetworkInterface{
+			rowsByKey[key] = infoModels.NetworkInterface{
 				CreatedAt:       now,
 				Name:            iface.Name,
 				Flags:           iface.Flags,
@@ -122,32 +93,48 @@ func (s *Service) StoreNetworkInterfaceStats() {
 				Address:         iface.Address,
 				IsDelta:         false,
 				ReceivedPackets: iface.ReceivedPackets,
+				ReceivedErrors:  iface.ReceivedErrors,
+				DroppedPackets:  iface.DroppedPackets,
 				ReceivedBytes:   iface.ReceivedBytes,
 				SentPackets:     iface.SentPackets,
+				SendErrors:      iface.SendErrors,
 				SentBytes:       iface.SentBytes,
-			})
+				Collisions:      iface.Collisions,
+			}
 			continue
 		}
 
-		rows = append(rows, infoModels.NetworkInterface{
-			CreatedAt: now,
-			Name:      iface.Name,
-			Flags:     iface.Flags,
-			Network:   iface.Network,
-			Address:   iface.Address,
-			IsDelta:   true,
+		// netstat can emit duplicate rows per interface key; keep max counters to avoid duplicate inflation
+		if iface.ReceivedPackets > row.ReceivedPackets {
+			row.ReceivedPackets = iface.ReceivedPackets
+		}
+		if iface.ReceivedErrors > row.ReceivedErrors {
+			row.ReceivedErrors = iface.ReceivedErrors
+		}
+		if iface.DroppedPackets > row.DroppedPackets {
+			row.DroppedPackets = iface.DroppedPackets
+		}
+		if iface.ReceivedBytes > row.ReceivedBytes {
+			row.ReceivedBytes = iface.ReceivedBytes
+		}
+		if iface.SentPackets > row.SentPackets {
+			row.SentPackets = iface.SentPackets
+		}
+		if iface.SendErrors > row.SendErrors {
+			row.SendErrors = iface.SendErrors
+		}
+		if iface.SentBytes > row.SentBytes {
+			row.SentBytes = iface.SentBytes
+		}
+		if iface.Collisions > row.Collisions {
+			row.Collisions = iface.Collisions
+		}
+		rowsByKey[key] = row
+	}
 
-			ReceivedPackets: delta(iface.ReceivedPackets, prev.ReceivedPackets),
-			ReceivedErrors:  delta(iface.ReceivedErrors, prev.ReceivedErrors),
-			DroppedPackets:  delta(iface.DroppedPackets, prev.DroppedPackets),
-			ReceivedBytes:   delta(iface.ReceivedBytes, prev.ReceivedBytes),
-
-			SentPackets: delta(iface.SentPackets, prev.SentPackets),
-			SendErrors:  delta(iface.SendErrors, prev.SendErrors),
-			SentBytes:   delta(iface.SentBytes, prev.SentBytes),
-
-			Collisions: delta(iface.Collisions, prev.Collisions),
-		})
+	rows := make([]infoModels.NetworkInterface, 0, len(rowsByKey))
+	for _, row := range rowsByKey {
+		rows = append(rows, row)
 	}
 
 	if len(rows) == 0 {
@@ -161,10 +148,10 @@ func (s *Service) StoreNetworkInterfaceStats() {
 
 	cutoffPrune := now.Add(-netRetention)
 	if err := s.DB.Unscoped().
-		Where("is_delta = true AND created_at < ?", cutoffPrune).
+		Where("created_at < ?", cutoffPrune).
 		Delete(&infoModels.NetworkInterface{}).
 		Error; err != nil {
-		logger.L.Err(err).Msg("failed pruning old network interface deltas")
+		logger.L.Err(err).Msg("failed pruning old network interface stats")
 	}
 }
 
