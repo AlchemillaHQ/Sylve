@@ -93,8 +93,8 @@ export async function getJailStateById(ctId: number): Promise<JailState> {
     return await apiRequest(`/jail/state/${ctId}`, JailStateSchema, 'GET');
 }
 
-export async function jailAction(ctId: number, action: string): Promise<APIResponse> {
-    return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST');
+export async function jailAction(ctId: number, action: string, hostname?: string): Promise<APIResponse> {
+    return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST', undefined, { hostname });
 }
 
 export async function updateDescription(id: number, description: string): Promise<APIResponse> {

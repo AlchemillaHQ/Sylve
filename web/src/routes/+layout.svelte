@@ -283,6 +283,7 @@
 				<ProgressBar
 					id="top-loader"
 					class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
+					zIndex={9999}
 					bind:busy
 				/>
 				<Shell>

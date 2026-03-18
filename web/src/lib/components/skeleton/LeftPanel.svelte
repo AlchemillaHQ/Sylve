@@ -20,6 +20,9 @@
 		icon: string;
 		href?: string;
 		state?: 'active' | 'inactive';
+		resourceId?: number;
+		resourceType?: 'vm' | 'jail';
+		nodeHostname?: string;
 		children?: TreeItem[];
 	}
 
@@ -114,6 +117,9 @@
 			...simpleVMs.current.map((vm) => ({
 				id: `vm-${vm.rid}`,
 				sortId: vm.rid,
+				resourceId: vm.rid,
+				resourceType: 'vm' as const,
+				nodeHostname: node,
 				label: `${vm.name} (${vm.rid})`,
 				icon: 'material-symbols--monitor-outline',
 				href: `/${node}/vm/${vm.rid}`,
@@ -126,6 +132,9 @@
 				.map((jail) => ({
 					id: `jail-${jail.ctId}`,
 					sortId: jail.ctId,
+					resourceId: jail.ctId,
+					resourceType: 'jail' as const,
+					nodeHostname: node,
 					label: `${jail.name} (${jail.ctId})`,
 					icon: 'hugeicons--prison',
 					href: `/${node}/jail/${jail.ctId}`,

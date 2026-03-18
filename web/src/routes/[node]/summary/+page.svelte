@@ -169,8 +169,8 @@
 					value: Number.isFinite(bytes) && bytes > 0 ? bytes : 0
 				};
 			})
-			.filter(Boolean)
-			.sort((a, b) => a.date - b.date) as { date: number; value: number }[];
+			.filter((x): x is { date: number; value: number } => x !== null)
+			.sort((a, b) => a.date - b.date);
 	}
 
 	useInterval(() => 2000, {
@@ -296,7 +296,7 @@
 								</Table.Row>
 								<Table.Row>
 									<Table.Cell>Operating System</Table.Cell>
-									<Table.Cell class="break-words whitespace-normal"
+									<Table.Cell class="wrap-break-words whitespace-normal"
 										>{basicInfo.current.os}</Table.Cell
 									>
 								</Table.Row>

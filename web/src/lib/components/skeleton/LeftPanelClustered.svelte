@@ -111,6 +111,9 @@
 						.map((j) => ({
 							id: `jail-${j.ctId}`,
 							sortId: j.ctId,
+							resourceId: j.ctId,
+							resourceType: 'jail' as const,
+							nodeHostname: n.hostname,
 							label: `${j.name} (${j.ctId})`,
 							icon: 'hugeicons--prison',
 							href: `/${nodeLabel}/jail/${j.ctId}`,
@@ -119,6 +122,9 @@
 					...(n.vms ?? []).map((vm) => ({
 						id: `vm-${vm.rid}`,
 						sortId: vm.rid,
+						resourceId: vm.rid,
+						resourceType: 'vm' as const,
+						nodeHostname: n.hostname,
 						label: `${vm.name} (${vm.rid})`,
 						icon: 'material-symbols--monitor-outline',
 						href: `/${nodeLabel}/vm/${vm.rid}`,

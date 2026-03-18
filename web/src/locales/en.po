@@ -553,6 +553,8 @@ msgstr "Copied response to clipboard"
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Enter"
@@ -1799,12 +1801,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1868,12 +1870,12 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
@@ -2080,6 +2082,7 @@ msgid "<0/> Rebooting..."
 msgstr "<0/> Rebooting..."
 
 #: src/lib/components/custom/Initialization/Reboot.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Reboot"
 msgstr "<0/> Reboot"
 
@@ -2109,12 +2112,12 @@ msgstr "No groups selected and guests are not allowed"
 msgid "Share cannot have overlapping groups"
 msgstr "Share cannot have overlapping groups"
 
-#. 0: edit ? 'edit'
+#. 0: edit ? 'edit' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Failed to {0} Samba share"
 
-#. 0: edit ? 'edited'
+#. 0: edit ? 'edited' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
@@ -2712,7 +2715,7 @@ msgstr "{0} folders, {1} files"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -4959,7 +4962,7 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
@@ -5431,12 +5434,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6684,7 +6687,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7264,7 +7267,7 @@ msgstr "New Backup Target"
 msgid "SSH Port"
 msgstr "SSH Port"
 
-#. 0: edit ? '(leave empty to keep existing)' : ''
+#. 0: edit ? '(leave empty to keep existing)' 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH Private Key {0}"
@@ -7329,7 +7332,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7417,7 +7420,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -8352,3 +8355,28 @@ msgstr "Documentation"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "This option is not available for Linux jails"
 msgstr "This option is not available for Linux jails"
+
+#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
+msgid "B/s"
+msgstr "B/s"
+
+#~ msgid "<0/> Hello World"
+#~ msgstr "<0/> Hello World"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Stop"
+msgstr "<0/> Stop"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Start"
+msgstr "<0/> Start"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Shutdown"
+msgstr "<0/> Shutdown"
+
+#: src/routes/datacenter/backups/jobs/+page.ts
+msgid "Local node"
+msgstr "Local node"
