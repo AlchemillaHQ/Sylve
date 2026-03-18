@@ -1585,10 +1585,8 @@ msgstr "बनाएं"
 msgid "Invalid IP address"
 msgstr "अमान्य IP पता"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Invalid port number"
-msgstr "अमान्य पोर्ट नंबर"
+#~ msgid "Invalid port number"
+#~ msgstr "अमान्य पोर्ट नंबर"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
@@ -1607,14 +1605,11 @@ msgstr "क्लस्टर शुरू करने के बाद लॉ�
 msgid "Node IP"
 msgstr "नोड IP"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Node Port"
-msgstr "नोड पोर्ट"
+#~ msgid "Node Port"
+#~ msgstr "नोड पोर्ट"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API is required"
-msgstr "लीडर API आवश्यक है"
+#~ msgid "Leader API is required"
+#~ msgstr "लीडर API आवश्यक है"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Cluster Key is required"
@@ -1632,9 +1627,8 @@ msgstr "क्लस्टर में शामिल हो गए"
 msgid "No Node ID available"
 msgstr "कोई नोड ID उपलब्ध नहीं है"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API (192.168.1.1:8181)"
-msgstr "लीडर API (192.168.1.1:8181)"
+#~ msgid "Leader API (192.168.1.1:8181)"
+#~ msgstr "लीडर API (192.168.1.1:8181)"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
@@ -1801,12 +1795,12 @@ msgstr "सक्षम करने के लिए टिक करें"
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "विभाजन{0} बनाया गया"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
@@ -1870,12 +1864,12 @@ msgstr "फ़ोल्डर"
 msgid "File"
 msgstr "फ़ाइल"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> {0} बनाएँ"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "{0} का नाम दर्ज करें"
@@ -2112,12 +2106,12 @@ msgstr "कोई समूह नहीं चुना गया और मे
 msgid "Share cannot have overlapping groups"
 msgstr "शेयर में ओवरलैपिंग समूह नहीं हो सकते"
 
-#. 0: edit ? 'edit' 
+#. 0: edit ? 'edit'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Samba शेयर {0} करने में विफल"
 
-#. 0: edit ? 'edited' 
+#. 0: edit ? 'edited'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba शेयर {0}"
@@ -2715,7 +2709,7 @@ msgstr "{0} फ़ोल्डर, {1} फ़ाइलें"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "{0} \"{1}\" को हटाने में विफल।"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "{0} आइटम{1} को हटाने में विफल।"
@@ -4962,7 +4956,7 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
@@ -6687,7 +6681,7 @@ msgstr "बंद"
 msgid "Serial"
 msgstr "सीरियल"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "{0} कंसोल पर स्विच करें"
@@ -7267,7 +7261,7 @@ msgstr "नया बैकअप लक्ष्य"
 msgid "SSH Port"
 msgstr "SSH पोर्ट"
 
-#. 0: edit ? '(leave empty to keep existing)' 
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH निजी कुंजी {0}"
@@ -7332,7 +7326,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit' 
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7420,7 +7414,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit' 
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -8379,4 +8373,12 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.ts
 msgid "Local node"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP is required"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP (192.168.1.1)"
 msgstr ""

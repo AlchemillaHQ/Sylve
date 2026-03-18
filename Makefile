@@ -2,7 +2,7 @@ BINARY_NAME := sylve
 BIN_DIR := bin
 ARCH ?= amd64
 
-.PHONY: all build backend frontend test clean
+.PHONY: all build backend backend-debug frontend test clean
 
 all: build
 
@@ -11,7 +11,12 @@ build: frontend backend
 backend:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
-	go build -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+		go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+
+backend-debug:
+	mkdir -p $(BIN_DIR)
+	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
+		go build -gcflags="all=-N -l" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 frontend:
 	npm ci --prefix web

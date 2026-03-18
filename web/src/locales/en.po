@@ -1585,10 +1585,8 @@ msgstr "Create"
 msgid "Invalid IP address"
 msgstr "Invalid IP address"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Invalid port number"
-msgstr "Invalid port number"
+#~ msgid "Invalid port number"
+#~ msgstr "Invalid port number"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
@@ -1607,14 +1605,11 @@ msgstr "Login required after initializing cluster"
 msgid "Node IP"
 msgstr "Node IP"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Node Port"
-msgstr "Node Port"
+#~ msgid "Node Port"
+#~ msgstr "Node Port"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API is required"
-msgstr "Leader API is required"
+#~ msgid "Leader API is required"
+#~ msgstr "Leader API is required"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Cluster Key is required"
@@ -1632,9 +1627,8 @@ msgstr "Joined cluster"
 msgid "No Node ID available"
 msgstr "No Node ID available"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API (192.168.1.1:8181)"
-msgstr "Leader API (192.168.1.1:8181)"
+#~ msgid "Leader API (192.168.1.1:8181)"
+#~ msgstr "Leader API (192.168.1.1:8181)"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
@@ -1801,12 +1795,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1870,12 +1864,12 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
@@ -2112,12 +2106,12 @@ msgstr "No groups selected and guests are not allowed"
 msgid "Share cannot have overlapping groups"
 msgstr "Share cannot have overlapping groups"
 
-#. 0: edit ? 'edit' 
+#. 0: edit ? 'edit'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Failed to {0} Samba share"
 
-#. 0: edit ? 'edited' 
+#. 0: edit ? 'edited'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
@@ -2715,7 +2709,7 @@ msgstr "{0} folders, {1} files"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -4962,7 +4956,7 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
@@ -6687,7 +6681,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -7267,7 +7261,7 @@ msgstr "New Backup Target"
 msgid "SSH Port"
 msgstr "SSH Port"
 
-#. 0: edit ? '(leave empty to keep existing)' 
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH Private Key {0}"
@@ -7332,7 +7326,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit' 
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7420,7 +7414,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit' 
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -8380,3 +8374,11 @@ msgstr "<0/> Shutdown"
 #: src/routes/datacenter/backups/jobs/+page.ts
 msgid "Local node"
 msgstr "Local node"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP is required"
+msgstr "Leader IP is required"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP (192.168.1.1)"
+msgstr "Leader IP (192.168.1.1)"

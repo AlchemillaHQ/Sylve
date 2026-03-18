@@ -1585,10 +1585,8 @@ msgstr "创建"
 msgid "Invalid IP address"
 msgstr "无效的 IP 地址"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Invalid port number"
-msgstr "无效的端口号"
+#~ msgid "Invalid port number"
+#~ msgstr "无效的端口号"
 
 #: src/lib/components/custom/Cluster/Create.svelte
 msgid "Failed to create cluster"
@@ -1607,14 +1605,11 @@ msgstr "初始化集群后需要重新登录"
 msgid "Node IP"
 msgstr "节点 IP"
 
-#: src/lib/components/custom/Cluster/Create.svelte
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Node Port"
-msgstr "节点端口"
+#~ msgid "Node Port"
+#~ msgstr "节点端口"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API is required"
-msgstr "必须提供 Leader API"
+#~ msgid "Leader API is required"
+#~ msgstr "必须提供 Leader API"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Cluster Key is required"
@@ -1632,9 +1627,8 @@ msgstr "已加入集群"
 msgid "No Node ID available"
 msgstr "无可用节点 ID"
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Leader API (192.168.1.1:8181)"
-msgstr "Leader API (192.168.1.1:8181)"
+#~ msgid "Leader API (192.168.1.1:8181)"
+#~ msgstr "Leader API (192.168.1.1:8181)"
 
 #: src/lib/components/custom/Cluster/Join.svelte
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
@@ -1801,12 +1795,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1870,12 +1864,12 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
@@ -2112,12 +2106,12 @@ msgstr "未选择组且不允许访客"
 msgid "Share cannot have overlapping groups"
 msgstr "共享不能有重叠的组"
 
-#. 0: edit ? 'edit' 
+#. 0: edit ? 'edit'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "无法{0} Samba 共享"
 
-#. 0: edit ? 'edited' 
+#. 0: edit ? 'edited'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba 共享 {0}"
@@ -2715,7 +2709,7 @@ msgstr "{0} 个文件夹，{1} 个文件"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -4962,7 +4956,7 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
@@ -6687,7 +6681,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -7267,7 +7261,7 @@ msgstr "新建备份目标"
 msgid "SSH Port"
 msgstr "SSH 端口"
 
-#. 0: edit ? '(leave empty to keep existing)' 
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH 私钥 {0}"
@@ -7332,7 +7326,7 @@ msgstr "编辑租约失败"
 msgid "Lease edited"
 msgstr "租约已编辑"
 
-#. 0: selectedLease ? 'Edit' 
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP 租约"
@@ -7420,7 +7414,7 @@ msgstr ""
 msgid "Updated DHCP range"
 msgstr ""
 
-#. 0: selectedRange ? 'Edit' 
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr ""
@@ -8379,4 +8373,12 @@ msgstr ""
 
 #: src/routes/datacenter/backups/jobs/+page.ts
 msgid "Local node"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP is required"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Leader IP (192.168.1.1)"
 msgstr ""
