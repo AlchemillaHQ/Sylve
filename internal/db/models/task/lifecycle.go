@@ -11,8 +11,9 @@ package taskModels
 import "time"
 
 const (
-	GuestTypeVM   = "vm"
-	GuestTypeJail = "jail"
+	GuestTypeVM           = "vm"
+	GuestTypeJail         = "jail"
+	GuestTypeJailTemplate = "jail-template"
 )
 
 const (
@@ -40,6 +41,7 @@ type GuestLifecycleTask struct {
 	RequestedBy string `json:"requestedBy"`
 	Message     string `json:"message"`
 	Error       string `gorm:"type:text" json:"error"`
+	Payload     string `gorm:"type:text" json:"payload"`
 
 	OverrideRequested bool `gorm:"index;default:false" json:"overrideRequested"`
 

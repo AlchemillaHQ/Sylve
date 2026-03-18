@@ -10,6 +10,7 @@ package lifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -59,6 +60,9 @@ type Service struct {
 	vmStateFn    func(rid uint) (int, error)
 	jailActionFn func(ctid int, action string) error
 	jailActiveFn func(ctid uint) (bool, error)
+
+	jailTemplateConvertFn func(ctx context.Context, ctid uint) error
+	jailTemplateCreateFn  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
 }
 
 func NewService(dbConn *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
@@ -79,6 +83,8 @@ func NewService(dbConn *gorm.DB, libvirtService *libvirt.Service, jailService *j
 	if jailService != nil {
 		s.jailActionFn = jailService.JailAction
 		s.jailActiveFn = jailService.IsJailActive
+		s.jailTemplateConvertFn = jailService.ConvertJailToTemplate
+		s.jailTemplateCreateFn = jailService.CreateJailsFromTemplate
 	}
 
 	return s
@@ -112,6 +118,13 @@ func validateAction(guestType, action string) error {
 	case taskModels.GuestTypeJail:
 		switch action {
 		case "start", "stop", "restart":
+			return nil
+		default:
+			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
+		}
+	case taskModels.GuestTypeJailTemplate:
+		switch action {
+		case "convert", "create":
 			return nil
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
@@ -156,7 +169,19 @@ func (s *Service) RequestAction(
 	source string,
 	requestedBy string,
 ) (*taskModels.GuestLifecycleTask, string, error) {
-	return s.createTask(ctx, guestType, guestID, action, source, requestedBy, true)
+	return s.createTask(ctx, guestType, guestID, action, source, requestedBy, "", true)
+}
+
+func (s *Service) RequestActionWithPayload(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	action string,
+	source string,
+	requestedBy string,
+	payload string,
+) (*taskModels.GuestLifecycleTask, string, error) {
+	return s.createTask(ctx, guestType, guestID, action, source, requestedBy, payload, true)
 }
 
 func (s *Service) createTask(
@@ -166,6 +191,7 @@ func (s *Service) createTask(
 	action string,
 	source string,
 	requestedBy string,
+	payload string,
 	enqueue bool,
 ) (*taskModels.GuestLifecycleTask, string, error) {
 	guestType = normalizeGuestType(guestType)
@@ -219,6 +245,7 @@ func (s *Service) createTask(
 		Status:      taskModels.LifecycleTaskStatusQueued,
 		RequestedBy: requestedBy,
 		Message:     RequestOutcomeQueued,
+		Payload:     strings.TrimSpace(payload),
 	}
 
 	if err := s.DB.Create(task).Error; err != nil {
@@ -296,7 +323,7 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	return runErr
 }
 
-func (s *Service) executeGuestAction(_ context.Context, task taskModels.GuestLifecycleTask) error {
+func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestLifecycleTask) error {
 	switch task.GuestType {
 	case taskModels.GuestTypeVM:
 		if s.vmActionFn == nil {
@@ -329,6 +356,28 @@ func (s *Service) executeGuestAction(_ context.Context, task taskModels.GuestLif
 		}
 
 		return s.jailActionFn(int(task.GuestID), task.Action)
+
+	case taskModels.GuestTypeJailTemplate:
+		switch task.Action {
+		case "convert":
+			if s.jailTemplateConvertFn == nil {
+				return fmt.Errorf("jail_template_convert_function_not_configured")
+			}
+			return s.jailTemplateConvertFn(ctx, task.GuestID)
+		case "create":
+			if s.jailTemplateCreateFn == nil {
+				return fmt.Errorf("jail_template_create_function_not_configured")
+			}
+			req := jail.CreateFromTemplateRequest{}
+			if strings.TrimSpace(task.Payload) != "" {
+				if err := json.Unmarshal([]byte(task.Payload), &req); err != nil {
+					return fmt.Errorf("invalid_template_create_payload: %w", err)
+				}
+			}
+			return s.jailTemplateCreateFn(ctx, task.GuestID, req)
+		default:
+			return fmt.Errorf("invalid_action: %s", task.Action)
+		}
 
 	default:
 		return fmt.Errorf("invalid_guest_type: %s", task.GuestType)
@@ -423,7 +472,7 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, jl := range jails {
-		task, _, err := s.createTask(ctx, taskModels.GuestTypeJail, jl.CTID, "start", taskModels.LifecycleTaskSourceStartup, "startup", false)
+		task, _, err := s.createTask(ctx, taskModels.GuestTypeJail, jl.CTID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
 			if errors.Is(err, ErrTaskInProgress) {
 				continue
@@ -451,7 +500,7 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, vm := range vms {
-		task, _, err := s.createTask(ctx, taskModels.GuestTypeVM, vm.RID, "start", taskModels.LifecycleTaskSourceStartup, "startup", false)
+		task, _, err := s.createTask(ctx, taskModels.GuestTypeVM, vm.RID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
 			if errors.Is(err, ErrTaskInProgress) {
 				continue

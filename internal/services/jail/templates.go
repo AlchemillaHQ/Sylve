@@ -38,6 +38,45 @@ type createTarget struct {
 	Name string
 }
 
+func (s *Service) ensureFilesystemPath(ctx context.Context, dataset string) error {
+	dataset = strings.TrimSpace(strings.Trim(dataset, "/"))
+	if dataset == "" {
+		return fmt.Errorf("dataset_required")
+	}
+
+	parts := strings.Split(dataset, "/")
+	if len(parts) < 1 {
+		return fmt.Errorf("dataset_required")
+	}
+
+	current := strings.TrimSpace(parts[0])
+	if current == "" {
+		return fmt.Errorf("dataset_pool_required")
+	}
+
+	for idx := 1; idx < len(parts); idx++ {
+		current = current + "/" + strings.TrimSpace(parts[idx])
+		if current == "" {
+			continue
+		}
+
+		ds, err := s.GZFS.ZFS.Get(ctx, current, false)
+		if err == nil && ds != nil {
+			continue
+		}
+
+		if _, err := s.GZFS.ZFS.CreateFilesystem(ctx, current, map[string]string{}); err != nil {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "dataset already exists") || strings.Contains(msg, "exists") {
+				continue
+			}
+			return fmt.Errorf("failed_to_create_dataset_%s: %w", current, err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) GetJailTemplatesSimple() ([]jailServiceInterfaces.SimpleTemplateList, error) {
 	var templates []jailModels.JailTemplate
 	if err := s.DB.Model(&jailModels.JailTemplate{}).Order("id asc").Find(&templates).Error; err != nil {
@@ -114,6 +153,7 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 
 	sourceDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
 	templateDataset := fmt.Sprintf("%s/sylve/jails/clones/%d", pool, ctID)
+	templateParentDataset := fmt.Sprintf("%s/sylve/jails/clones", pool)
 
 	state, err := s.GetStateByCtId(ctID)
 	if err != nil {
@@ -146,6 +186,10 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 		}
 	}
 
+	if err := s.ensureFilesystemPath(ctx, templateParentDataset); err != nil {
+		return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
+	}
+
 	snapshotName := fmt.Sprintf("sylve_template_%d_%d", ctID, time.Now().UTC().UnixMilli())
 	snapshot, err := srcDS.Snapshot(ctx, snapshotName, true)
 	if err != nil {
@@ -155,7 +199,7 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 		_ = snapshot.Destroy(ctx, true, false)
 	}()
 
-	if _, err := snapshot.SendToDataset(ctx, templateDataset, true); err != nil {
+	if _, err := snapshot.SendToDataset(ctx, templateDataset, false); err != nil {
 		return fmt.Errorf("failed_to_copy_jail_dataset_to_template: %w", err)
 	}
 

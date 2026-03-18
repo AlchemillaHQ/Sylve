@@ -47,7 +47,7 @@ func newLifecycleTestService(t *testing.T) (*Service, *gorm.DB) {
 func TestCreateTaskConflictAndStopOverride(t *testing.T) {
 	s, dbConn := newLifecycleTestService(t)
 
-	task, outcome, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "shutdown", taskModels.LifecycleTaskSourceUser, "tester", false)
+	task, outcome, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "shutdown", taskModels.LifecycleTaskSourceUser, "tester", "", false)
 	if err != nil {
 		t.Fatalf("unexpected error creating shutdown task: %v", err)
 	}
@@ -58,12 +58,12 @@ func TestCreateTaskConflictAndStopOverride(t *testing.T) {
 		t.Fatalf("expected created task")
 	}
 
-	_, _, err = s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "start", taskModels.LifecycleTaskSourceUser, "tester", false)
+	_, _, err = s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
 	if !errors.Is(err, ErrTaskInProgress) {
 		t.Fatalf("expected ErrTaskInProgress, got %v", err)
 	}
 
-	overrideTask, overrideOutcome, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "stop", taskModels.LifecycleTaskSourceUser, "tester", false)
+	overrideTask, overrideOutcome, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 101, "stop", taskModels.LifecycleTaskSourceUser, "tester", "", false)
 	if err != nil {
 		t.Fatalf("unexpected override error: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestCreateTaskConflictAndStopOverride(t *testing.T) {
 func TestExecuteTaskUpdatesStatus(t *testing.T) {
 	s, dbConn := newLifecycleTestService(t)
 
-	failTask, _, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 220, "start", taskModels.LifecycleTaskSourceUser, "tester", false)
+	failTask, _, err := s.createTask(context.Background(), taskModels.GuestTypeVM, 220, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
 	if err != nil {
 		t.Fatalf("failed to create task: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestExecuteTaskUpdatesStatus(t *testing.T) {
 		t.Fatalf("expected task error to be persisted")
 	}
 
-	okTask, _, err := s.createTask(context.Background(), taskModels.GuestTypeJail, 330, "start", taskModels.LifecycleTaskSourceUser, "tester", false)
+	okTask, _, err := s.createTask(context.Background(), taskModels.GuestTypeJail, 330, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
 	if err != nil {
 		t.Fatalf("failed to create success task: %v", err)
 	}

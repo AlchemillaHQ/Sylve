@@ -166,6 +166,9 @@
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
 		'/api/jail/description': 'Jail - Update Description',
+		'/api/jail/templates/convert': 'Jail Template - Convert',
+		'/api/jail/templates/create': 'Jail Template - Create Jail',
+		'/api/jail/templates': 'Jail Template',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
@@ -254,7 +257,12 @@
 	);
 
 	function lifecycleGuestLabel(task: LifecycleTask): string {
-		const prefix = task.guestType === 'vm' ? 'VM' : 'Jail';
+		const prefix =
+			task.guestType === 'vm'
+				? 'VM'
+				: task.guestType === 'jail-template'
+					? 'Jail Template'
+					: 'Jail';
 		return `${prefix} ${task.guestId}`;
 	}
 

@@ -117,7 +117,7 @@
 			return;
 		}
 		reload.leftPanel = true;
-		toast.success('Jail converted to template', { position: 'bottom-center' });
+		toast.success('Template conversion queued', { position: 'bottom-center' });
 	};
 
 	const handleDeleteTemplate = async () => {
@@ -165,7 +165,7 @@
 		}
 		createFromTemplateOpen = false;
 		reload.leftPanel = true;
-		toast.success('Jail creation from template started', { position: 'bottom-center' });
+		toast.success('Template restore job queued', { position: 'bottom-center' });
 	};
 </script>
 
