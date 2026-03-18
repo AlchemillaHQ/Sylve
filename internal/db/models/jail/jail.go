@@ -153,6 +153,55 @@ type JailHooks struct {
 	Script  string        `json:"script"`
 }
 
+type JailTemplateNetwork struct {
+	Name           string `json:"name"`
+	SwitchID       uint   `json:"switchId"`
+	SwitchType     string `json:"switchType"`
+	DHCP           bool   `json:"dhcp"`
+	SLAAC          bool   `json:"slaac"`
+	DefaultGateway bool   `json:"defaultGateway"`
+}
+
+type JailTemplateHook struct {
+	Phase   JailHookPhase `json:"phase"`
+	Enabled bool          `json:"enabled"`
+	Script  string        `json:"script"`
+}
+
+type JailTemplate struct {
+	ID uint `json:"id" gorm:"primaryKey"`
+
+	Name           string `json:"name" gorm:"not null;index"`
+	SourceCTID     uint   `json:"sourceCtId" gorm:"column:source_ct_id;index"`
+	SourceJailName string `json:"sourceJailName" gorm:"column:source_jail_name"`
+
+	Pool        string `json:"pool" gorm:"not null"`
+	RootDataset string `json:"rootDataset" gorm:"column:root_dataset;not null;uniqueIndex"`
+
+	Type JailType `json:"type"`
+
+	ResourceLimits *bool `json:"resourceLimits" gorm:"default:true"`
+	Cores          int   `json:"cores"`
+	Memory         int   `json:"memory"`
+
+	InheritIPv4 bool `json:"inheritIPv4"`
+	InheritIPv6 bool `json:"inheritIPv6"`
+
+	Fstab             string                `json:"fstab"`
+	ResolvConf        string                `json:"resolvConf"`
+	DevFSRuleset      string                `json:"devfsRuleset"`
+	CleanEnvironment  bool                  `json:"cleanEnvironment"`
+	AdditionalOptions string                `json:"additionalOptions"`
+	AllowedOptions    []string              `json:"allowedOptions" gorm:"serializer:json;type:json"`
+	MetadataMeta      string                `json:"metadataMeta"`
+	MetadataEnv       string                `json:"metadataEnv"`
+	Networks          []JailTemplateNetwork `json:"networks" gorm:"serializer:json;type:json"`
+	Hooks             []JailTemplateHook    `json:"hooks" gorm:"serializer:json;type:json"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
 type JailSnapshot struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 

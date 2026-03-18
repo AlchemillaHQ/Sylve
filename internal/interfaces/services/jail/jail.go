@@ -85,6 +85,13 @@ type SimpleList struct {
 	State string `json:"state"`
 }
 
+type SimpleTemplateList struct {
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	SourceCTID     uint   `json:"sourceCtId"`
+	SourceJailName string `json:"sourceJailName"`
+}
+
 type State struct {
 	CTID   uint    `json:"ctId"`
 	State  string  `json:"state"`

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getSimpleJails } from '$lib/api/jail/jail';
+	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { storage } from '$lib';
 	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
 	import { reload } from '$lib/stores/api.svelte';
-	import type { SimpleJail } from '$lib/types/jail/jail';
+	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm } from '$lib/types/vm/vm';
 	import { sameElements } from '$lib/utils/arr';
 	import { updateCache } from '$lib/utils/http';
@@ -21,7 +21,8 @@
 		href?: string;
 		state?: 'active' | 'inactive';
 		resourceId?: number;
-		resourceType?: 'vm' | 'jail';
+		resourceType?: 'vm' | 'jail' | 'jail-template';
+		sourceCtId?: number;
 		nodeHostname?: string;
 		children?: TreeItem[];
 	}
@@ -112,7 +113,27 @@
 		}
 	);
 
-	let children = $derived.by(() => {
+	const simpleJailTemplates = resource(
+		() => `simple-jail-template-list-${node}`,
+		async (key) => {
+			if (!storage.enabledServices?.includes('jails')) {
+				return [];
+			}
+
+			const result = await getSimpleJailTemplates(node);
+			if (Array.isArray(result)) {
+				updateCache(key, result);
+				return result;
+			}
+
+			return [];
+		},
+		{
+			initialValue: [] as SimpleJailTemplate[]
+		}
+	);
+
+	let guestChildren = $derived.by(() => {
 		const merged = [
 			...simpleVMs.current.map((vm) => ({
 				id: `vm-${vm.rid}`,
@@ -145,6 +166,22 @@
 		return merged.map(({ sortId: _sortId, ...item }) => item);
 	}) as TreeItem[];
 
+	let templateChildren = $derived.by(() => {
+		return (simpleJailTemplates.current || [])
+			.map((template) => ({
+				id: `jail-template-${template.id}`,
+				sortId: template.sourceCtId,
+				resourceId: template.id,
+				resourceType: 'jail-template' as const,
+				sourceCtId: template.sourceCtId,
+				nodeHostname: node,
+				label: `${template.name} (CT ${template.sourceCtId})`,
+				icon: 'mdi--file-tree-outline'
+			}))
+			.sort((a, b) => a.sortId - b.sortId)
+			.map(({ sortId: _sortId, ...item }) => item);
+	}) as TreeItem[];
+
 	// @wc-ignore
 	const tree = $derived([
 		{
@@ -158,15 +195,30 @@
 					label: node,
 					icon: 'fluent--storage-20-filled',
 					href: `/${node}`,
-					children: children.length > 0 ? children : undefined
+					children:
+						guestChildren.length > 0 || templateChildren.length > 0
+							? [
+									...guestChildren,
+									...(templateChildren.length > 0
+										? [
+												{
+													id: `templates-${node}`,
+													label: 'Templates',
+													icon: 'mdi--layers-outline',
+													children: templateChildren
+												}
+											]
+										: [])
+								]
+							: undefined
 				}
 			]
 		}
 	]) as TreeItem[];
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-	async function refetchPanelResources() {
-		await Promise.all([simpleVMs.refetch(), simpleJails.refetch()]);
+async function refetchPanelResources() {
+		await Promise.all([simpleVMs.refetch(), simpleJails.refetch(), simpleJailTemplates.refetch()]);
 	}
 
 	function scheduleTrailingRefetch() {

@@ -68,6 +68,7 @@ func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) 
 		base := "https://" + n.API
 
 		jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
+		jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
 		vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
 
 		headers := map[string]string{
@@ -91,11 +92,20 @@ func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) 
 			}
 		}
 
+		var jailTemplates []jailServiceInterfaces.SimpleTemplateList
+		if body, _, err := utils.HTTPGetJSONRead(jailTemplatesURL, headers); err == nil {
+			var resp internal.APIResponse[[]jailServiceInterfaces.SimpleTemplateList]
+			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+				jailTemplates = resp.Data
+			}
+		}
+
 		results = append(results, clusterServiceInterfaces.NodeResources{
-			NodeUUID: n.NodeUUID,
-			Hostname: n.Hostname,
-			Jails:    jails,
-			VMs:      vms,
+			NodeUUID:      n.NodeUUID,
+			Hostname:      n.Hostname,
+			Jails:         jails,
+			JailTemplates: jailTemplates,
+			VMs:           vms,
 		})
 	}
 

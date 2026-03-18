@@ -12,7 +12,9 @@ import {
     type JailLogs,
     type JailStat,
     type JailState,
-    type SimpleJail
+    type SimpleJail,
+    SimpleJailTemplateSchema,
+    type SimpleJailTemplate
 } from '$lib/types/jail/jail';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
@@ -61,6 +63,12 @@ export async function getSimpleJails(hostname?: string): Promise<SimpleJail[]> {
     });
 }
 
+export async function getSimpleJailTemplates(hostname?: string): Promise<SimpleJailTemplate[]> {
+    return await apiRequest('/jail/templates/simple', z.array(SimpleJailTemplateSchema), 'GET', undefined, {
+        hostname
+    });
+}
+
 export async function getJails(hostname?: string): Promise<Jail[]> {
     return await apiRequest('/jail', z.array(JailSchema), 'GET', undefined, { hostname });
 }
@@ -95,6 +103,37 @@ export async function getJailStateById(ctId: number): Promise<JailState> {
 
 export async function jailAction(ctId: number, action: string, hostname?: string): Promise<APIResponse> {
     return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST', undefined, { hostname });
+}
+
+export async function convertJailToTemplate(ctId: number, hostname?: string): Promise<APIResponse> {
+    return await apiRequest(`/jail/templates/convert/${ctId}`, APIResponseSchema, 'POST', undefined, {
+        hostname
+    });
+}
+
+export interface CreateJailFromTemplateRequest {
+    mode: 'single' | 'multiple';
+    ctid?: number;
+    name?: string;
+    startCtid?: number;
+    count?: number;
+    namePrefix?: string;
+}
+
+export async function createJailFromTemplate(
+    templateId: number,
+    data: CreateJailFromTemplateRequest,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(`/jail/templates/create/${templateId}`, APIResponseSchema, 'POST', data, {
+        hostname
+    });
+}
+
+export async function deleteJailTemplate(templateId: number, hostname?: string): Promise<APIResponse> {
+    return await apiRequest(`/jail/templates/${templateId}`, APIResponseSchema, 'DELETE', undefined, {
+        hostname
+    });
 }
 
 export async function updateDescription(id: number, description: string): Promise<APIResponse> {

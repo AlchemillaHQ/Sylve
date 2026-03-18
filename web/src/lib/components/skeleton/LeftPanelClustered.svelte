@@ -134,6 +134,34 @@
 					}))
 				].sort((a, b) => a.sortId - b.sortId);
 
+				const templateChildren = (n.jailTemplates ?? [])
+					.map((template) => ({
+						id: `jail-template-${n.nodeUUID}-${template.id}`,
+						sortId: template.sourceCtId,
+						resourceId: template.id,
+						resourceType: 'jail-template' as const,
+						sourceCtId: template.sourceCtId,
+						nodeHostname: n.hostname,
+						label: `${template.name} (CT ${template.sourceCtId})`,
+						icon: 'mdi--file-tree-outline'
+					}))
+					.sort((a, b) => a.sortId - b.sortId)
+					.map(({ sortId: _sortId, ...item }) => item);
+
+				const nodeChildren = [
+					...mergedChildren,
+					...(templateChildren.length > 0
+						? [
+								{
+									id: `templates-${n.nodeUUID}`,
+									label: 'Templates',
+									icon: 'mdi--layers-outline',
+									children: templateChildren
+								}
+							]
+						: [])
+				];
+
 				const found = nodes.current.find((node) => node.nodeUUID === n.nodeUUID);
 				const isActive = found && found.status === 'online';
 
@@ -142,7 +170,7 @@
 					label: nodeLabel,
 					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
-					children: isActive ? mergedChildren : []
+					children: isActive ? nodeChildren : []
 				};
 			})
 		}

@@ -61,6 +61,13 @@ export const SimpleJailSchema = z.object({
     state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN', '']).optional()
 });
 
+export const SimpleJailTemplateSchema = z.object({
+    id: z.number().int(),
+    name: z.string(),
+    sourceCtId: z.number().int(),
+    sourceJailName: z.string()
+});
+
 export const NetworkSchema = z.object({
     id: z.number().int(),
     jid: z.number().int(),
@@ -176,6 +183,7 @@ export interface ExecPhaseState {
 }
 
 export type SimpleJail = z.infer<typeof SimpleJailSchema>;
+export type SimpleJailTemplate = z.infer<typeof SimpleJailTemplateSchema>;
 export type Jail = z.infer<typeof JailSchema>;
 export type JailStorage = z.infer<typeof JailStorageSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
