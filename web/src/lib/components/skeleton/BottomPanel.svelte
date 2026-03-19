@@ -2,6 +2,7 @@
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getAuditRecords } from '$lib/api/info/audit';
+	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getActiveLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -9,6 +10,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
@@ -71,11 +73,35 @@
 	);
 
 	const simpleVmList = resource(
-		() => 'simple-vm-list',
+		() => `simple-vm-list-${effectiveHostname || 'default'}`,
 		async (key, prevKey, { signal }) => {
-			const results = await getSimpleVMs();
+			const results = await getSimpleVMs(effectiveHostname || undefined);
 			updateCache(key, results);
 			return results;
+		}
+	);
+
+	const simpleJails = resource(
+		() => `simple-jail-list-${effectiveHostname || 'default'}`,
+		async (key, prevKey, { signal }) => {
+			const results = await getSimpleJails(effectiveHostname || undefined);
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: [] as SimpleJail[]
+		}
+	);
+
+	const simpleJailTemplates = resource(
+		() => `simple-jail-template-list-${effectiveHostname || 'default'}`,
+		async (key, prevKey, { signal }) => {
+			const results = await getSimpleJailTemplates(effectiveHostname || undefined);
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: [] as SimpleJailTemplate[]
 		}
 	);
 
@@ -166,8 +192,8 @@
 		'/api/jail/network/disinheritance': 'Jail - Network Disinherit',
 		'/api/jail/network': 'Jail Network',
 		'/api/jail/description': 'Jail - Update Description',
-		'/api/jail/templates/convert': 'Jail Template - Convert',
-		'/api/jail/templates/create': 'Jail Template - Create Jail',
+		'/api/jail/templates/convert': 'Create Jail Template - From Jail',
+		'/api/jail/templates/create': 'Create Jail - Template',
 		'/api/jail/templates': 'Jail Template',
 		'/api/jail': 'Jail',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
@@ -248,6 +274,15 @@
 
 	let activeLifecycleCount = $derived(activeLifecycleTasks.current.length);
 	let lifecycleActive = $derived(activeLifecycleCount > 0);
+	let vmNameById = $derived.by(() => {
+		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
+	});
+	let jailNameByCtId = $derived.by(() => {
+		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
+	});
+	let templateNameById = $derived.by(() => {
+		return new Map((simpleJailTemplates.current || []).map((template) => [template.id, template.name]));
+	});
 
 	watch(
 		() => lifecycleActive,
@@ -256,14 +291,67 @@
 		}
 	);
 
+	function toTitleCase(value: string): string {
+		return value
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean)
+			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+			.join(' ');
+	}
+
+	function lifecycleActionLabel(action: string): string {
+		return toTitleCase(action.replace(/[_-]+/g, ' ')) || 'Working';
+	}
+
+	function lifecycleStatusLabel(status: LifecycleTask['status']): string {
+		switch (status) {
+			case 'queued':
+				return 'Queued';
+			case 'running':
+				return 'Running';
+			case 'success':
+				return 'Success';
+			case 'failed':
+				return 'Failed';
+			default:
+				return toTitleCase(status);
+		}
+	}
+
 	function lifecycleGuestLabel(task: LifecycleTask): string {
-		const prefix =
-			task.guestType === 'vm'
-				? 'VM'
-				: task.guestType === 'jail-template'
-					? 'Jail Template'
-					: 'Jail';
-		return `${prefix} ${task.guestId}`;
+		if (task.guestType === 'vm') {
+			const name = vmNameById.get(task.guestId);
+			return name ? `VM ${name} (${task.guestId})` : `VM ${task.guestId}`;
+		}
+
+		if (task.guestType === 'jail-template') {
+			const templateName = templateNameById.get(task.guestId);
+			return templateName
+				? `Template ${templateName} (${task.guestId})`
+				: `Jail Template ${task.guestId}`;
+		}
+
+		const jailName = jailNameByCtId.get(task.guestId);
+		return jailName ? `Jail ${jailName} (${task.guestId})` : `Jail ${task.guestId}`;
+	}
+
+	function lifecycleTaskLabel(task: LifecycleTask): string {
+		if (task.source.includes('jail/templates/create')) {
+			const templateName = templateNameById.get(task.guestId);
+			return templateName
+				? `Create Jail - Template ${templateName}`
+				: `Create Jail - Template ${task.guestId}`;
+		}
+
+		if (task.source.includes('jail/templates/convert')) {
+			const jailName = jailNameByCtId.get(task.guestId);
+			return jailName
+				? `Create Jail Template - ${jailName} (Jail CTID ${task.guestId})`
+				: `Create Jail Template - Jail CTID ${task.guestId}`;
+		}
+
+		return `${lifecycleActionLabel(task.action)} - ${lifecycleGuestLabel(task)}`;
 	}
 
 	export function formatStatus(status: string): string {
@@ -294,13 +382,12 @@
 						<span class="inline-flex items-center gap-1 font-medium">
 							<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
 							{activeLifecycleCount}
-							lifecycle action{activeLifecycleCount === 1 ? '' : 's'} in progress
+							active lifecycle task{activeLifecycleCount === 1 ? '' : 's'}
 						</span>
 
 						{#each activeLifecycleTasks.current as task (task.id)}
 							<span class="bg-background rounded border px-2 py-0.5">
-								{lifecycleGuestLabel(task)}
-								{task.action} ({task.status})
+								{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
 							</span>
 						{/each}
 					</div>
