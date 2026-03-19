@@ -175,8 +175,8 @@
 				resourceType: 'jail-template' as const,
 				sourceCtId: template.sourceCtId,
 				nodeHostname: node,
-				label: `${template.name} (CT ${template.sourceCtId})`,
-				icon: 'mdi--file-tree-outline'
+				label: `${template.name} (${template.sourceCtId})`,
+				icon: 'icon-park-outline--prison'
 			}))
 			.sort((a, b) => a.sortId - b.sortId)
 			.map(({ sortId: _sortId, ...item }) => item);
@@ -217,7 +217,7 @@
 	]) as TreeItem[];
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-async function refetchPanelResources() {
+	async function refetchPanelResources() {
 		await Promise.all([simpleVMs.refetch(), simpleJails.refetch(), simpleJailTemplates.refetch()]);
 	}
 

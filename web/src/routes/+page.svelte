@@ -239,4 +239,7 @@
 <span class="icon-[mdi--clipboard-list-outline]"></span>
 <span class="icon-[mdi--help-circle-outline]"></span>
 <span class="icon-[mdi--check-decagram]"></span>
+<span class="icon-[mdi--layers-outline]"></span>
+<span class="icon-[mdi--file-tree-outline]"></span>
+<span class="icon-[icon-park-outline--prison]"></span>
 -->

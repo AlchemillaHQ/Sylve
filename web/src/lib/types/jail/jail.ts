@@ -63,9 +63,11 @@ export const SimpleJailSchema = z.object({
 
 export const SimpleJailTemplateSchema = z.object({
     id: z.number().int(),
-    name: z.string(),
+    name: z.string().transform((val) => {
+        return val.replace(/\s*Template$/, "");
+    }),
     sourceCtId: z.number().int(),
-    sourceJailName: z.string()
+    sourceJailName: z.string(),
 });
 
 export const NetworkSchema = z.object({
@@ -193,7 +195,6 @@ export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;
 
 export type JailLifecycleAction = 'start' | 'stop';
-
 export type JailLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export interface JailLifecycleBadgeStyle {

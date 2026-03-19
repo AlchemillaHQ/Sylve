@@ -641,6 +641,7 @@ msgstr "VM निर्माण फ़ॉर्म छोटा किया �
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Create Jail"
 msgstr "जेल बनाएं"
 
@@ -4956,12 +4957,12 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "टेम्पलेट {1} को {0} करने में विफल"
@@ -8381,4 +8382,94 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Leader IP (192.168.1.1)"
+msgstr ""
+
+#: src/lib/components/skeleton/LeftPanelClustered.svelte
+msgid "Templates"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Convert"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template - Create Jail"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Failed to convert jail to template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template conversion queued"
+msgstr ""
+
+#. 0: item.label
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Delete template \"{0}\"?"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Failed to delete template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template deleted"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Failed to create jail from template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template restore job queued"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Convert to Template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Create Jail"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Delete Template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Create Jail From Template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Single"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Multiple"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "CTID"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Name (optional)"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Starting CTID"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Count"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Name Prefix"
 msgstr ""
