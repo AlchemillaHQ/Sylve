@@ -9,7 +9,7 @@ import (
 func ServiceAction(name string, action string) error {
 	args := []string{name, action}
 
-	_, err := utils.RunCommand("service", args...)
+	_, err := utils.RunCommand("/usr/sbin/service", args...)
 
 	if err != nil {
 		return fmt.Errorf("failed to %s service %s: %w", action, name, err)

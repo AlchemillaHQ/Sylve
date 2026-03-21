@@ -8,14 +8,19 @@
 
 package infoModels
 
+import "time"
+
 type ZPoolHistorical struct {
-	ID            uint    `json:"id" gorm:"primaryKey"`
-	GUID          string  `json:"guid" gorm:"index"`
-	Name          string  `json:"name" gorm:"index"`
-	Allocated     uint64  `json:"allocated"`
-	Size          uint64  `json:"size"`
-	Free          uint64  `json:"free"`
-	Fragmentation float64 `json:"fragmentation"`
-	DedupRatio    float64 `json:"dedupRatio"`
-	CreatedAt     int64   `json:"createdAt" gorm:"autoCreateTime"`
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	GUID          string    `json:"guid" gorm:"index"`
+	Name          string    `json:"name" gorm:"index"`
+	Allocated     uint64    `json:"allocated"`
+	Size          uint64    `json:"size"`
+	Free          uint64    `json:"free"`
+	Fragmentation float64   `json:"fragmentation"`
+	DedupRatio    float64   `json:"dedupRatio"`
+	CreatedAt     time.Time `json:"createdAt" gorm:"autoCreateTime;index"`
 }
+
+func (z ZPoolHistorical) GetID() uint             { return z.ID }
+func (z ZPoolHistorical) GetCreatedAt() time.Time { return z.CreatedAt }

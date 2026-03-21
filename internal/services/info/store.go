@@ -9,78 +9,65 @@
 package info
 
 import (
-	"reflect"
-	"sync"
-	"time"
 	"context"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"gorm.io/gorm"
 )
 
-const retention = 70 * 24 * time.Hour
 const netRetention = 2 * time.Hour
+const auditRetentionInterval = 6 * time.Hour
+const netSampleInterval = 2 * time.Minute
 
 func (s *Service) StoreStats() {
-	type task struct {
-		get func() (float64, error)
-		ptr func(float64) interface{}
+	now := time.Now()
+
+	if c, err := s.GetCPUInfo(true); err == nil {
+		s.DB.Create(&infoModels.CPU{Usage: c.Usage})
+	} else {
+		logger.L.Err(err).Msg("Failed to get CPU stats")
 	}
 
-	jobs := []task{
-		{get: func() (float64, error) { c, err := s.GetCPUInfo(true); return c.Usage, err },
-			ptr: func(v float64) interface{} { return &infoModels.CPU{Usage: v} }},
-		{get: func() (float64, error) { r, err := s.GetRAMInfo(); return r.UsedPercent, err },
-			ptr: func(v float64) interface{} { return &infoModels.RAM{Usage: v} }},
-		{get: func() (float64, error) { sw, err := s.GetSwapInfo(); return sw.UsedPercent, err },
-			ptr: func(v float64) interface{} { return &infoModels.Swap{Usage: v} }},
+	if r, err := s.GetRAMInfo(); err == nil {
+		s.DB.Create(&infoModels.RAM{Usage: r.UsedPercent})
+	} else {
+		logger.L.Err(err).Msg("Failed to get RAM stats")
 	}
 
-	var wg sync.WaitGroup
-	for _, job := range jobs {
-		wg.Add(1)
-		go func(j task) {
-			defer wg.Done()
-			v, err := j.get()
-			if err != nil {
-				logger.L.Err(err).Msg("Failed to get stats")
-				return
-			}
-			if err := s.DB.Create(j.ptr(v)).Error; err != nil {
-				logger.L.Err(err).Msg("Failed to store stats")
-			}
-		}(job)
+	if sw, err := s.GetSwapInfo(); err == nil {
+		s.DB.Create(&infoModels.Swap{Usage: sw.UsedPercent})
+	} else {
+		logger.L.Err(err).Msg("Failed to get Swap stats")
 	}
 
-	wg.Wait()
+	pruneGFS(s.DB, now, infoModels.CPU{})
+	pruneGFS(s.DB, now, infoModels.RAM{})
+	pruneGFS(s.DB, now, infoModels.Swap{})
+}
 
-	prune := func(modelPtr interface{}, slicePtr interface{}) {
-		if err := s.DB.Order("created_at desc").Find(slicePtr).Error; err != nil {
-			logger.L.Err(err).Msg("failed loading rows for prune")
-			return
-		}
+func pruneGFS[T db.TimeSeriesRow](dbConn *gorm.DB, now time.Time, dummy T) {
+	var rows []T
+	err := dbConn.Model(&dummy).
+		Select("id", "created_at").
+		Order("created_at desc").
+		Find(&rows).Error
 
-		sv := reflect.ValueOf(slicePtr).Elem()
-		adapters := make([]db.ReflectRow, 0, sv.Len())
-		for i := 0; i < sv.Len(); i++ {
-			elem := sv.Index(i).Interface()
-			adapters = append(adapters, db.ReflectRow{Ptr: elem})
-		}
-
-		_, deleteIDs := db.ApplyGFS(time.Now(), adapters)
-		if len(deleteIDs) == 0 {
-			return
-		}
-
-		if err := s.DB.Delete(modelPtr, deleteIDs).Error; err != nil {
-			logger.L.Err(err).Msg("failed pruning stats")
-		}
+	if err != nil {
+		logger.L.Err(err).Msgf("failed loading rows for prune: %T", dummy)
+		return
 	}
 
-	prune(&infoModels.CPU{}, &[]*infoModels.CPU{})
-	prune(&infoModels.RAM{}, &[]*infoModels.RAM{})
-	prune(&infoModels.Swap{}, &[]*infoModels.Swap{})
+	_, deleteIDs := db.ApplyGFS(now, rows)
+	if len(deleteIDs) == 0 {
+		return
+	}
+
+	if err := dbConn.Unscoped().Delete(&dummy, deleteIDs).Error; err != nil {
+		logger.L.Err(err).Msgf("failed pruning stats: %T", dummy)
+	}
 }
 
 func (s *Service) StoreNetworkInterfaceStats() {
@@ -92,79 +79,62 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		return
 	}
 
-	var prevRows []*infoModels.NetworkInterface
-	if err := s.DB.Raw(`
-		SELECT ni.id, ni.name, ni.network,
-		       ni.received_packets, ni.received_errors,
-		       ni.dropped_packets, ni.received_bytes,
-		       ni.sent_packets, ni.send_errors,
-		       ni.sent_bytes, ni.collisions
-		FROM network_interfaces ni
-		JOIN (
-			SELECT name, network, MAX(created_at) AS max_created_at
-			FROM network_interfaces
-			GROUP BY name, network
-		) latest
-		ON ni.name = latest.name
-		AND ni.network = latest.network
-		AND ni.created_at = latest.max_created_at
-	`).Scan(&prevRows).Error; err != nil {
-		logger.L.Err(err).Msg("failed loading previous network interface stats")
-		return
-	}
-
-	last := make(map[string]*infoModels.NetworkInterface, len(prevRows))
-	for _, r := range prevRows {
-		last[r.Name+"|"+r.Network] = r
-	}
-
 	now := time.Now()
-	rows := make([]infoModels.NetworkInterface, 0, len(interfaces))
-
-	delta := func(cur, old int64) int64 {
-		if cur < old {
-			return 0
-		}
-		return cur - old
-	}
-
+	rowsByKey := make(map[string]infoModels.NetworkInterface, len(interfaces))
 	for _, iface := range interfaces {
 		key := iface.Name + "|" + iface.Network
-		prev := last[key]
-
-		if prev == nil {
-			rows = append(rows, infoModels.NetworkInterface{
+		row, exists := rowsByKey[key]
+		if !exists {
+			rowsByKey[key] = infoModels.NetworkInterface{
+				CreatedAt:       now,
 				Name:            iface.Name,
 				Flags:           iface.Flags,
 				Network:         iface.Network,
 				Address:         iface.Address,
 				IsDelta:         false,
 				ReceivedPackets: iface.ReceivedPackets,
+				ReceivedErrors:  iface.ReceivedErrors,
+				DroppedPackets:  iface.DroppedPackets,
 				ReceivedBytes:   iface.ReceivedBytes,
 				SentPackets:     iface.SentPackets,
+				SendErrors:      iface.SendErrors,
 				SentBytes:       iface.SentBytes,
-			})
+				Collisions:      iface.Collisions,
+			}
 			continue
 		}
 
-		rows = append(rows, infoModels.NetworkInterface{
-			Name:    iface.Name,
-			Flags:   iface.Flags,
-			Network: iface.Network,
-			Address: iface.Address,
-			IsDelta: true,
+		// netstat can emit duplicate rows per interface key; keep max counters to avoid duplicate inflation
+		if iface.ReceivedPackets > row.ReceivedPackets {
+			row.ReceivedPackets = iface.ReceivedPackets
+		}
+		if iface.ReceivedErrors > row.ReceivedErrors {
+			row.ReceivedErrors = iface.ReceivedErrors
+		}
+		if iface.DroppedPackets > row.DroppedPackets {
+			row.DroppedPackets = iface.DroppedPackets
+		}
+		if iface.ReceivedBytes > row.ReceivedBytes {
+			row.ReceivedBytes = iface.ReceivedBytes
+		}
+		if iface.SentPackets > row.SentPackets {
+			row.SentPackets = iface.SentPackets
+		}
+		if iface.SendErrors > row.SendErrors {
+			row.SendErrors = iface.SendErrors
+		}
+		if iface.SentBytes > row.SentBytes {
+			row.SentBytes = iface.SentBytes
+		}
+		if iface.Collisions > row.Collisions {
+			row.Collisions = iface.Collisions
+		}
+		rowsByKey[key] = row
+	}
 
-			ReceivedPackets: delta(iface.ReceivedPackets, prev.ReceivedPackets),
-			ReceivedErrors:  delta(iface.ReceivedErrors, prev.ReceivedErrors),
-			DroppedPackets:  delta(iface.DroppedPackets, prev.DroppedPackets),
-			ReceivedBytes:   delta(iface.ReceivedBytes, prev.ReceivedBytes),
-
-			SentPackets: delta(iface.SentPackets, prev.SentPackets),
-			SendErrors:  delta(iface.SendErrors, prev.SendErrors),
-			SentBytes:   delta(iface.SentBytes, prev.SentBytes),
-
-			Collisions: delta(iface.Collisions, prev.Collisions),
-		})
+	rows := make([]infoModels.NetworkInterface, 0, len(rowsByKey))
+	for _, row := range rowsByKey {
+		rows = append(rows, row)
 	}
 
 	if len(rows) == 0 {
@@ -176,27 +146,33 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		return
 	}
 
-	cutoff := now.Add(-netRetention)
-	if err := s.DB.
-		Where("is_delta = true AND created_at < ?", cutoff).
+	cutoffPrune := now.Add(-netRetention)
+	if err := s.DB.Unscoped().
+		Where("created_at < ?", cutoffPrune).
 		Delete(&infoModels.NetworkInterface{}).
 		Error; err != nil {
-		logger.L.Err(err).Msg("failed pruning old network interface deltas")
+		logger.L.Err(err).Msg("failed pruning old network interface stats")
 	}
 }
 
 func (s *Service) Cron(ctx context.Context) {
 	s.StoreStats()
 	s.StoreNetworkInterfaceStats()
+	s.PruneAuditRecords(time.Now())
 
 	statsTicker := time.NewTicker(10 * time.Second)
-	netTicker := time.NewTicker(2 * time.Minute)
+	netTicker := time.NewTicker(netSampleInterval)
+	auditRetentionTicker := time.NewTicker(auditRetentionInterval)
 	defer statsTicker.Stop()
 	defer netTicker.Stop()
+	defer auditRetentionTicker.Stop()
+
+	logger.L.Info().Msg("Info service cron workers started")
 
 	for {
 		select {
 		case <-ctx.Done():
+			logger.L.Info().Msg("Shutting down info service cron workers")
 			return
 
 		case <-statsTicker.C:
@@ -204,6 +180,9 @@ func (s *Service) Cron(ctx context.Context) {
 
 		case <-netTicker.C:
 			s.StoreNetworkInterfaceStats()
+
+		case <-auditRetentionTicker.C:
+			s.PruneAuditRecords(time.Now())
 		}
 	}
 }

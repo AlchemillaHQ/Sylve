@@ -43,6 +43,9 @@ type Service struct {
 
 	inflightMu sync.Mutex
 	inflight   map[uint]struct{}
+
+	signingSecretMu    sync.RWMutex
+	downloadSignSecret string
 }
 
 func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServiceInterface {

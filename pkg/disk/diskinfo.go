@@ -14,8 +14,10 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+var runCommand = utils.RunCommand
+
 func GetDiskSize(device string) (uint64, error) {
-	out, err := utils.RunCommand("diskinfo", "-v", device)
+	out, err := runCommand("/usr/sbin/diskinfo", "-v", device)
 	if err != nil {
 		return 0, err
 	}

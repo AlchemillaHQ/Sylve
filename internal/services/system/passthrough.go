@@ -9,19 +9,326 @@
 package system
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/logger"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/system/pciconf"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
 )
+
+const (
+	loaderConfPath = "/boot/loader.conf"
+	loaderConfKey  = "pptdevs"
+)
+
+var validPPTID = regexp.MustCompile(`^\d+/\d+/\d+$`)
+
+func parseLoaderConfAssignment(line string) (string, string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return "", "", false
+	}
+
+	index := strings.Index(trimmed, "=")
+	if index < 0 {
+		return "", "", false
+	}
+
+	key := strings.TrimSpace(trimmed[:index])
+	value := strings.TrimSpace(trimmed[index+1:])
+	if key == "" {
+		return "", "", false
+	}
+
+	return key, value, true
+}
+
+func parseLoaderPPTValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	if value[0] == '"' || value[0] == '\'' {
+		quote := value[0]
+		value = value[1:]
+		if end := strings.IndexByte(value, quote); end >= 0 {
+			return value[:end]
+		}
+		return value
+	}
+
+	if comment := strings.Index(value, "#"); comment >= 0 {
+		value = value[:comment]
+	}
+
+	return strings.TrimSpace(value)
+}
+
+func dedupePPTIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || !validPPTID.MatchString(id) {
+			continue
+		}
+
+		if _, ok := seen[id]; ok {
+			continue
+		}
+
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+
+	return out
+}
+
+func parsePPTIDsFromLoader(lines []string) []string {
+	ids := []string{}
+
+	for _, line := range lines {
+		key, value, ok := parseLoaderConfAssignment(line)
+		if !ok || key != loaderConfKey {
+			continue
+		}
+
+		value = parseLoaderPPTValue(value)
+		ids = append(ids, strings.Fields(value)...)
+	}
+
+	return dedupePPTIDs(ids)
+}
+
+func rewriteLoaderPPTIDs(lines []string, ids []string) []string {
+	ids = dedupePPTIDs(ids)
+
+	filtered := make([]string, 0, len(lines)+1)
+	replaced := false
+
+	for _, line := range lines {
+		key, _, ok := parseLoaderConfAssignment(line)
+		if ok && key == loaderConfKey {
+			if len(ids) > 0 && !replaced {
+				filtered = append(filtered, fmt.Sprintf(`%s="%s"`, loaderConfKey, strings.Join(ids, " ")))
+				replaced = true
+			}
+			continue
+		}
+
+		filtered = append(filtered, line)
+	}
+
+	if !replaced && len(ids) > 0 {
+		filtered = append(filtered, fmt.Sprintf(`%s="%s"`, loaderConfKey, strings.Join(ids, " ")))
+	}
+
+	return filtered
+}
+
+func readLoaderConf() ([]string, os.FileMode, error) {
+	data, err := os.ReadFile(loaderConfPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, 0, fmt.Errorf("reading %s: %w", loaderConfPath, err)
+	}
+
+	lines := []string{}
+	if len(data) > 0 {
+		lines = strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	}
+
+	perm := os.FileMode(0644)
+	if fi, err := os.Stat(loaderConfPath); err == nil {
+		perm = fi.Mode().Perm()
+	}
+
+	return lines, perm, nil
+}
+
+func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
+	settings, err := s.GetBasicSettings()
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to fetch basic settings for loader config: %w", err)
+	}
+
+	hasVirtualization := slices.Contains(settings.Services, models.Virtualization)
+
+	vmmFound := false
+	pptFound := false
+
+	for i, line := range lines {
+		key, _, ok := parseLoaderConfAssignment(line)
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "vmm_load":
+			vmmFound = true
+			if hasVirtualization {
+				lines[i] = `vmm_load="YES"`
+			}
+		case "ppt_load":
+			pptFound = true
+			lines[i] = `ppt_load="YES"`
+		}
+	}
+
+	needsVmm := hasVirtualization && !vmmFound
+	needsPpt := !pptFound
+
+	if needsVmm || needsPpt {
+		var newLines []string
+		for _, line := range lines {
+			key, _, ok := parseLoaderConfAssignment(line)
+			if ok && key == loaderConfKey {
+				if needsVmm {
+					newLines = append(newLines, `vmm_load="YES"`)
+					needsVmm = false
+				}
+				if needsPpt {
+					newLines = append(newLines, `ppt_load="YES"`)
+					needsPpt = false
+				}
+			}
+			newLines = append(newLines, line)
+		}
+
+		if needsVmm {
+			newLines = append(newLines, `vmm_load="YES"`)
+		}
+		if needsPpt {
+			newLines = append(newLines, `ppt_load="YES"`)
+		}
+
+		lines = newLines
+	}
+
+	out := ""
+	if len(lines) > 0 {
+		out = strings.Join(lines, "\n") + "\n"
+	}
+
+	if err := os.WriteFile(loaderConfPath, []byte(out), perm); err != nil {
+		return fmt.Errorf("writing %s: %w", loaderConfPath, err)
+	}
+
+	return nil
+}
+
+func parsePPTAddress(id string) ([3]int, error) {
+	var parts [3]int
+
+	if !validPPTID.MatchString(id) {
+		return parts, fmt.Errorf("invalid device ID format: must be 'number/number/number'")
+	}
+
+	p := strings.Split(id, "/")
+	if len(p) != 3 {
+		return parts, fmt.Errorf("invalid format: expected 'num/num/num'")
+	}
+
+	for i, part := range p {
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return parts, fmt.Errorf("invalid number in device ID: %v", err)
+		}
+		parts[i] = n
+	}
+
+	return parts, nil
+}
+
+func parseDomain(domain string) (int, error) {
+	intDomain, err := strconv.Atoi(domain)
+	if err != nil {
+		return 0, fmt.Errorf("invalid domain number: %v", err)
+	}
+
+	if intDomain < 0 || intDomain > 255 {
+		return 0, fmt.Errorf("domain number must be between 0 and 255")
+	}
+
+	return intDomain, nil
+}
+
+func findPCIDeviceByDomainAndAddress(pciDevices []pciconf.PCIDevice, domain int, parts [3]int) (pciconf.PCIDevice, bool) {
+	for _, device := range pciDevices {
+		if device.Domain == domain && device.Bus == parts[0] && device.Device == parts[1] && device.Function == parts[2] {
+			return device, true
+		}
+	}
+
+	return pciconf.PCIDevice{}, false
+}
+
+func pciAddress(domain int, parts [3]int) string {
+	return fmt.Sprintf("pci%d:%d:%d:%d", domain, parts[0], parts[1], parts[2])
+}
+
+func (s *Service) addLoaderPPTDevice(id string) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	lines, perm, err := readLoaderConf()
+	if err != nil {
+		return err
+	}
+
+	ids := parsePPTIDsFromLoader(lines)
+	if slices.Contains(ids, id) {
+		return nil
+	}
+
+	ids = append(ids, id)
+	lines = rewriteLoaderPPTIDs(lines, ids)
+	return s.writeLoaderConf(lines, perm)
+}
+
+func (s *Service) removeLoaderPPTDevice(id string) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	lines, perm, err := readLoaderConf()
+	if err != nil {
+		return err
+	}
+
+	ids := parsePPTIDsFromLoader(lines)
+	filtered := make([]string, 0, len(ids))
+	for _, loaderID := range ids {
+		if loaderID != id {
+			filtered = append(filtered, loaderID)
+		}
+	}
+
+	lines = rewriteLoaderPPTIDs(lines, filtered)
+	return s.writeLoaderConf(lines, perm)
+}
+
+func (s *Service) getLoaderPPTDevices() ([]string, error) {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
+
+	lines, _, err := readLoaderConf()
+	if err != nil {
+		return nil, err
+	}
+
+	return parsePPTIDsFromLoader(lines), nil
+}
 
 func (s *Service) SyncPPTDevices() error {
 	s.syncMutex.Lock()
@@ -32,74 +339,94 @@ func (s *Service) SyncPPTDevices() error {
 		return fmt.Errorf("loading PassedThroughIDs: %w", err)
 	}
 
-	const (
-		loaderConf = "/boot/loader.conf"
-		key        = "pptdevs"
-	)
-
-	data, err := os.ReadFile(loaderConf)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading %s: %w", loaderConf, err)
+	lines, perm, err := readLoaderConf()
+	if err != nil {
+		return err
 	}
-	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 
-	if len(ids) == 0 {
-		var filtered []string
-		removed := false
-		for _, ln := range lines {
-			if strings.HasPrefix(strings.TrimSpace(ln), key+"=") {
-				removed = true
+	parts := parsePPTIDsFromLoader(lines)
+	known := make(map[string]struct{}, len(parts))
+	for _, id := range parts {
+		known[id] = struct{}{}
+	}
+
+	for _, rec := range ids {
+		if rec.Domain == 0 {
+			if _, ok := known[rec.DeviceID]; ok {
 				continue
 			}
-			filtered = append(filtered, ln)
+			parts = append(parts, rec.DeviceID)
+			known[rec.DeviceID] = struct{}{}
+		} else {
+			// Todo: Please do MANUAL SYNC!
+			fmt.Printf("Warning: Device %s is on domain %d. Skipping loader.conf sync.\n", rec.DeviceID, rec.Domain)
 		}
-		if removed {
-			out := strings.Join(filtered, "\n")
-			if !strings.HasSuffix(out, "\n") {
-				out += "\n"
-			}
-			perm := os.FileMode(0644)
-			if fi, err := os.Stat(loaderConf); err == nil {
-				perm = fi.Mode().Perm()
-			}
-			if err := os.WriteFile(loaderConf, []byte(out), perm); err != nil {
-				return fmt.Errorf("writing %s: %w", loaderConf, err)
-			}
-		}
+	}
+
+	lines = rewriteLoaderPPTIDs(lines, parts)
+	return s.writeLoaderConf(lines, perm)
+}
+
+func (s *Service) ReconcilePreparedPPTDevices() error {
+	loaderIDs, err := s.getLoaderPPTDevices()
+	if err != nil {
+		return fmt.Errorf("loading prepared passthrough IDs: %w", err)
+	}
+
+	if len(loaderIDs) == 0 {
 		return nil
 	}
 
-	var parts []string
-	for _, rec := range ids {
-		parts = append(parts, rec.DeviceID)
+	var existing []models.PassedThroughIDs
+	if err := s.DB.Find(&existing).Error; err != nil {
+		return fmt.Errorf("loading PassedThroughIDs: %w", err)
 	}
 
-	newLine := fmt.Sprintf(`%s="%s"`, key, strings.Join(parts, " "))
+	existingMap := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		existingMap[item.DeviceID] = struct{}{}
+	}
 
-	replaced := false
-	for i, ln := range lines {
-		if strings.HasPrefix(strings.TrimSpace(ln), key+"=") {
-			lines[i] = newLine
-			replaced = true
-			break
+	pciDevices, err := pciconf.GetPCIDevices()
+	if err != nil {
+		return fmt.Errorf("getting PCI devices: %w", err)
+	}
+
+	devicesByID := make(map[string]pciconf.PCIDevice, len(pciDevices))
+	for _, device := range pciDevices {
+		if device.Domain != 0 {
+			continue
 		}
-	}
-	if !replaced {
-		lines = append(lines, newLine)
+
+		deviceID := fmt.Sprintf("%d/%d/%d", device.Bus, device.Device, device.Function)
+		devicesByID[deviceID] = device
 	}
 
-	out := strings.Join(lines, "\n")
-	if !strings.HasSuffix(out, "\n") {
-		out += "\n"
-	}
+	for _, deviceID := range loaderIDs {
+		if _, exists := existingMap[deviceID]; exists {
+			continue
+		}
 
-	perm := os.FileMode(0644)
-	if fi, err := os.Stat(loaderConf); err == nil {
-		perm = fi.Mode().Perm()
-	}
+		device, found := devicesByID[deviceID]
+		if !found {
+			continue
+		}
 
-	if err := os.WriteFile(loaderConf, []byte(out), perm); err != nil {
-		return fmt.Errorf("writing %s: %w", loaderConf, err)
+		if !strings.HasPrefix(device.Name, "ppt") {
+			continue
+		}
+
+		record := models.PassedThroughIDs{
+			DeviceID:  deviceID,
+			Domain:    0,
+			OldDriver: "",
+		}
+
+		if err := s.DB.Create(&record).Error; err != nil {
+			return fmt.Errorf("creating prepared passthrough entry for %s: %w", deviceID, err)
+		}
+
+		existingMap[deviceID] = struct{}{}
 	}
 
 	return nil
@@ -117,19 +444,14 @@ func (s *Service) AddPPTDevice(domain string, id string) error {
 	s.achMutex.Lock()
 	defer s.achMutex.Unlock()
 
-	intDomain, err := strconv.Atoi(domain)
-
+	intDomain, err := parseDomain(domain)
 	if err != nil {
-		return fmt.Errorf("invalid domain number: %v", err)
+		return err
 	}
 
-	if intDomain < 0 || intDomain > 255 {
-		return fmt.Errorf("domain number must be between 0 and 255")
-	}
-
-	var validPPTID = regexp.MustCompile(`^\d+/\d+/\d+$`)
-	if !validPPTID.MatchString(id) {
-		return fmt.Errorf("invalid device ID format: must be 'number/number/number'")
+	parts, err := parsePPTAddress(id)
+	if err != nil {
+		return err
 	}
 
 	pciDevices, err := pciconf.GetPCIDevices()
@@ -137,76 +459,153 @@ func (s *Service) AddPPTDevice(domain string, id string) error {
 		return fmt.Errorf("getting PCI devices: %w", err)
 	}
 
-	var found bool
-
-	parts := strings.Split(id, "/")
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid format: expected 'num/num/num'")
-	}
-
-	intParts := make([]int, 3)
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			return fmt.Errorf("invalid number in device ID: %v", err)
-		}
-		intParts[i] = n
-	}
-
-	var driver string
-
-	for _, device := range pciDevices {
-		if device.Domain == intDomain && device.Bus == intParts[0] && device.Device == intParts[1] && device.Function == intParts[2] {
-			driver = device.Name
-			found = true
-			break
-		}
-	}
-
+	device, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts)
 	if !found {
 		return fmt.Errorf("device ID %s not found in PCI devices", id)
 	}
 
+	driver := device.Name
+	pciAddr := pciAddress(intDomain, parts)
+
 	detach, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"detach",
 		"-f",
-		fmt.Sprintf("pci%d:%d:%d:%d", intDomain, intParts[0], intParts[1], intParts[2]),
+		pciAddr,
 	)
 
-	if err != nil && detach != "" {
+	if err != nil {
 		if !strings.HasSuffix(strings.TrimSpace(detach), "Device not configured") {
 			return fmt.Errorf("detaching device %s on root bus %s failed %s: %w", id, domain, detach, err)
 		}
 	}
 
 	clearDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"clear",
 		"driver",
 		"-f",
-		fmt.Sprintf("pci%d:%d:%d:%d", intDomain, intParts[0], intParts[1], intParts[2]),
+		pciAddr,
 	)
 
-	if err != nil && clearDriver != "" {
+	if err != nil {
 		return fmt.Errorf("clearing driver for device %s on root bus %s failed %s: %w", id, domain, clearDriver, err)
 	}
 
 	setDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"set",
 		"driver",
-		fmt.Sprintf("pci%d:%d:%d:%d", intDomain, intParts[0], intParts[1], intParts[2]),
+		pciAddr,
 		"ppt",
 	)
 
-	if err != nil && setDriver != "" {
+	if err != nil {
 		return fmt.Errorf("setting driver for device %s on root bus %s failed %s: %w", id, domain, setDriver, err)
 	}
 
-	newID := models.PassedThroughIDs{DeviceID: id, OldDriver: driver}
+	newID := models.PassedThroughIDs{
+		DeviceID:  id,
+		Domain:    intDomain,
+		OldDriver: driver,
+	}
+
 	if err := s.DB.Create(&newID).Error; err != nil {
-		return fmt.Errorf("adding PassedThroughIDs: %w", err)
+		_, rollbackErr := utils.RunCommand("/usr/sbin/devctl", "set", "driver", pciAddr, driver)
+
+		if rollbackErr != nil {
+			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to save to DB (%v), and failed to revert device %s back to %s (%v)", err, pciAddr, driver, rollbackErr)
+		}
+
+		return fmt.Errorf("database insert failed, hardware state reverted: %w", err)
+	}
+
+	return s.SyncPPTDevices()
+}
+
+func (s *Service) PreparePPTDevice(domain string, id string) error {
+	s.achMutex.Lock()
+	defer s.achMutex.Unlock()
+
+	intDomain, err := parseDomain(domain)
+	if err != nil {
+		return err
+	}
+
+	if intDomain != 0 {
+		return fmt.Errorf("prepare passthrough supports domain 0 only")
+	}
+
+	parts, err := parsePPTAddress(id)
+	if err != nil {
+		return err
+	}
+
+	pciDevices, err := pciconf.GetPCIDevices()
+	if err != nil {
+		return fmt.Errorf("getting PCI devices: %w", err)
+	}
+
+	if _, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts); !found {
+		return fmt.Errorf("device ID %s not found in PCI devices", id)
+	}
+
+	return s.addLoaderPPTDevice(id)
+}
+
+func (s *Service) ImportPPTDevice(domain string, id string) error {
+	s.achMutex.Lock()
+	defer s.achMutex.Unlock()
+
+	intDomain, err := parseDomain(domain)
+	if err != nil {
+		return err
+	}
+
+	parts, err := parsePPTAddress(id)
+	if err != nil {
+		return err
+	}
+
+	pciDevices, err := pciconf.GetPCIDevices()
+	if err != nil {
+		return fmt.Errorf("getting PCI devices: %w", err)
+	}
+
+	device, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts)
+	if !found {
+		return fmt.Errorf("device ID %s not found in PCI devices", id)
+	}
+
+	if !strings.HasPrefix(device.Name, "ppt") {
+		return fmt.Errorf("device ID %s is not currently attached to ppt", id)
+	}
+
+	var existing models.PassedThroughIDs
+	if err := s.DB.Where("device_id = ?", id).First(&existing).Error; err == nil {
+		return nil
+	} else if err != nil && err != gorm.ErrRecordNotFound {
+		return fmt.Errorf("checking PassedThroughIDs: %w", err)
+	}
+
+	record := models.PassedThroughIDs{
+		DeviceID:  id,
+		Domain:    intDomain,
+		OldDriver: "",
+	}
+
+	if err := s.DB.Create(&record).Error; err != nil {
+		return fmt.Errorf("creating PassedThroughIDs: %w", err)
+	}
+
+	if intDomain == 0 {
+		if err := s.addLoaderPPTDevice(id); err != nil {
+			if rollbackErr := s.DB.Delete(&record).Error; rollbackErr != nil {
+				return fmt.Errorf("CRITICAL STATE MISMATCH: failed to update loader.conf (%v), and failed to revert DB insert for %s (%v)", err, id, rollbackErr)
+			}
+
+			return err
+		}
 	}
 
 	return s.SyncPPTDevices()
@@ -233,11 +632,8 @@ func (s *Service) RemovePPTDevice(id string) error {
 
 	var result []vmModels.VM
 	for _, vm := range vms {
-		for _, id := range vm.PCIDevices {
-			if id == existing.ID {
-				result = append(result, vm)
-				break
-			}
+		if slices.Contains(vm.PCIDevices, existing.ID) {
+			result = append(result, vm)
 		}
 	}
 
@@ -245,49 +641,92 @@ func (s *Service) RemovePPTDevice(id string) error {
 		return fmt.Errorf("device_%d_in_use_by_vm", existing.ID)
 	}
 
-	parts := strings.Split(existing.DeviceID, "/")
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid device ID format: expected 'num/num/num'")
+	parts, err := parsePPTAddress(existing.DeviceID)
+	if err != nil {
+		return err
+	}
+
+	pciAddr := pciAddress(existing.Domain, parts)
+
+	if err := s.DB.Delete(&existing).Error; err != nil {
+		return fmt.Errorf("failed to delete passthrough mapping for %s: %w", existing.DeviceID, err)
+	}
+
+	if err := s.removeLoaderPPTDevice(existing.DeviceID); err != nil {
+		if rollbackErr := s.DB.Create(&existing).Error; rollbackErr != nil {
+			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to remove %s from loader.conf (%v), and failed to restore DB row (%v)", existing.DeviceID, err, rollbackErr)
+		}
+
+		return err
 	}
 
 	detach, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"detach",
 		"-f",
-		fmt.Sprintf("pci%d:%s:%s:%s", existing.Domain, parts[0], parts[1], parts[2]),
+		pciAddr,
 	)
-
-	if err != nil && detach != "" {
-		return fmt.Errorf("detaching device %s failed %s: %w", existing.DeviceID, detach, err)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("output", strings.TrimSpace(detach)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime detach failed; reboot may be required")
+		return nil
 	}
 
 	clearDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"clear",
 		"driver",
 		"-f",
-		fmt.Sprintf("pci%d:%s:%s:%s", existing.Domain, parts[0], parts[1], parts[2]),
+		pciAddr,
 	)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("output", strings.TrimSpace(clearDriver)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver clear failed; reboot may be required")
+		return nil
+	}
 
-	if err != nil && clearDriver != "" {
-		return fmt.Errorf("clearing driver for device %s failed %s: %w", existing.DeviceID, clearDriver, err)
+	if strings.TrimSpace(existing.OldDriver) == "" {
+		rescanOutput, err := utils.RunCommand(
+			"/usr/sbin/devctl",
+			"rescan",
+			pciAddr,
+		)
+		if err != nil {
+			logger.L.Warn().
+				Err(err).
+				Str("device_id", existing.DeviceID).
+				Str("pci_addr", pciAddr).
+				Str("output", strings.TrimSpace(rescanOutput)).
+				Msg("Passthrough mapping removed from DB/loader.conf, but runtime PCI rescan failed; reboot may be required")
+		}
+
+		return nil
 	}
 
 	setDriver, err := utils.RunCommand(
-		"devctl",
+		"/usr/sbin/devctl",
 		"set",
 		"driver",
-		fmt.Sprintf("pci%d:%s:%s:%s", existing.Domain, parts[0], parts[1], parts[2]),
+		pciAddr,
 		existing.OldDriver,
 	)
-
-	if err != nil && setDriver != "" {
-		return fmt.Errorf("setting driver for device %s failed %s: %w", existing.DeviceID, setDriver, err)
+	if err != nil {
+		logger.L.Warn().
+			Err(err).
+			Str("device_id", existing.DeviceID).
+			Str("pci_addr", pciAddr).
+			Str("driver", existing.OldDriver).
+			Str("output", strings.TrimSpace(setDriver)).
+			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver restore failed; reboot may be required")
 	}
 
-	if err := s.DB.Delete(&existing).Error; err != nil {
-		return fmt.Errorf("removing PassedThroughIDs: %w", err)
-	}
-
-	return s.SyncPPTDevices()
+	return nil
 }

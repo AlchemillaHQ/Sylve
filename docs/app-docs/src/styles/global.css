@@ -1,0 +1,59 @@
+@layer base, starlight, theme, components, utilities;
+
+@import "@astrojs/starlight-tailwind";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tailwindcss";
+
+[data-theme="dark"] .logo-dark {
+  display: block;
+}
+
+[data-theme="dark"] .logo-light {
+  display: none;
+}
+
+:root {
+  --sl-content-width: 45rem;
+  --sl-text-5xl: 3.5rem;
+  --sl-sidebar-width: 18rem;
+}
+
+:root {
+  --sl-color-accent: #3447ff;
+  --sl-color-accent-high: #b3c7ff;
+}
+:root[data-theme="light"] {
+  --sl-color-accent: #364bff;
+  --sl-color-accent-high: #182775;
+}
+
+@theme {
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+
+  --color-accent-50: oklch(0.97 0 0);
+  --color-accent-100: oklch(0.94 0 0);
+  --color-accent-200: oklch(0.88 0 0);
+  --color-accent-300: oklch(0.8 0 0);
+  --color-accent-400: oklch(0.7 0 0);
+  --color-accent-500: oklch(0.6 0 0);
+  --color-accent-600: oklch(0.5 0 0);
+  --color-accent-700: oklch(0.4 0 0);
+  --color-accent-800: oklch(0.3 0 0);
+  --color-accent-900: oklch(0.25 0 0);
+  --color-accent-950: oklch(0.2 0 0);
+
+  --color-gray-50: oklch(0.98 0 0);
+  --color-gray-100: oklch(0.95 0 0);
+  --color-gray-200: oklch(0.9 0 0);
+  --color-gray-300: oklch(0.85 0 0);
+  --color-gray-400: oklch(0.7 0 0);
+  --color-gray-500: oklch(0.55 0 0);
+  --color-gray-600: oklch(0.45 0 0);
+  --color-gray-700: oklch(0.35 0 0);
+  --color-gray-800: oklch(0.26 0 0);
+  --color-gray-900: oklch(0.2 0 0);
+  --color-gray-950: oklch(0.15 0 0);
+}

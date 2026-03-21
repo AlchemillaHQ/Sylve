@@ -199,7 +199,8 @@
 				: entry.dhcpRange?.manualSwitch?.name;
 
 			const ip = entry.ipObject?.entries ? entry.ipObject?.entries[0]?.value : '-';
-			const mac = entry.macObject?.entries ? entry.macObject?.entries[0]?.value : '-';
+			const macRaw = entry.macObject?.entries ? entry.macObject?.entries[0]?.value : '-';
+			const mac = macRaw !== '-' ? macRaw.toLowerCase() : '-';
 			const duid = entry.duidObject?.entries ? entry.duidObject?.entries[0]?.value : '-';
 
 			rows.push({
@@ -220,13 +221,49 @@
 		for (const entry of dhcpLeases.current.file) {
 			const found = dhcpLeases.current.db.find((e) => {
 				const ips = e.ipObject?.entries ? e.ipObject?.entries.map((i) => i.value) : [];
-				return e.hostname === entry.hostname && ips.includes(entry.ip);
+
+				// --- FIX START ---
+
+				// 1. Check IP match (Fundamental requirement)
+				const isIpMatch = ips.includes(entry.ip);
+				if (!isIpMatch) return false;
+
+				// 2. Prepare DB values for comparison
+				const dbHostname = e.hostname?.toLowerCase();
+				const dbMac = e.macObject?.entries?.[0]?.value?.toLowerCase();
+
+				// 3. Prepare File values for comparison
+				const fileHostname = entry.hostname?.toLowerCase();
+				const fileMac = entry.mac?.toLowerCase();
+
+				// 4. Match if Hostname OR MAC matches
+				// We use OR because sometimes a device might not report a hostname,
+				// but the MAC/IP combination guarantees it's the same device.
+				const isHostnameMatch = dbHostname && fileHostname && dbHostname === fileHostname;
+				const isMacMatch = dbMac && fileMac && dbMac === fileMac;
+
+				return isHostnameMatch || isMacMatch;
+
+				// --- FIX END ---
 			});
 
 			if (found) {
-				const row = rows.find((r) => r.hostname === entry.hostname && r.ip === entry.ip);
+				// If found in DB, update the existing Static row's status (optional)
+				// or just skip adding this dynamic row.
+
+				// You were searching by exact string match in your original code:
+				// const row = rows.find((r) => r.hostname === entry.hostname && r.ip === entry.ip);
+				// We need to find the row loosely now too:
+
+				const row = rows.find(
+					(r) =>
+						r.ip === entry.ip &&
+						(r.hostname?.toLowerCase() === entry.hostname?.toLowerCase() ||
+							r.mac?.toLowerCase() === entry.mac?.toLowerCase())
+				);
+
 				if (row) {
-					row.expiry = 'never';
+					row.expiry = 'never'; // Or keep it as "Never" since it's static
 				}
 				continue;
 			} else {
@@ -237,8 +274,8 @@
 					range: '-',
 					switch: '-',
 					duid: entry.duid,
-					mac: entry.mac,
-					identifier: entry.mac ? entry.mac : entry.duid,
+					mac: entry.mac ? entry.mac.toLowerCase() : '-', // Normalize to lowercase for display
+					identifier: entry.mac ? entry.mac.toLowerCase() : entry.duid,
 					expiry: entry.expiry === 0 ? 'never' : entry.expiry,
 					type: 'dynamic'
 				});

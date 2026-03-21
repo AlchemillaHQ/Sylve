@@ -1,19 +1,17 @@
-import { getJailById, getJails, getJailStateById, getJailStates } from '$lib/api/jail/jail';
+import { getSimpleJailById } from '$lib/api/jail/jail';
 import { SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
-	const cacheDuration = SEVEN_DAYS;
-	const ctId = parseInt(params.node);
+    const cacheDuration = SEVEN_DAYS;
+    const ctId = parseInt(params.node);
 
-	const [jail, state] = await Promise.all([
-		cachedFetch(`jail-${ctId}`, async () => getJailById(ctId, 'ctid'), cacheDuration),
-		cachedFetch(`jail-${ctId}-state`, async () => getJailStateById(ctId), cacheDuration)
-	]);
+    const [jail] = await Promise.all([
+        cachedFetch(`simple-jail-${ctId}`, async () => getSimpleJailById(ctId, 'ctid'), cacheDuration),
+    ]);
 
-	return {
-		ctId,
-		jail,
-		state
-	};
+    return {
+        ctId,
+        jail,
+    };
 }

@@ -4,7 +4,7 @@
 	import KvTableModal from '$lib/components/custom/KVTableModal.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
-	import CreatePartition from '$lib/components/disk/CreatePartition.svelte';
+	import CreatePartition from '$lib/components/custom/Disk/CreatePartition.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { Row } from '$lib/types/components/tree-table';
 	import { type Disk, type Partition } from '$lib/types/disk/disk';
@@ -21,6 +21,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	const disks = resource(
 		() => 'disks',
 		async (key, prevKey, { signal }) => {

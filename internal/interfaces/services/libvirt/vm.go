@@ -53,13 +53,15 @@ type CreateVMRequest struct {
 	VNCResolution string `json:"vncResolution"`
 	VNCWait       *bool  `json:"vncWait"`
 
-	CloudInit         *bool  `json:"cloudInit"`
-	CloudInitData     string `json:"cloudInitData"`
-	CloudInitMetaData string `json:"cloudInitMetaData"`
+	CloudInit              *bool  `json:"cloudInit"`
+	CloudInitData          string `json:"cloudInitData"`
+	CloudInitMetaData      string `json:"cloudInitMetaData"`
+	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig"`
 
-	APIC        *bool `json:"apic"`
-	ACPI        *bool `json:"acpi"`
-	IgnoreUMSRs *bool `json:"ignoreUMSR"`
+	APIC           *bool `json:"apic"`
+	ACPI           *bool `json:"acpi"`
+	IgnoreUMSRs    *bool `json:"ignoreUMSR"`
+	QemuGuestAgent *bool `json:"qemuGuestAgent"`
 
 	StartAtBoot *bool      `json:"startAtBoot"`
 	StartOrder  int        `json:"startOrder"`
@@ -82,8 +84,55 @@ type ModifyVNCRequest struct {
 	VNCWait       *bool  `json:"vncWait"`
 }
 
+type QemuGuestAgentInfo struct {
+	OSInfo     QGAOSInfo             `json:"osInfo"`
+	Interfaces []QGANetworkInterface `json:"interfaces"`
+}
+
+type QGAOSInfo struct {
+	Name          string `json:"name"`
+	KernelRelease string `json:"kernel-release"`
+	Version       string `json:"version"`
+	PrettyName    string `json:"pretty-name"`
+	VersionID     string `json:"version-id"`
+	KernelVersion string `json:"kernel-version"`
+	Machine       string `json:"machine"`
+	ID            string `json:"id"`
+}
+
+type QGANetworkInterface struct {
+	Name            string                `json:"name"`
+	IPAddresses     []QGANetworkIPAddress `json:"ip-addresses"`
+	Statistics      QGANetworkStatistics  `json:"statistics"`
+	HardwareAddress string                `json:"hardware-address"`
+}
+
+type QGANetworkIPAddress struct {
+	IPType  string `json:"ip-address-type"`
+	Address string `json:"ip-address"`
+	Prefix  int    `json:"prefix"`
+}
+
+type QGANetworkStatistics struct {
+	TxPackets uint64 `json:"tx-packets"`
+	TxErrs    uint64 `json:"tx-errs"`
+	RxBytes   uint64 `json:"rx-bytes"`
+	RxDropped uint64 `json:"rx-dropped"`
+	RxPackets uint64 `json:"rx-packets"`
+	RxErrs    uint64 `json:"rx-errs"`
+	TxBytes   uint64 `json:"tx-bytes"`
+	TxDropped uint64 `json:"tx-dropped"`
+}
+
 type NetworkAttachRequest struct {
 	RID        uint   `json:"rid" binding:"required"`
+	SwitchName string `json:"switchName" binding:"required"`
+	Emulation  string `json:"emulation" binding:"required"`
+	MacId      *uint  `json:"macId"`
+}
+
+type NetworkUpdateRequest struct {
+	NetworkID  uint   `json:"networkId" binding:"required"`
 	SwitchName string `json:"switchName" binding:"required"`
 	Emulation  string `json:"emulation" binding:"required"`
 	MacId      *uint  `json:"macId"`

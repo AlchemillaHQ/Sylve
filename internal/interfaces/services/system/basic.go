@@ -11,6 +11,6 @@ package systemServiceInterfaces
 import "github.com/alchemillahq/sylve/internal/db/models"
 
 type InitializeRequest struct {
-	Pools    []string                  `json:"pools" binding:"required"`
+	Pools    []string                  `json:"pools"`
 	Services []models.AvailableService `json:"services" binding:"required"`
 }

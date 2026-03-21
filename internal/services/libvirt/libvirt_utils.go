@@ -220,14 +220,18 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, error) {
 	var states []libvirtServiceInterfaces.DomainState
 
+	if err := s.requireConnection(); err != nil {
+		return states, err
+	}
+
 	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
-	domains, _, err := s.Conn.ConnectListAllDomains(1, flags)
+	domains, _, err := s.conn().ConnectListAllDomains(1, flags)
 	if err != nil {
 		return states, err
 	}
 
 	for _, d := range domains {
-		state, reason, err := s.Conn.DomainGetState(d, 0)
+		state, reason, err := s.conn().DomainGetState(d, 0)
 		if err != nil {
 			fmt.Printf("failed to get domain state: %v\n", err)
 		}
@@ -244,12 +248,16 @@ func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, err
 }
 
 func (s *Service) IsDomainShutOff(rid uint) (bool, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	if err := s.requireConnection(); err != nil {
+		return false, err
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 
 	if err != nil {
 		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)
@@ -336,6 +344,13 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 		return fmt.Errorf("invalid_host_logical_cores")
 	}
 
+	if hostLogicalPerSocket <= 0 {
+		hostLogicalPerSocket = hostLogicalCores / hostSocketCount
+		if hostLogicalPerSocket <= 0 {
+			hostLogicalPerSocket = hostLogicalCores
+		}
+	}
+
 	seenSockets := make(map[int]struct{}, len(pins))
 	for i, pin := range pins {
 		if pin.Socket < 0 || pin.Socket >= hostSocketCount {
@@ -350,26 +365,33 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 		}
 	}
 
-	seenCores := make(map[int]struct{}, 128)
+	actualHostCores := make(map[int]struct{}, 128)
 	perSocketCounts := make(map[int]int, hostSocketCount)
 	totalPinned := 0
 
 	for _, pin := range pins {
+		baseCore := pin.Socket * hostLogicalPerSocket
 		perSocketSeen := make(map[int]struct{}, len(pin.Cores))
 		for j, c := range pin.Cores {
-			if c < 0 || c >= hostLogicalCores {
+			if c < 0 || c >= hostLogicalPerSocket {
 				return fmt.Errorf("core_index_out_of_range: core=%d (max=%d) socket=%d pos=%d",
-					c, hostLogicalCores-1, pin.Socket, j)
+					c, hostLogicalPerSocket-1, pin.Socket, j)
 			}
 			if _, dup := perSocketSeen[c]; dup {
 				return fmt.Errorf("duplicate_core_within_socket: core=%d socket=%d", c, pin.Socket)
 			}
 			perSocketSeen[c] = struct{}{}
 
-			if _, dup := seenCores[c]; dup {
-				return fmt.Errorf("duplicate_core_across_sockets: core=%d", c)
+			actualHostCore := baseCore + c
+			if actualHostCore >= hostLogicalCores {
+				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
+					pin.Socket, c, actualHostCore, hostLogicalCores-1)
 			}
-			seenCores[c] = struct{}{}
+
+			if _, dup := actualHostCores[actualHostCore]; dup {
+				return fmt.Errorf("duplicate_core_across_sockets: core=%d", actualHostCore)
+			}
+			actualHostCores[actualHostCore] = struct{}{}
 		}
 		perSocketCounts[pin.Socket] += len(pin.Cores)
 		totalPinned += len(pin.Cores)
@@ -399,13 +421,18 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 			continue
 		}
 		for _, p := range vm.CPUPinning {
+			baseCore := p.HostSocket * hostLogicalPerSocket
 			for _, c := range p.HostCPU {
-				occupied[c] = uint(vm.RID)
+				globalCore := baseCore + c
+				if globalCore < 0 || globalCore >= hostLogicalCores {
+					continue
+				}
+				occupied[globalCore] = uint(vm.RID)
 			}
 		}
 	}
 
-	for c := range seenCores {
+	for c := range actualHostCores {
 		if owner, taken := occupied[c]; taken {
 			return fmt.Errorf("core_conflict: core=%d already_pinned_by_rid=%d", c, owner)
 		}
@@ -477,6 +504,7 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 
 	userDataPath := filepath.Join(cloudInitPath, "user-data")
 	metaDataPath := filepath.Join(cloudInitPath, "meta-data")
+	networkConfigPath := filepath.Join(cloudInitPath, "network-config")
 
 	err = os.WriteFile(userDataPath, []byte(vm.CloudInitData), 0644)
 	if err != nil {
@@ -488,8 +516,15 @@ func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
 		return fmt.Errorf("failed_to_write_meta_data: %w", err)
 	}
 
+	if vm.CloudInitNetworkConfig != "" {
+		err = os.WriteFile(networkConfigPath, []byte(vm.CloudInitNetworkConfig), 0644)
+		if err != nil {
+			return fmt.Errorf("failed_to_write_network_config: %w", err)
+		}
+	}
+
 	isoPath := filepath.Join(vmPath, "cloud-init.iso")
-	_, err = utils.RunCommand("makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
+	_, err = utils.RunCommand("/usr/sbin/makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
 
 	if err != nil {
 		return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
@@ -513,7 +548,7 @@ func (s *Service) GetCloudInitISOPath(rid uint) (string, error) {
 }
 
 func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
-	if vm.Storages == nil || len(vm.Storages) == 0 {
+	if len(vm.Storages) == 0 {
 		return fmt.Errorf("need_storage_to_flash_cloud_init_disk")
 	} else if len(vm.Storages) > 2 {
 		return fmt.Errorf("too_many_storages_to_flash_cloud_init_disk")

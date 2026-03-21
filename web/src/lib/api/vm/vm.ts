@@ -1,10 +1,12 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
+    QGAInfoSchema,
     SimpleVmSchema,
     VMDomainSchema,
     VMSchema,
     VMStatSchema,
     type CreateData,
+    type QGAInfo,
     type SimpleVm,
     type VM,
     type VMDomain,
@@ -17,12 +19,16 @@ export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
     return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
 }
 
-export async function getVMs(): Promise<VM[]> {
-    return await apiRequest('/vm', z.array(VMSchema), 'GET');
+export async function getVMs(hostname?: string): Promise<VM[]> {
+    return await apiRequest('/vm', z.array(VMSchema), 'GET', undefined, { hostname });
 }
 
-export async function getSimpleVMs(): Promise<SimpleVm[]> {
-    return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET');
+export async function getSimpleVMs(hostname?: string): Promise<SimpleVm[]> {
+    return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, { hostname });
+}
+
+export async function getSimpleVMById(id: number, type: 'rid' | 'id'): Promise<SimpleVm> {
+    return await apiRequest(`/vm/simple/${id}?type=${type}`, SimpleVmSchema, 'GET');
 }
 
 export async function newVM(data: CreateData): Promise<APIResponse> {
@@ -61,7 +67,9 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         cloudInit: data.advanced.cloudInit.enabled,
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
-        ignoreUMSR: data.advanced.ignoreUmsrs
+        cloudInitNetworkConfig: data.advanced.cloudInit.networkConfig,
+        ignoreUMSR: data.advanced.ignoreUmsrs,
+        qemuGuestAgent: data.advanced.qemuGuestAgent
     });
 }
 
@@ -69,10 +77,11 @@ export async function deleteVM(
     rid: number,
     deleteMacs: boolean,
     deleteRawDisks: boolean,
-    deleteVolumes: boolean
+    deleteVolumes: boolean,
+    forceDelete: boolean = false
 ): Promise<APIResponse> {
     return await apiRequest(
-        `/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}`,
+        `/vm/${rid}?deletemacs=${deleteMacs}&deleterawdisks=${deleteRawDisks}&deletevolumes=${deleteVolumes}&force=${forceDelete}`,
         APIResponseSchema,
         'DELETE'
     );
@@ -82,8 +91,12 @@ export async function getVMDomain(rid: number | string): Promise<VMDomain> {
     return await apiRequest(`/vm/domain/${rid}`, VMDomainSchema, 'GET');
 }
 
-export async function actionVm(rid: number | string, action: string): Promise<APIResponse> {
-    return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST');
+export async function actionVm(
+    rid: number | string,
+    action: string,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST', undefined, { hostname });
 }
 
 export async function getStats(rid: number, step: string): Promise<VMStat[]> {
@@ -106,6 +119,12 @@ export async function modifyWoL(rid: number, enabled: boolean): Promise<APIRespo
 export async function modifyIgnoreUMSR(rid: number, ignore: boolean): Promise<APIResponse> {
     return await apiRequest(`/vm/options/ignore-umsrs/${rid}`, APIResponseSchema, 'PUT', {
         ignoreUMSRs: ignore
+    });
+}
+
+export async function modifyQemuGuestAgent(rid: number, enabled: boolean): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/qemu-guest-agent/${rid}`, APIResponseSchema, 'PUT', {
+        enabled
     });
 }
 
@@ -150,10 +169,16 @@ export async function modifyShutdownWaitTime(rid: number, waitTime: number): Pro
 export async function modifyCloudInitData(
     rid: number,
     data: string,
-    metadata: string
+    metadata: string,
+    networkConfig: string
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/options/cloud-init/${rid}`, APIResponseSchema, 'PUT', {
         data,
-        metadata
+        metadata,
+        networkConfig
     });
+}
+
+export async function getQGAInfo(rid: number): Promise<APIResponse | QGAInfo> {
+    return await apiRequest(`/vm/qga/${rid}`, QGAInfoSchema, 'GET');
 }

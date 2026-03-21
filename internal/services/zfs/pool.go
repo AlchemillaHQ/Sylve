@@ -128,15 +128,47 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
+	if err := s.ensureSylveDatasetsOnPool(ctx, req.Name); err != nil {
+		return err
+	}
+
 	var basicSettings models.BasicSettings
 	if err := s.DB.First(&basicSettings).Error; err != nil {
 		return fmt.Errorf("failed_to_get_basic_settings: %v", err)
 	}
 
-	basicSettings.Pools = append(basicSettings.Pools, req.Name)
+	if !slices.Contains(basicSettings.Pools, req.Name) {
+		basicSettings.Pools = append(basicSettings.Pools, req.Name)
+	}
 
 	if err := s.DB.Save(&basicSettings).Error; err != nil {
 		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
+	}
+
+	return nil
+}
+
+func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) error {
+	requiredDatasets := []string{
+		"sylve",
+		"sylve/virtual-machines",
+		"sylve/jails",
+	}
+
+	for _, dataset := range requiredDatasets {
+		fullDatasetName := fmt.Sprintf("%s/%s", poolName, dataset)
+		found, err := s.GZFS.ZFS.Get(ctx, fullDatasetName, false)
+		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			return fmt.Errorf("failed_to_check_dataset_%s: %w", fullDatasetName, err)
+		}
+
+		if found != nil {
+			continue
+		}
+
+		if _, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, nil); err != nil {
+			return fmt.Errorf("failed_to_create_dataset_%s: %w", fullDatasetName, err)
+		}
 	}
 
 	return nil

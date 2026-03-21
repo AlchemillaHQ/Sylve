@@ -10,14 +10,14 @@ package jailHandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"sync"
-	"syscall"
-	"unsafe"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -28,19 +28,246 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	wsReadLimit         = 10 << 20 // 10 MiB
+	wsWriteTimeout      = 10 * time.Second
+	wsPongWait          = 60 * time.Second
+	wsPingPeriod        = (wsPongWait * 9) / 10
+	defaultRows         = 24
+	defaultCols         = 80
+	controlInput   byte = 0
+	controlResize  byte = 1
+	controlKill    byte = 2
+)
+
+type Observer struct {
+	Conn *websocket.Conn
+	Mu   sync.Mutex
+}
+
+func (o *Observer) WriteMessage(messageType int, payload []byte) error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+
+	_ = o.Conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
+	return o.Conn.WriteMessage(messageType, payload)
+}
+
+func (o *Observer) WriteControl(messageType int, payload []byte, deadline time.Time) error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+
+	_ = o.Conn.SetWriteDeadline(deadline)
+	return o.Conn.WriteControl(messageType, payload, deadline)
+}
+
+func (o *Observer) Close() error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+	return o.Conn.Close()
+}
+
+type TerminalSession struct {
+	ID        string
+	Cmd       *exec.Cmd
+	Pty       *os.File
+	Observers map[*Observer]struct{}
+
+	Mu        sync.Mutex
+	closeOnce sync.Once
+	closed    bool
+}
+
+type SessionManager struct {
+	sessions map[string]*TerminalSession
+	mu       sync.RWMutex
+}
+
+var (
+	GlobalSessionManager = &SessionManager{
+		sessions: make(map[string]*TerminalSession),
+	}
+	WSUpgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     func(r *http.Request) bool { return true },
+	}
+)
+
 type WindowSize struct {
 	Rows uint16 `json:"rows"`
 	Cols uint16 `json:"cols"`
-	X    uint16
-	Y    uint16
+	X    uint16 `json:"x"`
+	Y    uint16 `json:"y"`
 }
 
-var WSUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*TerminalSession, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if session, exists := sm.sessions[sessionID]; exists && !session.IsClosed() {
+		return session, nil
+	}
+
+	ctidHash := utils.HashIntToNLetters(ctidInt, 5)
+
+	cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
+	cmd.Env = append(os.Environ(), "TERM=xterm")
+
+	ptymx, err := pty.Start(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pty.Setsize(ptymx, &pty.Winsize{
+		Rows: defaultRows,
+		Cols: defaultCols,
+	}); err != nil {
+		_ = ptymx.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return nil, err
+	}
+
+	session := &TerminalSession{
+		ID:        sessionID,
+		Cmd:       cmd,
+		Pty:       ptymx,
+		Observers: make(map[*Observer]struct{}),
+	}
+
+	sm.sessions[sessionID] = session
+	go session.PumpOutput(sm)
+
+	return session, nil
+}
+
+func (sm *SessionManager) removeSession(sessionID string, session *TerminalSession) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	current, exists := sm.sessions[sessionID]
+	if !exists {
+		return
+	}
+	if current == session {
+		delete(sm.sessions, sessionID)
+	}
+}
+
+func (ts *TerminalSession) IsClosed() bool {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+	return ts.closed
+}
+
+func (ts *TerminalSession) Close(sm *SessionManager) {
+	ts.closeOnce.Do(func() {
+		ts.Mu.Lock()
+		ts.closed = true
+
+		observers := make([]*Observer, 0, len(ts.Observers))
+		for obs := range ts.Observers {
+			observers = append(observers, obs)
+		}
+		ts.Observers = make(map[*Observer]struct{})
+		ts.Mu.Unlock()
+
+		for _, obs := range observers {
+			_ = obs.Close()
+		}
+
+		if ts.Pty != nil {
+			_ = ts.Pty.Close()
+		}
+		if ts.Cmd != nil && ts.Cmd.Process != nil {
+			_ = ts.Cmd.Process.Kill()
+		}
+		if ts.Cmd != nil {
+			_ = ts.Cmd.Wait()
+		}
+
+		sm.removeSession(ts.ID, ts)
+	})
+}
+
+func (ts *TerminalSession) AddObserver(obs *Observer) error {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+
+	if ts.closed {
+		return errors.New("session is closed")
+	}
+
+	ts.Observers[obs] = struct{}{}
+	return nil
+}
+
+func (ts *TerminalSession) RemoveObserver(obs *Observer, sm *SessionManager) {
+	ts.Mu.Lock()
+	delete(ts.Observers, obs)
+	remaining := len(ts.Observers)
+	closed := ts.closed
+	ts.Mu.Unlock()
+
+	_ = obs.Close()
+
+	if !closed && remaining == 0 {
+		ts.Close(sm)
+	}
+}
+
+func (ts *TerminalSession) BroadcastBinary(payload []byte) {
+	ts.Mu.Lock()
+	if ts.closed {
+		ts.Mu.Unlock()
+		return
+	}
+
+	observers := make([]*Observer, 0, len(ts.Observers))
+	for obs := range ts.Observers {
+		observers = append(observers, obs)
+	}
+	ts.Mu.Unlock()
+
+	for _, obs := range observers {
+		if err := obs.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+			logger.L.Warn().Err(err).Str("session", ts.ID).Msg("Failed to write PTY output to websocket")
+		}
+	}
+}
+
+func (ts *TerminalSession) PumpOutput(sm *SessionManager) {
+	defer ts.Close(sm)
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := ts.Pty.Read(buf)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				logger.L.Error().Err(err).Str("session", ts.ID).Msg("Error reading from PTY")
+			}
+			return
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		ts.BroadcastBinary(data)
+	}
+}
+
+func (sm *SessionManager) KillSession(sessionID string) {
+	sm.mu.RLock()
+	session, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if exists {
+		session.Close(sm)
+	}
 }
 
 func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
@@ -59,7 +286,7 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 
 		j, err := jailService.GetJailByCTID(uint(ctidInt))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed_to_get_jail: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed_to_get_jail"})
 			return
 		}
 		if j == nil {
@@ -67,152 +294,122 @@ func HandleJailTerminalWebsocket(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		sessionName := "sylve-jail-" + ctid
-		checkSession := exec.Command("tmux", "has-session", "-t", sessionName)
-
-		cmdArgs := []string{
-			"tmux", "new-session",
-			"-s", sessionName,
-			"-d", "--",
-		}
-
-		ctidHash := utils.HashIntToNLetters(ctidInt, 5)
-		cmdArgs = append(cmdArgs,
-			"jexec", "-l", ctidHash,
-			"su", "-l", "root",
-		)
-
-		if err := checkSession.Run(); err != nil {
-			createSession := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-			if err := createSession.Run(); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "unable_to_create_tmux_jail_session"})
-				return
-			}
-		}
-
 		conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
-			logger.L.Error().Err(err).Msg("WebSocket upgrade failed")
 			return
 		}
-		defer conn.Close()
 
-		var wsWriteMu sync.Mutex
-		safeWrite := func(mt int, data []byte) error {
-			wsWriteMu.Lock()
-			defer wsWriteMu.Unlock()
-			return conn.WriteMessage(mt, data)
-		}
+		conn.SetReadLimit(wsReadLimit)
+		_ = conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		})
 
-		cmd := exec.Command("tmux", "attach-session", "-t", sessionName)
-		cmd.Env = append(os.Environ(), "TERM=xterm")
-
-		tty, err := pty.Start(cmd)
+		sessionID := "jail-" + ctid
+		session, err := GlobalSessionManager.GetOrCreateSession(sessionID, ctidInt)
 		if err != nil {
-			_ = safeWrite(websocket.TextMessage, []byte(err.Error()))
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Error starting session: "+err.Error()))
+			_ = conn.Close()
 			return
 		}
-		defer func() {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-				_, _ = cmd.Process.Wait()
-			}
-			_ = tty.Close()
-		}()
+
+		observer := &Observer{Conn: conn}
+		if err := session.AddObserver(observer); err != nil {
+			_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
+			_ = conn.Close()
+			return
+		}
+
+		defer session.RemoveObserver(observer, GlobalSessionManager)
 
 		done := make(chan struct{})
-		var closeOnce sync.Once
-		closeDone := func() {
-			closeOnce.Do(func() {
-				close(done)
-			})
-		}
+		defer close(done)
 
-		// Read from tmux (pty) and forward to WebSocket
 		go func() {
-			buf := make([]byte, 1024)
+			ticker := time.NewTicker(wsPingPeriod)
+			defer ticker.Stop()
+
 			for {
 				select {
 				case <-done:
 					return
-				default:
-					n, err := tty.Read(buf)
-					if err != nil {
-						// Do NOT kill the tmux session here; just inform client and stop.
-						_ = safeWrite(websocket.TextMessage, []byte("Terminal session closed."))
-						closeDone()
+				case <-ticker.C:
+					if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteTimeout)); err != nil {
 						return
-					}
-					if n > 0 {
-						if err := safeWrite(websocket.BinaryMessage, buf[:n]); err != nil {
-							// WebSocket write failed; stop this goroutine.
-							closeDone()
-							return
-						}
 					}
 				}
 			}
 		}()
 
-		// Read from WebSocket and forward to tmux (pty)
 		for {
 			messageType, reader, err := conn.NextReader()
 			if err != nil {
-				// WebSocket closed/errored; detach client only.
-				closeDone()
 				return
 			}
 
-			if messageType == websocket.TextMessage {
-				_ = safeWrite(websocket.TextMessage, []byte("Unexpected text message"))
+			if messageType != websocket.BinaryMessage {
+				logger.L.Warn().
+					Int("message_type", messageType).
+					Str("session", sessionID).
+					Msg("Rejected non-binary websocket frame")
+				return
+			}
+
+			data, err := io.ReadAll(reader)
+			if err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to read websocket frame")
+				return
+			}
+
+			if len(data) == 0 {
 				continue
 			}
 
-			header := make([]byte, 1)
-			if _, err := reader.Read(header); err != nil {
-				// Reader error; don't kill tmux session.
-				closeDone()
-				return
-			}
-
-			switch header[0] {
-			case 0: // stdin
-				_, _ = io.Copy(tty, reader)
-
-			case 1: // resize
-				var ws WindowSize
-				if err := json.NewDecoder(reader).Decode(&ws); err != nil {
-					_ = safeWrite(websocket.TextMessage, []byte("Error decoding resize: "+err.Error()))
+			switch data[0] {
+			case controlInput:
+				if len(data) == 1 {
 					continue
 				}
-				_, _, errno := syscall.Syscall(
-					syscall.SYS_IOCTL,
-					tty.Fd(),
-					syscall.TIOCSWINSZ,
-					uintptr(unsafe.Pointer(&ws)),
-				)
-				if errno != 0 {
-					_ = safeWrite(websocket.TextMessage, []byte("Resize error: "+errno.Error()))
-				}
-
-			case 2: // kill
-				var killMsg struct {
-					Kill string `json:"kill"`
-				}
-				if err := json.NewDecoder(reader).Decode(&killMsg); err != nil {
-					continue
-				}
-				sid := killMsg.Kill
-				if sid == "" {
-					sid = sessionName
-				}
-				// Only explicit kill message actually destroys tmux session.
-				_ = exec.Command("tmux", "kill-session", "-t", sid).Run()
-				_ = safeWrite(websocket.TextMessage, []byte("Session killed: "+sid))
-				if sid == sessionName {
-					closeDone()
+				if _, err := session.Pty.Write(data[1:]); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to write terminal input to PTY")
 					return
 				}
+
+			case controlResize:
+				if len(data) == 1 {
+					continue
+				}
+
+				var ws WindowSize
+				if err := json.Unmarshal(data[1:], &ws); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Invalid resize payload")
+					continue
+				}
+
+				if ws.Rows == 0 || ws.Cols == 0 {
+					logger.L.Warn().Str("session", sessionID).Msg("Ignored zero-sized resize payload")
+					continue
+				}
+
+				if err := pty.Setsize(session.Pty, &pty.Winsize{
+					Rows: ws.Rows,
+					Cols: ws.Cols,
+					X:    ws.X,
+					Y:    ws.Y,
+				}); err != nil {
+					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize PTY")
+				}
+
+			case controlKill:
+				GlobalSessionManager.KillSession(sessionID)
+				return
+
+			default:
+				logger.L.Warn().
+					Uint8("control", data[0]).
+					Str("session", sessionID).
+					Msg("Rejected unknown websocket control byte")
+				return
 			}
 		}
 	}

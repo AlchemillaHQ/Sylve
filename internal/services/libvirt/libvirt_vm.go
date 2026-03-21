@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,15 +23,19 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
@@ -145,6 +150,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		sIndex++
 	}
 
+	if vm.QemuGuestAgent {
+		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
+			sIndex,
+			filepath.Join(vmPath, "qga.sock"),
+		)
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: qgaArg,
+			},
+		})
+		sIndex++
+	}
+
 	var interfaces []libvirtServiceInterfaces.Interface
 
 	if vm.Networks != nil && len(vm.Networks) > 0 {
@@ -156,12 +174,27 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				var mac *libvirtServiceInterfaces.MACAddress
 				if network.MacID != nil && *network.MacID != 0 {
 					var macObj networkModels.Object
-					if err := s.DB.Preload("Entries").Where("id = ? and type = ?", *network.MacID, "Mac").Find(&macObj).Error; err != nil {
+					err := s.DB.Preload("Entries").
+						Where("id = ? and type = ?", *network.MacID, "Mac").
+						First(&macObj).Error
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						logger.L.Warn().
+							Uint("rid", vm.RID).
+							Uint("mac_id", *network.MacID).
+							Msg("vm_network_mac_object_missing_skipping_mac_assignment")
+					} else if err != nil {
 						return "", fmt.Errorf("failed_to_find_mac_object: %w", err)
+					} else if len(macObj.Entries) == 0 {
+						logger.L.Warn().
+							Uint("rid", vm.RID).
+							Uint("mac_id", macObj.ID).
+							Msg("vm_network_mac_object_has_no_entries_skipping_mac_assignment")
+					} else {
+						entry := strings.TrimSpace(macObj.Entries[0].Value)
+						if entry != "" {
+							mac = &libvirtServiceInterfaces.MACAddress{Address: entry}
+						}
 					}
-
-					entry := macObj.Entries[0]
-					mac = &libvirtServiceInterfaces.MACAddress{Address: entry.Value}
 				}
 
 				if network.SwitchType == "manual" {
@@ -304,7 +337,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 	*/
 
-	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%s,h=%s,password=%s%s",
+	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%s,h=%s,password=%s%s",
 		sIndex,
 		vm.VNCPort,
 		width,
@@ -345,6 +378,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 }
 
 func (s *Service) CreateLvVm(id int, ctx context.Context) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
@@ -416,20 +453,29 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return fmt.Errorf("failed to generate VM XML: %w", err)
 	}
 
-	_, err = s.Conn.DomainDefineXML(generated)
+	_, err = s.conn().DomainDefineXML(generated)
 
 	if err != nil {
 		return fmt.Errorf("failed to define VM domain: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after creation")
 	}
 
 	return nil
 }
 
 func (s *Service) RemoveLvVm(rid uint) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	domainGone := false
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Domain for VM RID %d not found, assuming already removed", rid)
@@ -437,13 +483,13 @@ func (s *Service) RemoveLvVm(rid uint) error {
 	}
 
 	if !domainGone {
-		if err := s.Conn.DomainDestroy(domain); err != nil {
+		if err := s.conn().DomainDestroy(domain); err != nil {
 			if !strings.Contains(err.Error(), "is not running") {
 				return fmt.Errorf("failed_to_destroy_domain: %w", err)
 			}
 		}
 
-		if err := s.Conn.DomainUndefine(domain); err != nil {
+		if err := s.conn().DomainUndefine(domain); err != nil {
 			return fmt.Errorf("failed_to_undefine_domain: %w", err)
 		}
 	}
@@ -469,9 +515,13 @@ func (s *Service) RemoveLvVm(rid uint) error {
 }
 
 func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error) {
+	if err := s.requireConnection(); err != nil {
+		return nil, err
+	}
+
 	var dom libvirtServiceInterfaces.LvDomain
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
@@ -487,7 +537,7 @@ func (s *Service) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, err
 		7: "PMSuspended",
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_domain_state: %w", err)
 	}
@@ -519,7 +569,7 @@ func (s *Service) StartTPM() error {
 		}
 	}
 
-	psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+	psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 	if err != nil {
 		return fmt.Errorf("failed_to_run_ps_command: %w", err)
 	}
@@ -563,7 +613,7 @@ func (s *Service) StartTPM() error {
 				"--daemon",
 			}
 
-			_, err = utils.RunCommand("swtpm", args...)
+			_, err = utils.RunCommand("/usr/local/bin/swtpm", args...)
 			if err != nil {
 				return fmt.Errorf("failed_to_start_swtpm_for_vm: %d, error: %w", rid, err)
 			}
@@ -599,7 +649,7 @@ func (s *Service) StopTPM(rid uint) error {
 		return fmt.Errorf("tpm_socket_not_found: %s", tpmSocket)
 	}
 
-	psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+	psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 	if err != nil {
 		return fmt.Errorf("failed_to_run_ps_command: %w", err)
 	}
@@ -632,6 +682,10 @@ func (s *Service) StopTPM(rid uint) error {
 }
 
 func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	if vm.PCIDevices == nil || len(vm.PCIDevices) == 0 {
 		return nil
 	}
@@ -646,12 +700,12 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 			continue
 		}
 
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(other.RID)))
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(other.RID)))
 		if err != nil {
 			continue
 		}
 
-		state, _, _ := s.Conn.DomainGetState(domain, 0)
+		state, _, _ := s.conn().DomainGetState(domain, 0)
 		if state != 1 {
 			continue
 		}
@@ -669,129 +723,251 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 }
 
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	if action == "start" {
+		allowed, err := s.canMutateProtectedVM(vm.RID)
+		if err != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
+
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(vm.RID)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
 
-	err = s.CheckPCIDevicesInUse(vm)
-	if err != nil {
-		return err
+	if action == "start" || action == "reboot" {
+		if err := s.CheckPCIDevicesInUse(vm); err != nil {
+			return err
+		}
 	}
 
 	switch action {
 	case "start":
-		state, _, err := s.Conn.DomainGetState(domain, 0)
-		if err != nil {
-			return fmt.Errorf("could_not_get_state: %w", err)
-		}
-
-		if state == 1 {
-			return nil
-		}
-
-		err = s.StartTPM()
-
-		if err != nil {
-			return fmt.Errorf("failed_to_start_tpm: %w", err)
-		}
-
-		if err := s.Conn.DomainCreate(domain); err != nil {
-			return fmt.Errorf("failed_to_start_domain: %w", err)
-		}
-
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_run: %w", err)
-		}
-
-		if newState != 1 {
-			return fmt.Errorf("unexpected_state_after_start: %d", newState)
-		}
+		err = s.startVM(&domain, vm)
 	case "shutdown":
-		shutdown := false
-		if err := s.Conn.DomainShutdown(domain); err == nil {
-			shutdown = true
-		}
-
-		if vm.ShutdownWaitTime > 0 {
-			time.Sleep(time.Duration(vm.ShutdownWaitTime) * time.Second)
-		}
-
-		stateAfterShutdown, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if !shutdown || stateAfterShutdown != 5 {
-			if err := s.Conn.DomainDestroy(domain); err != nil {
-				return fmt.Errorf("failed_to_stop_domain: %w", err)
-			}
-		}
-
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_stop: %w", err)
-		}
-
-		if newState != 5 {
-			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
-		}
+		err = s.shutdownVM(&domain, vm)
 	case "stop":
-		if err := s.Conn.DomainDestroy(domain); err != nil {
-			return fmt.Errorf("failed_to_stop_domain: %w", err)
-		}
-		newState, _, err := s.Conn.DomainGetState(domain, 0)
-
-		if err != nil {
-			return fmt.Errorf("could_not_verify_stop: %w", err)
-		}
-
-		if newState != 5 {
-			return fmt.Errorf("unexpected_state_after_stop: %d", newState)
-		}
+		err = s.stopVM(&domain, vm)
 	case "reboot":
-		state, _, err := s.Conn.DomainGetState(domain, 0)
-		if err != nil {
-			return fmt.Errorf("could_not_get_state: %w", err)
-		}
-
-		if state != 1 {
-			return fmt.Errorf("domain_not_running_for_reboot")
-		}
-
-		if err := s.Conn.DomainReboot(domain, 0); err != nil {
-			return fmt.Errorf("failed_to_reboot_domain: %w", err)
-		}
+		err = s.rebootVM(&domain, vm)
 	default:
 		return fmt.Errorf("invalid_action: %s", action)
 	}
 
-	/* This is an ugly hack because sometimes bhyve does not really stop?
-	And this causes issues with the next start. So we find the user of the VNC port and kill that PID */
-	if action == "stop" || action == "shutdown" {
-		user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
-		if err != nil {
-			if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
-				return err
-			}
-		}
-
-		if user > 0 {
-			if err := utils.KillProcess(user); err != nil {
-				return fmt.Errorf("failed_to_kill_process_using_vnc_port: %w", err)
-			}
-		}
+	if err != nil {
+		return err
 	}
 
-	err = s.SetActionDate(vm, action)
-
-	if err != nil {
+	if err := s.SetActionDate(vm, action); err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to set %s action date for VM ID %d", action, vm.RID)
 	}
 
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_%s_%d", action, vm.RID))
+
+	return nil
+}
+
+func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVM(rid)
+}
+
+func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+	return clusterService.CanNodeMutateProtectedGuest(
+		s.DB,
+		clusterModels.ReplicationGuestTypeVM,
+		rid,
+		strings.TrimSpace(nodeID),
+	)
+}
+
+func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.RemoveQGASocket(vm); err != nil {
+		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
+	}
+
+	state, _, err := s.conn().DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_get_state: %w", err)
+	}
+
+	if state == 1 {
+		return nil
+	}
+
+	if err := s.StartTPM(); err != nil {
+		return fmt.Errorf("failed_to_start_tpm: %w", err)
+	}
+
+	if err := s.conn().DomainCreate(*domain); err != nil {
+		return fmt.Errorf("failed_to_start_domain: %w", err)
+	}
+
+	newState, _, err := s.conn().DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_verify_run: %w", err)
+	}
+	if newState != 1 {
+		return fmt.Errorf("unexpected_state_after_start: %d", newState)
+	}
+
+	return nil
+}
+
+func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.conn().DomainDestroy(*domain); err != nil {
+		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
+	}
+
+	return s.cleanupResources(vm)
+}
+
+func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.conn().DomainShutdown(*domain); err != nil {
+		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
+	}
+
+	waitTime := vm.ShutdownWaitTime
+	if waitTime <= 0 {
+		waitTime = 30
+	}
+
+	timeout := time.After(time.Duration(waitTime) * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			logger.L.Warn().Msgf("Shutdown timed out after %ds, forcing destroy", waitTime)
+			return s.forceDestroy(domain, vm)
+
+		case <-ticker.C:
+			overrideRequested, overrideErr := s.hasShutdownOverrideRequested(vm.RID)
+			if overrideErr != nil {
+				logger.L.Warn().Err(overrideErr).Uint("rid", vm.RID).Msg("failed_to_check_vm_shutdown_override")
+			} else if overrideRequested {
+				logger.L.Warn().Uint("rid", vm.RID).Msg("vm_shutdown_override_requested_force_stopping")
+				return s.forceDestroy(domain, vm)
+			}
+
+			state, _, err := s.conn().DomainGetState(*domain, 0)
+			if err != nil {
+				return fmt.Errorf("failed_to_get_state: %w", err)
+			}
+
+			if state == 5 {
+				return s.cleanupResources(vm)
+			}
+		}
+	}
+}
+
+func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
+	if rid == 0 {
+		return false, nil
+	}
+
+	var count int64
+	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+		Where("guest_type = ? AND guest_id = ? AND action = ? AND status IN ? AND override_requested = ?",
+			taskModels.GuestTypeVM,
+			rid,
+			"shutdown",
+			[]string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning},
+			true,
+		).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
+	if err := s.conn().DomainDestroy(*domain); err != nil {
+		state, _, _ := s.conn().DomainGetState(*domain, 0)
+		if state != 5 {
+			return fmt.Errorf("failed_to_force_destroy: %w", err)
+		}
+	}
+
+	state, _, err := s.conn().DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_verify_stop: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("vm_still_running_after_destroy_state_%d", state)
+	}
+
+	return s.cleanupResources(vm)
+}
+
+func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	state, _, err := s.conn().DomainGetState(*domain, 0)
+	if err != nil {
+		return fmt.Errorf("could_not_get_state: %w", err)
+	}
+	if state != 1 {
+		return fmt.Errorf("domain_not_running_for_reboot")
+	}
+
+	if err := s.shutdownVM(domain, vm); err != nil {
+		return fmt.Errorf("reboot_failed_during_shutdown: %w", err)
+	}
+
+	if err := s.startVM(domain, vm); err != nil {
+		return fmt.Errorf("reboot_failed_during_start: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) cleanupResources(vm vmModels.VM) error {
+	user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
+	if err != nil {
+		if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
+			logger.L.Error().Err(err).Msg("Error checking VNC port usage")
+		}
+	} else if user > 0 {
+		if err := utils.KillProcess(user); err != nil {
+			logger.L.Error().Err(err).Msg("Failed to kill process using VNC port")
+		}
+	}
+
+	if err := s.RemoveQGASocket(vm); err != nil {
+		logger.L.Error().Err(err).Msg("Error cleaning up qemu-ga socket")
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) RemoveQGASocket(vm vmModels.VM) error {
+	if vm.QemuGuestAgent {
+		dataPath, err := s.GetVMConfigDirectory(vm.RID)
+		if err == nil {
+			qgaSocketPath := filepath.Join(dataPath, "qga.sock")
+			err := utils.DeleteFileIfExists(qgaSocketPath)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -815,16 +991,21 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 		return fmt.Errorf("failed_to_save_vm_action_date: %w", err)
 	}
 
+	err := s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after setting action date")
+	}
+
 	return nil
 }
 
 func (s *Service) GetVMXML(rid uint) (string, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return "", fmt.Errorf("failed_to_lookup_domain: %w", err)
 	}
 
-	xmlDesc, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	xmlDesc, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return "", fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -833,12 +1014,12 @@ func (s *Service) GetVMXML(rid uint) (string, error) {
 }
 
 func (s *Service) IsDomainInactive(rid uint) (bool, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return false, fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 
 	if err != nil {
 		return false, fmt.Errorf("failed_to_get_domain_state: %w", err)
@@ -852,12 +1033,12 @@ func (s *Service) IsDomainInactive(rid uint) (bool, error) {
 }
 
 func (s *Service) GetDomainState(rid int) (libvirt.DomainState, error) {
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(rid))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(rid))
 	if err != nil {
 		return libvirt.DomainState(libvirt.DomainNostate), err
 	}
 
-	state, _, err := s.Conn.DomainGetState(domain, 0)
+	state, _, err := s.conn().DomainGetState(domain, 0)
 	if err != nil {
 		return libvirt.DomainState(libvirt.DomainNostate), err
 	}

@@ -21,17 +21,7 @@ type TimeSeriesRow interface {
 
 const (
 	day  = 24 * time.Hour
-	week = 7 * day
-	year = 365 * day
 )
-
-type gfsState struct {
-	lastHour  time.Time
-	lastDay   time.Time
-	lastWeek  time.Time
-	lastMonth time.Time
-	lastYear  time.Time
-}
 
 type GFSStep string
 
@@ -114,14 +104,6 @@ func (s GFSStep) Window() (time.Duration, error) {
 	default:
 		return 0, fmt.Errorf("unknown_gfs_step: %q", s)
 	}
-}
-
-func shouldKeep(last *time.Time, t time.Time, step time.Duration) bool {
-	if last.IsZero() || t.Sub(*last) >= step {
-		*last = t
-		return true
-	}
-	return false
 }
 
 // ApplyGFS keeps data only in the last 70 days, with variable resolution:

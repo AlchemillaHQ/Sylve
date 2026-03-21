@@ -113,6 +113,16 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			*request.DHCP = false
 		}
 
+		if request.DisableIPv6 == nil {
+			request.DisableIPv6 = new(bool)
+			*request.DisableIPv6 = false
+		}
+
+		if request.SLAAC == nil {
+			request.SLAAC = new(bool)
+			*request.SLAAC = false
+		}
+
 		if *request.DHCP == true {
 			request.Network4 = new(uint)
 			*request.Network4 = 0

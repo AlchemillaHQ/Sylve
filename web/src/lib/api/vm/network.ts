@@ -21,3 +21,17 @@ export async function attachNetwork(
 		macId
 	});
 }
+
+export async function updateNetwork(
+	networkId: number,
+	switchName: string,
+	emulation: string,
+	macId: number
+): Promise<APIResponse> {
+	return await apiRequest(`/vm/network/update`, APIResponseSchema, 'PUT', {
+		networkId,
+		switchName,
+		emulation,
+		macId
+	});
+}

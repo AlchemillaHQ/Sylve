@@ -36,5 +36,5 @@ func (s *Service) FindBaseByUUID(uuid string) (string, error) {
 
 func (s *Service) ExtractBase(mountPoint, baseTxz string) (string, error) {
 	args := []string{"-C", mountPoint, "-xf", baseTxz}
-	return utils.RunCommand("tar", args...)
+	return utils.RunCommand("/usr/bin/tar", args...)
 }

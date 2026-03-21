@@ -4,7 +4,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { CPUPin, VM } from '$lib/types/vm/vm';
+	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import humanFormat from 'human-format';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
@@ -17,7 +17,7 @@
 		devices: PCIDevice[];
 		pptDevices: PPTDevice[];
 		passthroughIds: number[];
-		vms: VM[];
+		vms: SimpleVm[];
 		pinnedCPUs: CPUPin[];
 		isPinningOpen: boolean;
 	}

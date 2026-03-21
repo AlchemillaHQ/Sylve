@@ -92,8 +92,8 @@ type Network struct {
 	SwitchID   uint   `json:"switchId" gorm:"index;not null"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
 
-	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"-"`
-	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"-"`
+	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
+	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
 
 	Emulation string `json:"emulation"`
 	VMID      uint   `json:"vmId" gorm:"index"`
@@ -103,7 +103,27 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	switch n.SwitchType {
 	case "standard":
 		var s networkModels.StandardSwitch
-		if err := tx.First(&s, n.SwitchID).Error; err != nil {
+		if err := tx.
+			Preload("Ports").
+			Preload("AddressObj").
+			Preload("AddressObj.Entries").
+			Preload("AddressObj.Resolutions").
+			Preload("Address6Obj").
+			Preload("Address6Obj.Entries").
+			Preload("Address6Obj.Resolutions").
+			Preload("NetworkObj").
+			Preload("NetworkObj.Entries").
+			Preload("NetworkObj.Resolutions").
+			Preload("Network6Obj").
+			Preload("Network6Obj.Entries").
+			Preload("Network6Obj.Resolutions").
+			Preload("GatewayAddressObj").
+			Preload("GatewayAddressObj.Entries").
+			Preload("GatewayAddressObj.Resolutions").
+			Preload("Gateway6AddressObj").
+			Preload("Gateway6AddressObj.Entries").
+			Preload("Gateway6AddressObj.Resolutions").
+			First(&s, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load standard switch %d: %w", n.SwitchID, err)
 		}
 		n.StandardSwitch = &s
@@ -116,6 +136,7 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}
+
 	return nil
 }
 
@@ -147,6 +168,28 @@ type VMCPUPinning struct {
 
 	HostSocket int   `json:"hostSocket"`
 	HostCPU    []int `json:"hostCpu" gorm:"serializer:json;type:json"`
+}
+
+type VMSnapshot struct {
+	ID uint `json:"id" gorm:"primaryKey"`
+
+	VMID uint `json:"vmId" gorm:"column:vm_id;index;uniqueIndex:idx_vm_snapshot_unique,priority:1"`
+	RID  uint `json:"rid" gorm:"column:rid;index"`
+
+	ParentSnapshotID *uint `json:"parentSnapshotId" gorm:"column:parent_snapshot_id;index"`
+
+	Name        string `json:"name" gorm:"not null"`
+	Description string `json:"description" gorm:"default:''"`
+
+	SnapshotName string   `json:"snapshotName" gorm:"column:snapshot_name;not null;uniqueIndex:idx_vm_snapshot_unique,priority:2"`
+	RootDatasets []string `json:"rootDatasets" gorm:"column:root_datasets;serializer:json;type:json"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (VMSnapshot) TableName() string {
+	return "vm_snapshots"
 }
 
 type VM struct {
@@ -189,9 +232,12 @@ type VM struct {
 	Stats []VMStats           `json:"-" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	State libvirt.DomainState `json:"state" gorm:"-"`
 
-	CloudInitData     string `json:"cloudInitData" gorm:"type:text"`
-	CloudInitMetaData string `json:"cloudInitMetaData" gorm:"type:text"`
-	IgnoreUMSR        bool   `json:"ignoreUMSR" gorm:"default:false"`
+	CloudInitData          string       `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData      string       `json:"cloudInitMetaData" gorm:"type:text"`
+	CloudInitNetworkConfig string       `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	IgnoreUMSR             bool         `json:"ignoreUMSR" gorm:"default:false"`
+	QemuGuestAgent         bool         `json:"qemuGuestAgent" gorm:"default:false"`
+	Snapshots              []VMSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

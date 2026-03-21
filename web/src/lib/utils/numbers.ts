@@ -11,8 +11,13 @@
 import humanFormat from 'human-format';
 
 export function floatToNDecimals(value: number | undefined, n: number): number {
-	if (!value) return 0.0;
-	return parseFloat(value.toFixed(n));
+	try {
+		if (!value || typeof value !== 'number') return 0.0;
+		return parseFloat(value.toFixed(n));
+	} catch (e) {
+		console.log(`floatToNDecimals: ${e}`);
+		return 0;
+	}
 }
 
 export function bytesToHumanReadable(value: number | undefined, highPrecision?: boolean): string {

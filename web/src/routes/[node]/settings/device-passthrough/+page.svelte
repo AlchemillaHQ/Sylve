@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { addPPTDevice, getPCIDevices, getPPTDevices, removePPTDevice } from '$lib/api/system/pci';
+	import {
+		addPPTDevice,
+		getPCIDevices,
+		getPPTDevices,
+		importPPTDevice,
+		preparePPTDevice,
+		removePPTDevice
+	} from '$lib/api/system/pci';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -17,6 +24,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let pptDevices = resource(
 		() => 'ppt-devices',
 		async () => {
@@ -29,6 +38,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let pciDevices = resource(
 		() => 'pci-devices',
 		async () => {
@@ -83,6 +93,28 @@
 		modalState.add.deviceId = deviceId;
 	}
 
+	function prepareDevice(domain: string, deviceId: string) {
+		const device = activeRow ? activeRow[0].device : '';
+		const vendor = activeRow ? activeRow[0].vendor : '';
+
+		modalState.isOpen = true;
+		modalState.title = `Prepare passthrough for <b>${device}</b> by <b>${vendor}</b>? This updates /boot/loader.conf and applies after reboot.`;
+		modalState.action = 'prepare';
+		modalState.add.domain = domain;
+		modalState.add.deviceId = deviceId;
+	}
+
+	function importDevice(domain: string, deviceId: string) {
+		const device = activeRow ? activeRow[0].device : '';
+		const vendor = activeRow ? activeRow[0].vendor : '';
+
+		modalState.isOpen = true;
+		modalState.title = `Import <b>${device}</b> by <b>${vendor}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database.`;
+		modalState.action = 'import';
+		modalState.add.domain = domain;
+		modalState.add.deviceId = deviceId;
+	}
+
 	function removeDevice(id: number) {
 		const device = activeRow ? activeRow[0].device : '';
 		const vendor = activeRow ? activeRow[0].vendor : '';
@@ -111,9 +143,40 @@
 			</Button>
 		{/if}
 
-		{#if type === 'disable-passthrough' && activeRow[0].name.startsWith('ppt')}
+		{#if type === 'prepare-passthrough' && !activeRow[0].name.startsWith('ppt')}
 			<Button
-				onclick={() => activeRow && removeDevice(activeRow[0].pptId)}
+				onclick={() =>
+					activeRow && prepareDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--clock] mr-1 h-4 w-4"></span>
+					<span>Prepare Passthrough</span>
+				</div>
+			</Button>
+		{/if}
+
+		{#if type === 'import-passthrough' && activeRow[0].name.startsWith('ppt') && !activeRow[0].pptId}
+			<Button
+				onclick={() =>
+					activeRow && importDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[wpf--connected] mr-1 h-4 w-4"></span>
+
+					<span>Import Passthrough</span>
+				</div>
+			</Button>
+		{/if}
+
+		{#if type === 'disable-passthrough' && activeRow[0].name.startsWith('ppt') && activeRow[0].pptId}
+			<Button
+				onclick={() => activeRow && removeDevice(Number(activeRow[0].pptId))}
 				size="sm"
 				variant="outline"
 				class="h-6.5"
@@ -133,6 +196,8 @@
 		<Search bind:query />
 
 		{@render button('enable-passthrough')}
+		{@render button('prepare-passthrough')}
+		{@render button('import-passthrough')}
 		{@render button('disable-passthrough')}
 	</div>
 
@@ -162,6 +227,37 @@
 					});
 				} else {
 					toast.error('Failed to add device to passthrough', {
+						position: 'bottom-center'
+					});
+				}
+
+				modalState.isOpen = false;
+			}
+
+			if (modalState.action === 'prepare') {
+				const result = await preparePPTDevice(modalState.add.domain, modalState.add.deviceId);
+				if (result.status === 'success') {
+					toast.success('Device prepared for passthrough. Reboot required.', {
+						position: 'bottom-center'
+					});
+				} else {
+					toast.error('Failed to prepare device for passthrough', {
+						position: 'bottom-center'
+					});
+				}
+
+				modalState.isOpen = false;
+			}
+
+			if (modalState.action === 'import') {
+				const result = await importPPTDevice(modalState.add.domain, modalState.add.deviceId);
+				reload = true;
+				if (result.status === 'success') {
+					toast.success('Device imported into passthrough management', {
+						position: 'bottom-center'
+					});
+				} else {
+					toast.error('Failed to import device into passthrough management', {
 						position: 'bottom-center'
 					});
 				}

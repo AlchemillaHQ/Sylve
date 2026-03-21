@@ -2,13 +2,20 @@ package system
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+var runCommand = utils.RunCommand
+var unixUserExists = UnixUserExists
+var unixGroupExists = UnixGroupExists
+var isUserInGroup = IsUserInGroup
+var getEUID = os.Geteuid
+
 func UnixUserExists(name string) (bool, error) {
-	output, err := utils.RunCommand("id", name)
+	output, err := runCommand("/usr/bin/id", name)
 
 	if err != nil {
 		lowerOutput := strings.ToLower(output)
@@ -25,7 +32,7 @@ func CreateUnixUser(name string, shell string, dir string, group string) error {
 	args := []string{"user", "add", "-n", name, "-m"}
 
 	if group != "" {
-		if UnixGroupExists(group) {
+		if unixGroupExists(group) {
 			args = append(args, "-g", group)
 		} else {
 			return fmt.Errorf("specified group '%s' does not exist", group)
@@ -44,7 +51,7 @@ func CreateUnixUser(name string, shell string, dir string, group string) error {
 		args = append(args, "-d", "/nonexistent")
 	}
 
-	_, err := utils.RunCommand("pw", args...)
+	_, err := runCommand("/usr/sbin/pw", args...)
 	if err != nil {
 		return fmt.Errorf("pw command failed: %w", err)
 	}
@@ -59,7 +66,7 @@ func DeleteUnixUser(name string, removeHome bool) error {
 		args = append(args, "-r")
 	}
 
-	_, err := utils.RunCommand("pw", args...)
+	_, err := runCommand("/usr/sbin/pw", args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete user %s: %w", name, err)
 	}
@@ -68,21 +75,21 @@ func DeleteUnixUser(name string, removeHome bool) error {
 }
 
 func UnixGroupExists(name string) bool {
-	output, _ := utils.RunCommand("getent", "group", name)
+	output, err := runCommand("/usr/bin/getent", "group", name)
 
-	if output == "" {
+	if err != nil {
 		return false
 	}
 
-	return true
+	return strings.TrimSpace(output) != ""
 }
 
 func CreateUnixGroup(name string) error {
-	if exists := UnixGroupExists(name); exists {
+	if exists := unixGroupExists(name); exists {
 		return fmt.Errorf("group %s already exists", name)
 	}
 
-	_, err := utils.RunCommand("pw", "groupadd", name)
+	_, err := runCommand("/usr/sbin/pw", "groupadd", name)
 	if err != nil {
 		return fmt.Errorf("failed to create group %s: %w", name, err)
 	}
@@ -91,11 +98,11 @@ func CreateUnixGroup(name string) error {
 }
 
 func DeleteUnixGroup(name string) error {
-	if exists := UnixGroupExists(name); !exists {
+	if exists := unixGroupExists(name); !exists {
 		return fmt.Errorf("group %s does not exist", name)
 	}
 
-	_, err := utils.RunCommand("pw", "groupdel", name)
+	_, err := runCommand("/usr/sbin/pw", "groupdel", name)
 	if err != nil {
 		return fmt.Errorf("failed to delete group %s: %w", name, err)
 	}
@@ -104,15 +111,15 @@ func DeleteUnixGroup(name string) error {
 }
 
 func IsUserInGroup(user string, group string) (bool, error) {
-	if exists, _ := UnixUserExists(user); !exists {
+	if exists, _ := unixUserExists(user); !exists {
 		return false, fmt.Errorf("user %s does not exist", user)
 	}
 
-	if exists := UnixGroupExists(group); !exists {
+	if exists := unixGroupExists(group); !exists {
 		return false, fmt.Errorf("group %s does not exist", group)
 	}
 
-	output, err := utils.RunCommand("id", "-nG", user)
+	output, err := runCommand("/usr/bin/id", "-nG", user)
 	if err != nil {
 		return false, fmt.Errorf("failed to check group membership for user %s: %w", user, err)
 	}
@@ -128,15 +135,15 @@ func IsUserInGroup(user string, group string) (bool, error) {
 }
 
 func AddUserToGroup(user string, group string) error {
-	if exists, _ := UnixUserExists(user); !exists {
+	if exists, _ := unixUserExists(user); !exists {
 		return fmt.Errorf("user %s does not exist", user)
 	}
 
-	if exists := UnixGroupExists(group); !exists {
+	if exists := unixGroupExists(group); !exists {
 		return fmt.Errorf("group %s does not exist", group)
 	}
 
-	_, err := utils.RunCommand("pw", "groupmod", group, "-m", user)
+	_, err := runCommand("/usr/sbin/pw", "groupmod", group, "-m", user)
 	if err != nil {
 		return fmt.Errorf("failed to add user %s to group %s: %w", user, group, err)
 	}
@@ -145,14 +152,14 @@ func AddUserToGroup(user string, group string) error {
 }
 
 func RemoveUserFromGroup(user string, group string) error {
-	if exists, _ := UnixUserExists(user); !exists {
+	if exists, _ := unixUserExists(user); !exists {
 		return fmt.Errorf("user %s does not exist", user)
 	}
-	if exists := UnixGroupExists(group); !exists {
+	if exists := unixGroupExists(group); !exists {
 		return fmt.Errorf("group %s does not exist", group)
 	}
 
-	inGroup, err := IsUserInGroup(user, group)
+	inGroup, err := isUserInGroup(user, group)
 	if err != nil {
 		return fmt.Errorf("failed to check membership: %w", err)
 	}
@@ -161,7 +168,7 @@ func RemoveUserFromGroup(user string, group string) error {
 		return nil
 	}
 
-	_, err = utils.RunCommand("pw", "groupmod", group, "-d", user)
+	_, err = runCommand("/usr/sbin/pw", "groupmod", group, "-d", user)
 	if err != nil {
 		return fmt.Errorf("failed to remove user %s from group %s: %w", user, group, err)
 	}
@@ -170,15 +177,15 @@ func RemoveUserFromGroup(user string, group string) error {
 }
 
 func RenameGroup(oldName, newName string) error {
-	if exists := UnixGroupExists(oldName); !exists {
+	if exists := unixGroupExists(oldName); !exists {
 		return fmt.Errorf("group %s does not exist", oldName)
 	}
 
-	if exists := UnixGroupExists(newName); exists {
+	if exists := unixGroupExists(newName); exists {
 		return fmt.Errorf("group %s already exists", newName)
 	}
 
-	_, err := utils.RunCommand("pw", "groupmod", oldName, "-n", newName)
+	_, err := runCommand("/usr/sbin/pw", "groupmod", oldName, "-n", newName)
 	if err != nil {
 		return fmt.Errorf("failed to rename group %s to %s: %w", oldName, newName, err)
 	}
@@ -187,15 +194,15 @@ func RenameGroup(oldName, newName string) error {
 }
 
 func ChangeUsername(oldUsername, newUsername string) error {
-	if exists, _ := UnixUserExists(oldUsername); !exists {
+	if exists, _ := unixUserExists(oldUsername); !exists {
 		return fmt.Errorf("user %s does not exist", oldUsername)
 	}
 
-	if exists, _ := UnixUserExists(newUsername); exists {
+	if exists, _ := unixUserExists(newUsername); exists {
 		return fmt.Errorf("user %s already exists", newUsername)
 	}
 
-	_, err := utils.RunCommand("pw", "usermod", oldUsername, "-l", newUsername)
+	_, err := runCommand("/usr/sbin/pw", "usermod", oldUsername, "-l", newUsername)
 	if err != nil {
 		return fmt.Errorf("failed to change username from %s to %s: %w", oldUsername, newUsername, err)
 	}
@@ -204,7 +211,7 @@ func ChangeUsername(oldUsername, newUsername string) error {
 }
 
 func PixzExists() bool {
-	_, err := utils.RunCommand("which", "pixz")
+	_, err := runCommand("which", "pixz")
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return false
@@ -213,4 +220,8 @@ func PixzExists() bool {
 	}
 
 	return true
+}
+
+func IsRoot() bool {
+	return getEUID() == 0
 }

@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { getVmById } from '$lib/api/vm/vm';
+	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
 	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
 	import IgnoreUMSR from '$lib/components/custom/VM/Options/IgnoreUMSR.svelte';
+	import QemuGuestAgent from '$lib/components/custom/VM/Options/QemuGuestAgent.svelte';
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
 	import StartOrder from '$lib/components/custom/VM/Options/StartOrder.svelte';
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
@@ -15,6 +17,7 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		vm: VM;
@@ -23,6 +26,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.vm.rid}`,
 		async (key) => {
@@ -36,13 +40,27 @@
 		}
 	);
 
-	// let vm: VM | null = $derived(results.data);
+	// svelte-ignore state_referenced_locally
+	const domain = resource(
+		() => `vm-domain-${data.vm.rid}`,
+		async (key) => {
+			const result = await getVMDomain(data.vm.rid);
+			updateCache(key, result);
+			return result;
+		},
+		{
+			lazy: true,
+			initialValue: data.domain
+		}
+	);
+
 	let reload = $state(false);
 
 	useInterval(() => 1000, {
 		callback: () => {
 			if (storage.visible) {
 				vm.refetch();
+				domain.refetch();
 			}
 		}
 	});
@@ -50,8 +68,51 @@
 	watch([() => storage.visible, () => reload], ([newVisible], [newReload]) => {
 		if (newVisible || newReload) {
 			vm.refetch();
+			domain.refetch();
 		}
 	});
+
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vm.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== data.vm.rid) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
+	);
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -110,6 +171,11 @@
 				id: generateNanoId('ignoreUMSRs'),
 				property: 'Ignore Unimplemented MSRs Accesses',
 				value: vm ? (vm.current.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
+			},
+			{
+				id: generateNanoId('qemuGuestAgent'),
+				property: 'QEMU Guest Agent',
+				value: vm ? (vm.current.qemuGuestAgent ? 'Yes' : 'No') : 'N/A'
 			}
 		]
 	});
@@ -120,12 +186,20 @@
 		timeOffset: { open: false },
 		shutdownWaitTime: { open: false },
 		cloudInit: { open: false },
-		ignoreUMSR: { open: false }
+		ignoreUMSR: { open: false },
+		qemuGuestAgent: { open: false }
 	});
 </script>
 
 {#snippet button(
-	type: 'startOrder' | 'wol' | 'timeOffset' | 'shutdownWaitTime' | 'cloudInit' | 'ignoreUMSR',
+	type:
+		| 'startOrder'
+		| 'wol'
+		| 'timeOffset'
+		| 'shutdownWaitTime'
+		| 'cloudInit'
+		| 'ignoreUMSR'
+		| 'qemuGuestAgent',
 	title: string
 )}
 	<Button
@@ -135,10 +209,10 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={data.domain.status === 'Shutoff'
+		title={domain.current.status === 'Shutoff'
 			? ''
 			: `${title} can only be edited when the VM is shut off`}
-		disabled={data.domain.status ? data.domain.status !== 'Shutoff' : false}
+		disabled={domain.current.status ? domain.current.status !== 'Shutoff' : false}
 	>
 		<div class="flex items-center">
 			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
@@ -162,6 +236,8 @@
 				{@render button('cloudInit', 'Cloud Init')}
 			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
 				{@render button('ignoreUMSR', 'Ignore Unimplemented MSRs Accesses')}
+			{:else if activeRow.property === 'QEMU Guest Agent'}
+				{@render button('qemuGuestAgent', 'QEMU Guest Agent')}
 			{/if}
 		</div>
 	{/if}
@@ -199,4 +275,8 @@
 
 {#if properties.ignoreUMSR.open && vm}
 	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.qemuGuestAgent.open && vm}
+	<QemuGuestAgent bind:open={properties.qemuGuestAgent.open} vm={vm.current} bind:reload />
 {/if}

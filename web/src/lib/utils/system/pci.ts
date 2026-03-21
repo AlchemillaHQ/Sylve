@@ -14,8 +14,6 @@ function getPassthroughStatus(device: PCIDevice, pptDevices: PPTDevice[]): strin
 		}
 	}
 
-	// Handle a case where the device is in DB but not having a corresponding ppt device
-
 	return 'not-passed-through';
 }
 
@@ -28,6 +26,12 @@ export function generateTableData(
 } {
 	const rows: Row[] = [];
 	const columns: Column[] = [
+		{
+			field: 'deviceId',
+			title: 'Device ID',
+			visible: true,
+			width: '15%'
+		},
 		{
 			field: 'status',
 			title: 'Status',
@@ -70,7 +74,7 @@ export function generateTableData(
 						'wpf:connected',
 						device,
 						'text-yellow-500',
-						'This device state is not quite right, please check configuration in /boot/loader.conf'
+						'This device is on ppt but not managed by Sylve yet. Import it to manage from here.'
 					);
 				}
 
@@ -95,11 +99,6 @@ export function generateTableData(
 		{
 			field: 'domain',
 			title: 'Domain',
-			visible: false
-		},
-		{
-			field: 'deviceId',
-			title: 'Device ID',
 			visible: false
 		},
 		{

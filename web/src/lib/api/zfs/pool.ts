@@ -25,7 +25,7 @@ export async function getPools(all?: boolean): Promise<Zpool[]> {
 export async function getPoolsDiskUsage(): Promise<number> {
 	try {
 		const response = await apiRequest('/zfs/pools/disks-usage', PoolsDiskUsageSchema, 'GET');
-		return response.usage;
+		return response.usage || 0;
 	} catch (error) {
 		return 0;
 	}

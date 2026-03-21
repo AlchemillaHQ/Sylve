@@ -2,7 +2,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { CPUPin, VM } from '$lib/types/vm/vm';
+	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
 	import { toast } from 'svelte-sonner';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Progress from '$lib/components/ui/progress/progress.svelte';
@@ -13,7 +13,7 @@
 	interface Props {
 		open: boolean;
 		vm?: VM | null;
-		vms: VM[];
+		vms: SimpleVm[];
 		pinnedCPUs: CPUPin[];
 		coreSelectionLimit?: number;
 	}

@@ -11,7 +11,10 @@ package jail
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
@@ -71,4 +74,43 @@ func (s *Service) RemoveDevfsRulesForCTID(ctid uint) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetJailCTIDFromDataset(dataset string) (uint, error) {
+	dataset = strings.TrimRight(dataset, "/")
+	parts := strings.Split(dataset, "/")
+
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid_dataset_format: %s", dataset)
+	}
+
+	ctidStr := parts[len(parts)-1]
+	n, err := strconv.ParseUint(ctidStr, 10, 32)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed_to_parse_ctid '%s': %w", ctidStr, err)
+	}
+
+	return uint(n), nil
+}
+
+func (s *Service) GetCTIDHash(ctId uint) string {
+	s.hashCacheMutex.RLock()
+	hash, ok := s.ctidHashByCTID[ctId]
+	s.hashCacheMutex.RUnlock()
+	if ok {
+		return hash
+	}
+
+	hash = utils.HashIntToNLetters(int(ctId), 5)
+
+	s.hashCacheMutex.Lock()
+	if existing, exists := s.ctidHashByCTID[ctId]; exists {
+		hash = existing
+	} else {
+		s.ctidHashByCTID[ctId] = hash
+	}
+	s.hashCacheMutex.Unlock()
+
+	return hash
 }

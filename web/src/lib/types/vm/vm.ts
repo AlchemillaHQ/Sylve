@@ -46,8 +46,10 @@ export interface CreateData {
             enabled: boolean;
             data: string;
             metadata: string;
+            networkConfig: string;
         };
         ignoreUmsrs: boolean;
+        qemuGuestAgent: boolean;
     };
 }
 
@@ -67,6 +69,7 @@ export const VMStorageSchema = z.object({
     name: z.string().optional(),
     type: z.enum(['raw', 'zvol', 'image']),
     uuid: z.string().optional(),
+    pool: z.string().optional().default(''),
     datasetId: z.number().int().nullable(),
     dataset: VMStorageDatasetSchema.nullable(),
     size: z.number().int(),
@@ -134,7 +137,9 @@ export const VMSchema = z.object({
     shutdownWaitTime: z.number().int(),
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
+    cloudInitNetworkConfig: z.string().nullable(),
     ignoreUMSR: z.boolean(),
+    qemuGuestAgent: z.boolean(),
     tpmEmulation: z.boolean(),
 
     createdAt: z.string(),
@@ -164,12 +169,65 @@ export const SimpleVmSchema = z.object({
     name: z.string(),
     rid: z.number().int(),
     vncPort: z.number(),
-    state: DomainStateSchema
+    state: DomainStateSchema,
+    cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()])
+});
+
+export const QGAOSInfoSchema = z.object({
+    name: z.string(),
+    'kernel-release': z.string(),
+    version: z.string(),
+    'pretty-name': z.string(),
+    'version-id': z.string(),
+    'kernel-version': z.string(),
+    machine: z.string(),
+    id: z.string()
+});
+
+export const QGANetworkIPAddressSchema = z.object({
+    'ip-address-type': z.enum(['ipv4', 'ipv6']),
+    'ip-address': z.string(),
+    prefix: z.number().int()
+});
+
+export const QGANetworkStatisticsSchema = z.object({
+    'tx-packets': z.number().int(),
+    'tx-errs': z.number().int(),
+    'rx-bytes': z.number().int(),
+    'rx-dropped': z.number().int(),
+    'rx-packets': z.number().int(),
+    'rx-errs': z.number().int(),
+    'tx-bytes': z.number().int(),
+    'tx-dropped': z.number().int()
+});
+
+export const QGANetworkInterfaceSchema = z.object({
+    name: z.string().nullable(),
+    'ip-addresses': z.array(QGANetworkIPAddressSchema).nullable(),
+    statistics: QGANetworkStatisticsSchema.nullable(),
+    'hardware-address': z.string().nullable()
+});
+
+export const QGAInfoSchema = z.object({
+    osInfo: QGAOSInfoSchema,
+    interfaces: z.array(QGANetworkInterfaceSchema).nullable()
 });
 
 export type VM = z.infer<typeof VMSchema>;
+export type VMCPUPinning = z.infer<typeof VMCPUPinningSchema>;
 export type VMStorage = z.infer<typeof VMStorageSchema>;
 export type VMNetwork = z.infer<typeof VMNetworkSchema>;
 export type VMDomain = z.infer<typeof VMDomainSchema>;
 export type VMStat = z.infer<typeof VMStatSchema>;
 export type SimpleVm = z.infer<typeof SimpleVmSchema>;
+export type QGAInfo = z.infer<typeof QGAInfoSchema>;
+
+export type VMLifecycleAction = 'start' | 'stop' | 'shutdown' | 'reboot';
+
+export type VMLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
+
+export interface VMLifecycleBadgeStyle {
+    variant: VMLifecycleBadgeVariant;
+    className: string;
+    label: string;
+}

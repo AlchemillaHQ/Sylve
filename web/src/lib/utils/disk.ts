@@ -9,7 +9,7 @@
  */
 
 import type { Column, Row } from '$lib/types/components/tree-table';
-import type { Disk, Partition, SmartAttribute, SmartCtl, SmartNVME } from '$lib/types/disk/disk';
+import type { Disk, Partition, SmartAttribute, SmartData, SmartNVMe } from '$lib/types/disk/disk';
 import type { Zpool, ZpoolVdev } from '$lib/types/zfs/pool';
 import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
@@ -19,49 +19,49 @@ import { renderWithIcon } from './table';
 export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 	if (disk.type === 'NVMe') {
 		return {
-			'Available Spare': (disk.smartData as SmartNVME).availableSpare,
-			'Available Spare Threshold': (disk.smartData as SmartNVME).availableSpareThreshold,
-			'Controller Busy Time': (disk.smartData as SmartNVME).controllerBusyTime,
-			'Critical Warning': (disk.smartData as SmartNVME).criticalWarning,
+			'Available Spare': (disk.smartData as SmartNVMe).availableSpare,
+			'Available Spare Threshold': (disk.smartData as SmartNVMe).availableSpareThreshold,
+			'Controller Busy Time': (disk.smartData as SmartNVMe).controllerBusyTime,
+			'Critical Warning': (disk.smartData as SmartNVMe).criticalWarning,
 			'Critical Warning State': {
-				'Available Spare': (disk.smartData as SmartNVME).criticalWarningState.availableSpare,
-				'Device Reliability': (disk.smartData as SmartNVME).criticalWarningState.deviceReliability,
-				'Read Only': (disk.smartData as SmartNVME).criticalWarningState.readOnly,
-				Temperature: (disk.smartData as SmartNVME).criticalWarningState.temperature,
-				'Volatile Memory Backup': (disk.smartData as SmartNVME).criticalWarningState
+				'Available Spare': (disk.smartData as SmartNVMe).criticalWarningState.availableSpare,
+				'Device Reliability': (disk.smartData as SmartNVMe).criticalWarningState.deviceReliability,
+				'Read Only': (disk.smartData as SmartNVMe).criticalWarningState.readOnly,
+				Temperature: (disk.smartData as SmartNVMe).criticalWarningState.temperature,
+				'Volatile Memory Backup': (disk.smartData as SmartNVMe).criticalWarningState
 					.volatileMemoryBackup
 			},
-			'Data Units Read': (disk.smartData as SmartNVME).dataUnitsRead,
-			'Data Units Written': (disk.smartData as SmartNVME).dataUnitsWritten,
-			'Error Info Log Entries': (disk.smartData as SmartNVME).errorInfoLogEntries,
-			'Host Read Commands': (disk.smartData as SmartNVME).hostReadCommands,
-			'Host Write Commands': (disk.smartData as SmartNVME).hostWriteCommands,
-			'Media Errors': (disk.smartData as SmartNVME).mediaErrors,
-			'Percentage Used': (disk.smartData as SmartNVME).percentageUsed,
-			'Power Cycles': (disk.smartData as SmartNVME).powerCycles,
-			'Power On Hours': (disk.smartData as SmartNVME).powerOnHours,
-			Temperature: (disk.smartData as SmartNVME).temperature,
-			'Temperature 1 Transition Count': (disk.smartData as SmartNVME).temperature1TransitionCnt,
-			'Temperature 2 Transition Count': (disk.smartData as SmartNVME).temperature2TransitionCnt,
-			'Total Time For Temperature 1': (disk.smartData as SmartNVME).totalTimeForTemperature1,
-			'Total Time For Temperature 2': (disk.smartData as SmartNVME).totalTimeForTemperature2,
-			'Unsafe Shutdowns': (disk.smartData as SmartNVME).unsafeShutdowns,
-			'Warning Composite Temp Time': (disk.smartData as SmartNVME).warningCompositeTempTime
+			'Data Units Read': (disk.smartData as SmartNVMe).dataUnitsRead,
+			'Data Units Written': (disk.smartData as SmartNVMe).dataUnitsWritten,
+			'Error Info Log Entries': (disk.smartData as SmartNVMe).errorInfoLogEntries,
+			'Host Read Commands': (disk.smartData as SmartNVMe).hostReadCommands,
+			'Host Write Commands': (disk.smartData as SmartNVMe).hostWriteCommands,
+			'Media Errors': (disk.smartData as SmartNVMe).mediaErrors,
+			'Percentage Used': (disk.smartData as SmartNVMe).percentageUsed,
+			'Power Cycles': (disk.smartData as SmartNVMe).power_cycle_count,
+			'Power On Hours': (disk.smartData as SmartNVMe).power_on_hours,
+			Temperature: (disk.smartData as SmartNVMe).temperature,
+			'Temperature 1 Transition Count': (disk.smartData as SmartNVMe).temperature1TransitionCnt,
+			'Temperature 2 Transition Count': (disk.smartData as SmartNVMe).temperature2TransitionCnt,
+			'Total Time For Temperature 1': (disk.smartData as SmartNVMe).totalTimeForTemperature1,
+			'Total Time For Temperature 2': (disk.smartData as SmartNVMe).totalTimeForTemperature2,
+			'Unsafe Shutdowns': (disk.smartData as SmartNVMe).unsafeShutdowns,
+			'Warning Composite Temp Time': (disk.smartData as SmartNVMe).warningCompositeTempTime
 		};
 	} else if (disk.type === 'HDD' || disk.type === 'SSD') {
-		const data = disk.smartData as SmartCtl;
+		const data = disk.smartData as SmartData;
 		const attributes: SmartAttribute[] = [];
 
-		if (data?.ata_smart_attributes?.table?.length) {
-			for (const element of data.ata_smart_attributes.table) {
+		if (data.attributes && data.attributes.length > 0) {
+			for (const element of data.attributes) {
 				attributes.push({
 					['ID']: element.id,
-					['Name']: element.name,
-					['Value']: element.value,
-					['Worst']: element.worst,
-					['Threshold']: element.thresh,
-					['Flags']: element.flags.string,
-					['Failing']: element.when_failed || '-'
+					['Name']: element.name || '-',
+					['Value']: element.value || '-',
+					['Worst']: element.worst || '-',
+					['Threshold']: element.thresh || '-',
+					['Raw Value']: element.raw_value || '-',
+					['Raw String']: element.raw_string || '-'
 				});
 			}
 		}
@@ -76,15 +76,15 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
 
 export function smartStatus(disk: Disk): string {
 	if (disk.smartData) {
-		if (disk.smartData.hasOwnProperty('smart_status')) {
-			if ((disk.smartData as SmartCtl).smart_status.passed) {
+		if (disk.smartData.hasOwnProperty('passed')) {
+			if ((disk.smartData as SmartData).passed) {
 				return 'Passed';
 			}
 			return 'Failed';
 		}
 
 		if (disk.smartData.hasOwnProperty('criticalWarning')) {
-			if ((disk.smartData as SmartNVME).criticalWarning !== '0x00') {
+			if ((disk.smartData as SmartNVMe).criticalWarning !== '0x00') {
 				return 'Failed';
 			}
 

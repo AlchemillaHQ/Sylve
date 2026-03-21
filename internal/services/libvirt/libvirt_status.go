@@ -90,6 +90,10 @@ func (s *Service) ApplyVMStatsRetention() error {
 }
 
 func (s *Service) StoreVMUsage() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	if s.crudMutex.TryLock() == false {
 		return nil
 	}
@@ -105,19 +109,19 @@ func (s *Service) StoreVMUsage() error {
 	}
 
 	for _, rid := range rids {
-		domain, err := s.Conn.DomainLookupByName(strconv.Itoa(rid))
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(rid))
 		if err != nil {
 			continue
 		}
 
-		_, _, _, vcpus, cpuTime1, err := s.Conn.DomainGetInfo(domain)
+		_, _, _, vcpus, cpuTime1, err := s.conn().DomainGetInfo(domain)
 		if err != nil {
 			continue
 		}
 
 		time.Sleep(1 * time.Second)
 
-		_, rMaxMem, _, _, cpuTime2, err := s.Conn.DomainGetInfo(domain)
+		_, rMaxMem, _, _, cpuTime2, err := s.conn().DomainGetInfo(domain)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_cpu_info_2: %w", err)
 		}
@@ -135,7 +139,7 @@ func (s *Service) StoreVMUsage() error {
 			availKB uint64
 		)
 
-		if stats, err := s.Conn.DomainMemoryStats(domain, 8, 0); err == nil {
+		if stats, err := s.conn().DomainMemoryStats(domain, 8, 0); err == nil {
 			// fmt.Printf("dommemstat output: %+v\n", stats)
 			for _, st := range stats {
 				switch st.Tag {
@@ -160,7 +164,7 @@ func (s *Service) StoreVMUsage() error {
 				memUsagePercent = (usedMemMB / maxMemMB) * 100
 			}
 		} else {
-			psOut, err := utils.RunCommand("ps", "--libxo", "json", "-aux")
+			psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
 			if err != nil {
 				continue
 			}

@@ -9,10 +9,12 @@
 package jail
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,25 +28,104 @@ import (
 	cpuid "github.com/klauspost/cpuid/v2"
 )
 
-func (s *Service) GetJIDByCTID(ctId uint) int {
-	ctidHash := utils.HashIntToNLetters(int(ctId), 5)
-	output, err := utils.RunCommand(
-		"jls",
-		"-j",
-		fmt.Sprintf("%s", ctidHash),
-		"jid",
-	)
+const (
+	jailLiveStateInterval = 5 * time.Second
+	jailPersistInterval   = 1 * time.Minute
+	jailRetentionInterval = 10 * time.Minute
+)
 
-	if err != nil {
-		return -1
+type psUsage struct {
+	TotalCPU float64
+	TotalRSS float64
+}
+
+func (s *Service) StartStatsMonitoring(ctx context.Context) {
+	s.monitorOnce.Do(func() {
+		go s.liveStateMonitor(ctx)
+		go s.persistScheduler(ctx)
+		go s.retentionScheduler(ctx)
+
+		s.enqueuePersist()
+		s.enqueueRetention()
+	})
+}
+
+func (s *Service) liveStateMonitor(ctx context.Context) {
+	if _, err := s.refreshLiveStates(); err != nil {
+		logger.L.Error().Err(err).Msg("failed to refresh jail live states")
 	}
 
-	jid, err := strconv.Atoi(strings.TrimSpace(output))
-	if err != nil {
-		return -1
-	}
+	ticker := time.NewTicker(jailLiveStateInterval)
+	defer ticker.Stop()
 
-	return jid
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := s.refreshLiveStates(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to refresh jail live states")
+			}
+		}
+	}
+}
+
+func (s *Service) persistScheduler(ctx context.Context) {
+	ticker := time.NewTicker(jailPersistInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.enqueuePersist()
+		}
+	}
+}
+
+func (s *Service) retentionScheduler(ctx context.Context) {
+	ticker := time.NewTicker(jailRetentionInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.enqueueRetention()
+		}
+	}
+}
+
+func (s *Service) enqueuePersist() {
+	select {
+	case s.usagePersistQueue <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Service) enqueueRetention() {
+	select {
+	case s.usageRetentionQueue <- struct{}{}:
+	default:
+	}
+}
+
+func (s *Service) jailUsagePersistWorker() {
+	for range s.usagePersistQueue {
+		if err := s.StoreJailUsage(); err != nil {
+			logger.L.Error().Err(err).Msg("failed to store jail usage")
+		}
+	}
+}
+
+func (s *Service) jailUsageRetentionWorker() {
+	for range s.usageRetentionQueue {
+		if err := s.ApplyJailStatsRetention(); err != nil {
+			logger.L.Error().Err(err).Msg("failed to apply jail stats retention")
+		}
+	}
 }
 
 func (s *Service) GetJailStats(ctId uint, jail *jailModels.Jail) (jailServiceInterfaces.State, error) {
@@ -56,22 +137,201 @@ func (s *Service) GetJailStats(ctId uint, jail *jailModels.Jail) (jailServiceInt
 		}
 	}
 
-	var state jailServiceInterfaces.State
-	state.CTID = ctId
-
-	jid := s.GetJIDByCTID(ctId)
-
-	if jid < 0 {
-		state.Memory = 0
-		state.PCPU = 0.0
-		state.State = "INACTIVE"
-		return state, nil
+	states, err := s.GetStates()
+	if err != nil {
+		return jailServiceInterfaces.State{}, err
 	}
 
+	for _, state := range states {
+		if state.CTID == ctId {
+			return state, nil
+		}
+	}
+
+	return jailServiceInterfaces.State{
+		CTID:   ctId,
+		State:  "INACTIVE",
+		PCPU:   0,
+		Memory: 0,
+	}, nil
+}
+
+func (s *Service) GetStates() ([]jailServiceInterfaces.State, error) {
+	states := s.getCachedStates()
+	if len(states) > 0 {
+		return states, nil
+	}
+
+	return s.refreshLiveStates()
+}
+
+func (s *Service) GetStateByCtId(ctId uint) (jailServiceInterfaces.State, error) {
+	states, err := s.GetStates()
+	if err != nil {
+		return jailServiceInterfaces.State{}, fmt.Errorf("failed_to_get_jail_stats: %w", err)
+	}
+
+	for _, state := range states {
+		if state.CTID == ctId {
+			return state, nil
+		}
+	}
+
+	return jailServiceInterfaces.State{CTID: ctId, State: "INACTIVE", PCPU: 0, Memory: 0}, nil
+}
+
+func (s *Service) getCachedStates() []jailServiceInterfaces.State {
+	s.liveStateMutex.RLock()
+	defer s.liveStateMutex.RUnlock()
+
+	if len(s.liveStateByCTID) == 0 {
+		return nil
+	}
+
+	states := make([]jailServiceInterfaces.State, 0, len(s.liveStateByCTID))
+	for _, st := range s.liveStateByCTID {
+		states = append(states, st)
+	}
+
+	sort.Slice(states, func(i, j int) bool {
+		return states[i].CTID < states[j].CTID
+	})
+
+	return states
+}
+
+func (s *Service) refreshLiveStates() ([]jailServiceInterfaces.State, error) {
+	var jails []jailModels.Jail
+	if err := s.DB.Select("id, ct_id, resource_limits, cpu_set, cores").Find(&jails).Error; err != nil {
+		return nil, fmt.Errorf("failed to load jails: %w", err)
+	}
+
+	jidByName, err := s.readJIDsByName()
+	if err != nil {
+		return nil, err
+	}
+
+	stateByJID, err := s.readPSUsageByJID()
+	if err != nil {
+		return nil, err
+	}
+
+	states := make([]jailServiceInterfaces.State, 0, len(jails))
+	cache := make(map[uint]jailServiceInterfaces.State, len(jails))
+
+	for _, jail := range jails {
+		state := jailServiceInterfaces.State{
+			CTID:   jail.CTID,
+			State:  "INACTIVE",
+			PCPU:   0,
+			Memory: 0,
+		}
+
+		ctidHash := s.GetCTIDHash(jail.CTID)
+		jid, found := jidByName[ctidHash]
+		if !found {
+			jid = -1
+		}
+		if jid >= 0 {
+			usage, ok := stateByJID[jid]
+			if ok {
+				allowedCores := float64(0)
+				if jail.ResourceLimits != nil && *jail.ResourceLimits {
+					if len(jail.CPUSet) > 0 {
+						allowedCores = float64(len(jail.CPUSet))
+					} else if jail.Cores > 0 {
+						allowedCores = float64(jail.Cores)
+					}
+				}
+
+				if allowedCores == 0 {
+					allowedCores = float64(cpuid.CPU.LogicalCores)
+				}
+
+				if allowedCores <= 0 {
+					allowedCores = 1
+				}
+
+				normalized := usage.TotalCPU / allowedCores
+				if normalized > 100 {
+					normalized = 100
+				}
+
+				state.PCPU = math.Round(normalized*100) / 100
+				state.Memory = int64(usage.TotalRSS * 1024)
+			}
+
+			state.State = "ACTIVE"
+		}
+
+		states = append(states, state)
+		cache[state.CTID] = state
+	}
+
+	s.liveStateMutex.Lock()
+	s.liveStateByCTID = cache
+	s.liveStateUpdatedAt = time.Now()
+	s.liveStateMutex.Unlock()
+
+	sort.Slice(states, func(i, j int) bool {
+		return states[i].CTID < states[j].CTID
+	})
+
+	return states, nil
+}
+
+func (s *Service) readJIDsByName() (map[string]int, error) {
+	cmd := exec.Command("/usr/sbin/jls", "--libxo", "json", "jid", "name")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run jls: %w", err)
+	}
+
+	var jlsData struct {
+		JailInformation struct {
+			Jail []struct {
+				JID  any    `json:"jid"`
+				Name string `json:"name"`
+			} `json:"jail"`
+		} `json:"jail-information"`
+	}
+
+	if err := json.Unmarshal(out, &jlsData); err != nil {
+		return nil, fmt.Errorf("failed to parse jls json: %w", err)
+	}
+
+	jidByName := make(map[string]int, len(jlsData.JailInformation.Jail))
+	for _, j := range jlsData.JailInformation.Jail {
+		name := strings.TrimSpace(j.Name)
+		if name == "" {
+			continue
+		}
+
+		var jid int
+		switch v := j.JID.(type) {
+		case float64:
+			jid = int(v)
+		case string:
+			parsed, err := strconv.Atoi(strings.TrimSpace(v))
+			if err != nil {
+				continue
+			}
+			jid = parsed
+		default:
+			continue
+		}
+
+		jidByName[name] = jid
+	}
+
+	return jidByName, nil
+}
+
+func (s *Service) readPSUsageByJID() (map[int]psUsage, error) {
 	cmd := exec.Command("ps", "-axo", "jid,pcpu,rss", "--libxo", "json")
 	out, err := cmd.Output()
 	if err != nil {
-		return state, fmt.Errorf("failed to run ps: %w", err)
+		return nil, fmt.Errorf("failed to run ps: %w", err)
 	}
 
 	var psData struct {
@@ -83,79 +343,35 @@ func (s *Service) GetJailStats(ctId uint, jail *jailModels.Jail) (jailServiceInt
 			} `json:"process"`
 		} `json:"process-information"`
 	}
+
 	if err := json.Unmarshal(out, &psData); err != nil {
-		return state, fmt.Errorf("failed to parse ps json: %w", err)
+		return nil, fmt.Errorf("failed to parse ps json: %w", err)
 	}
 
-	var totalCPU, totalRSS float64
+	usageByJID := make(map[int]psUsage)
 	for _, p := range psData.ProcessInformation.Process {
-		if p.JailID == fmt.Sprintf("%d", jid) {
-			cpuVal, _ := strconv.ParseFloat(p.PercentCPU, 64)
-			rssVal, _ := strconv.ParseFloat(p.RSS, 64)
-			totalCPU += cpuVal
-			totalRSS += rssVal
-		}
-	}
-
-	var allowedCores float64
-	if *jail.ResourceLimits {
-		if len(jail.CPUSet) > 0 {
-			allowedCores = float64(len(jail.CPUSet))
-		} else if jail.Cores > 0 {
-			allowedCores = float64(jail.Cores)
-		}
-	}
-
-	if allowedCores == 0 {
-		allowedCores = float64(cpuid.CPU.LogicalCores)
-	}
-
-	normalized := totalCPU / allowedCores
-	if normalized > 100 {
-		normalized = 100
-	}
-
-	state.PCPU = math.Round(normalized*100) / 100
-	state.Memory = int64(totalRSS * 1024)
-	state.State = "ACTIVE"
-
-	return state, nil
-}
-
-func (s *Service) GetStates() ([]jailServiceInterfaces.State, error) {
-	var states []jailServiceInterfaces.State
-
-	jails, err := s.GetJails()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load jails: %w", err)
-	}
-
-	for _, jail := range jails {
-		gState, err := s.GetJailStats(jail.CTID, &jail)
+		jid, err := strconv.Atoi(strings.TrimSpace(p.JailID))
 		if err != nil {
-			return nil, fmt.Errorf("failed to get jail stats: %w", err)
+			continue
 		}
 
-		states = append(states, gState)
+		cpuVal, err := strconv.ParseFloat(strings.TrimSpace(p.PercentCPU), 64)
+		if err != nil {
+			cpuVal = 0
+		}
+
+		rssVal, err := strconv.ParseFloat(strings.TrimSpace(p.RSS), 64)
+		if err != nil {
+			rssVal = 0
+		}
+
+		agg := usageByJID[jid]
+		agg.TotalCPU += cpuVal
+		agg.TotalRSS += rssVal
+		usageByJID[jid] = agg
 	}
 
-	return states, nil
-}
-
-func (s *Service) GetStateByCtId(ctId uint) (jailServiceInterfaces.State, error) {
-	var state jailServiceInterfaces.State
-
-	jail, err := s.GetJailByCTID(ctId)
-	if err != nil {
-		return state, fmt.Errorf("failed_to_get_jail: %w", err)
-	}
-
-	state, err = s.GetJailStats(ctId, jail)
-	if err != nil {
-		return state, fmt.Errorf("failed_to_get_jail_stats: %w", err)
-	}
-
-	return state, nil
+	return usageByJID, nil
 }
 
 func (s *Service) IsJailActive(ctId uint) (bool, error) {
@@ -247,9 +463,7 @@ func (s *Service) ApplyJailStatsRetention() error {
 }
 
 func (s *Service) StoreJailUsage() error {
-	if !s.crudMutex.TryLock() {
-		return nil
-	}
+	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
 	var jails []jailModels.Jail
@@ -259,12 +473,20 @@ func (s *Service) StoreJailUsage() error {
 	}
 
 	if len(jails) == 0 {
-		return s.ApplyJailStatsRetention()
+		return nil
 	}
 
-	states, err := s.GetStates()
-	if err != nil {
-		return fmt.Errorf("failed_to_get_jail_states: %w", err)
+	states := s.getCachedStates()
+	if len(states) == 0 {
+		var err error
+		states, err = s.refreshLiveStates()
+		if err != nil {
+			return fmt.Errorf("failed_to_get_jail_states: %w", err)
+		}
+	}
+
+	if len(states) == 0 {
+		return nil
 	}
 
 	type sInfo struct {
@@ -321,7 +543,7 @@ func (s *Service) StoreJailUsage() error {
 		}
 	}
 
-	return s.ApplyJailStatsRetention()
+	return nil
 }
 
 func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailStats, error) {

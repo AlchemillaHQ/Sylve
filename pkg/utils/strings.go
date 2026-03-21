@@ -79,7 +79,16 @@ func RemoveSpaces(input string) string {
 func StringToUintId(s string) uint {
 	hasher := fnv.New64a()
 	hasher.Write([]byte(s))
-	return uint(hasher.Sum64())
+
+	// Keep the synthetic ID within signed int64 range so SQLite/GORM can round-trip it.
+	// Values above math.MaxInt64 are stored as negative INTEGERs by SQLite and then fail
+	const signedInt64Mask = (uint64(1) << 63) - 1
+	id := hasher.Sum64() & signedInt64Mask
+	if id == 0 {
+		return 1
+	}
+
+	return uint(id)
 }
 
 func GenerateRandomUUID() string {

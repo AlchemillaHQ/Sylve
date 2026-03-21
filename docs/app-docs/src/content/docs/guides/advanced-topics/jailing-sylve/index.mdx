@@ -1,0 +1,60 @@
+---
+title: Jailing Sylve
+description: A deep dive into Sylve's jail management features, including advanced configuration options and best practices for using jails in production environments.
+---
+
+_Author: Pouria Mousavizadeh Tehrani (\<pouria@freebsd.org\>)_
+
+:::note
+This is not extensively tested but a cool thing to try out nonetheless. If you have any feedback or suggestions, please let us know in the [GitHub repository](https://github.com/AlchemillaHQ/Sylve).
+:::
+
+## Jail Configuration
+
+To run Sylve inside a jail environment, allow the permissions below and adjust the settings as shown:
+
+```
+devfs_ruleset=5;
+allow.vmm;
+allow.nfsd;
+allow.mount;
+allow.mount.zfs;
+zfs.dataset="tank/sylve";
+enforce_statfs=1;
+children.max=100;
+vnet;
+
+# For Samba
+allow.mount.fdescfs;
+
+# For zfs-jail
+exec.poststart += "zfs jailed=on tank/sylve";
+exec.poststart += "zfs jail ${name} tank/sylve";
+exec.prestop += "zfs unjail ${name} tank/sylve";
+exec.prestop += "zfs jailed=off tank/sylve";
+```
+
+Notes:
+
+- Replace `tank/sylve` with your desired ZFS dataset.
+- Replace `100` in `children.max` with your desired number of maximum hierarchial jails.
+- Replace your `devfs_ruleset` number based on your own custom rules.
+- Add your own desired interface to `vnet.interface`.
+
+### DevFS ruleset
+
+Here is the example for your `devfs.rules` file:
+
+```
+[devfsrules_jail_sylve=6]
+add include $devfsrules_hide_all
+add include $devfsrules_unhide_basic
+add include $devfsrules_unhide_login
+add include $devfsrules_jail
+add include $devfsrules_jail_vnet
+add path 'bpf*' unhide
+add path 'vmmctl' unhide
+add path 'da*' unhide
+add path 'ada*' unhide
+add path 'nda*' unhide
+```

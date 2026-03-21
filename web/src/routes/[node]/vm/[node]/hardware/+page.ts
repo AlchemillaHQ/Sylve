@@ -6,8 +6,8 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load({ params }) {
 	const rid = Number(params.node);
-
 	const cacheDuration = SEVEN_DAYS;
+
 	const [vms, ram, domain, pciDevices, pptDevices] = await Promise.all([
 		cachedFetch('vm-list', async () => await getVMs(), cacheDuration),
 		cachedFetch('ramInfo', async () => await getRAMInfo('current'), cacheDuration),

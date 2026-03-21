@@ -10,16 +10,36 @@ package jail
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+func isManagedAllowedOptionLine(trimmedLine string) bool {
+	if !strings.HasPrefix(trimmedLine, "allow.") || !strings.HasSuffix(trimmedLine, ";") {
+		return false
+	}
+
+	opt := strings.TrimSuffix(trimmedLine, ";")
+	return utils.IsValidJailAllowedOpts([]string{opt})
+}
+
 func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	err := s.DB.
 		Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
@@ -27,10 +47,24 @@ func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) er
 			"start_order":   bootOrder,
 			"start_at_boot": startAtBoot,
 		}).Error
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after boot order update")
+	}
+
 	return err
 }
 
 func (s *Service) ModifyFstab(ctId uint, fstab string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jails_path: %w", err)
@@ -93,10 +127,75 @@ func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 		return fmt.Errorf("failed_to_update_fstab_in_db: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after fstab update")
+	}
+
+	return nil
+}
+
+func (s *Service) ModifyResolvConf(ctId uint, resolvConf string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
+	jType, err := s.GetJailType(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_type: %w", err)
+	}
+
+	if jType != jailModels.JailTypeFreeBSD {
+		logger.L.Warn().Msgf("Attempted to set resolv.conf for non-FreeBSD jail (ctId=%d, type=%s)", ctId, jType)
+		return nil
+	}
+
+	if strings.TrimSpace(resolvConf) != "" {
+		mountPoint, err := s.GetJailBaseMountPoint(ctId)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
+		}
+
+		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
+		if err := os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
+			return fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)
+		}
+
+		if err := utils.AtomicWriteFile(resolvPath, []byte(resolvConf), 0644); err != nil {
+			return fmt.Errorf("failed_to_write_resolv_conf_file: %w", err)
+		}
+	}
+
+	err = s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Update("resolv_conf", resolvConf).
+		Error
+	if err != nil {
+		return fmt.Errorf("failed_to_update_resolv_conf_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after resolv.conf update")
+	}
+
 	return nil
 }
 
 func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail_config: %w", err)
@@ -161,10 +260,23 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 		return fmt.Errorf("failed_to_update_devfs_rules_in_db: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after devfs rules update")
+	}
+
 	return nil
 }
 
 func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail: %w", err)
@@ -208,10 +320,157 @@ func (s *Service) ModifyAdditionalOptions(ctId uint, options string) error {
 		return fmt.Errorf("failed_to_update_additional_options_in_db: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after additional options update")
+	}
+
+	return nil
+}
+
+func (s *Service) ModifyAllowedOptions(ctId uint, options []string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	normalizedOptions := make([]string, 0, len(options))
+	seen := make(map[string]struct{}, len(options))
+
+	for _, opt := range options {
+		trimmed := strings.TrimSpace(opt)
+		if trimmed == "" {
+			continue
+		}
+
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+
+		seen[trimmed] = struct{}{}
+		normalizedOptions = append(normalizedOptions, trimmed)
+	}
+
+	if !utils.IsValidJailAllowedOpts(normalizedOptions) {
+		return fmt.Errorf("invalid_jail_allowed_options")
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	lines := utils.SplitLines(cfg)
+	newLines := make([]string, 0, len(lines))
+	inAdditionalOptionsSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.Contains(line, "### These are user-defined additional options ###") {
+			inAdditionalOptionsSection = true
+			newLines = append(newLines, line)
+			continue
+		}
+
+		if !inAdditionalOptionsSection {
+			if isManagedAllowedOptionLine(trimmed) {
+				continue
+			}
+
+			if trimmed == "mount.devfs;" {
+				continue
+			}
+
+			if strings.HasPrefix(trimmed, "devfs_ruleset=") && strings.HasSuffix(trimmed, ";") {
+				continue
+			}
+		}
+
+		newLines = append(newLines, line)
+	}
+
+	if len(normalizedOptions) > 0 {
+		blockLines := make([]string, 0, len(normalizedOptions)+4)
+		for _, opt := range normalizedOptions {
+			blockLines = append(blockLines, fmt.Sprintf("\t%s;", opt))
+		}
+
+		if utils.StringInSlice("allow.mount.devfs", normalizedOptions) {
+			blockLines = append(blockLines, "\tmount.devfs;")
+			if strings.TrimSpace(jail.DevFSRuleset) != "" {
+				blockLines = append(blockLines, fmt.Sprintf("\tdevfs_ruleset=%d;", ctId))
+			} else {
+				blockLines = append(blockLines, "\tdevfs_ruleset=61181;")
+			}
+		}
+
+		insertIdx := len(newLines)
+		for i, line := range newLines {
+			if strings.Contains(line, "### These are user-defined additional options ###") {
+				insertIdx = i
+				break
+			}
+
+			if strings.TrimSpace(line) == "}" {
+				insertIdx = i
+				break
+			}
+		}
+
+		if insertIdx > 0 && strings.TrimSpace(newLines[insertIdx-1]) != "" {
+			blockLines = append([]string{""}, blockLines...)
+		}
+
+		if insertIdx < len(newLines) && strings.TrimSpace(newLines[insertIdx]) != "" {
+			blockLines = append(blockLines, "")
+		}
+
+		newLines = append(newLines[:insertIdx], append(blockLines, newLines[insertIdx:]...)...)
+	}
+
+	cfg = strings.Join(newLines, "\n")
+
+	if err := s.SaveJailConfig(ctId, cfg); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	if err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Select("allowed_options").
+		Updates(&jailModels.Jail{
+			AllowedOptions: normalizedOptions,
+		}).
+		Error; err != nil {
+		return fmt.Errorf("failed_to_update_allowed_options_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after allowed options update")
+	}
+
 	return nil
 }
 
 func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	cfg, err := s.GetJailConfig(ctId)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail_config: %w", err)
@@ -269,6 +528,268 @@ func (s *Service) ModifyMetadata(ctId uint, meta, env string) error {
 			"metadata_env":  env,
 		}).Error; err != nil {
 		return fmt.Errorf("failed_to_update_metadata_in_db: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after metadata update")
+	}
+
+	return nil
+}
+
+type hookEditTarget struct {
+	phase       jailModels.JailHookPhase
+	execKey     string
+	execPath    string
+	hostPath    string
+	inJailPath  string
+	hookPayload jailServiceInterfaces.HookPhase
+}
+
+func (s *Service) hasHookBody(content string) bool {
+	lines := strings.Split(content, "\n")
+	for idx, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if idx == 0 && strings.HasPrefix(trimmed, "#!") {
+			continue
+		}
+		if trimmed != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) removeUserManagedHookSection(content string) string {
+	const start = "### Start User-Managed Hook ###"
+	const end = "### End User-Managed Hook ###"
+
+	content = s.ensureShebang(content)
+
+	si := strings.Index(content, start)
+	if si == -1 {
+		return content
+	}
+
+	ei := strings.Index(content[si:], end)
+	if ei == -1 {
+		result := strings.TrimRight(content[:si], "\n")
+		if result == "" {
+			return "#!/bin/sh\n"
+		}
+		return result + "\n"
+	}
+
+	ei = si + ei + len(end)
+	result := content[:si] + content[ei:]
+	for strings.Contains(result, "\n\n\n") {
+		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
+	}
+
+	result = s.ensureShebang(result)
+	if !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+
+	return result
+}
+
+func (s *Service) ModifyLifecycleHooks(ctId uint, hooks jailServiceInterfaces.Hooks) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
+	jail, err := s.GetJailByCTID(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jails_path: %w", err)
+	}
+
+	jailDir := filepath.Join(jailsPath, strconv.FormatUint(uint64(ctId), 10))
+	hostScriptsDir := filepath.Join(jailDir, "scripts")
+	if err := os.MkdirAll(hostScriptsDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_host_scripts_dir: %w", err)
+	}
+
+	mountPoint, err := s.GetJailBaseMountPoint(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_mount_point: %w", err)
+	}
+
+	inJailScriptsDir := filepath.Join(mountPoint, "usr", "local", "sylve", "scripts")
+	if err := os.MkdirAll(inJailScriptsDir, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_in_jail_scripts_dir: %w", err)
+	}
+
+	targets := []hookEditTarget{
+		{
+			phase:       jailModels.JailHookPhasePreStart,
+			execKey:     "exec.prestart",
+			execPath:    filepath.Join(hostScriptsDir, "pre-start.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "pre-start.sh"),
+			hookPayload: hooks.Prestart,
+		},
+		{
+			phase:       jailModels.JailHookPhaseStart,
+			execKey:     "exec.start",
+			execPath:    "/usr/local/sylve/scripts/start.sh",
+			hostPath:    filepath.Join(hostScriptsDir, "start.sh"),
+			inJailPath:  filepath.Join(inJailScriptsDir, "start.sh"),
+			hookPayload: hooks.Start,
+		},
+		{
+			phase:       jailModels.JailHookPhasePostStart,
+			execKey:     "exec.poststart",
+			execPath:    filepath.Join(hostScriptsDir, "post-start.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "post-start.sh"),
+			hookPayload: hooks.Poststart,
+		},
+		{
+			phase:       jailModels.JailHookPhasePreStop,
+			execKey:     "exec.prestop",
+			execPath:    filepath.Join(hostScriptsDir, "pre-stop.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "pre-stop.sh"),
+			hookPayload: hooks.Prestop,
+		},
+		{
+			phase:       jailModels.JailHookPhaseStop,
+			execKey:     "exec.stop",
+			execPath:    "/usr/local/sylve/scripts/stop.sh",
+			hostPath:    filepath.Join(hostScriptsDir, "stop.sh"),
+			inJailPath:  filepath.Join(inJailScriptsDir, "stop.sh"),
+			hookPayload: hooks.Stop,
+		},
+		{
+			phase:       jailModels.JailHookPhasePostStop,
+			execKey:     "exec.poststop",
+			execPath:    filepath.Join(hostScriptsDir, "post-stop.sh"),
+			hostPath:    filepath.Join(hostScriptsDir, "post-stop.sh"),
+			hookPayload: hooks.Poststop,
+		},
+	}
+
+	shouldWireExec := make(map[jailModels.JailHookPhase]bool, len(targets))
+
+	for _, target := range targets {
+		currentContent, err := os.ReadFile(target.hostPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed_to_read_hook_script(%s): %w", target.phase, err)
+			}
+			currentContent = []byte("#!/bin/sh\n")
+		}
+
+		nextContent := string(currentContent)
+		scriptBody := target.hookPayload.Script
+		if target.hookPayload.Enabled && strings.TrimSpace(scriptBody) != "" {
+			nextContent = s.AddSylveAdditionsToHook(nextContent, scriptBody)
+		} else {
+			nextContent = s.removeUserManagedHookSection(nextContent)
+		}
+
+		if err := os.WriteFile(target.hostPath, []byte(nextContent), 0755); err != nil {
+			return fmt.Errorf("failed_to_write_hook_script(%s): %w", target.phase, err)
+		}
+
+		if target.inJailPath != "" {
+			if err := os.WriteFile(target.inJailPath, []byte(nextContent), 0755); err != nil {
+				return fmt.Errorf("failed_to_write_in_jail_hook_script(%s): %w", target.phase, err)
+			}
+		}
+
+		shouldWireExec[target.phase] = s.hasHookBody(nextContent)
+	}
+
+	cfg, err := s.GetJailConfig(ctId)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_config: %w", err)
+	}
+
+	lines := utils.SplitLines(cfg)
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		shouldSkip := false
+		for _, target := range targets {
+			// Only remove Sylve-managed exec lines that point to managed script paths.
+			if strings.HasPrefix(trimmed, target.execKey) &&
+				strings.Contains(trimmed, fmt.Sprintf("\"%s\"", target.execPath)) {
+				shouldSkip = true
+				break
+			}
+		}
+		if !shouldSkip {
+			filtered = append(filtered, line)
+		}
+	}
+
+	cfgWithoutExec := strings.Join(filtered, "\n")
+	execLines := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if shouldWireExec[target.phase] {
+			execLines = append(execLines, fmt.Sprintf("\t%s += \"%s\";", target.execKey, target.execPath))
+		}
+	}
+
+	if len(execLines) > 0 {
+		cfgWithoutExec, err = s.AppendToConfig(ctId, cfgWithoutExec, "\n"+strings.Join(execLines, "\n")+"\n")
+		if err != nil {
+			return fmt.Errorf("failed_to_append_exec_lines: %w", err)
+		}
+	}
+
+	if err := s.SaveJailConfig(ctId, cfgWithoutExec); err != nil {
+		return fmt.Errorf("failed_to_save_jail_config: %w", err)
+	}
+
+	tx := s.DB.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
+	}
+
+	for _, target := range targets {
+		payload := target.hookPayload
+		updateRes := tx.
+			Model(&jailModels.JailHooks{}).
+			Where("jid = ? AND phase = ?", jail.ID, target.phase).
+			Updates(map[string]any{
+				"enabled": payload.Enabled,
+				"script":  payload.Script,
+			})
+		if updateRes.Error != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("failed_to_update_hook_row(%s): %w", target.phase, updateRes.Error)
+		}
+
+		if updateRes.RowsAffected == 0 {
+			if err := tx.Create(&jailModels.JailHooks{
+				JailID:  jail.ID,
+				Phase:   target.phase,
+				Enabled: payload.Enabled,
+				Script:  payload.Script,
+			}).Error; err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("failed_to_create_hook_row(%s): %w", target.phase, err)
+			}
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_hook_updates: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after network update")
 	}
 
 	return nil

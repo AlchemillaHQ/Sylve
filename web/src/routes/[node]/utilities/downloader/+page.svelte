@@ -29,7 +29,8 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
+	import { watch } from 'runed';
+
 	interface Data {
 		downloads: Download[];
 	}
@@ -38,6 +39,8 @@
 	let reload = $state(false);
 
 	const visible = new IsDocumentVisible();
+
+	// svelte-ignore state_referenced_locally
 	const downloads = resource(
 		() => 'downloads',
 		async () => {
@@ -50,20 +53,24 @@
 		}
 	);
 
-	$effect(() => {
-		if (visible.current) {
-			untrack(() => {
+	watch(
+		() => visible.current,
+		(current) => {
+			if (current) {
 				downloads.refetch();
-			});
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (reload) {
-			downloads.refetch();
-			reload = false;
+	watch(
+		() => reload,
+		(current) => {
+			if (current) {
+				downloads.refetch();
+				reload = false;
+			}
 		}
-	});
+	);
 
 	useInterval(1000, {
 		callback: () => {
@@ -243,6 +250,17 @@
 			}
 		}
 	}
+
+	watch(
+		() => modalState.downloadType,
+		() => {
+			if (modalState.downloadType === 'base-rootfs') {
+				if (modalState.automaticExtraction === false) {
+					modalState.automaticExtraction = true;
+				}
+			}
+		}
+	);
 </script>
 
 {#snippet button(type: string)}
@@ -296,7 +314,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 
-		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6  ">
+		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 
@@ -310,7 +328,7 @@
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
-		<Dialog.Content class="w-[80%] gap-0 overflow-hidden p-3 lg:max-w-xl">
+		<Dialog.Content class="gap-0 p-3 max-w-xl">
 			<div class="flex items-center justify-between py-1 pb-2">
 				<Dialog.Header class="flex-1">
 					<Dialog.Title>
@@ -357,7 +375,7 @@
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"
 				type="textarea"
-				textAreaClasses="h-24 w-full"
+				textAreaClasses="h-24 w-full break-all"
 			/>
 
 			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}

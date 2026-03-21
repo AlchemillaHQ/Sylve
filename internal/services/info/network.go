@@ -25,7 +25,7 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 		}
 	}
 
-	output, err := utils.RunCommand("netstat", "-ibdn", "--libxo", "json")
+	output, err := utils.RunCommand("/usr/bin/netstat", "-ibdn", "--libxo", "json")
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +44,8 @@ func (s *Service) GetNetworkInterfacesInfo() ([]infoServiceInterfaces.NetworkInt
 
 func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.HistoricalNetworkInterface, error) {
 	type row struct {
+		Name          string
+		Network       string
 		CreatedAt     time.Time
 		ReceivedBytes int64
 		SentBytes     int64
@@ -52,8 +54,8 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	var rows []row
 	if err := s.DB.
 		Model(&infoModels.NetworkInterface{}).
-		Select("created_at, received_bytes, sent_bytes").
-		Where("is_delta = true").
+		Select("name, network, created_at, received_bytes, sent_bytes").
+		Where("is_delta = false").
 		Order("created_at ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, err
@@ -64,9 +66,35 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	}
 
 	buckets := make(map[int64]*infoServiceInterfaces.HistoricalNetworkInterface)
+	last := make(map[string]struct {
+		ReceivedBytes int64
+		SentBytes     int64
+	})
+	delta := func(cur, prev int64) int64 {
+		if cur < prev {
+			return 0
+		}
+		return cur - prev
+	}
 
 	for _, cur := range rows {
-		sec := cur.CreatedAt.Truncate(time.Minute).Unix()
+		key := cur.Name + "|" + cur.Network
+		prev, ok := last[key]
+		last[key] = struct {
+			ReceivedBytes int64
+			SentBytes     int64
+		}{
+			ReceivedBytes: cur.ReceivedBytes,
+			SentBytes:     cur.SentBytes,
+		}
+
+		if !ok {
+			continue
+		}
+
+		receivedDelta := delta(cur.ReceivedBytes, prev.ReceivedBytes)
+		sentDelta := delta(cur.SentBytes, prev.SentBytes)
+		sec := cur.CreatedAt.Truncate(time.Second).Unix()
 
 		b, ok := buckets[sec]
 		if !ok {
@@ -76,8 +104,8 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 			buckets[sec] = b
 		}
 
-		b.ReceivedBytes += cur.ReceivedBytes
-		b.SentBytes += cur.SentBytes
+		b.ReceivedBytes += receivedDelta
+		b.SentBytes += sentDelta
 	}
 
 	result := make([]infoServiceInterfaces.HistoricalNetworkInterface, 0, len(buckets))

@@ -25,6 +25,9 @@ type SharedStorage = {
     visible: boolean | null;
     idle: boolean | null;
     enabledServices: AvailableService[] | null;
+    openAbout: boolean;
+    openCommands: boolean;
+    showReplication: boolean;
 };
 
 export const storage = createReactiveStorage<SharedStorage>(
@@ -38,7 +41,10 @@ export const storage = createReactiveStorage<SharedStorage>(
         ['fileExplorerCurrentPath', { storage: 'local' }],
         ['visible', { storage: 'local' }],
         ['idle', { storage: 'local' }],
-        ['enabledServices', { storage: 'local' }]
+        ['enabledServices', { storage: 'local' }],
+        ['openAbout', { storage: 'local', init: false }],
+        ['openCommands', { storage: 'local', init: false }],
+        ['showReplication', { storage: 'local', init: false }]
     ],
     {
         prefix: 'sylve:',

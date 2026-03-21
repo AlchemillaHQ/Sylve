@@ -16,6 +16,7 @@
 	import { resource, watch } from 'runed';
 	import { getTemplates } from '$lib/api/utilities/cloud-init';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
+	import { resolutions } from '$lib/utils/vm/vnc';
 
 	interface Props {
 		serial: boolean;
@@ -31,8 +32,10 @@
 			enabled: boolean;
 			data: string;
 			metadata: string;
+			networkConfig: string;
 		};
 		ignoreUmsrs: boolean;
+		qemuGuestAgent: boolean;
 	}
 
 	let {
@@ -46,7 +49,8 @@
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
 		cloudInit = $bindable(),
-		ignoreUmsrs = $bindable()
+		ignoreUmsrs = $bindable(),
+		qemuGuestAgent = $bindable()
 	}: Props = $props();
 
 	onMount(() => {
@@ -60,13 +64,6 @@
 	];
 
 	let resolutionOpen = $state(false);
-	const resolutions = [
-		{ label: '1024x768', value: '1024x768' },
-		{ label: '1280x720', value: '1280x720' },
-		{ label: '1920x1080', value: '1920x1080' },
-		{ label: '2560x1440', value: '2560x1440' },
-		{ label: '3840x2160', value: '3840x2160' }
-	];
 
 	watch(
 		() => cloudInit.enabled,
@@ -74,6 +71,7 @@
 			if (!enabled) {
 				cloudInit.data = '';
 				cloudInit.metadata = '';
+				cloudInit.networkConfig = '';
 			}
 		}
 	);
@@ -177,15 +175,21 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Ignore Unimplemented MSR Accesses"
-			bind:checked={ignoreUmsrs}
+			label="Enable Cloud-Init"
+			bind:checked={cloudInit.enabled}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Enable Cloud-Init"
-			bind:checked={cloudInit.enabled}
-			classes="flex items-center gap-2"
+			label="Ignore Unimplemented MSR Accesses"
+			bind:checked={ignoreUmsrs}
+			classes="flex items-center gap-2 mt-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="QEMU Guest Agent"
+			bind:checked={qemuGuestAgent}
+			classes="flex items-center gap-2 mt-2"
 		></CustomCheckbox>
 	</div>
 
@@ -210,6 +214,14 @@
 			label="Cloud-Init Meta Data"
 			placeholder={cloudInitPlaceholders.metadata}
 			bind:value={cloudInit.metadata}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+		/>
+
+		<CustomValueInput
+			label="Cloud-Init Network Config"
+			placeholder={cloudInitPlaceholders.networkConfig}
+			bind:value={cloudInit.networkConfig}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
 		/>
@@ -251,6 +263,7 @@
 					const template = cloudInitTemplates.current.find((t) => t.id.toString() === e);
 					cloudInit.data = template?.user || '';
 					cloudInit.metadata = template?.meta || '';
+					cloudInit.networkConfig = template?.networkConfig || '';
 					templateSelector.open = false;
 				}}
 			/>

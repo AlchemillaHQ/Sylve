@@ -22,7 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
 
 func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
@@ -49,13 +49,16 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
 	}
 
-	err := network.TryBindToPort(c.RaftIP, c.RaftPort, "tcp")
+	port := ClusterRaftPort
+
+	err := network.TryBindToPort(c.RaftIP, port, "tcp")
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_bind_raft_port: %v", err)
 	}
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(detail.NodeID)
+	cfg.SnapshotThreshold = 1024
 
 	raftLog := logger.NewZerologHCLog(logger.L, "raft")
 	raftLog.SetLevel(hclog.Error)
@@ -83,7 +86,7 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("failed_to_create_snap_store")
 	}
 
-	bindAddr := fmt.Sprintf("%s:%d", c.RaftIP, c.RaftPort)
+	bindAddr := RaftServerAddress(c.RaftIP)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
 	if err != nil {
 		return nil, fmt.Errorf("Could not resolve address: %s", err)
@@ -94,6 +97,10 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
 	}
+
+	raftAddr := raft.ServerAddress(bindAddr)
+	s.RaftID = &raftAddr
+	s.NodeID = detail.NodeID
 
 	s.Transport = t
 
@@ -150,7 +157,10 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	if hasExistingRaftState(raftDir) {
 		logger.L.Info().Msg("Found existing Raft state; starting Raft (non-bootstrap restore).")
 		_, err := s.SetupRaft(false, fsm)
-		return err
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
 	bootstrap := c.RaftBootstrap != nil && *c.RaftBootstrap
@@ -161,8 +171,11 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	}
 
 	_, err := s.SetupRaft(bootstrap, fsm)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return nil
 }
 
 func (s *Service) RemovePeer(id raft.ServerID) error {
@@ -170,7 +183,7 @@ func (s *Service) RemovePeer(id raft.ServerID) error {
 		return fmt.Errorf("not_leader")
 	}
 
-	fut := s.Raft.RemoveServer(id, 0, 8000)
+	fut := s.Raft.RemoveServer(id, 0, 8*time.Second)
 
 	if fut.Error() != nil {
 		return fmt.Errorf("failed_to_remove_peer: %v", fut.Error())
@@ -184,10 +197,37 @@ func (s *Service) ClearClusterNode(id string) error {
 }
 
 func (s *Service) ResetRaftNode() error {
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	if s.Raft.State() == raft.Leader {
+		detail := s.Detail()
+		if detail == nil {
+			return fmt.Errorf("unable_to_get_node_detail")
+		}
+
+		cfgFuture := s.Raft.GetConfiguration()
+		if err := cfgFuture.Error(); err != nil {
+			return fmt.Errorf("failed_to_get_raft_configuration: %v", err)
+		}
+
+		for _, server := range cfgFuture.Configuration().Servers {
+			if server.ID != raft.ServerID(detail.NodeID) {
+				return fmt.Errorf("leader_cannot_reset_while_other_nodes_exist")
+			}
+		}
+	}
+
 	if s.Raft.State() != raft.Leader {
 		nodeId := s.Detail().NodeID
 
 		leaderAddr := s.Raft.Leader()
+
+		if leaderAddr == "" {
+			return fmt.Errorf("no_leader_found_manual_reset_required")
+		}
+
 		host, _, err := net.SplitHostPort(string(leaderAddr))
 		if err != nil {
 			return fmt.Errorf("failed_to_split_leader_address: %v", err)
@@ -214,7 +254,7 @@ func (s *Service) ResetRaftNode() error {
 		}
 
 		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s:%d/api/cluster/remove-peer", host, config.ParsedConfig.Port), payload, headers)
+			fmt.Sprintf("https://%s/api/cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
 
 		if err != nil {
 			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)
@@ -232,6 +272,10 @@ func (s *Service) ResetRaftNode() error {
 	}
 
 	if err := s.MarkDeclustered(); err != nil {
+		return err
+	}
+
+	if err := s.ClearClusteredData(); err != nil {
 		return err
 	}
 

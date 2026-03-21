@@ -1,0 +1,104 @@
+---
+title: Code
+description: Set up a local development environment for backend and frontend changes.
+---
+
+Sylve is built with Go (backend) and SvelteKit in SPA mode (frontend).
+
+For the best development experience, we recommend a FreeBSD `-CURRENT` machine.
+
+## Install Go And npm On FreeBSD
+
+Install required tooling with `pkg`:
+
+```bash
+pkg update
+pkg install -y git go node24 npm-node24
+```
+
+Verify your installation:
+
+```bash
+go version
+node -v
+npm -v
+```
+
+If your local machine is not FreeBSD, use a remote FreeBSD host for development.
+
+`VS Code Remote - SSH` works great for this workflow:
+
+- Extension: https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh
+- Example setup article: https://hayzam.com/blog/02-linuxulator-is-awesome/
+
+## Clone The Repository
+
+```bash
+git clone https://github.com/AlchemillaHQ/Sylve
+cd Sylve
+```
+
+## Install Live-Reload Tooling
+
+Install `air`:
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+## Run Backend And Frontend Together
+
+Use `tmux`, `zellij`, or `screen` and split into two panes:
+
+1. In the repository root:
+
+```bash
+air .
+```
+
+2. In the `web/` directory:
+
+```bash
+npm run dev
+```
+
+## Formatting And Checks
+
+Before opening a pull request, run these checks.
+
+From the repository root, format Go code:
+
+```bash
+go fmt ./...
+```
+
+From the `web/` directory, run frontend checks:
+
+```bash
+npm run check
+npm run lint
+npm run format
+```
+
+Available frontend scripts:
+
+```json
+{
+  "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+  "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+  "format": "prettier --write .",
+  "lint": "prettier --check . && eslint ."
+}
+```
+
+## Use A Single Development Entry Point
+
+In `config.json`, set:
+
+```json
+{
+  "proxyToVite": true
+}
+```
+
+With `proxyToVite` enabled, the Go backend proxies frontend requests to Vite, so you do not need to work with two separate ports directly.

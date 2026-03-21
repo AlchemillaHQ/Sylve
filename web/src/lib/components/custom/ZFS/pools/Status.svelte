@@ -12,10 +12,11 @@
 		pool: Zpool;
 	}
 
-	let visible = new IsDocumentVisible();
 	let { open = $bindable(), pool }: Props = $props();
 
-	const guid = $state.raw(pool?.guid || '');
+	let visible = new IsDocumentVisible();
+	let guid = $derived(pool?.guid);
+
 	let status = resource(
 		() => `pool-status-${guid}`,
 		async () => await getPoolStatus(guid)
@@ -98,7 +99,7 @@
 				class:bg-yellow-500={vdev.state === 'DEGRADED'}
 				class:bg-red-500={vdev.state === 'FAULTED'}
 				class:bg-gray-400={!vdev.state || !['ONLINE', 'DEGRADED', 'FAULTED'].includes(vdev.state)}
-			/>
+			></span>
 
 			<span class="font-medium">
 				{vdev.name ?? '(unknown)'}
@@ -192,7 +193,7 @@
 												aria-valuemin="0"
 												aria-valuemax="100"
 												aria-valuenow={scanActivity.progressPercent}
-											/>
+											></div>
 										</div>
 									</div>
 								{/if}
@@ -285,8 +286,8 @@
 								? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200'
 								: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200'}"
 						>
-							<span class="icon-[mdi--check-circle] h-5 w-5" class:hidden={hasAnyErrors} />
-							<span class="icon-[mdi--alert-circle] h-5 w-5" class:hidden={!hasAnyErrors} />
+							<span class="icon-[mdi--check-circle] h-5 w-5" class:hidden={hasAnyErrors}></span>
+							<span class="icon-[mdi--alert-circle] h-5 w-5" class:hidden={!hasAnyErrors}></span>
 
 							<span>
 								{!hasAnyErrors

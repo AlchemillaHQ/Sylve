@@ -27,6 +27,7 @@ type LibvirtServiceInterface interface {
 
 	NetworkDetach(rid uint, networkId uint) error
 	NetworkAttach(req NetworkAttachRequest) error
+	NetworkUpdate(req NetworkUpdateRequest) error
 	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 	FindVmByMac(mac string) (vmModels.VM, error)
 
@@ -35,8 +36,10 @@ type LibvirtServiceInterface interface {
 	ModifyClock(rid uint, timeOffset string) error
 	ModifySerial(rid uint, enabled bool) error
 	ModifyShutdownWaitTime(rid uint, waitTime int) error
-	ModifyCloudInitData(rid uint, data string, metadata string) error
+	ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
+	ModifyQemuGuestAgent(rid uint, enabled bool) error
+	GetQemuGuestAgentInfo(rid uint) (QemuGuestAgentInfo, error)
 
 	PruneOrphanedVMStats() error
 	ApplyVMStatsRetention() error
@@ -71,6 +74,7 @@ type LibvirtServiceInterface interface {
 	CreateVmXML(vm vmModels.VM, vmPath string) (string, error)
 	CreateLvVm(id int, ctx context.Context) error
 	RemoveLvVm(rid uint) error
+	RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error
 	GetLvDomain(rid uint) (*LvDomain, error)
 	StartTPM() error
 	StopTPM(rid uint) error
@@ -80,8 +84,10 @@ type LibvirtServiceInterface interface {
 	GetVMXML(rid uint) (string, error)
 	IsDomainInactive(rid uint) (bool, error)
 	GetDomainState(rid int) (libvirt.DomainState, error)
+	WriteVMJson(rid uint) error
 
 	CheckVersion() error
+	IsVirtualizationEnabled() bool
 }
 
 type LvDomain struct {
@@ -92,11 +98,12 @@ type LvDomain struct {
 }
 
 type SimpleList struct {
-	ID      uint                `json:"id"`
-	RID     uint                `json:"rid"`
-	Name    string              `json:"name"`
-	State   libvirt.DomainState `json:"state"`
-	VNCPort uint                `json:"vncPort"`
+	ID         uint                    `json:"id"`
+	RID        uint                    `json:"rid"`
+	Name       string                  `json:"name"`
+	State      libvirt.DomainState     `json:"state"`
+	VNCPort    uint                    `json:"vncPort"`
+	CPUPinning []vmModels.VMCPUPinning `json:"cpuPinning"`
 }
 
 type DomainStateReason string

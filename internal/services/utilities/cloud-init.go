@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package utilities
 
 import (
@@ -24,6 +32,7 @@ func (s *Service) AddTemplate(req utilitiesServiceInterfaces.AddTemplateRequest)
 		Name: req.Name,
 		User: req.User,
 		Meta: req.Meta,
+		NetworkConfig: req.NetworkConfig,
 	}
 
 	if err := s.DB.Create(&template).Error; err != nil {
@@ -55,6 +64,8 @@ func (s *Service) EditTemplate(req utilitiesServiceInterfaces.EditTemplateReques
 	if req.Meta != "" {
 		updates["meta"] = req.Meta
 	}
+
+	updates["networkConfig"] = req.NetworkConfig
 
 	if len(updates) == 0 {
 		return nil

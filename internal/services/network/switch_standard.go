@@ -23,6 +23,14 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+var (
+	syncIfaceGet     = iface.Get
+	syncRunCommand   = utils.RunCommand
+	syncCreateBridge = createStandardBridge
+	syncEditBridge   = editStandardBridge
+	syncDeleteBridge = deleteStandardBridge
+)
+
 func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) {
 	var switches []networkModels.StandardSwitch
 	if err := s.DB.
@@ -147,8 +155,8 @@ func (s *Service) NewStandardSwitch(
 			return fmt.Errorf("invalid_address6_object: %v", err)
 		}
 
-		if o6.Type != "Host" {
-			return fmt.Errorf("address6_object must be Type=Host")
+		if o6.Type != "Network" {
+			return fmt.Errorf("address6_object must be Type=Network")
 		}
 
 		if len(o6.Entries) == 0 {
@@ -249,7 +257,7 @@ func (s *Service) DeleteStandardSwitch(id int) error {
 	var vmCount, jailCount int64
 
 	if err := s.DB.Model(&vmModels.Network{}).
-		Where("switch_id = ?", id).
+		Where("switch_id = ? AND switch_type = ?", id, "standard").
 		Count(&vmCount).Error; err != nil {
 		return fmt.Errorf("db_error_checking_vm_switch: %v", err)
 	}
@@ -259,7 +267,7 @@ func (s *Service) DeleteStandardSwitch(id int) error {
 	}
 
 	if err := s.DB.Model(&jailModels.Network{}).
-		Where("switch_id = ?", id).
+		Where("switch_id = ? AND switch_type = ?", id, "standard").
 		Count(&jailCount).Error; err != nil {
 		return fmt.Errorf("db_error_checking_jail_switch: %v", err)
 	}
@@ -530,59 +538,66 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			return fmt.Errorf("db_error_checking_switches: %v", err)
 		}
 
-		var nonDbPorts = make(map[string][]string)
-
 		for _, sw := range switches {
-			var dbPorts []string
-
+			dbPorts := make(map[string]bool, len(sw.Ports)*2)
 			for _, port := range sw.Ports {
-				dbPorts = append(dbPorts, port.Name)
-			}
-
-			iface, _ := iface.Get(sw.BridgeName)
-			if iface != nil {
-				for _, member := range iface.BridgeMembers {
-					if utils.Contains(dbPorts, member.Name) {
-						continue
-					}
-
-					if _, exists := nonDbPorts[sw.BridgeName]; !exists {
-						nonDbPorts[sw.BridgeName] = []string{}
-					}
-
-					nonDbPorts[sw.BridgeName] = append(nonDbPorts[sw.BridgeName], member.Name)
+				dbPorts[port.Name] = true
+				if sw.VLAN > 0 {
+					dbPorts[fmt.Sprintf("%s.%d", port.Name, sw.VLAN)] = true
 				}
 			}
-		}
 
-		for _, sw := range switches {
-			if err := deleteStandardBridge(sw); err != nil {
-				return fmt.Errorf("sync_standard_switches: failed_to_delete: %v", err)
-			}
+			preservedMembers := make(map[string]bool)
+			bridgeExists := false
 
-			if err := createStandardBridge(sw); err != nil {
-				return fmt.Errorf("sync_standard_switches: failed_to_create: %v", err)
-			}
-		}
-
-		for br, members := range nonDbPorts {
-			ifaceObj, err := iface.Get(br)
+			ifaceObj, err := syncIfaceGet(sw.BridgeName)
 			if err != nil {
-				return fmt.Errorf("sync_standard_switches: get %s: %v", br, err)
+				if !isInterfaceMissingError(err) {
+					return fmt.Errorf("sync_standard_switches: get %s: %v", sw.BridgeName, err)
+				}
+			} else if ifaceObj != nil {
+				bridgeExists = true
+				for _, member := range ifaceObj.BridgeMembers {
+					if dbPorts[member.Name] {
+						continue
+					}
+					preservedMembers[member.Name] = true
+				}
+			}
+
+			if bridgeExists {
+				if err := syncEditBridge(sw, sw); err != nil {
+					return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %v", sw.BridgeName, err)
+				}
+			} else {
+				if err := syncCreateBridge(sw); err != nil {
+					return fmt.Errorf("sync_standard_switches: failed_to_create %s: %v", sw.BridgeName, err)
+				}
+			}
+
+			if len(preservedMembers) == 0 {
+				continue
+			}
+
+			freshIface, err := syncIfaceGet(sw.BridgeName)
+			if err != nil {
+				return fmt.Errorf("sync_standard_switches: get %s after reconcile: %v", sw.BridgeName, err)
 			}
 
 			existingMembers := make(map[string]bool)
-			for _, m := range ifaceObj.BridgeMembers {
-				existingMembers[m.Name] = true
+			if freshIface != nil {
+				for _, m := range freshIface.BridgeMembers {
+					existingMembers[m.Name] = true
+				}
 			}
 
-			for _, member := range members {
+			for member := range preservedMembers {
 				if _, exists := existingMembers[member]; !exists {
-					if _, err := utils.RunCommand("ifconfig", br, "addm", member, "up"); err != nil {
-						return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, br, err)
+					if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "addm", member, "up"); err != nil {
+						return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, sw.BridgeName, err)
 					}
 
-					if _, err := utils.RunCommand("ifconfig", member, "up"); err != nil {
+					if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
 						return fmt.Errorf("sync_standard_switches: bring up member %s: %v", member, err)
 					}
 				}
@@ -590,12 +605,12 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 		}
 
 	case "create":
-		if err := createStandardBridge(*sw); err != nil {
+		if err := syncCreateBridge(*sw); err != nil {
 			return err
 		}
 
 	case "delete":
-		if err := deleteStandardBridge(*sw); err != nil {
+		if err := syncDeleteBridge(*sw); err != nil {
 			return err
 		}
 
@@ -609,7 +624,7 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			First(&newSw, sw.ID).Error; err != nil {
 			return fmt.Errorf("switch_not_found")
 		}
-		if err := editStandardBridge(*sw, newSw); err != nil {
+		if err := syncEditBridge(*sw, newSw); err != nil {
 			return err
 		}
 	}
@@ -617,24 +632,50 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 	return nil
 }
 
+func isInterfaceMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "no such interface")
+}
+
+func normalizeIPv6GatewayForRoute(gateway, ifaceName string) string {
+	gateway = strings.TrimSpace(gateway)
+	if gateway == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(strings.ToLower(gateway), "fe80:") &&
+		!strings.Contains(gateway, "%") &&
+		ifaceName != "" {
+		return gateway + "%" + ifaceName
+	}
+
+	return gateway
+}
+
 func createStandardBridge(sw networkModels.StandardSwitch) error {
-	raw, err := utils.RunCommand("ifconfig", "bridge", "create")
+	raw, err := utils.RunCommand("/sbin/ifconfig", "bridge", "create")
 	if err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_create: %v", err)
 	}
 
 	raw = strings.TrimSpace(raw)
 
-	if _, err := utils.RunCommand("ifconfig", raw, "name", sw.BridgeName); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", raw, "name", sw.BridgeName); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_rename: %v", err)
 	}
 
-	if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "descr", sw.Name); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "descr", sw.Name); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_set_descr: %v", err)
 	}
 
 	if sw.MTU != 0 {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "mtu", strconv.Itoa(sw.MTU)); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "mtu", strconv.Itoa(sw.MTU)); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_mtu: %v", err)
 		}
 	}
@@ -643,18 +684,18 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	gateway4 := sw.Gateway(4)
 
 	if network4 != "" && gateway4 != "" {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet", sw.Network(4)); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet", sw.Network(4)); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_network: %v", err)
 		}
 
-		if gwOut, err := utils.RunCommand("route", "add", "-net", network4, gateway4); err != nil {
+		if gwOut, err := utils.RunCommand("/sbin/route", "add", "-net", network4, gateway4); err != nil {
 			if !strings.Contains(gwOut, "route already in table") {
 				return fmt.Errorf("create_standard_bridge: failed_to_add_network_route: %v", err)
 			}
 		}
 
 		if sw.DefaultRoute {
-			dR, err := utils.RunCommand("route", "add", "default", gateway4)
+			dR, err := utils.RunCommand("/sbin/route", "add", "default", gateway4)
 			if err != nil {
 				if !strings.Contains(dR, "route already in table") {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_default_route: %v", err)
@@ -667,13 +708,23 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	gateway6 := sw.Gateway(6)
 
 	if network6 != "" && gateway6 != "" && !sw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", network6); err != nil {
+		routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
+
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6, "-no_dad"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
 
-		if !strings.HasPrefix(gateway6, "fe80::") {
-			if gwOut, err := utils.RunCommand("route", "-6", "add", "-net", network6, gateway6); err != nil {
-				if !strings.Contains(gwOut, "route already in table") {
+		if gwOut, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", network6, routeGateway6); err != nil {
+			if !strings.Contains(gwOut, "route already in table") {
+				if routeGateway6 != gateway6 {
+					logger.L.Warn().Msgf(
+						"create_standard_bridge: failed_to_add_scoped_linklocal_route network=%s gateway=%s bridge=%s err=%v (continuing)",
+						network6,
+						routeGateway6,
+						sw.BridgeName,
+						err,
+					)
+				} else {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
 				}
 			}
@@ -681,24 +732,24 @@ func createStandardBridge(sw networkModels.StandardSwitch) error {
 	}
 
 	if !sw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", "auto_linklocal"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_enable_linklocal: %v", err)
 		}
 	}
 
 	if !sw.DisableIPv6 && sw.SLAAC {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_enable_slaac: %v", err)
 		}
 	}
 
 	if sw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_disable_ipv6_flags: %v", err)
 		}
 	}
 
-	if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "up"); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "up"); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed to bring up bridge: %v", err)
 	}
 
@@ -752,12 +803,12 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 
 	// 4) reconfigure bridge in place
-	if _, err := utils.RunCommand("ifconfig", br, "descr", newSw.Name); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", br, "descr", newSw.Name); err != nil {
 		return fmt.Errorf("edit_standard_bridge: set descr: %v", err)
 	}
 
 	if oldSw.MTU != newSw.MTU && newSw.MTU > 0 {
-		if _, err := utils.RunCommand("ifconfig", br, "mtu", strconv.Itoa(newSw.MTU)); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "mtu", strconv.Itoa(newSw.MTU)); err != nil {
 			return fmt.Errorf("edit_standard_bridge: set mtu: %v", err)
 		}
 	}
@@ -769,35 +820,35 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 
 	// Always clean up old IPv4 configuration
 	if old4Network != "" {
-		if _, err := utils.RunCommand("ifconfig", br, "inet", old4Network, "delete"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet", old4Network, "delete"); err != nil {
 			logger.L.Warn().Msgf("edit_standard_bridge: del old inet %s: %v", old4Network, err)
 		}
 	}
 
 	// Clean up old route if it existed
 	if old4Gateway != "" && old4Network != "" {
-		if _, err := utils.RunCommand("route", "delete", "-net", old4Network, old4Gateway); err != nil {
+		if _, err := utils.RunCommand("/sbin/route", "delete", "-net", old4Network, old4Gateway); err != nil {
 			logger.L.Warn().Msgf("edit_standard_bridge: del route %s via %s: %v", old4Network, old4Gateway, err)
 		}
 	}
 
 	// Always apply new IPv4 address if specified
 	if new4Network != "" {
-		if _, err := utils.RunCommand("ifconfig", br, "inet", new4Network); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet", new4Network); err != nil {
 			return fmt.Errorf("edit_standard_bridge: set inet %s: %v", new4Network, err)
 		}
 	}
 
 	// Add route if both network and gateway are specified
 	if new4Network != "" && new4Gateway != "" {
-		if gwOut, err := utils.RunCommand("route", "add", "-net", new4Network, new4Gateway); err != nil {
+		if gwOut, err := utils.RunCommand("/sbin/route", "add", "-net", new4Network, new4Gateway); err != nil {
 			if !strings.Contains(gwOut, "route already in table") {
 				return fmt.Errorf("edit_standard_bridge: add route %s via %s: %v", new4Network, new4Gateway, err)
 			}
 		}
 
 		if newSw.DefaultRoute {
-			dR, err := utils.RunCommand("route", "add", "default", new4Gateway)
+			dR, err := utils.RunCommand("/sbin/route", "add", "default", new4Gateway)
 			if err != nil {
 				if !strings.Contains(dR, "route already in table") {
 					return fmt.Errorf("create_standard_bridge: failed_to_add_default_route: %v", err)
@@ -811,34 +862,36 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 
 	if old6Network != new6Network {
 		if old6Network != "" {
-			if _, err := utils.RunCommand("ifconfig", br, "inet6", old6Network, "delete"); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", old6Network, "delete"); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: del old inet6 %s: %v", old6Network, err)
 			}
 		}
 
 		if new6Network != "" {
-			if _, err := utils.RunCommand("ifconfig", br, "inet6", new6Network); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", new6Network); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: set inet6 %s: %v", new6Network, err)
 			}
 		}
 	}
 
 	if old6Gateway != new6Gateway {
-		if old6Gateway != "" {
-			if _, err := utils.RunCommand("route", "-6", "delete", "-net", old6Network, old6Gateway); err != nil {
+		if old6Gateway != "" && old6Network != "" {
+			oldRouteGateway := normalizeIPv6GatewayForRoute(old6Gateway, br)
+			if _, err := utils.RunCommand("/sbin/route", "-6", "delete", "-net", old6Network, oldRouteGateway); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: del route %s via %s: %v", old6Network, old6Gateway, err)
 			}
 		}
 
-		if new6Gateway != "" {
-			if _, err := utils.RunCommand("route", "-6", "add", "-net", new6Network, new6Gateway); err != nil {
+		if new6Gateway != "" && new6Network != "" {
+			newRouteGateway := normalizeIPv6GatewayForRoute(new6Gateway, br)
+			if _, err := utils.RunCommand("/sbin/route", "-6", "add", "-net", new6Network, newRouteGateway); err != nil {
 				logger.L.Warn().Msgf("edit_standard_bridge: add route %s via %s: %v", new6Network, new6Gateway, err)
 			}
 		}
 	}
 
 	if newSw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable IPv6: %v", err)
 		}
 
@@ -848,18 +901,18 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 				ip += "%" + br
 			}
 
-			if _, err := utils.RunCommand("ifconfig", br, "inet6", ip, "delete"); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", ip, "delete"); err != nil {
 				return fmt.Errorf("edit_standard_bridge: delete IPv6 address %s: %v", ip, err)
 			}
 		}
 	}
 
 	if !newSw.DisableIPv6 && newSw.SLAAC {
-		if _, err := utils.RunCommand("ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: enable SLAAC: %v", err)
 		}
 	} else if !newSw.DisableIPv6 {
-		if _, err := utils.RunCommand("ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable SLAAC: %v", err)
 		}
 	}
@@ -877,7 +930,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 					ip += "%" + br
 				}
 
-				if _, err := utils.RunCommand("ifconfig", br, "inet6", ip, "delete"); err != nil {
+				if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", ip, "delete"); err != nil {
 					return fmt.Errorf("edit_standard_bridge: delete SLAAC address %s: %v", ip, err)
 				}
 			}
@@ -894,7 +947,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 			}
 
 			for _, addr := range ifaceObj.IPv4 {
-				if _, err := utils.RunCommand("ifconfig", br, "inet", addr.IP.String(), "delete"); err != nil {
+				if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet", addr.IP.String(), "delete"); err != nil {
 					return fmt.Errorf("edit_standard_bridge: delete IPv4 address %s: %v", addr.IP.String(), err)
 				}
 			}
@@ -919,19 +972,19 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 			continue
 		}
 		if strings.Contains(oif.Driver, "tap") || utils.Contains(oif.Groups, "tap") || utils.Contains(oif.Groups, "vnet") {
-			if _, err := utils.RunCommand("ifconfig", br, "addm", m, "up"); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", br, "addm", m, "up"); err != nil {
 				if !strings.Contains(err.Error(), "BRDGADD "+m+": File exists") {
 					return fmt.Errorf("edit_standard_bridge: re-add tap %s: %v", m, err)
 				}
 			}
 
-			if _, err := utils.RunCommand("ifconfig", m, "up"); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", m, "up"); err != nil {
 				return fmt.Errorf("edit_standard_bridge: bring up tap %s: %v", m, err)
 			}
 		}
 	}
 
-	if _, err := utils.RunCommand("ifconfig", br, "up"); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", br, "up"); err != nil {
 		return fmt.Errorf("edit_standard_bridge: failed to bring up bridge: %v", err)
 	}
 
@@ -939,7 +992,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 }
 
 func deleteStandardBridge(sw networkModels.StandardSwitch) error {
-	if _, err := utils.RunCommand("ifconfig", sw.BridgeName, "destroy"); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", sw.BridgeName, "destroy"); err != nil {
 		if !strings.Contains(err.Error(), "does not exist") {
 			return fmt.Errorf("delete_standard_bridge: failed_to_destroy: %v", err)
 		}
@@ -947,8 +1000,8 @@ func deleteStandardBridge(sw networkModels.StandardSwitch) error {
 
 	for _, port := range sw.Ports {
 		vif := fmt.Sprintf("%s.%d", port.Name, sw.VLAN)
-		if _, err := utils.RunCommand("ifconfig", vif); err == nil {
-			if _, err := utils.RunCommand("ifconfig", vif, "destroy"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", vif); err == nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", vif, "destroy"); err != nil {
 				return fmt.Errorf("delete_standard_bridge: failed to destroy VLAN iface %s: %v", vif, err)
 			}
 		}
@@ -959,7 +1012,7 @@ func deleteStandardBridge(sw networkModels.StandardSwitch) error {
 
 func addBridgeMember(br, portName string, mtu, vlan int) error {
 	if mtu > 0 {
-		if _, err := utils.RunCommand("ifconfig", portName, "mtu", strconv.Itoa(mtu)); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", portName, "mtu", strconv.Itoa(mtu)); err != nil {
 			return fmt.Errorf("set mtu for %s: %v", portName, err)
 		}
 	}
@@ -969,7 +1022,7 @@ func addBridgeMember(br, portName string, mtu, vlan int) error {
 		vif := fmt.Sprintf("%s.%d", portName, vlan)
 		targetPort = vif
 
-		if _, err := utils.RunCommand("ifconfig", vif); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", vif); err != nil {
 			args := []string{
 				"vlan", "create",
 				"vlandev", portName,
@@ -979,7 +1032,7 @@ func addBridgeMember(br, portName string, mtu, vlan int) error {
 				"group", "svm-vlan",
 				"up",
 			}
-			if _, err := utils.RunCommand("ifconfig", args...); err != nil {
+			if _, err := utils.RunCommand("/sbin/ifconfig", args...); err != nil {
 				return fmt.Errorf("create vlan %s: %v", vif, err)
 			}
 		}
@@ -991,19 +1044,19 @@ func addBridgeMember(br, portName string, mtu, vlan int) error {
 	}
 
 	for port := range portsToClear {
-		if _, err := utils.RunCommand("ifconfig", port, "inet", "-alias"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", port, "inet", "-alias"); err != nil {
 			return fmt.Errorf("clear inet on %s: %v", port, err)
 		}
-		if _, err := utils.RunCommand("ifconfig", port, "inet6", "-alias"); err != nil &&
+		if _, err := utils.RunCommand("/sbin/ifconfig", port, "inet6", "-alias"); err != nil &&
 			!strings.Contains(err.Error(), "Can't assign requested address") {
 			return fmt.Errorf("clear inet6 on %s: %v", port, err)
 		}
 	}
 
-	if _, err := utils.RunCommand("ifconfig", br, "addm", targetPort, "up"); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", br, "addm", targetPort, "up"); err != nil {
 		return fmt.Errorf("add %s to bridge %s: %v", targetPort, br, err)
 	}
-	if _, err := utils.RunCommand("ifconfig", targetPort, "up"); err != nil {
+	if _, err := utils.RunCommand("/sbin/ifconfig", targetPort, "up"); err != nil {
 		return fmt.Errorf("bring up %s: %v", targetPort, err)
 	}
 
@@ -1013,16 +1066,16 @@ func addBridgeMember(br, portName string, mtu, vlan int) error {
 func removeBridgeMember(br, portName string, vlan int) error {
 	if vlan > 0 {
 		vif := fmt.Sprintf("%s.%d", portName, vlan)
-		if _, err := utils.RunCommand("ifconfig", br, "deletem", vif); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "deletem", vif); err != nil {
 			return fmt.Errorf("remove vlan member %s: %v", vif, err)
 		}
 
-		if _, err := utils.RunCommand("ifconfig", vif, "destroy"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", vif, "destroy"); err != nil {
 			return fmt.Errorf("destroy vlan iface %s: %v", vif, err)
 		}
 
 	} else {
-		if _, err := utils.RunCommand("ifconfig", br, "deletem", portName); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "deletem", portName); err != nil {
 			return fmt.Errorf("remove port member %s: %v", portName, err)
 		}
 	}
@@ -1038,7 +1091,7 @@ func runDhclient(br string, timeout int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeout))
 	defer cancel()
 
-	_, err = utils.RunCommandWithContext(ctx, "dhclient", "-b", br)
+	_, err = utils.RunCommandWithContext(ctx, "/sbin/dhclient", "-b", br)
 	if err != nil {
 		logger.L.Debug().Msgf("dhclient: failed to run dhclient for %s: %v", br, err)
 		if strings.Contains(err.Error(), "dhclient already running") {

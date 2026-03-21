@@ -2,6 +2,7 @@
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import { detachNetwork } from '$lib/api/vm/network';
 	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -19,6 +20,7 @@
 	import { resource, useInterval, watch } from 'runed';
 	import { untrack } from 'svelte';
 	import { storage } from '$lib';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		vm: VM;
@@ -31,6 +33,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const interfaces = resource(
 		() => 'networkInterfaces',
 		async (key) => {
@@ -44,6 +47,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const switches = resource(
 		() => 'networkSwitches',
 		async (key) => {
@@ -57,6 +61,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const vm = resource(
 		() => `vm-${data.rid}`,
 		async (key) => {
@@ -70,6 +75,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.vm.rid}`,
 		async (key) => {
@@ -83,6 +89,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const networkObjects = resource(
 		() => 'networkObjects',
 		async (key) => {
@@ -91,7 +98,6 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.networkObjects
 		}
 	);
@@ -117,6 +123,48 @@
 			domain.refetch();
 			networkObjects.refetch();
 		}
+	);
+
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vm.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
 	);
 
 	function generateTableData() {
@@ -197,6 +245,10 @@
 			open: false,
 			id: null as number | null,
 			name: ''
+		},
+		edit: {
+			open: false,
+			id: null as number | null
 		}
 	};
 
@@ -225,6 +277,26 @@
 				</div>
 			</Button>
 		{/if}
+
+		{#if type === 'edit' && activeRows && activeRows.length === 1}
+			<Button
+				onclick={() => {
+					if (activeRows) {
+						properties.edit.open = true;
+						properties.edit.id = activeRows[0].id as number;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+
+					<span>Edit</span>
+				</div>
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -247,7 +319,7 @@
 			size="sm"
 			class="h-6"
 			title={domain && domain.current.status !== 'Shutoff'
-				? 'VM must be shut off to attach storage'
+				? 'VM must be shut off to attach network'
 				: ''}
 			disabled={domain && domain.current.status !== 'Shutoff'}
 		>
@@ -258,6 +330,7 @@
 			</div>
 		</Button>
 
+		{@render button('edit')}
 		{@render button('detach')}
 	</div>
 
@@ -299,9 +372,22 @@
 	}}
 />
 
-<Network
-	bind:open={properties.attach.open}
-	switches={switches.current}
-	networkObjects={networkObjects.current}
-	vm={vm.current ?? null}
-/>
+{#if properties.attach.open}
+	<Network
+		bind:open={properties.attach.open}
+		switches={switches.current}
+		networkObjects={networkObjects.current}
+		vm={vm.current ?? null}
+		networkId={null}
+	/>
+{/if}
+
+{#if properties.edit.open}
+	<Network
+		bind:open={properties.edit.open}
+		switches={switches.current}
+		networkObjects={networkObjects.current}
+		vm={vm.current ?? null}
+		networkId={properties.edit.id}
+	/>
+{/if}

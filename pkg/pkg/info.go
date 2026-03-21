@@ -2,12 +2,9 @@ package pkg
 
 import "github.com/alchemillahq/sylve/pkg/utils"
 
+var runCommand = utils.RunCommand
+
 func IsPackageInstalled(packageName string) bool {
-	_, err := utils.RunCommand("pkg", "info", packageName)
-
-	if err == nil {
-		return true
-	}
-
-	return false
+	_, err := runCommand("/usr/sbin/pkg", "info", packageName)
+	return err == nil
 }

@@ -15,7 +15,10 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -38,7 +41,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		return fmt.Errorf("failed to find jail with ct_id %d: %w", ctId, err)
 	}
 
-	jailName := utils.HashIntToNLetters(int(jail.CTID), 5)
+	jailName := s.GetCTIDHash(jail.CTID)
 
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command("jail", args...)
@@ -48,11 +51,52 @@ func (s *Service) JailAction(ctId int, action string) error {
 
 	now := time.Now().UTC()
 
+	ensureNetworkReady := func() error {
+		var jailWithNetworks jailModels.Jail
+		if err := s.DB.Preload("Networks").Where("ct_id = ?", ctId).First(&jailWithNetworks).Error; err != nil {
+			return fmt.Errorf("failed to load jail networks before start: %w", err)
+		}
+
+		if err := s.SyncNetwork(uint(ctId), jailWithNetworks); err != nil {
+			return fmt.Errorf("failed to sync jail network before start: %w", err)
+		}
+
+		return nil
+	}
+
+	emitWithFreshState := func(reason string) {
+		if _, refreshErr := s.refreshLiveStates(); refreshErr != nil {
+			logger.L.Warn().
+				Err(refreshErr).
+				Int("ct_id", ctId).
+				Str("action", action).
+				Msg("failed_to_refresh_jail_live_states_after_action")
+		}
+
+		s.emitLeftPanelRefresh(reason)
+	}
+
 	switch action {
 	case "start":
-		err := s.NetworkService.SyncEpairs(true)
+		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+
+		active, err := s.IsJailActive(uint(ctId))
 		if err != nil {
-			return fmt.Errorf("failed to sync epairs: %w", err)
+			return fmt.Errorf("failed to check if jail is active: %w", err)
+		}
+
+		if active {
+			return nil
+		}
+
+		if err := ensureNetworkReady(); err != nil {
+			return err
 		}
 
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
@@ -63,6 +107,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		emitWithFreshState(fmt.Sprintf("jail_start_%d", ctId))
 		return nil
 
 	case "stop":
@@ -75,13 +120,26 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		emitWithFreshState(fmt.Sprintf("jail_stop_%d", ctId))
 		return nil
 
 	case "restart":
+		allowed, leaseErr := s.canMutateProtectedJail(uint(ctId))
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+
 		if out, err := run("-f", jailConf, "-r", jailName); err != nil {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
 			}
+		}
+
+		if err := ensureNetworkReady(); err != nil {
+			return err
 		}
 
 		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
@@ -92,8 +150,30 @@ func (s *Service) JailAction(ctId int, action string) error {
 		if err := s.DB.Save(&jail).Error; err != nil {
 			return fmt.Errorf("failed to update jail status: %w", err)
 		}
+		emitWithFreshState(fmt.Sprintf("jail_restart_%d", ctId))
 		return nil
 	}
 
 	return nil
+}
+
+func (s *Service) canMutateProtectedJail(ctID uint) (bool, error) {
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+	return clusterService.CanNodeMutateProtectedGuest(
+		s.DB,
+		clusterModels.ReplicationGuestTypeJail,
+		ctID,
+		strings.TrimSpace(nodeID),
+	)
+}
+
+func (s *Service) CanMutateProtectedJail(ctID uint) (bool, error) {
+	return s.canMutateProtectedJail(ctID)
+}
+
+func (s *Service) canStartProtectedJail(ctID uint) (bool, error) {
+	return s.canMutateProtectedJail(ctID)
 }

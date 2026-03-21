@@ -5,7 +5,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import { handleAPIError } from '$lib/utils/http';
-	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
+	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 
@@ -20,24 +20,22 @@
 			isValidIPv4(window.location.hostname) || isValidIPv6(window.location.hostname)
 				? window.location.hostname
 				: '',
-		port: 8182,
 		clusterKey: '',
-		leaderApi: ''
+		leaderIp: ''
 	};
 
 	let properties = $state(options);
+	let loading = $state(false);
 
 	async function join() {
 		let error = '';
 
 		if (!isValidIPv4(properties.ip) && !isValidIPv6(properties.ip)) {
 			error = 'Invalid IP address';
-		} else if (!isValidPortNumber(properties.port)) {
-			error = 'Invalid port number';
 		}
 
-		if (!properties.leaderApi) {
-			error = 'Leader API is required';
+		if (!isValidIPv4(properties.leaderIp) && !isValidIPv6(properties.leaderIp)) {
+			error = 'Leader IP is required';
 		} else if (!properties.clusterKey) {
 			error = 'Cluster Key is required';
 		}
@@ -50,35 +48,44 @@
 			return;
 		}
 
-		const response = await joinCluster(
-			storage.nodeId,
-			properties.ip,
-			Number(properties.port),
-			properties.leaderApi,
-			properties.clusterKey
-		);
+		if (storage.nodeId) {
+			loading = true;
 
-		reload = true;
+			const response = await joinCluster(
+				storage.nodeId,
+				properties.ip,
+				properties.leaderIp,
+				properties.clusterKey
+			);
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Unable to join cluster', {
+			loading = false;
+
+			reload = true;
+
+			if (response.error) {
+				handleAPIError(response);
+				toast.error('Unable to join cluster', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			if (response.data) {
+				if (typeof response.data === 'string') {
+					storage.clusterToken = response.data;
+				}
+			}
+
+			toast.success('Joined cluster', {
 				position: 'bottom-center'
 			});
-			return;
+
+			open = false;
+		} else {
+			toast.error('No Node ID available', {
+				position: 'bottom-center'
+			});
 		}
-
-		if (response.data) {
-			if (typeof response.data === 'string') {
-				storage.clusterToken = response.data;
-			}
-		}
-
-		toast.success('Joined cluster', {
-			position: 'bottom-center'
-		});
-
-		open = false;
 	}
 </script>
 
@@ -128,13 +135,6 @@
 				placeholder="Node IP"
 				classes="flex-1 space-y-1.5"
 			/>
-
-			<CustomValueInput
-				bind:value={properties.port}
-				placeholder="Node Port"
-				classes="flex-1 space-y-1.5"
-				type="number"
-			/>
 		</div>
 
 		<div class="flex flex-row gap-2">
@@ -142,8 +142,8 @@
 			<input type="password" style="display:none" autocomplete="new-password" />
 
 			<CustomValueInput
-				bind:value={properties.leaderApi}
-				placeholder="Leader API (192.168.1.1:8181)"
+				bind:value={properties.leaderIp}
+				placeholder="Leader IP (192.168.1.1)"
 				classes="flex-1 space-y-1.5 w-1/2"
 			/>
 
@@ -160,7 +160,16 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={join} type="submit" size="sm">{'Join'}</Button>
+				<Button onclick={join} type="submit" size="sm" disabled={loading}>
+					{#if loading}
+						<div class="flex items-center gap-2">
+							<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
+							<span>Joining</span>
+						</div>
+					{:else}
+						Join
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

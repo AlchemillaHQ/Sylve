@@ -15,7 +15,7 @@
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
-	import { untrack } from 'svelte';
+	import { watch } from 'runed';
 
 	use([
 		LineChart,
@@ -30,6 +30,7 @@
 
 	interface Props {
 		title: string;
+		titleIconClass?: string;
 		points: { date: number; value: number }[];
 		percentage: boolean;
 		color: 'one' | 'two' | 'three' | 'four';
@@ -39,6 +40,7 @@
 
 	let {
 		title,
+		titleIconClass = '',
 		points,
 		color,
 		percentage,
@@ -47,16 +49,18 @@
 	}: Props = $props();
 
 	let chart: EChartsType | undefined = $state(undefined);
+	let optionRafId: number | null = null;
 
 	const colors = $derived({
-		title: mode.current === 'dark' ? '#ffffff' : '#000000',
+		title: cssVar('--text-blue-600'),
 		grid: {
 			dark: 'rgba(255,255,255,0.12)',
 			light: 'rgba(0,0,0,0.12)'
 		},
 		tooltip: {
 			background: cssVar('--muted'),
-			border: cssVar('--border')
+			border: cssVar('--border'),
+			text: mode.current === 'dark' ? '#ffffff' : '#000000'
 		},
 		one: {
 			main: 'rgba(230, 131, 47, 1)',
@@ -87,17 +91,18 @@
 						filler: 'rgb(200, 200, 200, 0.01)'
 					}
 				: {
-						color: 'rgb(0, 0, 0)',
-						borderColor: 'rgb(0, 0, 0)',
-						soft: 'rgb(0, 0, 0, 0.6)',
-						filler: 'rgb(0, 0, 0, 0.01)'
+						color: 'rgb(165, 165, 165)',
+						borderColor: 'rgb(165, 165, 165)',
+						soft: 'rgb(195, 195, 195, 0.6)',
+						filler: 'rgb(195, 195, 195, 0.01)'
 					}
 	});
 
+	// svelte-ignore state_referenced_locally
 	// @wc-ignore
 	let options: EChartsOption = $state.raw({
 		title: {
-			text: title,
+			show: false,
 			textStyle: {
 				color: colors.title,
 				fontStyle: 'normal',
@@ -120,12 +125,12 @@
 						const value = param.data[1];
 						if (timestamp !== undefined) {
 							const date = new Date(timestamp as string | number | Date);
-							tooltipHtml += `<div class="dark:bg-muted bg-white dark:text-white font-semi">${date.toLocaleString()}: ${parseFloat(value !== undefined ? Number(value).toFixed(2) : '0')}%</div>`;
+							tooltipHtml += `<div class="font-semi" style="color:${colors.tooltip.text}">${date.toLocaleString()}: ${parseFloat(value !== undefined ? Number(value).toFixed(2) : '0')}%</div>`;
 						} else {
-							tooltipHtml += `<div class="dark:bg-muted bg-white dark:text-white">Invalid date</div>`;
+							tooltipHtml += `<div style="color:${colors.tooltip.text}">Invalid date</div>`;
 						}
 					} else {
-						tooltipHtml += `<div class="dark:bg-muted bg-white dark:text-white">Invalid data</div>`;
+						tooltipHtml += `<div style="color:${colors.tooltip.text}">Invalid data</div>`;
 					}
 				});
 				tooltipHtml += `</div>`;
@@ -133,6 +138,9 @@
 			},
 			backgroundColor: colors.tooltip.background,
 			borderColor: colors.tooltip.border,
+			textStyle: {
+				color: colors.tooltip.text
+			},
 			borderWidth: 1
 		},
 		grid: {
@@ -256,30 +264,126 @@
 
 	let mouseIn = $state(false);
 
-	$effect(() => {
-		if (points && !mouseIn) {
-			untrack(() => {
-				if (chart) {
-					chart.setOption({
-						series: [
-							{
-								data: points.map((p) => [p.date, p.value])
-							}
-						]
-					});
+	watch([() => points, () => mouseIn], ([currentPoints, isMouseIn]) => {
+		if (!chart || !currentPoints || isMouseIn) return;
+
+		chart.setOption({
+			series: [
+				{
+					data: currentPoints.map((p) => [p.date, p.value])
 				}
+			]
+		});
+	});
+
+	watch(
+		() => mode.current,
+		() => {
+			if (!chart) return;
+
+			if (optionRafId !== null) {
+				cancelAnimationFrame(optionRafId);
+			}
+
+			optionRafId = requestAnimationFrame(() => {
+				if (!chart) return;
+
+				const gridColor = mode.current === 'dark' ? colors.grid.dark : colors.grid.light;
+
+				chart.setOption({
+					title: {
+						show: false
+					},
+					tooltip: {
+						backgroundColor: colors.tooltip.background,
+						borderColor: colors.tooltip.border,
+						textStyle: {
+							color: colors.tooltip.text
+						}
+					},
+					xAxis: {
+						axisLine: {
+							lineStyle: {
+								color: gridColor
+							}
+						}
+					},
+					yAxis: {
+						max: percentage ? 100 : undefined,
+						min: percentage ? 0 : undefined,
+						axisLabel: {
+							formatter: percentage ? '{value}%' : '{value}'
+						},
+						splitLine: {
+							lineStyle: {
+								color: gridColor
+							}
+						}
+					},
+					dataZoom: [
+						{
+							selectedDataBackground: {
+								lineStyle: { color: colors.moveHandle.color },
+								areaStyle: { color: colors.moveHandle.soft }
+							},
+							fillerColor: colors.moveHandle.filler,
+							handleStyle: {
+								color: colors.moveHandle.color,
+								borderColor: colors.moveHandle.color
+							},
+							moveHandleStyle: {
+								color: colors.moveHandle.color,
+								borderColor: colors.moveHandle.color
+							},
+							emphasis: {
+								handleStyle: {
+									color: colors.moveHandle.color,
+									borderColor: colors.moveHandle.color
+								},
+								moveHandleStyle: {
+									color: colors.moveHandle.color,
+									borderColor: colors.moveHandle.color
+								}
+							}
+						}
+					],
+					toolbox: {
+						feature: {
+							saveAsImage: {
+								backgroundColor: colors.tooltip.background,
+								connectedBackgroundColor: colors.tooltip.background
+							}
+						}
+					},
+					color: [colors[color].main]
+				});
+
+				optionRafId = null;
 			});
 		}
-	});
+	);
 </script>
 
 <Card.Root class={containerClass}>
 	<Card.Content class="{containerContentHeight} w-full overflow-hidden rounded-sm p-0">
 		<div
-			class="h-full w-full overflow-visible"
+			role="region"
+			class="relative h-full w-full overflow-visible"
 			onmouseenter={() => (mouseIn = true)}
 			onmouseleave={() => (mouseIn = false)}
 		>
+			<div
+				class="pointer-events-none absolute top-1 left-2 z-10 flex items-center gap-1 whitespace-nowrap"
+			>
+				{#if titleIconClass}
+					<span
+						class={`${titleIconClass} text-blue-600 dark:text-blue-500 inline-block h-5 w-5 shrink-0 align-middle`}
+					></span>
+				{/if}
+				<span class="text-base leading-none font-normal text-blue-600 dark:text-blue-500"
+					>{title}</span
+				>
+			</div>
 			<Chart {init} {options} bind:chart />
 		</div>
 	</Card.Content>

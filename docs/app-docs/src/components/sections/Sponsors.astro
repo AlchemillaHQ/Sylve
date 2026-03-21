@@ -1,0 +1,91 @@
+---
+const sponsors = [
+  {
+    name: "Alchemilla",
+    href: "https://alchemilla.io",
+    lightLogo: "/sponsors/Alchemilla-Dark.webp",
+    darkLogo: "/sponsors/Alchemilla-White.webp",
+  },
+  {
+    name: "FreeBSD Foundation",
+    href: "https://freebsdfoundation.org",
+    lightLogo: "/sponsors/FreeBSD-Red.webp",
+    darkLogo: "/sponsors/FreeBSD-White.webp",
+  },
+  {
+    name: "IP Technics",
+    href: "https://iptechnics.com",
+    lightLogo: "/sponsors/IP-Technics-Dark.webp",
+    darkLogo: "/sponsors/IP-Technics-White.webp",
+  },
+];
+---
+
+<section class="relative overflow-hidden pb-24 pt-8">
+  <div class="container relative z-10 mx-auto px-4">
+    <div class="mb-12 text-center">
+      <h2
+        class="text-gradient -translate-y-4 animate-fade-in opacity-0 text-3xl font-bold md:text-5xl pb-1"
+        style="--animation-delay: 120ms"
+      >
+        Backed by Builders
+      </h2>
+      <p
+        class="mx-auto mt-4 max-w-2xl -translate-y-4 animate-fade-in text-lg text-muted-foreground opacity-0"
+        style="--animation-delay: 220ms"
+      >
+        Sylve is supported by teams investing in modern FreeBSD infrastructure.
+      </p>
+    </div>
+
+    <div
+      class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 -translate-y-4 animate-fade-in opacity-0"
+      style="--animation-delay: 320ms"
+    >
+      {
+        sponsors.map((sponsor) => (
+          <a
+            href={sponsor.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Visit ${sponsor.name}`}
+            class="group flex min-h-36 items-center justify-center rounded-2xl border border-border/70 bg-background/70 p-8 shadow-sm backdrop-blur transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            <img
+              src={sponsor.lightLogo}
+              alt={`${sponsor.name} logo`}
+              class="max-h-14 w-auto object-contain dark:hidden"
+              loading="lazy"
+              decoding="async"
+            />
+            <img
+              src={sponsor.darkLogo}
+              alt={`${sponsor.name} logo`}
+              class="hidden max-h-14 w-auto object-contain dark:block"
+              loading="lazy"
+              decoding="async"
+            />
+          </a>
+        ))
+      }
+    </div>
+
+    <div
+      class="mt-10 rounded-2xl border border-primary/20 bg-linear-to-r from-primary/8 via-muted/30 to-primary/8 p-6 text-center -translate-y-4 animate-fade-in opacity-0 md:p-8"
+      style="--animation-delay: 420ms"
+    >
+      <p class="text-base text-muted-foreground md:text-lg">
+        Want your company logo featured here?
+      </p>
+      <a
+        href="https://github.com/sponsors/AlchemillaHQ"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+      >
+        <span class="icon-[mdi--heart] size-4"></span>
+        Become a Sponsor
+      </a>
+    </div>
+  </div>
+</section>

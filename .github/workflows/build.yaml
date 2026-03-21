@@ -1,0 +1,64 @@
+name: Build
+on:
+  push:
+    branches:
+      - "**"
+    paths-ignore:
+      - "docs/**"
+    tags-ignore:
+      - tip
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build Web Assets
+        run: |
+          make frontend
+      - name: Upload Web Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: internal/assets/web-files/
+
+  build-freebsd:
+    needs: build-web
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            vm_arch: x86_64
+          - arch: arm64
+            vm_arch: aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Web Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: internal/assets/web-files
+
+      - name: Build on FreeBSD ${{ matrix.arch }}
+        uses: vmactions/freebsd-vm@v1
+        with:
+          arch: ${{ matrix.vm_arch }}
+          sync: scp
+          usesh: true
+          prepare: pkg install -y go git
+          run: |
+            make backend ARCH=${{ matrix.arch }}
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sylve-${{ matrix.arch }}
+          path: bin/sylve

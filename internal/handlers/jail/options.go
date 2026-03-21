@@ -9,7 +9,10 @@
 package jailHandlers
 
 import (
+	"strings"
+
 	"github.com/alchemillahq/sylve/internal"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
@@ -24,6 +27,10 @@ type ModifyFstabRequest struct {
 	Fstab *string `json:"fstab"`
 }
 
+type ModifyResolvConfRequest struct {
+	ResolvConf *string `json:"resolvConf"`
+}
+
 type ModifyDevFSRulesRequest struct {
 	DevFSRules *string `json:"devFSRules"`
 }
@@ -32,9 +39,17 @@ type ModifyAdditionalOptionsRequest struct {
 	AdditionalOptions *string `json:"additionalOptions"`
 }
 
+type ModifyAllowedOptionsRequest struct {
+	AllowedOptions *[]string `json:"allowedOptions"`
+}
+
 type ModifyMetadataRequest struct {
 	Metadata *string `json:"metadata"`
 	Env      *string `json:"env"`
+}
+
+type ModifyLifecycleHooksRequest struct {
+	Hooks *jailServiceInterfaces.Hooks `json:"hooks"`
 }
 
 // @Summary Modify Boot Order of a Jail
@@ -160,6 +175,65 @@ func ModifyFstab(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Modify resolv.conf of a Jail
+// @Description Modify /etc/resolv.conf content for a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyResolvConfRequest true "Modify resolv.conf Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/resolv-conf/:rid [put]
+func ModifyResolvConf(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyResolvConfRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		resolvConf := ""
+		if req.ResolvConf != nil {
+			resolvConf = *req.ResolvConf
+		}
+
+		if err := jailService.ModifyResolvConf(rid, resolvConf); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "resolv_conf_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
 // @Summary Modify DevFS rules of a Jail
 // @Description Modify the DevFS rules configuration of a jail
 // @Tags Jail
@@ -278,6 +352,72 @@ func ModifyAdditionalOptions(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Modify Allowed Options of a Jail
+// @Description Modify allowed options configuration of a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyAllowedOptionsRequest true "Modify Allowed Options Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/allowed-options/:rid [put]
+func ModifyAllowedOptions(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyAllowedOptionsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		allowedOptions := []string{}
+		if req.AllowedOptions != nil {
+			allowedOptions = *req.AllowedOptions
+		}
+
+		if err := jailService.ModifyAllowedOptions(rid, allowedOptions); err != nil {
+			statusCode := 500
+			message := "internal_server_error"
+			if strings.Contains(err.Error(), "invalid_jail_allowed_options") {
+				statusCode = 400
+				message = "invalid_request"
+			}
+
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "allowed_options_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
 // @Summary Modify Metadata of a Jail
 // @Description Modify the Metadata configuration of a jail
 // @Tags Jail
@@ -336,6 +476,65 @@ func ModifyMetadata(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "metadata_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Lifecycle Hooks of a Jail
+// @Description Modify jail exec.* lifecycle hooks in one request
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyLifecycleHooksRequest true "Modify Lifecycle Hooks Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/lifecycle-hooks/:rid [put]
+func ModifyLifecycleHooks(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyLifecycleHooksRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		hooks := jailServiceInterfaces.Hooks{}
+		if req.Hooks != nil {
+			hooks = *req.Hooks
+		}
+
+		if err := jailService.ModifyLifecycleHooks(rid, hooks); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "lifecycle_hooks_modified",
 			Data:    nil,
 			Error:   "",
 		})

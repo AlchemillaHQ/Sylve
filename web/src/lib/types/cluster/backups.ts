@@ -1,0 +1,128 @@
+import { z } from 'zod/v4';
+
+export const BackupTargetSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	sshHost: z.string(),
+	sshPort: z.number().default(22),
+	sshKeyPath: z.string().optional().default(''),
+	backupRoot: z.string(),
+	createBackupRoot: z.boolean().default(false),
+	description: z.string().optional().default(''),
+	enabled: z.boolean().default(true),
+	createdAt: z.string().optional(),
+	updatedAt: z.string().optional()
+});
+
+export const BackupJobSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	targetId: z.number(),
+	target: BackupTargetSchema.optional(),
+	runnerNodeId: z.string().optional().default(''),
+	mode: z.enum(['dataset', 'jail', 'vm']),
+	sourceDataset: z.string().optional().default(''),
+	jailRootDataset: z.string().optional().default(''),
+	friendlySrc: z.string().optional().default(''),
+	destSuffix: z.string().optional().default(''),
+	pruneKeepLast: z.number().int().nonnegative().default(0),
+	pruneTarget: z.boolean().default(false),
+	stopBeforeBackup: z.boolean().default(false),
+	cronExpr: z.string(),
+	enabled: z.boolean().default(true),
+	lastRunAt: z.string().nullable().optional(),
+	nextRunAt: z.string().nullable().optional(),
+	lastStatus: z.string().optional().default(''),
+	lastError: z.string().optional().default(''),
+	createdAt: z.string().optional(),
+	updatedAt: z.string().optional()
+});
+
+export const BackupEventSchema = z.object({
+	id: z.number(),
+	jobId: z.number().nullable().optional(),
+	sourceDataset: z.string().optional().default(''),
+	targetEndpoint: z.string().optional().default(''),
+	mode: z.string().optional().default(''),
+	status: z.string().optional().default(''),
+	error: z.string().optional().default(''),
+	output: z.string().optional().default(''),
+	startedAt: z.string(),
+	completedAt: z.string().nullable().optional()
+});
+
+export const BackupEventProgressSchema = z.object({
+	event: BackupEventSchema,
+	progressDataset: z.string().optional().default(''),
+	movedBytes: z.number().nullable().optional(),
+	totalBytes: z.number().nullable().optional(),
+	progressPercent: z.number().nullable().optional()
+});
+
+export const SnapshotInfoSchema = z.object({
+	name: z.string(),
+	shortName: z.string(),
+	dataset: z.string().optional().default(''),
+	creation: z.string(),
+	used: z.string(),
+	refer: z.string(),
+	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
+	outOfBand: z.boolean().optional().default(false)
+});
+
+export const BackupTargetDatasetInfoSchema = z.object({
+	name: z.string(),
+	suffix: z.string().default(''),
+	baseSuffix: z.string().optional().default(''),
+	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
+	outOfBand: z.boolean().optional().default(false),
+	snapshotCount: z.number().int().nonnegative().default(0),
+	kind: z.enum(['dataset', 'jail', 'vm']).default('dataset'),
+	jailCtId: z.number().int().nonnegative().optional(),
+	vmRid: z.number().int().nonnegative().optional()
+});
+
+export const BackupJailMetadataInfoSchema = z.object({
+	ctId: z.number().int().nonnegative(),
+	name: z.string().default(''),
+	basePool: z.string().default('')
+});
+
+export const BackupVMMetadataInfoSchema = z.object({
+	rid: z.number().int().nonnegative(),
+	name: z.string().default(''),
+	pools: z.array(z.string()).default([])
+});
+
+export type BackupTarget = z.infer<typeof BackupTargetSchema>;
+export type BackupJob = z.infer<typeof BackupJobSchema>;
+export type BackupEvent = z.infer<typeof BackupEventSchema>;
+export type BackupEventProgress = z.infer<typeof BackupEventProgressSchema>;
+export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
+export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
+export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
+export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
+export type BackupJobMode = BackupJob['mode'];
+export type BackupGuestKind = 'dataset' | 'jail' | 'vm';
+export type BackupSnapshotLineageMarker = 'CURR' | 'OOB' | 'INT';
+
+export interface BackupGuestRef {
+	kind: BackupGuestKind;
+	id: number;
+}
+
+export interface BackupRestoreGenerationOption {
+	value: string;
+	label: string;
+}
+
+export interface RestoreTargetDatasetGroup {
+	baseSuffix: string;
+	label: string;
+	jobLabel: string;
+	representativeDataset: string;
+	kind: BackupGuestKind;
+	jailCtId: number;
+	vmRid: number;
+	totalSnapshots: number;
+}

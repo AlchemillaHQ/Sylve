@@ -9,14 +9,14 @@
  */
 
 import { getIcon, loadIcon } from '@iconify/svelte';
-import isCidr from 'is-cidr';
-import { isIP, isIPv4, isIPv6 } from 'is-ip';
 import { decode as magnetDecode, encode as magnetEncode } from 'magnet-uri';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
 import isMACAddress from 'validator/lib/isMACAddress';
 import isURL from 'validator/lib/isURL';
 import { Mnemonic } from './vendor/mnemonic';
+import humanFormat from 'human-format';
+import { Address4, Address6 } from 'ip-address';
 
 export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): string {
 	if (firstOnly) {
@@ -99,58 +99,62 @@ export function isValidSwitchName(name: string): boolean {
 	return regex.test(name);
 }
 
-export function isValidIPv4(ip: string, cidr: boolean = false): boolean {
+export function isValidIPv4(ip: string, cidr = false): boolean {
 	try {
-		if (cidr && isCidr.v4(ip)) {
-			return true;
+		const parsed = new Address4(ip);
+		if (!parsed.v4) return false;
+		const hasCidr = parsed.parsedSubnet !== '';
+
+		if (cidr) {
+			return hasCidr && parsed.subnetMask >= 0 && parsed.subnetMask <= 32;
 		}
 
-		if (!cidr && isIPv4(ip)) {
-			return true;
-		}
-
-		return false;
-	} catch (e) {
-		console.log(e);
+		return !hasCidr;
+	} catch {
 		return false;
 	}
 }
 
-export function isValidIPv6(ip: string, cidr: boolean = false): boolean {
+export function isValidIPv6(ip: string, cidr = false): boolean {
 	try {
-		if (cidr && isCidr.v6(ip)) {
-			return true;
-		}
-
-		if (!cidr && isIPv6(ip)) {
-			return true;
-		}
-
-		return false;
-	} catch (e) {
-		console.log(e);
+		const parsed = new Address6(ip);
+		const hasCidr = parsed.parsedSubnet !== '';
+		return cidr ? hasCidr : !hasCidr;
+	} catch {
 		return false;
 	}
 }
 
 export function isDownloadURL(url: string): boolean {
+	const cleanUrl = typeof url === 'string' ? url.trim() : '';
+
 	const urlOpts = {
 		protocols: ['http', 'https'],
 		require_protocol: true,
-		require_valid_protocol: true,
 		require_host: true,
-		allow_underscores: false,
-		allow_fragments: false,
 		allow_query_components: true
 	};
 
-	if (!isURL(url, urlOpts)) {
+	if (!isURL(cleanUrl, urlOpts)) {
 		return false;
 	}
 
 	try {
-		const { pathname } = new URL(url);
-		return /\/[^\/]+\.[^\/]+$/.test(pathname);
+		const parsed = new URL(cleanUrl);
+		const contentDisp = parsed.searchParams.get('response-content-disposition');
+
+		if (contentDisp && contentDisp.toLowerCase().includes('attachment')) {
+			return true;
+		}
+
+		const segments = parsed.pathname.split('/').filter(Boolean);
+		const lastSegment = segments.pop();
+
+		if (!lastSegment) return false;
+
+		const filename = decodeURIComponent(lastSegment);
+
+		return /\.[a-z0-9]+$/i.test(filename);
 	} catch {
 		return false;
 	}
@@ -538,4 +542,18 @@ export function escapeHTML(str: string): string {
 export function parseNumberOrZero(value: string): number {
 	const num = Number(value);
 	return isNaN(num) ? 0 : num;
+}
+
+export function humanFormatBytes(input: unknown, decimals = 2): string {
+	const bytes = Number(input);
+
+	if (!Number.isFinite(bytes) || bytes < 0) {
+		return '0 B';
+	}
+
+	try {
+		return humanFormat(bytes, { unit: 'B', decimals });
+	} catch {
+		return '0 B';
+	}
 }

@@ -22,6 +22,7 @@ type ClusterNode struct {
 	MemoryUsage float64   `json:"memoryUsage"`
 	Disk        uint64    `json:"disk"`
 	DiskUsage   float64   `json:"diskUsage"`
+	GuestIDs    []uint    `json:"guestIDs" gorm:"serializer:json;type:json"`
 	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }

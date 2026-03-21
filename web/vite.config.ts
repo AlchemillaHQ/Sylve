@@ -4,22 +4,20 @@ import { defineConfig } from 'vite';
 import { wuchale } from '@wuchale/vite-plugin';
 import { visualizer } from 'rollup-plugin-visualizer';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+	server: {
+		allowedHosts: true
+	},
 	plugins: [
 		wuchale(),
 		tailwindcss(),
 		sveltekit(),
-		visualizer({
-			emitFile: true
-		})
-	],
-	optimizeDeps: {
-		esbuildOptions: {
-			target: 'esnext'
-		},
-		exclude: ['xterm', 'Xterm.svelte', '@battlefieldduck/xterm-svelte']
-	},
+		mode === 'analyze' &&
+			visualizer({
+				emitFile: true
+			})
+	].filter(Boolean),
 	build: {
 		target: 'esnext'
 	}
-});
+}));

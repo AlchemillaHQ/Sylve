@@ -36,6 +36,7 @@
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		volsize: dataset.properties?.volsize
 			? bytesToHumanReadable(Number(dataset.properties.volsize), true)
@@ -96,12 +97,22 @@
 	watch(
 		() => properties.volsize,
 		() => {
-			const blockSize = Number(properties.volblocksize); // bytes
+			const blockSize = Number(properties.volblocksize);
 			const sizeBytes = parseBytes(properties.volsize);
 
 			invalidSizeForBlockSize = sizeBytes % blockSize !== 0;
 		}
 	);
+
+	function adjustBlockSize() {
+		const blockSize = Number(properties.volblocksize);
+		const sizeBytes = parseBytes(properties.volsize);
+		const oneMB = 1024 * 1024 * 2;
+		const adjustedToNextMB = Math.ceil((sizeBytes + 1) / oneMB) * oneMB;
+		const finalBytes = Math.ceil(adjustedToNextMB / blockSize) * blockSize;
+
+		properties.volsize = humanFormat(finalBytes, { unit: 'B', decimals: 10 });
+	}
 </script>
 
 {#snippet simpleSelect(
@@ -170,16 +181,18 @@
 							<span>Volume Size</span>
 							{#if invalidSizeForBlockSize}
 								<span
+									role="button"
+									tabindex="0"
 									class="icon-[mdi--alert-circle-outline] h-4 w-4 text-yellow-500"
 									title="Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 									onclick={() => {
-										const blockSize = Number(properties.volblocksize);
-										const sizeBytes = parseBytes(properties.volsize);
-										const oneMB = 1024 * 1024 * 2;
-										const adjustedToNextMB = Math.ceil((sizeBytes + 1) / oneMB) * oneMB;
-										const finalBytes = Math.ceil(adjustedToNextMB / blockSize) * blockSize;
-
-										properties.volsize = humanFormat(finalBytes, { unit: 'B', decimals: 10 });
+										adjustBlockSize();
+									}}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											adjustBlockSize();
+										}
 									}}
 								></span>
 							{/if}

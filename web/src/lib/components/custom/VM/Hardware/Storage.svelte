@@ -213,8 +213,6 @@
 				Number(properties.bootOrder)
 			);
 
-			reload = true;
-
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to import disk', {
@@ -225,6 +223,7 @@
 			}
 
 			toast.success('Disk imported', toastOptions);
+			reload = true;
 			properties = options;
 			open = false;
 		} else if (properties.type === 'new') {

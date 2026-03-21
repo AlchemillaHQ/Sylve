@@ -9,6 +9,8 @@
 package db
 
 import (
+	"errors"
+
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -16,6 +18,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
@@ -29,9 +32,21 @@ import (
 )
 
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
+	var logMode gormLogger.Interface
+
+	switch cfg.Environment {
+	case internal.Development:
+		logMode = gormLogger.Default.LogMode(gormLogger.Warn)
+	case internal.Debug:
+		logMode = gormLogger.Default.LogMode(gormLogger.Info)
+	case internal.Production:
+		logMode = gormLogger.Default.LogMode(gormLogger.Silent)
+	}
+
 	ormConfig := &gorm.Config{
-		Logger:         gormLogger.Default.LogMode(gormLogger.Warn),
-		TranslateError: true,
+		Logger:                                   logMode,
+		TranslateError:                           true,
+		DisableForeignKeyConstraintWhenMigrating: true,
 	}
 
 	var db *gorm.DB
@@ -47,38 +62,46 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error connecting to database: %v", err)
 	}
 
-	// db = db.Session(&gorm.Session{
-	// 	PrepareStmt: true,
-	// })
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.L.Fatal().Msgf("Error getting sql database handle: %v", err)
+	}
 
-	db.Exec("PRAGMA foreign_keys = OFF")
+	db.Exec("PRAGMA busy_timeout = 5000")
 	db.Exec("PRAGMA journal_mode = WAL")
 	db.Exec("PRAGMA synchronous = NORMAL")
+
+	PreMigrationFixups(db)
 
 	err = db.AutoMigrate(
 		&models.BasicSettings{},
 
 		&models.System{},
 		&models.User{},
+		&models.PAMIdentity{},
 		&models.Group{},
 		&models.Token{},
+		&models.WebAuthnCredential{},
+		&models.WebAuthnChallenge{},
 		&models.SystemSecrets{},
 
 		&vmModels.Storage{},
 		&vmModels.Network{},
 		&vmModels.VMStats{},
 		&vmModels.VMCPUPinning{},
+		&vmModels.VMSnapshot{},
 		&vmModels.VM{},
 
 		&jailModels.Network{},
 		&jailModels.Storage{},
 		&jailModels.JailStats{},
 		&jailModels.JailHooks{},
+		&jailModels.JailSnapshot{},
 		&jailModels.Jail{},
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},
-		&models.DevdEvent{},
+		&models.NetlinkEvent{},
 
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -117,6 +140,16 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ClusterNode{},
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
+		&clusterModels.BackupTarget{},
+		&clusterModels.BackupJob{},
+		&clusterModels.BackupEvent{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationEvent{},
+		&clusterModels.ReplicationReceipt{},
+		&clusterModels.ClusterSSHIdentity{},
+		&taskModels.GuestLifecycleTask{},
 
 		&models.Migrations{},
 	)
@@ -125,7 +158,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)
 	}
 
-	db.Exec("PRAGMA foreign_keys = ON")
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
 	err = setupInitUsers(db, cfg)
 	if err != nil {
@@ -142,16 +176,22 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		logger.L.Fatal().Msgf("Error initializing DHCP config: %v", err)
 	}
 
-	if !isTest {
-		if err := db.Exec("VACUUM").Error; err != nil {
-			logger.L.Warn().Msgf("VACUUM failed: %v", err)
-		}
-	}
-
 	err = Fixups(db)
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error applying database fixups: %v", err)
+	}
+
+	err = PruneJobs(db)
+
+	if err != nil {
+		logger.L.Error().Err(err).Msgf("Error pruning database of unnecessary records: %v", err)
+	}
+
+	if !isTest {
+		if err := db.Exec("VACUUM").Error; err != nil {
+			logger.L.Warn().Msgf("VACUUM failed: %v", err)
+		}
 	}
 
 	db.Model(&models.BasicSettings{}).
@@ -168,14 +208,14 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 
-	hashed, err := utils.HashPassword(adminCfg.Password)
-	if err != nil {
-		logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
-		return err
-	}
-
 	if result.Error != nil {
 		if result.Error == gorm.ErrRecordNotFound {
+			hashed, err := utils.HashPassword(adminCfg.Password)
+			if err != nil {
+				logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
+				return err
+			}
+
 			newUser := models.User{
 				Username: username,
 				Email:    adminCfg.Email,
@@ -192,15 +232,34 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 			return result.Error
 		}
 	} else {
-		if user.Email == adminCfg.Email && utils.CheckPasswordHash(adminCfg.Password, user.Password) && user.Admin {
-			logger.L.Debug().Msg("Admin user upto date, no changes needed")
-			return nil
+		updates := map[string]any{}
+		needsUpdate := false
+
+		if user.Email != adminCfg.Email {
+			updates["email"] = adminCfg.Email
+			needsUpdate = true
 		}
 
-		updates := map[string]interface{}{
-			"email":    adminCfg.Email,
-			"password": hashed,
-			"admin":    true,
+		if !user.Admin {
+			updates["admin"] = true
+			needsUpdate = true
+		}
+
+		if adminCfg.Password != "" {
+			if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
+				hashed, err := utils.HashPassword(adminCfg.Password)
+				if err != nil {
+					logger.L.Error().Msgf("Failed to hash password for admin update: %v", err)
+					return err
+				}
+				updates["password"] = hashed
+				needsUpdate = true
+			}
+		}
+
+		if !needsUpdate {
+			logger.L.Debug().Msg("Admin user up to date, no changes needed")
+			return nil
 		}
 
 		if err := db.Model(&user).Updates(updates).Error; err != nil {
@@ -228,17 +287,42 @@ func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 }
 
 func initClusterRecord(db *gorm.DB) error {
-	cluster := &clusterModels.Cluster{
-		Enabled:       false,
-		Key:           "",
-		RaftBootstrap: nil,
-		RaftIP:        "",
-		RaftPort:      0,
+	var keepID uint
+
+	err := db.Model(&clusterModels.Cluster{}).
+		Order("key DESC, id ASC").
+		Select("id").
+		First(&keepID).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			defaultCluster := &clusterModels.Cluster{
+				Enabled:       false,
+				Key:           "",
+				RaftBootstrap: nil,
+				RaftIP:        "",
+				RaftPort:      8180,
+			}
+
+			if err := db.Create(defaultCluster).Error; err != nil {
+				logger.L.Error().Msgf("Failed to create initial cluster record: %v", err)
+				return err
+			}
+			return nil
+		}
+
+		logger.L.Error().Msgf("Failed to query best cluster record: %v", err)
+		return err
 	}
 
-	if err := db.Create(cluster).Error; err != nil {
-		logger.L.Error().Msgf("Failed to create initial data center record: %v", err)
-		return err
+	res := db.Where("id != ?", keepID).Delete(&clusterModels.Cluster{})
+	if res.Error != nil {
+		logger.L.Error().Msgf("Failed to clean up cluster records: %v", res.Error)
+		return res.Error
+	}
+
+	if res.RowsAffected > 0 {
+		logger.L.Info().Msgf("Purged %d duplicate cluster records!", res.RowsAffected)
 	}
 
 	return nil

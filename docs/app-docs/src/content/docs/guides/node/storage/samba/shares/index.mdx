@@ -1,0 +1,69 @@
+---
+title: Shares
+description: Managing samba shares on Sylve
+---
+
+## Pre-Requisites
+
+You should have atleast 1 Group with the user you want to share the folder with. You can create a group and add users to it by following the Groups and Users guide.
+
+## Preface
+
+Samba Shares are extremely simple in Sylve, just covering the basics. For our use-case this was plenty, but more features and improvements are definitely needed here, that being said we believe a lot of users' requirements are met with the implementation we do have.
+
+If you're someone with extensive samba knowledge/experience please get in touch with us over GitHub or Discord, would love to chat and this is one area where we're actively looking for PRs on!
+
+## Create a Samba Share
+
+Creating a samba share is relatively simple, clicking on the "New" button in the context menu opens a form like this:
+
+![Creating a Share](./share.png)
+
+Let's go through the fields one by one:
+
+- **Name**: The name of the share, this is what will be displayed in the samba clients when they connect to the server.
+
+- **Dataset**: The dataset you want to share, this is the path that will be shared over samba. You can create one in the ZFS/Filesystem section if you don't have one already.
+
+
+- **Read-Only Groups**: The groups that will have read-only access to the share, you can select multiple groups here. If a user belongs to multiple groups and one of them is selected here, they will have read-only access to the share.
+
+- **Writeable Groups**: The groups that will have read-write access to the share, you can select multiple groups here. If a user belongs to multiple groups and one of them is selected here, they will have read-write access to the share.
+
+- **Create Mask**: The permissions that will be set on files created in the share, this is a standard unix permission mask. The default value is `0664` which means that the owner and group will have read and write permissions, while others will have read-only permissions.
+
+- **Directory Mask**: The permissions that will be set on directories created in the share, this is a standard unix permission mask. The default value is `0775` which means that the owner and group will have read, write and execute permissions, while others will have read and execute permissions.
+
+- **Guest Access**: Whether to allow guest access to the share, if enabled users will be able to connect to the share without providing a username and password. This is disabled by default.
+
+- **Read-Only**: Whether to make the share read-only, if enabled users will only be able to read files from the share, but not write to it. This is disabled by default.
+
+## Editing a Samba Share
+
+Editing a samba share is just as simple as creating one, clicking on the "Edit" button in the context menu and do whatever changes you want to make, then click "Edit" to apply the changes.
+
+## Deleting a Samba Share
+
+Deleting a samba share is also simple, just click on the "Delete" button in the context menu and confirm the deletion. This will permanently delete the share and all its configurations, but it will not delete the underlying dataset or files.
+
+## Accessing the Samba Share
+
+:::warning
+Never ever expose samba directly to the internet, if you want to access your samba shares remotely, use a VPN or a secure tunnel like WireGuard or Tailscale. Samba is not designed to be exposed to the internet and doing so can lead to serious security vulnerabilities.
+:::
+
+In this demonstration we'll be accessing the samba share from a macOS client over tailcale, but the process is similar for other operating systems as well.
+
+![Opening the Samba Share](./conn-1.png)
+
+In the "Connect to Server" dialog, enter the address of your Sylve server in the following format:
+
+```
+smb://<IP_ADDRESS_OR_HOSTNAME>/<SHARE_NAME>
+```
+
+![Authenticating with the server](./conn-2.png)
+
+After the authentication is successful, you should see the contents of the share in the Finder.
+
+![Contents of the Samba Share](./conn-3.png)

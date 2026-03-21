@@ -14,9 +14,46 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+func (s *Service) checkPoolUsage(poolName string) error {
+	var count int64
+
+	if err := s.DB.Model(&vmModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to query vm_storages for pool %s: %w", poolName, err)
+	}
+	if count > 0 {
+		return fmt.Errorf("removing_pool_not_allowed_in_use_by_vm_storage: %s", poolName)
+	}
+
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to query vm_storage_datasets for pool %s: %w", poolName, err)
+	}
+	if count > 0 {
+		return fmt.Errorf("removing_pool_not_allowed_in_use_by_vm_dataset: %s", poolName)
+	}
+
+	if err := s.DB.Model(&jailModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to query jail_storages for pool %s: %w", poolName, err)
+	}
+	if count > 0 {
+		return fmt.Errorf("removing_pool_not_allowed_in_use_by_jail_storage: %s", poolName)
+	}
+
+	if err := s.DB.Model(&zfsModels.PeriodicSnapshot{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to query periodic_snapshots for pool %s: %w", poolName, err)
+	}
+	if count > 0 {
+		return fmt.Errorf("removing_pool_not_allowed_in_use_by_periodic_snapshot: %s", poolName)
+	}
+
+	return nil
+}
 
 func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	var basicSettings models.BasicSettings
@@ -53,8 +90,30 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 				break
 			}
 		}
+
 		if !found {
-			return fmt.Errorf("removing_existing_pool_not_allowed: %s", p)
+			if err := s.checkPoolUsage(p); err != nil {
+				return err
+			}
+		}
+	}
+
+	var newSets []string
+
+	for _, poolName := range pools {
+		created, err := s.ensureSylveDatasetsOnPool(ctx, poolName)
+		if err != nil {
+			for i := len(newSets) - 1; i >= 0; i-- {
+				if ds, getErr := s.GZFS.ZFS.Get(ctx, newSets[i], false); getErr == nil && ds != nil {
+					_ = ds.Destroy(ctx, true, false)
+				}
+			}
+
+			return err
+		}
+
+		for _, ds := range created {
+			newSets = append(newSets, ds.Name)
 		}
 	}
 
@@ -68,14 +127,14 @@ func (s *Service) ToggleDHCPServer(enable bool) error {
 			return fmt.Errorf("dnsmasq package is not installed")
 		}
 
-		_, err := utils.RunCommand("service", "dnsmasq", "start")
+		_, err := utils.RunCommand("/usr/sbin/service", "dnsmasq", "start")
 		if err != nil {
 			if !strings.Contains(err.Error(), "already running") {
 				return err
 			}
 		}
 	} else {
-		_, err := utils.RunCommand("service", "dnsmasq", "stop")
+		_, err := utils.RunCommand("/usr/sbin/service", "dnsmasq", "stop")
 		return err
 	}
 

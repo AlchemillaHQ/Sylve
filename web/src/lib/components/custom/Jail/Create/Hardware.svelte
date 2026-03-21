@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { getCPUInfo } from '$lib/api/info/cpu';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import type { CPUInfo } from '$lib/types/info/cpu';
-	import { getCache } from '$lib/utils/http';
 	import humanFormat from 'human-format';
+	import { resource } from 'runed';
 
 	interface Props {
 		cpuCores: number;
@@ -23,13 +23,19 @@
 		devfsRuleset = $bindable()
 	}: Props = $props();
 
-	let cpuInfo: CPUInfo | null = $state(getCache('cpuInfo') || null);
 	let humanSize = $state('1024 M');
+	let cpuInfo = resource(
+		() => 'cpu-info',
+		async () => {
+			const result = await getCPUInfo('current');
+			return result;
+		}
+	);
 
 	$effect(() => {
-		if (cpuCores && cpuInfo) {
-			if (cpuCores > cpuInfo.logicalCores) {
-				cpuCores = cpuInfo.logicalCores - 1;
+		if (cpuCores && cpuInfo.current) {
+			if (cpuCores > cpuInfo.current.logicalCores) {
+				cpuCores = cpuInfo.current.logicalCores - 1;
 			}
 		}
 

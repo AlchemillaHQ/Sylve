@@ -1,0 +1,42 @@
+---
+title: Introduction
+description: A brief introduction to Sylve, its purpose, and how to get started with the documentation.
+---
+
+Sylve is an open-source control panel for FreeBSD virtualization and storage. It brings Bhyve, FreeBSD Jails, and ZFS into one modern web UI.
+
+The backend is written in Go, and the frontend uses Svelte/SvelteKit. The goal is simple: manage guests, containers, and datasets without living in shell scripts.
+
+### What Sylve Delivers
+
+- **Bhyve management**: Create, start, stop, snapshot, and console into VMs. Configure CPU, memory, PCI passthrough, VNC, and serial access from the same place.
+
+- **Jails with VM-like workflows**: Jails follow the same lifecycle model as VMs, with networking, datastores, limits, and console/shell access.
+
+- **ZFS-first storage**: Manage pools, datasets, disks, and datastores in one interface, with clear VM/Jail storage mapping.
+
+- **Network and service controls**: Configure physical interfaces, virtual switches, and DHCP scopes, with optional integrations like Samba and libvirt.
+
+### Architecture at a Glance
+
+Sylve is organized into four domains: storage, networking, virtualization, and orchestration.
+
+Storage is fully ZFS-driven, including S.M.A.R.T. visibility, pool monitoring, and snapshot operations. Networking pairs physical NICs with user-defined virtual switches that can be published to guests as needed.
+
+Bhyve and Jail management share the same datastore and virtual-switch primitives, so VM and container workflows stay aligned.
+
+All orchestration flows through the Go backend and its REST API. The API surface is defined in `docs/swagger/swagger.yaml`, making it easy to generate clients and build integrations that match the UI models.
+
+### Why Sylve? Why not Proxmox, TrueNAS, or others?
+
+- **Light on resources**: Sylve runs in roughly ~384 MB RAM even with all major features enabled in a multi-node cluster.  
+
+- **Self-contained clustering**: Sylve uses Raft-based coordination directly, avoiding heavy external clustering stacks and keeping state management predictable.  
+
+- **Fast deployment**: Go backend, Svelte frontend, single-application bundle. No large pre-setup stack required.  
+
+- **Focused scope**: Sylve targets the application layer and leaves the underlying FreeBSD OS untouched.  
+
+- **UI-first workflows**: VM/jail creation, networking, DHCP, cloud-init, TPM-backed disks, and console access are all available from the web UI.  
+
+- **Permissive license**: Sylve is BSD-2-Clause licensed, making it easy to use, modify, and integrate without restrictive terms or viral clauses.

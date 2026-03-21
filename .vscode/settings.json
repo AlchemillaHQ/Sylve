@@ -6,5 +6,8 @@
   "window.title": "${rootName}",
   "explorer.compactFolders": false,
   "workbench.startupEditor": "none",
-  "editor.formatOnSave": true
+  "editor.formatOnSave": true,
+  "files.associations": {
+    "*.css": "tailwindcss"
+  }
 }

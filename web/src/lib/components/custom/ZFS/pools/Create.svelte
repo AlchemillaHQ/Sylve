@@ -506,6 +506,7 @@
 			</div>
 
 			<button
+				aria-label="Remove {disk.device.split('/').pop()} from VDEV {id + 1}"
 				class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center
 	       rounded-full bg-red-500 text-white hover:bg-red-600"
 				onclick={() => removeFromVdev(id, disk.uuid as string)}
@@ -524,6 +525,7 @@
 			</div>
 
 			<button
+				aria-label="Remove {partition.name.split('/').pop()} from VDEV {id + 1}"
 				class="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white hover:bg-red-600
 	       flex items-center justify-center"
 				onclick={() => removeFromVdev(id, partition.name)}

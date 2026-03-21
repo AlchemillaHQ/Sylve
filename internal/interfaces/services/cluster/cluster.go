@@ -26,6 +26,7 @@ type RaftNode struct {
 	Address  string `json:"address"`
 	Suffrage string `json:"suffrage"`
 	IsLeader bool   `json:"isLeader"`
+	GuestIDs []uint `json:"guestIDs"`
 }
 
 type ClusterDetails struct {
@@ -47,8 +48,9 @@ type NodeResources struct {
 type ClusterServiceInterface interface {
 	Detail() *Detail
 	InitRaft(fsm raft.FSM) error
-	CreateCluster(ip string, port int, fsm raft.FSM) error
+	CreateCluster(ip string, fsm raft.FSM) error
 	SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error)
 	GetClusterDetails() (*ClusterDetails, error)
 	PopulateClusterNodes() error
+	StartClusterMonitors()
 }

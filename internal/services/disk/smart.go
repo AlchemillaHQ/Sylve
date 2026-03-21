@@ -9,7 +9,6 @@
 package disk
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -18,11 +17,12 @@ import (
 	"strings"
 
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
+	"github.com/alchemillahq/sylve/pkg/disk/smart"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) {
-	output, err := utils.RunCommand("nvmecontrol", "devlist")
+	output, err := utils.RunCommand("/sbin/nvmecontrol", "devlist")
 	if err != nil {
 		return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device list: %v", err)
 	}
@@ -39,7 +39,7 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 	}
 
 	for _, nvmeDevice := range nvmeDevices {
-		output, err := utils.RunCommand("nvmecontrol", "identify", fmt.Sprintf("/dev/%s", nvmeDevice))
+		output, err := utils.RunCommand("/sbin/nvmecontrol", "identify", fmt.Sprintf("/dev/%s", nvmeDevice))
 		if err != nil {
 			return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device info: %v", err)
 		}
@@ -47,7 +47,7 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 		serialRegex := regexp.MustCompile(`Serial Number:\s*(\S+)`)
 		if matches := serialRegex.FindStringSubmatch(output); matches != nil {
 			if matches[1] == serial {
-				output, err := utils.RunCommand("nvmecontrol", "logpage", "-p", "2", nvmeDevice)
+				output, err := utils.RunCommand("/sbin/nvmecontrol", "logpage", "-p", "2", nvmeDevice)
 				if err != nil {
 					return diskServiceInterfaces.SMARTNvme{}, fmt.Errorf("failed to get NVMe device logpage: %v", err)
 				}
@@ -66,165 +66,177 @@ func getNVMeControlData(serial string) (diskServiceInterfaces.SMARTNvme, error) 
 func parseNVMeSMART(output string, device string) diskServiceInterfaces.SMARTNvme {
 	var smart diskServiceInterfaces.SMARTNvme
 
-	// Set up device info for discriminated union
 	smart.Device = diskServiceInterfaces.DeviceInfo{
 		Name:     device,
 		InfoName: device,
 		Type:     "nvme",
 		Protocol: "NVMe",
 	}
+	smart.Passed = true
 
-	// Set up basic smartctl info structure
-	smart.Smartctl = diskServiceInterfaces.SmartctlInfo{
-		Version:      []int{7, 2},
-		PreRelease:   false,
-		SVNRevision:  "unknown",
-		PlatformInfo: "FreeBSD",
-		Argv:         []string{"nvmecontrol", "logpage"},
-		ExitStatus:   0,
-	}
+	lines := strings.Split(output, "\n")
+	inCriticalSection := false
 
-	// Set up smart status
-	smart.SmartStatus = diskServiceInterfaces.SmartStatus{Passed: true}
-
-	fields := map[string]*int{
-		`Available spare threshold:\s+(\d+)`:        &smart.AvailableSpareThreshold,
-		`Percentage used:\s+(\d+)`:                  &smart.PercentageUsed,
-		`Data units \(512,000 byte\) read:\s+(\d+)`: &smart.DataUnitsRead,
-		`Data units written:\s+(\d+)`:               &smart.DataUnitsWritten,
-		`Host read commands:\s+(\d+)`:               &smart.HostReadCommands,
-		`Host write commands:\s+(\d+)`:              &smart.HostWriteCommands,
-		`Controller busy time \(minutes\):\s+(\d+)`: &smart.ControllerBusyTime,
-		`Unsafe shutdowns:\s+(\d+)`:                 &smart.UnsafeShutdowns,
-		`Media errors:\s+(\d+)`:                     &smart.MediaErrors,
-		`No\. error info log entries:\s+(\d+)`:      &smart.ErrorInfoLogEntries,
-		`Warning Temp Composite Time:\s+(\d+)`:      &smart.WarningCompositeTempTime,
-		`Error Temp Composite Time:\s+(\d+)`:        &smart.ErrorCompositeTempTime,
-		`Temperature 1 Transition Count:\s+(\d+)`:   &smart.Temperature1TransitionCnt,
-		`Temperature 2 Transition Count:\s+(\d+)`:   &smart.Temperature2TransitionCnt,
-		`Total Time For Temperature 1:\s+(\d+)`:     &smart.TotalTimeForTemperature1,
-		`Total Time For Temperature 2:\s+(\d+)`:     &smart.TotalTimeForTemperature2,
-	}
-
-	// Handle temperature specially to set both fields
-	re := regexp.MustCompile(`Temperature:\s+(\d+)\s+K`)
-	match := re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-		if err == nil {
-			smart.Temperature = diskServiceInterfaces.Temperature{Current: value}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "SMART/Health") || strings.HasPrefix(line, "===") {
+			continue
 		}
-	}
 
-	// Handle power on hours specially
-	re = regexp.MustCompile(`Power on hours:\s+(\d+)`)
-	match = re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-		if err == nil {
-			smart.PowerOnTime = diskServiceInterfaces.PowerOnTime{Hours: value}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
 		}
-	}
 
-	// Handle power cycles
-	re = regexp.MustCompile(`Power cycles:\s+(\d+)`)
-	match = re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-		if err == nil {
-			smart.PowerCycleCount = value
-		}
-	}
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		valStr := strings.TrimSpace(parts[1])
 
-	for pattern, field := range fields {
-		re := regexp.MustCompile(pattern)
-		match := re.FindStringSubmatch(output)
-		if len(match) > 1 {
-			value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-			if err == nil {
-				*field = value
+		getInt := func(s string) int {
+			fields := strings.Fields(s)
+			if len(fields) > 0 {
+				val, err := strconv.Atoi(fields[0])
+				if err == nil {
+					return val
+				}
 			}
+			return 0
 		}
-	}
 
-	re = regexp.MustCompile(`Critical Warning State:\s+(0x[0-9A-Fa-f]+)`)
-	match = re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		smart.CriticalWarning = match[1]
-	}
+		if key == "critical warning state" {
+			smart.CriticalWarning = valStr
+			inCriticalSection = true
+			continue
+		}
 
-	criticalWarningFields := map[string]*int{
-		`Critical Warning State:\s+\S+\n\s+Available spare:\s+(\d+)`:        &smart.CriticalWarningState.AvailableSpare,
-		`Critical Warning State:\s+\S+\n\s+Temperature:\s+(\d+)`:            &smart.CriticalWarningState.Temperature,
-		`Critical Warning State:\s+\S+\n\s+Device reliability:\s+(\d+)`:     &smart.CriticalWarningState.DeviceReliability,
-		`Critical Warning State:\s+\S+\n\s+Read only:\s+(\d+)`:              &smart.CriticalWarningState.ReadOnly,
-		`Critical Warning State:\s+\S+\n\s+Volatile memory backup:\s+(\d+)`: &smart.CriticalWarningState.VolatileMemoryBackup,
-	}
+		if strings.Contains(key, "percentage used") || strings.Contains(key, "data units") {
+			inCriticalSection = false
+		}
 
-	for pattern, field := range criticalWarningFields {
-		re := regexp.MustCompile(pattern)
-		match := re.FindStringSubmatch(output)
-		if len(match) > 1 {
-			value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-			if err == nil {
-				*field = value
+		switch {
+		case inCriticalSection && key == "available spare":
+			smart.CriticalWarningState.AvailableSpare = getInt(valStr)
+		case inCriticalSection && key == "temperature":
+			smart.CriticalWarningState.Temperature = getInt(valStr)
+		case inCriticalSection && key == "device reliability":
+			smart.CriticalWarningState.DeviceReliability = getInt(valStr)
+		case inCriticalSection && key == "read only":
+			smart.CriticalWarningState.ReadOnly = getInt(valStr)
+		case inCriticalSection && key == "volatile memory backup":
+			smart.CriticalWarningState.VolatileMemoryBackup = getInt(valStr)
+
+		case key == "temperature":
+			if strings.Contains(valStr, "K") {
+				smart.Temperature = getInt(valStr)
 			}
-		}
-	}
 
-	re = regexp.MustCompile(`Temperature:\s+\d+\s+K.*\nAvailable spare:\s+(\d+)`)
-	match = re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		value, err := strconv.Atoi(strings.TrimSpace(match[1]))
-		if err == nil {
-			smart.AvailableSpare = value
+		case key == "available spare":
+			smart.AvailableSpare = getInt(valStr)
+
+		case key == "available spare threshold":
+			smart.AvailableSpareThreshold = getInt(valStr)
+
+		case key == "percentage used":
+			smart.PercentageUsed = getInt(valStr)
+
+		case strings.Contains(key, "data units") && strings.Contains(key, "read"):
+			smart.DataUnitsRead = getInt(valStr)
+
+		case strings.Contains(key, "data units") && strings.Contains(key, "written"):
+			smart.DataUnitsWritten = getInt(valStr)
+
+		case key == "host read commands":
+			smart.HostReadCommands = getInt(valStr)
+
+		case key == "host write commands":
+			smart.HostWriteCommands = getInt(valStr)
+
+		case strings.Contains(key, "controller busy time"):
+			smart.ControllerBusyTime = getInt(valStr)
+
+		case key == "power cycles":
+			smart.PowerCycleCount = getInt(valStr)
+
+		case key == "power on hours":
+			smart.PowerOnHours = getInt(valStr)
+
+		case key == "unsafe shutdowns":
+			smart.UnsafeShutdowns = getInt(valStr)
+
+		case key == "media errors":
+			smart.MediaErrors = getInt(valStr)
+
+		case key == "no. error info log entries":
+			smart.ErrorInfoLogEntries = getInt(valStr)
+
+		case key == "warning temp composite time":
+			smart.WarningCompositeTempTime = getInt(valStr)
+
+		case key == "error temp composite time":
+			smart.ErrorCompositeTempTime = getInt(valStr)
+
+		case key == "temperature 1 transition count":
+			smart.Temperature1TransitionCnt = getInt(valStr)
+
+		case key == "temperature 2 transition count":
+			smart.Temperature2TransitionCnt = getInt(valStr)
+
+		case key == "total time for temperature 1":
+			smart.TotalTimeForTemperature1 = getInt(valStr)
+
+		case key == "total time for temperature 2":
+			smart.TotalTimeForTemperature2 = getInt(valStr)
 		}
 	}
 
 	return smart
 }
 
-func getSmartCtlData(device string) (diskServiceInterfaces.SmartData, error) {
-	output, err := utils.RunCommandAllowExitCode(
-		"smartctl",
-		[]int{0, 32, 64, 128},
-		"-A", "-H", "-j", "/dev/"+device,
-	)
+func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartData {
+	var data diskServiceInterfaces.SmartData
+	diskType := strings.ToLower(info.Protocol)
 
-	if err != nil {
-		return diskServiceInterfaces.SmartData{}, err
+	data.Device = diskServiceInterfaces.DeviceInfo{
+		Name:     info.Device,
+		InfoName: "/dev/" + info.Device,
+		Type:     diskType,
+		Protocol: info.Protocol,
 	}
 
-	var parsed diskServiceInterfaces.SmartData
-	err = json.Unmarshal([]byte(output), &parsed)
+	data.Passed = true
+	data.PowerOnHours = info.PowerOnHours
+	data.PowerCycleCount = info.PowerCycleCount
+	data.Temperature = info.Temperature
 
-	if err != nil {
-		return diskServiceInterfaces.SmartData{}, err
-	}
+	if len(info.Attributes) > 0 {
+		data.Attributes = make([]diskServiceInterfaces.ATASmartAttribute, len(info.Attributes))
 
-	// Ensure protocol is set correctly for discriminated union
-	if parsed.Device.Protocol == "" {
-		if strings.HasPrefix(device, "nvme") || strings.HasPrefix(device, "nda") {
-			parsed.Device.Protocol = "NVMe"
-		} else {
-			// Default to ATA for SATA drives
-			parsed.Device.Protocol = "ATA"
+		for i, attr := range info.Attributes {
+			data.Attributes[i] = diskServiceInterfaces.ATASmartAttribute{
+				ID:        int(attr.ID),
+				Name:      attr.Name,
+				Value:     attr.Value,
+				Worst:     attr.Worst,
+				Thresh:    attr.Threshold,
+				RawValue:  int64(attr.RawValue),
+				RawString: attr.TextValue,
+			}
 		}
 	}
 
-	return parsed, nil
+	return data
 }
 
 func (s *Service) GetSmartData(disk diskServiceInterfaces.DiskInfo) (interface{}, error) {
-	if disk.Type == "HDD" {
-		return getSmartCtlData(disk.Name)
-	} else if disk.Type == "SSD" {
-		return getSmartCtlData(disk.Name)
-	} else if disk.Type == "NVMe" {
+	if disk.Type == "NVMe" {
 		return getNVMeControlData(disk.Serial)
 	}
 
-	return nil, nil
+	smartInfo, err := smart.Read(disk.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return mapLibSmartToInterface(smartInfo), nil
 }
 
 func (s *Service) GetWearOut(smartData any) (float64, error) {
@@ -232,83 +244,70 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 		return 0, errors.New("no SMART data available")
 	}
 
-	var smartType string
-
-	switch smartData.(type) {
-	case diskServiceInterfaces.SMARTNvme:
-		smartType = "nvme"
-	case diskServiceInterfaces.SmartData:
-		smartType = "smartctl"
-	default:
-		return 0, errors.New("unsupported SMART data type")
+	if nvmeData, ok := smartData.(diskServiceInterfaces.SMARTNvme); ok {
+		return float64(nvmeData.PercentageUsed), nil
 	}
 
-	if smartType == "smartctl" {
-		data := smartData.(diskServiceInterfaces.SmartData)
-
+	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
 		const (
-			MaxLifespanHours = 100000.0
-			ErrorThreshold   = 1e10
-			ShockThreshold   = 5000.0
-			MaxWrites        = 3e13
-			SectorPenalty    = 5.0
+			MaxLifespanHours = 50000.0
+			SectorPenalty    = 10.0
 		)
 
-		powerOnHours := float64(data.PowerOnTime.Hours)
-		reallocatedSectors := 0
-		seekErrors := 0.0
-		readErrors := 0.0
-		gSenseErrors := float64(data.PowerCycleCount)
-		totalWrites := 0.0
+		var wear177, wear232, wear233 *float64
 
-		if data.ATASmartAttributes != nil {
-			for _, attr := range data.ATASmartAttributes.Table {
-				switch attr.ID {
-				case 5:
-					reallocatedSectors = int(attr.Raw.Value)
-				case 7:
-					seekErrors = float64(attr.Raw.Value)
-				case 1:
-					readErrors = float64(attr.Raw.Value)
-				case 241:
-					totalWrites = float64(attr.Raw.Value)
+		powerOnHours := float64(data.PowerOnHours)
+		reallocatedSectors := 0
+
+		for _, attr := range data.Attributes {
+			switch attr.ID {
+			case 5: // Reallocated Sector Count
+				reallocatedSectors = int(attr.RawValue)
+
+			case 177: // Wear Leveling Count
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear177 = &val
+				}
+
+			case 233: // Media Wearout Indicator
+				if attr.Value > 0 {
+					val := 100.0 - float64(attr.Value)
+					wear233 = &val
+				}
+
+			case 232: // Available Reserved Space / Endurance Remaining
+				// WD/Sandisk often store % Remaining in RawValue
+				if attr.RawValue <= 100 {
+					val := 100.0 - float64(attr.RawValue)
+					wear232 = &val
 				}
 			}
 		}
 
-		// Wearout percentage formula (Best-Case Scenario):
-		//
-		// Wearout% = (Power-On Hours / Max Lifespan Hours) * 100
-		//          + (Reallocated Sectors * Sector Penalty)
-		//          + MIN((Seek Errors + Read Errors) / Error Threshold * 10, 10)
-		//          + MIN((G-Sense Errors / Shock Threshold) * 5, 5)
-		//          + MIN((Total LBAs Written / Max Writes) * 5, 5)
-		//
-		// Where:
-		// - Max Lifespan Hours = 100,000 (expected HDD lifespan in best case)
-		// - Sector Penalty = 5% per reallocated sector
-		// - Error Threshold = 10 billion (max seek + read errors before considering failure risk)
-		// - Shock Threshold = 5,000 (number of shocks before considering wear impact)
-		// - Max Writes = 30 trillion LBAs (maximum expected HDD writes)
-		//
-		// The MIN() function ensures that individual wear contributions do not exceed predefined caps.
+		// Priority 1: ID 232 (Endurance Remaining) - Usually the most explicit "Gas Gauge"
+		if wear232 != nil {
+			return *wear232, nil
+		}
 
+		// Priority 2: ID 233 (Media Wearout) - Common Intel Standard apparently?
+		if wear233 != nil {
+			return *wear233, nil
+		}
+
+		// Priority 3: ID 177 (Wear Leveling) - Common for generic SATA SSDs
+		if wear177 != nil {
+			return *wear177, nil
+		}
+
+		// Priority 4: Fallback Heuristic (Old HDDs or cheap SSDs)
 		wearoutAge := (powerOnHours / MaxLifespanHours) * 100
 		wearoutSectors := float64(reallocatedSectors) * SectorPenalty
-		wearoutMechanical := math.Min((seekErrors+readErrors)/ErrorThreshold*10, 10)
-		wearoutShock := math.Min((gSenseErrors/ShockThreshold)*5, 5)
-		wearoutWrites := math.Min((totalWrites/MaxWrites)*5, 5)
-
-		totalWearout := wearoutAge + wearoutSectors + wearoutMechanical + wearoutShock + wearoutWrites
+		totalWearout := wearoutAge + wearoutSectors
 		totalWearout = math.Min(math.Max(totalWearout, 0), 100)
 
 		return totalWearout, nil
 	}
 
-	if smartType == "nvme" {
-		data := smartData.(diskServiceInterfaces.SMARTNvme)
-		return float64(data.PercentageUsed), nil
-	}
-
-	return 0, errors.New("unable to determine wearout")
+	return 0, errors.New("unsupported SMART data type")
 }

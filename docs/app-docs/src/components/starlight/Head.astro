@@ -1,0 +1,45 @@
+---
+import DefaultHead from "@astrojs/starlight/components/Head.astro";
+
+const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
+---
+
+<DefaultHead />
+
+<meta property="og:image" content={ogImage} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Sylve" />
+<meta name="twitter:image" content={ogImage} />
+<meta name="twitter:card" content="summary_large_image" />
+
+<link id="favicon" rel="icon" type="image/svg+xml" href="/white.svg" />
+
+<script is:inline>
+  (() => {
+    const setFavicon = () => {
+      const faviconEl = document.getElementById("favicon");
+      if (!(faviconEl instanceof HTMLLinkElement)) {
+        return;
+      }
+
+      const theme = document.documentElement.dataset.theme;
+      const isDark =
+        theme === "dark" ||
+        (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+      faviconEl.href = isDark ? "/white.svg" : "/black.svg";
+    };
+
+    setFavicon();
+
+    const observer = new MutationObserver(setFavicon);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", setFavicon);
+  })();
+</script>

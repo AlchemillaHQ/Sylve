@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -198,7 +199,7 @@ func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string
 		}
 	}
 
-	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=0.0.0.0:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
+	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
 
 	if vnc != "" && vncEnabled {
 		arg := bhyveCommandline.CreateElement("bhyve:arg")
@@ -283,6 +284,13 @@ func updatePassthrough(xml string, pciDevices []string, passedThroughIds []model
 }
 
 func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequest) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return err
@@ -400,12 +408,12 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_commit_cpu_update_transaction: %w", err)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -416,18 +424,30 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 		return fmt.Errorf("failed_to_update_cpu_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after CPU update")
 	}
 
 	return nil
 }
 
 func (s *Service) ModifyRAM(rid uint, ram int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -448,12 +468,12 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -471,18 +491,30 @@ func (s *Service) ModifyRAM(rid uint, ram int) error {
 		return fmt.Errorf("failed_to_update_memory_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after memory update")
 	}
 
 	return nil
 }
 
 func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequest) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -519,12 +551,12 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -547,18 +579,30 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after VNC update")
 	}
 
 	return nil
 }
 
 func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
 	vm, err := s.GetVMByRID(rid)
 
 	if err != nil {
@@ -575,12 +619,12 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	domain, err := s.Conn.DomainLookupByName(strconv.Itoa(int(rid)))
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	if err != nil {
 		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
 	}
 
-	domainXML, err := s.Conn.DomainGetXMLDesc(domain, 0)
+	domainXML, err := s.conn().DomainGetXMLDesc(domain, 0)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
 	}
@@ -606,12 +650,17 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 		return fmt.Errorf("failed_to_update_passthrough_in_xml: %w", err)
 	}
 
-	if err := s.Conn.DomainUndefineFlags(domain, 0); err != nil {
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
 		return fmt.Errorf("failed_to_undefine_domain: %w", err)
 	}
 
-	if _, err := s.Conn.DomainDefineXML(updatedXML); err != nil {
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
 		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	err = s.WriteVMJson(vm.RID)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after passthrough update")
 	}
 
 	return nil
@@ -640,9 +689,9 @@ func findLowestIndex(xml string) (int, error) {
 			parts := strings.Fields(value)
 			if len(parts) >= 2 {
 				indexPart := parts[1]
-				colonIndex := strings.Index(indexPart, ":")
-				if colonIndex > 0 {
-					indexStr := indexPart[0:colonIndex] // "10"
+				sepIndex := strings.IndexAny(indexPart, ":,")
+				if sepIndex > 0 {
+					indexStr := indexPart[0:sepIndex] // "10"
 					if index, err := strconv.Atoi(indexStr); err == nil {
 						usedIndices[index] = true
 					}
@@ -679,13 +728,13 @@ func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
 			continue
 		}
 
-		// handle "-s 10:0,..." and "-s10:0,..."
+		// handle "-s 10:0,...", "-s10:0,...", and "-s 10,virtio-console,..."
 		if strings.HasPrefix(value, "-s") {
 			rest := strings.TrimPrefix(value, "-s")
 			rest = strings.TrimSpace(rest)
-			colon := strings.Index(rest, ":")
-			if colon > 0 {
-				if idx, err := strconv.Atoi(rest[:colon]); err == nil {
+			sep := strings.IndexAny(rest, ":,")
+			if sep > 0 {
+				if idx, err := strconv.Atoi(rest[:sep]); err == nil {
 					used[idx] = true
 				}
 			}

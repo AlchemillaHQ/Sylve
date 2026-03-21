@@ -24,10 +24,10 @@ export function generateTableData(switches: SwitchList | undefined): {
 				const pSw = data.private || false;
 
 				if (pSw) {
-					return renderWithIcon('material-symbols-light:private-connectivity-outline', value);
+					return renderWithIcon('material-symbols-light--private-connectivity-outline', value);
 				}
 
-				return renderWithIcon('material-symbols:public', value);
+				return renderWithIcon('mdi:public', value);
 			}
 		},
 		{

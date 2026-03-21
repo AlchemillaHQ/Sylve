@@ -6,25 +6,23 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
-	import { triggers } from '$lib/utils/keyboard-shortcuts';
-	import { shortcut, type ShortcutTrigger } from '@svelte-put/shortcut';
 	let openCategories: { [key: string]: boolean } = $state({});
-	import { Debounced } from 'runed';
+	import { Debounced, watch } from 'runed';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
 	};
 
-	let node = $derived.by(() => {
-		let url = page.url.pathname;
-		return url.split('/')[1];
-	});
+	let node = $derived(page.url.pathname.split('/')[1] || '');
 
-	$effect(() => {
-		if (node) {
-			storage.hostname = node;
+	watch(
+		() => node,
+		(curr, prev) => {
+			if (curr !== prev) {
+				storage.hostname = node;
+			}
 		}
-	});
+	);
 
 	interface NodeItem {
 		label: string;
@@ -49,6 +47,11 @@
 				{ label: 'Storage', icon: 'mdi--storage', href: `/${node}/vm/${vmName}/storage` },
 				{ label: 'Hardware', icon: 'ix--hardware-cabinet', href: `/${node}/vm/${vmName}/hardware` },
 				{ label: 'Network', icon: 'mdi--network', href: `/${node}/vm/${vmName}/network` },
+				{
+					label: 'Snapshots',
+					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
+					href: `/${node}/vm/${vmName}/snapshots`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/vm/${vmName}/options` }
 			];
 		}
@@ -68,6 +71,11 @@
 					href: `/${node}/jail/${jailName}/hardware`
 				},
 				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` },
+				{
+					label: 'Snapshots',
+					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
+					href: `/${node}/jail/${jailName}/snapshots`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
 		}
@@ -75,7 +83,7 @@
 		return [
 			{ label: 'Summary', icon: 'basil--document-outline', href: `/${node}/summary` },
 			{ label: 'Notes', icon: 'mdi--notes', href: `/${node}/notes` },
-
+			{ label: 'Terminal', icon: 'mdi--terminal', href: `/${node}/terminal` },
 			{
 				label: 'Network',
 				icon: 'mdi--network',
@@ -202,6 +210,12 @@
 				label: 'Settings',
 				icon: 'material-symbols--settings',
 				children: [
+					{ label: 'System', icon: 'mdi--desktop-classic', href: `/${node}/settings/system` },
+					{
+						label: 'PCI Passthrough',
+						icon: 'eos-icons--hardware-circuit',
+						href: `/${node}/settings/device-passthrough`
+					},
 					{
 						label: 'Authentication',
 						icon: 'mdi--shield-key',
@@ -217,13 +231,7 @@
 								href: `/${node}/settings/authentication/groups`
 							}
 						]
-					},
-					{
-						label: 'PCI Passthrough',
-						icon: 'eos-icons--hardware-circuit',
-						href: `/${node}/settings/device-passthrough`
-					},
-					{ label: 'System', icon: 'mdi--desktop-classic', href: `/${node}/settings/system` }
+					}
 				]
 			}
 		];
@@ -253,6 +261,7 @@
 
 	let resizeKey = $state(0);
 	let hasInitialized = false;
+	let isConsoleRoute = $derived.by(() => page.url.pathname.endsWith('/console'));
 
 	function handleResize() {
 		if (hasInitialized) {
@@ -264,26 +273,35 @@
 	const debouncedResize = new Debounced(() => resizeKey, 150);
 </script>
 
-<svelte:window
-	use:shortcut={{
-		trigger: triggers as ShortcutTrigger[]
-	}}
-/>
-
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
+		<div>
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => window.open('https://sylve.io/docs', '_blank')}
+				title="Documentation"
+			>
+				<div class="flex items-center">
+					<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
+					<span>Help</span>
+				</div>
+			</Button>
 
-		<Button
-			size="sm"
-			class="h-6"
-			onclick={() => window.open('https://discord.gg/bJB826JvXK', '_blank')}
-		>
-			<div class="flex items-center">
-				<span class="icon-[lucide--circle-help] mr-2 h-5 w-5"></span>
-				<span>Help</span>
-			</div>
-		</Button>
+			<Button
+				size="sm"
+				class="h-6"
+				onclick={() => {
+					storage.openAbout = true;
+				}}
+				title="Sponsor"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--heart] h-5 w-5"></span>
+				</div>
+			</Button>
+		</div>
 	</div>
 
 	<Resizable.PaneGroup
@@ -311,7 +329,11 @@
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
 			{#key debouncedResize.current}
-				<div class="h-full w-full overflow-auto">
+				<div
+					class="h-full w-full"
+					class:overflow-hidden={isConsoleRoute}
+					class:overflow-auto={!isConsoleRoute}
+				>
 					{@render children?.()}
 				</div>
 			{/key}

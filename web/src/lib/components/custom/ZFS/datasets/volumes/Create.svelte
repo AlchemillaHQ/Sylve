@@ -256,9 +256,16 @@
 								}}
 							>
 								<span
+									role="button"
+									tabindex="0"
 									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
 										properties.encryptionKey = generatePassword();
+									}}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											properties.encryptionKey = generatePassword();
+										}
 									}}
 								></span>
 							</Button>

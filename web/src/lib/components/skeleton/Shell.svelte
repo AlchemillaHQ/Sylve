@@ -1,14 +1,13 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import Header from '$lib/components/custom/Header.svelte';
-	import Terminal from '$lib/components/custom/Terminal.svelte';
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
 	import { fade } from 'svelte/transition';
-	import { resource, useInterval } from 'runed';
-	import { storage } from '$lib';
+	import { resource, watch } from 'runed';
+	import { reload } from '$lib/stores/api.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -24,16 +23,35 @@
 		{}
 	);
 
-	useInterval(() => 2000, {
-		callback: () => {
-			if (storage.visible) {
+	watch(
+		() => reload.clusterDetails,
+		() => {
+			if (reload.clusterDetails) {
+				console.debug('Reloading cluster details due to reload.clusterDetails being true');
 				clusterDetails.refetch();
+				reload.clusterDetails = false;
 			}
 		}
-	});
+	);
 
 	let details = $derived(clusterDetails.current);
 	let clustered = $derived(details?.cluster?.enabled || false);
+
+	let leftPaneDefaultSize = $state(12);
+	let topPaneDefaultSize = $state(90);
+	let bottomPaneDefaultSize = $state(10);
+	let lifecyclePaneActive = $state(false);
+	let childPaneAutoSaveId = $derived(
+		lifecyclePaneActive ? 'child-pane-auto-save-lifecycle' : 'child-pane-auto-save'
+	);
+
+	const lifecyclePaneBoost = 6;
+
+	function handleLifecycleActiveChange(active: boolean) {
+		lifecyclePaneActive = active;
+		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
+		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
+	}
 </script>
 
 <div class="flex min-h-screen w-full flex-col">
@@ -43,16 +61,16 @@
 			<Resizable.PaneGroup
 				direction="vertical"
 				id="child-pane-auto"
-				autoSaveId="child-pane-auto-save"
+				autoSaveId={childPaneAutoSaveId}
 			>
-				<Resizable.Pane>
+				<Resizable.Pane defaultSize={topPaneDefaultSize}>
 					<Resizable.PaneGroup
 						direction="horizontal"
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
 					>
-						<Resizable.Pane defaultSize={12} class="border-l">
-							<div transition:fade|global={{ duration: 400 }}>
+						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
+							<div class="h-full" transition:fade|global={{ duration: 400 }}>
 								{#if clustered}
 									<LeftPanelClustered />
 								{:else}
@@ -70,12 +88,10 @@
 
 				<Resizable.Handle withHandle />
 
-				<Resizable.Pane class="h-full min-h-20" defaultSize={10}>
-					<BottomPanel />
+				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
+					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>
-
-		<Terminal />
 	</main>
 </div>

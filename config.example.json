@@ -1,9 +1,6 @@
 {
     "environment": "development",
     "proxyToVite": false,
-    "wanInterfaces": [
-        "em0"
-    ],
     "admin": {
         "email": "admin@sylve.local",
         "password": "admin"

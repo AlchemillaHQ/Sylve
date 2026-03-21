@@ -14,6 +14,13 @@ export async function createNote(title: string, content: string): Promise<APIRes
 	});
 }
 
+export async function editNote(id: number, title: string, content: string): Promise<APIResponse> {
+	return await apiRequest(`/cluster/notes/${id}`, APIResponseSchema, 'PUT', {
+		title,
+		content
+	});
+}
+
 export async function deleteNote(id: number): Promise<APIResponse> {
 	return await apiRequest(`/cluster/notes/${id}`, APIResponseSchema, 'DELETE');
 }

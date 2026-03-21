@@ -6,18 +6,20 @@
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
 
-// internal/logger/hclog_adapter.go
 package logger
 
 import (
+	"fmt"
 	"io"
 	stdlog "log"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/rs/zerolog"
 )
 
-// ---------- io.Writer to zerolog ----------
 type zerologWriter struct {
 	l     zerolog.Logger
 	level zerolog.Level
@@ -38,57 +40,173 @@ func (w zerologWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// StandardWriterAdapter is handy for Raft transport/snapshot writers.
 func StandardWriterAdapter(zl zerolog.Logger) io.Writer {
 	return zerologWriter{l: zl, level: zerolog.InfoLevel}
 }
 
-// ---------- hclog.Logger adapter ----------
 type ZerologHCLog struct {
 	zl          zerolog.Logger
 	name        string
 	level       hclog.Level
-	impliedArgs []interface{}
+	impliedArgs []any
+}
+
+type raftLogLimiter struct {
+	mu       sync.Mutex
+	interval time.Duration
+	entries  map[string]raftLogEntry
+	maxAge   time.Duration
+
+	cleanupEvery time.Duration
+	nextCleanup  time.Time
+}
+
+type raftLogEntry struct {
+	last       time.Time
+	suppressed int
+}
+
+func newRaftLogLimiter(interval time.Duration) *raftLogLimiter {
+	return &raftLogLimiter{
+		interval:     interval,
+		entries:      make(map[string]raftLogEntry),
+		maxAge:       interval * 10,
+		cleanupEvery: interval,
+	}
+}
+
+func (r *raftLogLimiter) allow(key string, now time.Time) (bool, int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.nextCleanup.IsZero() || !now.Before(r.nextCleanup) {
+		for k, v := range r.entries {
+			if !v.last.IsZero() && now.Sub(v.last) >= r.maxAge {
+				delete(r.entries, k)
+			}
+		}
+		r.nextCleanup = now.Add(r.cleanupEvery)
+	}
+
+	entry := r.entries[key]
+	if entry.last.IsZero() || now.Sub(entry.last) >= r.interval {
+		suppressed := entry.suppressed
+		entry.last = now
+		entry.suppressed = 0
+		r.entries[key] = entry
+		return true, suppressed
+	}
+
+	entry.suppressed++
+	r.entries[key] = entry
+	return false, 0
+}
+
+var raftRequestVoteLimiter = newRaftLogLimiter(30 * time.Second)
+
+func raftConnErrorCategory(errText string) string {
+	switch {
+	case strings.Contains(errText, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(errText, "host is down"):
+		return "host_is_down"
+	case strings.Contains(errText, "no route to host"):
+		return "no_route_to_host"
+	case strings.Contains(errText, "network is unreachable"):
+		return "network_unreachable"
+	case strings.Contains(errText, "i/o timeout"):
+		return "io_timeout"
+	default:
+		return "other"
+	}
+}
+
+func shouldRateLimitRaftConnError(msg, errText string) bool {
+	if msg == "" || errText == "" {
+		return false
+	}
+
+	isNoisyRPC := strings.Contains(msg, "failed to make requestVote RPC") ||
+		strings.Contains(msg, "failed to heartbeat to") ||
+		strings.Contains(msg, "failed to appendEntries to")
+
+	if !isNoisyRPC {
+		return false
+	}
+
+	isConnError := strings.Contains(errText, "connection refused") ||
+		strings.Contains(errText, "host is down") ||
+		strings.Contains(errText, "no route to host") ||
+		strings.Contains(errText, "network is unreachable") ||
+		strings.Contains(errText, "i/o timeout")
+
+	return isConnError
 }
 
 func NewZerologHCLog(zl zerolog.Logger, name string) hclog.Logger {
 	return &ZerologHCLog{
-		zl:    zl,
+		zl:    zl.With().Str("subsystem", name).Logger(),
 		name:  name,
 		level: hclog.Info,
 	}
 }
 
-// Core logging
-func (l *ZerologHCLog) Log(level hclog.Level, msg string, args ...interface{}) {
+func (l *ZerologHCLog) Log(level hclog.Level, msg string, args ...any) {
 	if !l.accept(level) {
 		return
 	}
+
+	var fields map[string]any
+
+	if l.name == "raft" && level == hclog.Error {
+		fields = kvsToMap(append(l.impliedArgs, args...)...)
+		target := fmt.Sprint(fields["target"])
+		if target == "<nil>" || target == "" {
+			target = fmt.Sprint(fields["peer"])
+		}
+		errText := fmt.Sprint(fields["error"])
+
+		if shouldRateLimitRaftConnError(msg, errText) {
+			key := target + "|" + raftConnErrorCategory(errText)
+			allow, suppressed := raftRequestVoteLimiter.allow(key, time.Now())
+			if !allow {
+				return
+			}
+			if suppressed > 0 {
+				fields["suppressed_repeats"] = suppressed
+				fields["suppression_window"] = "30s"
+			}
+		}
+	}
+
 	ev := l.baseEvent(level)
-	fields := kvsToMap(append(l.impliedArgs, args...)...)
-	ev.Fields(fields).Msg(msg) // <-- pass a single map
+
+	if fields == nil && (len(l.impliedArgs) > 0 || len(args) > 0) {
+		fields = kvsToMap(append(l.impliedArgs, args...)...)
+	}
+
+	if fields != nil {
+		ev.Fields(fields)
+	}
+	ev.Msg(msg)
 }
 
-func (l *ZerologHCLog) Trace(msg string, args ...interface{}) { l.Log(hclog.Trace, msg, args...) }
-func (l *ZerologHCLog) Debug(msg string, args ...interface{}) { l.Log(hclog.Debug, msg, args...) }
-func (l *ZerologHCLog) Info(msg string, args ...interface{})  { l.Log(hclog.Info, msg, args...) }
-func (l *ZerologHCLog) Warn(msg string, args ...interface{})  { l.Log(hclog.Warn, msg, args...) }
-func (l *ZerologHCLog) Error(msg string, args ...interface{}) { l.Log(hclog.Error, msg, args...) }
+func (l *ZerologHCLog) Trace(msg string, args ...any) { l.Log(hclog.Trace, msg, args...) }
+func (l *ZerologHCLog) Debug(msg string, args ...any) { l.Log(hclog.Debug, msg, args...) }
+func (l *ZerologHCLog) Info(msg string, args ...any)  { l.Log(hclog.Info, msg, args...) }
+func (l *ZerologHCLog) Warn(msg string, args ...any)  { l.Log(hclog.Warn, msg, args...) }
+func (l *ZerologHCLog) Error(msg string, args ...any) { l.Log(hclog.Error, msg, args...) }
 
-// Level checks (include IsError for your hclog version)
 func (l *ZerologHCLog) IsTrace() bool { return l.level <= hclog.Trace }
 func (l *ZerologHCLog) IsDebug() bool { return l.level <= hclog.Debug }
 func (l *ZerologHCLog) IsInfo() bool  { return l.level <= hclog.Info }
 func (l *ZerologHCLog) IsWarn() bool  { return l.level <= hclog.Warn }
 func (l *ZerologHCLog) IsError() bool { return l.level <= hclog.Error }
 
-// Naming & scoping
-func (l *ZerologHCLog) With(args ...interface{}) hclog.Logger {
+func (l *ZerologHCLog) With(args ...any) hclog.Logger {
 	n := *l
-	// Add fields to the underlying zerolog logger (single map, no variadic)
 	n.zl = l.zl.With().Fields(kvsToMap(args...)).Logger()
-	// Track implied args for future calls (as hclog expects)
-	n.impliedArgs = append(append([]interface{}{}, l.impliedArgs...), args...)
+	n.impliedArgs = append(append([]any{}, l.impliedArgs...), args...)
 	return &n
 }
 
@@ -99,22 +217,22 @@ func (l *ZerologHCLog) Named(name string) hclog.Logger {
 	} else {
 		n.name = name
 	}
+
+	n.zl = l.zl.With().Str("subsystem", n.name).Logger()
 	return &n
 }
 
 func (l *ZerologHCLog) ResetNamed(name string) hclog.Logger {
 	n := *l
 	n.name = name
+	n.zl = l.zl.With().Str("subsystem", n.name).Logger()
 	return &n
 }
 
-func (l *ZerologHCLog) Name() string { return l.name }
-
-// Levels
+func (l *ZerologHCLog) Name() string               { return l.name }
 func (l *ZerologHCLog) SetLevel(level hclog.Level) { l.level = level }
 func (l *ZerologHCLog) GetLevel() hclog.Level      { return l.level }
 
-// Standard log/Writer
 func (l *ZerologHCLog) StandardLogger(opts *hclog.StandardLoggerOptions) *stdlog.Logger {
 	return stdlog.New(l.StandardWriter(opts), "", 0)
 }
@@ -131,45 +249,45 @@ func (l *ZerologHCLog) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writ
 			lev = zerolog.ErrorLevel
 		}
 	}
-	return zerologWriter{l: l.zl.With().Str("subsystem", l.name).Logger(), level: lev}
+
+	return zerologWriter{l: l.zl, level: lev}
 }
 
-// Implied args
-func (l *ZerologHCLog) ImpliedArgs() []interface{} {
-	return append([]interface{}{}, l.impliedArgs...)
+func (l *ZerologHCLog) ImpliedArgs() []any {
+	return append([]any{}, l.impliedArgs...)
 }
 
-// helpers
 func (l *ZerologHCLog) accept(level hclog.Level) bool { return level >= l.level }
 
 func (l *ZerologHCLog) baseEvent(level hclog.Level) *zerolog.Event {
-	logger := l.zl.With().Str("subsystem", l.name).Logger()
 	switch level {
 	case hclog.Trace, hclog.Debug:
-		return logger.Debug()
+		return l.zl.Debug()
 	case hclog.Info:
-		return logger.Info()
+		return l.zl.Info()
 	case hclog.Warn:
-		return logger.Warn()
+		return l.zl.Warn()
 	case hclog.Error:
-		return logger.Error()
+		return l.zl.Error()
 	default:
-		return logger.Info()
+		return l.zl.Info()
 	}
 }
 
-func kvsToMap(kvs ...interface{}) map[string]interface{} {
-	m := make(map[string]interface{}, len(kvs)/2)
+func kvsToMap(kvs ...any) map[string]any {
+	if len(kvs) == 0 {
+		return nil
+	}
+	m := make(map[string]any, len(kvs)/2)
 	for i := 0; i < len(kvs); i += 2 {
-		// If odd number of args, stash the last value under "arg"
 		if i+1 >= len(kvs) {
 			m["arg"] = kvs[i]
 			break
 		}
+
 		key, ok := kvs[i].(string)
 		if !ok || key == "" {
 			key = "arg"
-			// ensure uniqueness if multiple non-string keys
 			for {
 				if _, exists := m[key]; !exists {
 					break

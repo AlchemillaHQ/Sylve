@@ -8,6 +8,13 @@
 
 package clusterModels
 
+import (
+	"time"
+
+	hub "github.com/alchemillahq/sylve/internal/events"
+	"gorm.io/gorm"
+)
+
 type Cluster struct {
 	ID            uint   `gorm:"primaryKey" json:"id"`
 	Enabled       bool   `json:"enabled"`
@@ -15,4 +22,21 @@ type Cluster struct {
 	RaftBootstrap *bool  `json:"raftBootstrap"`
 	RaftIP        string `json:"raftIP"`
 	RaftPort      int    `json:"raftPort"`
+}
+
+func publishClusterRefresh() {
+	hub.SSE.Publish(hub.Event{
+		Type:      "cluster-details-refresh",
+		Timestamp: time.Now(),
+	})
+}
+
+func (c *Cluster) AfterSave(tx *gorm.DB) error {
+	publishClusterRefresh()
+	return nil
+}
+
+func (c *Cluster) AfterDelete(tx *gorm.DB) error {
+	publishClusterRefresh()
+	return nil
 }

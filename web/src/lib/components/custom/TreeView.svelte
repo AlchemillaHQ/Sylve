@@ -15,24 +15,22 @@
 	interface Props {
 		item: SidebarProps;
 		onToggle: (label: string) => void;
-		openCategories?: { [key: string]: boolean };
 	}
 
-	let { item, onToggle, openCategories = {} }: Props = $props();
-	let isOpen = $derived(openCategories[item.label] ?? false);
+	let { item, onToggle }: Props = $props();
 
-	const handleLabelClick = (e: MouseEvent) => {
+	let isOpen = $state(false);
+
+	const toggle = (e: MouseEvent) => {
 		e.preventDefault();
+
+		if (item.children) {
+			isOpen = !isOpen;
+			onToggle(item.label);
+		}
+
 		if (item.href) {
 			goto(item.href, { replaceState: false, noScroll: false });
-		}
-	};
-
-	const handleIconClick = (e: MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		if (item.children) {
-			onToggle(item.label);
 		}
 	};
 
@@ -64,21 +62,27 @@
 		}
 		return false;
 	}
+
+	$effect(() => {
+		isOpen = isItemOpen(item, activeUrl);
+	});
 </script>
 
 <li class="w-full">
-	<div
-		class={`my-0.5 flex w-full cursor-pointer items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
-		onclick={handleLabelClick}
+	<a
+		class={`my-0.5 flex w-full items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? '!text-primary' : ' '}`}
+		href={item.href}
+		onclick={toggle}
 	>
 		<div class="flex items-center space-x-1 text-sm">
 			{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 				<div class="flex items-center space-x-1 text-sm">
 					<div class="relative">
 						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+
 						{#if item.state && item.state === 'active'}
 							<div
-								class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
+								class="absolute -right-1 -bottom-1 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
 							>
 								<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
 							</div>
@@ -93,18 +97,16 @@
 			</p>
 		</div>
 		{#if item.children && item.children.length > 0}
-			<span
-				class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
-				onclick={handleIconClick}
+			<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
 			></span>
 		{/if}
-	</div>
+	</a>
 </li>
 
 {#if isOpen && item.children}
 	<ul class="pl-5" transition:slide={{ duration: 200, easing: (t) => t }} style="overflow: hidden;">
 		{#each item.children as child (child.label)}
-			<SidebarElement item={child} {onToggle} {openCategories} />
+			<SidebarElement item={child} {onToggle} />
 		{/each}
 	</ul>
 {/if}

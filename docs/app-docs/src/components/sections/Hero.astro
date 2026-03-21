@@ -1,0 +1,111 @@
+---
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import CopyButton from "@/components/CopyButton.svelte";
+import HeroFrame from "@/components/HeroFrame.svelte";
+import Particles from "../magicui/Particles.svelte";
+import { buttonVariants } from "../ui/button";
+
+const screenshotDir = join(process.cwd(), "public", "screenshots");
+
+let lightScreens: string[] = [];
+let darkScreens: string[] = [];
+
+try {
+  const files = readdirSync(screenshotDir)
+    .filter((name) => /\.webp$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  lightScreens = files
+    .filter((f) => !f.includes("B"))
+    .map((f) => `/screenshots/${f}`);
+
+  darkScreens = files
+    .filter((f) => f.includes("B"))
+    .map((f) => `/screenshots/${f}`);
+} catch {
+  lightScreens = [];
+  darkScreens = [];
+}
+---
+
+<div class="hero-section text-center pt-5 mt-0">
+  <div
+    class="-translate-y-4 animate-fade-in opacity-0"
+    style="--animation-delay: 80ms"
+  >
+    <span
+      class:list={[
+        buttonVariants({ variant: "outline" }),
+        "rounded-full inline-flex",
+      ]}
+    >
+      <div class="size-2 animate-pulse bg-emerald-500 rounded-full"></div>
+      Free & Open Source • BSD-2
+    </span>
+  </div>
+
+  <h1
+    class="dark-text-gradient text-gradient my-6 text-4xl md:text-7xl font-normal tracking-tighter md:tracking-tight text-center mx-auto max-w-[90vw] md:max-w-full -translate-y-4 animate-fade-in opacity-0"
+    style="--animation-delay: 160ms"
+  >
+    Strong Foundation.
+    <span class="block mt-2 md:mt-2.5 pb-2">Simple Control.</span>
+  </h1>
+
+  <p
+    class="mb-12 text-lg md:text-xl leading-relaxed text-muted-foreground text-center mx-auto max-w-[85vw] md:max-w-3xl -translate-y-4 animate-fade-in opacity-0"
+    style="--animation-delay: 240ms"
+  >
+    Utilize your rock solid
+    <span
+      class="icon-[mdi--freebsd] text-[#b5010f] inline-block align-text-bottom mx-1 size-[1.1em]"
+    ></span>FreeBSD&trade; environment through a
+    <br class="hidden md:block" />
+    unified, high-performance management layer.
+  </p>
+
+  <div
+    class="flex justify-center items-center mt-10 gap-4 -translate-y-4 animate-fade-in opacity-0"
+    style="--animation-delay: 320ms"
+  >
+    <a
+      href="/docs/"
+      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background"
+    >
+      <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
+      <span data-i18n="getStarted">Get Started</span>
+    </a>
+    <a
+      href="https://github.com/AlchemillaHQ/Sylve"
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Star on Github"
+      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm"
+    >
+      <span class="icon-[mdi--github] size-4 mr-2"></span>
+      <span data-i18n="starGithub">Star on Github</span>
+    </a>
+    <div class="card-wrapper h-11 border rounded-lg hidden">
+      <div
+        class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
+      >
+        <span><span class="text-foreground">$</span> pkg install sylve</span>
+        <CopyButton client:load text="pkg install sylve" />
+      </div>
+    </div>
+  </div>
+  <Particles
+    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen"
+    quantity={80}
+    ease={70}
+    color="#ffffff"
+    refresh={true}
+    client:load
+  />
+  <HeroFrame
+    client:load
+    screenshotsLight={lightScreens}
+    screenshotsDark={darkScreens}
+  />
+</div>

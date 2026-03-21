@@ -10,35 +10,270 @@ package libvirtHandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"sync"
-	"syscall"
-	"unsafe"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
-
 	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
+const (
+	vmWSReadLimit         = 10 << 20 // 10 MiB
+	vmWSWriteTimeout      = 10 * time.Second
+	vmWSPongWait          = 60 * time.Second
+	vmWSPingPeriod        = (vmWSPongWait * 9) / 10
+	vmControlInput   byte = 0
+	vmControlResize  byte = 1
+	vmControlKill    byte = 2
+)
+
+type VMObserver struct {
+	Conn *websocket.Conn
+	Mu   sync.Mutex
+}
+
+func (o *VMObserver) WriteMessage(messageType int, payload []byte) error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+
+	_ = o.Conn.SetWriteDeadline(time.Now().Add(vmWSWriteTimeout))
+	return o.Conn.WriteMessage(messageType, payload)
+}
+
+func (o *VMObserver) WriteControl(messageType int, payload []byte, deadline time.Time) error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+
+	_ = o.Conn.SetWriteDeadline(deadline)
+	return o.Conn.WriteControl(messageType, payload, deadline)
+}
+
+func (o *VMObserver) Close() error {
+	o.Mu.Lock()
+	defer o.Mu.Unlock()
+	return o.Conn.Close()
+}
+
+type VMSession struct {
+	ID           string
+	Cmd          *exec.Cmd
+	Pty          *os.File
+	Observers    map[*VMObserver]struct{}
+	Mu           sync.Mutex
+	closeOnce    sync.Once
+	closed       bool
+	History      []byte
+	HistoryLimit int
+}
+
+type VMSessionManager struct {
+	sessions map[string]*VMSession
+	mu       sync.RWMutex
+}
+
+var (
+	GlobalVMSessionManager = &VMSessionManager{
+		sessions: make(map[string]*VMSession),
+	}
+	VMWSUpgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     func(r *http.Request) bool { return true },
+	}
+)
+
 type WindowSize struct {
 	Rows uint16 `json:"rows"`
 	Cols uint16 `json:"cols"`
-	X    uint16
-	Y    uint16
+	X    uint16 `json:"x"`
+	Y    uint16 `json:"y"`
 }
 
-var WSUpgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+func (sm *VMSessionManager) GetOrCreateSession(sessionID string, ridInt int, baudRate string) (*VMSession, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if session, exists := sm.sessions[sessionID]; exists && !session.IsClosed() {
+		return session, nil
+	}
+
+	devPath := "/dev/nmdm" + strconv.Itoa(ridInt) + "B"
+	cmd := exec.Command("cu", "-l", devPath, "-s", baudRate)
+	cmd.Env = append(os.Environ(), "TERM=xterm")
+
+	ptymx, err := pty.Start(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	session := &VMSession{
+		ID:           sessionID,
+		Cmd:          cmd,
+		Pty:          ptymx,
+		Observers:    make(map[*VMObserver]struct{}),
+		History:      make([]byte, 0, 16384),
+		HistoryLimit: 16384,
+	}
+
+	sm.sessions[sessionID] = session
+	go session.PumpOutput(sm)
+
+	return session, nil
+}
+
+func (sm *VMSessionManager) removeSession(sessionID string, session *VMSession) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	current, exists := sm.sessions[sessionID]
+	if !exists {
+		return
+	}
+	if current == session {
+		delete(sm.sessions, sessionID)
+	}
+}
+
+func (ts *VMSession) IsClosed() bool {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+	return ts.closed
+}
+
+func (ts *VMSession) Close(sm *VMSessionManager) {
+	ts.closeOnce.Do(func() {
+		ts.Mu.Lock()
+		ts.closed = true
+
+		observers := make([]*VMObserver, 0, len(ts.Observers))
+		for obs := range ts.Observers {
+			observers = append(observers, obs)
+		}
+		ts.Observers = make(map[*VMObserver]struct{})
+		ts.Mu.Unlock()
+
+		for _, obs := range observers {
+			_ = obs.Close()
+		}
+
+		if ts.Pty != nil {
+			_ = ts.Pty.Close()
+		}
+		if ts.Cmd != nil && ts.Cmd.Process != nil {
+			_ = ts.Cmd.Process.Kill()
+		}
+		if ts.Cmd != nil {
+			_ = ts.Cmd.Wait()
+		}
+
+		sm.removeSession(ts.ID, ts)
+	})
+}
+
+func (ts *VMSession) AddObserver(obs *VMObserver) error {
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
+
+	if ts.closed {
+		return errors.New("session is closed")
+	}
+
+	ts.Observers[obs] = struct{}{}
+	return nil
+}
+
+func (ts *VMSession) RemoveObserver(obs *VMObserver) {
+	ts.Mu.Lock()
+	delete(ts.Observers, obs)
+	ts.Mu.Unlock()
+
+	_ = obs.Close()
+}
+
+func (ts *VMSession) ReplayHistory(obs *VMObserver) error {
+	ts.Mu.Lock()
+	if ts.closed {
+		ts.Mu.Unlock()
+		return errors.New("session is closed")
+	}
+
+	if len(ts.History) == 0 {
+		ts.Mu.Unlock()
+		return nil
+	}
+
+	history := make([]byte, len(ts.History))
+	copy(history, ts.History)
+	ts.Mu.Unlock()
+
+	return obs.WriteMessage(websocket.BinaryMessage, history)
+}
+
+func (ts *VMSession) BroadcastBinary(payload []byte) {
+	ts.Mu.Lock()
+	if ts.closed {
+		ts.Mu.Unlock()
+		return
+	}
+
+	ts.History = append(ts.History, payload...)
+	if len(ts.History) > ts.HistoryLimit {
+		ts.History = ts.History[len(ts.History)-ts.HistoryLimit:]
+	}
+
+	observers := make([]*VMObserver, 0, len(ts.Observers))
+	for obs := range ts.Observers {
+		observers = append(observers, obs)
+	}
+	ts.Mu.Unlock()
+
+	for _, obs := range observers {
+		if err := obs.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+			logger.L.Warn().Err(err).Str("session", ts.ID).Msg("failed to write VM PTY output to websocket")
+			ts.RemoveObserver(obs)
+		}
+	}
+}
+
+func (ts *VMSession) PumpOutput(sm *VMSessionManager) {
+	defer ts.Close(sm)
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := ts.Pty.Read(buf)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				logger.L.Error().Err(err).Str("session", ts.ID).Msg("error reading from VM PTY")
+			}
+			return
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		ts.BroadcastBinary(data)
+	}
+}
+
+func (sm *VMSessionManager) KillSession(sessionID string) {
+	sm.mu.RLock()
+	session, exists := sm.sessions[sessionID]
+	sm.mu.RUnlock()
+
+	if exists {
+		session.Close(sm)
+	}
 }
 
 func HandleLibvirtTerminalWebsocket(c *gin.Context) {
@@ -49,72 +284,61 @@ func HandleLibvirtTerminalWebsocket(c *gin.Context) {
 	}
 
 	baudRate := c.DefaultQuery("baudrate", "115200")
-
-	sessionName := "sylve-vmc-" + rid
-	checkSession := exec.Command("tmux", "has-session", "-t", sessionName)
 	ridInt, err := strconv.Atoi(rid)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rid"})
 		return
 	}
 
-	if err := checkSession.Run(); err != nil {
-		createSession := exec.Command(
-			"tmux",
-			"new-session",
-			"-s", sessionName,
-			"-d",
-			"cu", "-l", "/dev/nmdm"+strconv.Itoa(ridInt)+"B", "-s", baudRate,
-		)
-
-		if err := createSession.Run(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to create tmux jail session"})
-			return
-		}
-	}
-
-	conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := VMWSUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		logger.L.Error().Err(err).Msg("WebSocket upgrade failed")
+		logger.L.Error().Err(err).Msg("websocket upgrade failed")
 		return
 	}
-	defer conn.Close()
 
-	var wsWriteMu sync.Mutex
-	safeWrite := func(mt int, data []byte) error {
-		wsWriteMu.Lock()
-		defer wsWriteMu.Unlock()
-		return conn.WriteMessage(mt, data)
-	}
+	conn.SetReadLimit(vmWSReadLimit)
+	_ = conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(vmWSPongWait))
+	})
 
-	cmd := exec.Command("tmux", "attach-session", "-t", sessionName)
-	cmd.Env = append(os.Environ(), "TERM=xterm")
-
-	tty, err := pty.Start(cmd)
+	sessionID := "vm-console-" + rid
+	session, err := GlobalVMSessionManager.GetOrCreateSession(sessionID, ridInt, baudRate)
 	if err != nil {
-		safeWrite(websocket.TextMessage, []byte(err.Error()))
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Error connecting to console: "+err.Error()))
+		_ = conn.Close()
 		return
 	}
-	defer func() {
-		cmd.Process.Kill()
-		cmd.Process.Wait()
-		tty.Close()
-	}()
+
+	observer := &VMObserver{Conn: conn}
+	if err := session.AddObserver(observer); err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Session unavailable"))
+		_ = conn.Close()
+		return
+	}
+
+	if err := session.ReplayHistory(observer); err != nil {
+		session.RemoveObserver(observer)
+		return
+	}
+
+	defer session.RemoveObserver(observer)
 
 	done := make(chan struct{})
+	defer close(done)
+
 	go func() {
-		buf := make([]byte, 1024)
+		ticker := time.NewTicker(vmWSPingPeriod)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-done:
 				return
-			default:
-				n, err := tty.Read(buf)
-				if err != nil {
-					safeWrite(websocket.TextMessage, []byte("Terminal session closed."))
+			case <-ticker.C:
+				if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(vmWSWriteTimeout)); err != nil {
 					return
 				}
-				safeWrite(websocket.BinaryMessage, buf[:n])
 			}
 		}
 	}()
@@ -122,58 +346,77 @@ func HandleLibvirtTerminalWebsocket(c *gin.Context) {
 	for {
 		messageType, reader, err := conn.NextReader()
 		if err != nil {
-			close(done)
 			return
 		}
 
-		if messageType == websocket.TextMessage {
-			safeWrite(websocket.TextMessage, []byte("Unexpected text message"))
+		if messageType != websocket.BinaryMessage {
+			logger.L.Warn().Int("message_type", messageType).Str("session", sessionID).Msg("rejected non-binary websocket frame")
+			return
+		}
+
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to read websocket frame")
+			return
+		}
+
+		if len(data) == 0 {
 			continue
 		}
 
-		header := make([]byte, 1)
-		if _, err := reader.Read(header); err != nil {
-			close(done)
-			return
-		}
-
-		switch header[0] {
-		case 0: // stdin
-			io.Copy(tty, reader)
-
-		case 1: // resize
-			var ws WindowSize
-			if err := json.NewDecoder(reader).Decode(&ws); err != nil {
-				safeWrite(websocket.TextMessage, []byte("Error decoding resize: "+err.Error()))
+		switch data[0] {
+		case vmControlInput:
+			if len(data) == 1 {
 				continue
 			}
-			_, _, errno := syscall.Syscall(
-				syscall.SYS_IOCTL,
-				tty.Fd(),
-				syscall.TIOCSWINSZ,
-				uintptr(unsafe.Pointer(&ws)),
-			)
-			if errno != 0 {
-				safeWrite(websocket.TextMessage, []byte("Resize error: "+errno.Error()))
-			}
-
-		case 2: // kill
-			var killMsg struct {
-				Kill string `json:"kill"`
-			}
-			if err := json.NewDecoder(reader).Decode(&killMsg); err != nil {
-				continue
-			}
-			sid := killMsg.Kill
-			if sid == "" {
-				sid = sessionName
-			}
-			exec.Command("tmux", "kill-session", "-t", sid).Run()
-			safeWrite(websocket.TextMessage, []byte("Session killed: "+sid))
-			if sid == sessionName {
-				close(done)
+			if _, err := session.Pty.Write(data[1:]); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to write serial input to PTY")
 				return
 			}
+
+		case vmControlResize:
+			if len(data) == 1 {
+				continue
+			}
+
+			var ws WindowSize
+			if err := json.Unmarshal(data[1:], &ws); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("invalid resize payload")
+				continue
+			}
+
+			if ws.Rows == 0 || ws.Cols == 0 {
+				logger.L.Warn().Str("session", sessionID).Msg("ignored zero-sized resize payload")
+				continue
+			}
+
+			if err := pty.Setsize(session.Pty, &pty.Winsize{
+				Rows: ws.Rows,
+				Cols: ws.Cols,
+				X:    ws.X,
+				Y:    ws.Y,
+			}); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to resize PTY")
+			}
+
+		case vmControlKill:
+			if len(data) > 1 {
+				var killMsg struct {
+					Kill string `json:"kill"`
+				}
+				if err := json.Unmarshal(data[1:], &killMsg); err == nil {
+					if killMsg.Kill != "" && killMsg.Kill != sessionID {
+						continue
+					}
+				}
+			}
+
+			GlobalVMSessionManager.KillSession(sessionID)
+			return
+
+		default:
+			logger.L.Warn().Uint8("control", data[0]).Str("session", sessionID).Msg("rejected unknown websocket control byte")
+			return
 		}
 	}
 }

@@ -174,17 +174,53 @@ func mapDBErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
+	msg := strings.ToLower(err.Error())
+	isUnique := strings.Contains(msg, "unique constraint failed")
 	switch {
-	case strings.Contains(msg, "uniq_ip_per_range"):
+	case strings.Contains(msg, "uniq_l_ip_per_range"),
+		strings.Contains(msg, "uniq_ip_per_range"),
+		(isUnique && strings.Contains(msg, "ip_object_id") && strings.Contains(msg, "dhcp_range_id")):
 		return fmt.Errorf("duplicate_ip_in_range")
-	case strings.Contains(msg, "uniq_mac_per_range"):
+	case strings.Contains(msg, "uniq_l_mac_per_range"),
+		strings.Contains(msg, "uniq_mac_per_range"),
+		(isUnique && strings.Contains(msg, "mac_object_id") && strings.Contains(msg, "dhcp_range_id")):
 		return fmt.Errorf("duplicate_mac_in_range")
-	case strings.Contains(msg, "uniq_duid_per_range"):
+	case strings.Contains(msg, "uniq_l_duid_per_range"),
+		strings.Contains(msg, "uniq_duid_per_range"),
+		(isUnique && strings.Contains(msg, "duid_object_id") && strings.Contains(msg, "dhcp_range_id")):
 		return fmt.Errorf("duplicate_duid_in_range")
 	default:
 		return err
 	}
+}
+
+func validateHostObjectFamily(db *gorm.DB, objectID uint, rangeType string) error {
+	var o networkModels.Object
+	if err := db.Preload("Entries").First(&o, objectID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("object_not_found")
+		}
+		return err
+	}
+
+	if len(o.Entries) == 0 {
+		return fmt.Errorf("object_has_no_entries")
+	}
+
+	for _, entry := range o.Entries {
+		switch rangeType {
+		case "ipv4":
+			if !utils.IsValidIPv4(entry.Value) {
+				return fmt.Errorf("invalid_ip_object_family: expected_ipv4")
+			}
+		case "ipv6":
+			if !utils.IsValidIPv6(entry.Value) {
+				return fmt.Errorf("invalid_ip_object_family: expected_ipv6")
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapRequest) error {
@@ -203,8 +239,12 @@ func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapR
 		var err error
 
 		if req.IPObjectID != nil && *req.IPObjectID != 0 {
-			ipID, err = loadAndRequireType(tx, req.IPObjectID, wantIPv4 /* or wantIPv6 + family check */)
+			ipID, err = loadAndRequireType(tx, req.IPObjectID, wantIPv4)
 			if err != nil {
+				return fmt.Errorf("invalid_ip_object: %w", err)
+			}
+
+			if err := validateHostObjectFamily(tx, ipID, dhcpRange.Type); err != nil {
 				return fmt.Errorf("invalid_ip_object: %w", err)
 			}
 		}
@@ -309,11 +349,10 @@ func (s *Service) ModifyStaticMap(req *networkServiceInterfaces.ModifyStaticMapR
 			if *req.IPObjectID == 0 {
 				current.IPObjectID = nil
 			} else {
-				id, err := loadAndRequireType(tx, req.IPObjectID, wantIPv4 /* or wantIPv6 with family check */)
+				id, err := loadAndRequireType(tx, req.IPObjectID, wantIPv4)
 				if err != nil {
 					return fmt.Errorf("invalid_ip_object: %w", err)
 				}
-				// ensure in-range
 				current.IPObjectID = utils.PtrIfNonZero(id)
 			}
 		}
@@ -346,6 +385,13 @@ func (s *Service) ModifyStaticMap(req *networkServiceInterfaces.ModifyStaticMapR
 		if current.MACObjectID == nil && current.DUIDObjectID == nil {
 			return fmt.Errorf("at_least_one_identifier_required")
 		}
+
+		if current.IPObjectID != nil {
+			if err := validateHostObjectFamily(tx, *current.IPObjectID, dhcpRange.Type); err != nil {
+				return fmt.Errorf("invalid_ip_object: %w", err)
+			}
+		}
+
 		if dhcpRange.Type == "ipv4" && current.MACObjectID == nil {
 			return fmt.Errorf("mac_required_for_ipv4")
 		}

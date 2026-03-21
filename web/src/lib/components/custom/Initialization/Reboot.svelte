@@ -21,7 +21,7 @@
 					continue;
 				}
 
-				if (health?.status === 'success') {
+				if (health?.initialized === true && health?.restarted === true) {
 					return true; // back up AFTER going down
 				}
 			} catch {
@@ -40,7 +40,9 @@
 
 		try {
 			await rebootSystem();
-		} catch {}
+		} catch {
+			// no-op
+		}
 
 		const rebootPromise = waitForRebootCycle();
 

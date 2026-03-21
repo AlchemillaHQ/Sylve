@@ -16,18 +16,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/assets"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
+	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
 	sambaHandlers "github.com/alchemillahq/sylve/internal/handlers/samba"
 	systemHandlers "github.com/alchemillahq/sylve/internal/handlers/system"
+	taskHandlers "github.com/alchemillahq/sylve/internal/handlers/task"
 	utilitiesHandlers "github.com/alchemillahq/sylve/internal/handlers/utilities"
 	vmHandlers "github.com/alchemillahq/sylve/internal/handlers/vm"
 	vncHandler "github.com/alchemillahq/sylve/internal/handlers/vnc"
@@ -38,15 +41,17 @@ import (
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
 )
 
 // @title           Sylve API
-// @version         0.0.1
+// @version         0.1.1
 // @description     Sylve is a lightweight GUI for managing Bhyve, Jails, ZFS, networking, and more on FreeBSD.
 // @termsOfService  https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
 
@@ -65,7 +70,7 @@ import (
 // @host      sylve.lan:8181
 // @BasePath  /api
 func RegisterRoutes(r *gin.Engine,
-	environment string,
+	environment internal.Environment,
 	proxyToVite bool,
 	authService *authService.Service,
 	infoService *infoService.Service,
@@ -77,7 +82,9 @@ func RegisterRoutes(r *gin.Engine,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
 	jailService *jail.Service,
+	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
+	zeltaService *zelta.Service,
 	fsm *clusterModels.FSMDispatcher,
 	db *gorm.DB,
 ) {
@@ -100,8 +107,8 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	info := api.Group("/info")
-	info.Use(EnsureCorrectHost(db))
 	info.Use(middleware.EnsureAuthenticated(authService))
+	info.Use(EnsureCorrectHost(db, authService))
 	info.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
@@ -127,12 +134,14 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		info.GET("/audit-records", infoHandlers.AuditRecords(infoService))
-		info.GET("/terminal", infoHandlers.HandleTerminalWebsocket)
+		info.GET("/terminal", infoHandlers.HandleHostTerminal)
+
+		info.GET("/node", infoHandlers.NodeInfo(infoService))
 	}
 
 	zfs := api.Group("/zfs")
-	zfs.Use(EnsureCorrectHost(db))
 	zfs.Use(middleware.EnsureAuthenticated(authService))
+	zfs.Use(EnsureCorrectHost(db, authService))
 	zfs.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		zfs.GET("/pool/stats/:interval/:limit", zfsHandlers.PoolStats(zfsService))
@@ -178,8 +187,8 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	samba := api.Group("/samba")
-	samba.Use(EnsureCorrectHost(db))
 	samba.Use(middleware.EnsureAuthenticated(authService))
+	samba.Use(EnsureCorrectHost(db, authService))
 	samba.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
@@ -194,8 +203,8 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	disk := api.Group("/disk")
-	disk.Use(EnsureCorrectHost(db))
 	disk.Use(middleware.EnsureAuthenticated(authService))
+	disk.Use(EnsureCorrectHost(db, authService))
 	disk.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		disk.GET("/list", diskHandlers.List(diskService))
@@ -206,8 +215,8 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	network := api.Group("/network")
-	network.Use(EnsureCorrectHost(db))
 	network.Use(middleware.EnsureAuthenticated(authService))
+	network.Use(EnsureCorrectHost(db, authService))
 	network.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		network.GET("/object", networkHandlers.ListNetworkObjects(networkService))
@@ -240,21 +249,23 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	system := api.Group("/system")
-	system.Use(EnsureCorrectHost(db))
 	system.Use(middleware.EnsureAuthenticated(authService))
+	system.Use(EnsureCorrectHost(db, authService))
 	system.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		system.GET("/pci-devices", systemHandlers.ListDevices())
 		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
 		system.POST("/ppt-devices", systemHandlers.AddPPTDevice(systemService))
+		system.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
+		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
 		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")
-	fileExplorer.Use(EnsureCorrectHost(db))
 	fileExplorer.Use(middleware.EnsureAuthenticated(authService))
+	fileExplorer.Use(EnsureCorrectHost(db, authService))
 	fileExplorer.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		fileExplorer.GET("", systemHandlers.Files(systemService))
@@ -274,12 +285,17 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	vm := api.Group("/vm")
-	vm.Use(EnsureCorrectHost(db))
 	vm.Use(middleware.EnsureAuthenticated(authService))
+	vm.Use(EnsureCorrectHost(db, authService))
 	vm.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
-		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(libvirtService))
+		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
+		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
+		vm.POST("/snapshots/:id", vmHandlers.CreateVMSnapshot(libvirtService))
+		vm.POST("/snapshots/rollback/:id/:snapshotId", vmHandlers.RollbackVMSnapshot(libvirtService))
+		vm.DELETE("/snapshots/:id/:snapshotId", vmHandlers.DeleteVMSnapshot(libvirtService))
 		vm.GET("/:id", vmHandlers.GetVMByIdentifier(libvirtService))
 		vm.GET("", vmHandlers.ListVMs(libvirtService))
 		vm.POST("", vmHandlers.CreateVM(libvirtService))
@@ -294,6 +310,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		vm.POST("/network/detach", vmHandlers.NetworkDetach(libvirtService))
 		vm.POST("/network/attach", vmHandlers.NetworkAttach(libvirtService))
+		vm.PUT("/network/update", vmHandlers.NetworkUpdate(libvirtService))
 
 		vm.PUT("/hardware/cpu/:rid", vmHandlers.ModifyCPU(libvirtService))
 		vm.PUT("/hardware/ram/:rid", vmHandlers.ModifyRAM(libvirtService))
@@ -307,22 +324,29 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/shutdown-wait-time/:rid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
 		vm.PUT("/options/cloud-init/:rid", vmHandlers.ModifyCloudInitData(libvirtService))
 		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
+		vm.PUT("/options/qemu-guest-agent/:rid", vmHandlers.ModifyQemuGuestAgent(libvirtService))
 		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))
+		vm.GET("/qga/:rid", vmHandlers.GetQemuGuestAgentInfo(libvirtService))
 
 		vm.GET("/console", vmHandlers.HandleLibvirtTerminalWebsocket)
 	}
 
 	jail := api.Group("/jail")
-	jail.Use(EnsureCorrectHost(db))
 	jail.Use(middleware.EnsureAuthenticated(authService))
+	jail.Use(EnsureCorrectHost(db, authService))
 	jail.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
+		jail.GET("/simple/:id", jailHandlers.GetSimpleJailByIdentifier(jailService))
 		jail.GET("/state", jailHandlers.ListJailStates(jailService))
 		jail.GET("/state/:id", jailHandlers.GetJailState(jailService))
 		jail.GET("", jailHandlers.ListJails(jailService))
 		jail.GET("/:id", jailHandlers.GetJailByIdentifier(jailService))
-		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService))
+		jail.GET("/snapshots/:id", jailHandlers.ListJailSnapshots(jailService))
+		jail.POST("/snapshots/:id", jailHandlers.CreateJailSnapshot(jailService))
+		jail.POST("/snapshots/rollback/:id/:snapshotId", jailHandlers.RollbackJailSnapshot(jailService))
+		jail.DELETE("/snapshots/:id/:snapshotId", jailHandlers.DeleteJailSnapshot(jailService))
+		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
@@ -338,18 +362,22 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/network/disinheritance/:ctId", jailHandlers.SetNetworkInheritance(jailService))
 
 		jail.POST("/network", jailHandlers.AddNetwork(jailService))
+		jail.PUT("/network", jailHandlers.EditNetwork(jailService))
 		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
 
 		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
 		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
+		jail.PUT("/options/resolv-conf/:rid", jailHandlers.ModifyResolvConf(jailService))
 		jail.PUT("/options/devfs-rules/:rid", jailHandlers.ModifyDevFSRules(jailService))
 		jail.PUT("/options/additional-options/:rid", jailHandlers.ModifyAdditionalOptions(jailService))
+		jail.PUT("/options/allowed-options/:rid", jailHandlers.ModifyAllowedOptions(jailService))
 		jail.PUT("/options/metadata/:rid", jailHandlers.ModifyMetadata(jailService))
+		jail.PUT("/options/lifecycle-hooks/:rid", jailHandlers.ModifyLifecycleHooks(jailService))
 	}
 
 	utilities := api.Group("/utilities")
-	utilities.Use(EnsureCorrectHost(db))
 	utilities.Use(middleware.EnsureAuthenticated(authService))
+	utilities.Use(EnsureCorrectHost(db, authService))
 	utilities.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		utilities.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
@@ -371,11 +399,21 @@ func RegisterRoutes(r *gin.Engine,
 	auth.Use(middleware.RequestLoggerMiddleware(db, authService))
 	{
 		auth.POST("/login", authHandlers.LoginHandler(authService))
+		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
+		auth.POST("/passkeys/login/finish", authHandlers.FinishPasskeyLoginHandler(authService))
 		auth.GET("/logout", authHandlers.LogoutHandler(authService))
+		auth.GET("/sse-token", eventsHandlers.CreateSSEToken(authService))
+	}
+
+	events := api.Group("/events")
+	events.Use(middleware.EnsureAuthenticated(authService))
+	{
+		events.GET("/stream", eventsHandlers.StreamSSE(authService))
 	}
 
 	users := auth.Group("/users")
-	users.Use(EnsureCorrectHost(db))
+	users.Use(EnsureCorrectHost(db, authService))
+	users.Use(middleware.RequireLocalAdmin(authService))
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
 		users.POST("", authHandlers.CreateUserHandler(authService))
@@ -384,13 +422,41 @@ func RegisterRoutes(r *gin.Engine,
 	}
 
 	groups := auth.Group("/groups")
-	groups.Use(EnsureCorrectHost(db))
+	groups.Use(EnsureCorrectHost(db, authService))
+	groups.Use(middleware.RequireLocalAdmin(authService))
 	{
 		groups.GET("", authHandlers.ListGroupsHandler(authService))
 		groups.POST("", authHandlers.CreateGroupHandler(authService))
 		groups.DELETE("/:id", authHandlers.DeleteGroupHandler(authService))
 		groups.POST("/users", authHandlers.AddUsersToGroupHandler(authService))
 		groups.PUT("/users", authHandlers.UpdateGroupMembersHandler(authService))
+	}
+
+	passkeys := auth.Group("/passkeys")
+	passkeys.Use(EnsureCorrectHost(db, authService))
+	passkeys.Use(middleware.RequireLocalAdmin(authService))
+	{
+		passkeys.POST("/register/begin", authHandlers.BeginPasskeyRegistrationHandler(authService))
+		passkeys.POST("/register/finish", authHandlers.FinishPasskeyRegistrationHandler(authService))
+		passkeys.GET("/users/:id", authHandlers.ListUserPasskeysHandler(authService))
+		passkeys.DELETE("/users/:id/:credentialId", authHandlers.DeleteUserPasskeyHandler(authService))
+	}
+
+	intraCluster := api.Group("/intra-cluster")
+	intraCluster.Use(middleware.EnsureAuthenticated(authService))
+	intraCluster.Use(middleware.RequireClusterScope())
+	{
+		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
+		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
+		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
+		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
+		intraCluster.POST("/run", clusterHandlers.RunReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/activate", clusterHandlers.ActivateReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/demote", clusterHandlers.DemoteReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/catchup", clusterHandlers.CatchupReplicationPolicyInternal(clusterService, zeltaService))
+		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
+		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
+		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
 	}
 
 	cluster := api.Group("/cluster")
@@ -402,8 +468,9 @@ func RegisterRoutes(r *gin.Engine,
 
 		cluster.GET("", clusterHandlers.GetCluster(clusterService))
 		cluster.POST("", clusterHandlers.CreateCluster(authService, clusterService, fsm))
-		cluster.POST("/join", clusterHandlers.JoinCluster(authService, clusterService, fsm))
+		cluster.POST("/join", clusterHandlers.JoinCluster(authService, clusterService, zeltaService, fsm))
 		cluster.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+		cluster.POST("/resync-state", clusterHandlers.ResyncClusterState(clusterService, zeltaService))
 		cluster.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
 		cluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
 	}
@@ -412,18 +479,80 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		clusterNotes.GET("", clusterHandlers.Notes(clusterService))
 		clusterNotes.POST("", clusterHandlers.CreateNote(clusterService))
+		clusterNotes.PUT("/:id", clusterHandlers.UpdateNote(clusterService))
 		clusterNotes.DELETE("/:id", clusterHandlers.DeleteNote(clusterService))
 	}
 
+	clusterBackups := cluster.Group("/backups")
+	{
+		targets := clusterBackups.Group("/targets")
+		{
+			targets.GET("", clusterHandlers.BackupTargets(clusterService))
+			targets.POST("", clusterHandlers.CreateBackupTarget(clusterService, zeltaService))
+			targets.PUT("/:id", clusterHandlers.UpdateBackupTarget(clusterService, zeltaService))
+			targets.DELETE("/:id", clusterHandlers.DeleteBackupTarget(clusterService, zeltaService))
+			targets.POST("/validate/:id", clusterHandlers.ValidateBackupTarget(clusterService, zeltaService))
+			targets.GET("/:id/datasets", clusterHandlers.BackupTargetDatasets(zeltaService))
+			targets.GET("/:id/datasets/snapshots", clusterHandlers.BackupTargetDatasetSnapshots(zeltaService))
+			targets.GET("/:id/datasets/jail-metadata", clusterHandlers.BackupTargetDatasetJailMetadata(zeltaService))
+			targets.GET("/:id/datasets/vm-metadata", clusterHandlers.BackupTargetDatasetVMMetadata(zeltaService))
+			targets.POST("/:id/restore", clusterHandlers.RestoreBackupTargetDataset(clusterService, zeltaService))
+		}
+
+		jobs := clusterBackups.Group("/jobs")
+		{
+			jobs.GET("", clusterHandlers.BackupJobs(clusterService))
+			jobs.POST("", clusterHandlers.CreateBackupJob(clusterService))
+			jobs.PUT("/:id", clusterHandlers.UpdateBackupJob(clusterService))
+			jobs.DELETE("/:id", clusterHandlers.DeleteBackupJob(clusterService))
+			jobs.POST("/run/:id", clusterHandlers.RunBackupJobNow(clusterService, zeltaService))
+			jobs.GET("/:id/snapshots", clusterHandlers.BackupJobSnapshots(clusterService, zeltaService))
+			jobs.POST("/:id/restore", clusterHandlers.RestoreBackupJob(clusterService, zeltaService))
+		}
+
+		clusterBackups.GET("/events", clusterHandlers.BackupEvents(clusterService, zeltaService))
+		clusterBackups.GET("/events/remote", clusterHandlers.BackupEventsRemote(clusterService, zeltaService))
+		clusterBackups.GET("/events/:id", clusterHandlers.BackupEventByID(clusterService, zeltaService))
+		clusterBackups.GET("/events/:id/progress", clusterHandlers.BackupEventProgressByID(clusterService, zeltaService))
+	}
+
+	clusterReplication := cluster.Group("/replication")
+	{
+		clusterReplication.GET("/policies", clusterHandlers.ReplicationPolicies(clusterService))
+		clusterReplication.POST("/policies", clusterHandlers.CreateReplicationPolicy(clusterService))
+		clusterReplication.PUT("/policies/:id", clusterHandlers.UpdateReplicationPolicy(clusterService))
+		clusterReplication.DELETE("/policies/:id", clusterHandlers.DeleteReplicationPolicy(clusterService, zeltaService))
+		clusterReplication.POST("/policies/:id/run", clusterHandlers.RunReplicationPolicyNow(clusterService, zeltaService))
+		clusterReplication.POST("/policies/:id/failover", clusterHandlers.FailoverReplicationPolicy(clusterService, zeltaService))
+
+		clusterReplication.GET("/events", clusterHandlers.ReplicationEvents(clusterService))
+		clusterReplication.GET("/events/:id", clusterHandlers.ReplicationEventByID(clusterService))
+		clusterReplication.GET("/events/:id/progress", clusterHandlers.ReplicationEventProgressByID(clusterService, zeltaService))
+		clusterReplication.GET("/receipts", clusterHandlers.ReplicationReceipts(clusterService))
+	}
+
 	vnc := api.Group("/vnc")
-	vnc.Use(EnsureCorrectHost(db))
 	vnc.Use(middleware.EnsureAuthenticated(authService))
+	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(db, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler)
 
+	tasks := api.Group("/tasks")
+	tasks.Use(middleware.EnsureAuthenticated(authService))
+	tasks.Use(EnsureCorrectHost(db, authService))
+	tasks.Use(middleware.RequestLoggerMiddleware(db, authService))
+	{
+		lifecycleTasks := tasks.Group("/lifecycle")
+		{
+			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService))
+			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService))
+			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService))
+		}
+	}
+
 	if proxyToVite {
 		r.NoRoute(func(c *gin.Context) {
-			ReverseProxy(c, "http://127.0.0.1:5173")
+			ReverseProxy(c, "http://[::1]:5173")
 		})
 	} else {
 		files, err := static.EmbedFolder(assets.SvelteKitFiles, "web-files")

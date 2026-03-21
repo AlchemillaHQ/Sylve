@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package swapctl
 
 import (
@@ -14,12 +22,7 @@ type SwapDevice struct {
 	Used       int64
 }
 
-func GetSwapDevices() ([]SwapDevice, error) {
-	output, err := utils.RunCommand("swapctl", "-l")
-	if err != nil {
-		return nil, err
-	}
-
+func parseSwapctlOutput(output string) ([]SwapDevice, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) <= 1 {
 		return []SwapDevice{}, nil
@@ -51,4 +54,13 @@ func GetSwapDevices() ([]SwapDevice, error) {
 	}
 
 	return devices, nil
+}
+
+func GetSwapDevices() ([]SwapDevice, error) {
+	output, err := utils.RunCommand("/sbin/swapctl", "-l")
+	if err != nil {
+		return nil, err
+	}
+
+	return parseSwapctlOutput(output)
 }

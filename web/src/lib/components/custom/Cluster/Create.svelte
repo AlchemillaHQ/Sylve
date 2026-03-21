@@ -5,9 +5,9 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { storage } from '$lib';
 	import { handleAPIError } from '$lib/utils/http';
-	import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
-	import { onMount } from 'svelte';
+	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
+	import { logOut } from '$lib/api/auth';
 
 	interface Props {
 		open: boolean;
@@ -16,8 +16,7 @@
 
 	let { open = $bindable(), reload = $bindable() }: Props = $props();
 	let options = {
-		ip: '',
-		port: 8182
+		ip: ''
 	};
 
 	let properties = $state(options);
@@ -38,8 +37,6 @@
 
 		if (!isValidIPv4(properties.ip) && !isValidIPv6(properties.ip)) {
 			error = 'Invalid IP address';
-		} else if (!isValidPortNumber(properties.port)) {
-			error = 'Invalid port number';
 		}
 
 		if (error) {
@@ -52,7 +49,7 @@
 
 		loading = true;
 
-		const response = await createCluster(properties.ip, properties.port);
+		const response = await createCluster(properties.ip);
 		reload = true;
 		loading = false;
 		if (response.error) {
@@ -70,6 +67,8 @@
 			});
 			open = false;
 			properties = options;
+
+			await logOut('Login required after initializing cluster');
 		}
 	}
 </script>
@@ -118,13 +117,6 @@
 			bind:value={properties.ip}
 			placeholder="Node IP"
 			classes="flex-1 space-y-1.5"
-		/>
-
-		<CustomValueInput
-			bind:value={properties.port}
-			placeholder="Node Port"
-			classes="flex-1 space-y-1.5"
-			type="number"
 		/>
 
 		<Dialog.Footer class="flex justify-end">

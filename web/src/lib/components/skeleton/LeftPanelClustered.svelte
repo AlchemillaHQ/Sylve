@@ -3,6 +3,7 @@
 		collectIds,
 		getClusterResources,
 		getNodes,
+		hasSavedClusterIds,
 		loadClusterIds,
 		saveOpenIds
 	} from '$lib/api/cluster/cluster';
@@ -11,9 +12,33 @@
 	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
 	import { default as TreeViewCluster } from './TreeViewCluster.svelte';
 	import { DomainState } from '$lib/types/vm/vm';
-	import { resource, useInterval, watch } from 'runed';
+	import { storage } from '$lib';
+	import { resource, watch } from 'runed';
+	import { page } from '$app/state';
+	import { onDestroy } from 'svelte';
 
-	let openIds = $state(new Set<string>(['datacenter']));
+	let openIds = $state(
+		(() => {
+			const savedIds = loadClusterIds();
+			return savedIds.size > 0 ? savedIds : new Set<string>(['datacenter']);
+		})()
+	);
+	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+	let hasInitializedOpenIds = $state(false);
+
+	function isSameSet(a: Set<string>, b: Set<string>): boolean {
+		if (a.size !== b.size) {
+			return false;
+		}
+
+		for (const value of a) {
+			if (!b.has(value)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	const toggleOpen = (id: string) => {
 		if (openIds.has(id)) openIds.delete(id);
@@ -22,9 +47,39 @@
 		saveOpenIds(openIds);
 	};
 
+	async function refetchClusterResources() {
+		await Promise.all([cluster.refetch(), nodes.refetch()]);
+	}
+
+	function scheduleTrailingRefetch() {
+		if (trailingRefetchTimer) {
+			clearTimeout(trailingRefetchTimer);
+		}
+
+		trailingRefetchTimer = setTimeout(() => {
+			trailingRefetchTimer = null;
+			void refetchClusterResources();
+		}, 1200);
+	}
+
+	function refreshClusterResources() {
+		void refetchClusterResources();
+		scheduleTrailingRefetch();
+	}
+
+	onDestroy(() => {
+		if (trailingRefetchTimer) {
+			clearTimeout(trailingRefetchTimer);
+		}
+	});
+
 	const cluster = resource(
 		() => 'cluster-resources',
-		async () => {
+		async (_, __, { signal }) => {
+			const services = storage.enabledServices || [];
+			if (!services.includes('virtualization') && !services.includes('jails')) {
+				return [];
+			}
 			return await getClusterResources();
 		},
 		{
@@ -34,7 +89,7 @@
 
 	const nodes = resource(
 		() => 'cluster-nodes',
-		async () => {
+		async (_, __, { signal }) => {
 			return await getNodes();
 		},
 		{
@@ -51,17 +106,25 @@
 			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
-					...(n.jails ?? []).map((j) => ({
-						id: `jail-${j.ctId}`,
-						sortId: j.ctId,
-						label: `${j.name} (${j.ctId})`,
-						icon: 'hugeicons--prison',
-						href: `/${nodeLabel}/jail/${j.ctId}`,
-						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
-					})),
+					...(n.jails ?? [])
+						.filter((jail) => jail.state?.trim() !== '')
+						.map((j) => ({
+							id: `jail-${j.ctId}`,
+							sortId: j.ctId,
+							resourceId: j.ctId,
+							resourceType: 'jail' as const,
+							nodeHostname: n.hostname,
+							label: `${j.name} (${j.ctId})`,
+							icon: 'hugeicons--prison',
+							href: `/${nodeLabel}/jail/${j.ctId}`,
+							state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+						})),
 					...(n.vms ?? []).map((vm) => ({
 						id: `vm-${vm.rid}`,
 						sortId: vm.rid,
+						resourceId: vm.rid,
+						resourceType: 'vm' as const,
+						nodeHostname: n.hostname,
 						label: `${vm.name} (${vm.rid})`,
 						icon: 'material-symbols--monitor-outline',
 						href: `/${nodeLabel}/vm/${vm.rid}`,
@@ -77,7 +140,7 @@
 				return {
 					id: n.nodeUUID,
 					label: nodeLabel,
-					icon: isActive ? 'mdi--server' : 'mdi--server-off',
+					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
 					children: isActive ? mergedChildren : []
 				};
@@ -85,40 +148,98 @@
 		}
 	]);
 
-	$effect(() => {
-		if (tree && tree.length > 0) {
-			const storedIds = loadClusterIds();
-			if (storedIds.size === 0) {
-				openIds = new Set(collectIds(tree));
-				saveOpenIds(openIds);
-			} else {
-				const allNodeIds = new Set(collectIds(tree));
-				openIds = new Set(Array.from(storedIds).filter((id) => allNodeIds.has(id)));
+	watch(
+		() => storage.idle,
+		(idle) => {
+			if (!idle) {
+				refreshClusterResources();
 			}
 		}
-	});
+	);
+
+	watch(
+		() => storage.enabledServices,
+		() => {
+			refreshClusterResources();
+		}
+	);
+
+	watch(
+		() => tree,
+		(currentTree) => {
+			if (currentTree.length > 0) {
+				const hasClusterNodes = cluster.current.length > 0;
+				const allCurrentIds = new Set(collectIds(currentTree));
+
+				if (!hasInitializedOpenIds) {
+					const hasSavedIds = hasSavedClusterIds();
+
+					// Wait for cluster data before pruning saved IDs to avoid collapsing everything on refresh.
+					if (hasSavedIds && !hasClusterNodes) {
+						return;
+					}
+
+					if (!hasSavedIds) {
+						openIds = new Set(allCurrentIds);
+						saveOpenIds(openIds);
+					} else {
+						const storedIds = loadClusterIds();
+						openIds = new Set(Array.from(storedIds).filter((id) => allCurrentIds.has(id)));
+						if (!isSameSet(openIds, storedIds)) {
+							saveOpenIds(openIds);
+						}
+					}
+
+					hasInitializedOpenIds = true;
+					return;
+				}
+
+				if (!hasClusterNodes) {
+					return;
+				}
+
+				const filteredIds = new Set(Array.from(openIds).filter((id) => allCurrentIds.has(id)));
+				if (!isSameSet(filteredIds, openIds)) {
+					openIds = filteredIds;
+					saveOpenIds(openIds);
+				}
+			}
+		}
+	);
 
 	watch(
 		() => reload.leftPanel,
 		(value) => {
 			if (value) {
-				cluster.refetch();
-				nodes.refetch();
+				refreshClusterResources();
 				reload.leftPanel = false;
 			}
 		}
 	);
 
-	useInterval(30000, {
-		callback: () => {
-			reload.leftPanel = true;
-		}
+	const activeNodeId = $derived.by(() => {
+		const path = page.url.pathname;
+		const parts = path.split('/').filter(Boolean);
+		const nodeLabel = parts[0];
+		const node = cluster.current.find((n) => (n.hostname || n.nodeUUID) === nodeLabel);
+
+		return node?.nodeUUID ?? null;
 	});
+
+	watch(
+		() => activeNodeId,
+		(nodeId, prevNodeId) => {
+			if (nodeId !== prevNodeId) {
+				reload.leftPanel = true;
+				reload.auditLog = true;
+			}
+		}
+	);
 </script>
 
-<div class="h-full overflow-y-auto px-1.5 pt-1">
-	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar w-full">
-		<ul>
+<div class="flex h-full min-h-0 flex-col px-1.5 pt-1">
+	<nav aria-label="sylve-sidebar" class="menu thin-scrollbar h-full min-h-0 w-full">
+		<ul class="h-full min-h-0">
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item (item.id)}
 					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} />

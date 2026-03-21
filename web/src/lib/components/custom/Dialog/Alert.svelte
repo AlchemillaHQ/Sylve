@@ -12,9 +12,20 @@
 			onCancel: () => void;
 		};
 		customTitle?: string;
+		confirmLabel?: string;
+		loadingLabel?: string;
+		loading?: boolean;
 	}
 
-	let { open = $bindable(), names, actions, customTitle }: Props = $props();
+	let {
+		open = $bindable(),
+		names,
+		actions,
+		customTitle,
+		confirmLabel = 'Continue',
+		loadingLabel = 'Processing...',
+		loading = false
+	}: Props = $props();
 </script>
 
 <AlertDialog.Root bind:open>
@@ -33,7 +44,14 @@
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel onclick={actions.onCancel}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={actions.onConfirm}>Continue</AlertDialog.Action>
+			<AlertDialog.Action onclick={actions.onConfirm} disabled={loading}>
+				{#if loading}
+					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+					{loadingLabel}
+				{:else}
+					{confirmLabel}
+				{/if}
+			</AlertDialog.Action>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>

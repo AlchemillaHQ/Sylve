@@ -16,8 +16,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
-	import { cssVar } from '$lib/utils';
-	import { untrack } from 'svelte';
+	import { watch } from 'runed';
 
 	use([
 		LineChart,
@@ -37,37 +36,47 @@
 		color: 'one' | 'two' | 'three' | 'four';
 	}
 
+	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond';
+
 	interface Props {
 		title: string;
+		titleIconClass?: string;
 		series: SeriesData[];
 		percentage: boolean;
 		data: boolean;
+		types?: ValueType;
+		smooth?: boolean;
 		containerClass?: string;
 		containerContentHeight?: string;
 	}
 
 	let {
 		title,
+		titleIconClass = '',
 		series,
 		percentage,
 		data,
+		types = 'auto',
+		smooth = true,
 		containerClass = 'p-5',
 		containerContentHeight = 'h-[360px]'
 	}: Props = $props();
 
 	let chart: EChartsType | undefined = $state(undefined);
+	let optionRafId: number | null = null;
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 
-	const colors = {
+	const colors = $derived({
 		grid: {
 			dark: 'rgba(255,255,255,0.12)',
 			light: 'rgba(0,0,0,0.12)'
 		},
 		tooltip: {
-			background: cssVar('--muted'),
-			border: cssVar('--border')
+			background: 'var(--muted)',
+			border: 'var(--border)',
+			text: 'var(--foreground)'
 		},
 		one: {
 			main: 'rgba(230, 131, 47, 1)',
@@ -98,12 +107,12 @@
 						filler: 'rgb(200, 200, 200, 0.01)'
 					}
 				: {
-						color: 'rgb(0, 0, 0)',
-						borderColor: 'rgb(0, 0, 0)',
-						soft: 'rgb(0, 0, 0, 0.6)',
-						filler: 'rgb(0, 0, 0, 0.01)'
+						color: 'rgb(165, 165, 165)',
+						borderColor: 'rgb(165, 165, 165)',
+						soft: 'rgb(195, 195, 195, 0.6)',
+						filler: 'rgb(195, 195, 195, 0.01)'
 					}
-	};
+	});
 
 	const primaryColor = $derived(series.length > 0 ? series[0].color : 'one');
 	const seriesColors = $derived(series.map((s) => colors[s.color].main));
@@ -121,11 +130,38 @@
 			.filter(Boolean) as [number, number | null][];
 	}
 
-	// Create a function to generate options based on current state
+	function getEffectiveValueType():
+		| 'percentage'
+		| 'number'
+		| 'human'
+		| Exclude<ValueType, 'auto'> {
+		if (types !== 'auto') return types;
+		if (percentage) return 'percentage';
+		if (data) return 'human';
+		return 'number';
+	}
+
+	function formatValue(value: number, axis = false): string {
+		const type = getEffectiveValueType();
+
+		switch (type) {
+			case 'percentage':
+				return axis ? `${value}%` : `${Number(value).toFixed(2)}%`;
+			case 'human':
+				return humanFormat(value);
+			case 'bytes':
+				return humanFormat(value, { unit: 'B' });
+			case 'bytesPerSecond':
+				return humanFormat(value, { unit: 'B/s' });
+			default:
+				return axis ? value.toString() : Number(value).toFixed(2);
+		}
+	}
+
 	function getOptions(): EChartsOption {
 		return {
 			title: {
-				text: title,
+				show: false,
 				textStyle: {
 					color: titleColor,
 					fontStyle: 'normal',
@@ -156,7 +192,7 @@
 						const timestamp = paramArray[0].data[0];
 						if (timestamp !== undefined) {
 							const date = new Date(timestamp as string | number | Date);
-							tooltipHtml += `<div class="font-semibold mb-1">${date.toLocaleString()}</div>`;
+							tooltipHtml += `<div class="font-semi mb-1" style="color:${colors.tooltip.text}">${date.toLocaleString()}</div>`;
 						}
 					}
 
@@ -167,19 +203,10 @@
 
 							let formattedValue = '';
 							if (value !== undefined && value !== null) {
-								if (percentage) {
-									formattedValue = `${Number(value).toFixed(2)}%`;
-								} else if (data) {
-									formattedValue = humanFormat(Number(value));
-								} else {
-									formattedValue = Number(value).toFixed(2);
-								}
+								formattedValue = formatValue(Number(value));
 							}
 
-							tooltipHtml += `<div class="flex items-center gap-2">
-								<span style="display:inline-block;width:10px;height:10px;background-color:${param.color};border-radius:50%;"></span>
-								<span>${seriesName}: ${formattedValue}</span>
-							</div>`;
+							tooltipHtml += `<div class="font-semi" style="color:${colors.tooltip.text}">${seriesName}: ${formattedValue}</div>`;
 						}
 					});
 					tooltipHtml += `</div>`;
@@ -187,6 +214,9 @@
 				},
 				backgroundColor: colors.tooltip.background,
 				borderColor: colors.tooltip.border,
+				textStyle: {
+					color: colors.tooltip.text
+				},
 				borderWidth: 1
 			},
 			grid: {
@@ -211,12 +241,7 @@
 				min: percentage ? 0 : undefined,
 				axisLabel: {
 					formatter: function (value: number) {
-						if (percentage) {
-							return `${value}%`;
-						} else if (data) {
-							return `${humanFormat(value)}`;
-						}
-						return value.toString();
+						return formatValue(value, true);
 					}
 				},
 				splitLine: {
@@ -269,7 +294,7 @@
 				name: s.name,
 				type: 'line',
 				showSymbol: false,
-				smooth: true,
+				smooth,
 				data: cleanPoints(s.points)
 			})),
 			toolbox: {
@@ -289,27 +314,56 @@
 
 	let mouseIn = $state(false);
 
-	$effect(() => {
-		if (!chart || chart.isDisposed?.()) return;
+	watch(
+		[
+			() => mode.current,
+			() => title,
+			() => series,
+			() => percentage,
+			() => data,
+			() => types,
+			() => smooth,
+			() => titleIconClass
+		],
+		() => {
+			if (!chart || chart.isDisposed?.()) return;
 
-		untrack(() => {
-			requestAnimationFrame(() => {
+			if (optionRafId !== null) {
+				cancelAnimationFrame(optionRafId);
+			}
+
+			optionRafId = requestAnimationFrame(() => {
 				if (!chart || chart.isDisposed?.()) return;
-				chart.setOption(getOptions(), { notMerge: false, lazyUpdate: true });
+				chart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+				optionRafId = null;
 			});
-		});
-	});
+		}
+	);
 </script>
 
 <Card.Root class={containerClass}>
 	<Card.Content class="{containerContentHeight} w-full overflow-hidden rounded-sm p-0">
 		<div
 			role="region"
-			class="h-full w-full overflow-visible"
+			class="relative h-full w-full overflow-visible"
 			onmouseenter={() => (mouseIn = true)}
 			onmouseleave={() => (mouseIn = false)}
 		>
-			<Chart {init} options={getOptions()} bind:chart />
+			<div
+				class="pointer-events-none absolute top-1 left-2 z-10 flex items-center gap-1 whitespace-nowrap"
+			>
+				{#if titleIconClass}
+					<span
+						class={`${titleIconClass} text-blue-600 dark:text-blue-500 inline-block h-5 w-5 shrink-0 align-middle`}
+					></span>
+				{/if}
+				<span class="text-base leading-none font-normal text-blue-600 dark:text-blue-500"
+					>{title}</span
+				>
+			</div>
+			{#key mode.current}
+				<Chart {init} options={getOptions()} bind:chart />
+			{/key}
 		</div>
 	</Card.Content>
 </Card.Root>

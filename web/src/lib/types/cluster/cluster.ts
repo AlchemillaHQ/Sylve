@@ -15,7 +15,8 @@ export const RaftNodeSchema = z.object({
 	id: z.string(),
 	address: z.string(),
 	suffrage: z.string(),
-	isLeader: z.boolean()
+	isLeader: z.boolean(),
+	guestIDs: z.union([z.array(z.number()), z.null()]).default([])
 });
 
 export const ClusterDetailsSchema = z.object({
@@ -40,7 +41,8 @@ export const ClusterNodeSchema = z.object({
 	disk: z.number(),
 	diskUsage: z.number(),
 	createdAt: z.string(),
-	updatedAt: z.string()
+	updatedAt: z.string(),
+	guestIDs: z.union([z.array(z.number()), z.null()]).default([])
 });
 
 export const NodeResourceSchema = z.object({

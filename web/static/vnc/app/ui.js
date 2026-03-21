@@ -26,6 +26,7 @@ import RFB from '../core/rfb.js';
 import * as WebUtil from './webutil.js';
 
 const PAGE_TITLE = 'noVNC';
+const SESSION_CONFLICT_TOKEN = 'already in use by another client';
 
 const LINGUAS = [
 	'cs',
@@ -68,6 +69,7 @@ const UI = {
 	inhibitReconnect: true,
 	reconnectCallback: null,
 	reconnectPassword: null,
+	forceOvertake: false,
 
 	async start(options = {}) {
 		UI.customSettings = options.settings || {};
@@ -150,6 +152,9 @@ const UI = {
 		UI.addClipboardHandlers();
 		UI.addSettingsHandlers();
 		document.getElementById('noVNC_status').addEventListener('click', UI.hideStatus);
+		document
+			.getElementById('noVNC_overtake_button')
+			.addEventListener('click', UI.overtakeSession);
 
 		// Bootstrap fallback input handler
 		UI.keyboardinputReset();
@@ -1024,6 +1029,27 @@ const UI = {
 		document.getElementById('noVNC_connect_dlg').classList.remove('noVNC_open');
 	},
 
+	showOvertakeOption() {
+		const overtakeActions = document.getElementById('noVNC_overtake_actions');
+		if (overtakeActions) {
+			overtakeActions.hidden = false;
+		}
+	},
+
+	hideOvertakeOption() {
+		const overtakeActions = document.getElementById('noVNC_overtake_actions');
+		if (overtakeActions) {
+			overtakeActions.hidden = true;
+		}
+	},
+
+	isSessionConflict(reason) {
+		if (!reason) {
+			return false;
+		}
+		return reason.toLowerCase().includes(SESSION_CONFLICT_TOKEN);
+	},
+
 	connect(event, password) {
 		// Ignore when rfb already exists
 		if (typeof UI.rfb !== 'undefined') {
@@ -1044,6 +1070,7 @@ const UI = {
 		}
 
 		UI.hideStatus();
+		UI.hideOvertakeOption();
 
 		UI.closeConnectPanel();
 
@@ -1071,6 +1098,11 @@ const UI = {
 			url = new URL(path, location.href);
 			url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 		}
+
+		if (UI.forceOvertake) {
+			url.searchParams.set('overtake', '1');
+		}
+		UI.forceOvertake = false;
 
 		try {
 			UI.rfb = new RFB(document.getElementById('noVNC_container'), url.href, {
@@ -1116,6 +1148,11 @@ const UI = {
 		UI.updateVisualState('disconnecting');
 
 		// Don't display the connection settings until we're actually disconnected
+	},
+
+	overtakeSession() {
+		UI.forceOvertake = true;
+		UI.connect();
 	},
 
 	reconnect() {
@@ -1171,14 +1208,22 @@ const UI = {
 
 		if (!e.detail.clean) {
 			UI.updateVisualState('disconnected');
+			const hasSessionConflict = UI.isSessionConflict(e.detail.reason);
+			if (hasSessionConflict) {
+				UI.showOvertakeOption();
+			} else {
+				UI.hideOvertakeOption();
+			}
 			if (wasConnected) {
-				// Use specific error reason if available, otherwise use generic message
-				const errorMsg = e.detail.reason || _('Something went wrong, connection is closed');
+				const errorMsg = hasSessionConflict
+					? _('VNC session is already active. Click "Overtake Session" to disconnect the other user.')
+					: e.detail.reason || _('Something went wrong, connection is closed');
 				UI.showStatus(errorMsg, 'error');
 			} else {
 				console.log(e);
-				// Use specific error reason if available, otherwise use generic message
-				const errorMsg = e.detail.reason || _('Failed to connect to server');
+				const errorMsg = hasSessionConflict
+					? _('VNC session is already active. Click "Overtake Session" to disconnect the other user.')
+					: e.detail.reason || _('Failed to connect to server');
 				UI.showStatus(errorMsg, 'error');
 			}
 		}

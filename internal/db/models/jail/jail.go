@@ -13,6 +13,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -29,8 +30,8 @@ type Network struct {
 	SwitchID   uint   `json:"switchId" gorm:"not null;index"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
 
-	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"-"`
-	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"-"`
+	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
+	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
 
 	MacID         *uint                 `json:"macId" gorm:"column:mac_id"`
 	MacAddressObj *networkModels.Object `json:"macObj" gorm:"foreignKey:MacID"`
@@ -55,20 +56,52 @@ func (n *Network) AfterFind(tx *gorm.DB) error {
 	switch n.SwitchType {
 	case "standard":
 		var s networkModels.StandardSwitch
-		if err := tx.First(&s, n.SwitchID).Error; err != nil {
+		if err := tx.
+			Preload("Ports").
+			Preload("AddressObj").
+			Preload("AddressObj.Entries").
+			Preload("AddressObj.Resolutions").
+			Preload("Address6Obj").
+			Preload("Address6Obj.Entries").
+			Preload("Address6Obj.Resolutions").
+			Preload("NetworkObj").
+			Preload("NetworkObj.Entries").
+			Preload("NetworkObj.Resolutions").
+			Preload("Network6Obj").
+			Preload("Network6Obj.Entries").
+			Preload("Network6Obj.Resolutions").
+			Preload("GatewayAddressObj").
+			Preload("GatewayAddressObj.Entries").
+			Preload("GatewayAddressObj.Resolutions").
+			Preload("Gateway6AddressObj").
+			Preload("Gateway6AddressObj.Entries").
+			Preload("Gateway6AddressObj.Resolutions").
+			First(&s, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load standard switch %d: %w", n.SwitchID, err)
 		}
 		n.StandardSwitch = &s
+
 	case "manual":
 		var m networkModels.ManualSwitch
 		if err := tx.First(&m, n.SwitchID).Error; err != nil {
 			return fmt.Errorf("load manual switch %d: %w", n.SwitchID, err)
 		}
 		n.ManualSwitch = &m
+
 	default:
 		return fmt.Errorf("unknown switch type: %s", n.SwitchType)
 	}
-	return nil
+
+	return tx.Preload("Entries").
+		Where("id IN ?", []uint{
+			utils.GetVal(n.MacID),
+			utils.GetVal(n.IPv4ID),
+			utils.GetVal(n.IPv4GwID),
+			utils.GetVal(n.IPv6ID),
+			utils.GetVal(n.IPv6GwID),
+		}).
+		Find(&[]networkModels.Object{}).
+		Error
 }
 
 type JailStats struct {
@@ -113,10 +146,33 @@ const (
 )
 
 type JailHooks struct {
+	ID      uint          `json:"id" gorm:"primaryKey"`
 	JailID  uint          `json:"jid" gorm:"column:jid;index"`
 	Phase   JailHookPhase `json:"phase" gorm:"column:phase;index"`
 	Enabled bool          `json:"enabled"`
 	Script  string        `json:"script"`
+}
+
+type JailSnapshot struct {
+	ID uint `json:"id" gorm:"primaryKey"`
+
+	JailID uint `json:"jid" gorm:"column:jid;index;uniqueIndex:idx_jail_snapshot_unique,priority:1"`
+	CTID   uint `json:"ctId" gorm:"column:ct_id;index"`
+
+	ParentSnapshotID *uint `json:"parentSnapshotId" gorm:"column:parent_snapshot_id;index"`
+
+	Name        string `json:"name" gorm:"not null"`
+	Description string `json:"description" gorm:"default:''"`
+
+	SnapshotName string `json:"snapshotName" gorm:"column:snapshot_name;not null;uniqueIndex:idx_jail_snapshot_unique,priority:2"`
+	RootDataset  string `json:"rootDataset" gorm:"column:root_dataset;not null"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (JailSnapshot) TableName() string {
+	return "jail_snapshots"
 }
 
 type JailType string
@@ -147,14 +203,16 @@ type Jail struct {
 	DevFSRuleset   string `json:"devfsRuleset"`
 
 	Fstab             string      `json:"fstab"`
+	ResolvConf        string      `json:"resolvConf"`
 	CleanEnvironment  bool        `json:"cleanEnvironment"`
 	AdditionalOptions string      `json:"additionalOptions"`
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
-	JailHooks         []JailHooks `gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	JailHooks         []JailHooks `json:"jailHooks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
-	Storages []Storage   `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Networks []Network   `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Stats    []JailStats `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Storages  []Storage      `json:"storages" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Networks  []Network      `json:"networks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Snapshots []JailSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Stats     []JailStats    `json:"-" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 
 	MetadataMeta string `json:"metadataMeta"`
 	MetadataEnv  string `json:"metadataEnv"`

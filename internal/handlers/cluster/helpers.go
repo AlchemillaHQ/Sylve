@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +31,7 @@ func mapRaftAddrToAPI(raftAddr string) (string, error) {
 	}
 
 	scheme := "https"
-	apiPort := config.ParsedConfig.Port
+	apiPort := cluster.ClusterEmbeddedHTTPSPort
 
 	return (&url.URL{
 		Scheme: scheme,
@@ -57,6 +56,12 @@ func ReverseProxy(c *gin.Context, backend string, clusterKey string) {
 	proxy := httputil.NewSingleHostReverseProxy(remote)
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	orig := proxy.Director
+	proxy.Director = func(r *http.Request) {
+		orig(r)
+		// Avoid receiving gzip from upstream and then re-gzipping locally.
+		r.Header.Del("Accept-Encoding")
 	}
 
 	proxy.ErrorHandler = func(writer http.ResponseWriter, request *http.Request, err error) {

@@ -13,7 +13,6 @@ import (
 	"fmt"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -32,12 +31,10 @@ func (s *Service) Detail() *clusterServiceInterfaces.Detail {
 		return nil
 	}
 
-	apiPort := config.ParsedConfig.Port
-
 	return &clusterServiceInterfaces.Detail{
 		NodeID:   nodeId,
 		Hostname: hostname,
-		APIPort:  apiPort,
+		APIPort:  ClusterEmbeddedHTTPSPort,
 	}
 }
 

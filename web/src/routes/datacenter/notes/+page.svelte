@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createNote, deleteNote, getNotes } from '$lib/api/cluster/notes';
+	import { createNote, deleteNote, editNote, getNotes } from '$lib/api/cluster/notes';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -13,7 +13,6 @@
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import Icon from '@iconify/svelte';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -23,10 +22,14 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	// svelte-ignore state_referenced_locally
 	let notes = resource(
 		() => 'cluster-notes',
 		async () => {
-			return (await getNotes()) as Note[];
+			const notes = await getNotes();
+			updateCache('cluster-notes', notes);
+			return notes;
 		},
 		{
 			initialValue: data.notes
@@ -78,17 +81,17 @@
 	async function saveNote() {
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
-			// const response = await editDCNote(selectedId, modalState.title, modalState.content);
-			// queryClient.refetchQueries('cluster-notes');
-			// if (response.status === 'success') {
-			// 	toast.success('Note updated', { position: 'bottom-center' });
-			// 	handleNote(undefined, false, true);
-			// } else {
-			// 	handleAPIError(response);
-			// 	toast.error('Failed to update note', {
-			// 		position: 'bottom-center'
-			// 	});
-			// }
+			const response = await editNote(selectedId, modalState.title, modalState.content);
+			reload = true;
+			if (response.status === 'success') {
+				toast.success('Note updated', { position: 'bottom-center' });
+				handleNote(undefined, false, true);
+			} else {
+				handleAPIError(response);
+				toast.error('Failed to update note', {
+					position: 'bottom-center'
+				});
+			}
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
 			reload = true;
@@ -178,7 +181,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:eye" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
 					<span>View</span>
 				</div>
 			</Button>
@@ -192,7 +195,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:delete" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 					<span>Delete</span>
 				</div>
 			</Button>
@@ -209,7 +212,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="mdi:note-edit" class="mr-1 h-4 w-4" />
+					<span class="icon-[mdi--note-edit] mr-1 h-4 w-4"></span>
 					<span>Edit</span>
 				</div>
 			</Button>
@@ -228,7 +231,7 @@
 				class="h-6.5"
 			>
 				<div class="flex items-center">
-					<Icon icon="material-symbols:delete-sweep" class="mr-1 h-4 w-4" />
+					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
 					<span>Bulk Delete</span>
 				</div>
 			</Button>
@@ -242,7 +245,7 @@
 
 		<Button onclick={() => handleNote()} size="sm" class="h-6  ">
 			<div class="flex items-center">
-				<Icon icon="gg:add" class="mr-1 h-4 w-4" />
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 				<span>New</span>
 			</div>
 		</Button>
@@ -258,7 +261,11 @@
 			<Dialog.Header class="">
 				<Dialog.Title class="flex items-center justify-between">
 					<div class="flex items-center gap-2">
-						<Icon icon={modalState.isEditMode ? 'mdi:note-edit' : 'mdi:note'} class="h-5 w-5" />
+						<span
+							class={modalState.isEditMode
+								? 'icon-[mdi--note-edit] h-5 w-5'
+								: 'icon-[mdi--note] h-5 w-5'}
+						></span>
 						<span>
 							{#if modalState.isEditMode}
 								{#if selectedId}
@@ -278,13 +285,24 @@
 							size="sm"
 							variant="link"
 							title={'Reset'}
-							class="h-4 "
+							class="h-4 {modalState.isEditMode && selectedId ? '' : 'hidden'}"
 							onclick={() => {
-								modalState.title = '';
-								modalState.content = '';
+								if (
+									modalState.isEditMode &&
+									selectedId &&
+									notes.current &&
+									Array.isArray(notes.current)
+								) {
+									const originalNote = notes.current.find((note) => note.id === selectedId);
+									if (originalNote) {
+										modalState.title = originalNote.title;
+										modalState.content = originalNote.content;
+										return;
+									}
+								}
 							}}
 						>
-							<Icon icon="radix-icons:reset" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[radix-icons--reset] h-4 w-4 pointer-events-none"></span>
 							<span class="sr-only">{'Reset'}</span>
 						</Button>
 						<Button
@@ -298,7 +316,8 @@
 								modalState.content = '';
 							}}
 						>
-							<Icon icon="material-symbols:close-rounded" class="pointer-events-none h-4 w-4" />
+							<span class="icon-[material-symbols--close-rounded] h-4 w-4 pointer-events-none"
+							></span>
 							<span class="sr-only">{'Close'}</span>
 						</Button>
 					</div>

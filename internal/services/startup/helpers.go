@@ -21,7 +21,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
-	"github.com/alchemillahq/sylve/pkg/rcconf"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
@@ -87,14 +86,11 @@ func (s *Service) FreeBSDCheck() error {
 }
 
 func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) error {
-	requiredPackages := []string{
-		"smartmontools",
-		"tmux",
-	}
+	requiredPackages := []string{}
 
 	if basicSettings.Services != nil {
 		if slices.Contains(basicSettings.Services, models.Virtualization) {
-			requiredPackages = append(requiredPackages, "libvirt", "bhyve-firmware", "jansson", "swtpm")
+			requiredPackages = append(requiredPackages, "libvirt", "bhyve-firmware", "swtpm")
 		}
 
 		if slices.Contains(basicSettings.Services, models.DHCPServer) {
@@ -102,7 +98,7 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 		}
 
 		if slices.Contains(basicSettings.Services, models.SambaServer) {
-			output, err := utils.RunCommand("pkg", "info")
+			output, err := utils.RunCommand("/usr/sbin/pkg", "info")
 			if err != nil {
 				return fmt.Errorf("failed to run pkg info: %w", err)
 			}
@@ -151,63 +147,16 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 	return nil
 }
 
-func (s *Service) CheckServiceDependencies(basicSettings models.BasicSettings) error {
-	const rcConfPath = "/etc/rc.conf"
-
-	enabledServices := []string{"zfs_enable"}
-
-	serviceMap := map[string]string{
-		"virtualization": "libvirtd_enable",
-		"dhcp-server":    "dnsmasq_enable",
-		"samba-server":   "samba_server_enable",
-	}
-
-	for _, svc := range basicSettings.Services {
-		if rc, ok := serviceMap[string(svc)]; ok {
-			enabledServices = append(enabledServices, rc)
-		}
-	}
-
-	serviceNames := map[string]string{
-		"libvirtd_enable":     "libvirtd",
-		"dnsmasq_enable":      "dnsmasq",
-		"samba_server_enable": "samba_server",
-	}
-
-	config, err := rcconf.Parse(rcConfPath)
-	if err != nil {
-		return fmt.Errorf("failed to parse %s: %w", rcConfPath, err)
-	}
-
-	for _, key := range enabledServices {
-		val, ok := config[key]
-		if !ok || val != "YES" {
-			return fmt.Errorf("required service %s is not enabled in %s", key, rcConfPath)
-		}
-
-		if key == "zfs_enable" || key == "samba_server_enable" || key == "dnsmasq_enable" {
-			continue
-		}
-
-		service := serviceNames[key]
-		if err := ensureServiceRunning(service); err != nil {
-			return fmt.Errorf("failed to ensure service %s is running: %w", service, err)
-		}
-	}
-
-	return nil
-}
-
 func (s *Service) EnableLinux() error {
 	loadKLD := func(module string) error {
-		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
 		return nil
 	}
 
 	ensureFallbackBrand := func(name string) error {
-		out, err := utils.RunCommand("sysctl", "-ni", name)
+		out, err := utils.RunCommand("/sbin/sysctl", "-ni", name)
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", name, err)
 		}
@@ -223,7 +172,7 @@ func (s *Service) EnableLinux() error {
 		}
 
 		if val == -1 {
-			if _, err := utils.RunCommand("sysctl", fmt.Sprintf("%s=3", name)); err != nil {
+			if _, err := utils.RunCommand("/sbin/sysctl", fmt.Sprintf("%s=3", name)); err != nil {
 				return fmt.Errorf("failed to set %s=3: %w", name, err)
 			}
 		}
@@ -231,7 +180,7 @@ func (s *Service) EnableLinux() error {
 	}
 
 	linuxMount := func(fs, mountPoint, opts string) error {
-		mountOut, err := utils.RunCommand("mount")
+		mountOut, err := utils.RunCommand("/sbin/mount")
 		if err != nil {
 			return fmt.Errorf("failed to list mounts: %w", err)
 		}
@@ -253,7 +202,7 @@ func (s *Service) EnableLinux() error {
 
 		args = append(args, "-t", fs, fs, mountPoint)
 
-		if _, err := utils.RunCommand("mount", args...); err != nil {
+		if _, err := utils.RunCommand("/sbin/mount", args...); err != nil {
 			return fmt.Errorf("failed to mount %s on %s: %w", fs, mountPoint, err)
 		}
 		return nil
@@ -296,7 +245,7 @@ func (s *Service) EnableLinux() error {
 		return err
 	}
 
-	emulPathRaw, err := utils.RunCommand("sysctl", "-n", "compat.linux.emul_path")
+	emulPathRaw, err := utils.RunCommand("/sbin/sysctl", "-n", "compat.linux.emul_path")
 	if err != nil {
 		return fmt.Errorf("failed to get compat.linux.emul_path: %w", err)
 	}
@@ -326,26 +275,24 @@ func (s *Service) EnableLinux() error {
 
 func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	requiredModules := []string{
-		"vmm",
-		"nmdm",
 		"if_bridge",
 		"zfs",
 		"cryptodev",
 		"if_epair",
 		"nullfs",
+		"netlink",
+		"nlsysevent",
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		requiredModules = append(requiredModules, "vmm", "nmdm")
 	}
 
-	if slices.Contains(basicSettings.Services, models.Jails) {
-		requiredModules = append(requiredModules, "if_epair", "nullfs")
-	}
-
 	for _, module := range requiredModules {
-		if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
-			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+		if _, err := utils.RunCommand("kldstat", "-m", module); err != nil {
+			if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+				return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+			}
 		}
 	}
 
@@ -432,22 +379,29 @@ add path 'bpf*' unhide
 		return fmt.Errorf("devfssync: failed to write to /etc/devfs.rules: %w", err)
 	}
 
-	if _, err := utils.RunCommand("service", "devfs", "restart"); err != nil {
+	if _, err := utils.RunCommand("/usr/sbin/service", "devfs", "restart"); err != nil {
 		return fmt.Errorf("devfssync: failed to restart devfs service: %w", err)
 	}
 
 	return nil
 }
 
-func ensureServiceRunning(service string) error {
-	_, err := utils.RunCommand("service", service, "status")
-	if err == nil {
-		return nil
+func ensureServiceStarted(service string) error {
+	// Check if it's already running using onestatus
+	_, statusErr := utils.RunCommand("/usr/sbin/service", service, "onestatus")
+	if statusErr == nil {
+		return nil // Service is already running
 	}
 
-	_, startErr := utils.RunCommand("service", service, "start")
+	// Force start the service without needing it enabled in /etc/rc.conf
+	output, startErr := utils.RunCommand("/usr/sbin/service", service, "onestart")
 	if startErr != nil {
-		return fmt.Errorf("could not start service %s: %w", service, startErr)
+		// Double check in case it actually started but returned a weird exit code
+		if _, finalStatusErr := utils.RunCommand("/usr/sbin/service", service, "onestatus"); finalStatusErr == nil {
+			return nil
+		}
+
+		return fmt.Errorf("could not force start service %s: %w (output: %s)", service, startErr, output)
 	}
 
 	return nil

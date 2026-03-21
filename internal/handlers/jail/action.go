@@ -9,14 +9,22 @@
 package jailHandlers
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
-	"github.com/alchemillahq/sylve/internal/services/jail"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
 	"github.com/gin-gonic/gin"
 )
+
+type protectedJailMutationChecker interface {
+	CanMutateProtectedJail(ctID uint) (bool, error)
+}
 
 // @Summary Perform Jail Action
 // @Description Perform an action (start/stop) on a specific jail
@@ -30,7 +38,7 @@ import (
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/action/{action}/{ctId} [post]
-func JailAction(jailService *jail.Service) gin.HandlerFunc {
+func JailAction(jailService protectedJailMutationChecker, lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctId, err := strconv.Atoi(c.Param("ctId"))
 		if err != nil {
@@ -44,7 +52,7 @@ func JailAction(jailService *jail.Service) gin.HandlerFunc {
 		}
 
 		action := c.Param("action")
-		if action != "start" && action != "stop" {
+		if action != "start" && action != "stop" && action != "restart" {
 			c.JSON(400, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_action",
@@ -54,21 +62,70 @@ func JailAction(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		err = jailService.JailAction(ctId, action)
-		if err != nil {
+		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctId))
+		if leaseErr != nil {
 			c.JSON(500, internal.APIResponse[any]{
 				Status:  "error",
-				Message: fmt.Sprintf("failed_to_%s_jail", action),
+				Message: "replication_lease_check_failed",
+				Error:   leaseErr.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		if !allowed {
+			c.JSON(403, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "standby_mode_edit_not_allowed",
+				Error:   "replication_lease_not_owned",
+				Data:    nil,
+			})
+			return
+		}
+
+		username := strings.TrimSpace(c.GetString("Username"))
+
+		task, outcome, err := lifecycleService.RequestAction(
+			c.Request.Context(),
+			taskModels.GuestTypeJail,
+			uint(ctId),
+			action,
+			taskModels.LifecycleTaskSourceUser,
+			username,
+		)
+		if err != nil {
+			if errors.Is(err, lifecycle.ErrTaskInProgress) {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "lifecycle_task_in_progress",
+					Error:   err.Error(),
+					Data:    gin.H{"task": task},
+				})
+				return
+			}
+
+			if errors.Is(err, lifecycle.ErrInvalidAction) || errors.Is(err, lifecycle.ErrInvalidGuest) {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "invalid_action",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_enqueue_lifecycle_task",
 				Error:   err.Error(),
 				Data:    nil,
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
-			Message: fmt.Sprintf("jail_%s_success", action),
-			Data:    nil,
+			Message: fmt.Sprintf("jail_%s_queued", action),
+			Data:    gin.H{"task": task, "outcome": outcome},
 			Error:   "",
 		})
 	}

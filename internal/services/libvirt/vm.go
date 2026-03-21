@@ -31,6 +31,10 @@ import (
 )
 
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
+	if !s.IsVirtualizationEnabled() {
+		return []vmModels.VM{}, nil
+	}
+
 	var vms []vmModels.VM
 	if err := s.DB.
 		Preload("CPUPinning").
@@ -66,16 +70,14 @@ func (s *Service) ListVMs() ([]vmModels.VM, error) {
 }
 
 func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) {
-	type vmRow struct {
-		ID      uint
-		RID     uint `gorm:"column:rid"`
-		Name    string
-		VNCPort uint
+	if !s.IsVirtualizationEnabled() {
+		return []libvirtServiceInterfaces.SimpleList{}, nil
 	}
 
-	var vms []vmRow
+	var vms []vmModels.VM
 	if err := s.DB.
 		Model(&vmModels.VM{}).
+		Preload("CPUPinning").
 		Select("id", "name", "rid", "vnc_port").
 		Find(&vms).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_vms: %w", err)
@@ -102,15 +104,58 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 		}
 
 		list = append(list, libvirtServiceInterfaces.SimpleList{
-			ID:      vm.ID,
-			RID:     vm.RID,
-			Name:    vm.Name,
-			VNCPort: vm.VNCPort,
-			State:   state,
+			ID:         vm.ID,
+			RID:        vm.RID,
+			Name:       vm.Name,
+			VNCPort:    uint(vm.VNCPort),
+			State:      state,
+			CPUPinning: vm.CPUPinning,
 		})
 	}
 
 	return list, nil
+}
+
+func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfaces.SimpleList, error) {
+	if !s.IsVirtualizationEnabled() {
+		return libvirtServiceInterfaces.SimpleList{}, nil
+	}
+
+	var vm vmModels.VM
+	query := s.DB.
+		Model(&vmModels.VM{}).
+		Preload("CPUPinning").
+		Select("id", "name", "rid", "vnc_port")
+
+	if byRID {
+		query = query.Where("rid = ?", identifier)
+	} else {
+		query = query.Where("id = ?", identifier)
+	}
+
+	if err := query.First(&vm).Error; err != nil {
+		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_vm: %w", err)
+	}
+
+	state, err := s.GetDomainState(int(vm.RID))
+	if err != nil {
+		state = 0
+	}
+
+	simple := libvirtServiceInterfaces.SimpleList{
+		ID:         vm.ID,
+		RID:        vm.RID,
+		Name:       vm.Name,
+		State:      state,
+		VNCPort:    uint(vm.VNCPort),
+		CPUPinning: vm.CPUPinning,
+	}
+
+	if simple.CPUPinning == nil {
+		simple.CPUPinning = []vmModels.VMCPUPinning{}
+	}
+
+	return simple, nil
 }
 
 func validateCPUPins(
@@ -159,26 +204,33 @@ func validateCPUPins(
 	}
 
 	// 3) Core range + duplicates + optional (core->socket) strictness
-	seenCores := make(map[int]struct{}, 128)
+	actualHostCores := make(map[int]struct{}, 128)
 	perSocketCounts := make(map[int]int, hostSocketCount)
 	totalPinned := 0
 
 	for _, pin := range req.CPUPinning {
+		baseCore := pin.Socket * hostLogicalPerSocket
 		perSocketSeen := make(map[int]struct{}, len(pin.Cores))
 		for j, c := range pin.Cores {
-			if c < 0 || c >= hostLogicalCores {
+			if c < 0 || c >= hostLogicalPerSocket {
 				return fmt.Errorf("core_index_out_of_range: core=%d (max=%d) socket=%d pos=%d",
-					c, hostLogicalCores-1, pin.Socket, j)
+					c, hostLogicalPerSocket-1, pin.Socket, j)
 			}
 			if _, dup := perSocketSeen[c]; dup {
 				return fmt.Errorf("duplicate_core_within_socket: core=%d socket=%d", c, pin.Socket)
 			}
 			perSocketSeen[c] = struct{}{}
 
-			if _, dup := seenCores[c]; dup {
-				return fmt.Errorf("duplicate_core_across_sockets: core=%d", c)
+			actualHostCore := baseCore + c
+			if actualHostCore >= hostLogicalCores {
+				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
+					pin.Socket, c, actualHostCore, hostLogicalCores-1)
 			}
-			seenCores[c] = struct{}{}
+
+			if _, dup := actualHostCores[actualHostCore]; dup {
+				return fmt.Errorf("duplicate_core_across_sockets: core=%d", actualHostCore)
+			}
+			actualHostCores[actualHostCore] = struct{}{}
 		}
 		perSocketCounts[pin.Socket] += len(pin.Cores)
 		totalPinned += len(pin.Cores)
@@ -224,19 +276,6 @@ func validateCPUPins(
 				globalCore := baseCore + coreIdx
 				occupied[globalCore] = vm.RID
 			}
-		}
-	}
-
-	actualHostCores := make(map[int]struct{}, totalPinned)
-	for _, pin := range req.CPUPinning {
-		baseCore := pin.Socket * hostLogicalPerSocket
-		for _, coreIdx := range pin.Cores {
-			actualHostCore := baseCore + coreIdx
-			if actualHostCore >= hostLogicalCores {
-				return fmt.Errorf("calculated_core_out_of_range: socket=%d coreIdx=%d actualCore=%d max=%d",
-					pin.Socket, coreIdx, actualHostCore, hostLogicalCores-1)
-			}
-			actualHostCores[actualHostCore] = struct{}{}
 		}
 	}
 
@@ -524,6 +563,11 @@ func (s *Service) GetVM(id int) (vmModels.VM, error) {
 		Preload("Storages.Dataset").
 		Preload("Networks").
 		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
 		Where("id = ?", id).
 		First(&vm).Error
 
@@ -538,6 +582,11 @@ func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
 		Preload("Storages.Dataset").
 		Preload("Networks").
 		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
 		Where("rid = ?", rid).
 		First(&vm).Error
 
@@ -557,6 +606,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	apic := true
 	acpi := true
 	ignoreUMSRs := false
+	qemuGuestAgent := false
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -599,6 +649,9 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 
 	if data.IgnoreUMSRs != nil {
 		ignoreUMSRs = *data.IgnoreUMSRs
+	}
+	if data.QemuGuestAgent != nil {
+		qemuGuestAgent = *data.QemuGuestAgent
 	}
 
 	var networks []vmModels.Network
@@ -723,30 +776,32 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	}
 
 	vm := &vmModels.VM{
-		Name:              data.Name,
-		RID:               *data.RID,
-		Description:       data.Description,
-		CPUSockets:        data.CPUSockets,
-		CPUCores:          data.CPUCores,
-		CPUThreads:        data.CPUThreads,
-		RAM:               data.RAM,
-		Serial:            serial,
-		VNCPort:           data.VNCPort,
-		VNCPassword:       data.VNCPassword,
-		VNCResolution:     data.VNCResolution,
-		VNCWait:           vncWait,
-		StartAtBoot:       startAtBoot,
-		TPMEmulation:      tpmEmulation,
-		StartOrder:        data.StartOrder,
-		PCIDevices:        data.PCIDevices,
-		APIC:              apic,
-		ACPI:              acpi,
-		Storages:          storages,
-		Networks:          networks,
-		TimeOffset:        vmModels.TimeOffset(data.TimeOffset),
-		CloudInitData:     data.CloudInitData,
-		CloudInitMetaData: data.CloudInitMetaData,
-		IgnoreUMSR:        ignoreUMSRs,
+		Name:                   data.Name,
+		RID:                    *data.RID,
+		Description:            data.Description,
+		CPUSockets:             data.CPUSockets,
+		CPUCores:               data.CPUCores,
+		CPUThreads:             data.CPUThreads,
+		RAM:                    data.RAM,
+		Serial:                 serial,
+		VNCPort:                data.VNCPort,
+		VNCPassword:            data.VNCPassword,
+		VNCResolution:          data.VNCResolution,
+		VNCWait:                vncWait,
+		StartAtBoot:            startAtBoot,
+		TPMEmulation:           tpmEmulation,
+		StartOrder:             data.StartOrder,
+		PCIDevices:             data.PCIDevices,
+		APIC:                   apic,
+		ACPI:                   acpi,
+		Storages:               storages,
+		Networks:               networks,
+		TimeOffset:             vmModels.TimeOffset(data.TimeOffset),
+		CloudInitData:          data.CloudInitData,
+		CloudInitMetaData:      data.CloudInitMetaData,
+		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
+		IgnoreUMSR:             ignoreUMSRs,
+		QemuGuestAgent:         qemuGuestAgent,
 	}
 
 	vm.CPUPinning = []vmModels.VMCPUPinning{}
@@ -789,10 +844,18 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		return fmt.Errorf("failed_to_create_lv_vm: %w", err)
 	}
 
+	if err := s.WriteVMJson(*data.RID); err != nil {
+		logger.L.Error().Err(err).Msg("failed to write VM JSON after creation")
+	}
+
 	return nil
 }
 
 func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, deleteVolumes bool, ctx context.Context) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.
 		Preload("Stats").
@@ -807,7 +870,15 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		return fmt.Errorf("failed_to_find_vm: %w", err)
 	}
 
+	vmRootDatasets := make(map[string]struct{})
+
 	for _, storage := range vm.Storages {
+		if storage.Pool != "" {
+			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Pool, vm.RID)] = struct{}{}
+		} else if storage.Dataset.Pool != "" {
+			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Dataset.Pool, vm.RID)] = struct{}{}
+		}
+
 		if storage.Type == vmModels.VMStorageTypeDiskImage {
 			if err := s.DB.Delete(&storage).Error; err != nil {
 				return fmt.Errorf("failed_to_delete_storage: %w", err)
@@ -821,7 +892,8 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 
 		var err error
 
-		if storage.Type == vmModels.VMStorageTypeRaw {
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw:
 			if deleteRawDisks {
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
@@ -834,7 +906,7 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 					),
 				)
 			}
-		} else if storage.Type == vmModels.VMStorageTypeZVol {
+		case vmModels.VMStorageTypeZVol:
 			if deleteVolumes {
 				cSets, err = s.GZFS.ZFS.ListByType(
 					ctx,
@@ -870,13 +942,63 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 			return fmt.Errorf("failed_to_delete_storage: %w", err)
 		}
 
-		if datasets != nil && len(datasets) > 0 {
+		if len(datasets) > 0 {
 			for _, ds := range datasets {
 				err := ds.Destroy(ctx, true, false)
 				if err != nil {
 					logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy dataset %s", ds.Name)
 				}
 			}
+		}
+	}
+
+	for rootDataset := range vmRootDatasets {
+		hasChildren := false
+
+		fsSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, rootDataset)
+		if err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+				logger.L.Error().Err(err).Msgf("RemoveVM: failed to list filesystem datasets under %s", rootDataset)
+			}
+		} else {
+			for _, ds := range fsSets {
+				if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
+					hasChildren = true
+					break
+				}
+			}
+		}
+
+		if !hasChildren {
+			volSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false, rootDataset)
+			if err != nil {
+				if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+					logger.L.Error().Err(err).Msgf("RemoveVM: failed to list volume datasets under %s", rootDataset)
+				}
+			} else {
+				for _, ds := range volSets {
+					if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
+						hasChildren = true
+						break
+					}
+				}
+			}
+		}
+
+		if hasChildren {
+			continue
+		}
+
+		rootDS, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
+		if err != nil {
+			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+				logger.L.Error().Err(err).Msgf("RemoveVM: failed to fetch root dataset %s", rootDataset)
+			}
+			continue
+		}
+
+		if err := rootDS.Destroy(ctx, true, false); err != nil {
+			logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy empty root dataset %s", rootDataset)
 		}
 	}
 
@@ -907,31 +1029,8 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		return fmt.Errorf("failed_to_delete_vm: %w", err)
 	}
 
-	if cleanUpMacs {
-		tx := s.DB.Begin()
-
-		if len(usedMACS) > 0 {
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectEntry{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_entries: %w", err)
-			}
-
-			if err := tx.Where("object_id IN ?", usedMACS).
-				Delete(&networkModels.ObjectResolution{}).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
-			}
-
-			if err := tx.Delete(&networkModels.Object{}, usedMACS).Error; err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed_to_delete_objects: %w", err)
-			}
-
-			if err := tx.Commit().Error; err != nil {
-				return fmt.Errorf("failed_to_commit_cleanup: %w", err)
-			}
-		}
+	if err := s.cleanupVMMACObjects(cleanUpMacs, usedMACS); err != nil {
+		return err
 	}
 
 	for _, p := range vm.CPUPinning {
@@ -943,7 +1042,45 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 	return nil
 }
 
+func (s *Service) cleanupVMMACObjects(cleanUpMacs bool, usedMACS []uint) error {
+	if !cleanUpMacs || len(usedMACS) == 0 {
+		return nil
+	}
+
+	tx := s.DB.Begin()
+	if err := tx.Error; err != nil {
+		return fmt.Errorf("failed_to_begin_mac_cleanup: %w", err)
+	}
+
+	if err := tx.Where("object_id IN ?", usedMACS).
+		Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_object_entries: %w", err)
+	}
+
+	if err := tx.Where("object_id IN ?", usedMACS).
+		Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_object_resolutions: %w", err)
+	}
+
+	if err := tx.Delete(&networkModels.Object{}, usedMACS).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_objects: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_cleanup: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) PerformAction(rid uint, action string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
@@ -962,6 +1099,10 @@ func (s *Service) PerformAction(rid uint, action string) error {
 }
 
 func (s *Service) UpdateDescription(rid uint, description string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
 	var vm vmModels.VM
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -978,6 +1119,11 @@ func (s *Service) UpdateDescription(rid uint, description string) error {
 
 	if err := s.DB.Save(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_update_vm_description: %w", err)
+	}
+
+	err := s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("failed to write VM JSON after description update")
 	}
 
 	return nil

@@ -17,8 +17,14 @@ import (
 func Fixups(db *gorm.DB) error {
 	runNetworkDeltaMigration(db)
 	createSylveUnixGroup(db)
+	cleanupInvalidTokenRows(db)
+	cleanupInvalidAuditUserIDs(db)
 
 	return nil
+}
+
+func PreMigrationFixups(db *gorm.DB) {
+	deduplicateJailHooks(db)
 }
 
 func runNetworkDeltaMigration(db *gorm.DB) {
@@ -79,4 +85,154 @@ func createSylveUnixGroup(db *gorm.DB) {
 			logger.L.Err(err).Msg("failed creating sylve unix group")
 		}
 	}
+}
+
+func cleanupInvalidTokenRows(db *gorm.DB) {
+	const name = "cleanup_invalid_token_rows_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for cleanup_invalid_token_rows")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("tokens") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	query := `DELETE FROM tokens WHERE user_id < 0`
+	args := []any{}
+	if db.Migrator().HasTable("pam_identities") {
+		query = `DELETE FROM tokens WHERE user_id < 0 OR (auth_type = ? AND user_id NOT IN (SELECT id FROM pam_identities))`
+		args = append(args, "pam")
+	}
+
+	result := db.Exec(query, args...)
+	if result.Error != nil {
+		logger.L.Err(result.Error).Msg("failed cleaning up invalid token rows")
+		return
+	}
+
+	if result.RowsAffected > 0 {
+		logger.L.Warn().Msgf("Deleted %d invalid token rows", result.RowsAffected)
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func cleanupInvalidAuditUserIDs(db *gorm.DB) {
+	const name = "cleanup_invalid_audit_user_ids_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for cleanup_invalid_audit_user_ids")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("audit_records") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	result := db.Exec(`UPDATE audit_records SET user_id = NULL WHERE user_id < 0`)
+	if result.Error != nil {
+		logger.L.Err(result.Error).Msg("failed cleaning up invalid audit user IDs")
+		return
+	}
+
+	if result.RowsAffected > 0 {
+		logger.L.Warn().Msgf("Nullified %d invalid audit user IDs", result.RowsAffected)
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+/**
+ * A previous migration omitted a primary key on the jail_hooks table,
+ * which caused runaway duplicate entries during association updates and
+ * made it impossible to target specific hooks.
+ * * This fixup deduplicates the existing entries so GORM can safely apply
+ * an auto-incrementing primary key during the subsequent AutoMigrate pass.
+ */
+func deduplicateJailHooks(db *gorm.DB) {
+	const name = "deduplicate_jail_hooks_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for deduplicate_jail_hooks")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("jail_hooks") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+			CREATE TABLE jail_hooks_temp (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				jid INTEGER,
+				phase TEXT,
+				enabled BOOLEAN,
+				script TEXT
+			)
+		`).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec(`
+			INSERT INTO jail_hooks_temp (jid, phase, enabled, script)
+			SELECT DISTINCT jid, phase, enabled, script FROM jail_hooks
+		`).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec(`DROP TABLE jail_hooks`).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec(`ALTER TABLE jail_hooks_temp RENAME TO jail_hooks`).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logger.L.Err(err).Msg("failed deduplicating jail hooks")
+		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+
+	logger.L.Info().Msg("Deduplicated jail hooks and migrated schema")
 }

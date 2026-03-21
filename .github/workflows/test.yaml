@@ -1,0 +1,21 @@
+name: Test
+on:
+  push:
+    branches:
+      - "**"
+    paths-ignore:
+      - "docs/**"
+    tags-ignore:
+      - tip
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg install -y node24 npm-node24 go git
+          run: |
+            make test

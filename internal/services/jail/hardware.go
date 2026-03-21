@@ -22,6 +22,14 @@ import (
 )
 
 func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	if memoryBytes < 0 {
 		return fmt.Errorf("invalid memory value: %d", memoryBytes)
 	}
@@ -47,14 +55,14 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
 		if strings.Contains(t, "rctl -a") && strings.Contains(t, "memoryuse") {
-			lines[i] = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb)
+			lines[i] = fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb)
 			found = true
 			break
 		}
 	}
 
 	if !found {
-		lines = append(lines, fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+		lines = append(lines, fmt.Sprintf("rctl -a jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb))
 	}
 
 	newContent := strings.Join(lines, "\n")
@@ -63,7 +71,7 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 	}
 
 	// Live update
-	_, err = utils.RunCommand("rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", utils.HashIntToNLetters(int(ctId), 5), mb))
+	_, err = utils.RunCommand("/usr/bin/rctl", "-a", fmt.Sprintf("jail:%s:memoryuse:deny=%dM", s.GetCTIDHash(ctId), mb))
 	if err != nil {
 		return fmt.Errorf("failed to apply memory limit with rctl: %w", err)
 	}
@@ -78,10 +86,23 @@ func (s *Service) UpdateMemory(ctId uint, memoryBytes int64) error {
 		return fmt.Errorf("failed to update jail memory in database: %w", err)
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after memory update")
+	}
+
 	return nil
 }
 
 func (s *Service) UpdateCPU(ctId uint, cores int64) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	if cores <= 0 {
 		return fmt.Errorf("invalid cores value: %d (must be >= 1)", cores)
 	}
@@ -135,7 +156,7 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 	}
 
 	coreListStr := strings.Trim(strings.Replace(fmt.Sprint(selected), " ", ",", -1), "[]")
-	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
+	ctIdHash := s.GetCTIDHash(ctId)
 
 	postStart, err := s.GetHookScriptPath(ctId, "post-start")
 	if err != nil {
@@ -181,7 +202,7 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		return fmt.Errorf("failed to update jail CPU in database: %w", err)
 	}
 
-	if _, err := utils.RunCommand("cpuset", "-l", coreListStr, "-j", ctIdHash); err != nil {
+	if _, err := utils.RunCommand("/bin/cpuset", "-l", coreListStr, "-j", ctIdHash); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			logger.L.Warn().Msgf("jail %s not running, skipping live CPU set", ctIdHash)
 		} else {
@@ -189,10 +210,23 @@ func (s *Service) UpdateCPU(ctId uint, cores int64) error {
 		}
 	}
 
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after CPU update")
+	}
+
 	return nil
 }
 
 func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
 		return err
@@ -207,7 +241,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 		return fmt.Errorf("jail config not found for CTID: %d", ctId)
 	}
 
-	ctIdHash := utils.HashIntToNLetters(int(ctId), 5)
+	ctIdHash := s.GetCTIDHash(ctId)
 
 	if enabled {
 		const oneGiB = int64(1024 * 1024 * 1024)
@@ -258,7 +292,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 		return fmt.Errorf("failed to write updated post-start hook script: %w", err)
 	}
 
-	_, err = utils.RunCommand("rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash))
+	_, err = utils.RunCommand("/usr/bin/rctl", "-r", fmt.Sprintf("jail:%s", ctIdHash))
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Failed to remove rctl rules for jail %d", ctId)
 	}
@@ -268,7 +302,7 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 	if numLogical > 1 {
 		allRange = fmt.Sprintf("0-%d", numLogical-1)
 	}
-	_, err = utils.RunCommand("cpuset", "-l", allRange, "-j", ctIdHash)
+	_, err = utils.RunCommand("/bin/cpuset", "-l", allRange, "-j", ctIdHash)
 	if err != nil {
 		logger.L.Warn().Err(err).Msgf("Failed to reset cpuset for jail %d", ctId)
 	}
@@ -281,6 +315,11 @@ func (s *Service) UpdateResourceLimits(ctId uint, enabled bool) error {
 
 	if err := s.DB.Save(&jail).Error; err != nil {
 		return fmt.Errorf("failed to update jail resource limits in database: %w", err)
+	}
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after memory update")
 	}
 
 	return nil

@@ -31,6 +31,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/startup"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
+	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
 
 	"github.com/alchemillahq/gzfs"
@@ -50,6 +51,7 @@ type ServiceRegistry struct {
 	SambaService     sambaServiceInterfaces.SambaServiceInterface
 	JailService      jailServiceInterfaces.JailServiceInterface
 	ClusterService   clusterServiceInterfaces.ClusterServiceInterface
+	ZeltaService     *zelta.Service
 }
 
 func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
@@ -111,7 +113,15 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 		return jail.NewJailService(db, networkService, systemService, gzfs)
 	case *cluster.Service:
 		authService := dependencies[0].(serviceInterfaces.AuthServiceInterface)
-		return cluster.NewClusterService(db, authService)
+		jailService := dependencies[1].(jailServiceInterfaces.JailServiceInterface)
+		return cluster.NewClusterService(db, authService, jailService)
+	case *zelta.Service:
+		clusterService := dependencies[0].(*cluster.Service)
+		jailService := dependencies[1].(jailServiceInterfaces.JailServiceInterface)
+		networkService := dependencies[2].(networkServiceInterfaces.NetworkServiceInterface)
+		vmService := dependencies[3].(libvirtServiceInterfaces.LibvirtServiceInterface)
+		gzfs := dependencies[4].(*gzfs.Client)
+		return zelta.NewService(db, clusterService, jailService, networkService, vmService, gzfs)
 	default:
 		return nil
 	}
@@ -132,9 +142,9 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 	utilitiesService := NewService[utilities.Service](db)
 	sambaService := NewService[samba.Service](db, zfsService, gzfs)
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
-	clusterService := NewService[cluster.Service](db, authService)
-
+	clusterService := NewService[cluster.Service](db, authService, jailService)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
+	zeltaService := NewService[zelta.Service](db, clusterService, jailService, networkService, libvirtService, gzfs)
 
 	return &ServiceRegistry{
 		AuthService:      authService.(serviceInterfaces.AuthServiceInterface),
@@ -142,12 +152,13 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 		InfoService:      infoService.(infoServiceInterfaces.InfoServiceInterface),
 		ZfsService:       zfsService.(*zfs.Service),
 		DiskService:      diskService.(*disk.Service),
-		NetworkService:   NewService[network.Service](db, libvirtService).(*network.Service),
+		NetworkService:   networkService.(networkServiceInterfaces.NetworkServiceInterface),
 		LibvirtService:   libvirtService.(libvirtServiceInterfaces.LibvirtServiceInterface),
 		UtilitiesService: utilitiesService.(utilitiesServiceInterfaces.UtilitiesServiceInterface),
 		SystemService:    systemService.(systemServiceInterfaces.SystemServiceInterface),
 		SambaService:     sambaService.(sambaServiceInterfaces.SambaServiceInterface),
 		JailService:      jailService.(jailServiceInterfaces.JailServiceInterface),
 		ClusterService:   clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
+		ZeltaService:     zeltaService.(*zelta.Service),
 	}
 }

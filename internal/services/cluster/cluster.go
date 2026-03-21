@@ -12,12 +12,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/network"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -30,14 +32,29 @@ var _ clusterServiceInterfaces.ClusterServiceInterface = (*Service)(nil)
 type Service struct {
 	DB          *gorm.DB
 	Raft        *raft.Raft
+	RaftID      *raft.ServerAddress
+	NodeID      string
 	Transport   *raft.NetworkTransport
 	AuthService serviceInterfaces.AuthServiceInterface
+	JailService jailServiceInterfaces.JailServiceInterface
+
+	peerProbeMu            sync.Mutex
+	peerProbeFailureStreak map[string]int
+
+	embeddedSSHOnce sync.Once
+	monitorOnce     sync.Once
 }
 
-func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
+func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
 	return &Service{
 		DB:          db,
+		Raft:        nil,
+		RaftID:      nil,
+		NodeID:      "",
 		AuthService: authService,
+		JailService: jailService,
+
+		peerProbeFailureStreak: make(map[string]int),
 	}
 }
 
@@ -95,11 +112,19 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 		id := string(srv.ID)
 		addr := string(srv.Address)
 
+		var node clusterModels.ClusterNode
+		err := s.DB.Select("guest_ids").Where("node_uuid = ?", id).First(&node).Error
+
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("failed to query guest ids for node %s: %w", id, err)
+		}
+
 		out.Nodes = append(out.Nodes, clusterServiceInterfaces.RaftNode{
 			ID:       id,
 			Address:  addr,
 			Suffrage: suffrageStr(srv.Suffrage),
 			IsLeader: id == string(leaderID) || addr == string(leaderAddr),
+			GuestIDs: node.GuestIDs,
 		})
 	}
 
@@ -108,22 +133,20 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 
 func (s *Service) waitUntilLeader(timeout time.Duration) (bool, raft.ServerAddress, error) {
 	deadline := time.Now().Add(timeout)
-
-	if s.Raft.State() == raft.Leader {
-		return true, s.Raft.Leader(), nil
-	}
-	if addr := s.Raft.Leader(); addr != "" {
-		return false, addr, nil
-	}
+	var lastKnownLeader raft.ServerAddress
 
 	for time.Now().Before(deadline) {
 		if s.Raft.State() == raft.Leader {
 			return true, s.Raft.Leader(), nil
 		}
 		if addr := s.Raft.Leader(); addr != "" {
-			return false, addr, nil
+			lastKnownLeader = addr
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+
+	if lastKnownLeader != "" {
+		return false, lastKnownLeader, fmt.Errorf("timeout waiting to become leader")
 	}
 
 	return false, "", fmt.Errorf("timeout waiting for leader election")
@@ -167,8 +190,131 @@ func (s *Service) backfillPreClusterState() error {
 			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
 				return fmt.Errorf("apply_synth_set_options id=%d: %w", o.ID, err)
 			}
+		}
+	}
 
-			break
+	{
+		var targets []clusterModels.BackupTarget
+		if err := s.DB.Order("id ASC").Find(&targets).Error; err != nil {
+			return fmt.Errorf("scan_existing_backup_targets: %w", err)
+		}
+
+		for _, t := range targets {
+			data, _ := json.Marshal(clusterModels.BackupTargetToReplicationPayload(t))
+			cmd := clusterModels.Command{Type: "backup_target", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_backup_target id=%d: %w", t.ID, err)
+			}
+		}
+	}
+
+	{
+		var jobs []clusterModels.BackupJob
+		if err := s.DB.Order("id ASC").Find(&jobs).Error; err != nil {
+			return fmt.Errorf("scan_existing_backup_jobs: %w", err)
+		}
+
+		for _, j := range jobs {
+			payloadStruct := struct {
+				ID              uint       `json:"id"`
+				Name            string     `json:"name"`
+				TargetID        uint       `json:"targetId"`
+				RunnerNodeID    string     `json:"runnerNodeId"`
+				Mode            string     `json:"mode"`
+				SourceDataset   string     `json:"sourceDataset"`
+				JailRootDataset string     `json:"jailRootDataset"`
+				FriendlySrc     string     `json:"friendlySrc"`
+				DestSuffix      string     `json:"destSuffix"`
+				PruneKeepLast   int        `json:"pruneKeepLast"`
+				PruneTarget     bool       `json:"pruneTarget"`
+				CronExpr        string     `json:"cronExpr"`
+				Enabled         bool       `json:"enabled"`
+				NextRunAt       *time.Time `json:"nextRunAt"`
+			}{
+				ID:              j.ID,
+				Name:            j.Name,
+				TargetID:        j.TargetID,
+				RunnerNodeID:    j.RunnerNodeID,
+				Mode:            j.Mode,
+				SourceDataset:   j.SourceDataset,
+				JailRootDataset: j.JailRootDataset,
+				FriendlySrc:     j.FriendlySrc,
+				DestSuffix:      j.DestSuffix,
+				PruneKeepLast:   j.PruneKeepLast,
+				PruneTarget:     j.PruneTarget,
+				CronExpr:        j.CronExpr,
+				Enabled:         j.Enabled,
+				NextRunAt:       j.NextRunAt,
+			}
+
+			data, _ := json.Marshal(payloadStruct)
+			cmd := clusterModels.Command{Type: "backup_job", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_backup_job id=%d: %w", j.ID, err)
+			}
+		}
+	}
+
+	{
+		var policies []clusterModels.ReplicationPolicy
+		if err := s.DB.Preload("Targets").Order("id ASC").Find(&policies).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_policies: %w", err)
+		}
+
+		for _, p := range policies {
+			data, _ := json.Marshal(clusterModels.ReplicationPolicyPayload{
+				Policy:  p,
+				Targets: p.Targets,
+			})
+			cmd := clusterModels.Command{Type: "replication_policy", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_replication_policy id=%d: %w", p.ID, err)
+			}
+		}
+	}
+
+	{
+		var leases []clusterModels.ReplicationLease
+		if err := s.DB.Order("id ASC").Find(&leases).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_leases: %w", err)
+		}
+
+		for _, l := range leases {
+			data, _ := json.Marshal(l)
+			cmd := clusterModels.Command{Type: "replication_lease", Action: "upsert", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_upsert_replication_lease id=%d: %w", l.ID, err)
+			}
+		}
+	}
+
+	{
+		var identities []clusterModels.ClusterSSHIdentity
+		if err := s.DB.Order("id ASC").Find(&identities).Error; err != nil {
+			return fmt.Errorf("scan_existing_cluster_ssh_identities: %w", err)
+		}
+
+		for _, i := range identities {
+			data, _ := json.Marshal(i)
+			cmd := clusterModels.Command{Type: "cluster_ssh_identity", Action: "upsert", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_upsert_cluster_ssh_identity id=%d: %w", i.ID, err)
+			}
+		}
+	}
+
+	{
+		var events []clusterModels.ReplicationEvent
+		if err := s.DB.Order("id ASC").Find(&events).Error; err != nil {
+			return fmt.Errorf("scan_existing_replication_events: %w", err)
+		}
+
+		for _, e := range events {
+			data, _ := json.Marshal(e)
+			cmd := clusterModels.Command{Type: "replication_event", Action: "create", Data: data}
+			if err := s.Raft.Apply(utils.MustJSON(cmd), 5*time.Second).Error(); err != nil {
+				return fmt.Errorf("apply_synth_create_replication_event id=%d: %w", e.ID, err)
+			}
 		}
 	}
 
@@ -179,10 +325,33 @@ func (s *Service) backfillPreClusterState() error {
 	return nil
 }
 
-func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
+func (s *Service) ResyncClusterState() error {
+	if s.Raft == nil {
+		return errors.New("raft_not_initialized")
+	}
+
+	if s.Raft.State() != raft.Leader {
+		addr, id := s.Raft.LeaderWithID()
+		return fmt.Errorf("not_leader; leader_addr=%s; leader_id=%s", string(addr), string(id))
+	}
+
+	if err := s.backfillPreClusterState(); err != nil {
+		return fmt.Errorf("state_backfill_failed: %w", err)
+	}
+
+	if err := s.Raft.Snapshot().Error(); err != nil && !errors.Is(err, raft.ErrNothingNewToSnapshot) {
+		return fmt.Errorf("raft_snapshot_failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
 	}
+
+	port := ClusterRaftPort
 
 	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
 		return err
@@ -241,6 +410,10 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 		if err := s.Raft.Snapshot().Error(); err != nil && !errors.Is(err, raft.ErrNothingNewToSnapshot) {
 			return fmt.Errorf("raft_snapshot_failed: %w", err)
 		}
+
+		if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+			logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
+		}
 	} else {
 		logger.L.Info().Str("leader", string(leaderAddr)).Msg("not leader after bootstrap; skipping local snapshot")
 	}
@@ -248,14 +421,12 @@ func (s *Service) CreateCluster(ip string, port int, fsm raft.FSM) error {
 	return nil
 }
 
-func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey string) error {
+func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, clusterKey string) error {
 	if !utils.IsValidIP(ip) {
 		return errors.New("invalid_ip_address")
 	}
 
-	if !utils.IsValidPort(port) {
-		return errors.New("invalid_port_number")
-	}
+	port := ClusterRaftPort
 
 	if err := network.TryBindToPort(ip, port, "tcp"); err != nil {
 		return fmt.Errorf("failed_to_bind_to_port: %v", err)
@@ -293,18 +464,14 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 		return err
 	}
 
-	if err := s.DB.Exec("DELETE FROM cluster_notes").Error; err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM cluster_options").Error; err != nil {
+	if err := s.ClearClusteredData(); err != nil {
 		return err
 	}
 
 	_, err = s.SetupRaft(false, fsm)
 	if err != nil {
 		c.RaftIP = ""
-		c.RaftPort = 0
+		c.RaftPort = ClusterRaftPort
 		c.Enabled = false
 		c.Key = ""
 
@@ -315,10 +482,64 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip string, port int, clusterKey st
 		return err
 	}
 
+	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
+		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during joiner startup")
+	}
+
 	return nil
 }
 
-func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey string) error {
+func (s *Service) ClearClusteredData() error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM cluster_notes").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_notes: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM cluster_options").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_options: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_events").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_events: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_jobs").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_jobs: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM backup_targets").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_backup_targets: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_events").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_events: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_receipts").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_receipts: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_leases").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_leases: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_policy_targets").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_policy_targets: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM replication_policies").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_replication_policies: %w", err)
+		}
+
+		if err := tx.Exec("DELETE FROM cluster_ssh_identities").Error; err != nil {
+			return fmt.Errorf("failed_to_clean_cluster_ssh_identities: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (s *Service) AcceptJoin(nodeID, nodeIp string, providedKey string) error {
 	details, err := s.GetClusterDetails()
 	if err != nil {
 		return err
@@ -348,12 +569,12 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey st
 
 	conf := fut.Configuration()
 	sid := raft.ServerID(nodeID)
-	saddr := raft.ServerAddress(fmt.Sprintf("%s:%d", nodeIp, nodePort))
+	saddr := raft.ServerAddress(RaftServerAddress(nodeIp))
 
 	for _, srv := range conf.Servers {
 		if srv.ID == sid {
 			if srv.Address == saddr && srv.Suffrage == raft.Voter {
-				return nil
+				return s.ResyncClusterState()
 			}
 
 			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
@@ -375,7 +596,7 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, nodePort int, providedKey st
 		return fmt.Errorf("add_voter_failed: %w", err)
 	}
 
-	return nil
+	return s.ResyncClusterState()
 }
 
 func (s *Service) MarkClustered() error {
@@ -402,11 +623,17 @@ func (s *Service) MarkDeclustered() error {
 	c.Key = ""
 	c.RaftBootstrap = nil
 	c.RaftIP = ""
-	c.RaftPort = 0
+	c.RaftPort = ClusterRaftPort
 
 	if err := s.DB.Save(&c).Error; err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (s *Service) ListBackupTargetsForSync() ([]clusterModels.BackupTarget, error) {
+	var targets []clusterModels.BackupTarget
+	err := s.DB.Order("id ASC").Find(&targets).Error
+	return targets, err
 }

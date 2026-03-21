@@ -118,21 +118,33 @@ func (s *Service) GetMagnetDownloadAndFile(uuid, name string) (*utilitiesModels.
 		return nil, nil, err
 	}
 
-	var file utilitiesModels.DownloadedFile
+	if download.Type != utilitiesModels.DownloadTypeTorrent {
+		return nil, nil, fmt.Errorf("download_is_not_torrent")
+	}
 
-	if download.Type == "torrent" {
-		for _, f := range download.Files {
-			if f.Name == name {
-				file = f
-				break
-			}
+	var file utilitiesModels.DownloadedFile
+	found := false
+
+	for _, f := range download.Files {
+		if f.Name == name {
+			file = f
+			found = true
+			break
 		}
+	}
+
+	if !found {
+		return nil, nil, fmt.Errorf("file_not_found")
 	}
 
 	return &download, &file, nil
 }
 
 func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
+	if strings.TrimSpace(uuid) == "" || id <= 0 {
+		return "", fmt.Errorf("invalid_download_reference")
+	}
+
 	dl, err := s.GetDownload(uuid)
 	if err != nil {
 		logger.L.Error().Msgf("Failed to get download by UUID: %v", err)
@@ -146,6 +158,9 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 			logger.L.Error().Msgf("Failed to get file by ID: %v", err)
 			return "", err
 		}
+		if file.DownloadID != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
 
 		var download utilitiesModels.Downloads
 		if err := s.DB.Where("id = ?", file.DownloadID).First(&download).Error; err != nil {
@@ -157,6 +172,9 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 
 		return fullPath, nil
 	case "http":
+		if id != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
 		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
 	}
 
@@ -533,7 +551,7 @@ func (s *Service) StartPostProcess(id *uint) error {
 		if !sniffFailed {
 			if mime == "application/x-tar" || utils.IsTarLike(d.Path, mime) {
 				// We're using --no-xattrs to handle cross-platform rootfs extraction (e.g., Linux rootfs on FreeBSD)
-				if out, err := utils.RunCommand("tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
+				if out, err := utils.RunCommand("/usr/bin/tar", "--no-xattrs", "-xf", d.Path, "-C", extractsPath); err != nil {
 					logger.L.Error().Msgf("tar extract failed: %v (%s)", err, out)
 					return s.failDownload(&d, err)
 				}
@@ -585,6 +603,28 @@ func (s *Service) StartPostProcess(id *uint) error {
 	}
 
 	return s.finishDownload(&d, extractedPath)
+}
+
+func (s *Service) enqueuePostProcOnce(id uint) error {
+	s.inflightMu.Lock()
+	if _, ok := s.inflight[id]; ok {
+		s.inflightMu.Unlock()
+		return nil
+	}
+	s.inflight[id] = struct{}{}
+	s.inflightMu.Unlock()
+
+	err := db.EnqueueJSON(context.Background(), "utils-download-postproc", &utilitiesServiceInterfaces.DownloadPostProcPayload{
+		ID: id,
+	})
+	if err != nil {
+		s.inflightMu.Lock()
+		delete(s.inflight, id)
+		s.inflightMu.Unlock()
+		return err
+	}
+
+	return nil
 }
 
 func (s *Service) flipToProcessing(id uint) bool {
@@ -710,16 +750,17 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 				download.Error = err.Error()
 				download.Status = "failed"
 				failed = true
-			} else if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending {
-				if s.flipToProcessing(download.ID) {
-					logger.L.Debug().Msgf("syncHTTP: queued postproc job for download ID=%d", download.ID)
-				} else {
-					logger.L.Debug().Msgf("syncHTTP: flipToProcessing failed for download ID=%d", download.ID)
+			} else if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending ||
+				download.Status == utilitiesModels.DownloadStatusProcessing {
+				if download.Status == "" || download.Status == utilitiesModels.DownloadStatusPending {
+					if s.flipToProcessing(download.ID) {
+						logger.L.Debug().Msgf("syncHTTP: flipped to processing for download ID=%d", download.ID)
+					} else {
+						logger.L.Debug().Msgf("syncHTTP: flipToProcessing failed for download ID=%d", download.ID)
+					}
 				}
 
-				if err := db.EnqueueJSON(context.Background(), "utils-download-postproc",
-					&utilitiesServiceInterfaces.DownloadPostProcPayload{ID: download.ID},
-				); err != nil {
+				if err := s.enqueuePostProcOnce(download.ID); err != nil {
 					logger.L.Error().Msgf("syncHTTP: failed to enqueue postproc job for download ID=%d: %v", download.ID, err)
 				}
 			}
@@ -761,6 +802,26 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		download.Status = "failed"
 		s.DB.Model(download).Select("Error", "Status").Updates(download)
 		return
+	}
+
+	// Recover processing records that lost in-memory HTTP response state (e.g. after restart).
+	if download.Status == utilitiesModels.DownloadStatusProcessing {
+		if info, err := os.Stat(download.Path); err == nil {
+			download.Size = info.Size()
+		}
+
+		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
+			download.Progress = 100
+			download.Status = utilitiesModels.DownloadStatusDone
+			if err := s.DB.Model(download).Select("Progress", "Size", "Status").Updates(download).Error; err != nil {
+				logger.L.Error().Msgf("syncHTTP: failed to finalize processing download ID=%d: %v", download.ID, err)
+			}
+			return
+		}
+
+		if err := s.enqueuePostProcOnce(download.ID); err != nil {
+			logger.L.Error().Msgf("syncHTTP: failed to recover postproc enqueue for download ID=%d: %v", download.ID, err)
+		}
 	}
 }
 
@@ -810,7 +871,7 @@ func (s *Service) DeleteDownload(id int) error {
 	if download.Type == "http" {
 		if download.UType == utilitiesModels.DownloadUTypeBase && download.ExtractedPath != "" {
 			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-			_, err := utils.RunCommand("chflags", "-R", "noschg", extractsPath)
+			_, err := utils.RunCommand("/bin/chflags", "-R", "noschg", extractsPath)
 
 			if err != nil {
 				logger.L.Error().Msgf("Failed to change flags for extracts folder: %v", err)

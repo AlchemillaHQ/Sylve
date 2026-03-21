@@ -25,8 +25,8 @@ type SystemServiceInterface interface {
 	GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error)
 	Initialize(ctx context.Context, req InitializeRequest) []error
 
-	StartDevdParser(ctx context.Context)
-	DevdEventsCleaner(ctx context.Context)
+	StartNetlinkWatcher(ctx context.Context)
+	NetlinkEventsCleaner(ctx context.Context)
 
 	Traverse(path string) ([]FileNode, error)
 	AddFileOrFolder(path string, name string, isFolder bool) error
@@ -38,7 +38,10 @@ type SystemServiceInterface interface {
 	CopyOrMoveFilesOrFolders(pairs [][2]string, move bool) error
 
 	SyncPPTDevices() error
+	ReconcilePreparedPPTDevices() error
 	GetPPTDevices() ([]models.PassedThroughIDs, error)
 	AddPPTDevice(domain string, id string) error
+	PreparePPTDevice(domain string, id string) error
+	ImportPPTDevice(domain string, id string) error
 	RemovePPTDevice(id string) error
 }

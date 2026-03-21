@@ -15,7 +15,7 @@
 	import { convertDbTime } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource } from 'runed';
+	import { resource, watch } from 'runed';
 	import { storage } from '$lib';
 	import { untrack } from 'svelte';
 
@@ -25,6 +25,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const notes = resource(
 		[],
 		async () => {
@@ -38,13 +39,14 @@
 		}
 	);
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
+	watch(
+		() => storage.visible,
+		() => {
+			if (storage.visible) {
 				notes.refetch();
-			});
+			}
 		}
-	});
+	);
 
 	let modalState = $state({
 		title: '',
@@ -173,6 +175,7 @@
 	let tableData = $derived(
 		generateTableData(columns, notes.current && Array.isArray(notes.current) ? notes.current : [])
 	);
+
 	let activeRow: Row[] | null = $state(null);
 	let query: string = $state('');
 </script>
@@ -211,9 +214,9 @@
 		{#if type === 'edit-note'}
 			<Button
 				onclick={() => {
-					if (notes.current && Array.isArray(notes)) {
-						const note = notes.find((note) => activeRow && note.id === activeRow[0]?.id);
-						handleNote(note, true);
+					if (notes.current && Array.isArray(notes.current)) {
+						const note = notes.current.find((note) => activeRow && note.id === activeRow[0]?.id);
+						handleNote(note, true, false);
 					}
 				}}
 				size="sm"
@@ -291,10 +294,21 @@
 							size="sm"
 							variant="link"
 							title={'Reset'}
-							class="h-4 "
+							class="h-4 {modalState.isEditMode && selectedId ? '' : 'hidden'}"
 							onclick={() => {
-								modalState.title = '';
-								modalState.content = '';
+								if (
+									modalState.isEditMode &&
+									selectedId &&
+									notes.current &&
+									Array.isArray(notes.current)
+								) {
+									const originalNote = notes.current.find((note) => note.id === selectedId);
+									if (originalNote) {
+										modalState.title = originalNote.title;
+										modalState.content = originalNote.content;
+										return;
+									}
+								}
 							}}
 						>
 							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>

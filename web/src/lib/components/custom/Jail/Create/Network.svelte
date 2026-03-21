@@ -12,6 +12,10 @@
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import { watch } from 'runed';
+	import SimpleSelect from '../../SimpleSelect.svelte';
+	import { dnsConfigPresets } from '$lib/utils/jail/jail';
 
 	interface Props {
 		switch: string;
@@ -24,8 +28,10 @@
 		ipv6Gateway: number;
 		dhcp: boolean;
 		slaac: boolean;
+		resolvConf: string;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
+		jailType: 'freebsd' | 'linux';
 	}
 
 	let {
@@ -39,8 +45,10 @@
 		ipv6Gateway = $bindable(),
 		dhcp = $bindable(),
 		slaac = $bindable(),
+		resolvConf = $bindable(),
 		switches,
-		networkObjects
+		networkObjects,
+		jailType
 	}: Props = $props();
 
 	let usable = $derived({
@@ -94,12 +102,32 @@
 
 	let checkBoxes = $state({
 		dhcp: false,
-		slaac: false
+		slaac: false,
+		resolvConf: false
 	});
 
-	$effect(() => {
-		if (nwSwitch) {
-			if (nwSwitch === 'None') {
+	watch(
+		() => resolvConf,
+		(current) => {
+			if (current.trim().length > 0) {
+				checkBoxes.resolvConf = true;
+			}
+		}
+	);
+
+	watch(
+		() => checkBoxes.resolvConf,
+		(current) => {
+			if (!current) {
+				resolvConf = '';
+			}
+		}
+	);
+
+	watch(
+		() => nwSwitch,
+		(current) => {
+			if (current === 'None') {
 				mac = 0;
 				ipv4 = 0;
 				ipv6 = 0;
@@ -107,66 +135,94 @@
 				slaac = false;
 				checkBoxes.dhcp = false;
 				checkBoxes.slaac = false;
-			}
-
-			if (nwSwitch !== 'Inherit') {
+			} else if (current !== 'Inherit') {
 				inheritIPv4 = false;
 				inheritIPv6 = false;
 			}
 		}
+	);
 
-		if (checkBoxes.dhcp) {
+	watch(
+		() => checkBoxes.dhcp,
+		(current) => {
+			if (current) {
+				comboBoxes.ipv4.value = '0';
+				comboBoxes.ipv4Gateway.value = '0';
+				dhcp = true;
+			} else {
+				if (comboBoxes.ipv4.value !== '0') {
+					ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
+				}
+				dhcp = false;
+			}
+		}
+	);
+
+	watch(
+		() => checkBoxes.slaac,
+		(current) => {
+			if (current) {
+				comboBoxes.ipv6.value = '0';
+				comboBoxes.ipv6Gateway.value = '0';
+				slaac = true;
+			} else {
+				if (comboBoxes.ipv6.value !== '0') {
+					ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
+				}
+				slaac = false;
+			}
+		}
+	);
+
+	watch(
+		() => comboBoxes.mac.value,
+		(current) => {
+			if (current !== '0') {
+				mac = parseInt(comboBoxes.mac.value) || 0;
+			} else {
+				mac = 0;
+			}
+		}
+	);
+
+	watch(
+		[
+			() => comboBoxes.ipv4.value,
+			() => comboBoxes.ipv4Gateway.value,
+			() => comboBoxes.ipv6.value,
+			() => comboBoxes.ipv6Gateway.value
+		],
+		([v4, v4Gw, v6, v6Gw]) => {
+			const parse = (val: string) => (val !== '0' ? parseInt(val) || 0 : 0);
+
+			ipv4 = parse(v4);
+			ipv4Gateway = parse(v4Gw);
+			ipv6 = parse(v6);
+			ipv6Gateway = parse(v6Gw);
+		}
+	);
+
+	watch(
+		() => nwSwitch,
+		() => {
 			comboBoxes.ipv4.value = '0';
 			comboBoxes.ipv4Gateway.value = '0';
-			dhcp = true;
-		} else {
-			if (comboBoxes.ipv4.value !== '0') {
-				ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
-			}
-		}
-
-		if (checkBoxes.slaac) {
 			comboBoxes.ipv6.value = '0';
 			comboBoxes.ipv6Gateway.value = '0';
-			slaac = true;
-		} else {
-			if (comboBoxes.ipv6.value !== '0') {
-				ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
+		}
+	);
+
+	let selectedDnsPreset = $state('');
+
+	watch(
+		() => jailType,
+		(current) => {
+			if (current === 'linux') {
+				checkBoxes.resolvConf = false;
+				resolvConf = '';
 			}
 		}
-
-		if (comboBoxes.mac.value !== '0') {
-			mac = parseInt(comboBoxes.mac.value) || 0;
-		} else {
-			mac = 0;
-		}
-	});
-
-	$effect(() => {
-		if (comboBoxes.ipv4.value !== '0') {
-			ipv4 = parseInt(comboBoxes.ipv4.value) || 0;
-		} else {
-			ipv4 = 0;
-		}
-
-		if (comboBoxes.ipv4Gateway.value !== '0') {
-			ipv4Gateway = parseInt(comboBoxes.ipv4Gateway.value) || 0;
-		} else {
-			ipv4Gateway = 0;
-		}
-
-		if (comboBoxes.ipv6.value !== '0') {
-			ipv6 = parseInt(comboBoxes.ipv6.value) || 0;
-		} else {
-			ipv6 = 0;
-		}
-
-		if (comboBoxes.ipv6Gateway.value !== '0') {
-			ipv6Gateway = parseInt(comboBoxes.ipv6Gateway.value) || 0;
-		} else {
-			ipv6Gateway = 0;
-		}
-	});
+	);
 </script>
 
 {#snippet radioItem(
@@ -288,4 +344,49 @@
 			></CustomCheckbox>
 		</div>
 	{/if}
+
+	<div class="mt-1">
+		<CustomCheckbox
+			label="Populate DNS Resolver Configuration"
+			bind:checked={checkBoxes.resolvConf}
+			classes="flex items-center gap-2"
+			disabled={jailType === 'linux'}
+			title={jailType === 'linux' ? 'This option is not available for Linux jails' : ''}
+		/>
+
+		{#if checkBoxes.resolvConf}
+			<div class="mt-2 space-y-2">
+				<SimpleSelect
+					label="DNS Preset"
+					placeholder="Select DNS"
+					options={[
+						{ value: 'manual', label: 'Manual' },
+						{ value: 'cloudflare', label: 'Cloudflare DNS' },
+						{ value: 'google', label: 'Google DNS' },
+						{ value: 'quad9', label: 'Quad9 DNS' }
+					]}
+					value={selectedDnsPreset}
+					onChange={(v) => {
+						selectedDnsPreset = v;
+
+						if (v === 'manual') {
+							resolvConf = '';
+							return;
+						}
+
+						resolvConf = dnsConfigPresets(v as any);
+					}}
+				/>
+
+				<CustomValueInput
+					label=""
+					placeholder={'nameserver 1.1.1.1\nnameserver 8.8.8.8\nsearch localdomain'}
+					type="textarea"
+					textAreaClasses="min-h-28 text-xs/6"
+					bind:value={resolvConf}
+					classes="flex-1 space-y-1 text-xs/6"
+				/>
+			</div>
+		{/if}
+	</div>
 </div>

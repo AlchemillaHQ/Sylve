@@ -216,4 +216,27 @@
 <span class="icon-[mdi--database]"></span>
 <span class="icon-[mdi--cloud]"></span>
 <span class="icon-[mdi--folder-question]"></span>
+<span class="icon-[garden--terminal-cli-stroke-16]"></span>
+<span class="icon-[mdi--terminal]"></span>
+<span class="icon-[mdi--heart]"></span>
+<span class="icon-[fluent-mdl2--party-leader]"></span>
+<span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
+<span class="icon-[mdi--public]"></span>
+<span class="icon-[mdi--backup-restore]"></span>
+<span class="icon-[mdi--server-network]"></span>
+<span class="icon-[mdi--calendar-sync]"></span>
+<span class="icon-[mdi--history]"></span>
+<span class="icon-[mdi--restore]"></span>
+<span class="icon-[mdi--upload]"></span>
+<span class="icon-[mdi--download]"></span>
+<span class="icon-[mdi--check-circle-outline]"></span>
+<span class="icon-[mdi--close-circle-outline]"></span>
+<span class="icon-[mdi--progress-clock]"></span>
+<span class="icon-[game-icons--divergence]"></span>
+<span class="icon-[ic--baseline-restore]"></span>
+<span class="icon-[material-symbols--backup-outline]"></span>
+<span class="icon-[carbon--ibm-data-replication]"></span>
+<span class="icon-[mdi--clipboard-list-outline]"></span>
+<span class="icon-[mdi--help-circle-outline]"></span>
+<span class="icon-[mdi--check-decagram]"></span>
 -->

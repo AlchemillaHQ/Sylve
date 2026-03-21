@@ -9,6 +9,7 @@
 package info
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
@@ -77,6 +78,7 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 
 	info.Name = cpuid.CPU.BrandName
 	info.Sockets = sockets
+	info.Architecture = infoServiceInterfaces.Architecture(runtime.GOARCH)
 	info.PhysicalCores = physical
 	info.ThreadsPerCore = threadsPerCore
 	info.LogicalCores = logical

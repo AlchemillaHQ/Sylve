@@ -11,15 +11,27 @@ package network
 import (
 	"fmt"
 	"net"
+	"strconv"
 )
 
 func TryBindToPort(ip string, port int, proto string) error {
-	addr := fmt.Sprintf("%s:%d", ip, port)
-	listener, err := net.Listen(proto, addr)
-	if err != nil {
-		return err
+	addr := net.JoinHostPort(ip, strconv.Itoa(port))
+
+	switch proto {
+	case "tcp", "tcp4", "tcp6":
+		ln, err := net.Listen(proto, addr)
+		if err != nil {
+			return err
+		}
+		return ln.Close()
+
+	case "udp", "udp4", "udp6":
+		pc, err := net.ListenPacket(proto, addr)
+		if err != nil {
+			return err
+		}
+		return pc.Close()
 	}
 
-	defer listener.Close()
-	return nil
+	return fmt.Errorf("unsupported protocol: %s", proto)
 }

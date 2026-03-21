@@ -14,9 +14,12 @@
 		open: boolean;
 		ram: RAMInfo;
 		vm: VM | null;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), ram, vm }: Props = $props();
+	let { open = $bindable(), ram, vm, reload = $bindable(false) }: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let options = {
 		ram: humanFormat(vm?.ram || 1)
 	};
@@ -55,6 +58,8 @@
 
 		if (vm) {
 			const response = await modifyRAM(vm.rid, bytes);
+
+			reload = true;
 
 			if (response.error) {
 				handleAPIError(response);

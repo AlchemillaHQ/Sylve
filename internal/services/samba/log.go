@@ -10,6 +10,7 @@ package samba
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -19,27 +20,33 @@ import (
 
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/fsnotify/fsnotify"
 )
 
 func (s *Service) ParseAuditLogs() error {
 	const logPath = "/var/log/samba4/audit.log"
-
-	validActions := map[string]bool{
-		"connect":     true,
-		"disconnect":  true,
-		"mkdirat":     true,
-		"unlinkat":    true,
-		"renameat":    true,
-		"create_file": true,
-	}
-
-	seenCreates := make(map[string]bool)
+	const batchSize = 500
 
 	f, err := os.Open(logPath)
 	if err != nil {
 		return fmt.Errorf("failed to open audit log: %w", err)
 	}
 	defer f.Close()
+
+	var batch []sambaModels.SambaAuditLog
+	batch = make([]sambaModels.SambaAuditLog, 0, batchSize)
+
+	seenCreates := make(map[string]bool)
+	recentMkdirs := make(map[string]time.Time)
+
+	cutoff := time.Now().Add(-5 * time.Second)
+	var recentDBMkdirs []sambaModels.SambaAuditLog
+	if err := s.DB.Where("action = ? AND created_at >= ?", "mkdirat", cutoff).Find(&recentDBMkdirs).Error; err == nil {
+		for _, m := range recentDBMkdirs {
+			recentMkdirs[m.Path] = m.CreatedAt
+		}
+	}
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -48,6 +55,7 @@ func (s *Service) ParseAuditLogs() error {
 		if idx < 0 {
 			continue
 		}
+
 		payload := line[idx+2:]
 		if !strings.HasPrefix(payload, "sylve-smb-al|") {
 			continue
@@ -58,27 +66,29 @@ func (s *Service) ParseAuditLogs() error {
 			continue
 		}
 
-		user := parts[1]
-		ip := parts[2]
-		share := parts[4]
 		action := parts[6]
-		result := parts[7]
-		args := parts[8:]
 
-		if !validActions[action] {
+		switch action {
+		case "connect", "disconnect", "mkdirat", "unlinkat", "renameat", "create_file":
+		default:
 			continue
 		}
 
 		entry := sambaModels.SambaAuditLog{
-			Share:  share,
-			User:   user,
-			IP:     ip,
+			User:   parts[1],
+			IP:     parts[2],
+			Share:  parts[4],
 			Action: action,
-			Result: result,
+			Result: parts[7],
 		}
+		args := parts[8:]
 
 		switch action {
-		case "mkdirat", "unlinkat":
+		case "mkdirat":
+			entry.Path = args[len(args)-1]
+			recentMkdirs[entry.Path] = time.Now()
+
+		case "unlinkat":
 			entry.Path = args[len(args)-1]
 
 		case "renameat":
@@ -101,26 +111,30 @@ func (s *Service) ParseAuditLogs() error {
 			entry.Folder = filepath.Base(entry.Path)
 
 			if action == "create_file" {
-				var cnt int64
-				cutoff := time.Now().Add(-5 * time.Second)
-				if err := s.DB.
-					Model(&sambaModels.SambaAuditLog{}).
-					Where("action = ? AND path = ? AND created_at >= ?", "mkdirat", entry.Path, cutoff).
-					Count(&cnt).Error; err != nil {
-					return fmt.Errorf("failed to check recent mkdirat: %w", err)
-				}
-				if cnt > 0 {
+				if t, exists := recentMkdirs[entry.Path]; exists && time.Since(t) < 5*time.Second {
 					continue
 				}
 			}
 
-			if err := s.DB.Create(&entry).Error; err != nil {
-				return fmt.Errorf("failed to insert audit log entry: %w", err)
+			batch = append(batch, entry)
+
+			if len(batch) >= batchSize {
+				if err := s.DB.CreateInBatches(&batch, len(batch)).Error; err != nil {
+					return fmt.Errorf("failed to insert audit log batch: %w", err)
+				}
+				batch = batch[:0]
 			}
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error scanning audit log: %w", err)
+	}
+
+	if len(batch) > 0 {
+		if err := s.DB.CreateInBatches(&batch, len(batch)).Error; err != nil {
+			return fmt.Errorf("failed to insert final audit log batch: %w", err)
+		}
 	}
 
 	if err := os.Truncate(logPath, 0); err != nil {
@@ -192,4 +206,82 @@ func (s *Service) GetAuditLogs(
 		LastPage: lastPage,
 		Data:     logs,
 	}, nil
+}
+
+func (s *Service) WatchAuditLogs(ctx context.Context) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		logger.L.Error().Msgf("Failed to create fsnotify watcher: %v", err)
+		return
+	}
+	defer watcher.Close()
+
+	const logPath = "/var/log/samba4/audit.log"
+
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		if err := os.WriteFile(logPath, []byte(""), 0600); err != nil {
+			logger.L.Error().Msgf("Failed to initialize audit log file: %v", err)
+			return
+		}
+	}
+
+	if err := watcher.Add(logPath); err != nil {
+		logger.L.Error().Msgf("Failed to watch audit log: %v", err)
+		return
+	}
+
+	var debounceTimer *time.Timer
+	debounceDuration := 1 * time.Second
+
+	logger.L.Info().Msg("Started watching Samba audit logs")
+
+	for {
+		select {
+		case <-ctx.Done():
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			logger.L.Debug().Msg("Stopped watching Samba audit logs")
+			return
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+
+			if event.Has(fsnotify.Write) {
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+
+				debounceTimer = time.AfterFunc(debounceDuration, func() {
+					if err := s.ParseAuditLogs(); err != nil {
+						logger.L.Error().Msgf("Failed to parse Samba audit logs: %v", err)
+					}
+				})
+			}
+
+			if event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename) {
+				logger.L.Warn().Msgf("Audit log was removed or renamed. Attempting to re-watch...")
+				watcher.Remove(logPath)
+
+				go func() {
+					for {
+						time.Sleep(2 * time.Second)
+						if _, err := os.Stat(logPath); err == nil {
+							if err := watcher.Add(logPath); err == nil {
+								logger.L.Info().Msg("Successfully re-attached to audit log")
+								break
+							}
+						}
+					}
+				}()
+			}
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			logger.L.Error().Msgf("fsnotify error: %v", err)
+		}
+	}
 }

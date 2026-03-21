@@ -203,7 +203,8 @@
 				pagination: true,
 				paginationSize: 25,
 				paginationCounter: 'pages',
-				initialSort: initialSort ? initialSort : []
+				initialSort: initialSort ? initialSort : [],
+                debugInvalidOptions: false
 			});
 		}
 
@@ -250,13 +251,30 @@
 		table?.on('cellClick', (_event: UIEvent, cell) => {
 			const value = cell.getValue();
 			const column = cell.getColumn();
+			const colDef = column.getDefinition() as Column;
+			const rowData = cell.getRow().getData();
 
-			if ((column.getDefinition() as any).copyOnClick && value) {
-				navigator.clipboard.writeText(value.toString());
-				toast.success(`Copied ${value.toString()} to clipboard`, {
-					duration: 2000,
-					position: 'bottom-center'
-				});
+			const shouldCopy =
+				typeof colDef.copyOnClick === 'function'
+					? colDef.copyOnClick(cell.getRow())
+					: !!colDef.copyOnClick;
+
+			if (shouldCopy && value !== undefined && value !== null) {
+				const textToCopy = colDef.copyValue
+					? colDef.copyValue(cell)
+					: String(rowData.toCopy ?? value);
+
+				navigator.clipboard
+					.writeText(textToCopy)
+					.then(() => {
+						toast.success(`Copied "${textToCopy}" to clipboard`, {
+							duration: 2000,
+							position: 'bottom-center'
+						});
+					})
+					.catch((err) => {
+						console.error('Failed to copy text:', err);
+					});
 			}
 		});
 
@@ -280,6 +298,15 @@
 		table?.on('dataTreeRowExpanded', () => {
 			saveExpandedState();
 		});
+
+		return () => {
+			if (table) {
+				table.destroy();
+				table = null;
+			}
+
+			tableInitialized = false;
+		};
 	});
 
 	function tableFilter(query: string) {

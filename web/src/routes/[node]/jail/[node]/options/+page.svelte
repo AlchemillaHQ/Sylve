@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { getJailById } from '$lib/api/jail/jail';
+	import AllowedOptions from '$lib/components/custom/Jail/Options/AllowedOptions.svelte';
+	import LifecycleHooks from '$lib/components/custom/Jail/Options/LifecycleHooks.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
-	import type { Jail, JailState } from '$lib/types/jail/jail';
+	import type { Jail } from '$lib/types/jail/jail';
 	import { updateCache } from '$lib/utils/http';
 	import { generateNanoId, isBoolean } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
@@ -14,11 +16,11 @@
 	interface Data {
 		ctId: number;
 		jail: Jail;
-		jailState: JailState;
 	}
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${data.ctId}`,
 		async (key, prevKey, { signal }) => {
@@ -64,6 +66,18 @@
 					? jail.current.fstab.split('\n')[0] + (jail.current.fstab.includes('\n') ? '…' : '')
 					: '—'
 			},
+			...(jail?.current.type === 'freebsd'
+				? [
+						{
+							id: generateNanoId('resolvConf'),
+							property: '/etc/resolv.conf',
+							value: jail?.current.resolvConf
+								? jail.current.resolvConf.split('\n')[0] +
+									(jail.current.resolvConf.includes('\n') ? '…' : '')
+								: '—'
+						}
+					]
+				: []),
 			{
 				id: generateNanoId('devfsRules'),
 				property: 'DevFS Ruleset',
@@ -81,6 +95,16 @@
 					: '—'
 			},
 			{
+				id: generateNanoId('allowedOptions'),
+				property: 'Allowed Options',
+				value: (() => {
+					const options = jail?.current.allowedOptions || [];
+					if (options.length === 0) return '—';
+					if (options.length === 1) return options[0];
+					return `${options[0]} (+${options.length - 1} more)`;
+				})()
+			},
+			{
 				id: generateNanoId('metadata'),
 				property: 'Metadata',
 				value: (() => {
@@ -95,6 +119,21 @@
 						.filter(Boolean)
 						.join(' | ');
 				})()
+			},
+			{
+				id: generateNanoId('lifecycleHooks'),
+				property: 'Lifecycle Hooks',
+				value: (() => {
+					const hooks = jail?.current.jailHooks || [];
+					const enabledHooks = hooks.filter(
+						(hook) => hook.enabled && hook.script && hook.script.trim() !== ''
+					);
+
+					if (enabledHooks.length === 0) return '—';
+					if (enabledHooks.length === 1) return enabledHooks[0].phase;
+
+					return `${enabledHooks[0].phase} (+${enabledHooks.length - 1} more)`;
+				})()
 			}
 		]
 	});
@@ -106,16 +145,19 @@
 	let properties = $state({
 		startOrder: { open: false },
 		fstab: { open: false },
+		resolvConf: { open: false },
 		devfsRules: { open: false },
 		additionalOptions: { open: false },
-		metadata: { open: false }
+		allowedOptions: { open: false },
+		metadata: { open: false },
+		lifecycleHooks: { open: false }
 	});
 
 	let reload = $state(false);
 
 	watch(
 		() => reload,
-		(value) => {
+		() => {
 			jail.refetch();
 			reload = false;
 		}
@@ -123,7 +165,15 @@
 </script>
 
 {#snippet button(
-	type: 'startOrder' | 'fstab' | 'devfsRules' | 'additionalOptions' | 'metadata',
+	type:
+		| 'startOrder'
+		| 'fstab'
+		| 'resolvConf'
+		| 'devfsRules'
+		| 'additionalOptions'
+		| 'allowedOptions'
+		| 'metadata'
+		| 'lifecycleHooks',
 	title: string
 )}
 	<Button
@@ -148,12 +198,18 @@
 				{@render button('startOrder', 'Start At Boot / Start Order')}
 			{:else if activeRow.property === 'FSTab Entries'}
 				{@render button('fstab', 'FSTab Entries')}
+			{:else if activeRow.property === '/etc/resolv.conf'}
+				{@render button('resolvConf', '/etc/resolv.conf')}
 			{:else if activeRow.property === 'DevFS Ruleset'}
 				{@render button('devfsRules', 'DevFS Ruleset')}
 			{:else if activeRow.property === 'Additional Options'}
 				{@render button('additionalOptions', 'Additional Options')}
+			{:else if activeRow.property === 'Allowed Options'}
+				{@render button('allowedOptions', 'Allowed Options')}
 			{:else if activeRow.property === 'Metadata'}
 				{@render button('metadata', 'Metadata')}
+			{:else if activeRow.property === 'Lifecycle Hooks'}
+				{@render button('lifecycleHooks', 'Lifecycle Hooks')}
 			{/if}
 		</div>
 	{/if}
@@ -177,6 +233,15 @@
 	<TextEdit bind:open={properties.fstab.open} jail={jail.current} type="fstab" bind:reload />
 {/if}
 
+{#if properties.resolvConf.open && jail.current && jail.current.type === 'freebsd'}
+	<TextEdit
+		bind:open={properties.resolvConf.open}
+		jail={jail.current}
+		type="resolvConf"
+		bind:reload
+	/>
+{/if}
+
 {#if properties.devfsRules.open && jail.current}
 	<TextEdit
 		bind:open={properties.devfsRules.open}
@@ -195,6 +260,14 @@
 	/>
 {/if}
 
+{#if properties.allowedOptions.open && jail.current}
+	<AllowedOptions bind:open={properties.allowedOptions.open} jail={jail.current} bind:reload />
+{/if}
+
 {#if properties.metadata.open && jail.current}
 	<TextEdit bind:open={properties.metadata.open} jail={jail.current} type="metadata" bind:reload />
+{/if}
+
+{#if properties.lifecycleHooks.open && jail.current}
+	<LifecycleHooks bind:open={properties.lifecycleHooks.open} jail={jail.current} bind:reload />
 {/if}

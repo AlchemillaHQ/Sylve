@@ -12,7 +12,7 @@
 	import type { CreateData } from '$lib/types/jail/jail';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
-	import { getNextId } from '$lib/utils/vm/vm';
+	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
@@ -99,6 +99,15 @@
 		}
 	);
 
+	const clusterNodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const result = await getNodes();
+			updateCache(key, result);
+			return result;
+		}
+	);
+
 	let refetch = $state(false);
 
 	watch(
@@ -141,7 +150,8 @@
 			ipv6: 0,
 			ipv6Gateway: 0,
 			dhcp: false,
-			slaac: false
+			slaac: false,
+			resolvConf: ''
 		},
 		hardware: {
 			cpuCores: 1,
@@ -172,11 +182,15 @@
 	};
 
 	let nextId = $derived.by(() => {
-		if (vms.current && jails.current) {
-			return getNextId(vms.current, jails.current);
+		if (
+			clusterNodes.current &&
+			Array.isArray(clusterNodes.current) &&
+			clusterNodes.current.length > 0
+		) {
+			return getNextGuestId(clusterNodes.current);
 		}
 
-		return 137;
+		return getNextId(vms.current || [], jails.current || []);
 	});
 
 	let modal: CreateData = $state(options);
@@ -184,7 +198,9 @@
 	watch(
 		() => nextId,
 		(id) => {
-			modal.id = id;
+			if (typeof nextId === 'number') {
+				modal.id = id;
+			}
 		}
 	);
 
@@ -323,6 +339,8 @@
 									bind:ipv6Gateway={modal.network.ipv6Gateway}
 									bind:dhcp={modal.network.dhcp}
 									bind:slaac={modal.network.slaac}
+									bind:resolvConf={modal.network.resolvConf}
+									jailType={modal.advanced.jailType}
 									switches={networkSwitches.current}
 									networkObjects={networkObjects.current}
 								/>

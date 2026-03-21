@@ -127,6 +127,14 @@ func (s *Service) DeleteUser(userID uint) error {
 		return fmt.Errorf("failed_to_delete_user_tokens: %w", err)
 	}
 
+	if err := s.DB.Where("user_id = ?", userID).Delete(&models.WebAuthnCredential{}).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_user_passkeys: %w", err)
+	}
+
+	if err := s.DB.Where("user_id = ?", userID).Delete(&models.WebAuthnChallenge{}).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_user_passkey_challenges: %w", err)
+	}
+
 	if err := s.DB.Delete(user).Error; err != nil {
 		return fmt.Errorf("failed_to_delete_user: %w", err)
 	}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -11,21 +12,20 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { CPUPin, VM, VMDomain } from '$lib/types/vm/vm';
+	import { type VMCPUPinning, type CPUPin, type VM, type VMDomain } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
-	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval } from 'runed';
-	import { untrack } from 'svelte';
-	import { core } from 'zod/v4';
+	import type { CellComponent, RowComponent } from 'tabulator-tables';
+	import { resource, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
+	import { sleep } from '$lib/utils';
 
 	interface Data {
 		rid: number;
 		vms: VM[];
-		vm: VM;
+		vm: VM | undefined;
 		ram: RAMInfo;
 		domain: VMDomain;
 		pciDevices: PCIDevice[];
@@ -34,6 +34,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const vms = resource(
 		() => 'vm-list',
 		async (key) => {
@@ -42,11 +43,11 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.vms
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pciDevices = resource(
 		() => 'pciDevices',
 		async (key) => {
@@ -55,11 +56,11 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.pciDevices
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pptDevices = resource(
 		() => 'pptDevices',
 		async (key) => {
@@ -68,11 +69,11 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.pptDevices
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const domain = resource(
 		() => `vm-domain-${data.rid}`,
 		async (key) => {
@@ -81,48 +82,91 @@
 			return result;
 		},
 		{
-			lazy: true,
 			initialValue: data.domain
 		}
 	);
+	let vm: VM | null = $derived(
+		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
+	);
 
-	useInterval(() => 1000, {
-		callback: () => {
-			if (storage.visible) {
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		() => {
+			if (reload) {
 				vms.refetch();
 				pciDevices.refetch();
 				pptDevices.refetch();
 				domain.refetch();
+				reload = false;
 			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (storage.visible) {
-			untrack(() => {
-				vms.refetch();
-				pciDevices.refetch();
-				pptDevices.refetch();
-				domain.refetch();
-			});
+	watch(
+		() => storage.visible,
+		() => {
+			vms.refetch();
+			pciDevices.refetch();
+			pptDevices.refetch();
+			domain.refetch();
 		}
-	});
+	);
 
-	let vm: VM | null = $derived(
-		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm.rid) ?? null) : null
+	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
+		for (let i = 0; i < attempts; i += 1) {
+			await Promise.all([vms.refetch(), domain.refetch()]);
+			if (
+				String(domain.current?.status || '')
+					.trim()
+					.toLowerCase() === targetStatus
+			) {
+				return true;
+			}
+
+			if (i < attempts - 1) {
+				await sleep(500);
+			}
+		}
+
+		return (
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === targetStatus
+		);
+	}
+
+	watch(
+		() => vmPowerSignal.token,
+		() => {
+			void (async () => {
+				if (vmPowerSignal.rid !== Number(data.rid)) return;
+
+				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
+					await refetchUntilDomainStatus('shutoff');
+					return;
+				}
+
+				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
+					await refetchUntilDomainStatus('running');
+				}
+			})();
+		},
+		{ lazy: true }
 	);
 
 	// svelte-ignore state_referenced_locally
 	let options = {
 		cpu: {
-			sockets: data.vm.cpuSockets,
-			cores: data.vm.cpuCores,
-			threads: data.vm.cpuThreads,
-			pinning: data.vm.cpuPinning,
-			vCPUs: data.vm.cpuSockets * data.vm.cpuCores * data.vm.cpuThreads,
+			sockets: data.vm?.cpuSockets || 0,
+			cores: data.vm?.cpuCores || 0,
+			threads: data.vm?.cpuThreads || 0,
+			pinning: data.vm?.cpuPinning || ([] as VMCPUPinning[]),
+			vCPUs: (data.vm?.cpuSockets || 0) * (data.vm?.cpuCores || 0) * (data.vm?.cpuThreads || 0),
 			open: false,
 			pinnedCPUs:
-				data.vm.cpuPinning?.map((pin) => {
+				data.vm?.cpuPinning?.map((pin) => {
 					return {
 						socket: pin.hostSocket,
 						cores: pin.hostCpu
@@ -130,19 +174,19 @@
 				}) || ([] as CPUPin[])
 		},
 		ram: {
-			value: data.vm.ram,
+			value: data.vm?.ram || 1024,
 			open: false
 		},
 		vnc: {
-			enabled: data.vm.vncEnabled,
-			resolution: data.vm.vncResolution,
-			port: data.vm.vncPort,
-			password: data.vm.vncPassword,
+			enabled: data.vm?.vncEnabled,
+			resolution: data.vm?.vncResolution,
+			port: data.vm?.vncPort,
+			password: data.vm?.vncPassword,
 			open: false
 		},
 		pciDevices: {
 			open: false,
-			value: data.vm.pciDevices
+			value: data.vm?.pciDevices
 		},
 		serial: { open: false },
 		tpmEmulation: { open: false }
@@ -150,21 +194,24 @@
 
 	let properties = $state(options);
 
-	$effect(() => {
-		if (vm) {
-			properties.cpu.sockets = vm.cpuSockets;
-			properties.cpu.cores = vm.cpuCores;
-			properties.cpu.threads = vm.cpuThreads;
-			properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
-			properties.cpu.pinning = vm.cpuPinning;
-			properties.ram.value = vm.ram;
-			properties.vnc.enabled = vm.vncEnabled;
-			properties.vnc.port = vm.vncPort;
-			properties.vnc.password = vm.vncPassword;
-			properties.vnc.resolution = vm.vncResolution;
-			properties.pciDevices.value = vm.pciDevices;
+	watch(
+		() => vm,
+		() => {
+			if (vm) {
+				properties.cpu.sockets = vm.cpuSockets;
+				properties.cpu.cores = vm.cpuCores;
+				properties.cpu.threads = vm.cpuThreads;
+				properties.cpu.vCPUs = vm.cpuSockets * vm.cpuCores * vm.cpuThreads;
+				properties.cpu.pinning = vm.cpuPinning ?? [];
+				properties.ram.value = vm.ram;
+				properties.vnc.enabled = vm.vncEnabled;
+				properties.vnc.port = vm.vncPort;
+				properties.vnc.password = vm.vncPassword;
+				properties.vnc.resolution = vm.vncResolution;
+				properties.pciDevices.value = vm.pciDevices;
+			}
 		}
-	});
+	);
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
@@ -204,8 +251,35 @@
 						return `<div class="flex flex-col gap-1">${labels
 							.map((t) => `<div>${t}</div>`)
 							.join('')}</div>`;
+					} else if (row.getData().property === 'VNC') {
+						return `
+                            <span class="flex flex-col text-sm leading-tight">
+                                <span>
+                                    ${properties.vnc.enabled ? 'Enabled' : 'Disabled'}
+                                </span>
+                                <span>
+                                    ${properties.vnc.resolution} / ${properties.vnc.port}
+                                </span>
+                                <span >
+                                    ${properties.vnc.password || 'No Password'}
+                                </span>
+                            </span>
+                        `;
 					} else {
 						return value;
+					}
+				},
+				copyOnClick: (row: RowComponent) => {
+					try {
+						const property = row.getData().property;
+						if (property === 'VNC') {
+							return true;
+						}
+
+						return false;
+					} catch (e) {
+						console.error(e);
+						return false;
 					}
 				}
 			}
@@ -224,7 +298,10 @@
 			{
 				id: generateNanoId(`${properties.vnc.port}-vnc-port`),
 				property: 'VNC',
-				value: `${properties.vnc.enabled ? 'Enabled' : 'Disabled'} / ${properties.vnc.resolution} / ${properties.vnc.port}`
+				value: properties.vnc,
+				toCopy: properties.vnc.enabled
+					? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${window.location.hostname}:${properties.vnc.port}`
+					: ''
 			},
 			{
 				id: generateNanoId('serial'),
@@ -243,8 +320,6 @@
 			}
 		]
 	});
-
-	let reload = $state(false);
 </script>
 
 {#snippet button(
@@ -271,7 +346,7 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0}
+	{#if activeRows && activeRows?.length !== 0 && domain.current.status && domain.current.status === 'Shutoff'}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow && activeRow.property === 'RAM'}
 				{@render button('ram', 'RAM')}
@@ -311,7 +386,7 @@
 </div>
 
 {#if properties.ram.open}
-	<RAM bind:open={properties.ram.open} ram={data.ram} {vm} />
+	<RAM bind:open={properties.ram.open} ram={data.ram} {vm} bind:reload />
 {/if}
 
 {#if properties.cpu.open}
@@ -320,11 +395,12 @@
 		{vm}
 		vms={vms.current}
 		bind:pinnedCPUs={properties.cpu.pinnedCPUs}
+		bind:reload
 	/>
 {/if}
 
 {#if properties.vnc.open}
-	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} />
+	<VNC bind:open={properties.vnc.open} {vm} vms={vms.current} bind:reload />
 {/if}
 
 {#if properties.pciDevices.open}
@@ -333,6 +409,7 @@
 		{vm}
 		pciDevices={pciDevices.current}
 		pptDevices={pptDevices.current}
+		bind:reload
 	/>
 {/if}
 

@@ -2,28 +2,27 @@
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 	import { getDownloadsByUType } from '$lib/api/utilities/downloader';
-	import { getVMs, newVM } from '$lib/api/vm/vm';
+	import { getSimpleVMs, newVM } from '$lib/api/vm/vm';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PCIDevice } from '$lib/types/system/pci';
 	import { generatePassword } from '$lib/utils/string';
-	import { getNextId, isValidCreateData } from '$lib/utils/vm/vm';
+	import { getNextGuestId, getNextId, isValidCreateData } from '$lib/utils/vm/vm';
 	import Advanced from './Advanced.svelte';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
 	import { getNodes } from '$lib/api/cluster/cluster';
-	import { getJails } from '$lib/api/jail/jail';
+	import { getSimpleJails } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import { type CPUPin, type CreateData } from '$lib/types/vm/vm';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { getBasicSettings } from '$lib/api/basic';
-	import { resource } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -78,9 +77,9 @@
 	);
 
 	const vms = resource(
-		() => 'vm-list',
+		() => 'simple-vm-list',
 		async (key, prevKey, { signal }) => {
-			const result = await getVMs();
+			const result = await getSimpleVMs();
 			updateCache(key, result);
 			return result;
 		}
@@ -89,7 +88,7 @@
 	const jails = resource(
 		() => 'simple-jail-list',
 		async (key, prevKey, { signal }) => {
-			const result = await getJails();
+			const result = await getSimpleJails();
 			updateCache(key, result);
 			return result;
 		}
@@ -115,19 +114,17 @@
 
 	let reload = $state(false);
 
-	$effect(() => {
-		if (reload || minimize === false) {
-			untrack(() => {
-				networkObjects.refetch();
-				networkSwitches.refetch();
-				pciDevices.refetch();
-				pptDevices.refetch();
-				downloadsByUtype.refetch();
-				vms.refetch();
-				jails.refetch();
-				clusterNodes.refetch();
-				basicSettings.refetch();
-			});
+	watch([() => reload, () => minimize], ([reload, minimize], [prevReload, prevMinimize]) => {
+		if (reload || !minimize) {
+			networkObjects.refetch();
+			networkSwitches.refetch();
+			pciDevices.refetch();
+			pptDevices.refetch();
+			downloadsByUtype.refetch();
+			vms.refetch();
+			jails.refetch();
+			clusterNodes.refetch();
+			basicSettings.refetch();
 
 			reload = false;
 		}
@@ -177,7 +174,7 @@
 			vncPort: 0,
 			vncPassword: generatePassword(),
 			vncWait: false,
-			vncResolution: '1024x768',
+			vncResolution: '640x480',
 			startAtBoot: false,
 			bootOrder: 0,
 			tpmEmulation: false,
@@ -185,20 +182,38 @@
 			cloudInit: {
 				enabled: false,
 				data: '',
-				metadata: ''
+				metadata: '',
+				networkConfig: ''
 			},
-			ignoreUmsrs: false
+			ignoreUmsrs: false,
+			qemuGuestAgent: false
 		}
 	};
 
-	let nextId = $derived(getNextId(vms.current || [], jails.current || []));
+	let nextId = $derived.by(() => {
+		if (
+			clusterNodes.current &&
+			Array.isArray(clusterNodes.current) &&
+			clusterNodes.current.length > 0
+		) {
+			return getNextGuestId(clusterNodes.current);
+		}
+
+		return getNextId(vms.current || [], jails.current || []);
+	});
+
 	let modal: CreateData = $state(options);
 	let loading = $state(false);
 	let lastTab = $state('basic');
 
-	$effect(() => {
-		modal.id = nextId;
-	});
+	watch(
+		() => nextId,
+		(nextId, prevNextId) => {
+			if (typeof nextId === 'number') {
+				modal.id = nextId;
+			}
+		}
+	);
 
 	async function create() {
 		const data = $state.snapshot(modal);
@@ -310,10 +325,9 @@
 									bind:iso={modal.storage.iso}
 									cloudInit={modal.advanced.cloudInit}
 								/>
-							{:else if value === 'network' && networkObjects.current && networkSwitches.current && vms.current}
+							{:else if value === 'network' && networkObjects.current && networkSwitches.current}
 								<Network
 									switches={networkSwitches.current}
-									vms={vms.current}
 									networkObjects={networkObjects.current}
 									bind:switch={modal.network.switch}
 									bind:mac={modal.network.mac}
@@ -345,6 +359,7 @@
 									bind:timeOffset={modal.advanced.timeOffset}
 									bind:cloudInit={modal.advanced.cloudInit}
 									bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
+									bind:qemuGuestAgent={modal.advanced.qemuGuestAgent}
 								/>
 							{/if}
 						</div>

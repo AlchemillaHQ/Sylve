@@ -8,8 +8,14 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+var (
+	runCommand          = utils.RunCommand
+	runCommandWithInput = utils.RunCommandWithInput
+	unixUserExists      = system.UnixUserExists
+)
+
 func SambaUserExists(name string) (bool, error) {
-	out, err := utils.RunCommand("pdbedit", "-L", name)
+	out, err := runCommand("/usr/local/bin/pdbedit", "-L", name)
 	if err != nil {
 		low := strings.ToLower(out)
 		if strings.Contains(low, "no such user") ||
@@ -24,7 +30,7 @@ func SambaUserExists(name string) (bool, error) {
 }
 
 func CreateSambaUser(name, password string) error {
-	exists, err := system.UnixUserExists(name)
+	exists, err := unixUserExists(name)
 	if err != nil {
 		return fmt.Errorf("failed to check if user exists: %v", err)
 	}
@@ -34,7 +40,7 @@ func CreateSambaUser(name, password string) error {
 	}
 
 	input := fmt.Sprintf("%[1]s\n%[1]s\n", password)
-	out, err := utils.RunCommandWithInput("smbpasswd", input, "-s", "-a", name)
+	out, err := runCommandWithInput("/usr/local/bin/smbpasswd", input, "-s", "-a", name)
 
 	if err != nil {
 		return fmt.Errorf("smbpasswd -a %s failed: %v: %s", name, err, out)
@@ -43,7 +49,7 @@ func CreateSambaUser(name, password string) error {
 }
 
 func EditSambaUser(name, newPassword string) error {
-	exists, err := system.UnixUserExists(name)
+	exists, err := unixUserExists(name)
 	if err != nil {
 		return fmt.Errorf("failed to check if user exists: %v", err)
 	}
@@ -53,7 +59,7 @@ func EditSambaUser(name, newPassword string) error {
 	}
 
 	input := fmt.Sprintf("%[1]s\n%[1]s\n", newPassword)
-	out, err := utils.RunCommandWithInput("smbpasswd", input, "-s", name)
+	out, err := runCommandWithInput("/usr/local/bin/smbpasswd", input, "-s", name)
 	if err != nil {
 		return fmt.Errorf("smbpasswd change %s failed: %v: %s", name, err, out)
 	}
@@ -61,7 +67,7 @@ func EditSambaUser(name, newPassword string) error {
 }
 
 func DeleteSambaUser(name string) error {
-	out, err := utils.RunCommand("smbpasswd", "-x", name)
+	out, err := runCommand("/usr/local/bin/smbpasswd", "-x", name)
 	if err != nil {
 		return fmt.Errorf("smbpasswd -x %s failed: %v: %s", name, err, out)
 	}

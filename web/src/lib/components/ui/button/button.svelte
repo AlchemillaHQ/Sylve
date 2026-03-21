@@ -14,7 +14,7 @@
 					'bg-background shadow-xs hover:bg-muted hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-muted border',
 				secondary: 'bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80',
 				ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
-				link: 'text-primary underline-offset-4 hover:underline hover:text-white'
+				link: 'text-primary underline-offset-4 hover:underline hover:text-primary/50 dark:hover:text-white'
 			},
 			size: {
 				default: 'h-9 px-4 py-2 has-[>svg]:px-3',

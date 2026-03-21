@@ -18,6 +18,7 @@ type Object struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	IsUsed    bool      `json:"isUsed" gorm:"-"`
+	IsUsedBy  string    `json:"isUsedBy" gorm:"-"` // "", "dhcp" for now
 
 	Entries     []ObjectEntry      `json:"entries" gorm:"foreignKey:ObjectID"`
 	Resolutions []ObjectResolution `json:"resolutions" gorm:"foreignKey:ObjectID"`

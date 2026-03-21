@@ -13,12 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"strings"
+	"time"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
-
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -43,8 +43,158 @@ type action struct {
 	Response interface{} `json:"response,omitempty"`
 }
 
+func shouldRedactAuditPayload(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+
+	// These endpoints can carry credentials, cluster keys, or signed download URLs.
+	return strings.HasPrefix(path, "/api/auth/") ||
+		strings.HasPrefix(path, "/api/cluster/") ||
+		path == "/api/utilities/downloads/signed-url"
+}
+
+func isSensitiveAuditKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	key = strings.ReplaceAll(key, "_", "")
+	key = strings.ReplaceAll(key, "-", "")
+
+	switch key {
+	case "password",
+		"token",
+		"accesstoken",
+		"refreshtoken",
+		"clustertoken",
+		"hash",
+		"authorization",
+		"clusterauthorization",
+		"clusterkey",
+		"secret",
+		"signature",
+		"sig",
+		"totp",
+		"otp",
+		"privatekey",
+		"sshkey",
+		"credential",
+		"sessiondata",
+		"assertion",
+		"challenge":
+		return true
+	}
+
+	return strings.Contains(key, "password") ||
+		strings.Contains(key, "token") ||
+		strings.Contains(key, "secret") ||
+		strings.Contains(key, "privatekey") ||
+		strings.Contains(key, "signature")
+}
+
+func sanitizeAuditPayload(v interface{}) interface{} {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for k, value := range typed {
+			if isSensitiveAuditKey(k) {
+				out[k] = "[REDACTED]"
+				continue
+			}
+			out[k] = sanitizeAuditPayload(value)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, value := range typed {
+			out[i] = sanitizeAuditPayload(value)
+		}
+		return out
+	case string:
+		if len(typed) > 4096 {
+			return typed[:4096] + "...[truncated]"
+		}
+		return typed
+	default:
+		return typed
+	}
+}
+
+func parseClaimUserID(raw interface{}) (*uint, bool) {
+	switch v := raw.(type) {
+	case uint:
+		if uint64(v) > uint64(math.MaxInt64) {
+			return nil, false
+		}
+		uid := v
+		return &uid, true
+	case *uint:
+		if v == nil {
+			return nil, false
+		}
+		if uint64(*v) > uint64(math.MaxInt64) {
+			return nil, false
+		}
+		return v, true
+	case int:
+		if v < 0 {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case int64:
+		if v < 0 {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case uint64:
+		if v > uint64(math.MaxInt64) {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > float64(math.MaxInt64) || v != math.Trunc(v) {
+			return nil, false
+		}
+		uid := uint(v)
+		return &uid, true
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil || n < 0 {
+			return nil, false
+		}
+		uid := uint(n)
+		return &uid, true
+	default:
+		return nil, false
+	}
+}
+
 func getClaims(c *gin.Context, authService *authService.Service) (claim, error) {
 	var claims claim
+
+	if uidAny, hasUserID := c.Get("UserID"); hasUserID {
+		usernameAny, hasUsername := c.Get("Username")
+		authTypeAny, hasAuthType := c.Get("AuthType")
+		if hasUsername && hasAuthType {
+			var uid *uint
+			if parsed, ok := parseClaimUserID(uidAny); ok {
+				uid = parsed
+			}
+
+			claims = claim{
+				UserID:   uid,
+				Username: fmt.Sprintf("%v", usernameAny),
+				AuthType: fmt.Sprintf("%v", authTypeAny),
+			}
+
+			if strings.TrimSpace(claims.Username) != "" && strings.TrimSpace(claims.AuthType) != "" {
+				return claims, nil
+			}
+		}
+	}
+
 	token := c.GetString("Token")
 
 	if token == "" {
@@ -73,13 +223,25 @@ func getClaims(c *gin.Context, authService *authService.Service) (claim, error) 
 		return claims, fmt.Errorf("invalid_claims_format")
 	}
 
-	all := cMap["custom_claims"].(map[string]interface{})
-	userID := uint(all["userId"].(float64))
-	user := all["username"].(string)
-	authType := all["authType"].(string)
+	allAny, ok := cMap["custom_claims"]
+	if !ok {
+		return claims, fmt.Errorf("custom_claims_missing")
+	}
+
+	all, ok := allAny.(map[string]interface{})
+	if !ok {
+		return claims, fmt.Errorf("invalid_custom_claims_format")
+	}
+
+	userID, _ := parseClaimUserID(all["userId"])
+	user := fmt.Sprintf("%v", all["username"])
+	authType := fmt.Sprintf("%v", all["authType"])
+	if strings.TrimSpace(user) == "" || strings.TrimSpace(authType) == "" {
+		return claims, fmt.Errorf("invalid_custom_claims")
+	}
 
 	claims = claim{
-		UserID:   &userID,
+		UserID:   userID,
 		Username: user,
 		AuthType: authType,
 	}
@@ -126,6 +288,8 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 		var claims claim
 		claims, err := getClaims(c, authService)
 		if err != nil && (c.Request.URL.Path == "/api/auth/login" ||
+			c.Request.URL.Path == "/api/auth/passkeys/login/begin" ||
+			c.Request.URL.Path == "/api/auth/passkeys/login/finish" ||
 			c.Request.URL.Path == "/api/utilities/downloads/signed-url" ||
 			strings.HasPrefix(c.Request.URL.Path, "/api/cluster")) {
 
@@ -160,7 +324,11 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			if err := json.NewDecoder(tee).Decode(&body); err != nil {
 				logger.L.Warn().Msgf("Request body exists but could not be parsed as JSON: %v", err)
 			} else {
-				act.Body = body
+				if shouldRedactAuditPayload(c.Request.URL.Path) {
+					act.Body = "[REDACTED]"
+				} else {
+					act.Body = sanitizeAuditPayload(body)
+				}
 			}
 
 			c.Request.Body = io.NopCloser(buf)
@@ -199,7 +367,11 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			response = nil
 		}
 
-		act.Response = response
+		if shouldRedactAuditPayload(c.Request.URL.Path) {
+			act.Response = "[REDACTED]"
+		} else {
+			act.Response = sanitizeAuditPayload(response)
+		}
 		actJSON, err = json.Marshal(act)
 		if err != nil {
 			logger.L.Error().Msgf("Failed to marshal final action: %v", err)
@@ -222,7 +394,7 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 		log.Ended = time.Now()
 		log.Duration = time.Since(log.Started)
 
-		if c.Request.URL.Path == "/api/auth/login" && cStatus == 200 {
+		if (c.Request.URL.Path == "/api/auth/login" || c.Request.URL.Path == "/api/auth/passkeys/login/finish") && cStatus == 200 {
 			var resBody struct {
 				Data struct {
 					Token string `json:"token"`
@@ -231,13 +403,15 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			if err := json.Unmarshal(bw.body.Bytes(), &resBody); err == nil && resBody.Data.Token != "" {
 				if newClaims, err := utils.ParseJWT(resBody.Data.Token); err == nil {
 					if cMap, ok := newClaims.(map[string]interface{}); ok {
-						all := cMap["custom_claims"].(map[string]interface{})
-						uid := uint(all["userId"].(float64))
-						user := all["username"].(string)
-						authType := all["authType"].(string)
-						log.UserID = &uid
-						log.User = user
-						log.AuthType = authType
+						if allAny, ok := cMap["custom_claims"]; ok {
+							if all, ok := allAny.(map[string]interface{}); ok {
+								if uid, ok := parseClaimUserID(all["userId"]); ok {
+									log.UserID = uid
+								}
+								log.User = fmt.Sprintf("%v", all["username"])
+								log.AuthType = fmt.Sprintf("%v", all["authType"])
+							}
+						}
 					}
 				}
 			}

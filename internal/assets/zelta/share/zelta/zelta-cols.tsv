@@ -1,0 +1,21 @@
+# COLNAME	# SYNONYMS	# TYPE	# DESCRIPTION	# DEPRECATION
+ds_suffix	relname,dssuffix	ds	Relative dataset name
+match	match	snap	Latest matching snapshot
+num_matches	nummatches,matches,count	num	Total number of matches
+xfer_size	xfersize,size	bytes	Unsynced data size based on snapshots
+xfer_num	xfernum,count,num	num	Unsynced snapshot count
+src_name	srcname,name	ds_snap	Full source dataset name
+src_first	srcfirst,first	snap	First source snapshot
+src_next	srcnext,next	snap	Next source snapshot after match
+src_last	srclast,last	snap	Latest source snapshot
+src_written	srcwritten,written	bytes	Source data written since last snap
+src_snaps	srcsnaps,snaps	num	Total source snapshots
+tgt_name	tgtname,name	ds_snap	Full target dataset name
+tgt_first	tgtfirst,first	snap	First target snapshot
+tgt_next	tgtnext,next	snap	Next target snapshot that is blocking sync
+tgt_last	tgtlast,last	snap	Latest target snapshot
+tgt_written	tgtwritten,written	bytes	Target data written since last snap
+tgt_snaps	tgtsnaps,snaps	num	Total target snapshots
+#sync_code	synccode,code,mode	num	Octal sync state code	'sync_code' has been deprecated
+#action	action	text	Proposed Zelta sync action
+info	info,status	text	Sync state description

@@ -12,10 +12,10 @@
 	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
-	import { resource } from 'runed';
-	import { untrack } from 'svelte';
+	import { resource, watch } from 'runed';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CPUInfo } from '$lib/types/info/cpu';
+	import { jailPowerSignal } from '$lib/stores/api.svelte';
 
 	interface Data {
 		jail: Jail;
@@ -26,6 +26,7 @@
 	let { data }: { data: Data } = $props();
 	let reload = $state(true);
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => 'jail-' + data.jail.ctId,
 		async (key) => {
@@ -39,6 +40,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		ram: {
 			value: data.jail.memory,
@@ -55,17 +57,25 @@
 
 	let properties = $state(options);
 
-	$effect(() => {
-		if (reload) {
-			untrack(() => {
+	watch(
+		() => reload,
+		(value) => {
+			if (value) {
 				jail.refetch().then(() => {
 					properties.ram.value = jail.current.memory;
 					properties.cpu.value = jail.current.cores;
 					reload = false;
 				});
-			});
+			}
 		}
-	});
+	);
+
+	watch(
+		() => jailPowerSignal.token,
+		() => {
+			reload = true;
+		}
+	);
 
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));

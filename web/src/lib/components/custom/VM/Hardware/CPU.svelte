@@ -16,6 +16,7 @@
 		vm: VM | null;
 		vms: VM[];
 		pinnedCPUs: CPUPin[];
+		reload: boolean;
 	}
 
 	let cpuInfo = resource(
@@ -26,7 +27,15 @@
 		}
 	);
 
-	let { open = $bindable(), vm, vms, pinnedCPUs = $bindable() }: Props = $props();
+	let {
+		open = $bindable(),
+		vm,
+		vms,
+		pinnedCPUs = $bindable(),
+		reload = $bindable(false)
+	}: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let options = {
 		cpu: {
 			sockets: vm?.cpuSockets || 1,
@@ -77,6 +86,8 @@
 				parseInt(properties.cpu.threads.toString(), 10),
 				pinnedCPUs
 			);
+
+			reload = true;
 
 			if (response.error) {
 				handleAPIError(response);

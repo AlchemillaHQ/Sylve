@@ -9,6 +9,7 @@ export const NetworkObjectSchema = z.object({
 	createdAt: z.string(),
 	updatedAt: z.string(),
 	isUsed: z.boolean().optional().default(false),
+	isUsedBy: z.enum(['', 'dhcp']),
 	entries: z
 		.array(
 			z.object({

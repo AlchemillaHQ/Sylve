@@ -8,7 +8,11 @@
 
 package jailServiceInterfaces
 
-import jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+import (
+	"context"
+
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+)
 
 type HookPhase struct {
 	Enabled bool   `json:"enabled"`
@@ -36,9 +40,10 @@ type CreateJailRequest struct {
 	Hostname    string `json:"hostname"`
 	Description string `json:"description"`
 
-	Pool  string `json:"pool" binding:"required"`
-	Base  string `json:"base"`
-	Fstab string `json:"fstab"`
+	Pool       string `json:"pool" binding:"required"`
+	Base       string `json:"base"`
+	Fstab      string `json:"fstab"`
+	ResolvConf string `json:"resolvConf"`
 
 	SwitchName string `json:"switchName"`
 
@@ -116,7 +121,11 @@ type EditJailNetworkRequest struct {
 }
 
 type JailServiceInterface interface {
+	JailAction(ctid int, action string) error
+	GetJailCTIDFromDataset(dataset string) (uint, error)
+	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
+	StartStatsMonitoring(ctx context.Context)
+
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
-	WatchNetworkObjectChanges() error
 }

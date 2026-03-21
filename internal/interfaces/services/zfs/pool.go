@@ -25,7 +25,7 @@ type Vdev struct {
 
 type CreateZPoolRequest struct {
 	Name        string            `json:"name" binding:"required,alphanum,min=1,max=24"`
-	RaidType    RaidType          `json:"raidType" binding:"required`
+	RaidType    RaidType          `json:"raidType" binding:"required"`
 	Vdevs       []Vdev            `json:"vdevs"`
 	Properties  map[string]string `json:"properties"`
 	CreateForce bool              `json:"createForce"`

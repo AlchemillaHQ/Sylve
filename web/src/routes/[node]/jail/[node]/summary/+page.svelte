@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
+	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
 		deleteJail,
@@ -15,6 +16,7 @@
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -24,9 +26,16 @@
 	import { storage } from '$lib';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
-	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
-	import { sleep } from '$lib/utils';
+	import type { Jail, JailLifecycleAction, JailStat, JailState } from '$lib/types/jail/jail';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import { updateCache } from '$lib/utils/http';
+	import {
+		getEffectiveJailLifecycleAction,
+		getJailLifecycleBadgeStyle,
+		getJailLifecyclePendingTimeoutMs,
+		isJailLifecycleTransitionPending,
+		shouldHideJailLifecycleButtons
+	} from '$lib/utils/jail/jail';
 	import { dateToAgo } from '$lib/utils/time';
 	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
@@ -65,9 +74,10 @@
 		}
 	});
 
+	// svelte-ignore state_referenced_locally
 	const jail = resource(
 		() => `jail-${ctId}`,
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getJailById(ctId, 'ctid');
 			updateCache(key, result);
 			return result;
@@ -77,6 +87,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const jState = resource(
 		() => `jail-${ctId}-state`,
 		async (key, prevKey, { signal }) => {
@@ -89,6 +100,17 @@
 		}
 	);
 
+	const lifecycleTask = resource(
+		() => `jail-lifecycle-task-${ctId}`,
+		async () => {
+			return await getActiveLifecycleTaskForGuest('jail', ctId);
+		},
+		{
+			initialValue: null as LifecycleTask | null
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	const logs = resource(
 		() => `jail-${ctId}-logs`,
 		async (key, prevKey, { signal }) => {
@@ -101,6 +123,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
@@ -112,6 +135,7 @@
 		{ initialValue: data.stats }
 	);
 
+	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
 		() => `cpu-info`,
 		async (key, prevKey, { signal }) => {
@@ -124,6 +148,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const ramInfo = resource(
 		() => `ram-info`,
 		async (key, prevKey, { signal }) => {
@@ -149,6 +174,11 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+				lifecycleTask.refetch();
+
+				if (showLogs || modalState.loading.open) {
+					logs.refetch();
+				}
 			}
 		}
 	});
@@ -160,25 +190,56 @@
 				jail.refetch();
 				jState.refetch();
 				stats.refetch();
+				lifecycleTask.refetch();
+
+				if (showLogs || modalState.loading.open) {
+					logs.refetch();
+				}
 			}
 		}
 	);
 
 	let showLogs = $state(false);
+	let logsContainerElement = $state<HTMLDivElement | null>(null);
+	let followLogs = $state(true);
+	const LOG_AUTO_SCROLL_THRESHOLD = 24;
 	let logicalCores = $derived(cpuInfo.current?.logicalCores ?? 0);
 	let totalRAM = $derived(ramInfo.current?.total ?? 0);
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
-	let lastDesc = $state('');
+	let isDescInitialized = false;
+	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
+	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
-	$effect(() => {
-		const value = debouncedDesc.current;
+	function isNearLogsBottom(element: HTMLDivElement): boolean {
+		return (
+			element.scrollHeight - element.scrollTop - element.clientHeight <= LOG_AUTO_SCROLL_THRESHOLD
+		);
+	}
 
-		if (value !== undefined && value !== null && value !== lastDesc) {
-			updateDescription(jail.current.id, value);
-			lastDesc = value;
+	function handleLogsScroll() {
+		if (!logsContainerElement) {
+			return;
 		}
-	});
+
+		followLogs = isNearLogsBottom(logsContainerElement);
+	}
+
+	watch(
+		() => debouncedDesc.current,
+		(curr, prev) => {
+			if (!isDescInitialized) {
+				isDescInitialized = true;
+				return;
+			}
+
+			if (curr !== undefined && prev !== undefined) {
+				if (curr !== prev) {
+					updateDescription(jail.current.id, curr);
+				}
+			}
+		}
+	);
 
 	let udTime = $derived.by(() => {
 		if (jState.current.state === 'ACTIVE') {
@@ -223,49 +284,129 @@
 		}
 	}
 
+	function beginPendingLifecycleAction(action: JailLifecycleAction) {
+		pendingLifecycleAction = action;
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+		}
+
+		pendingLifecycleTimer = setTimeout(() => {
+			pendingLifecycleAction = '';
+			pendingLifecycleTimer = null;
+		}, getJailLifecyclePendingTimeoutMs(action));
+	}
+
+	function clearPendingLifecycleAction() {
+		pendingLifecycleAction = '';
+		if (pendingLifecycleTimer) {
+			clearTimeout(pendingLifecycleTimer);
+			pendingLifecycleTimer = null;
+		}
+	}
+
 	async function handleStop() {
-		modalState.loading.open = true;
-		modalState.loading.title = 'Stopping Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being stopped`;
-		modalState.loading.iconColor = 'text-red-500';
-
-		await sleep(1000);
-		await jailAction(jail.current.ctId, 'stop');
-
+		beginPendingLifecycleAction('stop');
+		const result = await jailAction(jail.current.ctId, 'stop');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
+		if (result.status === 'error') {
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error stopping jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
+		} else {
+			toast.success('Jail stop queued', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		lifecycleTask.refetch();
 	}
 
 	async function handleStart() {
-		modalState.loading.open = true;
-		modalState.loading.title = 'Starting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being started`;
-		modalState.loading.iconColor = 'text-green-500';
-
-		await sleep(1000);
-		await jailAction(jail.current.ctId, 'start');
-
+		beginPendingLifecycleAction('start');
+		const result = await jailAction(jail.current.ctId, 'start');
 		reload.leftPanel = true;
-		modalState.loading.open = false;
+		if (result.status === 'error') {
+			clearPendingLifecycleAction();
+			toast.error(
+				result.message === 'lifecycle_task_in_progress'
+					? 'Jail action already in progress'
+					: 'Error starting jail',
+				{
+					duration: 5000,
+					position: 'bottom-center'
+				}
+			);
+		} else {
+			toast.success('Jail start queued', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		lifecycleTask.refetch();
 	}
 
 	$effect(() => {
-		if (showLogs) {
+		const _currentLogs = logs.current.logs;
+
+		if (showLogs && followLogs) {
 			untrack(() => {
 				// scroll to the bottom of the logs
-				const logsContainer = document.querySelector('.logs-container');
-				if (logsContainer) {
-					logsContainer.scrollTop = logsContainer.scrollHeight;
+				if (logsContainerElement) {
+					logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
 				}
 			});
 		}
 	});
+
+	$effect(() => {
+		if (showLogs) {
+			followLogs = true;
+			untrack(() => {
+				requestAnimationFrame(() => {
+					if (logsContainerElement) {
+						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
+					}
+				});
+			});
+		}
+	});
+
+	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let effectiveLifecycleAction = $derived(
+		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	);
+	let isLifecycleTransitionPending = $derived(
+		isJailLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+	);
+	let shouldHideActionButtons = $derived(
+		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
+	);
+	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
+
+	watch(
+		() => lifecycleTask.current,
+		(task) => {
+			if (task) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
 </script>
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border p-4">
+	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#if jState.current}
-			{#if jState.current.state === 'ACTIVE'}
+			{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 				<Button
 					onclick={handleStop}
 					size="sm"
@@ -275,29 +416,37 @@
 
 					{'Stop'}
 				</Button>
-			{:else}
-				<div class="flex items-center gap-2">
-					<Button
-						onclick={handleStart}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-						{'Start'}
-					</Button>
+			{:else if !shouldHideActionButtons}
+				<Button
+					onclick={handleStart}
+					size="sm"
+					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
+				>
+					<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
+					{'Start'}
+				</Button>
 
-					<Button
-						onclick={() => {
-							modalState.isDeleteOpen = true;
-						}}
-						size="sm"
-						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
-					>
-						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-						{'Delete'}
-					</Button>
-				</div>
+				<Button
+					onclick={() => {
+						modalState.isDeleteOpen = true;
+					}}
+					size="sm"
+					class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+				>
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+					{'Delete'}
+				</Button>
 			{/if}
+		{/if}
+
+		{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+			<Badge
+				variant={lifecycleActionBadge.variant}
+				class={`ml-1 px-1.5 text-xs ${lifecycleActionBadge.className}`}
+			>
+				<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+				{lifecycleActionBadge.label}
+			</Badge>
 		{/if}
 
 		<div class="ml-auto flex h-full items-center gap-2">
@@ -305,6 +454,7 @@
 				<Button
 					size="sm"
 					onclick={() => {
+						followLogs = true;
 						showLogs = true;
 					}}
 					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
@@ -424,7 +574,7 @@
 				</Card.Root>
 			</div>
 
-			<div class="space-y-4 p-3">
+			<div class="space-y-4 px-4 pb-4">
 				<LineBrush
 					title="CPU Usage"
 					points={stats.current.map((data) => ({
@@ -434,6 +584,7 @@
 					percentage={true}
 					color="one"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[solar--cpu-bold]"
 				/>
 
 				<LineBrush
@@ -445,6 +596,7 @@
 					percentage={true}
 					color="two"
 					containerContentHeight="h-64"
+					titleIconClass="icon-[ph--memory]"
 				/>
 			</div>
 		</ScrollArea>
@@ -523,7 +675,11 @@
 
 		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
 			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
-				<div class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto">
+				<div
+					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+					bind:this={logsContainerElement}
+					onscroll={handleLogsScroll}
+				>
 					<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
 							{logs.current.logs}
 						</pre>
