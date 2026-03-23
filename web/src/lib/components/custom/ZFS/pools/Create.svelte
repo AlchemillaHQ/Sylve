@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
@@ -20,9 +21,10 @@
 	import { createPool } from '$lib/api/zfs/pool';
 	import { isValidPoolName } from '$lib/utils/zfs';
 	import humanFormat from 'human-format';
-	import { untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -66,22 +68,60 @@
 
 	let raidTypes = $state(raidTypeArr);
 	let properties = $state(options);
+	let accordionOpen = $state<string[]>([]);
 
-	$effect(() => {
-		properties.raid = 'stripe';
-		raidTypes = raidTypeArr;
-	});
+	watch(
+		() => open,
+		() => {
+			if (open) {
+				accordionOpen = diskSections.filter((s) => s.count > 0).map((s) => s.key);
+			}
+		}
+	);
 
-	$effect(() => {
-		let int = parseInt(properties.vdev.count.toString(), 10);
-		untrack(() => {
+	watch(
+		() => properties.vdev.count,
+		() => {
+			let int = parseInt(properties.vdev.count.toString(), 10);
 			if (isNaN(int) || int < 1) {
 				properties.vdev.count = 1;
 			} else {
 				properties.vdev.count = int;
 			}
-		});
-	});
+		}
+	);
+
+	let diskSections = $derived(
+		[
+			{
+				key: 'HDD',
+				count: usable.disks.filter(
+					(d) => d.type === 'HDD' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
+				).length
+			},
+			{
+				key: 'SSD',
+				count: usable.disks.filter(
+					(d) => d.type === 'SSD' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
+				).length
+			},
+			{
+				key: 'NVMe',
+				count: usable.disks.filter(
+					(d) => d.type === 'NVMe' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
+				).length
+			},
+			{
+				key: 'Partitions',
+				count: usable.partitions.filter(
+					(p) =>
+						!properties.vdev.containers
+							.flatMap((v) => v.partitions)
+							.some((vp) => vp.name === p.name)
+				).length
+			}
+		].sort((a, b) => b.count - a.count)
+	);
 
 	let spares: string[] = $derived.by(() => {
 		const uD: string[] = usable.disks
@@ -306,6 +346,47 @@
 		return vdev.disks.length > 0 || vdev.partitions.length > 0;
 	}
 
+	function addToLastVdev(itemId: string) {
+		const lastIdx = properties.vdev.count - 1;
+
+		if (!properties.vdev.containers[lastIdx]) {
+			properties.vdev.containers[lastIdx] = {
+				id: `vdev-${lastIdx}`,
+				disks: [],
+				partitions: []
+			};
+		}
+
+		const disk = disks.find((d) => d.uuid === itemId);
+		if (disk) {
+			const exists = properties.vdev.containers[lastIdx].disks.find((d) => d.uuid === disk.uuid);
+			if (!exists) {
+				properties.vdev.containers[lastIdx].disks.push(disk);
+				usable.disks = usable.disks.filter((ud) => ud.uuid !== disk.uuid);
+			}
+		} else {
+			const parentDisk = disks.find((d) => d.partitions.some((p) => p.name === itemId));
+			if (parentDisk) {
+				const partition = parentDisk.partitions.find((p) => p.name === itemId);
+				if (partition) {
+					const exists = properties.vdev.containers[lastIdx].partitions.find(
+						(p) => p.name === partition.name
+					);
+					if (!exists) {
+						properties.vdev.containers[lastIdx].partitions.push(partition);
+						usable.disks = usable.disks.filter(
+							(ud) => !ud.partitions.some((p) => p.name === partition.name)
+						);
+					}
+				}
+			}
+		}
+
+		properties.props.spares = [];
+		setRedundancyAvailability();
+		setUsableSpace();
+	}
+
 	function removeFromVdev(id: number, diskId: string) {
 		properties.props.spares = [];
 
@@ -468,6 +549,11 @@
 			open = false;
 		}
 	}
+
+	onMount(() => {
+		properties.raid = 'stripe';
+		raidTypes = raidTypeArr;
+	});
 </script>
 
 {#snippet vdevErrors(id: number)}
@@ -537,77 +623,80 @@
 {/snippet}
 
 {#snippet diskContainer(type: string)}
-	<div id="{type.toLowerCase()}-container">
-		<Label>{type}</Label>
-		<div class="bg-primary/10 dark:bg-background mt-1 rounded-lg p-4">
-			<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
-				<div class="flex min-h-20 items-center justify-center gap-4">
-					{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.uuid)}
-						<div class="text-center" animate:flip={{ duration: 300 }}>
-							<div class="cursor-move" use:draggable={disk.uuid ?? ''}>
-								{#if type === 'HDD'}
-									<span class="icon-[mdi--harddisk] h-11 w-11 text-green-500"></span>
-								{:else if type === 'SSD'}
-									<span class="icon-[icon-park-outline--ssd] h-11 w-11 text-blue-500"></span>
-								{:else if type === 'NVMe'}
-									<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
-								{/if}
-							</div>
-							<div class="max-w-16 truncate text-xs">
-								{disk.device.replaceAll('/dev/', '')}
-							</div>
-							<div class="text-muted-foreground text-xs">
-								{humanFormat(disk.size)}
-							</div>
-						</div>
-					{/each}
-
-					{#if usable.disks.filter((disk) => disk.type === type).length === 0 || usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)).length === 0}
-						<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
-							No available disks
-						</div>
-					{/if}
+	<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
+		<div class="flex min-h-16 items-center justify-start gap-4 px-1 py-2">
+			{#each usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)) as disk (disk.uuid)}
+				<div class="relative text-center" animate:flip={{ duration: 300 }}>
+					<div class="cursor-move" use:draggable={disk.uuid ?? ''}>
+						{#if type === 'HDD'}
+							<span class="icon-[mdi--harddisk] h-11 w-11 text-green-500"></span>
+						{:else if type === 'SSD'}
+							<span class="icon-[icon-park-outline--ssd] h-11 w-11 text-blue-500"></span>
+						{:else if type === 'NVMe'}
+							<span class="icon-[bi--nvme] h-11 w-11 rotate-90 text-blue-500"></span>
+						{/if}
+					</div>
+					<div class="max-w-16 truncate text-xs">
+						{disk.device.replaceAll('/dev/', '')}
+					</div>
+					<div class="text-muted-foreground text-xs">
+						{humanFormat(disk.size)}
+					</div>
+					<button
+						aria-label="Add {disk.device.split('/').pop()} to last VDEV"
+						class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white hover:bg-green-600"
+						onclick={() => addToLastVdev(disk.uuid ?? '')}
+					>
+						<span class="icon-[clarity--arrow-line] block h-3 w-3"></span>
+					</button>
 				</div>
-			</ScrollArea>
+			{/each}
+
+			{#if usable.disks.filter((disk) => disk.type === type).length === 0 || usable.disks.filter((disk) => disk.type === type && disk.partitions.length === 0 && !isDiskInVdev(disk.uuid)).length === 0}
+				<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
+					No available {type} disks
+				</div>
+			{/if}
 		</div>
-	</div>
+	</ScrollArea>
 {/snippet}
 
 {#snippet partitionsContainer()}
-	<div id="partitions-container">
-		<Label>Partitions</Label>
-		<div class="bg-primary/10 dark:bg-background mt-1 rounded-lg p-4">
-			<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
-				<div class="flex min-h-20 items-center justify-center gap-4">
-					{#each usable.partitions.filter((partition) => !properties.vdev.containers
-								.flatMap((vdev) => vdev.partitions)
-								.some((p) => p.name === partition.name)) as partition (partition.name)}
-						<div class="text-center" animate:flip={{ duration: 100 }}>
-							<div class="cursor-move" use:draggable={partition.name}>
-								<span
-									class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"
-								></span>
-							</div>
-							<div class="max-w-16 truncate text-xs">
-								{partition.name}
-							</div>
-							<div class="text-muted-foreground text-xs">
-								{humanFormat(partition.size)}
-							</div>
-						</div>
-					{/each}
-
-					{#if usable.partitions.length === 0 || usable.partitions.filter((partition) => !properties.vdev.containers
-									.flatMap((vdev) => vdev.partitions)
-									.some((p) => p.name === partition.name)).length === 0}
-						<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
-							No available partitions
-						</div>
-					{/if}
+	<ScrollArea class="w-full rounded-md whitespace-nowrap" orientation="horizontal">
+		<div class="flex min-h-16 items-center justify-start gap-4 px-1 py-2">
+			{#each usable.partitions.filter((partition) => !properties.vdev.containers
+						.flatMap((vdev) => vdev.partitions)
+						.some((p) => p.name === partition.name)) as partition (partition.name)}
+				<div class="relative text-center" animate:flip={{ duration: 100 }}>
+					<div class="cursor-move" use:draggable={partition.name}>
+						<span class="icon-[ant-design--partition-outlined] h-11 w-11 rotate-90 text-blue-500"
+						></span>
+					</div>
+					<div class="max-w-16 truncate text-xs">
+						{partition.name}
+					</div>
+					<div class="text-muted-foreground text-xs">
+						{humanFormat(partition.size)}
+					</div>
+					<button
+						aria-label="Add {partition.name} to last VDEV"
+						class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white hover:bg-green-600"
+						onclick={() => addToLastVdev(partition.name)}
+					>
+						<span class="icon-[clarity--arrow-line] block h-3 w-3"></span>
+					</button>
 				</div>
-			</ScrollArea>
+			{/each}
+
+			{#if usable.partitions.length === 0 || usable.partitions.filter((partition) => !properties.vdev.containers
+							.flatMap((vdev) => vdev.partitions)
+							.some((p) => p.name === partition.name)).length === 0}
+				<div class="text-muted-foreground/80 flex h-16 w-full items-center justify-center">
+					No available partitions
+				</div>
+			{/if}
 		</div>
-	</div>
+	</ScrollArea>
 {/snippet}
 
 <Dialog.Root bind:open>
@@ -753,17 +842,48 @@
 						</div>
 					</Card.Content>
 
-					<Card.Content class="flex flex-col gap-4 ">
+					<Card.Content class="flex flex-col gap-4">
 						<div id="disk-containers">
-							<Label>Disks</Label>
-							<div
-								class="bg-muted mt-1 grid grid-cols-4 gap-6 overflow-hidden border-y border-none p-4"
+							<Label>Disks &amp; Partitions</Label>
+							<Accordion.Root
+								type="multiple"
+								bind:value={accordionOpen}
+								class="mt-1 overflow-hidden rounded-lg border"
 							>
-								{@render diskContainer('HDD')}
-								{@render diskContainer('SSD')}
-								{@render diskContainer('NVMe')}
-								{@render partitionsContainer()}
-							</div>
+								{#each diskSections as section, i (section.key)}
+									<Accordion.Item
+										value={section.key}
+										class={i < diskSections.length - 1 ? 'border-b' : 'border-b-0'}
+									>
+										<Accordion.Trigger class="px-4 hover:no-underline">
+											<div class="flex items-center gap-2 text-sm font-medium">
+												{#if section.key === 'HDD'}
+													<span class="icon-[mdi--harddisk] h-4 w-4 text-green-500"></span>
+												{:else if section.key === 'SSD'}
+													<span class="icon-[icon-park-outline--ssd] h-4 w-4 text-blue-500"></span>
+												{:else if section.key === 'NVMe'}
+													<span class="icon-[bi--nvme] h-4 w-4 text-blue-500"></span>
+												{:else if section.key === 'Partitions'}
+													<span
+														class="icon-[ant-design--partition-outlined] h-4 w-4 rotate-90 text-blue-500"
+													></span>
+												{/if}
+												{section.key}
+												<span class="text-muted-foreground text-xs font-normal"
+													>({section.count} available)</span
+												>
+											</div>
+										</Accordion.Trigger>
+										<Accordion.Content class="px-4 pb-3">
+											{#if section.key === 'Partitions'}
+												{@render partitionsContainer()}
+											{:else}
+												{@render diskContainer(section.key)}
+											{/if}
+										</Accordion.Content>
+									</Accordion.Item>
+								{/each}
+							</Accordion.Root>
 						</div>
 					</Card.Content>
 				</Card.Root>

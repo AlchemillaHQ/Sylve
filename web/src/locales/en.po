@@ -120,7 +120,6 @@ msgstr "Config"
 msgid "Explorer"
 msgstr "Explorer"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Disks"
 msgstr "Disks"
@@ -2616,6 +2615,8 @@ msgstr "S.M.A.R.T Values ({0})"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -5875,10 +5876,11 @@ msgstr "Pool Created"
 msgid "Remove {0} from VDEV {1}"
 msgstr "Remove {0} from VDEV {1}"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "No available disks"
-msgstr "No available disks"
+#~ msgid "No available disks"
+#~ msgstr "No available disks"
 
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Partitions"
 msgstr "Partitions"
@@ -6733,7 +6735,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -8878,3 +8880,27 @@ msgstr "<0/> Standard"
 #: src/lib/components/custom/Jail/Template/View.svelte
 msgid "<0/> Manual"
 msgstr "<0/> Manual"
+
+#. 0: type
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No available {0} disks"
+msgstr "No available {0} disks"
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks & Partitions"
+msgstr "Disks & Partitions"
+
+#. 0: section.count
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "({0} available)"
+msgstr "({0} available)"
+
+#~ msgid "<0/> Partitions <1>({0} available)</1>"
+#~ msgstr "<0/> Partitions <1>({0} available)</1>"
+
+#. 0: disk.device.split('/').pop()
+#. 0: partition.name
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Add {0} to last VDEV"
+msgstr "Add {0} to last VDEV"

@@ -120,7 +120,6 @@ msgstr "कॉन्फ़िगरेशन"
 msgid "Explorer"
 msgstr "एक्सप्लोरर"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Disks"
 msgstr "डिस्क"
@@ -2616,6 +2615,8 @@ msgstr "S.M.A.R.T वैल्यू ({0})"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -5875,10 +5876,11 @@ msgstr "पूल बनाया गया"
 msgid "Remove {0} from VDEV {1}"
 msgstr "VDEV {1} से {0} हटाएँ"
 
-#: src/lib/components/custom/ZFS/pools/Create.svelte
-msgid "No available disks"
-msgstr "कोई उपलब्ध डिस्क नहीं है"
+#~ msgid "No available disks"
+#~ msgstr "कोई उपलब्ध डिस्क नहीं है"
 
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Partitions"
 msgstr "विभाजन"
@@ -6733,7 +6735,7 @@ msgstr "बंद"
 msgid "Serial"
 msgstr "सीरियल"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "{0} कंसोल पर स्विच करें"
@@ -8877,4 +8879,28 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 msgid "<0/> Manual"
+msgstr ""
+
+#. 0: type
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "No available {0} disks"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Disks & Partitions"
+msgstr ""
+
+#. 0: section.count
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "({0} available)"
+msgstr ""
+
+#~ msgid "<0/> Partitions <1>({0} available)</1>"
+#~ msgstr ""
+
+#. 0: disk.device.split('/').pop()
+#. 0: partition.name
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+msgid "Add {0} to last VDEV"
 msgstr ""
