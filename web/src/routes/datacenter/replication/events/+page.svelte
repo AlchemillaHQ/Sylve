@@ -19,8 +19,8 @@
 		ReplicationReceipt
 	} from '$lib/types/cluster/replication';
 	import type { Column, Row } from '$lib/types/components/tree-table';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
-	import { humanFormatBytes } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource, useInterval, watch } from 'runed';
@@ -525,7 +525,7 @@
 						<span
 							>{progressEvent.current.movedBytes !== null &&
 							progressEvent.current.movedBytes !== undefined
-								? humanFormatBytes(progressEvent.current.movedBytes)
+								? formatBytesBinary(progressEvent.current.movedBytes)
 								: '-'}</span
 						>
 					</div>
@@ -534,7 +534,7 @@
 						<span
 							>{progressEvent.current.totalBytes !== null &&
 							progressEvent.current.totalBytes !== undefined
-								? humanFormatBytes(progressEvent.current.totalBytes)
+								? formatBytesBinary(progressEvent.current.totalBytes)
 								: '-'}</span
 						>
 					</div>

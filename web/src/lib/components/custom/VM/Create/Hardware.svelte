@@ -5,8 +5,8 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
+	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
-	import humanFormat from 'human-format';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
@@ -35,16 +35,12 @@
 		isPinningOpen = $bindable()
 	}: Props = $props();
 
-	let humanSize = $state(humanFormat(memory) ?? '1 G');
+	let humanSize = $state(formatBytesBinary(memory || 1024 * 1024 * 1024));
 	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
 
 	$effect(() => {
-		try {
-			const p = humanFormat.parse.raw(humanSize);
-			memory = p.factor * p.value;
-		} catch {
-			memory = 1000 * 1000 * 1000;
-		}
+		const bytes = parseSizeInputToBytes(humanSize);
+		memory = bytes ?? 1024 * 1024 * 1024;
 	});
 
 	let checkboxItems = $derived.by(() =>
@@ -101,6 +97,12 @@
 				placeholder="10G"
 				bind:value={humanSize}
 				classes="flex-1 space-y-1.5"
+				onBlur={() => {
+					const normalized = normalizeSizeInputExact(humanSize);
+					if (normalized !== null) {
+						humanSize = normalized;
+					}
+				}}
 			/>
 		</div>
 	</div>

@@ -2,8 +2,8 @@ import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Download } from '$lib/types/utilities/downloader';
 import type { VM } from '$lib/types/vm/vm';
 import type { Dataset } from '$lib/types/zfs/dataset';
-import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
+import { formatBytesBinary } from '../bytes';
 import { renderWithIcon } from '../table';
 
 export function generateTableData(
@@ -85,7 +85,7 @@ export function generateTableData(
                     return '-';
                 }
 
-                return humanFormat(value);
+                return formatBytesBinary(value);
             }
         }
     ];

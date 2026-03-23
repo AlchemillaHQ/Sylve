@@ -29,9 +29,9 @@
 	} from '$lib/types/vm/vm';
 	import { getObjectSchemaDefaults, sleep } from '$lib/utils';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { dateToAgo } from '$lib/utils/time';
-	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
@@ -629,9 +629,9 @@
 								<p class="ml-auto">
 									{#if vm}
 										{#if domain.current.status === 'Running'}
-											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${humanFormat(vm.current.ram || 0)}`}
+											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${formatBytesBinary(vm.current.ram || 0)}`}
 										{:else}
-											{`0% of ${humanFormat(vm.current.ram || 0)}`}
+											{`0% of ${formatBytesBinary(vm.current.ram || 0)}`}
 										{/if}
 									{/if}
 								</p>

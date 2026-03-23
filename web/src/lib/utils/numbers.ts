@@ -8,8 +8,6 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
-import humanFormat from 'human-format';
-
 export function floatToNDecimals(value: number | undefined, n: number): number {
     try {
         if (!value || typeof value !== 'number') return 0.0;
@@ -20,28 +18,6 @@ export function floatToNDecimals(value: number | undefined, n: number): number {
     }
 }
 
-export function bytesToHumanReadable(value: number | undefined, highPrecision?: boolean): string {
-    if (!value) return '';
-    return humanFormat(value, { unit: 'B', decimals: highPrecision ? 10 : undefined });
-}
-
-export function parseQuotaToZFSBytes(input: string): string {
-    if (!input || input.trim() === '') return '0B';
-
-    try {
-        const parsed = humanFormat.parse(input);
-
-        if (parsed === null || isNaN(parsed)) {
-            throw new Error('Invalid quota format');
-        }
-
-        return `${parsed}B`;
-    } catch (e) {
-        console.error(`Failed to parse quota "${input}":`, e);
-        return '0B';
-    }
-}
-
 export function generateNumberFromString(str: string): number {
     let hash = 0x811c9dc5;
     for (let i = 0; i < str.length; i++) {
@@ -49,15 +25,6 @@ export function generateNumberFromString(str: string): number {
         hash = Math.imul(hash, 0x01000193);
     }
     return hash >>> 0;
-}
-
-export function isValidSize(value: string): boolean {
-    try {
-        const parsed = humanFormat.parse(value);
-        return parsed !== null && !isNaN(parsed);
-    } catch (e) {
-        return false;
-    }
 }
 
 export function parseFlexibleTimeToSeconds(input: string) {

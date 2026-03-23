@@ -7,13 +7,15 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { Dataset, GroupedByPool } from '$lib/types/zfs/dataset';
+	import {
+		normalizeSizeInputExact,
+		parseSizeInputToBytes,
+		toZfsBytesString
+	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-	import { isValidSize } from '$lib/utils/numbers';
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
-	import type { ParsedInfo, ScaleLike } from 'human-format';
-	import humanFormat from 'human-format';
 	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
@@ -69,30 +71,21 @@
 
 	let remainingSpace = $state(0);
 	let currentPartition = $state(0);
-	let currentPartitionInput = $derived(properties.quota);
 
 	$effect(() => {
+		const currentPartitionInput = properties.quota;
 		if (currentPartitionInput === '') {
 			currentPartition = 0;
 		} else {
-			let parsed: ParsedInfo<ScaleLike> | null = null;
+			const parsed = parseSizeInputToBytes(currentPartitionInput) ?? 0;
 
-			try {
-				parsed = humanFormat.parse.raw(currentPartitionInput);
-			} catch (e) {
-				parsed = { factor: 1, value: 0, prefix: 'B' };
-				currentPartitionInput = '1B';
-			}
-
-			if (parsed) {
-				untrack(() => {
-					currentPartition = parsed.factor * parsed.value;
-					if (currentPartition > remainingSpace) {
-						currentPartition = remainingSpace;
-						currentPartitionInput = humanFormat(remainingSpace);
-					}
-				});
-			}
+			untrack(() => {
+				currentPartition = parsed;
+				if (currentPartition > remainingSpace) {
+					currentPartition = remainingSpace;
+					properties.quota = normalizeSizeInputExact(remainingSpace) ?? '0 B';
+				}
+			});
 		}
 	});
 
@@ -120,13 +113,17 @@
 			}
 		}
 
+		let quota = properties.quota;
 		if (properties.quota !== '') {
-			if (!isValidSize(properties.quota)) {
+			const parsed = parseSizeInputToBytes(properties.quota);
+			if (parsed === null) {
 				toast.error('Invalid quota size', {
 					position: 'bottom-center'
 				});
 				return;
 			}
+
+			quota = toZfsBytesString(parsed);
 		}
 
 		const response = await createFileSystem(properties.name, properties.parent.value, {
@@ -137,7 +134,7 @@
 			dedup: properties.dedup,
 			encryption: properties.encryption,
 			encryptionKey: properties.encryptionKey,
-			quota: properties.quota,
+			quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
 			recordsize: properties.recordsize,
@@ -316,6 +313,13 @@
 						max={remainingSpace}
 						bind:value={properties.quota}
 						placeholder="256M (Empty for no quota)"
+						onblur={() => {
+							if (properties.quota === '') return;
+							const normalized = normalizeSizeInputExact(properties.quota);
+							if (normalized !== null) {
+								properties.quota = normalized;
+							}
+						}}
 					/>
 				</div>
 

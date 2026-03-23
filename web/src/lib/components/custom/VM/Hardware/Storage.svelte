@@ -8,9 +8,12 @@
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM } from '$lib/types/vm/vm';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
+	import {
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
-	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
@@ -70,7 +73,7 @@
 
 	let editOptions = {
 		name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
-		size: selectedStorage ? humanFormat(selectedStorage.size, { unit: 'B' }) : '',
+		size: selectedStorage ? (normalizeSizeInputExact(selectedStorage.size) ?? '') : '',
 		emulation: selectedStorage
 			? selectedStorage.emulation
 			: ('ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'),
@@ -92,10 +95,8 @@
 
 		if (!sizeStr) return;
 
-		let newSize = 0;
-		try {
-			newSize = humanFormat.parse(sizeStr);
-		} catch (e) {
+		const newSize = parseSizeInputToBytes(sizeStr);
+		if (newSize === null) {
 			return;
 		}
 
@@ -104,7 +105,7 @@
 			if (lastRejectedSize === sizeStr) return;
 			lastRejectedSize = sizeStr;
 
-			editProperties.size = humanFormat(currentSize, { unit: 'B' });
+			editProperties.size = normalizeSizeInputExact(currentSize) ?? '0 B';
 			toast.error('New size cannot be smaller than current size', {
 				position: 'bottom-center'
 			});
@@ -233,12 +234,12 @@
 			}
 
 			let parsedSize: number = 0;
-			try {
-				parsedSize = humanFormat.parse(properties.size);
-			} catch (e) {
+			const parsed = parseSizeInputToBytes(properties.size);
+			if (parsed === null) {
 				toast.error('Invalid size format', toastOptions);
 				return;
 			}
+			parsedSize = parsed;
 
 			const response = await storageNew(
 				vm.rid,
@@ -283,12 +284,12 @@
 		}
 
 		let parsedSize: number = 0;
-		try {
-			parsedSize = humanFormat.parse(editProperties.size);
-		} catch (e) {
+		const parsed = parseSizeInputToBytes(editProperties.size);
+		if (parsed === null) {
 			toast.error('Invalid size format', toastOptions);
 			return;
 		}
+		parsedSize = parsed;
 
 		if (selectedStorage) {
 			// Allow a small tolerance (epsilon) to avoid floating-point rounding issues
@@ -492,9 +493,15 @@
 				{:else if properties.type === 'new' && properties.diskType !== 'image'}
 					<CustomValueInput
 						label="Size"
-						placeholder={humanFormat(10 * 1024 * 1024 * 1024, { unit: 'B' })}
+						placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
 						bind:value={properties.size}
 						classes="flex-1 space-y-1"
+						onBlur={() => {
+							const normalized = normalizeSizeInputExact(properties.size);
+							if (normalized !== null) {
+								properties.size = normalized;
+							}
+						}}
 					/>
 				{/if}
 
@@ -531,9 +538,15 @@
 			<div class="grid grid-cols-3 gap-4">
 				<CustomValueInput
 					label="Size"
-					placeholder={humanFormat(10 * 1024 * 1024 * 1024, { unit: 'B' })}
+					placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
 					bind:value={editProperties.size}
 					classes="flex-1 space-y-1"
+					onBlur={() => {
+						const normalized = normalizeSizeInputExact(editProperties.size);
+						if (normalized !== null) {
+							editProperties.size = normalized;
+						}
+					}}
 				/>
 
 				<SimpleSelect

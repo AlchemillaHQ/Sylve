@@ -5,9 +5,8 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { VM } from '$lib/types/vm/vm';
+	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-
-	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -21,7 +20,7 @@
 
 	// svelte-ignore state_referenced_locally
 	let options = {
-		ram: humanFormat(vm?.ram || 1, { scale: 'binary' })
+		ram: formatBytesBinary(vm?.ram || 1)
 	};
 
 	let properties = $state(options);
@@ -30,11 +29,11 @@
 		let bytes: number = 0;
 		let error: string = '';
 
-		try {
-			bytes = humanFormat.parse(properties.ram, { scale: 'binary' });
-			bytes = parseInt(bytes.toString(), 10);
-		} catch (e) {
+		const parsed = parseSizeInputToBytes(properties.ram);
+		if (parsed === null) {
 			error = 'Invalid RAM value';
+		} else {
+			bytes = parsed;
 		}
 
 		if (bytes <= 0) {
@@ -125,6 +124,12 @@
 			placeholder="1.0 GiB"
 			bind:value={properties.ram}
 			classes="flex-1 space-y-1"
+			onBlur={() => {
+				const normalized = normalizeSizeInputExact(properties.ram);
+				if (normalized !== null) {
+					properties.ram = normalized;
+				}
+			}}
 		/>
 
 		<Dialog.Footer class="flex justify-end">

@@ -11,9 +11,9 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Disk, Partition, SmartAttribute, SmartData, SmartNVMe } from '$lib/types/disk/disk';
 import type { Zpool, ZpoolVdev } from '$lib/types/zfs/pool';
-import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from './numbers';
+import { formatBytesBinary } from './bytes';
 import { renderWithIcon } from './table';
 
 export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
@@ -232,7 +232,7 @@ export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column
             field: 'size',
             title: 'Size',
             formatter: (cell: CellComponent) => {
-                return humanFormat(cell.getValue());
+                return formatBytesBinary(cell.getValue());
             }
         },
         {

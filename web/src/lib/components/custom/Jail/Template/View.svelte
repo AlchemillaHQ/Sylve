@@ -7,9 +7,9 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import type { JailTemplate } from '$lib/types/jail/jail';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
-	import humanFormat from 'human-format';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { sleep } from '$lib/utils';
@@ -188,7 +188,7 @@
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Memory</span>
 											<span class="font-medium text-emerald-600 dark:text-emerald-400"
-												>{humanFormat(template.memory || 0, { scale: 'SI', unit: 'B' })}</span
+												>{formatBytesBinary(template.memory || 0)}</span
 											>
 										</div>
 										<div class="flex flex-col">

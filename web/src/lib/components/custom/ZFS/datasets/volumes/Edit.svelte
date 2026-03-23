@@ -6,9 +6,12 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { bytesToHumanReadable, isValidSize, parseQuotaToZFSBytes } from '$lib/utils/numbers';
+	import {
+		normalizeSizeInputExact,
+		parseSizeInputToBytes,
+		toZfsBytesString
+	} from '$lib/utils/bytes';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
-	import humanFormat from 'human-format';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -27,19 +30,12 @@
 		reload?: boolean;
 	}
 
-	function parseBytes(input: string): number {
-		if (!input || input.trim() === '') return 0;
-
-		const parsed = humanFormat.parse(input, { unit: 'B' });
-		return Number.isFinite(parsed) ? parsed : 0;
-	}
-
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let options = {
 		volsize: dataset.properties?.volsize
-			? bytesToHumanReadable(Number(dataset.properties.volsize), true)
+			? (normalizeSizeInputExact(dataset.properties.volsize) ?? '')
 			: '',
 		volblocksize: dataset.properties?.volblocksize
 			? dataset.properties.volblocksize.toString()
@@ -56,12 +52,13 @@
 	let invalidSizeForBlockSize = $state(false);
 
 	async function edit() {
-		if (!isValidSize(properties.volsize)) {
+		const parsedVolsize = parseSizeInputToBytes(properties.volsize);
+		if (parsedVolsize === null) {
 			toast.error('Invalid volume size', { position: 'bottom-center' });
 			return;
 		}
 
-		let volsizeBytes = parseQuotaToZFSBytes(properties.volsize);
+		const volsizeBytes = toZfsBytesString(parsedVolsize);
 
 		const response = await editVolume(dataset.guid, {
 			volsize: volsizeBytes,
@@ -98,7 +95,7 @@
 		() => properties.volsize,
 		() => {
 			const blockSize = Number(properties.volblocksize);
-			const sizeBytes = parseBytes(properties.volsize);
+			const sizeBytes = parseSizeInputToBytes(properties.volsize) ?? 0;
 
 			invalidSizeForBlockSize = sizeBytes % blockSize !== 0;
 		}
@@ -106,12 +103,12 @@
 
 	function adjustBlockSize() {
 		const blockSize = Number(properties.volblocksize);
-		const sizeBytes = parseBytes(properties.volsize);
+		const sizeBytes = parseSizeInputToBytes(properties.volsize) ?? 0;
 		const oneMB = 1024 * 1024 * 2;
 		const adjustedToNextMB = Math.ceil((sizeBytes + 1) / oneMB) * oneMB;
 		const finalBytes = Math.ceil(adjustedToNextMB / blockSize) * blockSize;
 
-		properties.volsize = humanFormat(finalBytes, { unit: 'B', decimals: 10 });
+		properties.volsize = normalizeSizeInputExact(finalBytes) ?? `${finalBytes} B`;
 	}
 </script>
 
@@ -204,6 +201,12 @@
 						min="0"
 						bind:value={properties.volsize}
 						placeholder="128M"
+						onblur={() => {
+							const normalized = normalizeSizeInputExact(properties.volsize);
+							if (normalized !== null) {
+								properties.volsize = normalized;
+							}
+						}}
 					/>
 				</div>
 

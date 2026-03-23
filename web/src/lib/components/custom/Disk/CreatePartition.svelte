@@ -6,7 +6,11 @@
 	import { Slider } from '$lib/components/ui/slider/index.js';
 	import * as Table from '$lib/components/ui/table';
 	import type { Disk } from '$lib/types/disk/disk';
-	import humanFormat from 'human-format';
+	import {
+		formatBytesBinary,
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 	import { watch } from 'runed';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -23,14 +27,7 @@
 
 	let newPartitions: { name: string; size: number }[] = $state([]);
 	let currentPartitionInput = $state('0 B');
-	let currentTextPartition = $derived.by(() => {
-		try {
-			const parsed = humanFormat.parse.raw(currentPartitionInput);
-			return parsed.factor * parsed.value;
-		} catch (e) {
-			return 0;
-		}
-	});
+	let currentTextPartition = $state(0);
 
 	let currentPartitionSlider = $state(0);
 
@@ -77,7 +74,7 @@
 			remainingSpace -= currentTextPartition;
 
 			currentTextPartition = 0;
-			currentPartitionInput = '0B';
+			currentPartitionInput = '0 B';
 
 			await tick();
 
@@ -93,7 +90,7 @@
 
 	function close() {
 		newPartitions = [];
-		remainingSpace = 0;
+		remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
 		currentTextPartition = 0;
 		onCancel();
 	}
@@ -114,11 +111,31 @@
 		return actual;
 	}
 
-	let remainingSpace = $derived.by(() => (disk ? calculateRemainingSpace(disk) : 0));
-	let remainingSpacePercentage = $derived.by(() => {
-		if (!disk) return 0;
-		return (remainingSpace / disk.size) * 100;
-	});
+	let remainingSpace = $state(disk ? calculateRemainingSpace(disk) : 0);
+
+	watch(
+		() => disk?.device,
+		() => {
+			remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
+			newPartitions = [];
+			currentTextPartition = 0;
+			currentPartitionInput = '0 B';
+		}
+	);
+
+	watch(
+		() => currentPartitionInput,
+		(value) => {
+			const parsed = parseSizeInputToBytes(value) ?? 0;
+			if (parsed > remainingSpace) {
+				currentTextPartition = remainingSpace;
+				currentPartitionInput = normalizeSizeInputExact(remainingSpace) ?? '0 B';
+				return;
+			}
+
+			currentTextPartition = parsed;
+		}
+	);
 
 	watch(
 		() => currentTextPartition,
@@ -126,7 +143,7 @@
 			try {
 				const percentage = (value / remainingSpace) * 100;
 				currentPartitionSlider = isNaN(percentage) ? 0 : percentage;
-			} catch (e) {
+			} catch {
 				currentPartitionSlider = 0;
 			}
 		}
@@ -158,7 +175,7 @@
 						newPartitions = [];
 						remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
 						currentTextPartition = 0;
-						currentPartitionInput = '';
+						currentPartitionInput = '0 B';
 					}}
 				>
 					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
@@ -192,7 +209,7 @@
 						{#each disk.partitions as partition}
 							<Table.Row>
 								<Table.Cell>{partition.name}</Table.Cell>
-								<Table.Cell class="text-right">{humanFormat(partition.size)}</Table.Cell>
+								<Table.Cell class="text-right">{formatBytesBinary(partition.size)}</Table.Cell>
 								<Table.Cell class="text-right">{partition.usage}</Table.Cell>
 								<Table.Cell class="text-right">
 									<span class="text-muted-foreground text-xs italic">Existing</span>
@@ -205,7 +222,7 @@
 						{#each newPartitions as partition, index}
 							<Table.Row>
 								<Table.Cell>{partition.name}</Table.Cell>
-								<Table.Cell class="text-right">{humanFormat(partition.size)}</Table.Cell>
+								<Table.Cell class="text-right">{formatBytesBinary(partition.size)}</Table.Cell>
 								<Table.Cell class="text-right">-</Table.Cell>
 								<Table.Cell class="text-right">
 									<Button variant="ghost" class="h-8" onclick={() => removePartition(index)}>
@@ -238,7 +255,8 @@
 							step={0.01}
 							onValueCommit={(value: number) => {
 								currentTextPartition = (remainingSpace * value) / 100;
-								currentPartitionInput = humanFormat(currentTextPartition);
+								currentPartitionInput =
+									normalizeSizeInputExact(currentTextPartition) ?? '0 B';
 							}}
 						></Slider>
 					{/if}
@@ -250,6 +268,12 @@
 					min="0"
 					max={remainingSpace}
 					bind:value={currentPartitionInput}
+					onblur={() => {
+						const normalized = normalizeSizeInputExact(currentPartitionInput);
+						if (normalized !== null) {
+							currentPartitionInput = normalized;
+						}
+					}}
 				/>
 
 				<div class={remainingSpace > 0 ? '' : 'cursor-not-allowed'}>
@@ -270,7 +294,7 @@
 			<div class="flex justify-end">
 				<div class="flex flex-nowrap items-center gap-1 whitespace-nowrap">
 					<p class="text-muted-foreground text-sm">
-						Remaining space: <span class="font-semibold">{humanFormat(remainingSpace)}</span>
+						Remaining space: <span class="font-semibold">{formatBytesBinary(remainingSpace)}</span>
 					</p>
 				</div>
 			</div>

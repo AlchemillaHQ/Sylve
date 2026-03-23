@@ -18,6 +18,7 @@
 		textAreaClasses?: string;
 		disabled?: boolean;
 		onChange?: (value: string | number) => void;
+		onBlur?: () => void;
 		topRightButton?: {
 			icon: string;
 			tooltip: string;
@@ -36,7 +37,8 @@
 		textAreaClasses = 'min-h-56',
 		topRightButton,
 		disabled = false,
-		onChange
+		onChange,
+		onBlur
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -80,8 +82,11 @@
 			bind:value
 			{disabled}
 			oninput={(e) => {
-				value = e.target?.value;
+				value = (e.currentTarget as HTMLTextAreaElement).value;
 				if (onChange) onChange(value);
+			}}
+			onblur={() => {
+				if (onBlur) onBlur();
 			}}
 		/>
 	{:else}
@@ -93,8 +98,11 @@
 			bind:value
 			{disabled}
 			oninput={(e) => {
-				value = e.target?.value;
+				value = (e.currentTarget as HTMLInputElement).value;
 				if (onChange) onChange(value);
+			}}
+			onblur={() => {
+				if (onBlur) onBlur();
 			}}
 		/>
 	{/if}

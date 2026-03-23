@@ -36,8 +36,8 @@
 		isJailLifecycleTransitionPending,
 		shouldHideJailLifecycleButtons
 	} from '$lib/utils/jail/jail';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { dateToAgo } from '$lib/utils/time';
-	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
 	import { untrack } from 'svelte';
@@ -538,7 +538,7 @@
 									{'RAM Usage'}
 								</p>
 								<p class="ml-auto">
-									{`${memoryUsage.toFixed(2)}% of ${humanFormat(jail.current.memory || totalRAM)}`}
+									{`${memoryUsage.toFixed(2)}% of ${formatBytesBinary(jail.current.memory || totalRAM)}`}
 								</p>
 							</div>
 

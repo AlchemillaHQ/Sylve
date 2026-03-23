@@ -2,7 +2,7 @@
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import humanFormat from 'human-format';
+	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { resource } from 'runed';
 
 	interface Props {
@@ -23,7 +23,7 @@
 		devfsRuleset = $bindable()
 	}: Props = $props();
 
-	let humanSize = $state('1024 M');
+	let humanSize = $state(formatBytesBinary(ram || 1024 * 1024 * 1024));
 	let cpuInfo = resource(
 		() => 'cpu-info',
 		async () => {
@@ -39,12 +39,8 @@
 			}
 		}
 
-		try {
-			const p = humanFormat.parse.raw(humanSize);
-			ram = p.factor * p.value;
-		} catch {
-			ram = 1024;
-		}
+		const bytes = parseSizeInputToBytes(humanSize);
+		ram = bytes ?? 1024 * 1024 * 1024;
 	});
 
 	let customDevfsRuleset = $state(false);
@@ -67,6 +63,12 @@
 			bind:value={humanSize}
 			classes="flex-1 space-y-1.5"
 			disabled={!resourceLimits}
+			onBlur={() => {
+				const normalized = normalizeSizeInputExact(humanSize);
+				if (normalized !== null) {
+					humanSize = normalized;
+				}
+			}}
 		/>
 
 		<CustomValueInput

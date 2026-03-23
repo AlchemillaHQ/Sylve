@@ -6,8 +6,12 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { Dataset } from '$lib/types/zfs/dataset';
+	import {
+		normalizeSizeInputExact,
+		parseSizeInputToBytes,
+		toZfsBytesString
+	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-	import { bytesToHumanReadable, isValidSize, parseQuotaToZFSBytes } from '$lib/utils/numbers';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
 	import { toast } from 'svelte-sonner';
 
@@ -24,7 +28,7 @@
 		compression: dataset.properties?.compression || 'lz4',
 		dedup: dataset.properties?.dedup || 'off',
 		quota: dataset.properties?.quota
-			? bytesToHumanReadable(parseInt(dataset.properties.quota))
+			? (normalizeSizeInputExact(parseInt(dataset.properties.quota)) ?? '')
 			: '',
 		aclinherit: dataset.properties?.aclinherit || 'passthrough',
 		aclmode: dataset.properties?.aclmode || 'passthrough',
@@ -36,13 +40,17 @@
 	let properties = $state(options);
 
 	async function edit() {
+		let quota = '0B';
 		if (properties.quota !== '') {
-			if (!isValidSize(properties.quota)) {
+			const parsed = parseSizeInputToBytes(properties.quota);
+			if (parsed === null) {
 				toast.error('Invalid quota size', {
 					position: 'bottom-center'
 				});
 				return;
 			}
+
+			quota = toZfsBytesString(parsed);
 		}
 
 		const response = await editFileSystem(dataset.guid as string, {
@@ -50,7 +58,7 @@
 			checksum: properties.checksum,
 			compression: properties.compression,
 			dedup: properties.dedup,
-			quota: parseQuotaToZFSBytes(properties.quota),
+			quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
 			recordsize: properties.recordsize,
@@ -168,6 +176,13 @@
 						min="0"
 						bind:value={properties.quota}
 						placeholder="256M (Empty for no quota)"
+						onblur={() => {
+							if (properties.quota === '') return;
+							const normalized = normalizeSizeInputExact(properties.quota);
+							if (normalized !== null) {
+								properties.quota = normalized;
+							}
+						}}
 					/>
 				</div>
 

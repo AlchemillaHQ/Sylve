@@ -6,7 +6,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { type UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generateComboboxOptions } from '$lib/utils/input';
-	import humanFormat from 'human-format';
+	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 
 	interface Props {
 		downloads: UTypeGroupedDownload[];
@@ -95,16 +95,12 @@
 		}
 	});
 
-	let humanSize = $derived(humanFormat(size) ?? '1 G');
+	let humanSize = $state(formatBytesBinary(size || 1024 * 1024 * 1024));
 
 	$effect(() => {
 		if (humanSize) {
-			try {
-				const parsed = humanFormat.parse.raw(humanSize);
-				size = parsed.factor * parsed.value;
-			} catch (e) {
-				size = 1024;
-			}
+			const parsed = parseSizeInputToBytes(humanSize);
+			size = parsed ?? 1024 * 1024 * 1024;
 		}
 	});
 </script>
@@ -148,6 +144,12 @@
 				placeholder="10G"
 				bind:value={humanSize}
 				classes="flex-1 space-y-1"
+				onBlur={() => {
+					const normalized = normalizeSizeInputExact(humanSize);
+					if (normalized !== null) {
+						humanSize = normalized;
+					}
+				}}
 			/>
 
 			<CustomComboBox

@@ -15,8 +15,9 @@
 	import type { CPUInfo, CPUInfoHistorical } from '$lib/types/info/cpu';
 	import type { HistoricalNetworkInterface } from '$lib/types/info/network';
 	import type { RAMInfo, RAMInfoHistorical } from '$lib/types/info/ram';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
-	import { bytesToHumanReadable, floatToNDecimals } from '$lib/utils/numbers';
+	import { floatToNDecimals } from '$lib/utils/numbers';
 	import { formatUptime } from '$lib/utils/time';
 	import { resource, useInterval } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -252,7 +253,7 @@
 										{'RAM Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(ramInfo.current?.usedPercent || 0, 2)}% of ${bytesToHumanReadable(ramInfo.current?.total || 0)}`}
+										{`${floatToNDecimals(ramInfo.current?.usedPercent || 0, 2)}% of ${formatBytesBinary(ramInfo.current?.total || 0)}`}
 									</p>
 								</div>
 								<Progress value={ramInfo.current?.usedPercent || 0} max={100} class="h-2 w-full" />
@@ -279,7 +280,7 @@
 										<span class="icon-[ic--baseline-loop] mr-1 h-5 w-5"></span>{'Swap Usage'}
 									</p>
 									<p>
-										{`${floatToNDecimals(swapInfo.current.usedPercent, 2)}% of ${bytesToHumanReadable(swapInfo.current.total)}`}
+										{`${floatToNDecimals(swapInfo.current.usedPercent, 2)}% of ${formatBytesBinary(swapInfo.current.total)}`}
 									</p>
 								</div>
 								<Progress value={swapInfo.current.usedPercent || 0} max={100} class="h-2 w-full" />

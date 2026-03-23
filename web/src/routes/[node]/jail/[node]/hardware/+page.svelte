@@ -8,8 +8,8 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail } from '$lib/types/jail/jail';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
@@ -99,7 +99,7 @@
 			{
 				id: generateNanoId(`${properties.ram.value}-ram`),
 				property: 'RAM',
-				value: properties.ram.value ? bytesToHumanReadable(properties.ram.value) : 'Unlimited'
+				value: properties.ram.value ? formatBytesBinary(properties.ram.value) : 'Unlimited'
 			},
 			{
 				id: generateNanoId(`${properties.cpu.value}-cpu`),

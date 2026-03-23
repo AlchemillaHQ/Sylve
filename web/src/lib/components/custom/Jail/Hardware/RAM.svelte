@@ -5,9 +5,8 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { Jail } from '$lib/types/jail/jail';
+	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-
-	import humanFormat from 'human-format';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -19,7 +18,7 @@
 
 	let { open = $bindable(), ram, jail, reload = $bindable() }: Props = $props();
 	let options = {
-		ram: humanFormat(jail?.memory || 1)
+		ram: formatBytesBinary(jail?.memory || 1)
 	};
 
 	let properties = $state(options);
@@ -28,11 +27,11 @@
 		let bytes: number = 0;
 		let error: string = '';
 
-		try {
-			bytes = humanFormat.parse(properties.ram);
-			bytes = parseInt(bytes.toString(), 10);
-		} catch (e) {
+		const parsed = parseSizeInputToBytes(properties.ram);
+		if (parsed === null) {
 			error = 'Invalid RAM value';
+		} else {
+			bytes = parsed;
 		}
 
 		if (bytes <= 0) {
@@ -120,6 +119,12 @@
 			placeholder="1.0 GiB"
 			bind:value={properties.ram}
 			classes="flex-1 space-y-1"
+			onBlur={() => {
+				const normalized = normalizeSizeInputExact(properties.ram);
+				if (normalized !== null) {
+					properties.ram = normalized;
+				}
+			}}
 		/>
 
 		<Dialog.Footer class="flex justify-end">

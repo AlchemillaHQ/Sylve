@@ -2,7 +2,7 @@
 	import { Chart } from 'svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
-	import humanFormat from 'human-format';
+	import { formatBytesBinary, formatBytesPerSecondBinary } from '$lib/utils/bytes';
 	import {
 		GridComponent,
 		TitleComponent,
@@ -148,11 +148,11 @@
 			case 'percentage':
 				return axis ? `${value}%` : `${Number(value).toFixed(2)}%`;
 			case 'human':
-				return humanFormat(value);
+				return formatBytesBinary(value);
 			case 'bytes':
-				return humanFormat(value, { unit: 'B' });
+				return formatBytesBinary(value);
 			case 'bytesPerSecond':
-				return humanFormat(value, { unit: 'B/s' });
+				return formatBytesPerSecondBinary(value);
 			default:
 				return axis ? value.toString() : Number(value).toFixed(2);
 		}

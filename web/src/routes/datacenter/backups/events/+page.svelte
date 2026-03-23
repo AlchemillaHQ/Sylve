@@ -11,9 +11,10 @@
 	import type { BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
-	import { humanFormatBytes, sha256 } from '$lib/utils/string';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { sha256 } from '$lib/utils/string';
 	import { resource, useInterval, watch } from 'runed';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -724,7 +725,7 @@
 									<td class="p-2 text-muted-foreground">Moved</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.movedBytes !== null && progressEvent.current.movedBytes !== undefined}
-											{humanFormatBytes(progressEvent.current.movedBytes)}
+											{formatBytesBinary(progressEvent.current.movedBytes)}
 										{:else}
 											-
 										{/if}
@@ -734,7 +735,7 @@
 									<td class="p-2 text-muted-foreground">Total</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.totalBytes !== null && progressEvent.current.totalBytes !== undefined}
-											{humanFormatBytes(progressEvent.current.totalBytes)}
+											{formatBytesBinary(progressEvent.current.totalBytes)}
 										{:else}
 											-
 										{/if}

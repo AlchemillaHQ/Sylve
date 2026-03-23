@@ -13,8 +13,8 @@
 	import type { RAMInfo } from '$lib/types/info/ram';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import { type VMCPUPinning, type CPUPin, type VM, type VMDomain } from '$lib/types/vm/vm';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
-	import { bytesToHumanReadable } from '$lib/utils/numbers';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
@@ -293,7 +293,7 @@
 			{
 				id: generateNanoId(`${properties.ram.value}-ram`),
 				property: 'RAM',
-				value: bytesToHumanReadable(properties.ram.value)
+				value: formatBytesBinary(properties.ram.value)
 			},
 			{
 				id: generateNanoId(`${properties.vnc.port}-vnc-port`),

@@ -12,8 +12,8 @@
 		BackupSnapshotLineageMarker,
 		SnapshotInfo
 	} from '$lib/types/cluster/backups';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-	import { humanFormatBytes } from '$lib/utils/string';
 	import { snapshotLineageLabel, formatRestoreSnapshotDate } from '$lib/utils/zfs';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -500,10 +500,10 @@
 											</span></td
 										>
 										<td class="p-2 text-right text-xs text-muted-foreground"
-											>{humanFormatBytes(snapshot.used)}</td
+											>{formatBytesBinary(snapshot.used)}</td
 										>
 										<td class="p-2 text-right text-xs text-muted-foreground"
-											>{humanFormatBytes(snapshot.refer)}</td
+											>{formatBytesBinary(snapshot.refer)}</td
 										>
 									</tr>
 								{/each}

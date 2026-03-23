@@ -14,13 +14,13 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
 	import type { Zpool, ZpoolRaidType } from '$lib/types/zfs/pool';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { draggable, dropzone } from '$lib/utils/dnd';
 	import { raidTypeArr } from '$lib/utils/zfs/pool';
 	import { flip } from 'svelte/animate';
 	import { slide } from 'svelte/transition';
 	import { createPool } from '$lib/api/zfs/pool';
 	import { isValidPoolName } from '$lib/utils/zfs';
-	import humanFormat from 'human-format';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { parsePoolActionError } from '$lib/utils/zfs/pool.svelte';
@@ -640,7 +640,7 @@
 						{disk.device.replaceAll('/dev/', '')}
 					</div>
 					<div class="text-muted-foreground text-xs">
-						{humanFormat(disk.size)}
+						{formatBytesBinary(disk.size)}
 					</div>
 					<button
 						aria-label="Add {disk.device.split('/').pop()} to last VDEV"
@@ -676,7 +676,7 @@
 						{partition.name}
 					</div>
 					<div class="text-muted-foreground text-xs">
-						{humanFormat(partition.size)}
+						{formatBytesBinary(partition.size)}
 					</div>
 					<button
 						aria-label="Add {partition.name} to last VDEV"
@@ -772,10 +772,10 @@
 						></CustomValueInput>
 
 						<div class="flex-1 space-y-1">
-							<Label class="w-24 text-sm whitespace-nowrap" for="raid"
+								<Label class="w-24 text-sm whitespace-nowrap" for="raid"
 								>Redundancy
 								<span class="font-semibold text-green-500 {properties.usable ? '' : 'hidden'}"
-									>{`(${humanFormat(properties.usable)})`}</span
+									>{`(${formatBytesBinary(properties.usable)})`}</span
 								></Label
 							>
 

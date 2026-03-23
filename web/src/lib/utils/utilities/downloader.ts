@@ -1,7 +1,7 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Download } from '$lib/types/utilities/downloader';
-import humanFormat from 'human-format';
 import type { CellComponent } from 'tabulator-tables';
+import { formatBytesBinary } from '../bytes';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon } from '../table';
 import { escapeHTML } from '../string';
@@ -74,7 +74,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
                     return renderWithIcon('eos-icons:three-dots-loading', '');
                 }
 
-                return humanFormat(value);
+                return formatBytesBinary(value);
             }
         },
         {

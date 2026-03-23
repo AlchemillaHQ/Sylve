@@ -9,7 +9,7 @@ import type {
 	ZpoolStatusPool,
 	ZpoolVdev
 } from '$lib/types/zfs/pool';
-import humanFormat from 'human-format';
+import { formatBytesBinary, formatBytesPerSecondBinary } from '../bytes';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon, sizeFormatter } from '../table';
 import { countKeys } from '../obj';
@@ -500,7 +500,7 @@ export function formatValue(
 
 	switch (valueType) {
 		case 'fileSize':
-			return humanFormat(value);
+			return formatBytesBinary(value);
 		case 'percentage':
 			return `${value}%`;
 		case 'celcius':
@@ -548,8 +548,9 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 		return `${Math.floor(secs)}s remaining`;
 	};
 
-	const h = (v: number) => humanFormat(v);
-	const scanRateStr = issuedPerSec > 0 ? `${humanFormat(Math.floor(issuedPerSec))}/s` : null;
+	const h = (v: number) => formatBytesBinary(v);
+	const scanRateStr =
+		issuedPerSec > 0 ? formatBytesPerSecondBinary(Math.floor(issuedPerSec)) : null;
 
 	const handlers: Record<string, ScanHandler> = {
 		scrub: (s) => {

@@ -5,10 +5,10 @@
 	import * as Table from '$lib/components/ui/table/index.js';
 	import { getQGAInfo } from '$lib/api/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { resource, watch } from 'runed';
 	import type { APIResponse } from '$lib/types/common';
 	import type { QGAInfo } from '$lib/types/vm/vm';
-	import humanFormat from 'human-format';
 	import { fade } from 'svelte/transition';
 
 	interface Props {
@@ -196,8 +196,8 @@
 											</Table.Cell>
 											<Table.Cell class="text-right text-xs">
 												{#if iface.statistics}
-													<div>↓ {humanFormat(iface.statistics['rx-bytes'] || 0)}B</div>
-													<div>↑ {humanFormat(iface.statistics['tx-bytes'] || 0)}B</div>
+													<div>↓ {formatBytesBinary(iface.statistics['rx-bytes'] || 0)}</div>
+													<div>↑ {formatBytesBinary(iface.statistics['tx-bytes'] || 0)}</div>
 												{:else}
 													<span class="text-muted-foreground italic">N/A</span>
 												{/if}

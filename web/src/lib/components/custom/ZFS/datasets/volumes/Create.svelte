@@ -7,12 +7,15 @@
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import type { GroupedByPool } from '$lib/types/zfs/dataset';
+	import {
+		normalizeSizeInputExact,
+		parseSizeInputToBytes,
+		toZfsBytesString
+	} from '$lib/utils/bytes';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { isValidSize } from '$lib/utils/numbers';
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
-	import humanFormat from 'human-format';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -87,7 +90,8 @@
 			}
 		}
 
-		if (!isValidSize(properties.size)) {
+		const parsedSize = parseSizeInputToBytes(properties.size);
+		if (parsedSize === null) {
 			toast.error('Invalid volume size', {
 				position: 'bottom-center'
 			});
@@ -101,12 +105,13 @@
 			});
 			return;
 		}
-		const parentSize = parentPool.free;
+		const parentSize = Number(parentPool.free || 0);
 
-		if (humanFormat.parse(properties.size) > parentSize) {
+		if (parsedSize > parentSize) {
 			toast.error('Volume size is greater than available space', {
 				position: 'bottom-center'
 			});
+			return;
 		}
 
 		const response = await createVolume(properties.name, properties.parent, {
@@ -117,7 +122,7 @@
 			encryption: properties.encryption,
 			encryptionKey: properties.encryptionKey,
 			volblocksize: properties.volblocksize,
-			size: properties.size,
+			size: toZfsBytesString(parsedSize),
 			primarycache: properties.primarycache,
 			volmode: properties.volmode
 		});
@@ -216,6 +221,12 @@
 						min="0"
 						bind:value={properties.size}
 						placeholder="128M"
+						onblur={() => {
+							const normalized = normalizeSizeInputExact(properties.size);
+							if (normalized !== null) {
+								properties.size = normalized;
+							}
+						}}
 					/>
 				</div>
 

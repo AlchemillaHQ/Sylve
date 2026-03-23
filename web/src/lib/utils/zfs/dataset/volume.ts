@@ -4,7 +4,6 @@ import type { GroupedByPool } from '$lib/types/zfs/dataset';
 import { generateNumberFromString } from '$lib/utils/numbers';
 import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 import { cleanChildren } from '$lib/utils/tree-table';
-import humanFormat from 'human-format';
 import { toast } from 'svelte-sonner';
 
 export const createVolProps = {

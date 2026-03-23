@@ -9,7 +9,7 @@
  */
 
 import type { Row } from '$lib/types/components/tree-table';
-import humanFormat, { type ScaleLike } from 'human-format';
+import { formatBytesBinary } from './bytes';
 import { deepEqual } from 'fast-equals';
 import {
     TabulatorFull,
@@ -87,12 +87,7 @@ export const renderWithIcon = (
 
 export function sizeFormatter(cell: CellComponent) {
     try {
-        const sizeOptions = {
-            unit: 'B',
-            maxDecimals: 1
-        };
-
-        return humanFormat(Number(cell.getValue()), sizeOptions);
+        return formatBytesBinary(Number(cell.getValue()), { maxDecimals: 1 });
     } catch (e) {
         return cell.getValue();
     }

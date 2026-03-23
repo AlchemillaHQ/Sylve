@@ -15,7 +15,7 @@
 	import { updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
-	import humanFormat from 'human-format';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { resource, watch } from 'runed';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
@@ -331,7 +331,7 @@
 										<Arc
 											value={total.ram.usage}
 											title="RAM"
-											subtitle={humanFormat(total.ram.total)}
+											subtitle={formatBytesBinary(total.ram.total)}
 										/>
 									</div>
 								</div>
@@ -339,7 +339,7 @@
 									<div class={resourceChartBoxClass}>
 										<Arc
 											value={total.disk.usage}
-											subtitle={humanFormat(total.disk.total)}
+											subtitle={formatBytesBinary(total.disk.total)}
 											title="Disk"
 										/>
 									</div>
@@ -359,7 +359,7 @@
 										<Arc
 											value={ramInfo.current?.usedPercent}
 											title="RAM"
-											subtitle={humanFormat(ramInfo.current?.total || 0)}
+											subtitle={formatBytesBinary(ramInfo.current?.total || 0)}
 										/>
 									</div>
 								</div>
@@ -368,7 +368,7 @@
 										<Arc
 											value={diskInfo.current?.usage || 0}
 											title="Disk"
-											subtitle={humanFormat(diskInfo.current?.total || 0)}
+											subtitle={formatBytesBinary(diskInfo.current?.total || 0)}
 										/>
 									</div>
 								</div>

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import type { FileNode } from '$lib/types/system/file-explorer';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { getFileIcon } from '$lib/utils/icons';
 	import { format, isThisYear, isToday, isYesterday } from 'date-fns';
-	import humanFormat from 'human-format';
 
 	interface Props {
 		items: FileNode[];
@@ -31,11 +31,7 @@
 
 	function formatFileSize(bytes?: number): string {
 		if (!bytes || bytes === 0) return '-';
-		return humanFormat(bytes, {
-			separator: ' ',
-			scale: 'binary',
-			unit: 'B'
-		});
+		return formatBytesBinary(bytes);
 	}
 
 	function formatDate(date: Date): string {
