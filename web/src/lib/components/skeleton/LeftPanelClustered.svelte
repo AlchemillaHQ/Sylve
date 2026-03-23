@@ -105,6 +105,11 @@
 			href: '/datacenter',
 			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
+				const guestIds = [
+					...(n.jails ?? []).map((j) => j.ctId),
+					...(n.vms ?? []).map((vm) => vm.rid)
+				];
+				const nodeNextGuestId = guestIds.length > 0 ? Math.max(...guestIds) + 1 : 100;
 				let mergedChildren = [
 					...(n.jails ?? [])
 						.filter((jail) => jail.state?.trim() !== '')
@@ -170,7 +175,8 @@
 					label: nodeLabel,
 					icon: isActive ? 'fluent--storage-20-filled' : 'mdi--server-off',
 					href: isActive ? `/${nodeLabel}` : `/inactive-node`,
-					children: isActive ? nodeChildren : []
+					children: isActive ? nodeChildren : [],
+					nextGuestId: nodeNextGuestId
 				};
 			})
 		}

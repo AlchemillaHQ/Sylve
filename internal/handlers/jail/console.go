@@ -111,7 +111,7 @@ func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*Te
 
 	ctidHash := utils.HashIntToNLetters(ctidInt, 5)
 
-	cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
+	cmd := exec.Command("jexec", "-l", ctidHash, "login", "-f", "root")
 	cmd.Env = append(os.Environ(), "TERM=xterm")
 
 	ptymx, err := pty.Start(cmd)

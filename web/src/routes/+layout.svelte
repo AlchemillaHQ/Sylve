@@ -308,6 +308,6 @@
 
 <style>
 	:global(#top-loader) {
-		height: 1px !important;
+		height: 0.5px !important;
 	}
 </style>

@@ -259,18 +259,18 @@
 		}
 	});
 
-	let resizeKey = $state(0);
-	let hasInitialized = false;
 	let isConsoleRoute = $derived.by(() => page.url.pathname.endsWith('/console'));
 
-	function handleResize() {
+	const debouncedWindowSize = new Debounced(() => storage.windowSize, 150);
+
+	let hasInitialized = false;
+	function emitResize() {
 		if (hasInitialized) {
-			resizeKey++;
+			storage.windowSize = (storage.windowSize ?? 0) + 1;
 		} else {
 			hasInitialized = true;
 		}
 	}
-	const debouncedResize = new Debounced(() => resizeKey, 150);
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -309,7 +309,7 @@
 		class="h-full w-full"
 		id="main-pane-auto"
 		autoSaveId="main-pane-auto-save"
-		onLayoutChange={handleResize}
+		onLayoutChange={emitResize}
 	>
 		<Resizable.Pane defaultSize={15}>
 			<div class="h-full px-1.5">
@@ -328,7 +328,7 @@
 		</Resizable.Pane>
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
-			{#key debouncedResize.current}
+			{#key debouncedWindowSize.current}
 				<div
 					class="h-full w-full"
 					class:overflow-hidden={isConsoleRoute}

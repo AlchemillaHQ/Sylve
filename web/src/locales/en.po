@@ -410,7 +410,8 @@ msgstr "Jail - Update Description"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail"
 msgstr "Jail"
@@ -641,7 +642,7 @@ msgstr "VM creation form minimized"
 #: src/lib/components/custom/Header.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 msgid "Create Jail"
 msgstr "Create Jail"
 
@@ -755,8 +756,12 @@ msgstr "Failed to create note"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -941,6 +946,8 @@ msgstr "Note"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1066,6 +1073,8 @@ msgstr "Reset"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -2018,6 +2027,8 @@ msgid "Virtualization"
 msgstr "Virtualization"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2926,6 +2937,7 @@ msgid "Force Delete"
 msgstr "Force Delete"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2992,13 +3004,16 @@ msgstr "Error copied to clipboard"
 msgid "Failed to copy error"
 msgstr "Failed to copy error"
 
+#. 0: task.guestId
 #. 0: jailMatch[1]
 #. 0: policy.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Jail {0}"
 msgstr "Jail {0}"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -3007,6 +3022,7 @@ msgstr "Jail {0}"
 msgid "Success"
 msgstr "Success"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -4957,12 +4973,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5429,12 +5445,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6682,7 +6698,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -8142,10 +8158,8 @@ msgstr "VM reboot queued"
 msgid "Force Stop"
 msgstr "Force Stop"
 
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "<0/> {0} lifecycle action{1} in progress"
-msgstr "<0/> {0} lifecycle action{1} in progress"
+#~ msgid "<0/> {0} lifecycle action{1} in progress"
+#~ msgstr "<0/> {0} lifecycle action{1} in progress"
 
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
@@ -8164,8 +8178,9 @@ msgstr "Jail stop queued"
 msgid "Jail start queued"
 msgstr "Jail start queued"
 
-#~ msgid "Working"
-#~ msgstr "Working"
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Working"
+msgstr "Working"
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -8388,15 +8403,12 @@ msgstr "Leader IP (192.168.1.1)"
 msgid "Templates"
 msgstr "Templates"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail Template - Convert"
-msgstr "Jail Template - Convert"
+#~ msgid "Jail Template - Convert"
+#~ msgstr "Jail Template - Convert"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail Template - Create Jail"
-msgstr "Jail Template - Create Jail"
+#~ msgid "Jail Template - Create Jail"
+#~ msgstr "Jail Template - Create Jail"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Jail Template"
 msgstr "Jail Template"
@@ -8422,13 +8434,13 @@ msgstr "Failed to delete template"
 msgid "Template deleted"
 msgstr "Template deleted"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Failed to create jail from template"
 msgstr "Failed to create jail from template"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Template restore job queued"
-msgstr "Template restore job queued"
+#~ msgid "Template restore job queued"
+#~ msgstr "Template restore job queued"
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Convert to Template"
@@ -8442,34 +8454,127 @@ msgstr "<0/> Create Jail"
 msgid "<0/> Delete Template"
 msgstr "<0/> Delete Template"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Create Jail From Template"
-msgstr "Create Jail From Template"
+#~ msgid "Create Jail From Template"
+#~ msgstr "Create Jail From Template"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Single"
 msgstr "Single"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Multiple"
 msgstr "Multiple"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "CTID"
-msgstr "CTID"
+#~ msgid "CTID"
+#~ msgstr "CTID"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Name (optional)"
-msgstr "Name (optional)"
+#~ msgid "Name (optional)"
+#~ msgstr "Name (optional)"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Starting CTID"
 msgstr "Starting CTID"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Count"
 msgstr "Count"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Name Prefix"
 msgstr "Name Prefix"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail Template - From Jail"
+msgstr "Create Jail Template - From Jail"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail - Template"
+msgstr "Create Jail - Template"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Queued"
+msgstr "Queued"
+
+#. 0: templateName; 1: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Template {0} ({1})"
+msgstr "Template {0} ({1})"
+
+#. 0: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Template {0}"
+msgstr "Jail Template {0}"
+
+#. 0: jailName; 1: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail {0} ({1})"
+msgstr "Jail {0} ({1})"
+
+#. 0: templateName
+#. 0: templateName
+#. 0: templateName
+#. 0: task.guestId
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail - Template {0}"
+msgstr "Create Jail - Template {0}"
+
+#. 0: jailName; 1: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail Template - {0} (Jail CTID {1})"
+msgstr "Create Jail Template - {0} (Jail CTID {1})"
+
+#. 0: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail Template - Jail CTID {0}"
+msgstr "Create Jail Template - Jail CTID {0}"
+
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "<0/> {0} active lifecycle task{1}"
+msgstr "<0/> {0} active lifecycle task{1}"
+
+#. 0: templateId
+#. 0: templateId
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Template {0}"
+msgstr "Template {0}"
+
+#: src/lib/components/custom/Jail/CreateFromTemplate.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Create jail request queued"
+msgstr "Create jail request queued"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid CTID"
+msgstr "Invalid CTID"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid Jail Name"
+msgstr "Invalid Jail Name"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid CTID range"
+msgstr "Invalid CTID range"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid jail name prefix"
+msgstr "Invalid jail name prefix"
+
+#. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Creating {0}"
+msgstr "Creating {0}"
+
+#. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Create {0}"
+msgstr "Create {0}"

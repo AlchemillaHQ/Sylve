@@ -1,12 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import {
-		convertJailToTemplate,
-		deleteJailTemplate,
-		jailAction
-	} from '$lib/api/jail/jail';
-	import CreateFromTemplate from '$lib/components/custom/Jail/CreateFromTemplate.svelte';
+	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
+	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
 	import { actionVm } from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -22,8 +18,8 @@
 		state?: 'active' | 'inactive';
 		resourceId?: number;
 		resourceType?: 'vm' | 'jail' | 'jail-template';
-		sourceCtId?: number;
 		nodeHostname?: string;
+		nextGuestId?: number;
 		children?: SidebarProps[];
 	}
 
@@ -31,9 +27,10 @@
 		item: SidebarProps;
 		openIds: Set<string>;
 		onToggleId: (id: string) => void;
+		nextGuestId?: number;
 	}
 
-	let { item, openIds, onToggleId }: Props = $props();
+	let { item, openIds, onToggleId, nextGuestId = 100 }: Props = $props();
 	let isOpen = $derived(openIds.has(item.id));
 
 	const handleLabelClick = (e: MouseEvent) => {
@@ -66,7 +63,9 @@
 	let activeUrl = $derived(page.url.pathname);
 	let isActive = $derived(isItemActive(item, activeUrl));
 	let hasContextMenu = $derived(
-		item.resourceType === 'vm' || item.resourceType === 'jail' || item.resourceType === 'jail-template'
+		item.resourceType === 'vm' ||
+			item.resourceType === 'jail' ||
+			item.resourceType === 'jail-template'
 	);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
@@ -118,7 +117,6 @@
 		reload.leftPanel = true;
 		toast.success('Template deleted', { position: 'bottom-center' });
 	};
-
 </script>
 
 <li class="w-full">
@@ -207,7 +205,10 @@
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
 						Create Jail
 					</ContextMenu.Item>
-					<ContextMenu.Item class="gap-2 text-destructive" onclick={() => void handleDeleteTemplate()}>
+					<ContextMenu.Item
+						class="gap-2 text-destructive"
+						onclick={() => void handleDeleteTemplate()}
+					>
 						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
 						Delete Template
 					</ContextMenu.Item>
@@ -260,17 +261,22 @@
 {#if isOpen && item.children}
 	<ul class="pl-5" transition:slide={{ duration: 200, easing: (t) => t }} style="overflow: hidden;">
 		{#each item.children as child (child.id)}
-			<SidebarElement item={child} {openIds} {onToggleId} />
+			<SidebarElement
+				item={child}
+				{openIds}
+				{onToggleId}
+				nextGuestId={item.nextGuestId ?? nextGuestId}
+			/>
 		{/each}
 	</ul>
 {/if}
 
 {#if item.resourceType === 'jail-template' && item.resourceId}
-	<CreateFromTemplate
+	<CreateJailFromTemplate
 		bind:open={createFromTemplateOpen}
 		templateId={item.resourceId}
 		templateLabel={item.label}
-		sourceCtId={item.sourceCtId}
 		hostname={item.nodeHostname}
+		{nextGuestId}
 	/>
 {/if}

@@ -5,7 +5,9 @@
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
+	import { storage } from '$lib';
 	import { fade } from 'svelte/transition';
+	import { onMount } from 'svelte';
 	import { resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
 
@@ -47,6 +49,22 @@
 
 	const lifecyclePaneBoost = 6;
 
+	let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	function emitResize() {
+		if (resizeTimer) clearTimeout(resizeTimer);
+		resizeTimer = setTimeout(() => {
+			storage.windowSize = (storage.windowSize ?? 0) + 1;
+		}, 150);
+	}
+
+	onMount(() => {
+		window.addEventListener('resize', emitResize);
+		return () => {
+			window.removeEventListener('resize', emitResize);
+			if (resizeTimer) clearTimeout(resizeTimer);
+		};
+	});
+
 	function handleLifecycleActiveChange(active: boolean) {
 		lifecyclePaneActive = active;
 		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
@@ -62,12 +80,14 @@
 				direction="vertical"
 				id="child-pane-auto"
 				autoSaveId={childPaneAutoSaveId}
+				onLayoutChange={emitResize}
 			>
 				<Resizable.Pane defaultSize={topPaneDefaultSize}>
 					<Resizable.PaneGroup
 						direction="horizontal"
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
+						onLayoutChange={emitResize}
 					>
 						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
 							<div class="h-full" transition:fade|global={{ duration: 400 }}>

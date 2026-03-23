@@ -7,7 +7,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { isAPIResponse } from '$lib/utils/http';
-	import { resource } from 'runed';
+	import { Debounced, resource } from 'runed';
 
 	let openCategories: { [key: string]: boolean } = $state({});
 
@@ -108,6 +108,17 @@
 	}
 
 	let { children }: Props = $props();
+
+	const debouncedWindowSize = new Debounced(() => storage.windowSize, 150);
+
+	let hasInitialized = false;
+	function emitResize() {
+		if (hasInitialized) {
+			storage.windowSize = (storage.windowSize ?? 0) + 1;
+		} else {
+			hasInitialized = true;
+		}
+	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -146,6 +157,7 @@
 		class="h-full w-full"
 		id="main-pane-auto"
 		autoSaveId="main-pane-auto-save"
+		onLayoutChange={emitResize}
 	>
 		<Resizable.Pane defaultSize={15}>
 			<div class="h-full px-1.5">
@@ -166,9 +178,11 @@
 		<Resizable.Handle withHandle />
 
 		<Resizable.Pane>
-			<div class="h-full overflow-auto">
-				{@render children?.()}
-			</div>
+			{#key debouncedWindowSize.current}
+				<div class="h-full overflow-auto">
+					{@render children?.()}
+				</div>
+			{/key}
 		</Resizable.Pane>
 	</Resizable.PaneGroup>
 </div>

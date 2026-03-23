@@ -28,6 +28,8 @@ type SharedStorage = {
     openAbout: boolean;
     openCommands: boolean;
     showReplication: boolean;
+    windowResized: boolean;
+    windowSize: number;
 };
 
 export const storage = createReactiveStorage<SharedStorage>(
@@ -44,7 +46,9 @@ export const storage = createReactiveStorage<SharedStorage>(
         ['enabledServices', { storage: 'local' }],
         ['openAbout', { storage: 'local', init: false }],
         ['openCommands', { storage: 'local', init: false }],
-        ['showReplication', { storage: 'local', init: false }]
+        ['showReplication', { storage: 'local', init: false }],
+        ['windowResized', { storage: 'local', init: false }],
+        ['windowSize', { storage: 'local', init: 0 }]
     ],
     {
         prefix: 'sylve:',

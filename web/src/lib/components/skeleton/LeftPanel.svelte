@@ -306,6 +306,20 @@
 			}
 		}
 	);
+
+	let guestResourceIds = $derived.by(() => {
+		const jailCTIDs = simpleJails.current.map((jail) => jail.ctId);
+		const vmCTIDs = simpleVMs.current.map((vm) => vm.rid);
+		return [...jailCTIDs, ...vmCTIDs].sort();
+	});
+
+	let nextGuestId = $derived.by(() => {
+		if (guestResourceIds.length === 0) {
+			return 100;
+		}
+
+		return Math.max(...guestResourceIds) + 1;
+	});
 </script>
 
 <div class="flex h-full min-h-0 flex-col px-1.5 pt-1">
@@ -313,7 +327,7 @@
 		<ul class="h-full min-h-0">
 			<ScrollArea orientation="both" class="h-full w-full">
 				{#each tree as item (item.id)}
-					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} />
+					<TreeViewCluster {item} {openIds} onToggleId={toggleOpen} {nextGuestId} />
 				{/each}
 			</ScrollArea>
 		</ul>
