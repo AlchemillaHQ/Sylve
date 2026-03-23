@@ -200,7 +200,8 @@
 		| 'cloudInit'
 		| 'ignoreUMSR'
 		| 'qemuGuestAgent',
-	title: string
+	title: string,
+	requireShutoff: boolean = true
 )}
 	<Button
 		onclick={() => {
@@ -209,10 +210,14 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={domain.current.status === 'Shutoff'
-			? ''
-			: `${title} can only be edited when the VM is shut off`}
-		disabled={domain.current.status ? domain.current.status !== 'Shutoff' : false}
+		title={requireShutoff && domain.current.status !== 'Shutoff'
+			? `${title} can only be edited when the VM is shut off`
+			: ''}
+		disabled={requireShutoff
+			? domain.current.status
+				? domain.current.status !== 'Shutoff'
+				: false
+			: false}
 	>
 		<div class="flex items-center">
 			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
@@ -225,13 +230,13 @@
 	{#if activeRows && activeRows?.length !== 0}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow.property === 'Start At Boot / Start Order'}
-				{@render button('startOrder', 'Start At Boot / Start Order')}
+				{@render button('startOrder', 'Start At Boot / Start Order', false)}
 			{:else if activeRow.property === 'Wake on LAN'}
-				{@render button('wol', 'Wake on LAN')}
+				{@render button('wol', 'Wake on LAN', false)}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
 			{:else if activeRow.property === 'Shutdown Wait Time'}
-				{@render button('shutdownWaitTime', 'Shutdown Wait Time')}
+				{@render button('shutdownWaitTime', 'Shutdown Wait Time', false)}
 			{:else if activeRow.property === 'Cloud Init'}
 				{@render button('cloudInit', 'Cloud Init')}
 			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
