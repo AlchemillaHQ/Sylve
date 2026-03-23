@@ -24,6 +24,7 @@ msgid "Console"
 msgstr "Console"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -40,6 +41,7 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -798,6 +800,7 @@ msgid "Name"
 msgstr "Name"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -805,6 +808,7 @@ msgstr "Name"
 msgid "Created"
 msgstr "Created"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
@@ -819,6 +823,7 @@ msgid "View"
 msgstr "View"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1075,6 +1080,9 @@ msgstr "Reset"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1489,6 +1497,7 @@ msgstr "Unable to load charts."
 msgid "Hostname"
 msgstr "Hostname"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
@@ -1805,12 +1814,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' : ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1988,6 +1997,7 @@ msgstr "First Modified"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -2273,6 +2283,7 @@ msgstr "Error starting jail"
 #~ msgid "Jail started"
 #~ msgstr "Jail started"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2280,6 +2291,7 @@ msgstr "Error starting jail"
 msgid "Stop"
 msgstr "Stop"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2500,6 +2512,9 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2519,6 +2534,9 @@ msgstr "Enabled"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2660,7 +2678,7 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
@@ -3535,6 +3553,7 @@ msgid "Failover"
 msgstr "Failover"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3865,6 +3884,10 @@ msgstr "Source Mode"
 msgid "Failback"
 msgstr "Failback"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3889,6 +3912,10 @@ msgstr "Failback"
 msgid "Yes"
 msgstr "Yes"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -4163,6 +4190,7 @@ msgstr "Linux (Experimental)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4180,6 +4208,7 @@ msgstr "Clean Environment"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4246,6 +4275,7 @@ msgid "Optional description for this virtual machine"
 msgstr "Optional description for this virtual machine"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Basic"
 msgstr "Basic"
@@ -4276,6 +4306,7 @@ msgid "Minimize"
 msgstr "Minimize"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Cores"
 msgstr "CPU Cores"
@@ -4297,6 +4328,7 @@ msgid "Start On Boot"
 msgstr "Start On Boot"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource Limits"
 msgstr "Resource Limits"
@@ -4435,6 +4467,8 @@ msgid "Simple Linux"
 msgstr "Simple Linux"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -4443,6 +4477,7 @@ msgid "Pool"
 msgstr "Pool"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Select ZFS pool"
 msgstr "Select ZFS pool"
 
@@ -5445,12 +5480,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6081,7 +6116,7 @@ msgstr "Error Status"
 msgid "No known data errors"
 msgstr "No known data errors"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
@@ -6698,7 +6733,7 @@ msgstr "Shutoff"
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
@@ -8421,10 +8456,8 @@ msgstr "Failed to convert jail to template"
 msgid "Template conversion queued"
 msgstr "Template conversion queued"
 
-#. 0: item.label
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Delete template \"{0}\"?"
-msgstr "Delete template \"{0}\"?"
+#~ msgid "Delete template \"{0}\"?"
+#~ msgstr "Delete template \"{0}\"?"
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Failed to delete template"
@@ -8543,8 +8576,10 @@ msgstr "<0/> {0} active lifecycle task{1}"
 
 #. 0: templateId
 #. 0: templateId
+#. 0: templateId
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 msgid "Template {0}"
 msgstr "Template {0}"
 
@@ -8562,9 +8597,11 @@ msgid "Invalid Jail Name"
 msgstr "Invalid Jail Name"
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Invalid CTID range"
 msgstr "Invalid CTID range"
 
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Invalid jail name prefix"
 msgstr "Invalid jail name prefix"
@@ -8578,3 +8615,266 @@ msgstr "Creating {0}"
 #: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Create {0}"
 msgstr "Create {0}"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> View Template"
+msgstr "<0/> View Template"
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Deleting..."
+msgstr "Deleting..."
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Failed to load template details"
+msgstr "Failed to load template details"
+
+#. 0: title.replaceAll('Template', '')
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Template Details - {0}"
+msgstr "Template Details - {0}"
+
+#~ msgid "Loading template details..."
+#~ msgstr "Loading template details..."
+
+#~ msgid "ID:"
+#~ msgstr "ID:"
+
+#~ msgid "Source CTID:"
+#~ msgstr "Source CTID:"
+
+#~ msgid "Source Jail:"
+#~ msgstr "Source Jail:"
+
+#~ msgid "Type:"
+#~ msgstr "Type:"
+
+#~ msgid "Pool:"
+#~ msgstr "Pool:"
+
+#~ msgid "Root Dataset:"
+#~ msgstr "Root Dataset:"
+
+#~ msgid "Resource Limits:"
+#~ msgstr "Resource Limits:"
+
+#~ msgid "CPU Cores:"
+#~ msgstr "CPU Cores:"
+
+#~ msgid "Memory (bytes):"
+#~ msgstr "Memory (bytes):"
+
+#~ msgid "Inherit IPv4:"
+#~ msgstr "Inherit IPv4:"
+
+#~ msgid "Inherit IPv6:"
+#~ msgstr "Inherit IPv6:"
+
+#~ msgid "Created:"
+#~ msgstr "Created:"
+
+#~ msgid "Updated:"
+#~ msgstr "Updated:"
+
+#~ msgid "Network Templates"
+#~ msgstr "Network Templates"
+
+#~ msgid "#{0} {1} ({2}, switch {3})"
+#~ msgstr "#{0} {1} ({2}, switch {3})"
+
+#~ msgid "Hook Templates"
+#~ msgstr "Hook Templates"
+
+#~ msgid "FStab"
+#~ msgstr "FStab"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "resolv.conf"
+msgstr "resolv.conf"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No template details available."
+msgstr "No template details available."
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Select a ZFS pool"
+msgstr "Select a ZFS pool"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Count must be positive"
+msgstr "Count must be positive"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Not enough space in selected pool"
+msgstr "Not enough space in selected pool"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "One or more CTIDs are already in use"
+msgstr "One or more CTIDs are already in use"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Duplicate CTIDs in request"
+msgstr "Duplicate CTIDs in request"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "One or more jail names are already in use"
+msgstr "One or more jail names are already in use"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Duplicate jail names in request"
+msgstr "Duplicate jail names in request"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid jail name"
+msgstr "Invalid jail name"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid create mode"
+msgstr "Invalid create mode"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Selected pool is not available"
+msgstr "Selected pool is not available"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Target jail dataset already exists"
+msgstr "Target jail dataset already exists"
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Template dataset not found"
+msgstr "Template dataset not found"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Template"
+msgstr "Template"
+
+#~ msgid "General"
+#~ msgstr "General"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Basic Details"
+msgstr "Basic Details"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Source CTID"
+msgstr "Source CTID"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Source Jail"
+msgstr "Source Jail"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Hardware Limits"
+msgstr "Hardware Limits"
+
+#~ msgid "Memory (bytes)"
+#~ msgstr "Memory (bytes)"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inheritance"
+msgstr "Inheritance"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inherit IPv4"
+msgstr "Inherit IPv4"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inherit IPv6"
+msgstr "Inherit IPv6"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Network Interfaces"
+msgstr "Network Interfaces"
+
+#~ msgid "Type: {0} • Switch ID: {1}"
+#~ msgstr "Type: {0} • Switch ID: {1}"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No network interfaces defined"
+msgstr "No network interfaces defined"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "ZFS Storage"
+msgstr "ZFS Storage"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Root Dataset"
+msgstr "Root Dataset"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "FStab Mounts"
+msgstr "FStab Mounts"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre/Post Hooks"
+msgstr "Pre/Post Hooks"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No hooks configured"
+msgstr "No hooks configured"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Linux"
+msgstr "<0/> Linux"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> FreeBSD"
+msgstr "<0/> FreeBSD"
+
+#~ msgid "Linux"
+#~ msgstr "Linux"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Memory"
+msgstr "Memory"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre Start"
+msgstr "Pre Start"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Post Start"
+msgstr "Post Start"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre Stop"
+msgstr "Pre Stop"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Post Stop"
+msgstr "Post Stop"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Hook Details"
+msgstr "Hook Details"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No script content found for this hook"
+msgstr "No script content found for this hook"
+
+#~ msgid "Type: {0} • Switch ID: {1} {2}"
+#~ msgstr "Type: {0} • Switch ID: {1} {2}"
+
+#~ msgid "Type: {0} • Switch ID: {1} DHCP: {2} • SLAAC: {3}"
+#~ msgstr "Type: {0} • Switch ID: {1} DHCP: {2} • SLAAC: {3}"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Switch ID"
+msgstr "Switch ID"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "DHCP"
+msgstr "DHCP"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "SLAAC"
+msgstr "SLAAC"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Standard"
+msgstr "<0/> Standard"
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Manual"
+msgstr "<0/> Manual"

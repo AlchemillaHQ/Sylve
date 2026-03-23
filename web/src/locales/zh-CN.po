@@ -24,6 +24,7 @@ msgid "Console"
 msgstr "控制台"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -40,6 +41,7 @@ msgstr "硬件"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -798,6 +800,7 @@ msgid "Name"
 msgstr "名称"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -805,6 +808,7 @@ msgstr "名称"
 msgid "Created"
 msgstr "已创建"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
@@ -819,6 +823,7 @@ msgid "View"
 msgstr "查看"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -1075,6 +1080,9 @@ msgstr "重置"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
@@ -1489,6 +1497,7 @@ msgstr "无法加载图表。"
 msgid "Hostname"
 msgstr "主机名"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/summary/+page.svelte
 msgid "ID"
@@ -1805,12 +1814,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' : ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1988,6 +1997,7 @@ msgstr "最早修改"
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -2273,6 +2283,7 @@ msgstr "启动 Jail 时出错"
 #~ msgid "Jail started"
 #~ msgstr "Jail 已启动"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2280,6 +2291,7 @@ msgstr "启动 Jail 时出错"
 msgid "Stop"
 msgstr "停止"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -2500,6 +2512,9 @@ msgstr "ZFS 存储池"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2519,6 +2534,9 @@ msgstr "已启用"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2660,7 +2678,7 @@ msgstr "无法擦除忙碌中的磁盘"
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
@@ -3535,6 +3553,7 @@ msgid "Failover"
 msgstr "故障转移"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3865,6 +3884,10 @@ msgstr "源模式"
 msgid "Failback"
 msgstr "故障恢复"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3889,6 +3912,10 @@ msgstr "故障恢复"
 msgid "Yes"
 msgstr "是"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -4163,6 +4190,7 @@ msgstr "Linux (实验性)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4180,6 +4208,7 @@ msgstr "清理环境"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4246,6 +4275,7 @@ msgid "Optional description for this virtual machine"
 msgstr "此虚拟机的可选描述"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Basic"
 msgstr "基础"
@@ -4276,6 +4306,7 @@ msgid "Minimize"
 msgstr "最小化"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/Hardware.svelte
 msgid "CPU Cores"
 msgstr "CPU 核心"
@@ -4297,6 +4328,7 @@ msgid "Start On Boot"
 msgstr "开机自启"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource Limits"
 msgstr "资源限制"
@@ -4435,6 +4467,8 @@ msgid "Simple Linux"
 msgstr "简单 Linux"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -4443,6 +4477,7 @@ msgid "Pool"
 msgstr "存储池"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Select ZFS pool"
 msgstr "选择 ZFS 存储池"
 
@@ -5445,12 +5480,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -6081,7 +6116,7 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"
@@ -6698,7 +6733,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -8421,10 +8456,8 @@ msgstr ""
 msgid "Template conversion queued"
 msgstr ""
 
-#. 0: item.label
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Delete template \"{0}\"?"
-msgstr ""
+#~ msgid "Delete template \"{0}\"?"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Failed to delete template"
@@ -8543,8 +8576,10 @@ msgstr ""
 
 #. 0: templateId
 #. 0: templateId
+#. 0: templateId
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 msgid "Template {0}"
 msgstr ""
 
@@ -8562,9 +8597,11 @@ msgid "Invalid Jail Name"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Invalid CTID range"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Invalid jail name prefix"
 msgstr ""
@@ -8577,4 +8614,267 @@ msgstr ""
 #. 0: createMode === 'single' ? 'Jail' : 'Jails'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Create {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> View Template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Deleting..."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Failed to load template details"
+msgstr ""
+
+#. 0: title.replaceAll('Template', '')
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Template Details - {0}"
+msgstr ""
+
+#~ msgid "Loading template details..."
+#~ msgstr ""
+
+#~ msgid "ID:"
+#~ msgstr ""
+
+#~ msgid "Source CTID:"
+#~ msgstr ""
+
+#~ msgid "Source Jail:"
+#~ msgstr ""
+
+#~ msgid "Type:"
+#~ msgstr ""
+
+#~ msgid "Pool:"
+#~ msgstr ""
+
+#~ msgid "Root Dataset:"
+#~ msgstr ""
+
+#~ msgid "Resource Limits:"
+#~ msgstr ""
+
+#~ msgid "CPU Cores:"
+#~ msgstr ""
+
+#~ msgid "Memory (bytes):"
+#~ msgstr ""
+
+#~ msgid "Inherit IPv4:"
+#~ msgstr ""
+
+#~ msgid "Inherit IPv6:"
+#~ msgstr ""
+
+#~ msgid "Created:"
+#~ msgstr ""
+
+#~ msgid "Updated:"
+#~ msgstr ""
+
+#~ msgid "Network Templates"
+#~ msgstr ""
+
+#~ msgid "#{0} {1} ({2}, switch {3})"
+#~ msgstr ""
+
+#~ msgid "Hook Templates"
+#~ msgstr ""
+
+#~ msgid "FStab"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "resolv.conf"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No template details available."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Select a ZFS pool"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Count must be positive"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Not enough space in selected pool"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "One or more CTIDs are already in use"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Duplicate CTIDs in request"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "One or more jail names are already in use"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Duplicate jail names in request"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid jail name"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Invalid create mode"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Selected pool is not available"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Target jail dataset already exists"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/Create.svelte
+msgid "Template dataset not found"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Template"
+msgstr ""
+
+#~ msgid "General"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Basic Details"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Source CTID"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Source Jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Hardware Limits"
+msgstr ""
+
+#~ msgid "Memory (bytes)"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inheritance"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inherit IPv4"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Inherit IPv6"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Network Interfaces"
+msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1}"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No network interfaces defined"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "ZFS Storage"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Root Dataset"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "FStab Mounts"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre/Post Hooks"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No hooks configured"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Linux"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> FreeBSD"
+msgstr ""
+
+#~ msgid "Linux"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Memory"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre Start"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Post Start"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Pre Stop"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Post Stop"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Hook Details"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "No script content found for this hook"
+msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1} {2}"
+#~ msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1} DHCP: {2} • SLAAC: {3}"
+#~ msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Switch ID"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "DHCP"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "SLAAC"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Standard"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "<0/> Manual"
 msgstr ""
