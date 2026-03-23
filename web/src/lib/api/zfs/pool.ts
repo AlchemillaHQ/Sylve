@@ -17,9 +17,9 @@ export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
 	return await apiRequest(`/zfs/pools/${guid}/status`, ZPoolStatusPoolSchema, 'GET');
 }
 
-export async function getPools(all?: boolean): Promise<Zpool[]> {
+export async function getPools(all?: boolean, hostname?: string): Promise<Zpool[]> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
-	return await apiRequest(url, ZpoolSchema.array(), 'GET');
+	return await apiRequest(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
 }
 
 export async function getPoolsDiskUsage(): Promise<number> {

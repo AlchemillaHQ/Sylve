@@ -102,6 +102,48 @@ export const JailHookSchema = z.object({
     script: z.string()
 });
 
+export const JailTemplateNetworkSchema = z.object({
+    name: z.string(),
+    switchId: z.number().int(),
+    switchType: z.enum(['standard', 'manual']),
+    dhcp: z.boolean().default(false),
+    slaac: z.boolean().default(false),
+    defaultGateway: z.boolean().default(false)
+});
+
+export const JailTemplateHookSchema = z.object({
+    phase: JailHookPhaseSchema,
+    enabled: z.boolean(),
+    script: z.string()
+});
+
+export const JailTemplateSchema = z.object({
+    id: z.number().int(),
+    name: z.string(),
+    sourceCtId: z.number().int(),
+    sourceJailName: z.string(),
+    pool: z.string(),
+    rootDataset: z.string(),
+    type: z.enum(['freebsd', 'linux']),
+    resourceLimits: z.boolean().nullable(),
+    cores: z.number(),
+    memory: z.number(),
+    inheritIPv4: z.boolean(),
+    inheritIPv6: z.boolean(),
+    fstab: z.string(),
+    resolvConf: z.string(),
+    devfsRuleset: z.string(),
+    cleanEnvironment: z.boolean(),
+    additionalOptions: z.string(),
+    allowedOptions: z.array(z.string()).default([]),
+    metadataMeta: z.string(),
+    metadataEnv: z.string(),
+    networks: z.array(JailTemplateNetworkSchema).default([]),
+    hooks: z.array(JailTemplateHookSchema).default([]),
+    createdAt: z.string(),
+    updatedAt: z.string()
+});
+
 export const JailSchema = SimpleJailSchema.extend({
     description: z.string().nullable(),
     startAtBoot: z.boolean(),
@@ -190,6 +232,7 @@ export type Jail = z.infer<typeof JailSchema>;
 export type JailStorage = z.infer<typeof JailStorageSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailHook = z.infer<typeof JailHookSchema>;
+export type JailTemplate = z.infer<typeof JailTemplateSchema>;
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;

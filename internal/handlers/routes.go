@@ -338,6 +338,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
+		jail.GET("/templates/:id", jailHandlers.GetJailTemplateByID(jailService))
 		jail.POST("/templates/convert/:ctid", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
 		jail.POST("/templates/create/:id", jailHandlers.CreateJailFromTemplate(jailService, lifecycleService))
 		jail.DELETE("/templates/:id", jailHandlers.DeleteJailTemplate(jailService))

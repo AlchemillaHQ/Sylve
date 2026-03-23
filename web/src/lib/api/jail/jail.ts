@@ -13,6 +13,8 @@ import {
     type JailStat,
     type JailState,
     type SimpleJail,
+    JailTemplateSchema,
+    type JailTemplate,
     SimpleJailTemplateSchema,
     type SimpleJailTemplate
 } from '$lib/types/jail/jail';
@@ -69,6 +71,12 @@ export async function getSimpleJailTemplates(hostname?: string): Promise<SimpleJ
     });
 }
 
+export async function getJailTemplateById(templateId: number, hostname?: string): Promise<JailTemplate> {
+    return await apiRequest(`/jail/templates/${templateId}`, JailTemplateSchema, 'GET', undefined, {
+        hostname
+    });
+}
+
 export async function getJails(hostname?: string): Promise<Jail[]> {
     return await apiRequest('/jail', z.array(JailSchema), 'GET', undefined, { hostname });
 }
@@ -118,6 +126,7 @@ export interface CreateJailFromTemplateRequest {
     startCtid?: number;
     count?: number;
     namePrefix?: string;
+    pool?: string;
 }
 
 export async function createJailFromTemplate(

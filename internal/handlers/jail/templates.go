@@ -24,6 +24,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func preflightStatusCode(err error) int {
+	if err == nil {
+		return http.StatusBadRequest
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "failed_to_") {
+		return http.StatusInternalServerError
+	}
+
+	return http.StatusBadRequest
+}
+
 func ListJailTemplatesSimple(jailService *jail.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templates, err := jailService.GetJailTemplatesSimple()
@@ -41,6 +54,49 @@ func ListJailTemplatesSimple(jailService *jail.Service) gin.HandlerFunc {
 			Status:  "success",
 			Message: "jail_templates_listed_simple",
 			Data:    templates,
+			Error:   "",
+		})
+	}
+}
+
+func GetJailTemplateByID(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		templateID, err := strconv.Atoi(c.Param("id"))
+		if err != nil || templateID <= 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_template_id",
+				Data:    nil,
+				Error:   "template id must be a positive integer",
+			})
+			return
+		}
+
+		template, err := jailService.GetJailTemplate(uint(templateID))
+		if err != nil {
+			if strings.Contains(err.Error(), "template_not_found") {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "template_not_found",
+					Data:    nil,
+					Error:   err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_jail_template",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[*jailModels.JailTemplate]{
+			Status:  "success",
+			Message: "jail_template_retrieved",
+			Data:    template,
 			Error:   "",
 		})
 	}
@@ -75,6 +131,16 @@ func ConvertJailToTemplate(jailService *jail.Service, lifecycleService *lifecycl
 				Message: "standby_mode_edit_not_allowed",
 				Data:    nil,
 				Error:   "replication_lease_not_owned",
+			})
+			return
+		}
+
+		if err := jailService.PreflightConvertJailToTemplate(c.Request.Context(), uint(ctID)); err != nil {
+			c.JSON(preflightStatusCode(err), internal.APIResponse[any]{
+				Status:  "error",
+				Message: "template_convert_preflight_failed",
+				Data:    nil,
+				Error:   err.Error(),
 			})
 			return
 		}
@@ -168,6 +234,16 @@ func CreateJailFromTemplate(jailService *jail.Service, lifecycleService *lifecyc
 				Message: "standby_mode_edit_not_allowed",
 				Data:    nil,
 				Error:   "replication_lease_not_owned",
+			})
+			return
+		}
+
+		if err := jailService.PreflightCreateJailsFromTemplate(c.Request.Context(), uint(templateID), req); err != nil {
+			c.JSON(preflightStatusCode(err), internal.APIResponse[any]{
+				Status:  "error",
+				Message: "template_create_preflight_failed",
+				Data:    nil,
+				Error:   err.Error(),
 			})
 			return
 		}

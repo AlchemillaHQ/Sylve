@@ -3,6 +3,8 @@
 	import { page } from '$app/state';
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
+	import ViewJailTemplate from '$lib/components/custom/Jail/Template/View.svelte';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { actionVm } from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -72,6 +74,9 @@
 		return segments[segments.length - 1];
 	});
 	let createFromTemplateOpen = $state(false);
+	let viewTemplateOpen = $state(false);
+	let deleteTemplateOpen = $state(false);
+	let deleteTemplateLoading = $state(false);
 
 	const handleActionClick = async (action: 'start' | 'reboot' | 'shutdown' | 'stop') => {
 		if (item.resourceId === undefined || item.resourceType === undefined) {
@@ -108,14 +113,20 @@
 
 	const handleDeleteTemplate = async () => {
 		if (!item.resourceId) return;
-		if (!confirm(`Delete template "${item.label}"?`)) return;
-		const result = await deleteJailTemplate(item.resourceId, item.nodeHostname);
-		if (result.error) {
-			toast.error('Failed to delete template', { position: 'bottom-center' });
-			return;
+		deleteTemplateLoading = true;
+		try {
+			const result = await deleteJailTemplate(item.resourceId, item.nodeHostname);
+			if (result.error) {
+				toast.error('Failed to delete template', { position: 'bottom-center' });
+				return;
+			}
+
+			deleteTemplateOpen = false;
+			reload.leftPanel = true;
+			toast.success('Template deleted', { position: 'bottom-center' });
+		} finally {
+			deleteTemplateLoading = false;
 		}
-		reload.leftPanel = true;
-		toast.success('Template deleted', { position: 'bottom-center' });
 	};
 </script>
 
@@ -201,13 +212,18 @@
 						</ContextMenu.Item>
 					{/if}
 				{:else if item.resourceType === 'jail-template'}
+					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
+						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
+						View Template
+					</ContextMenu.Item>
 					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
 						Create Jail
 					</ContextMenu.Item>
+					<ContextMenu.Separator />
 					<ContextMenu.Item
 						class="gap-2 text-destructive"
-						onclick={() => void handleDeleteTemplate()}
+						onclick={() => (deleteTemplateOpen = true)}
 					>
 						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
 						Delete Template
@@ -272,11 +288,31 @@
 {/if}
 
 {#if item.resourceType === 'jail-template' && item.resourceId}
+	<ViewJailTemplate
+		bind:open={viewTemplateOpen}
+		templateId={item.resourceId}
+		templateLabel={item.label}
+		hostname={item.nodeHostname}
+	/>
 	<CreateJailFromTemplate
 		bind:open={createFromTemplateOpen}
 		templateId={item.resourceId}
 		templateLabel={item.label}
 		hostname={item.nodeHostname}
 		{nextGuestId}
+	/>
+
+	<AlertDialog
+		bind:open={deleteTemplateOpen}
+		names={{ parent: 'template', element: item.label }}
+		actions={{
+			onConfirm: () => void handleDeleteTemplate(),
+			onCancel: () => {
+				deleteTemplateOpen = false;
+			}
+		}}
+		loading={deleteTemplateLoading}
+		confirmLabel="Delete"
+		loadingLabel="Deleting..."
 	/>
 {/if}
