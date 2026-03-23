@@ -9,6 +9,7 @@
 package db
 
 import (
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"gorm.io/gorm"
@@ -16,6 +17,7 @@ import (
 
 func Fixups(db *gorm.DB) error {
 	runNetworkDeltaMigration(db)
+	fixJailNetworkNameIndex(db)
 	createSylveUnixGroup(db)
 	cleanupInvalidTokenRows(db)
 	cleanupInvalidAuditUserIDs(db)
@@ -46,6 +48,46 @@ func runNetworkDeltaMigration(db *gorm.DB) {
 	if err := db.Exec(`DELETE FROM network_interfaces`).Error; err != nil {
 		logger.L.Err(err).Msg("failed deleting network interfaces")
 		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func fixJailNetworkNameIndex(db *gorm.DB) {
+	const name = "jail_network_name_scope_index_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for fix_jail_network_name_index")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("jail_networks") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	if db.Migrator().HasIndex(&jailModels.Network{}, "idx_jail_network_name") {
+		if err := db.Migrator().DropIndex(&jailModels.Network{}, "idx_jail_network_name"); err != nil {
+			logger.L.Err(err).Msg("failed dropping legacy jail network global name index")
+			return
+		}
+	}
+
+	if !db.Migrator().HasIndex(&jailModels.Network{}, "idx_jail_network_name_per_jail") {
+		if err := db.Migrator().CreateIndex(&jailModels.Network{}, "idx_jail_network_name_per_jail"); err != nil {
+			logger.L.Err(err).Msg("failed creating jail network scoped name index")
+			return
+		}
 	}
 
 	db.Table("migrations").Create(map[string]any{

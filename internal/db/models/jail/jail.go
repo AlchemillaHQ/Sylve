@@ -23,9 +23,9 @@ func (Network) TableName() string {
 
 type Network struct {
 	ID     uint `gorm:"primaryKey" json:"id"`
-	JailID uint `json:"jid" gorm:"column:jid;index"`
+	JailID uint `json:"jid" gorm:"column:jid;index;uniqueIndex:idx_jail_network_name_per_jail,priority:1"`
 
-	Name string `json:"name" gorm:"not null;uniqueIndex:idx_jail_network_name"`
+	Name string `json:"name" gorm:"not null;uniqueIndex:idx_jail_network_name_per_jail,priority:2"`
 
 	SwitchID   uint   `json:"switchId" gorm:"not null;index"`
 	SwitchType string `json:"switchType" gorm:"index;not null;default:standard"`
