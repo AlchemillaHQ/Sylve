@@ -71,6 +71,12 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	db.Exec("PRAGMA journal_mode = WAL")
 	db.Exec("PRAGMA synchronous = NORMAL")
 
+	// Pre-migration fixups use the migrations tracking table, so ensure it
+	// exists before running any pre-migration logic.
+	if err := db.AutoMigrate(&models.Migrations{}); err != nil {
+		logger.L.Fatal().Msgf("Error bootstrapping migrations table: %v", err)
+	}
+
 	PreMigrationFixups(db)
 
 	err = db.AutoMigrate(
