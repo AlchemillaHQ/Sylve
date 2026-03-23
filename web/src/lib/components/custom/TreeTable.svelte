@@ -39,6 +39,7 @@
 		initialSort
 	}: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
 		columnWidths: {},
 		expandedRows: {}
@@ -204,7 +205,7 @@
 				paginationSize: 25,
 				paginationCounter: 'pages',
 				initialSort: initialSort ? initialSort : [],
-                debugInvalidOptions: false
+				debugInvalidOptions: false
 			});
 		}
 
