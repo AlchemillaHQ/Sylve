@@ -8,6 +8,7 @@
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { logOut } from '$lib/api/auth';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -22,12 +23,10 @@
 	let properties = $state(options);
 	let loading = $state(false);
 
-	$effect(() => {
-		if (open) {
-			if (window && window.location.hostname) {
-				if (isValidIPv4(window.location.hostname) || isValidIPv6(window.location.hostname)) {
-					properties.ip = window.location.hostname;
-				}
+	watch([() => open, () => window?.location?.hostname], ([open, hostname]) => {
+		if (open && hostname) {
+			if (isValidIPv4(hostname) || isValidIPv6(hostname)) {
+				properties.ip = hostname;
 			}
 		}
 	});
