@@ -15,9 +15,15 @@ export async function getDetails(): Promise<ClusterDetails> {
 }
 
 export async function createCluster(ip: string): Promise<APIResponse> {
-    return await apiRequest('/cluster', APIResponseSchema, 'POST', {
-        ip: ip
-    });
+    return await apiRequest(
+        '/cluster',
+        APIResponseSchema,
+        'POST',
+        {
+            ip: ip
+        },
+        { raw: true }
+    );
 }
 
 export async function joinCluster(

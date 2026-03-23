@@ -203,8 +203,28 @@
 		}
 	);
 
+	async function refetchSummaryData() {
+		await Promise.all([
+			nodes.refetch(),
+			clusterDetails.refetch(),
+			cpuInfo.refetch(),
+			ramInfo.refetch(),
+			diskInfo.refetch()
+		]);
+	}
+
 	onMount(() => {
 		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');
+
+		const recoveryTimer = setTimeout(() => {
+			if ((clusterDetails.current?.cluster?.enabled ?? false) && nodes.current.length === 0) {
+				void refetchSummaryData();
+			}
+		}, 1200);
+
+		return () => {
+			clearTimeout(recoveryTimer);
+		};
 	});
 
 	const resourceGridClass = 'grid grid-cols-1 gap-2 md:grid-cols-3';

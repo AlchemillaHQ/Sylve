@@ -43,5 +43,12 @@ export const kvStorage = {
 
 		const db = getDB();
 		await db.kv.delete(key);
+	},
+
+	async clear(): Promise<void> {
+		if (!browser) return;
+
+		const db = getDB();
+		await db.kv.clear();
 	}
 };

@@ -13,6 +13,7 @@ import { goto } from '$app/navigation';
 import { storage } from '$lib';
 import type { JWTClaims } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
+import { kvStorage } from '$lib/types/db';
 import { handleAPIError } from '$lib/utils/http';
 import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
 import { sha256 } from '$lib/utils/string';
@@ -42,6 +43,14 @@ function applySuccessfulLogin(payload: any): boolean {
     storage.clusterToken = payload.clusterToken || '';
 
     return true;
+}
+
+async function clearCachedAPIData() {
+    try {
+        await kvStorage.clear();
+    } catch (error) {
+        console.warn('Failed to clear cached API data', error);
+    }
 }
 
 export async function login(
@@ -84,6 +93,7 @@ export async function login(
 
         if (response.status === 200 && responseData) {
             if (applySuccessfulLogin(responseData.data)) {
+                await clearCachedAPIData();
                 return true;
             } else {
                 toast.error('Invalid response received', {
@@ -175,6 +185,7 @@ export async function loginWithPasskey(remember: boolean): Promise<boolean> {
 
         const finishData = await parseJSONResponse(finishResponse);
         if (finishResponse.status === 200 && finishData?.data && applySuccessfulLogin(finishData.data)) {
+            await clearCachedAPIData();
             return true;
         }
 
@@ -279,7 +290,7 @@ export async function isClusterTokenValid(): Promise<boolean> {
             }
             return true;
         } else {
-            localStorage.removeItem('clusterToken');
+            storage.clusterToken = '';
         }
     } catch (_e: unknown) {
         return false;
@@ -306,6 +317,8 @@ export async function logOut(message?: string) {
         localStorage.removeItem('nodeId');
         localStorage.removeItem('clusterToken');
     }
+
+    await clearCachedAPIData();
 
     if (message) {
         toast.success(message, {
