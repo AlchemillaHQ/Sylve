@@ -16,7 +16,7 @@
 	import { generatePassword } from '$lib/utils/string';
 	import { isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
-	import { untrack } from 'svelte';
+	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -70,22 +70,30 @@
 	let properties = $state(options);
 
 	let remainingSpace = $state(0);
-	let currentPartition = $state(0);
 
-	$effect(() => {
-		const currentPartitionInput = properties.quota;
-		if (currentPartitionInput === '') {
-			currentPartition = 0;
-		} else {
-			const parsed = parseSizeInputToBytes(currentPartitionInput) ?? 0;
+	function getParentAvailable(parentName: string): number {
+		const parent = datasets.find((dataset) => dataset.name === parentName);
+		return Number(parent?.available || 0);
+	}
 
-			untrack(() => {
-				currentPartition = parsed;
-				if (currentPartition > remainingSpace) {
-					currentPartition = remainingSpace;
-					properties.quota = normalizeSizeInputExact(remainingSpace) ?? '0 B';
-				}
-			});
+	watch([() => properties.parent.value, () => properties.quota], ([parentValue, quotaValue]) => {
+		const hasParent = parentValue.trim() !== '';
+		remainingSpace = hasParent ? getParentAvailable(parentValue) : 0;
+
+		if (quotaValue.trim() === '') {
+			return;
+		}
+
+		const parsed = parseSizeInputToBytes(quotaValue);
+		if (parsed === null) {
+			return;
+		}
+
+		if (hasParent && parsed > remainingSpace) {
+			const normalized = normalizeSizeInputExact(remainingSpace);
+			if (normalized !== null && normalized !== properties.quota) {
+				properties.quota = normalized;
+			}
 		}
 	});
 

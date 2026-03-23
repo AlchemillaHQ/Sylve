@@ -77,7 +77,7 @@ type StorageAttachRequest struct {
 type StorageUpdateRequest struct {
 	ID        int                  `json:"id" binding:"required"`
 	Name      string               `json:"name" binding:"required"`
-	Size      int64                `json:"size" binding:"required"`
+	Size      *int64               `json:"size"`
 	Emulation StorageEmulationType `json:"emulation" binding:"required"`
 	BootOrder *int                 `json:"bootOrder"`
 }

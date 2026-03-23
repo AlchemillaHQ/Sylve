@@ -5009,12 +5009,12 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "टेम्पलेट {1} को {0} करने में विफल"
@@ -5409,6 +5409,7 @@ msgstr "डिस्क संलग्न करने में विफल"
 msgid "Disk attached"
 msgstr "डिस्क संलग्न हो गई"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New size cannot be smaller than current size"
 msgstr "नया आकार वर्तमान आकार से छोटा नहीं हो सकता"
@@ -5807,15 +5808,11 @@ msgstr "IP एड्रेस"
 msgid "RX / TX"
 msgstr "RX / TX"
 
-#. 0: humanFormat(iface.statistics['rx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↓ {0}B"
-msgstr "↓ {0}B"
+#~ msgid "↓ {0}B"
+#~ msgstr "↓ {0}B"
 
-#. 0: humanFormat(iface.statistics['tx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↑ {0}B"
-msgstr "↑ {0}B"
+#~ msgid "↑ {0}B"
+#~ msgstr "↑ {0}B"
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "N/A"
@@ -7315,7 +7312,7 @@ msgstr "नया बैकअप लक्ष्य"
 msgid "SSH Port"
 msgstr "SSH पोर्ट"
 
-#. 0: edit ? '(leave empty to keep existing)'
+#. 0: edit ? '(leave empty to keep existing)' : ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH निजी कुंजी {0}"
@@ -8403,9 +8400,8 @@ msgstr ""
 msgid "This option is not available for Linux jails"
 msgstr ""
 
-#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
-msgid "B/s"
-msgstr ""
+#~ msgid "B/s"
+#~ msgstr ""
 
 #~ msgid "<0/> Hello World"
 #~ msgstr ""
@@ -8903,4 +8899,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Add {0} to last VDEV"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Size (Read-only)"
 msgstr ""

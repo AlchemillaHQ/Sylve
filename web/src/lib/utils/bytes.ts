@@ -11,208 +11,266 @@
 const BINARY_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] as const;
 const BINARY_BASE = 1024;
 const MAX_SAFE_BYTES = Number.MAX_SAFE_INTEGER;
+const EXACT_NORMALIZATION_MAX_DECIMALS = 3;
 
 const UNIT_TO_MULTIPLIER: Record<string, number> = {
-	'': 1,
-	b: 1,
-	byte: 1,
-	bytes: 1,
+    '': 1,
+    b: 1,
+    byte: 1,
+    bytes: 1,
 
-	k: BINARY_BASE,
-	kb: BINARY_BASE,
-	ki: BINARY_BASE,
-	kib: BINARY_BASE,
+    k: BINARY_BASE,
+    kb: BINARY_BASE,
+    ki: BINARY_BASE,
+    kib: BINARY_BASE,
 
-	m: BINARY_BASE ** 2,
-	mb: BINARY_BASE ** 2,
-	mi: BINARY_BASE ** 2,
-	mib: BINARY_BASE ** 2,
+    m: BINARY_BASE ** 2,
+    mb: BINARY_BASE ** 2,
+    mi: BINARY_BASE ** 2,
+    mib: BINARY_BASE ** 2,
 
-	g: BINARY_BASE ** 3,
-	gb: BINARY_BASE ** 3,
-	gi: BINARY_BASE ** 3,
-	gib: BINARY_BASE ** 3,
+    g: BINARY_BASE ** 3,
+    gb: BINARY_BASE ** 3,
+    gi: BINARY_BASE ** 3,
+    gib: BINARY_BASE ** 3,
 
-	t: BINARY_BASE ** 4,
-	tb: BINARY_BASE ** 4,
-	ti: BINARY_BASE ** 4,
-	tib: BINARY_BASE ** 4,
+    t: BINARY_BASE ** 4,
+    tb: BINARY_BASE ** 4,
+    ti: BINARY_BASE ** 4,
+    tib: BINARY_BASE ** 4,
 
-	p: BINARY_BASE ** 5,
-	pb: BINARY_BASE ** 5,
-	pi: BINARY_BASE ** 5,
-	pib: BINARY_BASE ** 5
+    p: BINARY_BASE ** 5,
+    pb: BINARY_BASE ** 5,
+    pi: BINARY_BASE ** 5,
+    pib: BINARY_BASE ** 5
 };
 
 const SIZE_INPUT_PATTERN =
-	/^([+-]?(?:\d[\d_,\s]*(?:\.\d[\d_,\s]*)?|\.\d[\d_,\s]*)(?:e[+-]?\d+)?)\s*([a-zA-Z]*)$/;
+    /^([+-]?(?:\d[\d_,\s]*(?:\.\d[\d_,\s]*)?|\.\d[\d_,\s]*)(?:e[+-]?\d+)?)\s*([a-zA-Z]*)$/;
 
 export interface ByteFormatOptions {
-	maxDecimals?: number;
-	minDecimals?: number;
-	fallback?: string;
+    maxDecimals?: number;
+    minDecimals?: number;
+    fallback?: string;
 }
 
 function cleanNumberString(input: string): string {
-	return input.replace(/[_\s,]+/g, '');
+    return input.replace(/[_\s,]+/g, '');
 }
 
 function toSafeRoundedBytes(value: number): number | null {
-	if (!Number.isFinite(value) || value < 0) {
-		return null;
-	}
+    if (!Number.isFinite(value) || value < 0) {
+        return null;
+    }
 
-	const rounded = Math.round(value);
-	if (!Number.isFinite(rounded) || rounded < 0 || rounded > MAX_SAFE_BYTES) {
-		return null;
-	}
+    const rounded = Math.round(value);
+    if (!Number.isFinite(rounded) || rounded < 0 || rounded > MAX_SAFE_BYTES) {
+        return null;
+    }
 
-	return rounded;
+    return rounded;
 }
 
 function trimTrailingZeros(value: string): string {
-	return value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    return value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
 }
 
 function normalizeUnit(unit: string): string {
-	return unit.toLowerCase();
+    return unit.toLowerCase();
+}
+
+function formatBigIntDecimal(value: bigint, decimals: number): string {
+    const sign = value < 0n ? '-' : '';
+    const absoluteValue = value < 0n ? -value : value;
+
+    if (decimals <= 0) {
+        return `${sign}${absoluteValue.toString()}`;
+    }
+
+    const scale = 10n ** BigInt(decimals);
+    const whole = absoluteValue / scale;
+    const fraction = absoluteValue % scale;
+    if (fraction === 0n) {
+        return `${sign}${whole.toString()}`;
+    }
+
+    const fractionText = fraction
+        .toString()
+        .padStart(decimals, '0')
+        .replace(/0+$/, '');
+    return `${sign}${whole.toString()}.${fractionText}`;
+}
+
+function normalizeBytesToExactBinaryString(bytes: number): string {
+    if (bytes === 0) {
+        return '0 B';
+    }
+
+    const bytesBigInt = BigInt(bytes);
+
+    for (let unitIndex = BINARY_UNITS.length - 1; unitIndex >= 0; unitIndex -= 1) {
+        const unit = BINARY_UNITS[unitIndex];
+        const multiplier = BINARY_BASE ** unitIndex;
+        const multiplierBigInt = BigInt(multiplier);
+
+        if (bytesBigInt % multiplierBigInt === 0n) {
+            return `${(bytesBigInt / multiplierBigInt).toString()} ${unit}`;
+        }
+
+        if (unit === 'B') {
+            continue;
+        }
+
+        for (let decimals = 1; decimals <= EXACT_NORMALIZATION_MAX_DECIMALS; decimals += 1) {
+            const scale = 10n ** BigInt(decimals);
+            const scaledBytes = bytesBigInt * scale;
+            if (scaledBytes % multiplierBigInt !== 0n) {
+                continue;
+            }
+
+            const scaledValue = scaledBytes / multiplierBigInt;
+            return `${formatBigIntDecimal(scaledValue, decimals)} ${unit}`;
+        }
+    }
+
+    return `${bytes} B`;
 }
 
 function normalizeNumberishToBytes(input: unknown): number | null {
-	if (typeof input === 'number') {
-		if (!Number.isFinite(input) || input < 0) {
-			return null;
-		}
+    if (typeof input === 'number') {
+        if (!Number.isFinite(input) || input < 0) {
+            return null;
+        }
 
-		return input;
-	}
+        return input;
+    }
 
-	if (typeof input === 'string') {
-		const trimmed = input.trim();
-		if (!trimmed) {
-			return null;
-		}
+    if (typeof input === 'string') {
+        const trimmed = input.trim();
+        if (!trimmed) {
+            return null;
+        }
 
-		const numeric = Number(trimmed);
-		if (Number.isFinite(numeric) && numeric >= 0) {
-			return numeric;
-		}
+        const numeric = Number(trimmed);
+        if (Number.isFinite(numeric) && numeric >= 0) {
+            return numeric;
+        }
 
-		return parseSizeInputToBytes(trimmed);
-	}
+        return parseSizeInputToBytes(trimmed);
+    }
 
-	return null;
+    return null;
 }
 
 export function parseSizeInputToBytes(input: unknown): number | null {
-	if (typeof input === 'number') {
-		return toSafeRoundedBytes(input);
-	}
+    if (typeof input === 'number') {
+        return toSafeRoundedBytes(input);
+    }
 
-	if (typeof input !== 'string') {
-		return null;
-	}
+    if (typeof input !== 'string') {
+        return null;
+    }
 
-	const raw = input.trim();
-	if (!raw) {
-		return null;
-	}
+    const raw = input.trim();
+    if (!raw) {
+        return null;
+    }
 
-	const match = raw.match(SIZE_INPUT_PATTERN);
-	if (!match) {
-		return null;
-	}
+    const match = raw.match(SIZE_INPUT_PATTERN);
+    if (!match) {
+        return null;
+    }
 
-	const numericPart = cleanNumberString(match[1] ?? '');
-	if (!numericPart) {
-		return null;
-	}
+    const numericPart = cleanNumberString(match[1] ?? '');
+    if (!numericPart) {
+        return null;
+    }
 
-	const value = Number(numericPart);
-	if (!Number.isFinite(value) || value < 0) {
-		return null;
-	}
+    const value = Number(numericPart);
+    if (!Number.isFinite(value) || value < 0) {
+        return null;
+    }
 
-	const normalizedUnit = normalizeUnit(match[2] ?? '');
-	const multiplier = UNIT_TO_MULTIPLIER[normalizedUnit];
-	if (!multiplier) {
-		return null;
-	}
+    const normalizedUnit = normalizeUnit(match[2] ?? '');
+    const multiplier = UNIT_TO_MULTIPLIER[normalizedUnit];
+    if (!multiplier) {
+        return null;
+    }
 
-	return toSafeRoundedBytes(value * multiplier);
+    return toSafeRoundedBytes(value * multiplier);
 }
 
 export function formatBytesBinary(input: unknown, options: ByteFormatOptions = {}): string {
-	const { maxDecimals = 2, minDecimals = 0, fallback = '0 B' } = options;
-	const bytes = normalizeNumberishToBytes(input);
+    const { maxDecimals = 2, minDecimals = 0, fallback = '0 B' } = options;
+    const bytes = normalizeNumberishToBytes(input);
 
-	if (bytes === null) {
-		return fallback;
-	}
+    if (bytes === null) {
+        return fallback;
+    }
 
-	if (bytes === 0) {
-		return '0 B';
-	}
+    if (bytes === 0) {
+        return '0 B';
+    }
 
-	let unitIndex = 0;
-	let scaled = bytes;
+    let unitIndex = 0;
+    let scaled = bytes;
 
-	while (scaled >= BINARY_BASE && unitIndex < BINARY_UNITS.length - 1) {
-		scaled /= BINARY_BASE;
-		unitIndex += 1;
-	}
+    while (scaled >= BINARY_BASE && unitIndex < BINARY_UNITS.length - 1) {
+        scaled /= BINARY_BASE;
+        unitIndex += 1;
+    }
 
-	let rounded: number;
-	if (unitIndex === 0) {
-		rounded = Math.round(scaled);
-	} else {
-		const factor = 10 ** Math.max(0, maxDecimals);
-		rounded = Math.round(scaled * factor) / factor;
-	}
+    let rounded: number;
+    if (unitIndex === 0) {
+        rounded = Math.round(scaled);
+    } else {
+        const factor = 10 ** Math.max(0, maxDecimals);
+        rounded = Math.round(scaled * factor) / factor;
+    }
 
-	if (rounded >= BINARY_BASE && unitIndex < BINARY_UNITS.length - 1) {
-		rounded /= BINARY_BASE;
-		unitIndex += 1;
-	}
+    if (rounded >= BINARY_BASE && unitIndex < BINARY_UNITS.length - 1) {
+        rounded /= BINARY_BASE;
+        unitIndex += 1;
+    }
 
-	const decimalsForFixed =
-		unitIndex === 0 ? 0 : Math.max(Math.min(Math.max(maxDecimals, 0), 12), minDecimals);
-	const fixed = rounded.toFixed(decimalsForFixed);
-	const formatted = unitIndex === 0 ? fixed : trimTrailingZeros(fixed);
-	const minFixed =
-		minDecimals > 0 && unitIndex !== 0 ? Number(formatted).toFixed(Math.min(minDecimals, 12)) : formatted;
+    const decimalsForFixed =
+        unitIndex === 0 ? 0 : Math.max(Math.min(Math.max(maxDecimals, 0), 12), minDecimals);
+    const fixed = rounded.toFixed(decimalsForFixed);
+    const formatted = unitIndex === 0 ? fixed : trimTrailingZeros(fixed);
+    const minFixed =
+        minDecimals > 0 && unitIndex !== 0 ? Number(formatted).toFixed(Math.min(minDecimals, 12)) : formatted;
 
-	return `${minFixed} ${BINARY_UNITS[unitIndex]}`;
+    return `${minFixed} ${BINARY_UNITS[unitIndex]}`;
 }
 
 export function formatBytesPerSecondBinary(
-	bytesPerSecond: unknown,
-	options: ByteFormatOptions = {}
+    bytesPerSecond: unknown,
+    options: ByteFormatOptions = {}
 ): string {
-	const fallback = options.fallback ?? '0 B/s';
-	const value = formatBytesBinary(bytesPerSecond, { ...options, fallback: '0 B' });
+    const fallback = options.fallback ?? '0 B/s';
+    const value = formatBytesBinary(bytesPerSecond, { ...options, fallback: '0 B' });
 
-	if (value === '0 B') {
-		return fallback;
-	}
+    if (value === '0 B') {
+        return fallback;
+    }
 
-	return `${value}/s`;
+    return `${value}/s`;
 }
 
 export function normalizeSizeInputExact(input: unknown): string | null {
-	const bytes = parseSizeInputToBytes(input);
-	if (bytes === null) {
-		return null;
-	}
+    const bytes = parseSizeInputToBytes(input);
+    if (bytes === null) {
+        return null;
+    }
 
-	return `${bytes} B`;
+    return normalizeBytesToExactBinaryString(bytes);
 }
 
 export function toZfsBytesString(bytes: number): string {
-	const parsed = parseSizeInputToBytes(bytes);
-	if (parsed === null) {
-		return '0B';
-	}
+    const parsed = parseSizeInputToBytes(bytes);
+    if (parsed === null) {
+        return '0B';
+    }
 
-	return `${parsed}B`;
+    return `${parsed}B`;
 }

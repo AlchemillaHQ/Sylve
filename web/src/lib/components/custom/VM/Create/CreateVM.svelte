@@ -151,7 +151,7 @@
 		storage: {
 			type: 'zvol',
 			pool: '',
-			size: 1000 * 1000 * 1000,
+			size: 1024 * 1024 * 1024,
 			emulation: 'ahci-hd',
 			iso: ''
 		},
@@ -164,7 +164,7 @@
 			sockets: 1,
 			cores: 1,
 			threads: 1,
-			memory: 1000 * 1000 * 1000,
+			memory: 1024 * 1024 * 1024,
 			passthroughIds: [] as number[],
 			pinnedCPUs: [] as CPUPin[],
 			isPinningOpen: false

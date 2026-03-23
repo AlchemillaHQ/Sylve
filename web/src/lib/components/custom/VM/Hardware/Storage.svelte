@@ -8,10 +8,7 @@
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { VM } from '$lib/types/vm/vm';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
-	import {
-		normalizeSizeInputExact,
-		parseSizeInputToBytes
-	} from '$lib/utils/bytes';
+	import { normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
 	import { getISOs } from '$lib/utils/utilities/downloader';
 	import { toast } from 'svelte-sonner';
@@ -19,7 +16,6 @@
 	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { Debounced } from 'runed';
 	import { roundUpToBlock } from '$lib/utils/zfs';
 
 	interface Props {
@@ -57,6 +53,21 @@
 		const storage = tableData?.rows.find((s) => s.id === storageId) || null;
 		return storage ? storage.name : null;
 	});
+	let selectedStorageDisplaySize = $derived.by(() => {
+		if (storageId === null) {
+			return selectedStorage?.size || 0;
+		}
+
+		const tableStorage = tableData?.rows.find((s) => s.id === storageId) || null;
+		const tableSize = Number(tableStorage?.size);
+		if (Number.isFinite(tableSize) && tableSize > 0) {
+			return tableSize;
+		}
+
+		return selectedStorage?.size || 0;
+	});
+	let selectedStorageType = $derived.by(() => selectedStorage?.type ?? null);
+	let isImageStorageEdit = $derived.by(() => selectedStorageType === 'image');
 
 	let options = {
 		name: '',
@@ -71,9 +82,10 @@
 		loading: false
 	};
 
+	// svelte-ignore state_referenced_locally
 	let editOptions = {
 		name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
-		size: selectedStorage ? (normalizeSizeInputExact(selectedStorage.size) ?? '') : '',
+		size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
 		emulation: selectedStorage
 			? selectedStorage.emulation
 			: ('ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'),
@@ -83,36 +95,6 @@
 
 	let properties = $state(options);
 	let editProperties = $state(editOptions);
-	let lastRejectedSize: string | null = null;
-
-	const debouncedSize = new Debounced(() => editProperties.size, 800);
-
-	$effect(() => {
-		if (!selectedStorage) return;
-
-		const currentSize = selectedStorage.size || 0;
-		const sizeStr = debouncedSize.current;
-
-		if (!sizeStr) return;
-
-		const newSize = parseSizeInputToBytes(sizeStr);
-		if (newSize === null) {
-			return;
-		}
-
-		const EPSILON = 1024 * 8;
-		if (newSize < currentSize - EPSILON) {
-			if (lastRejectedSize === sizeStr) return;
-			lastRejectedSize = sizeStr;
-
-			editProperties.size = normalizeSizeInputExact(currentSize) ?? '0 B';
-			toast.error('New size cannot be smaller than current size', {
-				position: 'bottom-center'
-			});
-		} else {
-			lastRejectedSize = null;
-		}
-	});
 
 	let images = $derived(getISOs(downloads, true));
 	let usedDatasets = $derived.by(() => {
@@ -156,6 +138,35 @@
 	const toastOptions = {
 		position: 'bottom-center' as const
 	};
+
+	function handleEditSizeBlur() {
+		if (isImageStorageEdit) {
+			return;
+		}
+
+		if (editProperties.size.trim() === '') {
+			return;
+		}
+
+		const parsed = parseSizeInputToBytes(editProperties.size);
+		if (parsed === null) {
+			return;
+		}
+
+		if (selectedStorage) {
+			const EPSILON = 1024; // 1 KB tolerance
+			if (parsed < selectedStorage.size - EPSILON) {
+				editProperties.size = normalizeSizeInputExact(selectedStorage.size) ?? '0 B';
+				toast.error('New size cannot be smaller than current size', toastOptions);
+				return;
+			}
+		}
+
+		const normalized = normalizeSizeInputExact(parsed);
+		if (normalized !== null) {
+			editProperties.size = normalized;
+		}
+	}
 
 	async function attach() {
 		if (
@@ -278,25 +289,27 @@
 			return;
 		}
 
-		if (editProperties.size === '') {
-			toast.error('Please specify a size', toastOptions);
-			return;
-		}
-
-		let parsedSize: number = 0;
-		const parsed = parseSizeInputToBytes(editProperties.size);
-		if (parsed === null) {
-			toast.error('Invalid size format', toastOptions);
-			return;
-		}
-		parsedSize = parsed;
-
-		if (selectedStorage) {
-			// Allow a small tolerance (epsilon) to avoid floating-point rounding issues
-			const EPSILON = 1024; // 1 KB tolerance
-			if (parsedSize < selectedStorage.size - EPSILON) {
-				toast.error('New size cannot be smaller than current size', toastOptions);
+		let parsedSize: number | undefined = undefined;
+		if (!isImageStorageEdit) {
+			if (editProperties.size === '') {
+				toast.error('Please specify a size', toastOptions);
 				return;
+			}
+
+			const parsed = parseSizeInputToBytes(editProperties.size);
+			if (parsed === null) {
+				toast.error('Invalid size format', toastOptions);
+				return;
+			}
+			parsedSize = parsed;
+
+			if (selectedStorage) {
+				// Allow a small tolerance (epsilon) to avoid floating-point rounding issues
+				const EPSILON = 1024; // 1 KB tolerance
+				if (parsedSize < selectedStorage.size - EPSILON) {
+					toast.error('New size cannot be smaller than current size', toastOptions);
+					return;
+				}
 			}
 		}
 
@@ -310,22 +323,28 @@
 			return;
 		}
 
-		const dataset = selectedStorage?.dataset;
-		const fDataset = datasets.find((d) => d.guid === dataset?.guid);
+		let roundedSize: number | undefined = undefined;
+		if (parsedSize !== undefined) {
+			const dataset = selectedStorage?.dataset;
+			const fDataset = datasets.find((d) => d.guid === dataset?.guid);
 
-		let blockSize = 8192;
-		if (fDataset && fDataset.properties) {
-			if (fDataset.type === GZFSDatasetTypeSchema.enum.VOLUME && fDataset.properties.volblocksize) {
-				blockSize = Number(fDataset.properties.volblocksize);
-			} else if (
-				fDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM &&
-				fDataset.properties.recordsize
-			) {
-				blockSize = Number(fDataset.properties.recordsize);
+			let blockSize = 8192;
+			if (fDataset && fDataset.properties) {
+				if (
+					fDataset.type === GZFSDatasetTypeSchema.enum.VOLUME &&
+					fDataset.properties.volblocksize
+				) {
+					blockSize = Number(fDataset.properties.volblocksize);
+				} else if (
+					fDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM &&
+					fDataset.properties.recordsize
+				) {
+					blockSize = Number(fDataset.properties.recordsize);
+				}
 			}
-		}
 
-		const roundedSize = roundUpToBlock(parsedSize, blockSize);
+			roundedSize = roundUpToBlock(parsedSize, blockSize);
+		}
 
 		editProperties.loading = true;
 		const response = await storageUpdate(
@@ -356,8 +375,8 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class={selectedStorage
-			? 'w-1/3 overflow-hidden p-5 lg:max-w-2xl'
-			: 'w-full overflow-hidden p-5 lg:max-w-2xl'}
+			? 'w-full overflow-hidden p-5 max-w-3xl min-w-xl'
+			: 'w-full overflow-hidden p-5 max-w-2xl min-w-xl'}
 	>
 		<Dialog.Header class="">
 			<Dialog.Title class="flex items-center justify-between">
@@ -537,16 +556,12 @@
 
 			<div class="grid grid-cols-3 gap-4">
 				<CustomValueInput
-					label="Size"
+					label={isImageStorageEdit ? 'Size (Read-only)' : 'Size'}
 					placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
 					bind:value={editProperties.size}
 					classes="flex-1 space-y-1"
-					onBlur={() => {
-						const normalized = normalizeSizeInputExact(editProperties.size);
-						if (normalized !== null) {
-							editProperties.size = normalized;
-						}
-					}}
+					onBlur={handleEditSizeBlur}
+					disabled={isImageStorageEdit}
 				/>
 
 				<SimpleSelect

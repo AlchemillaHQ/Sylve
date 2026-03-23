@@ -900,12 +900,18 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		current.BootOrder = *req.BootOrder
 	}
 
-	if req.Size != 0 && req.Size != current.Size {
-		if req.Size < current.Size {
+	if req.Size == nil && current.Type != vmModels.VMStorageTypeDiskImage {
+		return fmt.Errorf("size_required_for_storage_type: %s", current.Type)
+	}
+
+	if req.Size != nil && *req.Size != current.Size {
+		newSize := *req.Size
+
+		if newSize < current.Size {
 			return fmt.Errorf("shrinking_storage_not_supported")
 		}
 
-		growBy := req.Size - current.Size
+		growBy := newSize - current.Size
 
 		if current.Pool != "" && growBy > 0 {
 			pool, err := s.GZFS.Zpool.Get(ctx, current.Pool)
@@ -927,7 +933,7 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 				current.ID,
 			)
 
-			if err := utils.CreateOrResizeFile(imagePath, req.Size); err != nil {
+			if err := utils.CreateOrResizeFile(imagePath, newSize); err != nil {
 				return fmt.Errorf("failed_to_resize_raw_image_file: %w", err)
 			}
 
@@ -950,13 +956,13 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 			}
 
 			volSize = gzfs.ParseSize(volSizeProp.Value)
-			newSize := uint64(req.Size)
+			newVolSize := uint64(newSize)
 
-			if newSize < volSize {
+			if newVolSize < volSize {
 				return fmt.Errorf("new_size_must_be_greater_than_or_equal_to_current_volsize")
 			}
 
-			err = ds.SetProperties(ctx, "volsize", fmt.Sprintf("%d", newSize))
+			err = ds.SetProperties(ctx, "volsize", fmt.Sprintf("%d", newVolSize))
 			if err != nil {
 				return fmt.Errorf("failed_to_set_zvol_volsize: %w", err)
 			}
@@ -967,7 +973,7 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 			return fmt.Errorf("size_edit_not_supported_for_storage_type: %s", current.Type)
 		}
 
-		current.Size = req.Size
+		current.Size = newSize
 	}
 
 	current.Name = req.Name

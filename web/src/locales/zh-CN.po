@@ -5009,12 +5009,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -5409,6 +5409,7 @@ msgstr "连接磁盘失败"
 msgid "Disk attached"
 msgstr "磁盘已连接"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New size cannot be smaller than current size"
 msgstr "新大小不能小于当前大小"
@@ -5807,15 +5808,11 @@ msgstr "IP 地址"
 msgid "RX / TX"
 msgstr "RX / TX"
 
-#. 0: humanFormat(iface.statistics['rx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↓ {0}B"
-msgstr "↓ {0}B"
+#~ msgid "↓ {0}B"
+#~ msgstr "↓ {0}B"
 
-#. 0: humanFormat(iface.statistics['tx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↑ {0}B"
-msgstr "↑ {0}B"
+#~ msgid "↑ {0}B"
+#~ msgstr "↑ {0}B"
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "N/A"
@@ -7315,7 +7312,7 @@ msgstr "新建备份目标"
 msgid "SSH Port"
 msgstr "SSH 端口"
 
-#. 0: edit ? '(leave empty to keep existing)'
+#. 0: edit ? '(leave empty to keep existing)' : ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH 私钥 {0}"
@@ -8403,9 +8400,8 @@ msgstr ""
 msgid "This option is not available for Linux jails"
 msgstr ""
 
-#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
-msgid "B/s"
-msgstr ""
+#~ msgid "B/s"
+#~ msgstr ""
 
 #~ msgid "<0/> Hello World"
 #~ msgstr ""
@@ -8903,4 +8899,8 @@ msgstr ""
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Add {0} to last VDEV"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Size (Read-only)"
 msgstr ""

@@ -5009,12 +5009,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5410,6 +5410,7 @@ msgid "Disk attached"
 msgstr "Disk attached"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "New size cannot be smaller than current size"
 msgstr "New size cannot be smaller than current size"
 
@@ -5608,7 +5609,7 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 msgid "Update "
-msgstr "Update "
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -5807,15 +5808,11 @@ msgstr "IP Addresses"
 msgid "RX / TX"
 msgstr "RX / TX"
 
-#. 0: humanFormat(iface.statistics['rx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↓ {0}B"
-msgstr "↓ {0}B"
+#~ msgid "↓ {0}B"
+#~ msgstr "↓ {0}B"
 
-#. 0: humanFormat(iface.statistics['tx-bytes'] || 0)
-#: src/lib/components/custom/VM/Summary/GuestAgent.svelte
-msgid "↑ {0}B"
-msgstr "↑ {0}B"
+#~ msgid "↑ {0}B"
+#~ msgstr "↑ {0}B"
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "N/A"
@@ -7315,7 +7312,7 @@ msgstr "New Backup Target"
 msgid "SSH Port"
 msgstr "SSH Port"
 
-#. 0: edit ? '(leave empty to keep existing)'
+#. 0: edit ? '(leave empty to keep existing)' : ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH Private Key {0}"
@@ -8403,9 +8400,8 @@ msgstr "Documentation"
 msgid "This option is not available for Linux jails"
 msgstr "This option is not available for Linux jails"
 
-#: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
-msgid "B/s"
-msgstr "B/s"
+#~ msgid "B/s"
+#~ msgstr "B/s"
 
 #~ msgid "<0/> Hello World"
 #~ msgstr "<0/> Hello World"
@@ -8904,3 +8900,7 @@ msgstr "({0} available)"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 msgid "Add {0} to last VDEV"
 msgstr "Add {0} to last VDEV"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Size (Read-only)"
+msgstr "Size (Read-only)"

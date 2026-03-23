@@ -103,6 +103,8 @@ export function generateTableData(
             const download = downloads.find((d) => storage.uuid === d.uuid);
             name = download ? download.name : 'Unknown ISO';
             size = download ? download.size : 0;
+
+            name = `${storage.name} (${name})`;
         } else if (storage.type === 'zvol' || storage.type === 'raw') {
             if (storage.type === 'zvol') {
                 zvolCount++;
