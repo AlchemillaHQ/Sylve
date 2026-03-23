@@ -7,123 +7,124 @@ import type { CellComponent } from 'tabulator-tables';
 import { renderWithIcon } from '../table';
 
 export function generateTableData(
-	vm: VM,
-	datasets: Dataset[],
-	downloads: Download[]
+    vm: VM,
+    datasets: Dataset[],
+    downloads: Download[]
 ): {
-	rows: Row[];
-	columns: Column[];
+    rows: Row[];
+    columns: Column[];
 } {
-	const rows: Row[] = [];
-	const columns: Column[] = [
-		{
-			field: 'id',
-			title: 'ID',
-			visible: false
-		},
-		{
-			field: 'type',
-			title: 'Type',
-			visible: false
-		},
-		{
-			field: 'name',
-			title: 'Name',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				const row = cell.getRow().getData();
+    const rows: Row[] = [];
+    const columns: Column[] = [
+        {
+            field: 'id',
+            title: 'ID',
+            visible: false
+        },
+        {
+            field: 'type',
+            title: 'Type',
+            visible: false
+        },
+        {
+            field: 'name',
+            title: 'Name',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                const row = cell.getRow().getData();
 
-				if (row.type === 'image') {
-					return renderWithIcon('tdesign:cd-filled', value, 'text-green-500', 'Installation Media');
-				} else if (row.type === 'zvol') {
-					return renderWithIcon(
-						'carbon:volume-block-storage',
-						value,
-						'text-blue-500',
-						'ZFS Volume'
-					);
-				} else if (row.type === 'raw') {
-					return renderWithIcon('carbon:volume-block-storage', value, 'text-blue-500', 'Raw Disk');
-				}
-				return value;
-			}
-		},
-		{
-			field: 'emulation',
-			title: 'Emulation',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				switch (value) {
-					case 'ahci-cd':
-						return 'AHCI CD-ROM';
-					case 'virtio-blk':
-						return 'VirtIO Block';
-					case 'ahci-hd':
-						return 'AHCI Hard Disk';
-					case 'nvme':
-						return 'NVMe';
-					default:
-						break;
-				}
-				return '-';
-			}
-		},
-		{
-			field: 'bootorder',
-			title: 'Boot Order',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				return value !== undefined ? value : '-';
-			}
-		},
-		{
-			field: 'size',
-			title: 'Size',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				if (value === 0) {
-					return '-';
-				}
-				return humanFormat(value);
-			}
-		}
-	];
+                if (row.type === 'image') {
+                    return renderWithIcon('tdesign:cd-filled', value, 'text-green-500', 'Installation Media');
+                } else if (row.type === 'zvol') {
+                    return renderWithIcon(
+                        'carbon:volume-block-storage',
+                        value,
+                        'text-blue-500',
+                        'ZFS Volume'
+                    );
+                } else if (row.type === 'raw') {
+                    return renderWithIcon('carbon:volume-block-storage', value, 'text-blue-500', 'Raw Disk');
+                }
+                return value;
+            }
+        },
+        {
+            field: 'emulation',
+            title: 'Emulation',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                switch (value) {
+                    case 'ahci-cd':
+                        return 'AHCI CD-ROM';
+                    case 'virtio-blk':
+                        return 'VirtIO Block';
+                    case 'ahci-hd':
+                        return 'AHCI Hard Disk';
+                    case 'nvme':
+                        return 'NVMe';
+                    default:
+                        break;
+                }
+                return '-';
+            }
+        },
+        {
+            field: 'bootorder',
+            title: 'Boot Order',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                return value !== undefined ? value : '-';
+            }
+        },
+        {
+            field: 'size',
+            title: 'Size',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                if (value === 0) {
+                    return '-';
+                }
 
-	const storages = vm.storages || [];
+                return humanFormat(value);
+            }
+        }
+    ];
 
-	let zvolCount = 0;
-	let rawCount = 0;
+    const storages = vm.storages || [];
 
-	for (const storage of storages) {
-		let name = '';
-		let size = 0;
+    let zvolCount = 0;
+    let rawCount = 0;
 
-		if (storage.type === 'image') {
-			const download = downloads.find((d) => storage.uuid === d.uuid);
-			name = download ? download.name : 'Unknown ISO';
-			size = download ? download.size : 0;
-		} else if (storage.type === 'zvol' || storage.type === 'raw') {
-			if (storage.type === 'zvol') {
-				zvolCount++;
-				name = storage.name ? storage.name : `ZFS Volume - ${zvolCount}`;
-			} else if (storage.type === 'raw') {
-				rawCount++;
-				name = storage.name ? storage.name : `Raw Disk - ${rawCount}`;
-			}
-		}
+    for (const storage of storages) {
+        let name = '';
+        let size = 0;
 
-		rows.push({
-			id: storage.id,
-			type: storage.type,
-			emulation: storage.emulation,
-			bootorder: storage.bootOrder || 0,
-			name: name,
-			size: size || storage.size
-		});
-	}
+        if (storage.type === 'image') {
+            const download = downloads.find((d) => storage.uuid === d.uuid);
+            name = download ? download.name : 'Unknown ISO';
+            size = download ? download.size : 0;
+        } else if (storage.type === 'zvol' || storage.type === 'raw') {
+            if (storage.type === 'zvol') {
+                zvolCount++;
+                name = storage.name ? storage.name : `ZFS Volume - ${zvolCount}`;
+            } else if (storage.type === 'raw') {
+                rawCount++;
+                name = storage.name ? storage.name : `Raw Disk - ${rawCount}`;
+            }
+        }
 
-	return {
-		rows: rows,
-		columns
-	};
+        rows.push({
+            id: storage.id,
+            type: storage.type,
+            emulation: storage.emulation,
+            bootorder: storage.bootOrder || 0,
+            name: name,
+            size: size || storage.size
+        });
+    }
+
+    return {
+        rows: rows,
+        columns
+    };
 }

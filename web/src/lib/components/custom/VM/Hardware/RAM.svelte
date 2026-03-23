@@ -21,7 +21,7 @@
 
 	// svelte-ignore state_referenced_locally
 	let options = {
-		ram: humanFormat(vm?.ram || 1)
+		ram: humanFormat(vm?.ram || 1, { scale: 'binary' })
 	};
 
 	let properties = $state(options);
@@ -31,7 +31,7 @@
 		let error: string = '';
 
 		try {
-			bytes = humanFormat.parse(properties.ram);
+			bytes = humanFormat.parse(properties.ram, { scale: 'binary' });
 			bytes = parseInt(bytes.toString(), 10);
 		} catch (e) {
 			error = 'Invalid RAM value';
