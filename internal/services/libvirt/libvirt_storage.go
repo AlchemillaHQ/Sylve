@@ -254,6 +254,10 @@ func (s *Service) SyncVMDisks(rid uint) error {
 	currentIndex := 10
 
 	for _, storage := range storages {
+		if !storage.Enable {
+			continue
+		}
+
 		for currentIndex < 30 && used[currentIndex] {
 			currentIndex++
 		}
@@ -540,6 +544,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
 	storage.BootOrder = *req.BootOrder
+	storage.Enable = true
 
 	if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw {
 		exists, err := utils.FileExists(req.RawPath)
@@ -742,6 +747,7 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
 	storage.Size = *req.Size
 	storage.BootOrder = *req.BootOrder
+	storage.Enable = true
 
 	if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw {
 		storage.Type = vmModels.VMStorageTypeRaw
@@ -978,6 +984,9 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 
 	current.Name = req.Name
 	current.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
+	if req.Enable != nil {
+		current.Enable = *req.Enable
+	}
 
 	if err := s.DB.Save(&current).Error; err != nil {
 		return fmt.Errorf("failed_to_update_storage_record: %w", err)

@@ -13,6 +13,7 @@
 	import { getISOs } from '$lib/utils/utilities/downloader';
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { Column, Row } from '$lib/types/components/tree-table';
@@ -89,6 +90,7 @@
 		emulation: selectedStorage
 			? selectedStorage.emulation
 			: ('ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'),
+		enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
 		bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
 		loading: false
 	};
@@ -352,7 +354,8 @@
 			editProperties.name,
 			roundedSize,
 			editProperties.emulation,
-			Number(editProperties.bootOrder)
+			Number(editProperties.bootOrder),
+			editProperties.enable
 		);
 
 		reload = true;
@@ -586,6 +589,12 @@
 					classes="flex-1 space-y-1"
 				/>
 			</div>
+
+			<CustomCheckbox
+				label="Enabled (Attached to VM)"
+				bind:checked={editProperties.enable}
+				classes="mt-3 flex items-center gap-2"
+			/>
 		{/if}
 
 		<Dialog.Footer>

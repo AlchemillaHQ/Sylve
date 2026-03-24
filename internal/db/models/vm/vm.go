@@ -9,6 +9,7 @@
 package vmModels
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -35,6 +36,7 @@ type VMTemplateStorage struct {
 	Emulation       VMStorageEmulationType `json:"emulation"`
 	Pool            string                 `json:"pool"`
 	Size            int64                  `json:"size"`
+	Enable          bool                   `json:"enable"`
 	BootOrder       int                    `json:"bootOrder"`
 	RecordSize      int                    `json:"recordSize"`
 	VolBlockSize    int                    `json:"volBlockSize"`
@@ -83,7 +85,8 @@ type Storage struct {
 	Name         string `json:"name"`
 	DownloadUUID string `json:"uuid"`
 
-	Pool string `json:"pool"`
+	Pool   string `json:"pool"`
+	Enable bool   `json:"enable"`
 
 	DatasetID *uint            `json:"datasetId" gorm:"column:dataset_id"`
 	Dataset   VMStorageDataset `json:"dataset" gorm:"foreignKey:DatasetID;references:ID"`
@@ -96,6 +99,50 @@ type Storage struct {
 
 	BootOrder int  `json:"bootOrder"`
 	VMID      uint `json:"vmId" gorm:"index"`
+}
+
+func (s *Storage) UnmarshalJSON(data []byte) error {
+	type Alias Storage
+
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	*s = Storage(alias)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if _, ok := raw["enable"]; !ok {
+		s.Enable = true
+	}
+
+	return nil
+}
+
+func (s *VMTemplateStorage) UnmarshalJSON(data []byte) error {
+	type Alias VMTemplateStorage
+
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	*s = VMTemplateStorage(alias)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if _, ok := raw["enable"]; !ok {
+		s.Enable = true
+	}
+
+	return nil
 }
 
 func (Network) TableName() string {

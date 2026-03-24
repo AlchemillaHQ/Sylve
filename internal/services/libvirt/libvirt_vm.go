@@ -104,6 +104,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		})
 
 		for _, storage := range vm.Storages {
+			if !storage.Enable {
+				continue
+			}
+
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
@@ -431,7 +435,7 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		}
 
 		hasDiskImage := slices.ContainsFunc(vm.Storages, func(storage vmModels.Storage) bool {
-			return storage.Type == vmModels.VMStorageTypeDiskImage
+			return storage.Enable && storage.Type == vmModels.VMStorageTypeDiskImage
 		})
 
 		if hasDiskImage {
@@ -441,7 +445,7 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 			}
 
 			err := s.DB.
-				Where("vm_id = ? AND type = ?", vm.ID, vmModels.VMStorageTypeDiskImage).
+				Where("vm_id = ? AND type = ? AND enable = ?", vm.ID, vmModels.VMStorageTypeDiskImage, true).
 				Delete(&vmModels.Storage{}).Error
 
 			if err != nil {

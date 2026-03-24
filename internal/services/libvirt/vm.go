@@ -762,6 +762,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			Type:      vmModels.VMStorageType(data.StorageType),
 			Size:      int64(*data.StorageSize),
 			Emulation: vmModels.VMStorageEmulationType(data.StorageEmulationType),
+			Enable:    true,
 			BootOrder: 1,
 		})
 	}
@@ -772,6 +773,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			Type:         vmModels.VMStorageTypeDiskImage,
 			Size:         0,
 			Emulation:    "ahci-cd",
+			Enable:       true,
 		})
 	}
 

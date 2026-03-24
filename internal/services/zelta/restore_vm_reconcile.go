@@ -374,6 +374,7 @@ func (s *Service) normalizeRestoredVMStorages(
 			Name:         strings.TrimSpace(storage.Name),
 			DownloadUUID: strings.TrimSpace(storage.DownloadUUID),
 			Pool:         strings.TrimSpace(storage.Pool),
+			Enable:       storage.Enable,
 			Size:         storage.Size,
 			Emulation:    storage.Emulation,
 			RecordSize:   storage.RecordSize,

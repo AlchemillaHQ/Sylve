@@ -59,13 +59,15 @@ export async function storageUpdate(
     name: string,
     size: number | undefined,
     emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
-    bootOrder: number
+    bootOrder: number,
+    enable?: boolean
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/storage/update`, APIResponseSchema, 'PUT', {
         id,
         name,
         ...(size !== undefined ? { size } : {}),
         emulation,
-        bootOrder
+        bootOrder,
+        ...(enable !== undefined ? { enable } : {})
     });
 }

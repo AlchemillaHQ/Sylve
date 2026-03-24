@@ -548,9 +548,16 @@ func (s *Service) GetCloudInitISOPath(rid uint) (string, error) {
 }
 
 func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
-	if len(vm.Storages) == 0 {
+	enabledStorages := make([]vmModels.Storage, 0, len(vm.Storages))
+	for _, storage := range vm.Storages {
+		if storage.Enable {
+			enabledStorages = append(enabledStorages, storage)
+		}
+	}
+
+	if len(enabledStorages) == 0 {
 		return fmt.Errorf("need_storage_to_flash_cloud_init_disk")
-	} else if len(vm.Storages) > 2 {
+	} else if len(enabledStorages) > 2 {
 		return fmt.Errorf("too_many_storages_to_flash_cloud_init_disk")
 	}
 
@@ -561,7 +568,7 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 	var mediaStorage *vmModels.Storage
 	var diskStorage *vmModels.Storage
 
-	for _, storage := range vm.Storages {
+	for _, storage := range enabledStorages {
 		if storage.Type == vmModels.VMStorageTypeDiskImage {
 			mediaStorage = &storage
 		} else if storage.Type == vmModels.VMStorageTypeRaw ||

@@ -80,6 +80,7 @@ type StorageUpdateRequest struct {
 	Size      *int64               `json:"size"`
 	Emulation StorageEmulationType `json:"emulation" binding:"required"`
 	BootOrder *int                 `json:"bootOrder"`
+	Enable    *bool                `json:"enable"`
 }
 
 type StorageDetachRequest struct {
