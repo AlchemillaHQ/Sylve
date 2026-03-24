@@ -4,6 +4,7 @@ import {
     SimpleVmTemplateSchema,
     SimpleVmSchema,
     VMDomainSchema,
+    VMLogsSchema,
     VMSchema,
     VMTemplateSchema,
     VMStatSchema,
@@ -12,6 +13,7 @@ import {
     type SimpleVm,
     type SimpleVmTemplate,
     type VM,
+    type VMLogs,
     type VMTemplate,
     type VMDomain,
     type VMStat
@@ -164,6 +166,10 @@ export async function deleteVMTemplate(templateId: number, hostname?: string): P
 
 export async function getStats(rid: number, step: string): Promise<VMStat[]> {
     return await apiRequest(`/vm/stats/${rid}/${step}`, z.array(VMStatSchema), 'GET');
+}
+
+export async function getVMLogs(rid: number): Promise<VMLogs> {
+    return await apiRequest(`/vm/logs/${rid}`, VMLogsSchema, 'GET');
 }
 
 export async function updateDescription(rid: number, description: string): Promise<APIResponse> {

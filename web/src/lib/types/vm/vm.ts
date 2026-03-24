@@ -158,6 +158,10 @@ export const VMStatSchema = z.object({
     createdAt: z.string().default(new Date(0).toISOString())
 });
 
+export const VMLogsSchema = z.object({
+    logs: z.string()
+});
+
 export const VMDomainSchema = z.object({
     id: z.number().int(),
     uuid: z.string(),
@@ -279,6 +283,7 @@ export type VMStorage = z.infer<typeof VMStorageSchema>;
 export type VMNetwork = z.infer<typeof VMNetworkSchema>;
 export type VMDomain = z.infer<typeof VMDomainSchema>;
 export type VMStat = z.infer<typeof VMStatSchema>;
+export type VMLogs = z.infer<typeof VMLogsSchema>;
 export type SimpleVm = z.infer<typeof SimpleVmSchema>;
 export type SimpleVmTemplate = z.infer<typeof SimpleVmTemplateSchema>;
 export type VMTemplate = z.infer<typeof VMTemplateSchema>;

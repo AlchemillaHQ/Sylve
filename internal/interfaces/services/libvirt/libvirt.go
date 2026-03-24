@@ -76,6 +76,7 @@ type LibvirtServiceInterface interface {
 	RemoveLvVm(rid uint) error
 	RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error
 	GetLvDomain(rid uint) (*LvDomain, error)
+	GetVMLogs(rid uint) (string, error)
 	StartTPM() error
 	StopTPM(rid uint) error
 	CheckPCIDevicesInUse(vm vmModels.VM) error

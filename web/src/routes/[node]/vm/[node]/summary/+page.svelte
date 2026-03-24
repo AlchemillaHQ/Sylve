@@ -9,9 +9,11 @@
 		deleteVM,
 		getStats,
 		getVmById,
+		getVMLogs,
 		getVMDomain,
 		updateDescription
 	} from '$lib/api/vm/vm';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -34,6 +36,7 @@
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
+	import { untrack } from 'svelte';
 	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
@@ -92,6 +95,17 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	const logs = resource(
+		() => `vm-${data.vm.rid}-logs`,
+		async (key) => {
+			const result = await getVMLogs(vm.current.rid);
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: { logs: '' } }
+	);
+
+	// svelte-ignore state_referenced_locally
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
@@ -129,6 +143,14 @@
 		}
 	});
 
+	useInterval(() => 1000, {
+		callback: () => {
+			if (visible.current && showLogs) {
+				logs.refetch();
+			}
+		}
+	});
+
 	watch(
 		() => domain.current,
 		(currentDomain, prevDomain) => {
@@ -147,6 +169,10 @@
 				stats.refetch();
 				lifecycleTask.refetch();
 			}
+
+			if (!idle && showLogs) {
+				logs.refetch();
+			}
 		}
 	);
 
@@ -162,6 +188,14 @@
 
 		return data.gaInfo;
 	});
+	let showLogs = $state(false);
+	let logsContainerElement = $state<HTMLDivElement | null>(null);
+	let followLogs = $state(true);
+	let vmLogs = $derived.by(() => {
+		const currentLogs = logs.current?.logs;
+		return typeof currentLogs === 'string' ? currentLogs : '';
+	});
+	const LOG_AUTO_SCROLL_THRESHOLD = 24;
 
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
@@ -208,6 +242,20 @@
 		modalState.deleteVolumes = forceDelete;
 		modalState.title = `${vm.current.name} (${vm.current.rid})`;
 		modalState.isDeleteOpen = true;
+	}
+
+	function isNearLogsBottom(element: HTMLDivElement): boolean {
+		return (
+			element.scrollHeight - element.scrollTop - element.clientHeight <= LOG_AUTO_SCROLL_THRESHOLD
+		);
+	}
+
+	function handleLogsScroll() {
+		if (!logsContainerElement) {
+			return;
+		}
+
+		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
 	function beginPendingLifecycleAction(action: VMLifecycleAction) {
@@ -421,6 +469,31 @@
 		lifecycleTask.refetch();
 	}
 
+	$effect(() => {
+		const _currentLogs = vmLogs;
+
+		if (showLogs && followLogs) {
+			untrack(() => {
+				if (logsContainerElement) {
+					logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
+				}
+			});
+		}
+	});
+
+	$effect(() => {
+		if (showLogs) {
+			followLogs = true;
+			untrack(() => {
+				requestAnimationFrame(() => {
+					if (logsContainerElement) {
+						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
+					}
+				});
+			});
+		}
+	});
+
 	let udTime = $derived.by(() => {
 		if (domain.current.status === 'Running') {
 			if (vm.current.startedAt) {
@@ -556,8 +629,24 @@
 			</div>
 		{/key}
 
-		<!-- Towards the right we should have another button -->
-		<div class="ml-auto flex h-full items-center">
+		<div class="ml-auto flex h-full items-center gap-2">
+			{#if vmLogs.length > 0}
+				<Button
+					size="sm"
+					onclick={() => {
+						followLogs = true;
+						showLogs = true;
+						logs.refetch();
+					}}
+					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+				>
+					<div class="flex items-center">
+						<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
+						<span>View Logs</span>
+					</div>
+				</Button>
+			{/if}
+
 			<SimpleSelect
 				options={[
 					{ label: 'Hourly', value: 'hourly' },
@@ -762,3 +851,61 @@
 	description={modalState.loading.description}
 	iconColor={modalState.loading.iconColor}
 />
+
+<Dialog.Root bind:open={showLogs}>
+	<Dialog.Content
+		class="min-w-3xl overflow-hidden"
+		onInteractOutside={(e) => e.preventDefault()}
+		onEscapeKeydown={(e) => e.preventDefault()}
+	>
+		<Dialog.Header class="flex w-full min-w-0 flex-col">
+			<Dialog.Title class="flex justify-between text-left">
+				<div class="flex items-center gap-2">
+					<span class="icon-[material-symbols--terminal] h-6 w-6"></span>
+					<span>{vm.current.name} Logs</span>
+				</div>
+
+				<div class="flex items-center gap-0.5">
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title={'Close'}
+						onclick={() => {
+							showLogs = false;
+						}}
+					>
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">Close</span>
+					</Button>
+				</div>
+			</Dialog.Title>
+		</Dialog.Header>
+
+		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
+			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+				<div
+					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
+					bind:this={logsContainerElement}
+					onscroll={handleLogsScroll}
+				>
+					<pre class="block min-w-0 whitespace-pre text-xs text-[#4AF626]">
+						{vmLogs}
+					</pre>
+				</div>
+			</Card.Content>
+		</Card.Root>
+	</Dialog.Content>
+</Dialog.Root>
+
+<style>
+	.logs-container {
+		overflow: auto;
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+	}
+
+	.logs-container::-webkit-scrollbar {
+		display: none;
+	}
+</style>
