@@ -1052,3 +1052,19 @@ func (s *Service) GetDomainState(rid int) (libvirt.DomainState, error) {
 
 	return libvirt.DomainState(state), nil
 }
+
+func (s *Service) GetVMIDByRID(rid uint) (uint, error) {
+	var id uint
+
+	err := s.DB.Model(&vmModels.VM{}).
+		Select("id").
+		Where("rid = ?", rid).
+		Limit(1).
+		Scan(&id).Error
+
+	if err != nil {
+		return 0, fmt.Errorf("failed_to_find_vm_by_rid: %w", err)
+	}
+
+	return id, nil
+}

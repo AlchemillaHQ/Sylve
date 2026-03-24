@@ -361,5 +361,9 @@ func (s *Service) WriteDHCPConfig() error {
 		return fmt.Errorf("failed to write dnsmasq configuration to %s: %w", filePath, err)
 	}
 
+	return s.RestartDNSMasq()
+}
+
+func (s *Service) RestartDNSMasq() error {
 	return system.ServiceAction("dnsmasq", "onerestart")
 }

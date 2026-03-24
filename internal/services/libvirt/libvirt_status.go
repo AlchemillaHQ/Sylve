@@ -216,7 +216,12 @@ func (s *Service) StoreVMUsage() error {
 	return s.ApplyVMStatsRetention()
 }
 
-func (s *Service) GetVMUsage(vmId int, step db.GFSStep) ([]vmModels.VMStats, error) {
+func (s *Service) GetVMUsage(rid int, step db.GFSStep) ([]vmModels.VMStats, error) {
+	vmId, err := s.GetVMIDByRID(uint(rid))
+	if err != nil {
+		return nil, err
+	}
+
 	if vmId == 0 {
 		return nil, fmt.Errorf("vm_not_found")
 	}

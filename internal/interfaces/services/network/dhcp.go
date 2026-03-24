@@ -74,3 +74,8 @@ type ModifyStaticMapRequest struct {
 	DHCPRangeID  uint   `json:"dhcpRangeId" binding:"required"`
 	Comments     string `json:"comments"`
 }
+
+type DeleteDynamicLeaseRequest struct {
+	Identifier string `json:"identifier" binding:"required"`
+	IP         string `json:"ip" binding:"required"`
+}

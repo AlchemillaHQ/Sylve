@@ -188,3 +188,46 @@ func DeleteDHCPLease(svc *network.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+// @Summary Delete Dynamic DHCP Lease
+// @Description Delete an active DHCP lease by identifier (MAC or DUID) and IP
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param data body networkServiceInterfaces.DeleteDynamicLeaseRequest true "Request Body"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/dhcp/lease/dynamic [post]
+func DeleteDynamicDHCPLease(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req networkServiceInterfaces.DeleteDynamicLeaseRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := svc.DeleteDynamicLease(&req); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_delete_dynamic_dhcp_lease",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "dynamic_dhcp_lease_deleted",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}

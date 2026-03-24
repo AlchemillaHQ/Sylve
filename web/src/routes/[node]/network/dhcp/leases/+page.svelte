@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { getDHCPConfig, getDHCPRanges, getLeases, deleteDHCPLease } from '$lib/api/network/dhcp';
+	import {
+		getDHCPConfig,
+		getDHCPRanges,
+		getLeases,
+		deleteDHCPLease,
+		deleteDynamicDHCPLease
+	} from '$lib/api/network/dhcp';
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getSwitches } from '$lib/api/network/switch';
 	import CreateOrEdit from '$lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte';
@@ -19,6 +25,7 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
+	import { type APIResponse } from '$lib/types/common';
 
 	interface Data {
 		interfaces: Iface[];
@@ -31,6 +38,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key, prevKey, { signal }) => {
@@ -41,6 +49,7 @@
 		{ initialValue: data.interfaces }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key, prevKey, { signal }) => {
@@ -51,6 +60,7 @@
 		{ initialValue: data.switches }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpConfig = resource(
 		() => 'dhcp-config',
 		async (key, prevKey, { signal }) => {
@@ -61,6 +71,7 @@
 		{ initialValue: data.dhcpConfig }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpRanges = resource(
 		() => 'dhcp-ranges',
 		async (key, prevKey, { signal }) => {
@@ -71,6 +82,7 @@
 		{ initialValue: data.dhcpRanges }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let dhcpLeases = resource(
 		() => 'dhcp-leases',
 		async (key, prevKey, { signal }) => {
@@ -81,6 +93,7 @@
 		{ initialValue: data.dhcpLeases }
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkObjects = resource(
 		() => 'network-objects',
 		async (key, prevKey, { signal }) => {
@@ -118,7 +131,11 @@
 		},
 		delete: {
 			open: false,
-			id: '0'
+			loading: false,
+			type: '' as 'static' | 'dynamic' | '',
+			id: '0',
+			ip: '',
+			identifier: ''
 		}
 	});
 
@@ -160,7 +177,11 @@
 			},
 			{
 				field: 'hostname',
-				title: 'Hostname'
+				title: 'Hostname',
+				formatter(cell) {
+					const value = cell.getValue();
+					return value || '-';
+				}
 			},
 			{
 				field: 'ip',
@@ -273,6 +294,7 @@
 				<Button
 					onclick={() => {
 						modals.delete.open = !modals.delete.open;
+						modals.delete.type = 'static';
 						modals.delete.id = activeRow?.dbId || '0';
 					}}
 					size="sm"
@@ -281,7 +303,6 @@
 				>
 					<div class="flex items-center">
 						<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-
 						<span>Delete</span>
 					</div>
 				</Button>
@@ -301,6 +322,25 @@
 					</div>
 				</Button>
 			{/if}
+		{/if}
+
+		{#if activeRow?.type === 'dynamic' && type === 'delete'}
+			<Button
+				onclick={() => {
+					modals.delete.open = !modals.delete.open;
+					modals.delete.type = 'dynamic';
+					modals.delete.identifier = activeRow?.identifier || '';
+					modals.delete.ip = activeRow?.ip || '';
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+					<span>Delete</span>
+				</div>
+			</Button>
 		{/if}
 	{/if}
 {/snippet}
@@ -360,10 +400,24 @@
 
 <AlertDialog
 	open={modals.delete.open}
-	customTitle={`This action cannot be undone. This will permanently delete static DHCP lease for <b>${activeRow?.hostname || activeRow?.ip || ''}</b>`}
+	customTitle={`This action cannot be undone. This will permanently delete ${modals.delete.type} DHCP lease for <b>${activeRow?.hostname || activeRow?.ip || ''}</b>`}
 	actions={{
 		onConfirm: async () => {
-			const result = await deleteDHCPLease(parseInt(modals.delete.id));
+			let result = null as null | APIResponse;
+
+			modals.delete.loading = true;
+
+			if (modals.delete.type === 'static') {
+				result = await deleteDHCPLease(parseInt(modals.delete.id));
+			} else if (modals.delete.type === 'dynamic') {
+				result = await deleteDynamicDHCPLease(modals.delete.identifier, modals.delete.ip);
+			}
+
+			if (result === null) {
+				toast.error('Invalid DHCP lease type', { position: 'bottom-center' });
+				return;
+			}
+
 			reload = true;
 			if (result.status === 'error') {
 				handleAPIError(result);
@@ -374,13 +428,21 @@
 			}
 
 			modals.delete.open = false;
+			modals.delete.loading = false;
 			modals.delete.id = '0';
+			modals.delete.identifier = '';
+			modals.delete.ip = '';
 			activeRows = null;
 			activeRow = null;
 		},
 		onCancel: () => {
 			modals.delete.open = false;
 			modals.delete.id = '0';
+			modals.delete.identifier = '';
+			modals.delete.ip = '';
+			modals.delete.loading = false;
 		}
 	}}
+	loading={modals.delete.loading}
+	loadingLabel="Deleting Lease..."
 ></AlertDialog>

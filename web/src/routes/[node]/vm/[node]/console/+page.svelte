@@ -594,10 +594,11 @@
 						size="sm"
 						class="ml-auto h-6"
 						onclick={() => {
-							openSettings = true;
+							terminal?.clear?.();
+							terminal?.focus?.();
 						}}
 					>
-						<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
+						<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
 					</Button>
 
 					<Button
@@ -605,12 +606,10 @@
 						size="sm"
 						class="ml-auto h-6"
 						onclick={() => {
-							// openSettings = true;
-							terminal?.clear?.();
-							terminal?.focus?.();
+							openSettings = true;
 						}}
 					>
-						<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
+						<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
 					</Button>
 				</div>
 			{/if}

@@ -246,6 +246,7 @@ func RegisterRoutes(r *gin.Engine,
 		network.POST("/dhcp/lease", networkHandlers.CreateDHCPLease(networkService))
 		network.PUT("/dhcp/lease", networkHandlers.UpdateDHCPLease(networkService))
 		network.DELETE("/dhcp/lease/:id", networkHandlers.DeleteDHCPLease(networkService))
+		network.POST("/dhcp/lease/dynamic", networkHandlers.DeleteDynamicDHCPLease(networkService))
 	}
 
 	system := api.Group("/system")

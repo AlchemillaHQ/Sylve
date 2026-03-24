@@ -472,3 +472,69 @@ func (s *Service) DeleteStaticMap(id uint) error {
 
 	return nil
 }
+
+func (s *Service) DeleteDynamicLease(req *networkServiceInterfaces.DeleteDynamicLeaseRequest) error {
+	const leaseFile = "/var/db/dnsmasq.leases"
+
+	if req == nil {
+		return fmt.Errorf("request is nil")
+	}
+
+	identifier := strings.ToLower(strings.TrimSpace(req.Identifier))
+	ip := strings.ToLower(strings.TrimSpace(req.IP))
+
+	if identifier == "" && ip == "" {
+		return fmt.Errorf("either identifier or ip must be provided")
+	}
+
+	data, err := os.ReadFile(leaseFile)
+	if err != nil {
+		return fmt.Errorf("read leases: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	out := make([]string, 0, len(lines))
+	removed := false
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			out = append(out, raw)
+			continue
+		}
+
+		lowerLine := strings.ToLower(line)
+		fields := strings.Fields(lowerLine)
+
+		match := false
+
+		if identifier != "" && strings.Contains(lowerLine, identifier) {
+			match = true
+		}
+
+		if !match && ip != "" && len(fields) >= 3 && fields[0] != "duid" && fields[2] == ip {
+			match = true
+		}
+
+		if match {
+			removed = true
+			continue
+		}
+
+		out = append(out, raw)
+	}
+
+	if !removed {
+		return fmt.Errorf("no matching lease found")
+	}
+
+	if err := utils.AtomicWriteFile(leaseFile, []byte(strings.Join(out, "\n")), 0o644); err != nil {
+		return fmt.Errorf("write leases file: %w", err)
+	}
+
+	if err := s.RestartDNSMasq(); err != nil {
+		return fmt.Errorf("restart dnsmasq: %w", err)
+	}
+
+	return nil
+}

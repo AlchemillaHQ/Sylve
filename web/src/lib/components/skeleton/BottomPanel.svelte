@@ -167,6 +167,7 @@
 		'/api/disk/initialize-gpt': 'Disk - Initialize GPT',
 		'/api/disk/wipe': 'Disk - Wipe',
 		'/api/network/object': 'Network Object',
+		'/api/network/dhcp/lease/dynamic': 'DHCP Lease - Delete Dynamic',
 		'/api/network/dhcp/range': 'DHCP Range',
 		'/api/network/dhcp/lease': 'DHCP Lease',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',

@@ -94,8 +94,8 @@
 	const stats = resource(
 		[() => gfsStep],
 		async ([gfsStep]) => {
-			const result = await getStats(Number(data.vm.id), gfsStep);
-			const key = `vm-stats-${data.vm.id}`;
+			const result = await getStats(Number(data.vm.rid), gfsStep);
+			const key = `vm-stats-${data.vm.rid}`;
 			updateCache(key, result);
 			return result;
 		},

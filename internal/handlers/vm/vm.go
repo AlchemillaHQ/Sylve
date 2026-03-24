@@ -520,7 +520,7 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 
 		username := strings.TrimSpace(c.GetString("Username"))
 
-		task, outcome, err := lifecycleService.RequestAction(
+		_, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeVM,
 			uint(ridInt),
@@ -528,12 +528,13 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 			taskModels.LifecycleTaskSourceUser,
 			username,
 		)
+
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
-					Data:    gin.H{"task": task},
+					Data:    nil,
 					Error:   err.Error(),
 				})
 				return
@@ -566,7 +567,7 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: message,
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}

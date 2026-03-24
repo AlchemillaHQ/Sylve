@@ -469,16 +469,30 @@
 				</Button>
 			{/if}
 
-			<Button
-				variant="outline"
-				size="sm"
-				class="ml-auto h-6"
-				onclick={() => {
-					openSettings = true;
-				}}
-			>
-				<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
-			</Button>
+			<div class="ml-auto">
+				<Button
+					variant="outline"
+					size="sm"
+					class="ml-auto h-6"
+					onclick={() => {
+						terminal?.clear?.();
+						terminal?.focus?.();
+					}}
+				>
+					<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
+				</Button>
+
+				<Button
+					variant="outline"
+					size="sm"
+					class="ml-auto h-6"
+					onclick={() => {
+						openSettings = true;
+					}}
+				>
+					<span class="icon-[mdi--cog-outline] h-4 w-4"></span>
+				</Button>
+			</div>
 		</div>
 
 		{#if cState.current}

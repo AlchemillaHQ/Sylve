@@ -79,7 +79,7 @@ export async function apiRequest<T extends z.ZodType>(
                 setReloadFlag();
                 return parsedResult.data;
             } else {
-                console.warn('Zod Validation Error', parsedResult.error);
+                console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
                 setReloadFlag();
                 return getDefaultValue(schema, apiResponse.data);
             }

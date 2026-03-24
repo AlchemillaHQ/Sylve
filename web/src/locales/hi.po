@@ -834,6 +834,7 @@ msgstr "देखें"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
@@ -1826,12 +1827,12 @@ msgstr "सक्षम करने के लिए टिक करें"
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "विभाजन{0} बनाया गया"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
@@ -1895,12 +1896,12 @@ msgstr "फ़ोल्डर"
 msgid "File"
 msgstr "फ़ाइल"
 
-#. 0: isFolder ? 'Folder' : 'File'
+#. 0: isFolder ? 'Folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> {0} बनाएँ"
 
-#. 0: isFolder ? 'folder' : 'file'
+#. 0: isFolder ? 'folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "{0} का नाम दर्ज करें"
@@ -2692,12 +2693,12 @@ msgstr "व्यस्त डिस्क को वाइप करने म�
 msgid "Unable to delete busy partition"
 msgstr "व्यस्त पार्टीशन को हटाने में असमर्थ"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "त्रुटि {0}: {1}"
 
-#. 0: isFolder ? 'folder' : 'file'; 1: name
+#. 0: isFolder ? 'folder' ; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "{0} \"{1}\" बनाने में विफल"
@@ -2743,17 +2744,17 @@ msgstr "<0/> नया फ़ोल्डर"
 msgid "{0} items"
 msgstr "{0} आइटम"
 
-#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
+#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} फ़ोल्डर, {1} फ़ाइलें"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "{0} \"{1}\" को हटाने में विफल।"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "{0} आइटम{1} को हटाने में विफल।"
@@ -5026,12 +5027,12 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "टेम्पलेट {1} को {0} करने में विफल"
@@ -6136,7 +6137,7 @@ msgstr "त्रुटि स्थिति"
 msgid "No known data errors"
 msgstr "कोई ज्ञात डेटा त्रुटि नहीं"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "त्रुटियां मिलीं{0}"
@@ -6390,10 +6391,8 @@ msgstr "रेंज"
 msgid "Expiry"
 msgstr "समाप्ति"
 
-#. 0: activeRow?.hostname || activeRow?.ip || ''
-#: src/routes/[node]/network/dhcp/leases/+page.svelte
-msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
-msgstr "यह क्रिया वापस नहीं ली जा सकती। इससे <b>{0}</b> के लिए स्टैटिक DHCP लीज़ स्थायी रूप से डिलीट हो जाएगी।"
+#~ msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
+#~ msgstr "यह क्रिया वापस नहीं ली जा सकती। इससे <b>{0}</b> के लिए स्टैटिक DHCP लीज़ स्थायी रूप से डिलीट हो जाएगी।"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Failed to delete DHCP lease"
@@ -7399,7 +7398,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7487,7 +7486,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -9207,4 +9206,21 @@ msgstr ""
 #. 0: normalizedTemplateName(templateLabel)
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create VM - {0}"
+msgstr ""
+
+#. 0: modals.delete.type; 1: activeRow?.hostname || activeRow?.ip || ''
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "This action cannot be undone. This will permanently delete {0} DHCP lease for <b>{1}</b>"
+msgstr ""
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Invalid DHCP lease type"
+msgstr ""
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Deleting Lease..."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Delete Dynamic"
 msgstr ""

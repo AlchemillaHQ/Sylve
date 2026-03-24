@@ -834,6 +834,7 @@ msgstr "View"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
@@ -1826,12 +1827,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1895,12 +1896,12 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder' : 'File'
+#. 0: isFolder ? 'Folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder' : 'file'
+#. 0: isFolder ? 'folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
@@ -2692,12 +2693,12 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
 
-#. 0: isFolder ? 'folder' : 'file'; 1: name
+#. 0: isFolder ? 'folder' ; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "Failed to create {0} \"{1}\""
@@ -2743,17 +2744,17 @@ msgstr "<0/> New Folder"
 msgid "{0} items"
 msgstr "{0} items"
 
-#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
+#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} folders, {1} files"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -5026,12 +5027,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -6136,7 +6137,7 @@ msgstr "Error Status"
 msgid "No known data errors"
 msgstr "No known data errors"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
@@ -6390,10 +6391,8 @@ msgstr "Range"
 msgid "Expiry"
 msgstr "Expiry"
 
-#. 0: activeRow?.hostname || activeRow?.ip || ''
-#: src/routes/[node]/network/dhcp/leases/+page.svelte
-msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
-msgstr "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
+#~ msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
+#~ msgstr "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
 
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Failed to delete DHCP lease"
@@ -7399,7 +7398,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit' : 'Create'
+#. 0: selectedLease ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7487,7 +7486,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit' : 'Create'
+#. 0: selectedRange ? 'Edit' 
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -9208,3 +9207,20 @@ msgstr "Select or type compression"
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create VM - {0}"
 msgstr "Create VM - {0}"
+
+#. 0: modals.delete.type; 1: activeRow?.hostname || activeRow?.ip || ''
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "This action cannot be undone. This will permanently delete {0} DHCP lease for <b>{1}</b>"
+msgstr "This action cannot be undone. This will permanently delete {0} DHCP lease for <b>{1}</b>"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Invalid DHCP lease type"
+msgstr "Invalid DHCP lease type"
+
+#: src/routes/[node]/network/dhcp/leases/+page.svelte
+msgid "Deleting Lease..."
+msgstr "Deleting Lease..."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "DHCP Lease - Delete Dynamic"
+msgstr "DHCP Lease - Delete Dynamic"

@@ -264,7 +264,7 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	}
 
 	if reload {
-		if err := system.ServiceAction("samba_server", "reload"); err != nil {
+		if err := system.ServiceAction("samba_server", "onereload"); err != nil {
 			return fmt.Errorf("failed to reload Samba service: %w", err)
 		}
 	}
