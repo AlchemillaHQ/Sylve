@@ -1181,6 +1181,8 @@ msgstr "Reset"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -1827,12 +1829,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -5503,12 +5505,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -6323,6 +6325,7 @@ msgid "Stopped {0}"
 msgstr "Stopped {0}"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "View Logs"
 msgstr "View Logs"
 
@@ -6357,7 +6360,9 @@ msgid "Stopped"
 msgstr "Stopped"
 
 #. 0: jail.current.name
+#. 0: vm.current.name
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "{0} Logs"
 msgstr "{0} Logs"
 
@@ -9231,4 +9236,3 @@ msgstr "DHCP Lease - Delete Dynamic"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
 msgstr "Enabled (Available to VM)"
-led (Available to VM)"

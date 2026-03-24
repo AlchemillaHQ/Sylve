@@ -84,7 +84,7 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 
 		username := strings.TrimSpace(c.GetString("Username"))
 
-		task, outcome, err := lifecycleService.RequestAction(
+		_, _, err = lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeJail,
 			uint(ctId),
@@ -92,13 +92,14 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 			taskModels.LifecycleTaskSourceUser,
 			username,
 		)
+
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
 					Error:   err.Error(),
-					Data:    gin.H{"task": task},
+					Data:    nil,
 				})
 				return
 			}
@@ -125,7 +126,7 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: fmt.Sprintf("jail_%s_queued", action),
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}

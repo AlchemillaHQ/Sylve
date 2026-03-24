@@ -178,7 +178,7 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestActionWithPayload(
+		_, _, err = lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeJailTemplate,
 			uint(ctID),
@@ -187,12 +187,13 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 			username,
 			string(payload),
 		)
+
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
-					Data:    gin.H{"task": task},
+					Data:    nil,
 					Error:   err.Error(),
 				})
 				return
@@ -210,7 +211,7 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_template_convert_queued",
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}
@@ -262,7 +263,7 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestActionWithPayload(
+		_, _, err = lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeJailTemplate,
 			uint(templateID),
@@ -271,12 +272,13 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 			username,
 			string(payload),
 		)
+
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
-					Data:    gin.H{"task": task},
+					Data:    nil,
 					Error:   err.Error(),
 				})
 				return
@@ -294,7 +296,7 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_template_create_queued",
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}

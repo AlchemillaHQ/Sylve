@@ -159,7 +159,7 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestActionWithPayload(
+		_, _, err = lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeVMTemplate,
 			uint(rid),
@@ -173,7 +173,7 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
-					Data:    gin.H{"task": task},
+					Data:    nil,
 					Error:   err.Error(),
 				})
 				return
@@ -191,7 +191,7 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "vm_template_convert_queued",
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}
@@ -243,7 +243,7 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *li
 		}
 
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestActionWithPayload(
+		_, _, err = lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeVMTemplate,
 			uint(templateID),
@@ -252,12 +252,13 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *li
 			username,
 			string(payload),
 		)
+
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "lifecycle_task_in_progress",
-					Data:    gin.H{"task": task},
+					Data:    nil,
 					Error:   err.Error(),
 				})
 				return
@@ -275,7 +276,7 @@ func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *li
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "vm_template_create_queued",
-			Data:    gin.H{"task": task, "outcome": outcome},
+			Data:    nil,
 			Error:   "",
 		})
 	}
