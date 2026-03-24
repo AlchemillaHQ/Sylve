@@ -591,7 +591,7 @@
 			</div>
 
 			<CustomCheckbox
-				label="Enabled (Attached to VM)"
+				label="Enabled (Available to VM)"
 				bind:checked={editProperties.enable}
 				classes="mt-3 flex items-center gap-2"
 			/>

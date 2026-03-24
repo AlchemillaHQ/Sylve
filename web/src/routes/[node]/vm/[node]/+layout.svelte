@@ -22,7 +22,8 @@
 		getVMLifecyclePendingTimeoutMs,
 		getVMLifecycleBadgeStyle,
 		isVMLifecycleTransitionPending,
-		shouldHideVMLifecycleButtons
+		shouldHideVMLifecycleButtons,
+		removeStaleCacheByRID
 	} from '$lib/utils/vm/vm';
 
 	interface Props {
@@ -250,6 +251,8 @@
 					position: 'bottom-center'
 				});
 			}
+
+			removeStaleCacheByRID(vm.current.rid);
 		}
 	}
 

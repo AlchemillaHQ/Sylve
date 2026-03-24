@@ -10,6 +10,7 @@ import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 import { type ClusterNode } from '$lib/types/cluster/cluster';
+import { kvStorage } from '$lib/types/db';
 
 export function isValidCreateData(
     modal: CreateData,
@@ -290,4 +291,17 @@ export function getVMLifecycleBadgeStyle(action: string): VMLifecycleBadgeStyle 
         className: 'text-muted-foreground',
         label: action ? action.charAt(0).toUpperCase() + action.slice(1) : 'Working'
     };
+}
+
+export function removeStaleCacheByRID(rid: number) {
+    try {
+        kvStorage.removeItem(`vm-${rid}`);
+        kvStorage.removeItem(`vm-domain-${rid}`);
+        kvStorage.removeItem(`vm-stats-${rid}`);
+        kvStorage.removeItem(`vm-qga-${rid}`);
+        kvStorage.removeItem(`vmDomain-${rid}`);
+        kvStorage.removeItem(`vm-${rid}-snapshots`);
+    } catch (e) {
+        console.warn(`Error removing stale cache keys by RID ${rid}`, e)
+    }
 }

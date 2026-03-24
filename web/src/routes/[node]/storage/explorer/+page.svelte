@@ -20,16 +20,22 @@
 	import { storage } from '$lib';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { generateBreadcrumbItems, sortFileItems, type SortBy } from '$lib/utils/explorer';
+	import { PersistedState } from 'runed';
+
 	interface Data {
 		files: FileNode[];
 	}
 
 	let { data }: { data: Data } = $props();
 
-	let viewMode = $state<'grid' | 'list'>('grid');
+	const viewMode = new PersistedState<'grid' | 'list'>('file-explorer-view-mode', 'grid');
+
 	let searchQuery = $state('');
 	let currentPath = $state(storage.fileExplorerCurrentPath || '/');
+
+	// svelte-ignore state_referenced_locally
 	let folderData = $state<{ [path: string]: FileNode[] }>({ '/': data.files });
+
 	let selectedItems = $state<string[]>([]);
 	let sortBy = $state<SortBy>('name-asc');
 
@@ -323,10 +329,10 @@
 		<Toolbar
 			{searchQuery}
 			{sortBy}
-			{viewMode}
+			viewMode={viewMode.current}
 			onSearchChange={(value) => (searchQuery = value)}
 			onSortChange={(sort) => (sortBy = sort)}
-			onViewModeChange={(mode) => (viewMode = mode)}
+			onViewModeChange={(mode) => (viewMode.current = mode)}
 			onCreateFile={() => {
 				modals.create.isFolder = false;
 				modals.create.isOpen = true;
@@ -363,7 +369,7 @@
 						</div>
 					</div>
 				{/if}
-				{#if viewMode === 'grid'}
+				{#if viewMode.current === 'grid'}
 					<div class="grid-container h-full w-full">
 						<GridView
 							items={sortedItems}
@@ -436,7 +442,7 @@
 			</ContextMenu.Content>
 		</ContextMenu.Root>
 
-		<div class="bg-muted/30 flex flex-shrink-0 items-center justify-between border-t px-4 py-1">
+		<div class="bg-muted/30 flex shrink-0 items-center justify-between border-t px-4 py-1">
 			<div class="text-muted-foreground flex items-center gap-4 text-sm">
 				<span>{sortedItems.length} items</span>
 			</div>

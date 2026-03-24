@@ -11,7 +11,7 @@ export async function load({ params }) {
 	const [vms, ram, domain, pciDevices, pptDevices] = await Promise.all([
 		cachedFetch('vm-list', async () => await getVMs(), cacheDuration),
 		cachedFetch('ramInfo', async () => await getRAMInfo('current'), cacheDuration),
-		cachedFetch(`vmDomain-${rid}`, async () => await getVMDomain(rid), cacheDuration),
+		cachedFetch(`vm-domain-${rid}`, async () => await getVMDomain(rid), cacheDuration),
 		cachedFetch('pciDevices', async () => await getPCIDevices(), cacheDuration),
 		cachedFetch('pptDevices', async () => await getPPTDevices(), cacheDuration)
 	]);

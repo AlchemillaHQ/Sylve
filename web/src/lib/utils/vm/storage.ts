@@ -22,6 +22,14 @@ export function generateTableData(
             visible: false
         },
         {
+            field: 'enabled',
+            title: 'Status',
+            formatter: (cell: CellComponent) => {
+                const value = cell.getValue();
+                return value ? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500') : renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500');
+            }
+        },
+        {
             field: 'type',
             title: 'Type',
             visible: false
@@ -117,6 +125,7 @@ export function generateTableData(
 
         rows.push({
             id: storage.id,
+            enabled: storage.enable,
             type: storage.type,
             emulation: storage.emulation,
             bootorder: storage.bootOrder || 0,

@@ -1896,12 +1896,12 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
@@ -2754,7 +2754,7 @@ msgstr "{0} 个文件夹，{1} 个文件"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -5027,7 +5027,7 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
@@ -6137,7 +6137,7 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"
@@ -7398,7 +7398,7 @@ msgstr "编辑租约失败"
 msgid "Lease edited"
 msgstr "租约已编辑"
 
-#. 0: selectedLease ? 'Edit' 
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP 租约"
@@ -7486,7 +7486,7 @@ msgstr ""
 msgid "Updated DHCP range"
 msgstr ""
 
-#. 0: selectedRange ? 'Edit' 
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr ""
@@ -9223,4 +9223,11 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DHCP Lease - Delete Dynamic"
+msgstr ""
+
+#~ msgid "Enabled (Attached to VM)"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Enabled (Available to VM)"
 msgstr ""

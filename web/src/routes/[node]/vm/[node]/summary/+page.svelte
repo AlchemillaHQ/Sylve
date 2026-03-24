@@ -43,7 +43,8 @@
 		getVMLifecyclePendingTimeoutMs,
 		getVMLifecycleBadgeStyle,
 		isVMLifecycleTransitionPending,
-		shouldHideVMLifecycleButtons
+		shouldHideVMLifecycleButtons,
+		removeStaleCacheByRID
 	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
 	import { fade } from 'svelte/transition';
@@ -274,6 +275,8 @@
 					position: 'bottom-center'
 				});
 			}
+
+			removeStaleCacheByRID(vm.current.rid);
 		}
 	}
 

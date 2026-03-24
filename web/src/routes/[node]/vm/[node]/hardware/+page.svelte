@@ -85,6 +85,7 @@
 			initialValue: data.domain
 		}
 	);
+
 	let vm: VM | null = $derived(
 		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
 	);

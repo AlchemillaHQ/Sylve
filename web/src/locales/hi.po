@@ -1896,12 +1896,12 @@ msgstr "फ़ोल्डर"
 msgid "File"
 msgstr "फ़ाइल"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> {0} बनाएँ"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "{0} का नाम दर्ज करें"
@@ -2754,7 +2754,7 @@ msgstr "{0} फ़ोल्डर, {1} फ़ाइलें"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "{0} \"{1}\" को हटाने में विफल।"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "{0} आइटम{1} को हटाने में विफल।"
@@ -5027,7 +5027,7 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
@@ -6137,7 +6137,7 @@ msgstr "त्रुटि स्थिति"
 msgid "No known data errors"
 msgstr "कोई ज्ञात डेटा त्रुटि नहीं"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "त्रुटियां मिलीं{0}"
@@ -7398,7 +7398,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit' 
+#. 0: selectedLease ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7486,7 +7486,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit' 
+#. 0: selectedRange ? 'Edit'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -9223,4 +9223,11 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "DHCP Lease - Delete Dynamic"
+msgstr ""
+
+#~ msgid "Enabled (Attached to VM)"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Enabled (Available to VM)"
 msgstr ""
