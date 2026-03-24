@@ -52,13 +52,13 @@ func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, 
 		return err
 	}
 
-	if shot.Name == dataset.Name+"@"+name {
-		return nil
+	if shot.Name != dataset.Name+"@"+name {
+		return fmt.Errorf("snapshot_creation_failed")
 	}
 
 	s.SignalDSChange(shot.Pool, shot.Name, "snapshot", "create")
 
-	return fmt.Errorf("snapshot_creation_failed")
+	return nil
 }
 
 func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive bool) error {

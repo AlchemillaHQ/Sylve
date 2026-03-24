@@ -4,6 +4,7 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { cn } from '$lib/utils.js';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -19,6 +20,8 @@
 		width?: string;
 		disallowEmpty?: boolean;
 		multiple?: boolean;
+		allowCustom?: boolean;
+		shortLabels?: boolean;
 	}
 
 	let {
@@ -34,22 +37,43 @@
 		width = 'w-1/2',
 		disallowEmpty = false,
 		multiple = false,
-		value = $bindable(multiple ? [] : '')
+		allowCustom = false,
+		value = $bindable(multiple ? [] : ''),
+		shortLabels = false
 	}: Props = $props();
 
 	let search = $state('');
 
+	watch(
+		() => open,
+		(val) => {
+			if (val) search = '';
+		}
+	);
+
+	const effectiveData = $derived.by(() => {
+		if (
+			allowCustom &&
+			!multiple &&
+			typeof value === 'string' &&
+			value &&
+			!data.some((d) => d.value === value)
+		) {
+			return [{ value: value, label: value }, ...data];
+		}
+		return data;
+	});
+
 	const filteredData = $derived.by(() => {
-		if (!search) return data;
+		if (!search) return effectiveData;
 		const q = search.toLowerCase();
-		return data.filter(
+		return effectiveData.filter(
 			({ label, value }) => label.toLowerCase().includes(q) || value.toLowerCase().includes(q)
 		);
 	});
 
 	function selectItem(val: string) {
 		if (multiple) {
-			// start with a fresh array copy
 			const arr = Array.isArray(value) ? [...value] : [];
 			const idx = arr.indexOf(val);
 			if (idx >= 0) {
@@ -59,7 +83,6 @@
 			}
 			value = arr;
 			onValueChange(arr);
-			// keep open=true so you can pick more
 		} else {
 			if (value === val && !disallowEmpty) {
 				value = '';
@@ -70,14 +93,19 @@
 			}
 			open = false;
 		}
-		search = '';
 	}
 
 	const selectedLabels = $derived.by(() => {
 		const vals = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
 
-		return data.filter((d) => vals.includes(d.value)).map((d) => d.label);
+		const matched = effectiveData.filter((d) => vals.includes(d.value)).map((d) => d.label);
+		return matched;
 	});
+
+	function formatLabel(lbl: string): string {
+		if (!shortLabels || lbl.length <= 32) return lbl;
+		return `${lbl.slice(0, 32)}…${lbl.slice(-8)}`;
+	}
 </script>
 
 <div class={classes}>
@@ -118,7 +146,23 @@
 
 		<Popover.Content class="{width} mx-auto p-0">
 			<Command.Root shouldFilter={false}>
-				<Command.Input bind:value={search} placeholder={placeholder || 'Search...'} />
+				<Command.Input
+					bind:value={search}
+					placeholder={placeholder || 'Search...'}
+					onkeydown={(e) => {
+						if (
+							allowCustom &&
+							e.key === 'Enter' &&
+							search.trim() &&
+							!data.some((d) => d.value === search.trim())
+						) {
+							e.preventDefault();
+							value = search.trim();
+							onValueChange(search.trim());
+							open = false;
+						}
+					}}
+				/>
 				<Command.Empty>No data</Command.Empty>
 				<div class="max-h-64 overflow-y-auto">
 					<Command.Group>
@@ -143,9 +187,22 @@
 												: 'opacity-0'
 									)}`}
 								></span>
-								{element.label}
+								{formatLabel(element.label)}
 							</Command.Item>
 						{/each}
+						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim())}
+							<Command.Item
+								value={search.trim()}
+								onSelect={() => {
+									value = search.trim();
+									onValueChange(search.trim());
+									open = false;
+								}}
+							>
+								<span class="icon-[lucide--check] mr-2 h-4 w-4 opacity-0"></span>
+								Use "{search.trim()}"
+							</Command.Item>
+						{/if}
 					</Command.Group>
 				</div>
 			</Command.Root>

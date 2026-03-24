@@ -31,6 +31,7 @@
 	let visible = new IsDocumentVisible();
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'basic-settings',
 		async (key, prevKey, { signal }) => {
@@ -43,6 +44,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const periodicSnapshots = resource(
 		() => 'zfs-periodic-snapshots',
 		async (key, prevKey, { signal }) => {
@@ -279,8 +281,12 @@
 </div>
 
 <!-- Create Snapshot -->
-{#if modals.snapshot.create.open}
-	<CreateDetailed bind:open={modals.snapshot.create.open} bind:reload />
+{#if modals.snapshot.create.open && basicSettings.current}
+	<CreateDetailed
+		bind:open={modals.snapshot.create.open}
+		bind:reload
+		basicSettings={basicSettings.current}
+	/>
 {/if}
 
 {#if modals.snapshot.delete.open && activeDatasets && activeDatasets.length >= 1}

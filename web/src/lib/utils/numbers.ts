@@ -65,3 +65,7 @@ export function isValidMTU(mtu: number): boolean {
 export function isValidVLAN(vlan: number): boolean {
     return vlan >= 0 && vlan <= 4095;
 }
+
+export function pad(n: number) {
+    return String(n).padStart(2, '0');
+}

@@ -561,6 +561,7 @@ msgstr "प्रतिक्रिया क्लिपबोर्ड पर 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Enter"
 msgstr "एंटर"
 
@@ -5025,12 +5026,12 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "टेम्पलेट {1} को {0} करने में विफल"
@@ -7398,7 +7399,7 @@ msgstr "लीज़ को संपादित करने में वि�
 msgid "Lease edited"
 msgstr "लीज़ संपादित की गई"
 
-#. 0: selectedLease ? 'Edit'
+#. 0: selectedLease ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP लीज़"
@@ -7486,7 +7487,7 @@ msgstr "DHCP श्रेणी अपडेट करने में त्र
 msgid "Updated DHCP range"
 msgstr "DHCP श्रेणी अपडेट की गई"
 
-#. 0: selectedRange ? 'Edit'
+#. 0: selectedRange ? 'Edit' : 'Create'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP श्रेणी"
@@ -7814,10 +7815,8 @@ msgstr "चेकसम चुनें"
 msgid "Compression"
 msgstr "संपीड़न"
 
-#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
-msgid "Select Compression"
-msgstr "संपीड़न चुनें"
+#~ msgid "Select Compression"
+#~ msgstr "संपीड़न चुनें"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -8961,10 +8960,8 @@ msgstr ""
 msgid "VM Template {0}"
 msgstr ""
 
-#. 0: normalizedTemplateName(templateLabel)
 #. 0: templateName
 #. 0: task.guestId
-#: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Create VM - Template {0}"
@@ -9196,3 +9193,18 @@ msgstr ""
 
 #~ msgid "Storage #{storage.sourceStorageId} ({0})"
 #~ msgstr ""
+
+#. 0: search.trim()
+#: src/lib/components/ui/custom-input/combobox.svelte
+msgid "<0/> Use \"{0}\""
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select or type compression"
+msgstr ""
+
+#. 0: normalizedTemplateName(templateLabel)
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Create VM - {0}"
+msgstr ""

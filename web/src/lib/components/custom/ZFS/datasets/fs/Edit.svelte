@@ -2,6 +2,7 @@
 	import { editFileSystem } from '$lib/api/zfs/datasets';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -22,6 +23,8 @@
 	}
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let options = {
 		atime: dataset.properties?.atime || 'on',
 		checksum: dataset.properties?.checksum || 'on',
@@ -38,6 +41,7 @@
 
 	let zfsProperties = $state(createFSProps);
 	let properties = $state(options);
+	let compressionOpen = $state(false);
 
 	async function edit() {
 		let quota = '0B';
@@ -152,12 +156,16 @@
 					onChange={(value) => (properties.checksum = value)}
 				/>
 
-				<SimpleSelect
+				<CustomComboBox
+					bind:open={compressionOpen}
 					label="Compression"
-					placeholder="Select Compression"
-					options={zfsProperties.compression}
 					bind:value={properties.compression}
-					onChange={(value) => (properties.compression = value)}
+					data={zfsProperties.compression}
+					classes="space-y-1.5"
+					placeholder="Select or type compression"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
 				/>
 
 				<SimpleSelect

@@ -68,6 +68,7 @@
 
 	let zfsProperties = $state(createFSProps);
 	let properties = $state(options);
+	let compressionOpen = $state(false);
 
 	let remainingSpace = $state(0);
 
@@ -251,12 +252,16 @@
 					onChange={(value) => (properties.checksum = value)}
 				/>
 
-				<SimpleSelect
+				<CustomComboBox
+					bind:open={compressionOpen}
 					label="Compression"
-					placeholder="Select Compression"
-					options={zfsProperties.compression}
 					bind:value={properties.compression}
-					onChange={(value) => (properties.compression = value)}
+					data={zfsProperties.compression}
+					classes="space-y-1.5"
+					placeholder="Select or type compression"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
 				/>
 
 				<SimpleSelect

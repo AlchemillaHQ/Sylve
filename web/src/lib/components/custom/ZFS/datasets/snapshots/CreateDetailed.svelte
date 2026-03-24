@@ -1,36 +1,28 @@
 <script lang="ts">
-	import { getBasicSettings } from '$lib/api/system/settings';
 	import { createPeriodicSnapshot, createSnapshot, getDatasets } from '$lib/api/zfs/datasets';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { APIResponse } from '$lib/types/common';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
+	import { getDashedDate } from '$lib/utils/time.svelte';
 	import { deepEqual } from 'fast-equals';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { generateSimpleSelectOptions } from '$lib/utils/input';
 
 	interface Props {
 		open: boolean;
 		reload?: boolean;
+		basicSettings: BasicSettings;
 	}
 
-	let { open = $bindable(), reload = $bindable() }: Props = $props();
-
-	let pools = resource(
-		() => 'zfs-pool-names',
-		async (key, prevKey, { signal }) => {
-			const results = await getBasicSettings();
-			return results.pools;
-		},
-		{
-			initialValue: []
-		}
-	);
+	let { open = $bindable(), reload = $bindable(), basicSettings }: Props = $props();
 
 	let datasets = resource(
 		() => 'zfs-fs-vol-datasets',
@@ -44,12 +36,13 @@
 		}
 	);
 
-	let options = $derived({
-		name: '',
+	// svelte-ignore state_referenced_locally
+	let options = {
+		name: `manual-${getDashedDate()}`,
 		pool: {
 			open: false,
-			value: '',
-			data: [] as { label: string; value: string }[]
+			value: (basicSettings.pools.length === 1 ? basicSettings.pools[0] : '') as string,
+			data: generateSimpleSelectOptions(basicSettings.pools)
 		},
 		datasets: {
 			open: false,
@@ -103,27 +96,25 @@
 			}
 		},
 		recursive: false
-	});
+	};
 
+	// svelte-ignore state_referenced_locally
 	let properties = $state(options);
 
-	watch(
-		() => properties.pool.value,
-		(value) => {
-			if (value) {
-				const sets = datasets.current
-					.filter((dataset) => dataset.pool === value)
-					.map((dataset) => ({
-						label: dataset.name,
-						value: dataset.name
-					}));
+	watch([() => properties.pool.value, () => datasets.current], ([poolValue, datasetsValue]) => {
+		if (poolValue) {
+			const sets = datasets.current
+				.filter((dataset) => dataset.pool === poolValue)
+				.map((dataset) => ({
+					label: dataset.name,
+					value: dataset.name
+				}));
 
-				if (deepEqual(sets, properties.datasets.data) === false) {
-					properties.datasets.data = sets;
-				}
+			if (deepEqual(sets, properties.datasets.data) === false) {
+				properties.datasets.data = sets;
 			}
 		}
-	);
+	});
 
 	async function create() {
 		if (properties.name.trim() === '') {
@@ -148,7 +139,7 @@
 		}
 
 		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = pools.current.find((poolName) => poolName === properties.pool.value);
+		const pool = basicSettings.pools.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
@@ -243,7 +234,6 @@
 			<Dialog.Title class="flex justify-between">
 				<div class="flex items-center">
 					<span class="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots] mr-2 h-6 w-6"></span>
-
 					<span>Create Snapshot</span>
 				</div>
 				<div class="flex items-center gap-0.5">
@@ -288,7 +278,7 @@
 				bind:open={properties.pool.open}
 				label="Pool"
 				bind:value={properties.pool.value}
-				data={pools.current.map((name) => ({
+				data={basicSettings.pools.map((name) => ({
 					label: name,
 					value: name
 				}))}

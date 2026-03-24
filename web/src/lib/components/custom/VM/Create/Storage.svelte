@@ -6,7 +6,11 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { type UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 	import { generateComboboxOptions } from '$lib/utils/input';
-	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 
 	interface Props {
 		downloads: UTypeGroupedDownload[];
@@ -171,8 +175,9 @@
 			data={isos}
 			classes="flex-1 space-y-1"
 			placeholder="Select installation media"
-			triggerWidth="w-full "
+			triggerWidth="w-full"
 			width="w-full lg:w-[75%]"
+			shortLabels={true}
 		></CustomComboBox>
 	</div>
 </div>

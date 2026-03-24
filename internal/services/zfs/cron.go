@@ -178,7 +178,7 @@ func (s *Service) RegisterJobs() {
 func (s *Service) Cron(ctx context.Context) {
 	tickerFast := time.NewTicker(10 * time.Second)
 	tickerSlow := time.NewTicker(10 * time.Minute)
-	tickerJob := time.NewTicker(1 * time.Minute)
+	tickerJob := time.NewTicker(5 * time.Second)
 
 	defer tickerFast.Stop()
 	defer tickerSlow.Stop()
@@ -241,14 +241,40 @@ func (s *Service) NetlinkJobQueuer(ctx context.Context) {
 	for _, ev := range events {
 		attrs := ev.Attrs
 
+		ds := attrs["history_dsname"]
+		action := attrs["history_internal_name"]
+
 		pool := attrs["pool"]
-		if pool == "" || !s.IsPoolAllowed(pool) {
+		// Some nlsysevent payloads may omit explicit pool and only include dataset name.
+		// Fall back to the dataset prefix ("pool/dataset" -> "pool") to avoid dropping valid events.
+		if pool == "" && ds != "" {
+			if idx := strings.Index(ds, "/"); idx > 0 {
+				pool = ds[:idx]
+			} else if idx := strings.Index(ds, "@"); idx > 0 {
+				pool = ds[:idx]
+			} else {
+				pool = ds
+			}
+		}
+
+		if pool == "" {
+			logger.L.Debug().
+				Uint("event_id", ev.ID).
+				Str("type", ev.Type).
+				Interface("attrs", attrs).
+				Msg("netlink_job_queuer: dropping event with no pool")
 			processedIDs = append(processedIDs, ev.ID)
 			continue
 		}
 
-		ds := attrs["history_dsname"]
-		action := attrs["history_internal_name"]
+		if !s.IsPoolAllowed(pool) {
+			logger.L.Debug().
+				Uint("event_id", ev.ID).
+				Str("pool", pool).
+				Msg("netlink_job_queuer: dropping event for disallowed pool")
+			processedIDs = append(processedIDs, ev.ID)
+			continue
+		}
 
 		txgStr := attrs["history_txg"]
 		txg, _ := strconv.ParseUint(txgStr, 10, 64)

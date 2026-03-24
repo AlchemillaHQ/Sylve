@@ -321,7 +321,9 @@
 					{@render children?.()}
 				</div>
 			{:else}
-				{@render children?.()}
+				<div class="h-full w-full overflow-y-auto">
+					{@render children?.()}
+				</div>
 			{/if}
 		</Resizable.Pane>
 	</Resizable.PaneGroup>

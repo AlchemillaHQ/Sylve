@@ -249,7 +249,7 @@
 			<Dialog.Title class="flex justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[material-symbols--monitor-outline]"></span>
-					<span>Create VM - Template {normalizedTemplateName(templateLabel)}</span>
+					<span>Create VM - {normalizedTemplateName(templateLabel)}</span>
 				</div>
 
 				<div class="flex items-center gap-0.5">
