@@ -13,14 +13,15 @@
 
 	interface Props {
 		rid: number;
-		initialGaInfo: QGAInfo | APIResponse;
+		initialGaInfo: QGAInfo | APIResponse | null;
+		qgaEnabled: boolean;
 		refreshSignal?: number;
 	}
 
-	let { rid, initialGaInfo, refreshSignal = 0 }: Props = $props();
+	let { rid, initialGaInfo, qgaEnabled, refreshSignal = 0 }: Props = $props();
 	let activeGaView = $state('os');
 	let normalizedInitialGaInfo = $derived.by(() =>
-		isAPIResponse(initialGaInfo) ? null : initialGaInfo
+		!qgaEnabled || !initialGaInfo || isAPIResponse(initialGaInfo) ? null : initialGaInfo
 	);
 	let fallbackGaInfo = $state<QGAInfo | null>(null);
 	let hasCompletedInitialGaFetch = $state(false);
@@ -28,6 +29,10 @@
 	const gaInfo = resource(
 		() => `vm-qga-${rid}`,
 		async (key) => {
+			if (!qgaEnabled) {
+				return null;
+			}
+
 			const result = await getQGAInfo(rid);
 			if (isAPIResponse(result)) {
 				return null;
@@ -43,7 +48,7 @@
 	let isGaInfoStale = $derived.by(
 		() => hasGaCache && !gaInfo.current && hasCompletedInitialGaFetch
 	);
-	let displayGaInfo = $derived.by(() => gaInfo.current || fallbackGaInfo);
+	let displayGaInfo = $derived.by(() => (qgaEnabled ? gaInfo.current || fallbackGaInfo : null));
 
 	watch(
 		() => normalizedInitialGaInfo,
@@ -57,7 +62,7 @@
 	watch(
 		() => gaInfo.current,
 		(currentGaInfo) => {
-			if (currentGaInfo) {
+			if (qgaEnabled && currentGaInfo) {
 				fallbackGaInfo = currentGaInfo;
 			}
 		}
@@ -75,7 +80,24 @@
 	watch(
 		() => refreshSignal,
 		(curr, prev) => {
-			if (curr !== prev) {
+			if (qgaEnabled && curr !== prev) {
+				hasCompletedInitialGaFetch = false;
+				gaInfo.refetch();
+			}
+		}
+	);
+
+	watch(
+		() => qgaEnabled,
+		(enabled, prevEnabled) => {
+			if (!enabled) {
+				fallbackGaInfo = null;
+				hasCompletedInitialGaFetch = false;
+				activeGaView = 'os';
+				return;
+			}
+
+			if (enabled && prevEnabled === false) {
 				hasCompletedInitialGaFetch = false;
 				gaInfo.refetch();
 			}
@@ -122,6 +144,9 @@
 							size="icon"
 							class="h-5 w-5"
 							onclick={async () => {
+								if (!qgaEnabled) {
+									return;
+								}
 								await gaInfo.refetch();
 							}}
 							disabled={gaInfo.loading}

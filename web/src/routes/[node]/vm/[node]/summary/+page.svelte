@@ -54,7 +54,7 @@
 		vm: VM;
 		domain: VMDomain;
 		stats: VMStat[];
-		gaInfo: QGAInfo | APIResponse;
+		gaInfo: QGAInfo | APIResponse | null;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -153,7 +153,14 @@
 		stats.current[stats.current.length - 1] || getObjectSchemaDefaults(VMStatSchema)
 	);
 	let gaRefreshSignal = $state(0);
-	let initialGaInfo = $derived.by(() => (isAPIResponse(data.gaInfo) ? null : data.gaInfo));
+	let isQgaEnabled = $derived.by(() => vm.current?.qemuGuestAgent === true);
+	let initialGaInfo = $derived.by(() => {
+		if (!isQgaEnabled || !data.gaInfo || isAPIResponse(data.gaInfo)) {
+			return null;
+		}
+
+		return data.gaInfo;
+	});
 
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
@@ -571,7 +578,7 @@
 			<Card.Header class="p-0">
 				<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
 					<div class="flex items-center gap-1.5 whitespace-nowrap">
-						{#if initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
+						{#if isQgaEnabled && initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
 							<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"></span>
 						{/if}
 						<span>{vm.current.name}</span>
@@ -661,7 +668,12 @@
 		</Card.Root>
 	</div>
 
-	<GuestAgent rid={data.vm.rid} initialGaInfo={data.gaInfo} refreshSignal={gaRefreshSignal} />
+	<GuestAgent
+		rid={data.vm.rid}
+		initialGaInfo={data.gaInfo}
+		refreshSignal={gaRefreshSignal}
+		qgaEnabled={isQgaEnabled}
+	/>
 
 	<div class="space-y-4 px-4 pb-4">
 		<LineBrush
