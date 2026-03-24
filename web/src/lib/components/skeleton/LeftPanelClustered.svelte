@@ -158,6 +158,18 @@
 						label: `${template.name} (CT ${template.sourceCtId})`,
 						icon: 'mdi--file-tree-outline'
 					}))
+					.concat(
+						(n.vmTemplates ?? []).map((template) => ({
+							id: `vm-template-${n.nodeUUID}-${template.id}`,
+							sortId: template.sourceRid,
+							resourceId: template.id,
+							resourceType: 'vm-template' as const,
+							sourceRid: template.sourceRid,
+							nodeHostname: n.hostname,
+							label: `${template.name} (VM ${template.sourceRid})`,
+							icon: 'mdi--monitor-shimmer'
+						}))
+					)
 					.sort((a, b) => a.sortId - b.sortId)
 					.map(({ sortId: _sortId, ...item }) => item);
 

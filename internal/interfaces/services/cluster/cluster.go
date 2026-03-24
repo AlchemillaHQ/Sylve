@@ -39,11 +39,12 @@ type ClusterDetails struct {
 }
 
 type NodeResources struct {
-	NodeUUID      string                                     `json:"nodeUUID"`
-	Hostname      string                                     `json:"hostname"`
-	Jails         []jailServiceInterfaces.SimpleList         `json:"jails"`
-	JailTemplates []jailServiceInterfaces.SimpleTemplateList `json:"jailTemplates"`
-	VMs           []libvirtServiceInterfaces.SimpleList      `json:"vms"`
+	NodeUUID      string                                        `json:"nodeUUID"`
+	Hostname      string                                        `json:"hostname"`
+	Jails         []jailServiceInterfaces.SimpleList            `json:"jails"`
+	JailTemplates []jailServiceInterfaces.SimpleTemplateList    `json:"jailTemplates"`
+	VMs           []libvirtServiceInterfaces.SimpleList         `json:"vms"`
+	VMTemplates   []libvirtServiceInterfaces.SimpleTemplateList `json:"vmTemplates"`
 }
 
 type ClusterServiceInterface interface {

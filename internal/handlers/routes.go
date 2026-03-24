@@ -291,6 +291,11 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
+		vm.GET("/templates/simple", vmHandlers.ListVMTemplatesSimple(libvirtService))
+		vm.GET("/templates/:id", vmHandlers.GetVMTemplateByID(libvirtService))
+		vm.POST("/templates/convert/:rid", vmHandlers.ConvertVMToTemplate(libvirtService, lifecycleService))
+		vm.POST("/templates/create/:id", vmHandlers.CreateVMFromTemplate(libvirtService, lifecycleService))
+		vm.DELETE("/templates/:id", vmHandlers.DeleteVMTemplate(libvirtService))
 		vm.GET("/simple/:id", vmHandlers.GetSimpleVMByIdentifier(libvirtService))
 		vm.GET("/snapshots/:id", vmHandlers.ListVMSnapshots(libvirtService))
 		vm.POST("/snapshots/:id", vmHandlers.CreateVMSnapshot(libvirtService))

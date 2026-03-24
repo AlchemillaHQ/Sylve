@@ -173,6 +173,68 @@ export const SimpleVmSchema = z.object({
     cpuPinning: z.union([z.array(VMCPUPinningSchema), z.null()])
 });
 
+export const SimpleVmTemplateSchema = z.object({
+    id: z.number().int(),
+    name: z.string().transform((val) => {
+        return val.replace(/\s*Template$/, "");
+    }),
+    sourceRid: z.number().int(),
+    sourceVmName: z.string()
+});
+
+export const VMTemplateStorageSchema = z.object({
+    sourceStorageId: z.number().int(),
+    type: z.enum(['raw', 'zvol', 'image']),
+    emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
+    pool: z.string(),
+    size: z.number(),
+    bootOrder: z.number().int(),
+    recordSize: z.number().int(),
+    volBlockSize: z.number().int(),
+    templateDataset: z.string(),
+    estimatedBytes: z.number()
+});
+
+export const VMTemplateNetworkSchema = z.object({
+    name: z.string(),
+    switchName: z.string(),
+    switchType: z.string(),
+    emulation: z.string()
+});
+
+export const VMTemplateSchema = z.object({
+    id: z.number().int(),
+    name: z.string(),
+    sourceRid: z.number().int(),
+    sourceVmName: z.string(),
+    description: z.string(),
+    cpuSockets: z.number().int(),
+    cpuCores: z.number().int(),
+    cpuThreads: z.number().int(),
+    ram: z.number().int(),
+    tpmEmulation: z.boolean(),
+    shutdownWaitTime: z.number().int(),
+    serial: z.boolean(),
+    vncEnabled: z.boolean(),
+    vncResolution: z.string(),
+    vncWait: z.boolean(),
+    startAtBoot: z.boolean(),
+    startOrder: z.number().int(),
+    wol: z.boolean(),
+    timeOffset: z.enum(['utc', 'localtime']),
+    apic: z.boolean(),
+    acpi: z.boolean(),
+    cloudInitData: z.string().nullable(),
+    cloudInitMetaData: z.string().nullable(),
+    cloudInitNetworkConfig: z.string().nullable(),
+    ignoreUMSR: z.boolean(),
+    qemuGuestAgent: z.boolean(),
+    storages: z.array(VMTemplateStorageSchema).default([]),
+    networks: z.array(VMTemplateNetworkSchema).default([]),
+    createdAt: z.string(),
+    updatedAt: z.string()
+});
+
 export const QGAOSInfoSchema = z.object({
     name: z.string(),
     'kernel-release': z.string(),
@@ -220,6 +282,10 @@ export type VMNetwork = z.infer<typeof VMNetworkSchema>;
 export type VMDomain = z.infer<typeof VMDomainSchema>;
 export type VMStat = z.infer<typeof VMStatSchema>;
 export type SimpleVm = z.infer<typeof SimpleVmSchema>;
+export type SimpleVmTemplate = z.infer<typeof SimpleVmTemplateSchema>;
+export type VMTemplate = z.infer<typeof VMTemplateSchema>;
+export type VMTemplateStorage = z.infer<typeof VMTemplateStorageSchema>;
+export type VMTemplateNetwork = z.infer<typeof VMTemplateNetworkSchema>;
 export type QGAInfo = z.infer<typeof QGAInfoSchema>;
 
 export type VMLifecycleAction = 'start' | 'stop' | 'shutdown' | 'reboot';

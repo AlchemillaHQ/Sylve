@@ -1,14 +1,18 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
     QGAInfoSchema,
+    SimpleVmTemplateSchema,
     SimpleVmSchema,
     VMDomainSchema,
     VMSchema,
+    VMTemplateSchema,
     VMStatSchema,
     type CreateData,
     type QGAInfo,
     type SimpleVm,
+    type SimpleVmTemplate,
     type VM,
+    type VMTemplate,
     type VMDomain,
     type VMStat
 } from '$lib/types/vm/vm';
@@ -25,6 +29,18 @@ export async function getVMs(hostname?: string): Promise<VM[]> {
 
 export async function getSimpleVMs(hostname?: string): Promise<SimpleVm[]> {
     return await apiRequest('/vm/simple', z.array(SimpleVmSchema), 'GET', undefined, { hostname });
+}
+
+export async function getSimpleVMTemplates(hostname?: string): Promise<SimpleVmTemplate[]> {
+    return await apiRequest('/vm/templates/simple', z.array(SimpleVmTemplateSchema), 'GET', undefined, {
+        hostname
+    });
+}
+
+export async function getVMTemplateById(templateId: number, hostname?: string): Promise<VMTemplate> {
+    return await apiRequest(`/vm/templates/${templateId}`, VMTemplateSchema, 'GET', undefined, {
+        hostname
+    });
 }
 
 export async function getSimpleVMById(id: number, type: 'rid' | 'id'): Promise<SimpleVm> {
@@ -97,6 +113,45 @@ export async function actionVm(
     hostname?: string
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST', undefined, { hostname });
+}
+
+export async function convertVMToTemplate(rid: number, hostname?: string): Promise<APIResponse> {
+    return await apiRequest(`/vm/templates/convert/${rid}`, APIResponseSchema, 'POST', undefined, {
+        hostname
+    });
+}
+
+export interface VMTemplateStoragePoolAssignment {
+    sourceStorageId: number;
+    pool: string;
+}
+
+export interface CreateVMFromTemplateRequest {
+    mode: 'single' | 'multiple';
+    rid?: number;
+    name?: string;
+    startRid?: number;
+    count?: number;
+    namePrefix?: string;
+    storagePools: VMTemplateStoragePoolAssignment[];
+    rewriteCloudInitIdentity?: boolean;
+    cloudInitPrefix?: string;
+}
+
+export async function createVMFromTemplate(
+    templateId: number,
+    data: CreateVMFromTemplateRequest,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/templates/create/${templateId}`, APIResponseSchema, 'POST', data, {
+        hostname
+    });
+}
+
+export async function deleteVMTemplate(templateId: number, hostname?: string): Promise<APIResponse> {
+    return await apiRequest(`/vm/templates/${templateId}`, APIResponseSchema, 'DELETE', undefined, {
+        hostname
+    });
 }
 
 export async function getStats(rid: number, step: string): Promise<VMStat[]> {

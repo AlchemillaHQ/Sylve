@@ -14,6 +14,7 @@ const (
 	GuestTypeVM           = "vm"
 	GuestTypeJail         = "jail"
 	GuestTypeJailTemplate = "jail-template"
+	GuestTypeVMTemplate   = "vm-template"
 )
 
 const (

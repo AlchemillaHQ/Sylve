@@ -70,6 +70,7 @@ func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) 
 		jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
 		jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
 		vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
+		vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates/simple", base)
 
 		headers := map[string]string{
 			"Accept":          "application/json",
@@ -100,12 +101,21 @@ func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) 
 			}
 		}
 
+		var vmTemplates []libvirtServiceInterfaces.SimpleTemplateList
+		if body, _, err := utils.HTTPGetJSONRead(vmTemplatesURL, headers); err == nil {
+			var resp internal.APIResponse[[]libvirtServiceInterfaces.SimpleTemplateList]
+			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+				vmTemplates = resp.Data
+			}
+		}
+
 		results = append(results, clusterServiceInterfaces.NodeResources{
 			NodeUUID:      n.NodeUUID,
 			Hostname:      n.Hostname,
 			Jails:         jails,
 			JailTemplates: jailTemplates,
 			VMs:           vms,
+			VMTemplates:   vmTemplates,
 		})
 	}
 

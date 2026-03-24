@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -429,22 +430,28 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 			return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
 		}
 
-		err = s.FlashCloudInitMediaToDisk(vm)
-		if err != nil {
-			return fmt.Errorf("failed_to_flash_cloud_init_to_disk: %w", err)
-		}
+		hasDiskImage := slices.ContainsFunc(vm.Storages, func(storage vmModels.Storage) bool {
+			return storage.Type == vmModels.VMStorageTypeDiskImage
+		})
 
-		err := s.DB.
-			Where("vm_id = ? AND type = ?", vm.ID, vmModels.VMStorageTypeDiskImage).
-			Delete(&vmModels.Storage{}).Error
+		if hasDiskImage {
+			err = s.FlashCloudInitMediaToDisk(vm)
+			if err != nil {
+				return fmt.Errorf("failed_to_flash_cloud_init_to_disk: %w", err)
+			}
 
-		if err != nil {
-			return fmt.Errorf("failed_to_remove_cloud_init_storage_entry: %w", err)
-		}
+			err := s.DB.
+				Where("vm_id = ? AND type = ?", vm.ID, vmModels.VMStorageTypeDiskImage).
+				Delete(&vmModels.Storage{}).Error
 
-		vm, err = s.GetVM(id)
-		if err != nil {
-			return err
+			if err != nil {
+				return fmt.Errorf("failed_to_remove_cloud_init_storage_entry: %w", err)
+			}
+
+			vm, err = s.GetVM(id)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

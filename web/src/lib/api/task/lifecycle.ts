@@ -3,7 +3,7 @@ import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function getActiveLifecycleTasks(
-	guestType?: 'vm' | 'jail' | 'jail-template',
+	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId?: number,
 	hostname?: string
 ): Promise<LifecycleTask[]> {
@@ -24,7 +24,7 @@ export async function getActiveLifecycleTasks(
 }
 
 export async function getActiveLifecycleTaskForGuest(
-	guestType: 'vm' | 'jail' | 'jail-template',
+	guestType: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId: number,
 	hostname?: string
 ): Promise<LifecycleTask | null> {
@@ -40,7 +40,7 @@ export async function getActiveLifecycleTaskForGuest(
 
 export async function getRecentLifecycleTasks(
 	limit: number = 50,
-	guestType?: 'vm' | 'jail' | 'jail-template',
+	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId?: number,
 	hostname?: string
 ): Promise<LifecycleTask[]> {

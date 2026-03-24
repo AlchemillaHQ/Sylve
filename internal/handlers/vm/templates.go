@@ -6,7 +6,7 @@
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
 
-package jailHandlers
+package libvirtHandlers
 
 import (
 	"context"
@@ -17,59 +17,60 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
-	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	"github.com/alchemillahq/sylve/internal/services/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/gin-gonic/gin"
 )
 
-type jailTemplateService interface {
-	GetJailTemplatesSimple() ([]jailServiceInterfaces.SimpleTemplateList, error)
-	GetJailTemplate(templateID uint) (*jailModels.JailTemplate, error)
-	CanMutateProtectedJail(ctID uint) (bool, error)
-	PreflightConvertJailToTemplate(ctx context.Context, ctID uint) error
-	PreflightCreateJailsFromTemplate(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
-	DeleteJailTemplate(ctx context.Context, templateID uint) error
+type vmTemplateService interface {
+	GetVMTemplatesSimple() ([]libvirtServiceInterfaces.SimpleTemplateList, error)
+	GetVMTemplate(templateID uint) (*vmModels.VMTemplate, error)
+	PreflightConvertVMToTemplate(ctx context.Context, rid uint) error
+	PreflightCreateVMsFromTemplate(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
+	DeleteVMTemplate(ctx context.Context, templateID uint) error
 }
 
-func preflightStatusCode(err error) int {
+func vmTemplatePreflightStatusCode(err error) int {
 	if err == nil {
 		return http.StatusBadRequest
 	}
 
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "failed_to_") {
+	switch {
+	case strings.Contains(msg, "replication_lease_not_owned"):
+		return http.StatusForbidden
+	case strings.Contains(msg, "failed_to_"), strings.Contains(msg, "replication_lease_check_failed"):
 		return http.StatusInternalServerError
+	default:
+		return http.StatusBadRequest
 	}
-
-	return http.StatusBadRequest
 }
 
-func ListJailTemplatesSimple(jailService jailTemplateService) gin.HandlerFunc {
+func ListVMTemplatesSimple(libvirtService vmTemplateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		templates, err := jailService.GetJailTemplatesSimple()
+		templates, err := libvirtService.GetVMTemplatesSimple()
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_list_jail_templates_simple",
+				Message: "failed_to_list_vm_templates_simple",
 				Data:    nil,
 				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]jailServiceInterfaces.SimpleTemplateList]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]libvirtServiceInterfaces.SimpleTemplateList]{
 			Status:  "success",
-			Message: "jail_templates_listed_simple",
+			Message: "vm_templates_listed_simple",
 			Data:    templates,
 			Error:   "",
 		})
 	}
 }
 
-func GetJailTemplateByID(jailService jailTemplateService) gin.HandlerFunc {
+func GetVMTemplateByID(libvirtService vmTemplateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templateID, err := strconv.Atoi(c.Param("id"))
 		if err != nil || templateID <= 0 {
@@ -82,9 +83,9 @@ func GetJailTemplateByID(jailService jailTemplateService) gin.HandlerFunc {
 			return
 		}
 
-		template, err := jailService.GetJailTemplate(uint(templateID))
+		template, err := libvirtService.GetVMTemplate(uint(templateID))
 		if err != nil {
-			if strings.Contains(err.Error(), "template_not_found") {
+			if strings.Contains(strings.ToLower(err.Error()), "template_not_found") {
 				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "template_not_found",
@@ -96,57 +97,37 @@ func GetJailTemplateByID(jailService jailTemplateService) gin.HandlerFunc {
 
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_get_jail_template",
+				Message: "failed_to_get_vm_template",
 				Data:    nil,
 				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[*jailModels.JailTemplate]{
+		c.JSON(http.StatusOK, internal.APIResponse[*vmModels.VMTemplate]{
 			Status:  "success",
-			Message: "jail_template_retrieved",
+			Message: "vm_template_retrieved",
 			Data:    template,
 			Error:   "",
 		})
 	}
 }
 
-func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *lifecycle.Service) gin.HandlerFunc {
+func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctID, err := strconv.Atoi(c.Param("ctid"))
-		if err != nil || ctID <= 0 {
-			c.JSON(400, internal.APIResponse[any]{
+		rid, err := strconv.Atoi(c.Param("rid"))
+		if err != nil || rid <= 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_ctid",
+				Message: "invalid_rid",
 				Data:    nil,
-				Error:   "ctid must be a positive integer",
+				Error:   "rid must be a positive integer",
 			})
 			return
 		}
 
-		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctID))
-		if leaseErr != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "replication_lease_check_failed",
-				Data:    nil,
-				Error:   leaseErr.Error(),
-			})
-			return
-		}
-		if !allowed {
-			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "standby_mode_edit_not_allowed",
-				Data:    nil,
-				Error:   "replication_lease_not_owned",
-			})
-			return
-		}
-
-		if err := jailService.PreflightConvertJailToTemplate(c.Request.Context(), uint(ctID)); err != nil {
-			c.JSON(preflightStatusCode(err), internal.APIResponse[any]{
+		if err := libvirtService.PreflightConvertVMToTemplate(c.Request.Context(), uint(rid)); err != nil {
+			c.JSON(vmTemplatePreflightStatusCode(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "template_convert_preflight_failed",
 				Data:    nil,
@@ -158,8 +139,8 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 		username := strings.TrimSpace(c.GetString("Username"))
 		task, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
-			taskModels.GuestTypeJailTemplate,
-			uint(ctID),
+			taskModels.GuestTypeVMTemplate,
+			uint(rid),
 			"convert",
 			taskModels.LifecycleTaskSourceUser,
 			username,
@@ -186,18 +167,18 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "jail_template_convert_queued",
+			Message: "vm_template_convert_queued",
 			Data:    gin.H{"task": task, "outcome": outcome},
 			Error:   "",
 		})
 	}
 }
 
-func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *lifecycle.Service) gin.HandlerFunc {
+func CreateVMFromTemplate(libvirtService vmTemplateService, lifecycleService *lifecycle.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templateID, err := strconv.Atoi(c.Param("id"))
 		if err != nil || templateID <= 0 {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_template_id",
 				Data:    nil,
@@ -206,9 +187,9 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 			return
 		}
 
-		var req jail.CreateFromTemplateRequest
+		var req libvirtServiceInterfaces.CreateFromTemplateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request_data",
 				Data:    nil,
@@ -217,46 +198,8 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 			return
 		}
 
-		template, err := jailService.GetJailTemplate(uint(templateID))
-		if err != nil {
-			status := http.StatusInternalServerError
-			message := "failed_to_get_jail_template"
-			if strings.Contains(strings.ToLower(err.Error()), "template_not_found") {
-				status = http.StatusNotFound
-				message = "template_not_found"
-			}
-
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: message,
-				Data:    nil,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		allowed, leaseErr := jailService.CanMutateProtectedJail(template.SourceCTID)
-		if leaseErr != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "replication_lease_check_failed",
-				Data:    nil,
-				Error:   leaseErr.Error(),
-			})
-			return
-		}
-		if !allowed {
-			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "standby_mode_edit_not_allowed",
-				Data:    nil,
-				Error:   "replication_lease_not_owned",
-			})
-			return
-		}
-
-		if err := jailService.PreflightCreateJailsFromTemplate(c.Request.Context(), uint(templateID), req); err != nil {
-			c.JSON(preflightStatusCode(err), internal.APIResponse[any]{
+		if err := libvirtService.PreflightCreateVMsFromTemplate(c.Request.Context(), uint(templateID), req); err != nil {
+			c.JSON(vmTemplatePreflightStatusCode(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "template_create_preflight_failed",
 				Data:    nil,
@@ -279,7 +222,7 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 		username := strings.TrimSpace(c.GetString("Username"))
 		task, outcome, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
-			taskModels.GuestTypeJailTemplate,
+			taskModels.GuestTypeVMTemplate,
 			uint(templateID),
 			"create",
 			taskModels.LifecycleTaskSourceUser,
@@ -308,18 +251,18 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "jail_template_create_queued",
+			Message: "vm_template_create_queued",
 			Data:    gin.H{"task": task, "outcome": outcome},
 			Error:   "",
 		})
 	}
 }
 
-func DeleteJailTemplate(jailService jailTemplateService) gin.HandlerFunc {
+func DeleteVMTemplate(libvirtService vmTemplateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		templateID, err := strconv.Atoi(c.Param("id"))
 		if err != nil || templateID <= 0 {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_template_id",
 				Data:    nil,
@@ -328,24 +271,26 @@ func DeleteJailTemplate(jailService jailTemplateService) gin.HandlerFunc {
 			return
 		}
 
-		if err := jailService.DeleteJailTemplate(c.Request.Context(), uint(templateID)); err != nil {
+		if err := libvirtService.DeleteVMTemplate(c.Request.Context(), uint(templateID)); err != nil {
 			status := http.StatusInternalServerError
 			if strings.Contains(strings.ToLower(err.Error()), "template_not_found") {
 				status = http.StatusNotFound
+			} else if strings.Contains(strings.ToLower(err.Error()), "replication_lease_not_owned") {
+				status = http.StatusForbidden
 			}
 
 			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_delete_jail_template",
+				Message: "failed_to_delete_vm_template",
 				Data:    nil,
 				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "jail_template_deleted",
+			Message: "vm_template_deleted",
 			Data:    nil,
 			Error:   "",
 		})

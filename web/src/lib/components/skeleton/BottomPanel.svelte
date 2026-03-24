@@ -4,7 +4,7 @@
 	import { getAuditRecords } from '$lib/api/info/audit';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getActiveLifecycleTasks } from '$lib/api/task/lifecycle';
-	import { getSimpleVMs } from '$lib/api/vm/vm';
+	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
@@ -12,6 +12,7 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
@@ -105,6 +106,18 @@
 		}
 	);
 
+	const simpleVMTemplates = resource(
+		() => `simple-vm-template-list-${effectiveHostname || 'default'}`,
+		async (key, prevKey, { signal }) => {
+			const results = await getSimpleVMTemplates(effectiveHostname || undefined);
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: [] as SimpleVmTemplate[]
+		}
+	);
+
 	const activeLifecycleTasks = resource(
 		() => `active-lifecycle-tasks-${effectiveHostname || 'default'}`,
 		async () => {
@@ -172,6 +185,9 @@
 		'/api/vm/shutdown': 'VM - Shutdown',
 		'/api/vm/reboot': 'VM - Reboot',
 		'/api/vm/description': 'VM - Update Description',
+		'/api/vm/templates/convert': 'Create VM Template - From VM',
+		'/api/vm/templates/create': 'Create VM - Template',
+		'/api/vm/templates': 'VM Template',
 		'/api/jail/action/start': 'Jail - Start',
 		'/api/jail/action/stop': 'Jail - Stop',
 		'/api/utilities/downloads/signed-url': 'Downloader - Create Signed URL',
@@ -283,6 +299,9 @@
 	let templateNameById = $derived.by(() => {
 		return new Map((simpleJailTemplates.current || []).map((template) => [template.id, template.name]));
 	});
+	let vmTemplateNameById = $derived.by(() => {
+		return new Map((simpleVMTemplates.current || []).map((template) => [template.id, template.name]));
+	});
 
 	watch(
 		() => lifecycleActive,
@@ -332,23 +351,44 @@
 				: `Jail Template ${task.guestId}`;
 		}
 
+		if (task.guestType === 'vm-template') {
+			const templateName = vmTemplateNameById.get(task.guestId);
+			return templateName
+				? `Template ${templateName} (${task.guestId})`
+				: `VM Template ${task.guestId}`;
+		}
+
 		const jailName = jailNameByCtId.get(task.guestId);
 		return jailName ? `Jail ${jailName} (${task.guestId})` : `Jail ${task.guestId}`;
 	}
 
 	function lifecycleTaskLabel(task: LifecycleTask): string {
-		if (task.source.includes('jail/templates/create')) {
+		if (task.guestType === 'jail-template' && task.action === 'create') {
 			const templateName = templateNameById.get(task.guestId);
 			return templateName
 				? `Create Jail - Template ${templateName}`
 				: `Create Jail - Template ${task.guestId}`;
 		}
 
-		if (task.source.includes('jail/templates/convert')) {
+		if (task.guestType === 'jail-template' && task.action === 'convert') {
 			const jailName = jailNameByCtId.get(task.guestId);
 			return jailName
 				? `Create Jail Template - ${jailName} (Jail CTID ${task.guestId})`
 				: `Create Jail Template - Jail CTID ${task.guestId}`;
+		}
+
+		if (task.guestType === 'vm-template' && task.action === 'create') {
+			const templateName = vmTemplateNameById.get(task.guestId);
+			return templateName
+				? `Create VM - Template ${templateName}`
+				: `Create VM - Template ${task.guestId}`;
+		}
+
+		if (task.guestType === 'vm-template' && task.action === 'convert') {
+			const vmName = vmNameById.get(task.guestId);
+			return vmName
+				? `Create VM Template - ${vmName} (VM RID ${task.guestId})`
+				: `Create VM Template - VM RID ${task.guestId}`;
 		}
 
 		return `${lifecycleActionLabel(task.action)} - ${lifecycleGuestLabel(task)}`;

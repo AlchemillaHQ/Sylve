@@ -464,3 +464,42 @@ func TestPreflightCreateFromTemplateInsufficientPoolSpaceSingleAndMultiple(t *te
 		}
 	})
 }
+
+func TestGetJailTemplateValidationAndNotFound(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.JailTemplate{})
+	svc := &Service{DB: dbConn}
+
+	if _, err := svc.GetJailTemplate(0); err == nil || !strings.Contains(err.Error(), "invalid_template_id") {
+		t.Fatalf("expected invalid_template_id, got %v", err)
+	}
+
+	if _, err := svc.GetJailTemplate(999); err == nil || !strings.Contains(err.Error(), "template_not_found") {
+		t.Fatalf("expected template_not_found, got %v", err)
+	}
+}
+
+func TestDeleteJailTemplateValidationAndNotFound(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.JailTemplate{})
+	svc := &Service{DB: dbConn}
+
+	if err := svc.DeleteJailTemplate(context.Background(), 0); err == nil || !strings.Contains(err.Error(), "invalid_template_id") {
+		t.Fatalf("expected invalid_template_id, got %v", err)
+	}
+
+	if err := svc.DeleteJailTemplate(context.Background(), 999); err == nil || !strings.Contains(err.Error(), "template_not_found") {
+		t.Fatalf("expected template_not_found, got %v", err)
+	}
+}
+
+func TestPreflightCreateJailsFromTemplateTemplateValidation(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.JailTemplate{})
+	svc := &Service{DB: dbConn}
+
+	if err := svc.PreflightCreateJailsFromTemplate(context.Background(), 0, CreateFromTemplateRequest{Mode: "single", CTID: 100}); err == nil || !strings.Contains(err.Error(), "invalid_template_id") {
+		t.Fatalf("expected invalid_template_id, got %v", err)
+	}
+
+	if err := svc.PreflightCreateJailsFromTemplate(context.Background(), 777, CreateFromTemplateRequest{Mode: "single", CTID: 100}); err == nil || !strings.Contains(err.Error(), "template_not_found") {
+		t.Fatalf("expected template_not_found, got %v", err)
+	}
+}

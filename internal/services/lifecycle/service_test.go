@@ -10,14 +10,17 @@ package lifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -192,5 +195,121 @@ func TestStartupAutostartOrder(t *testing.T) {
 	}
 	if startupTaskCount != int64(len(expected)) {
 		t.Fatalf("unexpected startup task count: got %d want %d", startupTaskCount, len(expected))
+	}
+}
+
+func TestExecuteTaskVMTemplateConvertAndCreate(t *testing.T) {
+	s, _ := newLifecycleTestService(t)
+
+	convertCalled := false
+	s.vmTemplateConvertFn = func(_ context.Context, rid uint) error {
+		convertCalled = true
+		if rid != 777 {
+			t.Fatalf("unexpected convert rid: %d", rid)
+		}
+		return nil
+	}
+
+	convertTask, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		777,
+		"convert",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to create vm-template convert task: %v", err)
+	}
+	if err := s.ExecuteTask(context.Background(), convertTask.ID); err != nil {
+		t.Fatalf("vm-template convert execute failed: %v", err)
+	}
+	if !convertCalled {
+		t.Fatalf("expected vmTemplateConvertFn to be called")
+	}
+
+	expectedReq := libvirtServiceInterfaces.CreateFromTemplateRequest{
+		Mode:       "single",
+		RID:        881,
+		Name:       "vm-881",
+		NamePrefix: "vm",
+	}
+	payload, err := json.Marshal(expectedReq)
+	if err != nil {
+		t.Fatalf("failed to marshal create payload: %v", err)
+	}
+
+	createCalled := false
+	s.vmTemplateCreateFn = func(_ context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error {
+		createCalled = true
+		if templateID != 55 {
+			t.Fatalf("unexpected template id: %d", templateID)
+		}
+		if req.Mode != expectedReq.Mode || req.RID != expectedReq.RID || req.Name != expectedReq.Name || req.NamePrefix != expectedReq.NamePrefix {
+			t.Fatalf("unexpected create request: %#v", req)
+		}
+		return nil
+	}
+
+	createTask, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		55,
+		"create",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		string(payload),
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to create vm-template create task: %v", err)
+	}
+	if err := s.ExecuteTask(context.Background(), createTask.ID); err != nil {
+		t.Fatalf("vm-template create execute failed: %v", err)
+	}
+	if !createCalled {
+		t.Fatalf("expected vmTemplateCreateFn to be called")
+	}
+}
+
+func TestExecuteTaskVMTemplateCreateInvalidPayload(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+
+	createCalled := false
+	s.vmTemplateCreateFn = func(_ context.Context, _ uint, _ libvirtServiceInterfaces.CreateFromTemplateRequest) error {
+		createCalled = true
+		return nil
+	}
+
+	task, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		12,
+		"create",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"{invalid-json",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to create vm-template task: %v", err)
+	}
+
+	execErr := s.ExecuteTask(context.Background(), task.ID)
+	if execErr == nil || !strings.Contains(execErr.Error(), "invalid_vm_template_create_payload") {
+		t.Fatalf("expected invalid payload error, got %v", execErr)
+	}
+	if createCalled {
+		t.Fatalf("expected vmTemplateCreateFn to not be called on invalid payload")
+	}
+
+	var failed taskModels.GuestLifecycleTask
+	if err := dbConn.First(&failed, task.ID).Error; err != nil {
+		t.Fatalf("failed to fetch task: %v", err)
+	}
+	if failed.Status != taskModels.LifecycleTaskStatusFailed {
+		t.Fatalf("expected failed status, got %s", failed.Status)
 	}
 }

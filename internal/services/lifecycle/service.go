@@ -21,6 +21,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -63,6 +64,9 @@ type Service struct {
 
 	jailTemplateConvertFn func(ctx context.Context, ctid uint) error
 	jailTemplateCreateFn  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
+
+	vmTemplateConvertFn func(ctx context.Context, rid uint) error
+	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 }
 
 func NewService(dbConn *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
@@ -78,6 +82,8 @@ func NewService(dbConn *gorm.DB, libvirtService *libvirt.Service, jailService *j
 			state, err := libvirtService.GetDomainState(int(rid))
 			return int(state), err
 		}
+		s.vmTemplateConvertFn = libvirtService.ConvertVMToTemplate
+		s.vmTemplateCreateFn = libvirtService.CreateVMsFromTemplate
 	}
 
 	if jailService != nil {
@@ -123,6 +129,13 @@ func validateAction(guestType, action string) error {
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
 		}
 	case taskModels.GuestTypeJailTemplate:
+		switch action {
+		case "convert", "create":
+			return nil
+		default:
+			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
+		}
+	case taskModels.GuestTypeVMTemplate:
 		switch action {
 		case "convert", "create":
 			return nil
@@ -375,6 +388,27 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 				}
 			}
 			return s.jailTemplateCreateFn(ctx, task.GuestID, req)
+		default:
+			return fmt.Errorf("invalid_action: %s", task.Action)
+		}
+	case taskModels.GuestTypeVMTemplate:
+		switch task.Action {
+		case "convert":
+			if s.vmTemplateConvertFn == nil {
+				return fmt.Errorf("vm_template_convert_function_not_configured")
+			}
+			return s.vmTemplateConvertFn(ctx, task.GuestID)
+		case "create":
+			if s.vmTemplateCreateFn == nil {
+				return fmt.Errorf("vm_template_create_function_not_configured")
+			}
+			req := libvirtServiceInterfaces.CreateFromTemplateRequest{}
+			if strings.TrimSpace(task.Payload) != "" {
+				if err := json.Unmarshal([]byte(task.Payload), &req); err != nil {
+					return fmt.Errorf("invalid_vm_template_create_payload: %w", err)
+				}
+			}
+			return s.vmTemplateCreateFn(ctx, task.GuestID, req)
 		default:
 			return fmt.Errorf("invalid_action: %s", task.Action)
 		}

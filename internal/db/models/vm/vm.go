@@ -29,6 +29,26 @@ const (
 	VMStorageTypeDiskImage VMStorageType = "image"
 )
 
+type VMTemplateStorage struct {
+	SourceStorageID uint                   `json:"sourceStorageId"`
+	Type            VMStorageType          `json:"type"`
+	Emulation       VMStorageEmulationType `json:"emulation"`
+	Pool            string                 `json:"pool"`
+	Size            int64                  `json:"size"`
+	BootOrder       int                    `json:"bootOrder"`
+	RecordSize      int                    `json:"recordSize"`
+	VolBlockSize    int                    `json:"volBlockSize"`
+	TemplateDataset string                 `json:"templateDataset"`
+	EstimatedBytes  uint64                 `json:"estimatedBytes"`
+}
+
+type VMTemplateNetwork struct {
+	Name       string `json:"name"`
+	SwitchName string `json:"switchName"`
+	SwitchType string `json:"switchType"`
+	Emulation  string `json:"emulation"`
+}
+
 type VMStorageEmulationType string
 
 const (
@@ -244,4 +264,52 @@ type VM struct {
 
 	StartedAt *time.Time `json:"startedAt" gorm:"default:null"`
 	StoppedAt *time.Time `json:"stoppedAt" gorm:"default:null"`
+}
+
+type VMTemplate struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	Name         string `json:"name" gorm:"not null;index"`
+	SourceRID    uint   `json:"sourceRid" gorm:"column:source_rid;not null;uniqueIndex"`
+	SourceVMName string `json:"sourceVmName" gorm:"column:source_vm_name"`
+
+	Description string `json:"description"`
+
+	CPUSockets int `json:"cpuSockets"`
+	CPUCores   int `json:"cpuCores"`
+	CPUThreads int `json:"cpuThreads"`
+	RAM        int `json:"ram"`
+
+	TPMEmulation     bool `json:"tpmEmulation"`
+	ShutdownWaitTime int  `json:"shutdownWaitTime" gorm:"default:10"`
+
+	Serial bool `json:"serial" gorm:"default:false"`
+
+	VNCEnabled    bool   `json:"vncEnabled" gorm:"default:true"`
+	VNCResolution string `json:"vncResolution"`
+	VNCWait       bool   `json:"vncWait"`
+
+	StartAtBoot bool       `json:"startAtBoot"`
+	StartOrder  int        `json:"startOrder"`
+	WoL         bool       `json:"wol" gorm:"default:false"`
+	TimeOffset  TimeOffset `json:"timeOffset" gorm:"default:'utc'"`
+
+	APIC bool `json:"apic"`
+	ACPI bool `json:"acpi"`
+
+	CloudInitData          string `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData      string `json:"cloudInitMetaData" gorm:"type:text"`
+	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	IgnoreUMSR             bool   `json:"ignoreUMSR" gorm:"default:false"`
+	QemuGuestAgent         bool   `json:"qemuGuestAgent" gorm:"default:false"`
+
+	Storages []VMTemplateStorage `json:"storages" gorm:"serializer:json;type:json"`
+	Networks []VMTemplateNetwork `json:"networks" gorm:"serializer:json;type:json"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (VMTemplate) TableName() string {
+	return "vm_templates"
 }

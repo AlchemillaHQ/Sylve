@@ -1,6 +1,6 @@
 import { z } from 'zod/v4';
 import { SimpleJailSchema, SimpleJailTemplateSchema } from '../jail/jail';
-import { SimpleVmSchema } from '../vm/vm';
+import { SimpleVmSchema, SimpleVmTemplateSchema } from '../vm/vm';
 
 export const ClusterSchema = z.object({
 	id: z.number(),
@@ -50,7 +50,8 @@ export const NodeResourceSchema = z.object({
 	hostname: z.string(),
 	jails: z.array(SimpleJailSchema).nullable().default([]),
 	jailTemplates: z.array(SimpleJailTemplateSchema).nullable().default([]),
-	vms: z.array(SimpleVmSchema).nullable().default([])
+	vms: z.array(SimpleVmSchema).nullable().default([]),
+	vmTemplates: z.array(SimpleVmTemplateSchema).nullable().default([])
 });
 
 export type Cluster = z.infer<typeof ClusterSchema>;

@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 
 export const LifecycleTaskSchema = z.object({
 	id: z.number().int(),
-	guestType: z.enum(['vm', 'jail', 'jail-template']),
+	guestType: z.enum(['vm', 'jail', 'jail-template', 'vm-template']),
 	guestId: z.number().int(),
 	action: z.string(),
 	source: z.string(),

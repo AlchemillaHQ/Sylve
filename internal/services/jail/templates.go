@@ -619,7 +619,11 @@ func (s *Service) allocateMACObject(tx *gorm.DB, baseName string) (uint, string,
 	return obj.ID, macAddress, nil
 }
 
-func (s *Service) createJailFromTemplateTarget(ctx context.Context, template jailModels.JailTemplate, target createTarget) error {
+func (s *Service) createJailFromTemplateTarget(
+	ctx context.Context,
+	template jailModels.JailTemplate,
+	target createTarget,
+) (retErr error) {
 	templateDS, err := s.GZFS.ZFS.Get(ctx, template.RootDataset, false)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_template_dataset: %w", err)
@@ -655,6 +659,25 @@ func (s *Service) createJailFromTemplateTarget(ctx context.Context, template jai
 
 	var createdJail jailModels.Jail
 	macByNetworkIndex := map[int]string{}
+	cleanupCreatedJail := false
+
+	defer func() {
+		if retErr == nil {
+			return
+		}
+
+		// Once DB state exists, use the normal jail deletion path so partial
+		// filesystem/config artifacts are cleaned consistently.
+		if cleanupCreatedJail {
+			_ = s.DeleteJail(ctx, target.CTID, true, true)
+			return
+		}
+
+		// Before DB state exists, fall back to removing the cloned dataset.
+		if createdDS != nil {
+			_ = createdDS.Destroy(ctx, true, false)
+		}
+	}()
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		createdJail = jailModels.Jail{
@@ -740,17 +763,9 @@ func (s *Service) createJailFromTemplateTarget(ctx context.Context, template jai
 		return nil
 	})
 	if err != nil {
-		if createdDS != nil {
-			_ = createdDS.Destroy(ctx, true, false)
-		}
 		return err
 	}
-
-	defer func() {
-		if err != nil {
-			_ = s.DeleteJail(ctx, target.CTID, true, true)
-		}
-	}()
+	cleanupCreatedJail = true
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
@@ -870,7 +885,10 @@ func (s *Service) DeleteJailTemplate(ctx context.Context, templateID uint) error
 
 	var template jailModels.JailTemplate
 	if err := s.DB.First(&template, "id = ?", templateID).Error; err != nil {
-		return fmt.Errorf("template_not_found: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("template_not_found")
+		}
+		return fmt.Errorf("failed_to_get_template: %w", err)
 	}
 
 	if err := s.DB.Delete(&template).Error; err != nil {

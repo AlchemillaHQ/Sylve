@@ -4,8 +4,10 @@
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
 	import ViewJailTemplate from '$lib/components/custom/Jail/Template/View.svelte';
+	import CreateVMFromTemplate from '$lib/components/custom/VM/Template/Create.svelte';
+	import ViewVMTemplate from '$lib/components/custom/VM/Template/View.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
-	import { actionVm } from '$lib/api/vm/vm';
+	import { actionVm, convertVMToTemplate, deleteVMTemplate } from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { slide } from 'svelte/transition';
@@ -19,7 +21,7 @@
 		href?: string;
 		state?: 'active' | 'inactive';
 		resourceId?: number;
-		resourceType?: 'vm' | 'jail' | 'jail-template';
+		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
 		nodeHostname?: string;
 		nextGuestId?: number;
 		children?: SidebarProps[];
@@ -67,7 +69,8 @@
 	let hasContextMenu = $derived(
 		item.resourceType === 'vm' ||
 			item.resourceType === 'jail' ||
-			item.resourceType === 'jail-template'
+			item.resourceType === 'jail-template' ||
+			item.resourceType === 'vm-template'
 	);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
@@ -102,9 +105,12 @@
 
 	const handleConvertToTemplate = async () => {
 		if (!item.resourceId) return;
-		const result = await convertJailToTemplate(item.resourceId, item.nodeHostname);
+		const result =
+			item.resourceType === 'vm'
+				? await convertVMToTemplate(item.resourceId, item.nodeHostname)
+				: await convertJailToTemplate(item.resourceId, item.nodeHostname);
 		if (result.error) {
-			toast.error('Failed to convert jail to template', { position: 'bottom-center' });
+			toast.error('Failed to convert to template', { position: 'bottom-center' });
 			return;
 		}
 		reload.leftPanel = true;
@@ -115,7 +121,10 @@
 		if (!item.resourceId) return;
 		deleteTemplateLoading = true;
 		try {
-			const result = await deleteJailTemplate(item.resourceId, item.nodeHostname);
+			const result =
+				item.resourceType === 'vm-template'
+					? await deleteVMTemplate(item.resourceId, item.nodeHostname)
+					: await deleteJailTemplate(item.resourceId, item.nodeHostname);
 			if (result.error) {
 				toast.error('Failed to delete template', { position: 'bottom-center' });
 				return;
@@ -191,8 +200,8 @@
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Convert to Template
 					</ContextMenu.Item>
-				{:else if item.resourceType === 'vm'}
-					{#if item.state === 'active'}
+					{:else if item.resourceType === 'vm'}
+						{#if item.state === 'active'}
 						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('reboot')}>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
 							Reboot
@@ -205,16 +214,21 @@
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
-					{:else}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
-							<span class="icon-[mdi--play] h-4 w-4"></span>
-							Start
+						{:else}
+							<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+								<span class="icon-[mdi--play] h-4 w-4"></span>
+								Start
+							</ContextMenu.Item>
+						{/if}
+						<ContextMenu.Separator />
+						<ContextMenu.Item class="gap-2" onclick={() => void handleConvertToTemplate()}>
+							<span class="icon-[mdi--content-copy] h-4 w-4"></span>
+							Convert to Template
 						</ContextMenu.Item>
-					{/if}
-				{:else if item.resourceType === 'jail-template'}
-					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
-						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
-						View Template
+					{:else if item.resourceType === 'jail-template'}
+						<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
+							<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
+							View Template
 					</ContextMenu.Item>
 					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
@@ -224,13 +238,30 @@
 					<ContextMenu.Item
 						class="gap-2 text-destructive"
 						onclick={() => (deleteTemplateOpen = true)}
-					>
-						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
-						Delete Template
-					</ContextMenu.Item>
-				{/if}
-			</ContextMenu.Content>
-		</ContextMenu.Root>
+						>
+							<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
+							Delete Template
+						</ContextMenu.Item>
+					{:else if item.resourceType === 'vm-template'}
+						<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
+							<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
+							View Template
+						</ContextMenu.Item>
+						<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
+							<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
+							Create VM
+						</ContextMenu.Item>
+						<ContextMenu.Separator />
+						<ContextMenu.Item
+							class="gap-2 text-destructive"
+							onclick={() => (deleteTemplateOpen = true)}
+						>
+							<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
+							Delete Template
+						</ContextMenu.Item>
+					{/if}
+				</ContextMenu.Content>
+			</ContextMenu.Root>
 	{:else}
 		<div
 			role="button"
@@ -295,6 +326,36 @@
 		hostname={item.nodeHostname}
 	/>
 	<CreateJailFromTemplate
+		bind:open={createFromTemplateOpen}
+		templateId={item.resourceId}
+		templateLabel={item.label}
+		hostname={item.nodeHostname}
+		{nextGuestId}
+	/>
+
+	<AlertDialog
+		bind:open={deleteTemplateOpen}
+		names={{ parent: 'template', element: item.label }}
+		actions={{
+			onConfirm: () => void handleDeleteTemplate(),
+			onCancel: () => {
+				deleteTemplateOpen = false;
+			}
+		}}
+		loading={deleteTemplateLoading}
+		confirmLabel="Delete"
+		loadingLabel="Deleting..."
+	/>
+{/if}
+
+{#if item.resourceType === 'vm-template' && item.resourceId}
+	<ViewVMTemplate
+		bind:open={viewTemplateOpen}
+		templateId={item.resourceId}
+		templateLabel={item.label}
+		hostname={item.nodeHostname}
+	/>
+	<CreateVMFromTemplate
 		bind:open={createFromTemplateOpen}
 		templateId={item.resourceId}
 		templateLabel={item.label}

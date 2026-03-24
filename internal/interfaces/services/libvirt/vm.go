@@ -137,3 +137,22 @@ type NetworkUpdateRequest struct {
 	Emulation  string `json:"emulation" binding:"required"`
 	MacId      *uint  `json:"macId"`
 }
+
+type VMTemplateStoragePoolAssignment struct {
+	SourceStorageID uint   `json:"sourceStorageId"`
+	Pool            string `json:"pool"`
+}
+
+type CreateFromTemplateRequest struct {
+	Mode       string `json:"mode"`
+	RID        uint   `json:"rid"`
+	Name       string `json:"name"`
+	StartRID   uint   `json:"startRid"`
+	Count      int    `json:"count"`
+	NamePrefix string `json:"namePrefix"`
+
+	StoragePools []VMTemplateStoragePoolAssignment `json:"storagePools"`
+
+	RewriteCloudInitIdentity bool   `json:"rewriteCloudInitIdentity"`
+	CloudInitPrefix          string `json:"cloudInitPrefix"`
+}

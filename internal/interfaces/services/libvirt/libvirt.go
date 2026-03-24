@@ -86,6 +86,14 @@ type LibvirtServiceInterface interface {
 	GetDomainState(rid int) (libvirt.DomainState, error)
 	WriteVMJson(rid uint) error
 
+	GetVMTemplatesSimple() ([]SimpleTemplateList, error)
+	GetVMTemplate(templateID uint) (*vmModels.VMTemplate, error)
+	PreflightConvertVMToTemplate(ctx context.Context, rid uint) error
+	ConvertVMToTemplate(ctx context.Context, rid uint) error
+	PreflightCreateVMsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error
+	CreateVMsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error
+	DeleteVMTemplate(ctx context.Context, templateID uint) error
+
 	CheckVersion() error
 	IsVirtualizationEnabled() bool
 }
@@ -104,6 +112,13 @@ type SimpleList struct {
 	State      libvirt.DomainState     `json:"state"`
 	VNCPort    uint                    `json:"vncPort"`
 	CPUPinning []vmModels.VMCPUPinning `json:"cpuPinning"`
+}
+
+type SimpleTemplateList struct {
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	SourceRID    uint   `json:"sourceRid"`
+	SourceVMName string `json:"sourceVmName"`
 }
 
 type DomainStateReason string

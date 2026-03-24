@@ -9,6 +9,7 @@
 package libvirt
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -45,6 +47,19 @@ type Service struct {
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
+
+	preflightCreateVMTemplateFn func(
+		ctx context.Context,
+		templateID uint,
+		req libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) (vmTemplateCreatePlan, error)
+	createVMTemplateTargetFn func(
+		ctx context.Context,
+		template vmModels.VMTemplate,
+		target vmTemplateCreateTarget,
+		poolByStorageID map[uint]string,
+		req libvirtServiceInterfaces.CreateFromTemplateRequest,
+	) error
 
 	GZFS *gzfs.Client
 }
