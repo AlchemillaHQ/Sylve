@@ -31,6 +31,14 @@ import (
 var maxSafeJSInt = big.NewInt(9007199254740991)
 var maxBackupJobIDRange = big.NewInt(1000000000)
 
+func boolPtrDefaultTrue(v *bool) bool {
+	if v == nil {
+		return true
+	}
+
+	return *v
+}
+
 // BackupJobInput represents the input for creating/updating a backup job.
 type BackupJobInput struct {
 	Name             string `json:"name"`
@@ -90,7 +98,7 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 		BackupRoot:       strings.TrimSpace(input.BackupRoot),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
 		Description:      strings.TrimSpace(input.Description),
-		Enabled:          utils.PtrToBool(input.Enabled),
+		Enabled:          boolPtrDefaultTrue(input.Enabled),
 	}
 
 	if target.SSHPort == 0 {
@@ -133,6 +141,13 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 	}
 
 	resolvedSSHKey := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
+	enabled := boolPtrDefaultTrue(input.Enabled)
+	if input.Enabled == nil {
+		existing, err := s.GetBackupTargetByID(input.ID)
+		if err == nil {
+			enabled = existing.Enabled
+		}
+	}
 
 	target := clusterModels.BackupTarget{
 		ID:               input.ID,
@@ -144,7 +159,7 @@ func (s *Service) ProposeBackupTargetUpdate(input clusterServiceInterfaces.Backu
 		BackupRoot:       strings.TrimSpace(input.BackupRoot),
 		CreateBackupRoot: utils.PtrToBool(input.CreateBackupRoot),
 		Description:      strings.TrimSpace(input.Description),
-		Enabled:          utils.PtrToBool(input.Enabled),
+		Enabled:          enabled,
 	}
 
 	if target.SSHPort == 0 {

@@ -53,7 +53,7 @@ type ReplicationPolicy struct {
 	FailbackMode           string                    `gorm:"not null;default:manual" json:"failbackMode"`
 	FailoverMode           string                    `gorm:"not null;default:manual" json:"failoverMode"`
 	CronExpr               string                    `gorm:"not null" json:"cronExpr"`
-	Enabled                bool                      `gorm:"default:true;index" json:"enabled"`
+	Enabled                bool                      `gorm:"index" json:"enabled"`
 	LastRunAt              *time.Time                `json:"lastRunAt"`
 	NextRunAt              *time.Time                `gorm:"index" json:"nextRunAt"`
 	LastStatus             string                    `gorm:"index" json:"lastStatus"`

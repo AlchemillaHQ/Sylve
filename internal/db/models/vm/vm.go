@@ -278,7 +278,7 @@ type VM struct {
 
 	Serial bool `json:"serial" gorm:"default:false"`
 
-	VNCEnabled    bool   `json:"vncEnabled" gorm:"default:true"`
+	VNCEnabled    bool   `json:"vncEnabled"`
 	VNCPort       int    `json:"vncPort"`
 	VNCPassword   string `json:"vncPassword"`
 	VNCResolution string `json:"vncResolution"`
@@ -331,7 +331,7 @@ type VMTemplate struct {
 
 	Serial bool `json:"serial" gorm:"default:false"`
 
-	VNCEnabled    bool   `json:"vncEnabled" gorm:"default:true"`
+	VNCEnabled    bool   `json:"vncEnabled"`
 	VNCResolution string `json:"vncResolution"`
 	VNCWait       bool   `json:"vncWait"`
 

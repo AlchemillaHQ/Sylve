@@ -51,8 +51,9 @@ func (s *Service) InitSamba(ctx context.Context) error {
 	}
 	if count == 0 {
 		defaultSettings := sambaModels.SambaSettings{
-			UnixCharset: "UTF-8",
-			Workgroup:   "WORKGROUP",
+			UnixCharset:        "UTF-8",
+			Workgroup:          "WORKGROUP",
+			BindInterfacesOnly: true,
 		}
 		if err := s.DB.Create(&defaultSettings).Error; err != nil {
 			return err

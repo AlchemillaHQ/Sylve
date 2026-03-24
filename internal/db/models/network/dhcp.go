@@ -16,7 +16,7 @@ type DHCPConfig struct {
 	ManualSwitches   []ManualSwitch   `json:"manualSwitches" gorm:"many2many:dhcp_manual_switches;joinForeignKey:DHCPConfigID;joinReferences:ManualSwitchID;constraint:OnDelete:CASCADE"`
 	DNSServers       []string         `json:"dnsServers" gorm:"serializer:json;type:json"`
 	Domain           string           `json:"domain"`
-	ExpandHosts      bool             `json:"expandHosts" gorm:"default:true"`
+	ExpandHosts      bool             `json:"expandHosts"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

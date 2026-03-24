@@ -786,6 +786,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		CPUThreads:             data.CPUThreads,
 		RAM:                    data.RAM,
 		Serial:                 serial,
+		VNCEnabled:             true,
 		VNCPort:                data.VNCPort,
 		VNCPassword:            data.VNCPassword,
 		VNCResolution:          data.VNCResolution,

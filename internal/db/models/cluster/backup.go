@@ -34,7 +34,7 @@ type BackupTarget struct {
 	BackupRoot       string      `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
 	CreateBackupRoot bool        `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
 	Description      string      `json:"description"`
-	Enabled          bool        `gorm:"default:true" json:"enabled"`
+	Enabled          bool        `json:"enabled"`
 	CreatedAt        time.Time   `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt        time.Time   `gorm:"autoUpdateTime" json:"updatedAt"`
 	Jobs             []BackupJob `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -108,7 +108,7 @@ type BackupJob struct {
 	PruneTarget      bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
 	StopBeforeBackup bool         `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
 	CronExpr         string       `gorm:"not null" json:"cronExpr"`
-	Enabled          bool         `gorm:"default:true;index" json:"enabled"`
+	Enabled          bool         `gorm:"index" json:"enabled"`
 	LastRunAt        *time.Time   `json:"lastRunAt"`
 	NextRunAt        *time.Time   `gorm:"index" json:"nextRunAt"`
 	LastStatus       string       `gorm:"index" json:"lastStatus"`
