@@ -151,11 +151,6 @@
 											</div>
 										</div>
 										<div class="flex flex-col">
-											<span class="text-muted-foreground text-xs">Source CTID</span><span
-												class="font-medium">{template.sourceCtId}</span
-											>
-										</div>
-										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Source Jail</span><span
 												class="font-medium">{template.sourceJailName || '-'}</span
 											>

@@ -29,7 +29,7 @@ type jailTemplateService interface {
 	GetJailTemplatesSimple() ([]jailServiceInterfaces.SimpleTemplateList, error)
 	GetJailTemplate(templateID uint) (*jailModels.JailTemplate, error)
 	CanMutateProtectedJail(ctID uint) (bool, error)
-	PreflightConvertJailToTemplate(ctx context.Context, ctID uint) error
+	PreflightConvertJailToTemplate(ctx context.Context, ctID uint, req jail.ConvertToTemplateRequest) error
 	PreflightCreateJailsFromTemplate(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
 	DeleteJailTemplate(ctx context.Context, templateID uint) error
 }
@@ -125,6 +125,17 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 			return
 		}
 
+		var req jail.ConvertToTemplateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
 		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctID))
 		if leaseErr != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -145,7 +156,7 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 			return
 		}
 
-		if err := jailService.PreflightConvertJailToTemplate(c.Request.Context(), uint(ctID)); err != nil {
+		if err := jailService.PreflightConvertJailToTemplate(c.Request.Context(), uint(ctID), req); err != nil {
 			c.JSON(preflightStatusCode(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "template_convert_preflight_failed",
@@ -155,14 +166,26 @@ func ConvertJailToTemplate(jailService jailTemplateService, lifecycleService *li
 			return
 		}
 
+		payload, err := json.Marshal(req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestAction(
+		task, outcome, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeJailTemplate,
 			uint(ctID),
 			"convert",
 			taskModels.LifecycleTaskSourceUser,
 			username,
+			string(payload),
 		)
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {
@@ -213,44 +236,6 @@ func CreateJailFromTemplate(jailService jailTemplateService, lifecycleService *l
 				Message: "invalid_request_data",
 				Data:    nil,
 				Error:   err.Error(),
-			})
-			return
-		}
-
-		template, err := jailService.GetJailTemplate(uint(templateID))
-		if err != nil {
-			status := http.StatusInternalServerError
-			message := "failed_to_get_jail_template"
-			if strings.Contains(strings.ToLower(err.Error()), "template_not_found") {
-				status = http.StatusNotFound
-				message = "template_not_found"
-			}
-
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: message,
-				Data:    nil,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		allowed, leaseErr := jailService.CanMutateProtectedJail(template.SourceCTID)
-		if leaseErr != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "replication_lease_check_failed",
-				Data:    nil,
-				Error:   leaseErr.Error(),
-			})
-			return
-		}
-		if !allowed {
-			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "standby_mode_edit_not_allowed",
-				Data:    nil,
-				Error:   "replication_lease_not_owned",
 			})
 			return
 		}

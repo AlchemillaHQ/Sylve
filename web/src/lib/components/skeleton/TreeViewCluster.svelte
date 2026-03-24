@@ -7,6 +7,8 @@
 	import CreateVMFromTemplate from '$lib/components/custom/VM/Template/Create.svelte';
 	import ViewVMTemplate from '$lib/components/custom/VM/Template/View.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import { actionVm, convertVMToTemplate, deleteVMTemplate } from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -80,6 +82,19 @@
 	let viewTemplateOpen = $state(false);
 	let deleteTemplateOpen = $state(false);
 	let deleteTemplateLoading = $state(false);
+	let convertTemplateOpen = $state(false);
+	let convertTemplateLoading = $state(false);
+	let convertTemplateName = $state('');
+
+	function baseGuestName(label: string): string {
+		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
+	}
+
+	const openConvertTemplateDialog = () => {
+		const baseName = baseGuestName(item.label) || 'template';
+		convertTemplateName = `${baseName} Template`;
+		convertTemplateOpen = true;
+	};
 
 	const handleActionClick = async (action: 'start' | 'reboot' | 'shutdown' | 'stop') => {
 		if (item.resourceId === undefined || item.resourceType === undefined) {
@@ -105,16 +120,38 @@
 
 	const handleConvertToTemplate = async () => {
 		if (!item.resourceId) return;
-		const result =
-			item.resourceType === 'vm'
-				? await convertVMToTemplate(item.resourceId, item.nodeHostname)
-				: await convertJailToTemplate(item.resourceId, item.nodeHostname);
-		if (result.error) {
-			toast.error('Failed to convert to template', { position: 'bottom-center' });
+		const name = convertTemplateName.trim();
+		if (!name) {
+			toast.error('Template name is required', { position: 'bottom-center' });
 			return;
 		}
-		reload.leftPanel = true;
-		toast.success('Template conversion queued', { position: 'bottom-center' });
+
+		convertTemplateLoading = true;
+		try {
+			const result =
+				item.resourceType === 'vm'
+					? await convertVMToTemplate(item.resourceId, { name }, item.nodeHostname)
+					: await convertJailToTemplate(item.resourceId, { name }, item.nodeHostname);
+			if (result.error) {
+				const err = (result.error || '').toLowerCase();
+				if (err.includes('template_name_already_in_use')) {
+					toast.error('Template name already in use', { position: 'bottom-center' });
+					return;
+				}
+				if (err.includes('template_name_required')) {
+					toast.error('Template name is required', { position: 'bottom-center' });
+					return;
+				}
+				toast.error('Failed to convert to template', { position: 'bottom-center' });
+				return;
+			}
+
+			convertTemplateOpen = false;
+			reload.leftPanel = true;
+			toast.success('Template conversion queued', { position: 'bottom-center' });
+		} finally {
+			convertTemplateLoading = false;
+		}
 	};
 
 	const handleDeleteTemplate = async () => {
@@ -195,11 +232,11 @@
 							Start
 						</ContextMenu.Item>
 					{/if}
-					<ContextMenu.Separator />
-					<ContextMenu.Item class="gap-2" onclick={() => void handleConvertToTemplate()}>
-						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
-						Convert to Template
-					</ContextMenu.Item>
+						<ContextMenu.Separator />
+						<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+							<span class="icon-[mdi--content-copy] h-4 w-4"></span>
+							Convert to Template
+						</ContextMenu.Item>
 					{:else if item.resourceType === 'vm'}
 						{#if item.state === 'active'}
 						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('reboot')}>
@@ -221,7 +258,7 @@
 							</ContextMenu.Item>
 						{/if}
 						<ContextMenu.Separator />
-						<ContextMenu.Item class="gap-2" onclick={() => void handleConvertToTemplate()}>
+						<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
 							<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 							Convert to Template
 						</ContextMenu.Item>
@@ -316,6 +353,47 @@
 			/>
 		{/each}
 	</ul>
+{/if}
+
+{#if (item.resourceType === 'jail' || item.resourceType === 'vm') && item.resourceId}
+	<Dialog.Root bind:open={convertTemplateOpen}>
+		<Dialog.Content class="max-w-md">
+			<Dialog.Header>
+				<Dialog.Title>Convert To Template</Dialog.Title>
+				<Dialog.Description>
+					Provide a unique template name for this {item.resourceType === 'vm' ? 'VM' : 'jail'}.
+				</Dialog.Description>
+			</Dialog.Header>
+
+			<div class="space-y-2">
+				<label class="text-sm font-medium">Template Name</label>
+				<input
+					class="h-9 w-full rounded-md border px-2 text-sm"
+					type="text"
+					bind:value={convertTemplateName}
+					placeholder="Template name"
+				/>
+			</div>
+
+			<Dialog.Footer>
+				<Button
+					size="sm"
+					variant="outline"
+					onclick={() => {
+						convertTemplateOpen = false;
+					}}
+					disabled={convertTemplateLoading}>Cancel</Button
+				>
+				<Button size="sm" onclick={() => void handleConvertToTemplate()} disabled={convertTemplateLoading}>
+					{#if convertTemplateLoading}
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					{:else}
+						Convert
+					{/if}
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
 {/if}
 
 {#if item.resourceType === 'jail-template' && item.resourceId}

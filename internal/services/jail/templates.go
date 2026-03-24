@@ -37,6 +37,10 @@ type CreateFromTemplateRequest struct {
 	Pool       string `json:"pool"`
 }
 
+type ConvertToTemplateRequest struct {
+	Name string `json:"name"`
+}
+
 type createTarget struct {
 	CTID uint
 	Name string
@@ -93,7 +97,6 @@ func (s *Service) GetJailTemplatesSimple() ([]jailServiceInterfaces.SimpleTempla
 		out = append(out, jailServiceInterfaces.SimpleTemplateList{
 			ID:             t.ID,
 			Name:           t.Name,
-			SourceCTID:     t.SourceCTID,
 			SourceJailName: t.SourceJailName,
 		})
 	}
@@ -203,9 +206,67 @@ func (s *Service) buildTemplateHooks(hooks []jailModels.JailHooks) []jailModels.
 	return out
 }
 
-func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint) error {
+func normalizeTemplateName(name string) string {
+	return strings.TrimSpace(name)
+}
+
+func sanitizeTemplateDatasetToken(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return "template"
+	}
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range name {
+		isAlphaNum := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if isAlphaNum {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+
+		if !lastDash {
+			b.WriteRune('-')
+			lastDash = true
+		}
+	}
+
+	token := strings.Trim(b.String(), "-")
+	if token == "" {
+		token = "template"
+	}
+	return token
+}
+
+func (s *Service) ensureUniqueJailTemplateName(name string) error {
+	normalized := normalizeTemplateName(name)
+	if normalized == "" {
+		return fmt.Errorf("template_name_required")
+	}
+	if len(normalized) > 120 {
+		return fmt.Errorf("template_name_too_long")
+	}
+
+	var count int64
+	if err := s.DB.Model(&jailModels.JailTemplate{}).
+		Where("LOWER(name) = ?", strings.ToLower(normalized)).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_template_name_uniqueness: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("template_name_already_in_use")
+	}
+
+	return nil
+}
+
+func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint, req ConvertToTemplateRequest) error {
 	if ctID == 0 {
 		return fmt.Errorf("invalid_ct_id")
+	}
+	if err := s.ensureUniqueJailTemplateName(req.Name); err != nil {
+		return err
 	}
 
 	jail, err := s.GetJailByCTID(ctID)
@@ -225,7 +286,6 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint)
 	}
 
 	sourceDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
-	templateDataset := fmt.Sprintf("%s/sylve/jails/clones/%d", pool, ctID)
 	srcDS, err := s.GZFS.ZFS.Get(ctx, sourceDataset, false)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_source_jail_dataset: %w", err)
@@ -244,29 +304,19 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint)
 		return fmt.Errorf("pool_not_found")
 	}
 
-	availableBytes := zpool.Free
-	if existingTemplateDS, getErr := s.GZFS.ZFS.Get(ctx, templateDataset, false); getErr == nil && existingTemplateDS != nil {
-		existingUsage := datasetEstimatedUsed(existingTemplateDS.Used, existingTemplateDS.Referenced)
-		if availableBytes > ^uint64(0)-existingUsage {
-			availableBytes = ^uint64(0)
-		} else {
-			availableBytes += existingUsage
-		}
-	}
-
-	if requiredBytes > availableBytes {
+	if requiredBytes > zpool.Free {
 		return fmt.Errorf("insufficient_pool_space")
 	}
 
 	return nil
 }
 
-func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
+func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req ConvertToTemplateRequest) error {
 	if ctID == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
 
-	if err := s.PreflightConvertJailToTemplate(ctx, ctID); err != nil {
+	if err := s.PreflightConvertJailToTemplate(ctx, ctID, req); err != nil {
 		return err
 	}
 
@@ -295,8 +345,14 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 	}
 
 	sourceDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
-	templateDataset := fmt.Sprintf("%s/sylve/jails/clones/%d", pool, ctID)
-	templateParentDataset := fmt.Sprintf("%s/sylve/jails/clones", pool)
+	templateParentDataset := fmt.Sprintf("%s/sylve/jails/templates", pool)
+	templateToken := sanitizeTemplateDatasetToken(req.Name)
+	templateDataset := fmt.Sprintf(
+		"%s/%s-%d",
+		templateParentDataset,
+		templateToken,
+		time.Now().UTC().UnixMilli(),
+	)
 
 	state, err := s.GetStateByCtId(ctID)
 	if err != nil {
@@ -323,12 +379,6 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 		return fmt.Errorf("source_jail_dataset_not_found")
 	}
 
-	if existing, getErr := s.GZFS.ZFS.Get(ctx, templateDataset, false); getErr == nil && existing != nil {
-		if err := existing.Destroy(ctx, true, false); err != nil {
-			return fmt.Errorf("failed_to_destroy_existing_template_dataset: %w", err)
-		}
-	}
-
 	if err := s.ensureFilesystemPath(ctx, templateParentDataset); err != nil {
 		return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
 	}
@@ -346,15 +396,10 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 		return fmt.Errorf("failed_to_copy_jail_dataset_to_template: %w", err)
 	}
 
-	templateName := strings.TrimSpace(jail.Name)
-	if templateName == "" {
-		templateName = fmt.Sprintf("Jail-%d", jail.CTID)
-	}
-	templateName = fmt.Sprintf("%s Template", templateName)
+	templateName := normalizeTemplateName(req.Name)
 
 	template := jailModels.JailTemplate{
 		Name:              templateName,
-		SourceCTID:        jail.CTID,
 		SourceJailName:    jail.Name,
 		Pool:              pool,
 		RootDataset:       templateDataset,
@@ -376,18 +421,8 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint) error {
 		Hooks:             s.buildTemplateHooks(jail.JailHooks),
 	}
 
-	var existing jailModels.JailTemplate
-	if err := s.DB.Where("source_ct_id = ?", ctID).First(&existing).Error; err == nil {
-		template.ID = existing.ID
-		if err := s.DB.Model(&existing).Updates(&template).Error; err != nil {
-			return fmt.Errorf("failed_to_update_jail_template: %w", err)
-		}
-	} else if err == gorm.ErrRecordNotFound {
-		if err := s.DB.Create(&template).Error; err != nil {
-			return fmt.Errorf("failed_to_create_jail_template: %w", err)
-		}
-	} else {
-		return fmt.Errorf("failed_to_query_existing_jail_template: %w", err)
+	if err := s.DB.Create(&template).Error; err != nil {
+		return fmt.Errorf("failed_to_create_jail_template: %w", err)
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("jail_template_convert_%d", ctID))

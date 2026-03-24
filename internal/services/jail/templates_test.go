@@ -361,6 +361,7 @@ func TestPreflightTemplateTargetsRejectsClusterGuestIDCollision(t *testing.T) {
 
 func TestPreflightConvertJailToTemplateInsufficientPoolSpace(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t,
+		&jailModels.JailTemplate{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&jailModels.JailHooks{},
@@ -395,7 +396,7 @@ func TestPreflightConvertJailToTemplateInsufficientPoolSpace(t *testing.T) {
 	}
 
 	svc := newTemplateTestService(t, dbConn, runner, "zroot")
-	err := svc.PreflightConvertJailToTemplate(context.Background(), 106)
+	err := svc.PreflightConvertJailToTemplate(context.Background(), 106, ConvertToTemplateRequest{Name: "tmpl-106"})
 	if err == nil || !strings.Contains(err.Error(), "insufficient_pool_space") {
 		t.Fatalf("expected insufficient_pool_space, got %v", err)
 	}
@@ -415,7 +416,6 @@ func TestPreflightCreateFromTemplateInsufficientPoolSpaceSingleAndMultiple(t *te
 
 		tpl := jailModels.JailTemplate{
 			Name:           "Template 106",
-			SourceCTID:     106,
 			SourceJailName: "source-106",
 			Pool:           "zroot",
 			RootDataset:    "zroot/sylve/jails/clones/106",
@@ -501,5 +501,27 @@ func TestPreflightCreateJailsFromTemplateTemplateValidation(t *testing.T) {
 
 	if err := svc.PreflightCreateJailsFromTemplate(context.Background(), 777, CreateFromTemplateRequest{Mode: "single", CTID: 100}); err == nil || !strings.Contains(err.Error(), "template_not_found") {
 		t.Fatalf("expected template_not_found, got %v", err)
+	}
+}
+
+func TestEnsureUniqueJailTemplateName(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.JailTemplate{})
+	svc := &Service{DB: dbConn}
+
+	if err := svc.ensureUniqueJailTemplateName(""); err == nil || !strings.Contains(err.Error(), "template_name_required") {
+		t.Fatalf("expected template_name_required, got %v", err)
+	}
+
+	if err := dbConn.Create(&jailModels.JailTemplate{
+		Name:        "Base Template",
+		Pool:        "zroot",
+		RootDataset: "zroot/sylve/jails/templates/base-template-1",
+		Type:        jailModels.JailTypeFreeBSD,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed template: %v", err)
+	}
+
+	if err := svc.ensureUniqueJailTemplateName("base template"); err == nil || !strings.Contains(err.Error(), "template_name_already_in_use") {
+		t.Fatalf("expected template_name_already_in_use, got %v", err)
 	}
 }

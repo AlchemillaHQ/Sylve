@@ -171,8 +171,7 @@ type JailTemplateHook struct {
 type JailTemplate struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
-	Name           string `json:"name" gorm:"not null;index"`
-	SourceCTID     uint   `json:"sourceCtId" gorm:"column:source_ct_id;index"`
+	Name           string `json:"name" gorm:"not null;uniqueIndex"`
 	SourceJailName string `json:"sourceJailName" gorm:"column:source_jail_name"`
 
 	Pool        string `json:"pool" gorm:"not null"`

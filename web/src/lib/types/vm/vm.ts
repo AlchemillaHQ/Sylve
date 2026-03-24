@@ -175,10 +175,7 @@ export const SimpleVmSchema = z.object({
 
 export const SimpleVmTemplateSchema = z.object({
     id: z.number().int(),
-    name: z.string().transform((val) => {
-        return val.replace(/\s*Template$/, "");
-    }),
-    sourceRid: z.number().int(),
+    name: z.string(),
     sourceVmName: z.string()
 });
 
@@ -205,7 +202,6 @@ export const VMTemplateNetworkSchema = z.object({
 export const VMTemplateSchema = z.object({
     id: z.number().int(),
     name: z.string(),
-    sourceRid: z.number().int(),
     sourceVmName: z.string(),
     description: z.string(),
     cpuSockets: z.number().int(),

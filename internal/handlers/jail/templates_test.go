@@ -24,7 +24,6 @@ func TestGetJailTemplateByID(t *testing.T) {
 
 	template := jailModels.JailTemplate{
 		Name:           "Template 106",
-		SourceCTID:     106,
 		SourceJailName: "web-106",
 		Pool:           "zroot",
 		RootDataset:    "zroot/sylve/jails/clones/106",
@@ -53,8 +52,8 @@ func TestGetJailTemplateByID(t *testing.T) {
 		if resp.Data.ID != template.ID {
 			t.Fatalf("expected template id %d, got %d", template.ID, resp.Data.ID)
 		}
-		if resp.Data.SourceCTID != template.SourceCTID {
-			t.Fatalf("expected source ctid %d, got %d", template.SourceCTID, resp.Data.SourceCTID)
+		if resp.Data.SourceJailName != template.SourceJailName {
+			t.Fatalf("expected source jail name %q, got %q", template.SourceJailName, resp.Data.SourceJailName)
 		}
 	})
 

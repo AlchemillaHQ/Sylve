@@ -115,8 +115,16 @@ export async function actionVm(
     return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST', undefined, { hostname });
 }
 
-export async function convertVMToTemplate(rid: number, hostname?: string): Promise<APIResponse> {
-    return await apiRequest(`/vm/templates/convert/${rid}`, APIResponseSchema, 'POST', undefined, {
+export interface ConvertVMToTemplateRequest {
+    name: string;
+}
+
+export async function convertVMToTemplate(
+    rid: number,
+    data: ConvertVMToTemplateRequest,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/templates/convert/${rid}`, APIResponseSchema, 'POST', data, {
         hostname
     });
 }

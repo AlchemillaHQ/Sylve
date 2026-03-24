@@ -353,3 +353,40 @@ type templateTestError struct {
 func (e templateTestError) Error() string {
 	return e.msg
 }
+
+func TestVMTemplateModelAllowsMultipleTemplatesForSameSourceVMName(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &vmModels.VMTemplate{})
+
+	first := vmModels.VMTemplate{
+		Name:         "template-a",
+		SourceVMName: "vm-501",
+	}
+	if err := dbConn.Create(&first).Error; err != nil {
+		t.Fatalf("failed to create first template: %v", err)
+	}
+
+	second := vmModels.VMTemplate{
+		Name:         "template-b",
+		SourceVMName: "vm-501",
+	}
+	if err := dbConn.Create(&second).Error; err != nil {
+		t.Fatalf("expected same source vm name to allow multiple templates, got: %v", err)
+	}
+}
+
+func TestEnsureUniqueVMTemplateName(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &vmModels.VMTemplate{})
+	svc := &Service{DB: dbConn}
+
+	if err := svc.ensureUniqueVMTemplateName(""); err == nil || !strings.Contains(err.Error(), "template_name_required") {
+		t.Fatalf("expected template_name_required, got %v", err)
+	}
+
+	if err := dbConn.Create(&vmModels.VMTemplate{Name: "Prod Template"}).Error; err != nil {
+		t.Fatalf("failed to seed template: %v", err)
+	}
+
+	if err := svc.ensureUniqueVMTemplateName("prod template"); err == nil || !strings.Contains(err.Error(), "template_name_already_in_use") {
+		t.Fatalf("expected template_name_already_in_use, got %v", err)
+	}
+}

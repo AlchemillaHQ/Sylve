@@ -62,10 +62,10 @@ type Service struct {
 	jailActionFn func(ctid int, action string) error
 	jailActiveFn func(ctid uint) (bool, error)
 
-	jailTemplateConvertFn func(ctx context.Context, ctid uint) error
+	jailTemplateConvertFn func(ctx context.Context, ctid uint, req jail.ConvertToTemplateRequest) error
 	jailTemplateCreateFn  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
 
-	vmTemplateConvertFn func(ctx context.Context, rid uint) error
+	vmTemplateConvertFn func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 }
 
@@ -376,7 +376,13 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 			if s.jailTemplateConvertFn == nil {
 				return fmt.Errorf("jail_template_convert_function_not_configured")
 			}
-			return s.jailTemplateConvertFn(ctx, task.GuestID)
+			req := jail.ConvertToTemplateRequest{}
+			if strings.TrimSpace(task.Payload) != "" {
+				if err := json.Unmarshal([]byte(task.Payload), &req); err != nil {
+					return fmt.Errorf("invalid_template_convert_payload: %w", err)
+				}
+			}
+			return s.jailTemplateConvertFn(ctx, task.GuestID, req)
 		case "create":
 			if s.jailTemplateCreateFn == nil {
 				return fmt.Errorf("jail_template_create_function_not_configured")
@@ -397,7 +403,13 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 			if s.vmTemplateConvertFn == nil {
 				return fmt.Errorf("vm_template_convert_function_not_configured")
 			}
-			return s.vmTemplateConvertFn(ctx, task.GuestID)
+			req := libvirtServiceInterfaces.ConvertToTemplateRequest{}
+			if strings.TrimSpace(task.Payload) != "" {
+				if err := json.Unmarshal([]byte(task.Payload), &req); err != nil {
+					return fmt.Errorf("invalid_vm_template_convert_payload: %w", err)
+				}
+			}
+			return s.vmTemplateConvertFn(ctx, task.GuestID, req)
 		case "create":
 			if s.vmTemplateCreateFn == nil {
 				return fmt.Errorf("vm_template_create_function_not_configured")

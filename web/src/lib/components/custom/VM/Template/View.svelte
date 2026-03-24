@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { getVMTemplateById } from '$lib/api/vm/vm';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import { Textarea } from '$lib/components/ui/textarea';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { VMTemplate } from '$lib/types/vm/vm';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { isAPIResponse } from '$lib/utils/http';
@@ -112,7 +112,7 @@
 									<div class="text-xs text-muted-foreground">Template ID</div>
 									<div class="font-medium">{template.id}</div>
 									<div class="text-xs text-muted-foreground">Source VM</div>
-									<div class="font-medium">{template.sourceVmName || '-'} ({template.sourceRid})</div>
+									<div class="font-medium">{template.sourceVmName || '-'}</div>
 									<div class="text-xs text-muted-foreground">Updated</div>
 									<div class="font-medium">{dateToAgo(template.updatedAt)}</div>
 								</div>

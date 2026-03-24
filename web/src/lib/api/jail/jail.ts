@@ -113,8 +113,16 @@ export async function jailAction(ctId: number, action: string, hostname?: string
     return await apiRequest(`/jail/action/${action}/${ctId}`, APIResponseSchema, 'POST', undefined, { hostname });
 }
 
-export async function convertJailToTemplate(ctId: number, hostname?: string): Promise<APIResponse> {
-    return await apiRequest(`/jail/templates/convert/${ctId}`, APIResponseSchema, 'POST', undefined, {
+export interface ConvertJailToTemplateRequest {
+    name: string;
+}
+
+export async function convertJailToTemplate(
+    ctId: number,
+    data: ConvertJailToTemplateRequest,
+    hostname?: string
+): Promise<APIResponse> {
+    return await apiRequest(`/jail/templates/convert/${ctId}`, APIResponseSchema, 'POST', data, {
         hostname
     });
 }

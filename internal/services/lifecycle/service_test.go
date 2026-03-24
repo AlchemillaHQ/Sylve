@@ -202,12 +202,23 @@ func TestExecuteTaskVMTemplateConvertAndCreate(t *testing.T) {
 	s, _ := newLifecycleTestService(t)
 
 	convertCalled := false
-	s.vmTemplateConvertFn = func(_ context.Context, rid uint) error {
+	expectedConvertReq := libvirtServiceInterfaces.ConvertToTemplateRequest{
+		Name: "vm-template-777",
+	}
+	s.vmTemplateConvertFn = func(_ context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error {
 		convertCalled = true
 		if rid != 777 {
 			t.Fatalf("unexpected convert rid: %d", rid)
 		}
+		if req.Name != expectedConvertReq.Name {
+			t.Fatalf("unexpected convert request: %#v", req)
+		}
 		return nil
+	}
+
+	convertPayload, err := json.Marshal(expectedConvertReq)
+	if err != nil {
+		t.Fatalf("failed to marshal convert payload: %v", err)
 	}
 
 	convertTask, _, err := s.createTask(
@@ -217,7 +228,7 @@ func TestExecuteTaskVMTemplateConvertAndCreate(t *testing.T) {
 		"convert",
 		taskModels.LifecycleTaskSourceUser,
 		"tester",
-		"",
+		string(convertPayload),
 		false,
 	)
 	if err != nil {
@@ -303,6 +314,46 @@ func TestExecuteTaskVMTemplateCreateInvalidPayload(t *testing.T) {
 	}
 	if createCalled {
 		t.Fatalf("expected vmTemplateCreateFn to not be called on invalid payload")
+	}
+
+	var failed taskModels.GuestLifecycleTask
+	if err := dbConn.First(&failed, task.ID).Error; err != nil {
+		t.Fatalf("failed to fetch task: %v", err)
+	}
+	if failed.Status != taskModels.LifecycleTaskStatusFailed {
+		t.Fatalf("expected failed status, got %s", failed.Status)
+	}
+}
+
+func TestExecuteTaskVMTemplateConvertInvalidPayload(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+
+	convertCalled := false
+	s.vmTemplateConvertFn = func(_ context.Context, _ uint, _ libvirtServiceInterfaces.ConvertToTemplateRequest) error {
+		convertCalled = true
+		return nil
+	}
+
+	task, _, err := s.createTask(
+		context.Background(),
+		taskModels.GuestTypeVMTemplate,
+		88,
+		"convert",
+		taskModels.LifecycleTaskSourceUser,
+		"tester",
+		"{invalid-json",
+		false,
+	)
+	if err != nil {
+		t.Fatalf("failed to create vm-template convert task: %v", err)
+	}
+
+	execErr := s.ExecuteTask(context.Background(), task.ID)
+	if execErr == nil || !strings.Contains(execErr.Error(), "invalid_vm_template_convert_payload") {
+		t.Fatalf("expected invalid convert payload error, got %v", execErr)
+	}
+	if convertCalled {
+		t.Fatalf("expected vmTemplateConvertFn not called on invalid payload")
 	}
 
 	var failed taskModels.GuestLifecycleTask

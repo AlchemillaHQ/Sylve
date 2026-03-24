@@ -269,8 +269,7 @@ type VM struct {
 type VMTemplate struct {
 	ID uint `gorm:"primaryKey" json:"id"`
 
-	Name         string `json:"name" gorm:"not null;index"`
-	SourceRID    uint   `json:"sourceRid" gorm:"column:source_rid;not null;uniqueIndex"`
+	Name         string `json:"name" gorm:"not null;uniqueIndex"`
 	SourceVMName string `json:"sourceVmName" gorm:"column:source_vm_name"`
 
 	Description string `json:"description"`

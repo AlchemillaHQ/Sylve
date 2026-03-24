@@ -88,8 +88,8 @@ type LibvirtServiceInterface interface {
 
 	GetVMTemplatesSimple() ([]SimpleTemplateList, error)
 	GetVMTemplate(templateID uint) (*vmModels.VMTemplate, error)
-	PreflightConvertVMToTemplate(ctx context.Context, rid uint) error
-	ConvertVMToTemplate(ctx context.Context, rid uint) error
+	PreflightConvertVMToTemplate(ctx context.Context, rid uint, req ConvertToTemplateRequest) error
+	ConvertVMToTemplate(ctx context.Context, rid uint, req ConvertToTemplateRequest) error
 	PreflightCreateVMsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error
 	CreateVMsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error
 	DeleteVMTemplate(ctx context.Context, templateID uint) error
@@ -117,7 +117,6 @@ type SimpleList struct {
 type SimpleTemplateList struct {
 	ID           uint   `json:"id"`
 	Name         string `json:"name"`
-	SourceRID    uint   `json:"sourceRid"`
 	SourceVMName string `json:"sourceVmName"`
 }
 

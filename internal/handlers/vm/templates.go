@@ -27,7 +27,7 @@ import (
 type vmTemplateService interface {
 	GetVMTemplatesSimple() ([]libvirtServiceInterfaces.SimpleTemplateList, error)
 	GetVMTemplate(templateID uint) (*vmModels.VMTemplate, error)
-	PreflightConvertVMToTemplate(ctx context.Context, rid uint) error
+	PreflightConvertVMToTemplate(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	PreflightCreateVMsFromTemplate(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 	DeleteVMTemplate(ctx context.Context, templateID uint) error
 }
@@ -126,7 +126,18 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 			return
 		}
 
-		if err := libvirtService.PreflightConvertVMToTemplate(c.Request.Context(), uint(rid)); err != nil {
+		var req libvirtServiceInterfaces.ConvertToTemplateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.PreflightConvertVMToTemplate(c.Request.Context(), uint(rid), req); err != nil {
 			c.JSON(vmTemplatePreflightStatusCode(err), internal.APIResponse[any]{
 				Status:  "error",
 				Message: "template_convert_preflight_failed",
@@ -136,14 +147,26 @@ func ConvertVMToTemplate(libvirtService vmTemplateService, lifecycleService *lif
 			return
 		}
 
+		payload, err := json.Marshal(req)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
 		username := strings.TrimSpace(c.GetString("Username"))
-		task, outcome, err := lifecycleService.RequestAction(
+		task, outcome, err := lifecycleService.RequestActionWithPayload(
 			c.Request.Context(),
 			taskModels.GuestTypeVMTemplate,
 			uint(rid),
 			"convert",
 			taskModels.LifecycleTaskSourceUser,
 			username,
+			string(payload),
 		)
 		if err != nil {
 			if errors.Is(err, lifecycle.ErrTaskInProgress) {

@@ -30,7 +30,7 @@ type mockJailTemplateService struct {
 	listFn           func() ([]jailServiceInterfaces.SimpleTemplateList, error)
 	getFn            func(templateID uint) (*jailModels.JailTemplate, error)
 	canMutateFn      func(ctID uint) (bool, error)
-	preflightConvert func(ctx context.Context, ctID uint) error
+	preflightConvert func(ctx context.Context, ctID uint, req jail.ConvertToTemplateRequest) error
 	preflightCreate  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
 	deleteFn         func(ctx context.Context, templateID uint) error
 }
@@ -44,7 +44,7 @@ func (m *mockJailTemplateService) GetJailTemplatesSimple() ([]jailServiceInterfa
 
 func (m *mockJailTemplateService) GetJailTemplate(templateID uint) (*jailModels.JailTemplate, error) {
 	if m.getFn == nil {
-		return &jailModels.JailTemplate{ID: templateID, SourceCTID: 100}, nil
+		return &jailModels.JailTemplate{ID: templateID, SourceJailName: "source-jail"}, nil
 	}
 	return m.getFn(templateID)
 }
@@ -56,11 +56,15 @@ func (m *mockJailTemplateService) CanMutateProtectedJail(ctID uint) (bool, error
 	return m.canMutateFn(ctID)
 }
 
-func (m *mockJailTemplateService) PreflightConvertJailToTemplate(ctx context.Context, ctID uint) error {
+func (m *mockJailTemplateService) PreflightConvertJailToTemplate(
+	ctx context.Context,
+	ctID uint,
+	req jail.ConvertToTemplateRequest,
+) error {
 	if m.preflightConvert == nil {
 		return nil
 	}
-	return m.preflightConvert(ctx, ctID)
+	return m.preflightConvert(ctx, ctID, req)
 }
 
 func (m *mockJailTemplateService) PreflightCreateJailsFromTemplate(
@@ -123,7 +127,7 @@ func TestListJailTemplatesSimpleHandler(t *testing.T) {
 		r.GET("/jail/templates/simple", ListJailTemplatesSimple(&mockJailTemplateService{
 			listFn: func() ([]jailServiceInterfaces.SimpleTemplateList, error) {
 				return []jailServiceInterfaces.SimpleTemplateList{
-					{ID: 9, Name: "web", SourceCTID: 101, SourceJailName: "web-101"},
+					{ID: 9, Name: "web", SourceJailName: "web-101"},
 				}, nil
 			},
 		}))
@@ -160,7 +164,13 @@ func TestConvertJailTemplateHandlerMappings(t *testing.T) {
 			c.Set("Username", "tester")
 			ConvertJailToTemplate(&mockJailTemplateService{}, lifecycleSvc)(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/jail/templates/convert/101", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/jail/templates/convert/101",
+			[]byte(`{"name":"jail-template"}`),
+		)
 		decodeAPIResponse(t, rr.Code, http.StatusAccepted, rr.Body.String())
 	})
 
@@ -182,14 +192,33 @@ func TestConvertJailTemplateHandlerMappings(t *testing.T) {
 			c.Set("Username", "tester")
 			ConvertJailToTemplate(&mockJailTemplateService{}, lifecycleSvc)(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/jail/templates/convert/101", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/jail/templates/convert/101",
+			[]byte(`{"name":"jail-template"}`),
+		)
 		decodeAPIResponse(t, rr.Code, http.StatusConflict, rr.Body.String())
 	})
 
 	t.Run("invalid ctid", func(t *testing.T) {
 		r := gin.New()
 		r.POST("/jail/templates/convert/:ctid", ConvertJailToTemplate(&mockJailTemplateService{}, setupJailTemplateLifecycle(t)))
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/jail/templates/convert/nope", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/jail/templates/convert/nope",
+			[]byte(`{"name":"jail-template"}`),
+		)
+		decodeAPIResponse(t, rr.Code, http.StatusBadRequest, rr.Body.String())
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		r := gin.New()
+		r.POST("/jail/templates/convert/:ctid", ConvertJailToTemplate(&mockJailTemplateService{}, setupJailTemplateLifecycle(t)))
+		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/convert/101", []byte(`{"name":`))
 		decodeAPIResponse(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
 
@@ -201,7 +230,13 @@ func TestConvertJailTemplateHandlerMappings(t *testing.T) {
 				canMutateFn: func(_ uint) (bool, error) { return false, nil },
 			}, setupJailTemplateLifecycle(t))(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/jail/templates/convert/101", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/jail/templates/convert/101",
+			[]byte(`{"name":"jail-template"}`),
+		)
 		decodeAPIResponse(t, rr.Code, http.StatusForbidden, rr.Body.String())
 	})
 
@@ -210,10 +245,18 @@ func TestConvertJailTemplateHandlerMappings(t *testing.T) {
 		r.POST("/jail/templates/convert/:ctid", func(c *gin.Context) {
 			c.Set("Username", "tester")
 			ConvertJailToTemplate(&mockJailTemplateService{
-				preflightConvert: func(context.Context, uint) error { return assertErr("invalid_ctid") },
+				preflightConvert: func(context.Context, uint, jail.ConvertToTemplateRequest) error {
+					return assertErr("invalid_ctid")
+				},
 			}, setupJailTemplateLifecycle(t))(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/jail/templates/convert/101", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/jail/templates/convert/101",
+			[]byte(`{"name":"jail-template"}`),
+		)
 		decodeAPIResponse(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
 }
@@ -233,12 +276,12 @@ func TestCreateJailFromTemplateHandlerMappings(t *testing.T) {
 		lifecycleSvc := setupJailTemplateLifecycle(t)
 		r := gin.New()
 		r.POST("/jail/templates/create/:id", CreateJailFromTemplate(&mockJailTemplateService{
-			getFn: func(uint) (*jailModels.JailTemplate, error) {
-				return nil, assertErr("template_not_found")
+			preflightCreate: func(context.Context, uint, jail.CreateFromTemplateRequest) error {
+				return assertErr("template_not_found")
 			},
 		}, lifecycleSvc))
 		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/jail/templates/create/1", []byte(`{"mode":"single","ctid":101}`))
-		decodeAPIResponse(t, rr.Code, http.StatusNotFound, rr.Body.String())
+		decodeAPIResponse(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
 
 	t.Run("queued", func(t *testing.T) {

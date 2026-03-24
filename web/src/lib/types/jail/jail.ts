@@ -63,10 +63,7 @@ export const SimpleJailSchema = z.object({
 
 export const SimpleJailTemplateSchema = z.object({
     id: z.number().int(),
-    name: z.string().transform((val) => {
-        return val.replace(/\s*Template$/, "");
-    }),
-    sourceCtId: z.number().int(),
+    name: z.string(),
     sourceJailName: z.string(),
 });
 
@@ -120,7 +117,6 @@ export const JailTemplateHookSchema = z.object({
 export const JailTemplateSchema = z.object({
     id: z.number().int(),
     name: z.string(),
-    sourceCtId: z.number().int(),
     sourceJailName: z.string(),
     pool: z.string(),
     rootDataset: z.string(),

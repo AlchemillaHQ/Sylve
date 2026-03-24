@@ -22,8 +22,6 @@
 		state?: 'active' | 'inactive';
 		resourceId?: number;
 		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
-		sourceCtId?: number;
-		sourceRid?: number;
 		nodeHostname?: string;
 		children?: TreeItem[];
 	}
@@ -190,23 +188,21 @@
 	let templateChildren = $derived.by(() => {
 		const jailTemplates = (simpleJailTemplates.current || []).map((template) => ({
 			id: `jail-template-${template.id}`,
-			sortId: template.sourceCtId,
+			sortId: template.id,
 			resourceId: template.id,
 			resourceType: 'jail-template' as const,
-			sourceCtId: template.sourceCtId,
 			nodeHostname: node,
-			label: `${template.name} (CT ${template.sourceCtId})`,
+			label: template.name,
 			icon: 'icon-park-outline--prison'
 		}));
 
 		const vmTemplates = (simpleVMTemplates.current || []).map((template) => ({
 			id: `vm-template-${template.id}`,
-			sortId: template.sourceRid,
+			sortId: template.id,
 			resourceId: template.id,
 			resourceType: 'vm-template' as const,
-			sourceRid: template.sourceRid,
 			nodeHostname: node,
-			label: `${template.name} (VM ${template.sourceRid})`,
+			label: template.name,
 			icon: 'mdi--monitor-shimmer'
 		}));
 

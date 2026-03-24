@@ -143,6 +143,10 @@ type VMTemplateStoragePoolAssignment struct {
 	Pool            string `json:"pool"`
 }
 
+type ConvertToTemplateRequest struct {
+	Name string `json:"name"`
+}
+
 type CreateFromTemplateRequest struct {
 	Mode       string `json:"mode"`
 	RID        uint   `json:"rid"`

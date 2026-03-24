@@ -28,7 +28,7 @@ import (
 type mockVMTemplateService struct {
 	listFn           func() ([]libvirtServiceInterfaces.SimpleTemplateList, error)
 	getFn            func(templateID uint) (*vmModels.VMTemplate, error)
-	preflightConvert func(ctx context.Context, rid uint) error
+	preflightConvert func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	preflightCreate  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 	deleteFn         func(ctx context.Context, templateID uint) error
 }
@@ -47,11 +47,15 @@ func (m *mockVMTemplateService) GetVMTemplate(templateID uint) (*vmModels.VMTemp
 	return m.getFn(templateID)
 }
 
-func (m *mockVMTemplateService) PreflightConvertVMToTemplate(ctx context.Context, rid uint) error {
+func (m *mockVMTemplateService) PreflightConvertVMToTemplate(
+	ctx context.Context,
+	rid uint,
+	req libvirtServiceInterfaces.ConvertToTemplateRequest,
+) error {
 	if m.preflightConvert == nil {
 		return nil
 	}
-	return m.preflightConvert(ctx, rid)
+	return m.preflightConvert(ctx, rid, req)
 }
 
 func (m *mockVMTemplateService) PreflightCreateVMsFromTemplate(
@@ -114,7 +118,7 @@ func TestListVMTemplatesSimpleHandler(t *testing.T) {
 		r.GET("/vm/templates/simple", ListVMTemplatesSimple(&mockVMTemplateService{
 			listFn: func() ([]libvirtServiceInterfaces.SimpleTemplateList, error) {
 				return []libvirtServiceInterfaces.SimpleTemplateList{
-					{ID: 2, Name: "web", SourceRID: 150, SourceVMName: "web-150"},
+					{ID: 2, Name: "web", SourceVMName: "web-150"},
 				}, nil
 			},
 		}))
@@ -168,7 +172,13 @@ func TestConvertVMTemplateHandlerMappings(t *testing.T) {
 			c.Set("Username", "tester")
 			ConvertVMToTemplate(&mockVMTemplateService{}, lifecycleSvc)(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/templates/convert/200", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/vm/templates/convert/200",
+			[]byte(`{"name":"web-template"}`),
+		)
 		assertStatus(t, rr.Code, http.StatusAccepted, rr.Body.String())
 	})
 
@@ -191,14 +201,33 @@ func TestConvertVMTemplateHandlerMappings(t *testing.T) {
 			ConvertVMToTemplate(&mockVMTemplateService{}, lifecycleSvc)(c)
 		})
 
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/templates/convert/200", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/vm/templates/convert/200",
+			[]byte(`{"name":"web-template"}`),
+		)
 		assertStatus(t, rr.Code, http.StatusConflict, rr.Body.String())
 	})
 
 	t.Run("invalid rid", func(t *testing.T) {
 		r := gin.New()
 		r.POST("/vm/templates/convert/:rid", ConvertVMToTemplate(&mockVMTemplateService{}, setupVMTemplateLifecycle(t)))
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/templates/convert/nope", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/vm/templates/convert/nope",
+			[]byte(`{"name":"web-template"}`),
+		)
+		assertStatus(t, rr.Code, http.StatusBadRequest, rr.Body.String())
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		r := gin.New()
+		r.POST("/vm/templates/convert/:rid", ConvertVMToTemplate(&mockVMTemplateService{}, setupVMTemplateLifecycle(t)))
+		rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/vm/templates/convert/200", []byte(`{"name":`))
 		assertStatus(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
 
@@ -207,12 +236,18 @@ func TestConvertVMTemplateHandlerMappings(t *testing.T) {
 		r.POST("/vm/templates/convert/:rid", func(c *gin.Context) {
 			c.Set("Username", "tester")
 			ConvertVMToTemplate(&mockVMTemplateService{
-				preflightConvert: func(context.Context, uint) error {
+				preflightConvert: func(context.Context, uint, libvirtServiceInterfaces.ConvertToTemplateRequest) error {
 					return errText("vm_must_be_shut_off")
 				},
 			}, setupVMTemplateLifecycle(t))(c)
 		})
-		rr := testutil.PerformRequest(t, r, http.MethodPost, "/vm/templates/convert/200", nil, nil)
+		rr := testutil.PerformJSONRequest(
+			t,
+			r,
+			http.MethodPost,
+			"/vm/templates/convert/200",
+			[]byte(`{"name":"web-template"}`),
+		)
 		assertStatus(t, rr.Code, http.StatusBadRequest, rr.Body.String())
 	})
 }

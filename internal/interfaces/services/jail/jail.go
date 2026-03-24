@@ -88,7 +88,6 @@ type SimpleList struct {
 type SimpleTemplateList struct {
 	ID             uint   `json:"id"`
 	Name           string `json:"name"`
-	SourceCTID     uint   `json:"sourceCtId"`
 	SourceJailName string `json:"sourceJailName"`
 }
 

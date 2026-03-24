@@ -150,23 +150,21 @@
 				const templateChildren = (n.jailTemplates ?? [])
 					.map((template) => ({
 						id: `jail-template-${n.nodeUUID}-${template.id}`,
-						sortId: template.sourceCtId,
+						sortId: template.id,
 						resourceId: template.id,
 						resourceType: 'jail-template' as const,
-						sourceCtId: template.sourceCtId,
 						nodeHostname: n.hostname,
-						label: `${template.name} (CT ${template.sourceCtId})`,
+						label: template.name,
 						icon: 'mdi--file-tree-outline'
 					}))
 					.concat(
 						(n.vmTemplates ?? []).map((template) => ({
 							id: `vm-template-${n.nodeUUID}-${template.id}`,
-							sortId: template.sourceRid,
+							sortId: template.id,
 							resourceId: template.id,
 							resourceType: 'vm-template' as const,
-							sourceRid: template.sourceRid,
 							nodeHostname: n.hostname,
-							label: `${template.name} (VM ${template.sourceRid})`,
+							label: template.name,
 							icon: 'mdi--monitor-shimmer'
 						}))
 					)

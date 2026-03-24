@@ -56,12 +56,12 @@ func vmTemplateStoragePrefix(storageType vmModels.VMStorageType) (string, error)
 	}
 }
 
-func vmTemplateStorageDatasetPath(pool string, sourceRID uint, storageType vmModels.VMStorageType, sourceStorageID uint) (string, error) {
+func vmTemplateStorageDatasetPath(pool string, templateID uint, storageType vmModels.VMStorageType, sourceStorageID uint) (string, error) {
 	prefix, err := vmTemplateStoragePrefix(storageType)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s/sylve/vm-templates/%d/%s-%d", pool, sourceRID, prefix, sourceStorageID), nil
+	return fmt.Sprintf("%s/sylve/vm-templates/%d/%s-%d", pool, templateID, prefix, sourceStorageID), nil
 }
 
 func vmTargetStorageDatasetPath(pool string, rid uint, storageType vmModels.VMStorageType, storageID uint) (string, error) {
@@ -248,6 +248,32 @@ func templateHasCloudInit(template vmModels.VMTemplate) bool {
 	return strings.TrimSpace(template.CloudInitData) != "" ||
 		strings.TrimSpace(template.CloudInitMetaData) != "" ||
 		strings.TrimSpace(template.CloudInitNetworkConfig) != ""
+}
+
+func normalizeVMTemplateName(name string) string {
+	return strings.TrimSpace(name)
+}
+
+func (s *Service) ensureUniqueVMTemplateName(name string) error {
+	normalized := normalizeVMTemplateName(name)
+	if normalized == "" {
+		return fmt.Errorf("template_name_required")
+	}
+	if len(normalized) > 120 {
+		return fmt.Errorf("template_name_too_long")
+	}
+
+	var count int64
+	if err := s.DB.Model(&vmModels.VMTemplate{}).
+		Where("LOWER(name) = ?", strings.ToLower(normalized)).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_template_name_uniqueness: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("template_name_already_in_use")
+	}
+
+	return nil
 }
 
 func rewriteCloudInitMetadataIdentity(metadata, prefix, vmName string, rid uint) (string, error) {
@@ -663,10 +689,6 @@ func (s *Service) preflightCreateVMsFromTemplate(
 		return plan, fmt.Errorf("failed_to_get_template: %w", err)
 	}
 
-	if err := s.requireVMMutationOwnership(template.SourceRID); err != nil {
-		return plan, err
-	}
-
 	targets, err := s.buildVMTemplateTargets(template, req)
 	if err != nil {
 		return plan, err
@@ -950,7 +972,6 @@ func (s *Service) GetVMTemplatesSimple() ([]libvirtServiceInterfaces.SimpleTempl
 		out = append(out, libvirtServiceInterfaces.SimpleTemplateList{
 			ID:           template.ID,
 			Name:         template.Name,
-			SourceRID:    template.SourceRID,
 			SourceVMName: template.SourceVMName,
 		})
 	}
@@ -974,9 +995,16 @@ func (s *Service) GetVMTemplate(templateID uint) (*vmModels.VMTemplate, error) {
 	return &template, nil
 }
 
-func (s *Service) PreflightConvertVMToTemplate(ctx context.Context, rid uint) error {
+func (s *Service) PreflightConvertVMToTemplate(
+	ctx context.Context,
+	rid uint,
+	req libvirtServiceInterfaces.ConvertToTemplateRequest,
+) error {
 	if rid == 0 {
 		return fmt.Errorf("invalid_rid")
+	}
+	if err := s.ensureUniqueVMTemplateName(req.Name); err != nil {
+		return err
 	}
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err
@@ -1027,23 +1055,6 @@ func (s *Service) PreflightConvertVMToTemplate(ctx context.Context, rid uint) er
 		return fmt.Errorf("no_cloneable_storage")
 	}
 
-	var existing vmModels.VMTemplate
-	hasExisting := false
-	if err := s.DB.First(&existing, "source_rid = ?", rid).Error; err == nil {
-		hasExisting = true
-	}
-
-	reclaimByPool := make(map[string]uint64)
-	if hasExisting {
-		for _, storage := range existing.Storages {
-			pool := strings.TrimSpace(storage.Pool)
-			if pool == "" {
-				continue
-			}
-			reclaimByPool[pool] += storage.EstimatedBytes
-		}
-	}
-
 	for pool, required := range requiredByPool {
 		if pool == "" {
 			return fmt.Errorf("storage_pool_required")
@@ -1056,15 +1067,7 @@ func (s *Service) PreflightConvertVMToTemplate(ctx context.Context, rid uint) er
 			return fmt.Errorf("pool_not_found")
 		}
 
-		available := zpool.Free
-		reclaim := reclaimByPool[pool]
-		if available > ^uint64(0)-reclaim {
-			available = ^uint64(0)
-		} else {
-			available += reclaim
-		}
-
-		if required > available {
+		if required > zpool.Free {
 			return fmt.Errorf("insufficient_pool_space")
 		}
 	}
@@ -1084,77 +1087,18 @@ func (s *Service) PreflightConvertVMToTemplate(ctx context.Context, rid uint) er
 	return nil
 }
 
-func (s *Service) ConvertVMToTemplate(ctx context.Context, rid uint) error {
-	if err := s.PreflightConvertVMToTemplate(ctx, rid); err != nil {
+func (s *Service) ConvertVMToTemplate(
+	ctx context.Context,
+	rid uint,
+	req libvirtServiceInterfaces.ConvertToTemplateRequest,
+) (retErr error) {
+	if err := s.PreflightConvertVMToTemplate(ctx, rid, req); err != nil {
 		return err
 	}
 
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm: %w", err)
-	}
-
-	templateStorages := make([]vmModels.VMTemplateStorage, 0)
-	for _, storage := range vm.Storages {
-		if storage.Type != vmModels.VMStorageTypeRaw && storage.Type != vmModels.VMStorageTypeZVol {
-			continue
-		}
-
-		sourceDataset, err := vmStorageSourceDatasetName(storage, vm.RID)
-		if err != nil {
-			return err
-		}
-		sourceDS, err := s.GZFS.ZFS.Get(ctx, sourceDataset, false)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_source_storage_dataset: %w", err)
-		}
-		if sourceDS == nil {
-			return fmt.Errorf("source_storage_dataset_not_found")
-		}
-
-		templateDataset, err := vmTemplateStorageDatasetPath(storage.Pool, vm.RID, storage.Type, storage.ID)
-		if err != nil {
-			return err
-		}
-
-		parentDataset := fmt.Sprintf("%s/sylve/vm-templates/%d", storage.Pool, vm.RID)
-		if err := s.ensureDatasetPath(ctx, parentDataset); err != nil {
-			return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
-		}
-
-		if existing, getErr := s.GZFS.ZFS.Get(ctx, templateDataset, false); getErr == nil && existing != nil {
-			if err := existing.Destroy(ctx, true, false); err != nil {
-				return fmt.Errorf("failed_to_destroy_existing_template_storage_dataset: %w", err)
-			}
-		}
-
-		snapshotName := fmt.Sprintf("sylve_vm_template_%d_%d", vm.RID, time.Now().UTC().UnixMilli())
-		snapshot, err := sourceDS.Snapshot(ctx, snapshotName, true)
-		if err != nil {
-			return fmt.Errorf("failed_to_snapshot_source_storage_dataset: %w", err)
-		}
-		if _, err := snapshot.SendToDataset(ctx, templateDataset, false); err != nil {
-			_ = snapshot.Destroy(ctx, true, false)
-			return fmt.Errorf("failed_to_copy_storage_dataset_to_template: %w", err)
-		}
-		_ = snapshot.Destroy(ctx, true, false)
-
-		templateStorages = append(templateStorages, vmModels.VMTemplateStorage{
-			SourceStorageID: storage.ID,
-			Type:            storage.Type,
-			Emulation:       storage.Emulation,
-			Pool:            storage.Pool,
-			Size:            storage.Size,
-			BootOrder:       storage.BootOrder,
-			RecordSize:      storage.RecordSize,
-			VolBlockSize:    storage.VolBlockSize,
-			TemplateDataset: templateDataset,
-			EstimatedBytes:  datasetEstimatedUsed(sourceDS.Used, sourceDS.Referenced),
-		})
-	}
-
-	if len(templateStorages) == 0 {
-		return fmt.Errorf("no_cloneable_storage")
 	}
 
 	templateNetworks := make([]vmModels.VMTemplateNetwork, 0, len(vm.Networks))
@@ -1178,15 +1122,8 @@ func (s *Service) ConvertVMToTemplate(ctx context.Context, rid uint) error {
 		})
 	}
 
-	templateName := strings.TrimSpace(vm.Name)
-	if templateName == "" {
-		templateName = fmt.Sprintf("VM-%d", vm.RID)
-	}
-	templateName = fmt.Sprintf("%s Template", templateName)
-
 	template := vmModels.VMTemplate{
-		Name:                   templateName,
-		SourceRID:              vm.RID,
+		Name:                   normalizeVMTemplateName(req.Name),
 		SourceVMName:           vm.Name,
 		Description:            vm.Description,
 		CPUSockets:             vm.CPUSockets,
@@ -1210,22 +1147,93 @@ func (s *Service) ConvertVMToTemplate(ctx context.Context, rid uint) error {
 		CloudInitNetworkConfig: vm.CloudInitNetworkConfig,
 		IgnoreUMSR:             vm.IgnoreUMSR,
 		QemuGuestAgent:         vm.QemuGuestAgent,
-		Storages:               templateStorages,
+		Storages:               []vmModels.VMTemplateStorage{},
 		Networks:               templateNetworks,
 	}
 
-	var existing vmModels.VMTemplate
-	if err := s.DB.Where("source_rid = ?", vm.RID).First(&existing).Error; err == nil {
-		template.ID = existing.ID
-		if err := s.DB.Model(&existing).Updates(&template).Error; err != nil {
-			return fmt.Errorf("failed_to_update_vm_template: %w", err)
+	if err := s.DB.Create(&template).Error; err != nil {
+		return fmt.Errorf("failed_to_create_vm_template: %w", err)
+	}
+
+	createdDatasetNames := make([]string, 0)
+	defer func() {
+		if retErr == nil {
+			return
 		}
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		if err := s.DB.Create(&template).Error; err != nil {
-			return fmt.Errorf("failed_to_create_vm_template: %w", err)
+
+		for _, dataset := range createdDatasetNames {
+			ds, err := s.GZFS.ZFS.Get(ctx, dataset, false)
+			if err == nil && ds != nil {
+				_ = ds.Destroy(ctx, true, false)
+			}
 		}
-	} else {
-		return fmt.Errorf("failed_to_query_existing_vm_template: %w", err)
+		_ = s.DB.Delete(&vmModels.VMTemplate{}, template.ID).Error
+	}()
+
+	templateStorages := make([]vmModels.VMTemplateStorage, 0)
+	for _, storage := range vm.Storages {
+		if storage.Type != vmModels.VMStorageTypeRaw && storage.Type != vmModels.VMStorageTypeZVol {
+			continue
+		}
+
+		sourceDataset, err := vmStorageSourceDatasetName(storage, vm.RID)
+		if err != nil {
+			return err
+		}
+		sourceDS, err := s.GZFS.ZFS.Get(ctx, sourceDataset, false)
+		if err != nil {
+			return fmt.Errorf("failed_to_get_source_storage_dataset: %w", err)
+		}
+		if sourceDS == nil {
+			return fmt.Errorf("source_storage_dataset_not_found")
+		}
+
+		templateDataset, err := vmTemplateStorageDatasetPath(storage.Pool, template.ID, storage.Type, storage.ID)
+		if err != nil {
+			return err
+		}
+
+		parentDataset := fmt.Sprintf("%s/sylve/vm-templates/%d", storage.Pool, template.ID)
+		if err := s.ensureDatasetPath(ctx, parentDataset); err != nil {
+			return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
+		}
+
+		if existing, getErr := s.GZFS.ZFS.Get(ctx, templateDataset, false); getErr == nil && existing != nil {
+			return fmt.Errorf("template_storage_dataset_already_exists")
+		}
+
+		snapshotName := fmt.Sprintf("sylve_vm_template_%d_%d", vm.RID, time.Now().UTC().UnixMilli())
+		snapshot, err := sourceDS.Snapshot(ctx, snapshotName, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_snapshot_source_storage_dataset: %w", err)
+		}
+		if _, err := snapshot.SendToDataset(ctx, templateDataset, false); err != nil {
+			_ = snapshot.Destroy(ctx, true, false)
+			return fmt.Errorf("failed_to_copy_storage_dataset_to_template: %w", err)
+		}
+		_ = snapshot.Destroy(ctx, true, false)
+		createdDatasetNames = append(createdDatasetNames, templateDataset)
+
+		templateStorages = append(templateStorages, vmModels.VMTemplateStorage{
+			SourceStorageID: storage.ID,
+			Type:            storage.Type,
+			Emulation:       storage.Emulation,
+			Pool:            storage.Pool,
+			Size:            storage.Size,
+			BootOrder:       storage.BootOrder,
+			RecordSize:      storage.RecordSize,
+			VolBlockSize:    storage.VolBlockSize,
+			TemplateDataset: templateDataset,
+			EstimatedBytes:  datasetEstimatedUsed(sourceDS.Used, sourceDS.Referenced),
+		})
+	}
+
+	if len(templateStorages) == 0 {
+		return fmt.Errorf("no_cloneable_storage")
+	}
+
+	if err := s.DB.Model(&template).Update("storages", templateStorages).Error; err != nil {
+		return fmt.Errorf("failed_to_update_vm_template_storages: %w", err)
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("vm_template_convert_%d", vm.RID))
@@ -1274,10 +1282,6 @@ func (s *Service) DeleteVMTemplate(ctx context.Context, templateID uint) error {
 			return fmt.Errorf("template_not_found")
 		}
 		return fmt.Errorf("failed_to_get_template: %w", err)
-	}
-
-	if err := s.requireVMMutationOwnership(template.SourceRID); err != nil {
-		return err
 	}
 
 	for _, storage := range template.Storages {
