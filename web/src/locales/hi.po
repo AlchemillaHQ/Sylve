@@ -26,6 +26,7 @@ msgstr "कंसोल"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Storage"
@@ -46,6 +47,7 @@ msgstr "हार्डवेयर"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -769,6 +771,7 @@ msgstr "नोट बनाने में विफल"
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
@@ -808,6 +811,7 @@ msgid "Created"
 msgstr "बनाया गया"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
@@ -822,6 +826,7 @@ msgid "View"
 msgstr "देखें"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
@@ -994,6 +999,8 @@ msgstr "नोट"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -1134,6 +1141,10 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
@@ -1790,6 +1801,7 @@ msgstr "यह क्रिया वापस नहीं ली जा सक
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1882,12 +1894,12 @@ msgstr "फ़ोल्डर"
 msgid "File"
 msgstr "फ़ाइल"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' : 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> {0} बनाएँ"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' : 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "{0} का नाम दर्ज करें"
@@ -2684,7 +2696,7 @@ msgstr "व्यस्त पार्टीशन को हटाने म�
 msgid "Error {0}: {1}"
 msgstr "त्रुटि {0}: {1}"
 
-#. 0: isFolder ? 'folder' ; 1: name
+#. 0: isFolder ? 'folder' : 'file'; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "{0} \"{1}\" बनाने में विफल"
@@ -2730,17 +2742,17 @@ msgstr "<0/> नया फ़ोल्डर"
 msgid "{0} items"
 msgstr "{0} आइटम"
 
-#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
+#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} फ़ोल्डर, {1} फ़ाइलें"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "{0} \"{1}\" को हटाने में विफल।"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "{0} आइटम{1} को हटाने में विफल।"
@@ -2819,6 +2831,7 @@ msgstr "श्रेणीरहित (ISO, IMG, आदि)"
 msgid "Base / RootFS"
 msgstr "बेस / RootFS"
 
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
 msgstr "Cloud-Init"
@@ -4278,6 +4291,7 @@ msgstr "इस वर्चुअल मशीन के लिए वैकल�
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "Basic"
 msgstr "बुनियादी"
 
@@ -4626,6 +4640,7 @@ msgstr "सीपीयू कोर अपडेट हो गए"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "CPU"
 msgstr "सीपीयू (CPU)"
 
@@ -4665,6 +4680,7 @@ msgstr "जेल नहीं मिला"
 
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "RAM"
 msgstr "RAM"
 
@@ -5009,7 +5025,7 @@ msgstr "यूज़र डेटा आवश्यक है"
 msgid "Meta Data is required"
 msgstr "मेटा डेटा आवश्यक है"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "टेम्पलेट {0} {1}"
@@ -5031,6 +5047,7 @@ msgstr "टेम्पलेट बनाएँ"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "User Data"
 msgstr "यूज़र डेटा"
 
@@ -5039,11 +5056,13 @@ msgid "Insert a pre-made template"
 msgstr "पहले से बना टेम्पलेट डालें"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "Meta Data"
 msgstr "मेटा डेटा"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "Network Config"
 msgstr "नेटवर्क कॉन्फ़िग"
 
@@ -5530,6 +5549,7 @@ msgid "VNC modified"
 msgstr "VNC संशोधित किया गया"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "VNC"
 msgstr "VNC"
 
@@ -6728,6 +6748,7 @@ msgstr "पूल {0} हटा दिया गया"
 msgid "Shutoff"
 msgstr "बंद"
 
+#: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Serial"
 msgstr "सीरियल"
@@ -7312,7 +7333,7 @@ msgstr "नया बैकअप लक्ष्य"
 msgid "SSH Port"
 msgstr "SSH पोर्ट"
 
-#. 0: edit ? '(leave empty to keep existing)' : ''
+#. 0: edit ? '(leave empty to keep existing)'
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH निजी कुंजी {0}"
@@ -8446,9 +8467,8 @@ msgstr ""
 msgid "Jail Template"
 msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Failed to convert jail to template"
-msgstr ""
+#~ msgid "Failed to convert jail to template"
+#~ msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Template conversion queued"
@@ -8474,6 +8494,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Convert to Template"
 msgstr ""
 
@@ -8481,6 +8502,7 @@ msgstr ""
 msgid "<0/> Create Jail"
 msgstr ""
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> Delete Template"
 msgstr ""
@@ -8490,11 +8512,13 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Single"
 msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Multiple"
 msgstr ""
 
@@ -8511,11 +8535,13 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Count"
 msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Name Prefix"
 msgstr ""
 
@@ -8532,6 +8558,8 @@ msgid "Queued"
 msgstr ""
 
 #. 0: templateName; 1: task.guestId
+#. 0: templateName; 1: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Template {0} ({1})"
 msgstr ""
@@ -8575,9 +8603,11 @@ msgstr ""
 #. 0: templateId
 #. 0: templateId
 #. 0: templateId
+#. 0: templateId
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "Template {0}"
 msgstr ""
 
@@ -8605,25 +8635,33 @@ msgid "Invalid jail name prefix"
 msgstr ""
 
 #. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#. 0: createMode === 'single' ? 'VM' : 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Creating {0}"
 msgstr ""
 
 #. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#. 0: createMode === 'single' ? 'VM' : 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create {0}"
 msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "<0/> View Template"
 msgstr ""
 
+#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Deleting..."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
 msgid "Failed to load template details"
 msgstr ""
 
@@ -8700,6 +8738,7 @@ msgid "Select a ZFS pool"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Count must be positive"
 msgstr ""
 
@@ -8732,6 +8771,7 @@ msgid "Invalid create mode"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Selected pool is not available"
 msgstr ""
 
@@ -8754,9 +8794,8 @@ msgstr ""
 msgid "Basic Details"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Template/View.svelte
-msgid "Source CTID"
-msgstr ""
+#~ msgid "Source CTID"
+#~ msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 msgid "Source Jail"
@@ -8904,3 +8943,256 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Size (Read-only)"
 msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create VM Template - From VM"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create VM - Template"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template"
+msgstr ""
+
+#. 0: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Template {0}"
+msgstr ""
+
+#. 0: normalizedTemplateName(templateLabel)
+#. 0: templateName
+#. 0: task.guestId
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create VM - Template {0}"
+msgstr ""
+
+#. 0: vmName; 1: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create VM Template - {0} (VM RID {1})"
+msgstr ""
+
+#. 0: task.guestId
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create VM Template - VM RID {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Failed to convert to template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Create VM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Failed to load template data"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Template details are not loaded yet"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Template has no cloneable storage"
+msgstr ""
+
+#. 0: storage.sourceStorageId
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Select a pool for storage {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Invalid RID"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Invalid VM name"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Invalid RID range"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Invalid VM name prefix"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "One or more template switches do not exist"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Template storage dataset was not found"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "One or more RIDs are already in use"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "One or more VM names are already in use"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Invalid RID or RID range"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Not enough free space in selected pool(s)"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Select pools for all storages"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Cloud-init metadata YAML is invalid in template"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Failed to create VM from template"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Create VM request queued"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "<0/> Loading template details..."
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Template data unavailable"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Optional"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Starting RID"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Storage Pool Mapping"
+msgstr ""
+
+#. 0: storage.sourceStorageId; 1: storage.type.toUpperCase()
+#. 0: storage.sourceStorageId; 1: storage.type.toUpperCase()
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Storage #{0} ({1})"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Select pool"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "<0/> Rewrite cloud-init hostname + instance-id"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "Identity Prefix (optional)"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "If empty, VM name is used"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/Create.svelte
+#: src/lib/components/custom/VM/Template/Create.svelte
+msgid "VMs"
+msgstr ""
+
+#. 0: title
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "VM Template - {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Template ID"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Source VM"
+msgstr ""
+
+#. 0: template.cpuSockets; 1: template.cpuCores; 2: template.cpuThreads
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "{0}S / {1}C / {2}T"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "TPM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "No cloneable storage in template"
+msgstr ""
+
+#. 0: storage.pool; 1: formatBytesBinary(storage.size || 0); 2: storage.bootOrder
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Pool {0} • Size {1} • Boot order {2}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "No network interfaces in template"
+msgstr ""
+
+#. 0: idx + 1
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Network #{0}"
+msgstr ""
+
+#. 0: network.switchType; 1: network.switchName; 2: network.emulation
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "{0} switch: {1} • {2}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Template/View.svelte
+msgid "Cloud-init data is not set on this template"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template name is required"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template name already in use"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Convert To Template"
+msgstr ""
+
+#~ msgid "Provide a unique template name for this {0}."
+#~ msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template Name"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Template name"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "Convert"
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "VM must be shut off to convert to template"
+msgstr ""
+
+#~ msgid "Storage #{storage.sourceStorageId} ({0})"
+#~ msgstr ""

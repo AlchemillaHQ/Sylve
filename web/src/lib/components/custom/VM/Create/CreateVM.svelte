@@ -37,7 +37,8 @@
 			const result = await getNetworkObjects();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const networkSwitches = resource(
@@ -55,7 +56,8 @@
 			const result = await getPCIDevices();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const pptDevices = resource(
@@ -64,7 +66,8 @@
 			const result = await getPPTDevices();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const downloadsByUtype = resource(
@@ -73,7 +76,8 @@
 			const result = await getDownloadsByUType();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const vms = resource(
@@ -82,7 +86,8 @@
 			const result = await getSimpleVMs();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const jails = resource(
@@ -91,7 +96,8 @@
 			const result = await getSimpleJails();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const clusterNodes = resource(
@@ -100,7 +106,8 @@
 			const result = await getNodes();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: [] }
 	);
 
 	const basicSettings = resource(
@@ -109,7 +116,8 @@
 			const result = await getBasicSettings();
 			updateCache(key, result);
 			return result;
-		}
+		},
+		{ initialValue: { pools: [], services: [], initialized: false } }
 	);
 
 	let reload = $state(false);
@@ -305,7 +313,7 @@
 				{#each tabs as { value, label }}
 					<Tabs.Content {value}>
 						<div>
-							{#if value === 'basic' && clusterNodes.current}
+							{#if value === 'basic'}
 								<Basic
 									bind:name={modal.name}
 									bind:node={modal.node}
@@ -314,7 +322,7 @@
 									nodes={clusterNodes.current}
 									bind:refetch={reload}
 								/>
-							{:else if value === 'storage' && downloadsByUtype.current && basicSettings.current}
+							{:else if value === 'storage'}
 								<Storage
 									downloads={downloadsByUtype.current}
 									pools={basicSettings.current.pools}
@@ -325,7 +333,7 @@
 									bind:iso={modal.storage.iso}
 									cloudInit={modal.advanced.cloudInit}
 								/>
-							{:else if value === 'network' && networkObjects.current && networkSwitches.current}
+							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
 								<Network
 									switches={networkSwitches.current}
 									networkObjects={networkObjects.current}
@@ -333,7 +341,7 @@
 									bind:mac={modal.network.mac}
 									bind:emulation={modal.network.emulation}
 								/>
-							{:else if value === 'hardware' && pptDevices.current && vms.current}
+							{:else if value === 'hardware'}
 								<Hardware
 									devices={passablePci}
 									vms={vms.current}

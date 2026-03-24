@@ -21,7 +21,6 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { storage } from '$lib';
 	import type { CPUInfo } from '$lib/types/info/cpu';
@@ -403,7 +402,7 @@
 	);
 </script>
 
-<div class="flex h-full w-full flex-col">
+<div>
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#if jState.current}
 			{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
@@ -484,122 +483,118 @@
 		</div>
 	</div>
 
-	<div class="min-h-0 flex-1">
-		<ScrollArea orientation="both" class="h-full">
-			<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-				<Card.Root class="w-full gap-0 p-4">
-					<Card.Header class="p-0">
-						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-							{`${jail.current?.name} ${udTime ? `(${udTime})` : ''}`}
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="mt-3 p-0">
-						<div class="flex items-start">
-							<div class="flex items-center">
-								<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
-								{'Status'}
-							</div>
-							<div class="ml-auto">
-								{jState.current?.state === 'ACTIVE'
-									? 'Running'
-									: jState.current?.state === 'INACTIVE'
-										? 'Stopped'
-										: jState.current?.state}
-							</div>
-						</div>
+	<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+		<Card.Root class="w-full gap-0 p-4">
+			<Card.Header class="p-0">
+				<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
+					{`${jail.current?.name} ${udTime ? `(${udTime})` : ''}`}
+				</Card.Description>
+			</Card.Header>
+			<Card.Content class="mt-3 p-0">
+				<div class="flex items-start">
+					<div class="flex items-center">
+						<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
+						{'Status'}
+					</div>
+					<div class="ml-auto">
+						{jState.current?.state === 'ACTIVE'
+							? 'Running'
+							: jState.current?.state === 'INACTIVE'
+								? 'Stopped'
+								: jState.current?.state}
+					</div>
+				</div>
 
-						<div class="mt-2">
-							<div class="flex w-full justify-between pb-1">
-								<p class="inline-flex items-center">
-									<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
-									{'CPU Usage'}
-								</p>
-								<p class="ml-auto">
-									{#if jState.current?.state === 'ACTIVE'}
-										{`${jState.current.pcpu.toFixed(2)}% of ${jail.current.cores || logicalCores} Core(s)`}
-									{:else}
-										{`0% of ${jail.current.cores || logicalCores} Core(s)`}
-									{/if}
-								</p>
-							</div>
-
+				<div class="mt-2">
+					<div class="flex w-full justify-between pb-1">
+						<p class="inline-flex items-center">
+							<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
+							{'CPU Usage'}
+						</p>
+						<p class="ml-auto">
 							{#if jState.current?.state === 'ACTIVE'}
-								<Progress value={jState.current.pcpu} max={100} class="ml-auto h-2" />
+								{`${jState.current.pcpu.toFixed(2)}% of ${jail.current.cores || logicalCores} Core(s)`}
 							{:else}
-								<Progress value={0} max={100} class="ml-auto h-2" />
+								{`0% of ${jail.current.cores || logicalCores} Core(s)`}
 							{/if}
-						</div>
+						</p>
+					</div>
 
-						<div class="mt-2">
-							<div class="flex w-full justify-between pb-1">
-								<p class="inline-flex items-center">
-									<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
+					{#if jState.current?.state === 'ACTIVE'}
+						<Progress value={jState.current.pcpu} max={100} class="ml-auto h-2" />
+					{:else}
+						<Progress value={0} max={100} class="ml-auto h-2" />
+					{/if}
+				</div>
 
-									{'RAM Usage'}
-								</p>
-								<p class="ml-auto">
-									{`${memoryUsage.toFixed(2)}% of ${formatBytesBinary(jail.current.memory || totalRAM)}`}
-								</p>
-							</div>
+				<div class="mt-2">
+					<div class="flex w-full justify-between pb-1">
+						<p class="inline-flex items-center">
+							<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
 
-							{#if jState.current?.state === 'ACTIVE'}
-								<Progress
-									value={(jState.current.memory / (jail.current.memory || totalRAM)) * 100}
-									max={100}
-									class="ml-auto h-2"
-								/>
-							{:else}
-								<Progress value={0} max={100} class="ml-auto h-2" />
-							{/if}
-						</div>
-					</Card.Content>
-				</Card.Root>
+							{'RAM Usage'}
+						</p>
+						<p class="ml-auto">
+							{`${memoryUsage.toFixed(2)}% of ${formatBytesBinary(jail.current.memory || totalRAM)}`}
+						</p>
+					</div>
 
-				<Card.Root class="w-full gap-0 p-4">
-					<Card.Header class="p-0">
-						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-							Description
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="mt-3 p-0">
-						<CustomValueInput
-							label={''}
-							placeholder="Notes"
-							bind:value={jailDesc}
-							classes=""
-							textAreaClasses="!h-32"
-							type="textarea"
+					{#if jState.current?.state === 'ACTIVE'}
+						<Progress
+							value={(jState.current.memory / (jail.current.memory || totalRAM)) * 100}
+							max={100}
+							class="ml-auto h-2"
 						/>
-					</Card.Content>
-				</Card.Root>
-			</div>
+					{:else}
+						<Progress value={0} max={100} class="ml-auto h-2" />
+					{/if}
+				</div>
+			</Card.Content>
+		</Card.Root>
 
-			<div class="space-y-4 px-4 pb-4">
-				<LineBrush
-					title="CPU Usage"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt).getTime(),
-						value: Number(data.cpuUsage)
-					}))}
-					percentage={true}
-					color="one"
-					containerContentHeight="h-64"
-					titleIconClass="icon-[solar--cpu-bold]"
+		<Card.Root class="w-full gap-0 p-4">
+			<Card.Header class="p-0">
+				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
+					Description
+				</Card.Description>
+			</Card.Header>
+			<Card.Content class="mt-3 p-0">
+				<CustomValueInput
+					label={''}
+					placeholder="Notes"
+					bind:value={jailDesc}
+					classes=""
+					textAreaClasses="!h-32"
+					type="textarea"
 				/>
+			</Card.Content>
+		</Card.Root>
+	</div>
 
-				<LineBrush
-					title="Memory Usage"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt).getTime(),
-						value: Number(data.memoryUsage)
-					}))}
-					percentage={true}
-					color="two"
-					containerContentHeight="h-64"
-					titleIconClass="icon-[ph--memory]"
-				/>
-			</div>
-		</ScrollArea>
+	<div class="space-y-4 px-4 pb-4">
+		<LineBrush
+			title="CPU Usage"
+			points={stats.current.map((data) => ({
+				date: new Date(data.createdAt).getTime(),
+				value: Number(data.cpuUsage)
+			}))}
+			percentage={true}
+			color="one"
+			containerContentHeight="h-64"
+			titleIconClass="icon-[solar--cpu-bold]"
+		/>
+
+		<LineBrush
+			title="Memory Usage"
+			points={stats.current.map((data) => ({
+				date: new Date(data.createdAt).getTime(),
+				value: Number(data.memoryUsage)
+			}))}
+			percentage={true}
+			color="two"
+			containerContentHeight="h-64"
+			titleIconClass="icon-[ph--memory]"
+		/>
 	</div>
 </div>
 

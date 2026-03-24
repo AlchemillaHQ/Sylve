@@ -61,7 +61,7 @@ func vmTemplateStorageDatasetPath(pool string, templateID uint, storageType vmMo
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s/sylve/vm-templates/%d/%s-%d", pool, templateID, prefix, sourceStorageID), nil
+	return fmt.Sprintf("%s/sylve/virtual-machines/templates/%d/%s-%d", pool, templateID, prefix, sourceStorageID), nil
 }
 
 func vmTargetStorageDatasetPath(pool string, rid uint, storageType vmModels.VMStorageType, storageID uint) (string, error) {
@@ -865,6 +865,23 @@ func (s *Service) createVMFromTemplateTarget(
 		Networks:               []vmModels.Network{},
 	}
 
+	networkSwitchIDs := make([]uint, len(template.Networks))
+	for idx, network := range template.Networks {
+		switchName := strings.TrimSpace(network.SwitchName)
+		if switchName == "" {
+			continue
+		}
+
+		switchID, err := s.resolveSwitchID(switchName, network.SwitchType)
+		if err != nil {
+			if strings.Contains(err.Error(), "switch_not_found") {
+				return fmt.Errorf("template_network_switch_not_found")
+			}
+			return err
+		}
+		networkSwitchIDs[idx] = switchID
+	}
+
 	clonePlan := make([]vmTemplateStorageClone, 0, len(template.Storages))
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
@@ -908,17 +925,9 @@ func (s *Service) createVMFromTemplateTarget(
 		}
 
 		for idx, network := range template.Networks {
-			switchName := strings.TrimSpace(network.SwitchName)
-			if switchName == "" {
+			switchID := networkSwitchIDs[idx]
+			if switchID == 0 {
 				continue
-			}
-
-			switchID, err := s.resolveSwitchID(switchName, network.SwitchType)
-			if err != nil {
-				if strings.Contains(err.Error(), "switch_not_found") {
-					return fmt.Errorf("template_network_switch_not_found")
-				}
-				return err
 			}
 
 			macID, err := s.createUniqueMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
@@ -1193,7 +1202,7 @@ func (s *Service) ConvertVMToTemplate(
 			return err
 		}
 
-		parentDataset := fmt.Sprintf("%s/sylve/vm-templates/%d", storage.Pool, template.ID)
+		parentDataset := fmt.Sprintf("%s/sylve/virtual-machines/templates/%d", storage.Pool, template.ID)
 		if err := s.ensureDatasetPath(ctx, parentDataset); err != nil {
 			return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
 		}
@@ -1232,7 +1241,9 @@ func (s *Service) ConvertVMToTemplate(
 		return fmt.Errorf("no_cloneable_storage")
 	}
 
-	if err := s.DB.Model(&template).Update("storages", templateStorages).Error; err != nil {
+	if err := s.DB.Model(&template).
+		Select("storages").
+		Updates(vmModels.VMTemplate{Storages: templateStorages}).Error; err != nil {
 		return fmt.Errorf("failed_to_update_vm_template_storages: %w", err)
 	}
 

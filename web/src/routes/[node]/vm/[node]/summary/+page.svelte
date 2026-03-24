@@ -16,7 +16,6 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
-	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 	import {
@@ -524,7 +523,7 @@
 	{/if}
 {/snippet}
 
-<div class="flex h-full w-full flex-col">
+<div>
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#key data.vm.rid}
 			<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
@@ -567,132 +566,127 @@
 		</div>
 	</div>
 
-	<div class="min-h-0 flex-1">
-		<ScrollArea orientation="both" class="h-full">
-			<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-				<Card.Root class="w-full gap-0 p-4">
-					<Card.Header class="p-0">
-						<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-							<div class="flex items-center gap-1.5 whitespace-nowrap">
-								{#if initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
-									<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"
-									></span>
-								{/if}
-								<span>{vm.current.name}</span>
-								{#if udTime}
-									<span>({udTime})</span>
-								{/if}
-							</div>
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="mt-3 p-0">
-						<div class="flex items-start">
-							<div class="flex items-center">
-								<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
-								{'Status'}
-							</div>
-							<div class="ml-auto">
-								{domain.current.status}
-							</div>
-						</div>
+	<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+		<Card.Root class="w-full gap-0 p-4">
+			<Card.Header class="p-0">
+				<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
+					<div class="flex items-center gap-1.5 whitespace-nowrap">
+						{#if initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
+							<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"></span>
+						{/if}
+						<span>{vm.current.name}</span>
+						{#if udTime}
+							<span>({udTime})</span>
+						{/if}
+					</div>
+				</Card.Description>
+			</Card.Header>
+			<Card.Content class="mt-3 p-0">
+				<div class="flex items-start">
+					<div class="flex items-center">
+						<span class="icon-[fluent--status-12-filled] mr-1 h-5 w-5"></span>
+						{'Status'}
+					</div>
+					<div class="ml-auto">
+						{domain.current.status}
+					</div>
+				</div>
 
-						<div class="mt-2">
-							<div class="flex w-full justify-between pb-1">
-								<p class="inline-flex items-center">
-									<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
+				<div class="mt-2">
+					<div class="flex w-full justify-between pb-1">
+						<p class="inline-flex items-center">
+							<span class="icon-[solar--cpu-bold] mr-1 h-5 w-5"></span>
 
-									{'CPU Usage'}
-								</p>
-								<p class="ml-auto">
-									{#if domain.current.status === 'Running'}
-										{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
-									{:else}
-										{`0% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
-									{/if}
-								</p>
-							</div>
-
+							{'CPU Usage'}
+						</p>
+						<p class="ml-auto">
 							{#if domain.current.status === 'Running'}
-								<Progress value={recentStat.cpuUsage || 0} max={100} class="ml-auto h-2" />
+								{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 							{:else}
-								<Progress value={0} max={100} class="ml-auto h-2" />
+								{`0% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 							{/if}
-						</div>
+						</p>
+					</div>
 
-						<div class="mt-2">
-							<div class="flex w-full justify-between pb-1">
-								<p class="inline-flex items-center">
-									<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
+					{#if domain.current.status === 'Running'}
+						<Progress value={recentStat.cpuUsage || 0} max={100} class="ml-auto h-2" />
+					{:else}
+						<Progress value={0} max={100} class="ml-auto h-2" />
+					{/if}
+				</div>
 
-									{'RAM Usage'}
-								</p>
-								<p class="ml-auto">
-									{#if vm}
-										{#if domain.current.status === 'Running'}
-											{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${formatBytesBinary(vm.current.ram || 0)}`}
-										{:else}
-											{`0% of ${formatBytesBinary(vm.current.ram || 0)}`}
-										{/if}
-									{/if}
-								</p>
-							</div>
+				<div class="mt-2">
+					<div class="flex w-full justify-between pb-1">
+						<p class="inline-flex items-center">
+							<span class="icon-[ph--memory] mr-1 h-5 w-5"></span>
 
-							{#if domain.current.status === 'Running'}
-								<Progress value={recentStat.memoryUsage || 0} max={100} class="ml-auto h-2" />
-							{:else}
-								<Progress value={0} max={100} class="ml-auto h-2" />
+							{'RAM Usage'}
+						</p>
+						<p class="ml-auto">
+							{#if vm}
+								{#if domain.current.status === 'Running'}
+									{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${formatBytesBinary(vm.current.ram || 0)}`}
+								{:else}
+									{`0% of ${formatBytesBinary(vm.current.ram || 0)}`}
+								{/if}
 							{/if}
-						</div>
-					</Card.Content>
-				</Card.Root>
+						</p>
+					</div>
 
-				<Card.Root class="w-full gap-0 p-4">
-					<Card.Header class="p-0">
-						<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-							Description
-						</Card.Description>
-					</Card.Header>
-					<Card.Content class="mt-3 p-0">
-						<CustomValueInput
-							label={''}
-							placeholder="Notes about VM"
-							bind:value={vmDescription}
-							classes=""
-							textAreaClasses="!h-32"
-							type="textarea"
-						/>
-					</Card.Content>
-				</Card.Root>
-			</div>
+					{#if domain.current.status === 'Running'}
+						<Progress value={recentStat.memoryUsage || 0} max={100} class="ml-auto h-2" />
+					{:else}
+						<Progress value={0} max={100} class="ml-auto h-2" />
+					{/if}
+				</div>
+			</Card.Content>
+		</Card.Root>
 
-			<GuestAgent rid={data.vm.rid} initialGaInfo={data.gaInfo} refreshSignal={gaRefreshSignal} />
-
-			<div class="space-y-4 px-4 pb-4">
-				<LineBrush
-					title="CPU Usage"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt).getTime(),
-						value: Number(data.cpuUsage)
-					}))}
-					percentage={true}
-					color="one"
-					containerContentHeight="h-64"
-					titleIconClass="icon-[solar--cpu-bold]"
+		<Card.Root class="w-full gap-0 p-4">
+			<Card.Header class="p-0">
+				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
+					Description
+				</Card.Description>
+			</Card.Header>
+			<Card.Content class="mt-3 p-0">
+				<CustomValueInput
+					label={''}
+					placeholder="Notes about VM"
+					bind:value={vmDescription}
+					classes=""
+					textAreaClasses="!h-32"
+					type="textarea"
 				/>
+			</Card.Content>
+		</Card.Root>
+	</div>
 
-				<LineBrush
-					title="Memory Usage"
-					points={stats.current.map((data) => ({
-						date: new Date(data.createdAt).getTime(),
-						value: Number(data.memoryUsage)
-					}))}
-					percentage={true}
-					color="two"
-					containerContentHeight="h-64"
-					titleIconClass="icon-[ph--memory]"
-				/>
-			</div>
-		</ScrollArea>
+	<GuestAgent rid={data.vm.rid} initialGaInfo={data.gaInfo} refreshSignal={gaRefreshSignal} />
+
+	<div class="space-y-4 px-4 pb-4">
+		<LineBrush
+			title="CPU Usage"
+			points={stats.current.map((data) => ({
+				date: new Date(data.createdAt).getTime(),
+				value: Number(data.cpuUsage)
+			}))}
+			percentage={true}
+			color="one"
+			containerContentHeight="h-64"
+			titleIconClass="icon-[solar--cpu-bold]"
+		/>
+
+		<LineBrush
+			title="Memory Usage"
+			points={stats.current.map((data) => ({
+				date: new Date(data.createdAt).getTime(),
+				value: Number(data.memoryUsage)
+			}))}
+			percentage={true}
+			color="two"
+			containerContentHeight="h-64"
+			titleIconClass="icon-[ph--memory]"
+		/>
 	</div>
 </div>
 

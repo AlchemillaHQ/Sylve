@@ -5,9 +5,7 @@
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
-	import { storage } from '$lib';
 	import { fade } from 'svelte/transition';
-	import { onMount } from 'svelte';
 	import { resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
 
@@ -18,7 +16,7 @@
 	let { children }: Props = $props();
 
 	const clusterDetails = resource(
-		[],
+		() => 'cluster-details-shell',
 		async () => {
 			return await getDetails();
 		},
@@ -43,27 +41,8 @@
 	let topPaneDefaultSize = $state(90);
 	let bottomPaneDefaultSize = $state(10);
 	let lifecyclePaneActive = $state(false);
-	let childPaneAutoSaveId = $derived(
-		lifecyclePaneActive ? 'child-pane-auto-save-lifecycle' : 'child-pane-auto-save'
-	);
 
 	const lifecyclePaneBoost = 6;
-
-	let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-	function emitResize() {
-		if (resizeTimer) clearTimeout(resizeTimer);
-		resizeTimer = setTimeout(() => {
-			storage.windowSize = (storage.windowSize ?? 0) + 1;
-		}, 150);
-	}
-
-	onMount(() => {
-		window.addEventListener('resize', emitResize);
-		return () => {
-			window.removeEventListener('resize', emitResize);
-			if (resizeTimer) clearTimeout(resizeTimer);
-		};
-	});
 
 	function handleLifecycleActiveChange(active: boolean) {
 		lifecyclePaneActive = active;
@@ -79,15 +58,13 @@
 			<Resizable.PaneGroup
 				direction="vertical"
 				id="child-pane-auto"
-				autoSaveId={childPaneAutoSaveId}
-				onLayoutChange={emitResize}
+				autoSaveId="child-pane-auto-save"
 			>
 				<Resizable.Pane defaultSize={topPaneDefaultSize}>
 					<Resizable.PaneGroup
 						direction="horizontal"
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
-						onLayoutChange={emitResize}
 					>
 						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
 							<div class="h-full" transition:fade|global={{ duration: 400 }}>

@@ -418,7 +418,7 @@ func TestPreflightCreateFromTemplateInsufficientPoolSpaceSingleAndMultiple(t *te
 			Name:           "Template 106",
 			SourceJailName: "source-106",
 			Pool:           "zroot",
-			RootDataset:    "zroot/sylve/jails/clones/106",
+			RootDataset:    "zroot/sylve/jails/templates/template-106",
 			Type:           jailModels.JailTypeFreeBSD,
 		}
 		if err := dbConn.Create(&tpl).Error; err != nil {
@@ -427,7 +427,7 @@ func TestPreflightCreateFromTemplateInsufficientPoolSpaceSingleAndMultiple(t *te
 
 		runner := &fakeGZFSRunner{
 			datasets: map[string]fakeDatasetInfo{
-				"zroot/sylve/jails/clones/106": {Used: 80, Referenced: 80},
+				"zroot/sylve/jails/templates/template-106": {Used: 80, Referenced: 80},
 			},
 			pools: map[string]uint64{
 				"zroot": free,

@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { createVMFromTemplate, getVMTemplateById, type CreateVMFromTemplateRequest } from '$lib/api/vm/vm';
+	import {
+		createVMFromTemplate,
+		getVMTemplateById,
+		type CreateVMFromTemplateRequest
+	} from '$lib/api/vm/vm';
 	import { getPools } from '$lib/api/zfs/pool';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -9,6 +13,8 @@
 	import { isValidVMName } from '$lib/utils/string';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import SimpleSelect from '../../SimpleSelect.svelte';
+	import { handleAPIError } from '$lib/utils/http';
 
 	interface Props {
 		open: boolean;
@@ -42,8 +48,8 @@
 		}
 		return Boolean(
 			vmTemplate.cloudInitData?.trim() ||
-				vmTemplate.cloudInitMetaData?.trim() ||
-				vmTemplate.cloudInitNetworkConfig?.trim()
+			vmTemplate.cloudInitMetaData?.trim() ||
+			vmTemplate.cloudInitNetworkConfig?.trim()
 		);
 	}
 
@@ -153,18 +159,24 @@
 
 	function createErrorMessage(error?: string): string {
 		const err = (error || '').toLowerCase();
-		if (err.includes('template_network_switch_not_found')) return 'One or more template switches do not exist';
-		if (err.includes('template_storage_dataset_not_found')) return 'Template storage dataset was not found';
-		if (err.includes('template_has_no_cloneable_storage')) return 'Template has no cloneable storage';
-		if (err.includes('rid_range_contains_used_values')) return 'One or more RIDs are already in use';
+		if (err.includes('template_network_switch_not_found'))
+			return 'One or more template switches do not exist';
+		if (err.includes('template_storage_dataset_not_found'))
+			return 'Template storage dataset was not found';
+		if (err.includes('template_has_no_cloneable_storage'))
+			return 'Template has no cloneable storage';
+		if (err.includes('rid_range_contains_used_values'))
+			return 'One or more RIDs are already in use';
 		if (err.includes('vm_name_already_in_use')) return 'One or more VM names are already in use';
-		if (err.includes('invalid_rid') || err.includes('invalid_rid_range')) return 'Invalid RID or RID range';
+		if (err.includes('invalid_rid') || err.includes('invalid_rid_range'))
+			return 'Invalid RID or RID range';
 		if (err.includes('invalid_vm_name')) return 'Invalid VM name';
 		if (err.includes('invalid_name_prefix')) return 'Invalid VM name prefix';
 		if (err.includes('insufficient_pool_space')) return 'Not enough free space in selected pool(s)';
 		if (err.includes('pool_not_found')) return 'Selected pool is not available';
 		if (err.includes('storage_pool_required')) return 'Select pools for all storages';
-		if (err.includes('invalid_cloud_init_metadata_yaml')) return 'Cloud-init metadata YAML is invalid in template';
+		if (err.includes('invalid_cloud_init_metadata_yaml'))
+			return 'Cloud-init metadata YAML is invalid in template';
 		return 'Failed to create VM from template';
 	}
 
@@ -187,7 +199,7 @@
 							rewriteCloudInitIdentity: hasTemplateCloudInit ? rewriteCloudInitIdentity : false,
 							cloudInitPrefix:
 								hasTemplateCloudInit && rewriteCloudInitIdentity
-									? (cloudInitPrefix || undefined)
+									? cloudInitPrefix || undefined
 									: undefined
 						}
 					: {
@@ -199,13 +211,16 @@
 							rewriteCloudInitIdentity: hasTemplateCloudInit ? rewriteCloudInitIdentity : false,
 							cloudInitPrefix:
 								hasTemplateCloudInit && rewriteCloudInitIdentity
-									? (cloudInitPrefix || undefined)
+									? cloudInitPrefix || undefined
 									: undefined
 						};
 
 			const result = await createVMFromTemplate(templateId, payload, hostname);
 			if (result.error) {
-				toast.error(createErrorMessage(result.error), { position: 'bottom-center' });
+				handleAPIError(result);
+				if (!Array.isArray(result.error)) {
+					toast.error(createErrorMessage(result.error), { position: 'bottom-center' });
+				}
 				return;
 			}
 
@@ -328,22 +343,13 @@
 							<div class="text-xs text-muted-foreground">
 								Storage #{storage.sourceStorageId} ({storage.type.toUpperCase()})
 							</div>
-							<select
-								class="select select-sm border"
+
+							<SimpleSelect
+								options={availablePools.map((pool) => ({ label: pool.name, value: pool.name }))}
 								value={storagePoolBySourceId[storage.sourceStorageId] || ''}
-								onchange={(e) =>
-									updateStoragePool(
-										storage.sourceStorageId,
-										(e.currentTarget as HTMLSelectElement).value
-									)}
-							>
-								<option value="" disabled selected={!storagePoolBySourceId[storage.sourceStorageId]}>
-									Select pool
-								</option>
-								{#each availablePools as pool}
-									<option value={pool.name}>{pool.name}</option>
-								{/each}
-							</select>
+								placeholder="Select pool"
+								onChange={(e) => updateStoragePool(storage.sourceStorageId, e)}
+							/>
 						</div>
 					{/each}
 				</div>
@@ -370,7 +376,11 @@
 		{/if}
 
 		<Dialog.Footer>
-			<Button size="sm" disabled={actionLoading || loadingTemplate || !template} onclick={() => void create()}>
+			<Button
+				size="sm"
+				disabled={actionLoading || loadingTemplate || !template}
+				onclick={() => void create()}
+			>
 				{#if actionLoading}
 					<div class="flex items-center gap-2">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

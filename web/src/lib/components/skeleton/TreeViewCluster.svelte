@@ -15,6 +15,8 @@
 	import { slide } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
+	import { handleAPIError } from '$lib/utils/http';
 
 	interface SidebarProps {
 		id: string;
@@ -133,17 +135,29 @@
 					? await convertVMToTemplate(item.resourceId, { name }, item.nodeHostname)
 					: await convertJailToTemplate(item.resourceId, { name }, item.nodeHostname);
 			if (result.error) {
-				const err = (result.error || '').toLowerCase();
-				if (err.includes('template_name_already_in_use')) {
-					toast.error('Template name already in use', { position: 'bottom-center' });
+				handleAPIError(result);
+				if (!Array.isArray(result.error)) {
+					const err = (result.error || '').toLowerCase();
+					if (err.includes('template_name_already_in_use')) {
+						toast.error('Template name already in use', { position: 'bottom-center' });
+						return;
+					}
+
+					if (err.includes('template_name_required')) {
+						toast.error('Template name is required', { position: 'bottom-center' });
+						return;
+					}
+
+					if (err.includes('vm_must_be_shut_off')) {
+						toast.error('VM must be shut off to convert to template', {
+							position: 'bottom-center'
+						});
+						return;
+					}
+
+					toast.error('Failed to convert to template', { position: 'bottom-center' });
 					return;
 				}
-				if (err.includes('template_name_required')) {
-					toast.error('Template name is required', { position: 'bottom-center' });
-					return;
-				}
-				toast.error('Failed to convert to template', { position: 'bottom-center' });
-				return;
 			}
 
 			convertTemplateOpen = false;
@@ -232,13 +246,13 @@
 							Start
 						</ContextMenu.Item>
 					{/if}
-						<ContextMenu.Separator />
-						<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
-							<span class="icon-[mdi--content-copy] h-4 w-4"></span>
-							Convert to Template
-						</ContextMenu.Item>
-					{:else if item.resourceType === 'vm'}
-						{#if item.state === 'active'}
+					<ContextMenu.Separator />
+					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
+						Convert to Template
+					</ContextMenu.Item>
+				{:else if item.resourceType === 'vm'}
+					{#if item.state === 'active'}
 						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('reboot')}>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
 							Reboot
@@ -251,21 +265,21 @@
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
-						{:else}
-							<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
-								<span class="icon-[mdi--play] h-4 w-4"></span>
-								Start
-							</ContextMenu.Item>
-						{/if}
-						<ContextMenu.Separator />
-						<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
-							<span class="icon-[mdi--content-copy] h-4 w-4"></span>
-							Convert to Template
+					{:else}
+						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+							<span class="icon-[mdi--play] h-4 w-4"></span>
+							Start
 						</ContextMenu.Item>
-					{:else if item.resourceType === 'jail-template'}
-						<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
-							<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
-							View Template
+					{/if}
+					<ContextMenu.Separator />
+					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
+						Convert to Template
+					</ContextMenu.Item>
+				{:else if item.resourceType === 'jail-template'}
+					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
+						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
+						View Template
 					</ContextMenu.Item>
 					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
 						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
@@ -275,30 +289,30 @@
 					<ContextMenu.Item
 						class="gap-2 text-destructive"
 						onclick={() => (deleteTemplateOpen = true)}
-						>
-							<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
-							Delete Template
-						</ContextMenu.Item>
-					{:else if item.resourceType === 'vm-template'}
-						<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
-							<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
-							View Template
-						</ContextMenu.Item>
-						<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
-							<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
-							Create VM
-						</ContextMenu.Item>
-						<ContextMenu.Separator />
-						<ContextMenu.Item
-							class="gap-2 text-destructive"
-							onclick={() => (deleteTemplateOpen = true)}
-						>
-							<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
-							Delete Template
-						</ContextMenu.Item>
-					{/if}
-				</ContextMenu.Content>
-			</ContextMenu.Root>
+					>
+						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
+						Delete Template
+					</ContextMenu.Item>
+				{:else if item.resourceType === 'vm-template'}
+					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
+						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
+						View Template
+					</ContextMenu.Item>
+					<ContextMenu.Item class="gap-2" onclick={() => (createFromTemplateOpen = true)}>
+						<span class="icon-[mdi--plus-box-outline] h-4 w-4"></span>
+						Create VM
+					</ContextMenu.Item>
+					<ContextMenu.Separator />
+					<ContextMenu.Item
+						class="gap-2 text-destructive"
+						onclick={() => (deleteTemplateOpen = true)}
+					>
+						<span class="icon-[mdi--delete-outline] h-4 w-4"></span>
+						Delete Template
+					</ContextMenu.Item>
+				{/if}
+			</ContextMenu.Content>
+		</ContextMenu.Root>
 	{:else}
 		<div
 			role="button"
@@ -359,21 +373,21 @@
 	<Dialog.Root bind:open={convertTemplateOpen}>
 		<Dialog.Content class="max-w-md">
 			<Dialog.Header>
-				<Dialog.Title>Convert To Template</Dialog.Title>
-				<Dialog.Description>
-					Provide a unique template name for this {item.resourceType === 'vm' ? 'VM' : 'jail'}.
-				</Dialog.Description>
+				<Dialog.Title>
+					<div class="flex items-center gap-2">
+						<span class="icon icon-[tabler--template]"></span>
+						<span>Convert To Template</span>
+					</div>
+				</Dialog.Title>
 			</Dialog.Header>
 
-			<div class="space-y-2">
-				<label class="text-sm font-medium">Template Name</label>
-				<input
-					class="h-9 w-full rounded-md border px-2 text-sm"
-					type="text"
-					bind:value={convertTemplateName}
-					placeholder="Template name"
-				/>
-			</div>
+			<CustomValueInput
+				label="Template Name"
+				placeholder="Template name"
+				bind:value={convertTemplateName}
+				disabled={convertTemplateLoading}
+				classes="space-y-2"
+			/>
 
 			<Dialog.Footer>
 				<Button
@@ -384,7 +398,11 @@
 					}}
 					disabled={convertTemplateLoading}>Cancel</Button
 				>
-				<Button size="sm" onclick={() => void handleConvertToTemplate()} disabled={convertTemplateLoading}>
+				<Button
+					size="sm"
+					onclick={() => void handleConvertToTemplate()}
+					disabled={convertTemplateLoading}
+				>
 					{#if convertTemplateLoading}
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}

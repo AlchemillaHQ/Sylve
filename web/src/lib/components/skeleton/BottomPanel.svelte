@@ -293,14 +293,21 @@
 	let vmNameById = $derived.by(() => {
 		return new Map((simpleVmList.current || []).map((vm) => [vm.rid, vm.name]));
 	});
+
 	let jailNameByCtId = $derived.by(() => {
 		return new Map((simpleJails.current || []).map((jail) => [jail.ctId, jail.name]));
 	});
+
 	let templateNameById = $derived.by(() => {
-		return new Map((simpleJailTemplates.current || []).map((template) => [template.id, template.name]));
+		return new Map(
+			(simpleJailTemplates.current || []).map((template) => [template.id, template.name])
+		);
 	});
+
 	let vmTemplateNameById = $derived.by(() => {
-		return new Map((simpleVMTemplates.current || []).map((template) => [template.id, template.name]));
+		return new Map(
+			(simpleVMTemplates.current || []).map((template) => [template.id, template.name])
+		);
 	});
 
 	watch(

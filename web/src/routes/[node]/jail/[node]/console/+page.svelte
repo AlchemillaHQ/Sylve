@@ -483,7 +483,7 @@
 
 		{#if cState.current}
 			<div
-				class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center"
+				class="dark:text-secondary text-primary/70 flex flex-1 min-h-0 w-full flex-col items-center justify-center space-y-3 text-center"
 			>
 				<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
 
@@ -495,7 +495,7 @@
 		{/if}
 
 		<div
-			class="terminal-wrapper h-full w-full focus:outline-none caret-transparent"
+			class="terminal-wrapper flex-1 min-h-0 w-full focus:outline-none caret-transparent"
 			class:hidden={cState.current}
 			role="application"
 			aria-label="Jail terminal"

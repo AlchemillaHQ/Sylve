@@ -7,7 +7,7 @@
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	let openCategories: { [key: string]: boolean } = $state({});
-	import { Debounced, watch } from 'runed';
+	import { watch } from 'runed';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -260,17 +260,6 @@
 	});
 
 	let isConsoleRoute = $derived.by(() => page.url.pathname.endsWith('/console'));
-
-	const debouncedWindowSize = new Debounced(() => storage.windowSize, 150);
-
-	let hasInitialized = false;
-	function emitResize() {
-		if (hasInitialized) {
-			storage.windowSize = (storage.windowSize ?? 0) + 1;
-		} else {
-			hasInitialized = true;
-		}
-	}
 </script>
 
 <div class="flex h-full w-full flex-col">
@@ -309,7 +298,6 @@
 		class="h-full w-full"
 		id="main-pane-auto"
 		autoSaveId="main-pane-auto-save"
-		onLayoutChange={emitResize}
 	>
 		<Resizable.Pane defaultSize={15}>
 			<div class="h-full px-1.5">
@@ -328,15 +316,13 @@
 		</Resizable.Pane>
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
-			{#key debouncedWindowSize.current}
-				<div
-					class="h-full w-full"
-					class:overflow-hidden={isConsoleRoute}
-					class:overflow-auto={!isConsoleRoute}
-				>
+			{#if isConsoleRoute}
+				<div class="h-full w-full overflow-hidden">
 					{@render children?.()}
 				</div>
-			{/key}
+			{:else}
+				{@render children?.()}
+			{/if}
 		</Resizable.Pane>
 	</Resizable.PaneGroup>
 </div>

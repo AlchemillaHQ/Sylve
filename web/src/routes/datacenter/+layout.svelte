@@ -178,11 +178,9 @@
 		<Resizable.Handle withHandle />
 
 		<Resizable.Pane>
-			{#key debouncedWindowSize.current}
-				<div class="h-full overflow-auto">
-					{@render children?.()}
-				</div>
-			{/key}
+			<div class="h-full overflow-auto">
+				{@render children?.()}
+			</div>
 		</Resizable.Pane>
 	</Resizable.PaneGroup>
 </div>

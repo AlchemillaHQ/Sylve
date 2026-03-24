@@ -25,6 +25,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -798,7 +799,7 @@ func (s *Service) FastStatusCheck() {
 	}
 
 	if len(peerIDs) == 0 {
-		logger.L.Debug().Msg("FastStatusCheck: no peers in raft configuration")
+		logger.LogWithDeduplication(zerolog.DebugLevel, "FastStatusCheck: no peers in raft configuration")
 		return
 	}
 

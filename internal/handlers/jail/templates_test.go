@@ -26,7 +26,7 @@ func TestGetJailTemplateByID(t *testing.T) {
 		Name:           "Template 106",
 		SourceJailName: "web-106",
 		Pool:           "zroot",
-		RootDataset:    "zroot/sylve/jails/clones/106",
+		RootDataset:    "zroot/sylve/jails/templates/template-106",
 		Type:           jailModels.JailTypeFreeBSD,
 	}
 	if err := dbConn.Create(&template).Error; err != nil {
