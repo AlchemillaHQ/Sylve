@@ -6,8 +6,11 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { isValidAbsPath, sha256 } from '$lib/utils/string';
-	import type { FilePond as FilePondType, FilePondErrorDescription, FilePondFile } from 'filepond';
-	import { onMount } from 'svelte';
+	import type { FilePondErrorDescription, FilePondFile } from 'filepond';
+	import { registerPlugin } from 'filepond';
+	import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orientation';
+	import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
+	import { onDestroy, onMount } from 'svelte';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -45,8 +48,12 @@
 	let options = $state({ ...defaultOptions });
 	let hash = $state('');
 	let isProcessingUpload = $state(false);
-	let pond: FilePondType;
+	let uploadedPath = $state('');
+	let pondRenderKey = $state(0);
+	let closeResetTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 	let name = 'filepond';
+
+	registerPlugin(FilePondPluginImageExifOrientation, FilePondPluginImagePreview);
 
 	onMount(async () => {
 		hash = await sha256(storage.token || '', 1);
@@ -54,9 +61,13 @@
 
 	function resetState() {
 		options = { ...defaultOptions };
-		if (pond) {
-			pond.removeFiles();
-		}
+		uploadedPath = '';
+		pondRenderKey += 1;
+	}
+
+	function resetOptionsOnly() {
+		options = { ...defaultOptions };
+		uploadedPath = '';
 	}
 
 	function handleReset() {
@@ -66,49 +77,83 @@
 
 	function handleClose() {
 		if (loading || isProcessingUpload) return;
-		resetState();
 		onClose();
 	}
 
-	function parseUploadResponse(response: string): string {
+	watch(
+		() => open,
+		(current) => {
+			if (current) {
+				if (closeResetTimer) {
+					clearTimeout(closeResetTimer);
+					closeResetTimer = undefined;
+				}
+				return;
+			}
+
+			resetOptionsOnly();
+			closeResetTimer = setTimeout(() => {
+				pondRenderKey += 1;
+				closeResetTimer = undefined;
+			}, 320);
+		}
+	);
+
+	onDestroy(() => {
+		if (closeResetTimer) {
+			clearTimeout(closeResetTimer);
+			closeResetTimer = undefined;
+		}
+	});
+
+	function getUploadedPath(file: FilePondFile): string {
+		const serverId = typeof file.serverId === 'string' ? file.serverId.trim() : '';
+		if (isValidAbsPath(serverId)) {
+			return serverId;
+		}
+
 		try {
-			const parsed = JSON.parse(response);
+			const parsed = JSON.parse(serverId);
 			const uploadedPath = parsed?.data?.path;
-			if (typeof uploadedPath === 'string' && uploadedPath.length > 0) {
+			if (typeof uploadedPath === 'string' && isValidAbsPath(uploadedPath)) {
 				return uploadedPath;
 			}
-		} catch (error) {
-			console.error('Failed to parse upload response', error);
+		} catch {
+			// serverId can be a non-JSON id depending on backend response shape
 		}
 
-		return response;
-	}
-
-	function parseUploadError(response: string): string {
-		try {
-			const parsed = JSON.parse(response);
-			if (typeof parsed?.error === 'string') {
-				return parsed.error;
-			}
-			if (typeof parsed?.message === 'string') {
-				return parsed.message;
-			}
-		} catch (error) {
-			console.error('Failed to parse upload error', error);
-		}
-
-		return response;
+		return '';
 	}
 
 	async function handleProcessFile(error: FilePondErrorDescription | null, file: FilePondFile) {
 		if (error) {
-			toast.error(error.main || 'Upload failed', { position: 'bottom-center' });
+			toast.error(error.body || 'Upload failed', { position: 'bottom-center' });
 			return;
 		}
 
-		const uploadedPath = typeof file.serverId === 'string' ? file.serverId.trim() : '';
-		if (!isValidAbsPath(uploadedPath)) {
+		const resolvedPath = getUploadedPath(file);
+		if (!resolvedPath) {
 			toast.error('Uploaded file path is invalid', { position: 'bottom-center' });
+			return;
+		}
+
+		uploadedPath = resolvedPath;
+		toast.success('File uploaded, you can complete upload now', { position: 'bottom-center' });
+	}
+
+	function handleDownloadTypeChange(value: string) {
+		const selectedType = value as DownloadType;
+		options.downloadType = selectedType;
+
+		if (selectedType === 'base-rootfs' && options.automaticExtraction === false) {
+			options.automaticExtraction = true;
+		}
+	}
+
+	async function handleStartDownload() {
+		if (loading || isProcessingUpload) return;
+		if (!isValidAbsPath(uploadedPath)) {
+			toast.error('Upload a file first', { position: 'bottom-center' });
 			return;
 		}
 
@@ -121,30 +166,12 @@
 				automaticRawConversion: options.automaticRawConversion
 			});
 		} catch (uploadError) {
-			console.error('Failed to start download from uploaded file', uploadError);
-			toast.error('Failed to start download from uploaded file', { position: 'bottom-center' });
+			console.error('Failed to start move from uploaded file', uploadError);
+			toast.error('Failed to start move from uploaded file', { position: 'bottom-center' });
 		} finally {
 			isProcessingUpload = false;
 		}
 	}
-
-	function handleDownloadTypeChange(value: string) {
-		const selectedType = value as DownloadType;
-		options.downloadType = selectedType;
-
-		if (selectedType === 'base-rootfs' && options.automaticExtraction === false) {
-			options.automaticExtraction = true;
-		}
-	}
-
-	watch(
-		() => open,
-		(current) => {
-			if (!current) {
-				resetState();
-			}
-		}
-	);
 </script>
 
 <Dialog.Root bind:open>
@@ -172,15 +199,31 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="text-muted-foreground mt-2 text-xs">
-			Upload destination:
+		<div class="text-muted-foreground mt-2 text-xs hidden">
 			<span class="font-mono">{stagingPath}</span>
 		</div>
 
-		<div class="mt-2 flex flex-col gap-3">
+		{#key pondRenderKey}
+			<FilePond
+				class="min-h-18! overflow-hidden! mb-1!"
+				{name}
+				server={'/api/system/file-explorer/upload?path=' +
+					encodeURIComponent(stagingPath) +
+					'&hash=' +
+					hash}
+				allowMultiple={false}
+				maxFiles={1}
+				allowRevert={false}
+				stylePanelLayout="compact"
+				onprocessfile={handleProcessFile}
+				credits={false}
+			/>
+		{/key}
+
+		<div class="mt-0 flex flex-col gap-3">
 			<SimpleSelect
-				label="Download Type"
-				placeholder="Select Download Type"
+				label="Upload Type"
+				placeholder="Select Upload Type"
 				options={[
 					{ value: 'uncategorized', label: 'Uncategorized (ISOs, IMGs, etc.)' },
 					{ value: 'base-rootfs', label: 'Base / RootFS' },
@@ -195,7 +238,7 @@
 				onChange={handleDownloadTypeChange}
 			/>
 
-			<div class="flex flex-col gap-2">
+			<div class="flex flex-row gap-2">
 				<CustomCheckbox
 					label="Extract Automatically"
 					bind:checked={options.automaticExtraction}
@@ -209,27 +252,18 @@
 			</div>
 		</div>
 
-		<div class="app mt-4">
-			<FilePond
-				bind:this={pond}
-				{name}
-				server={{
-					process: {
-						url:
-							'/api/system/file-explorer/upload?path=' +
-							encodeURIComponent(stagingPath) +
-							'&hash=' +
-							hash,
-						method: 'POST',
-						onload: parseUploadResponse,
-						onerror: parseUploadError
-					}
-				}}
-				allowMultiple={false}
-				maxFiles={1}
-				onprocessfile={handleProcessFile}
-				credits={false}
-			/>
-		</div>
+		<Dialog.Footer class="mt-2 flex justify-end">
+			<Button
+				size="sm"
+				onclick={handleStartDownload}
+				disabled={!uploadedPath || loading || isProcessingUpload}
+			>
+				{#if loading || isProcessingUpload}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+				{:else}
+					<span>Complete Upload</span>
+				{/if}
+			</Button>
+		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

@@ -18,15 +18,16 @@
 
 	interface Props {
 		open: boolean;
-		reload?: boolean;
 		basicSettings: BasicSettings;
+		reload?: boolean;
+		prefill?: { pool: string; dataset: string };
 	}
 
-	let { open = $bindable(), reload = $bindable(), basicSettings }: Props = $props();
+	let { open = $bindable(), reload = $bindable(), basicSettings, prefill }: Props = $props();
 
 	let datasets = resource(
 		() => 'zfs-fs-vol-datasets',
-		async (key, prevKey, { signal }) => {
+		async () => {
 			const fs = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
 			const vol = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
 			return [...fs, ...vol];
@@ -41,12 +42,12 @@
 		name: `manual-${getDashedDate()}`,
 		pool: {
 			open: false,
-			value: (basicSettings.pools.length === 1 ? basicSettings.pools[0] : '') as string,
+			value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
 			data: generateSimpleSelectOptions(basicSettings.pools)
 		},
 		datasets: {
 			open: false,
-			value: '',
+			value: prefill?.dataset || '',
 			data: [] as { label: string; value: string }[]
 		},
 		interval: {
@@ -152,7 +153,14 @@
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
 				retentionType === 'none';
 
-				toast.success(`Snapshot ${pool}@${properties.name} created`, {
+				let message = '';
+				if (prefill?.dataset && prefill?.pool) {
+					message = `Snapshot ${prefill.dataset}@${properties.name} created`;
+				} else {
+					message = `Snapshot ${pool}@${properties.name} created`;
+				}
+
+				toast.success(message, {
 					position: 'bottom-center'
 				});
 
@@ -217,7 +225,15 @@
 				});
 				return;
 			} else {
-				toast.success(`Snapshot ${pool}@${properties.name} created`, {
+				let message = '';
+
+				if (prefill?.dataset && prefill?.pool) {
+					message = `Snapshot ${prefill.pool}/${prefill.dataset}@${properties.name} created`;
+				} else {
+					message = `Snapshot ${pool}@${properties.name} created`;
+				}
+
+				toast.success(message, {
 					position: 'bottom-center'
 				});
 
@@ -229,7 +245,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-3/4 p-5">
+	<Dialog.Content class="p-5">
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between">
 				<div class="flex items-center">
@@ -273,7 +289,7 @@
 			classes="flex-1 space-y-1"
 		/>
 
-		<div class="flex gap-4">
+		<div class="flex min-w-0 gap-4 overflow-hidden">
 			<CustomComboBox
 				bind:open={properties.pool.open}
 				label="Pool"
@@ -282,7 +298,7 @@
 					label: name,
 					value: name
 				}))}
-				classes="flex-1 space-y-1"
+				classes="flex-1 w-1/2 space-y-1 min-w-0"
 				placeholder="Select a pool"
 				width="w-full"
 			></CustomComboBox>
@@ -292,7 +308,7 @@
 				label="Dataset"
 				bind:value={properties.datasets.value}
 				data={properties.datasets.data}
-				classes="flex-1 space-y-1"
+				classes="flex-1 w-1/2 space-y-1 min-w-0 max-w-full"
 				placeholder="Select a dataset"
 				width="w-full"
 			></CustomComboBox>

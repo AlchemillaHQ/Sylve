@@ -130,12 +130,16 @@
 		@apply bg-background text-foreground;
 	}
 
+	.filepond--list-scroller {
+		@apply bg-background text-foreground;
+	}
+
 	.filepond--drop-label {
-		@apply bg-muted border-border !text-foreground rounded-lg border p-4;
+		@apply bg-muted! text-foreground rounded-lg dark:text-white/90!;
 	}
 
 	.filepond--panel-root {
-		@apply !bg-muted/30 text-foreground !border-muted;
+		@apply bg-background text-foreground;
 	}
 
 	.filepond--list {

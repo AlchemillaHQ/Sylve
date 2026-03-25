@@ -115,12 +115,24 @@
 		loading: false
 	});
 	let uploadStagingPath: string = $derived.by(() => {
-		const httpPath =
+		const pathDownloadsPath =
+			data?.downloadPaths && typeof data.downloadPaths.path === 'string'
+				? data.downloadPaths.path
+				: '';
+		const httpDownloadsPath =
 			data?.downloadPaths && typeof data.downloadPaths.http === 'string'
 				? data.downloadPaths.http
 				: '';
 
-		return isValidAbsPath(httpPath) ? httpPath : '/tmp';
+		if (isValidAbsPath(pathDownloadsPath)) {
+			return pathDownloadsPath;
+		}
+
+		if (isValidAbsPath(httpDownloadsPath)) {
+			return httpDownloadsPath;
+		}
+
+		return '/tmp';
 	});
 	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
@@ -154,6 +166,14 @@
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
 			return row.type === 'http';
+		}
+		return false;
+	});
+
+	let pathDownloadSelected: boolean = $derived.by(() => {
+		if (activeRows && activeRows.length === 1) {
+			const row = activeRows[0];
+			return row.type === 'path';
 		}
 		return false;
 	});
@@ -323,7 +343,7 @@
 		{/if}
 	{/if}
 
-	{#if type === 'download' && httpDownloadSelected && isDownloadCompleted}
+	{#if type === 'download' && (httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
@@ -334,7 +354,7 @@
 		{/if}
 	{/if}
 
-	{#if type === 'copy' && ((httpDownloadSelected && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
+	{#if type === 'copy' && (((httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
 		{#if activeRows && activeRows.length == 1}
 			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
@@ -366,24 +386,28 @@
 			<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
 				<div class="flex items-center">
 					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
-
 					<span>New</span>
 				</div>
 			</Button>
+
+			<div class="flex items-center gap-2">
+				{@render button('download')}
+				{@render button('copy')}
+				{@render button('delete')}
+			</div>
 		</div>
 
-		<div class="flex items-center gap-2">
-			<Button onclick={() => (uploadModalState.isOpen = true)} size="sm" variant="outline" class="h-6.5">
-				<div class="flex items-center">
-					<span class="icon-[lucide--upload] mr-1 h-4 w-4"></span>
-					<span>Upload</span>
-				</div>
-			</Button>
-
-			{@render button('download')}
-			{@render button('copy')}
-			{@render button('delete')}
-		</div>
+		<Button
+			onclick={() => (uploadModalState.isOpen = true)}
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+		>
+			<div class="flex items-center">
+				<span class="icon-[lucide--upload] mr-1 h-4 w-4"></span>
+				<span>Upload</span>
+			</div>
+		</Button>
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
@@ -461,8 +485,7 @@
 								trigger: 'w-full'
 							}}
 							bind:value={modalState.downloadType}
-							onChange={(value) =>
-								(modalState.downloadType = value as DownloadType)}
+							onChange={(value) => (modalState.downloadType = value as DownloadType)}
 						/>
 					</div>
 

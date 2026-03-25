@@ -842,6 +842,8 @@ msgstr "View"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
@@ -870,6 +872,8 @@ msgstr "Delete"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -973,6 +977,8 @@ msgstr "Note"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
@@ -1107,6 +1113,8 @@ msgstr "Reset"
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -1829,12 +1837,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' : ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1898,17 +1906,18 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' : 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' : 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
 
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Upload File"
 msgstr "<0/> Upload File"
@@ -2143,12 +2152,12 @@ msgstr "No groups selected and guests are not allowed"
 msgid "Share cannot have overlapping groups"
 msgstr "Share cannot have overlapping groups"
 
-#. 0: edit ? 'edit'
+#. 0: edit ? 'edit' : 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Failed to {0} Samba share"
 
-#. 0: edit ? 'edited'
+#. 0: edit ? 'edited' : 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
@@ -2695,12 +2704,12 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
 
-#. 0: isFolder ? 'folder' ; 1: name
+#. 0: isFolder ? 'folder' : 'file'; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "Failed to create {0} \"{1}\""
@@ -2746,17 +2755,17 @@ msgstr "<0/> New Folder"
 msgid "{0} items"
 msgstr "{0} items"
 
-#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
+#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} folders, {1} files"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -2783,6 +2792,7 @@ msgstr "Please enter a valid Magnet, HTTP URL or Path"
 msgid "Invalid file name"
 msgstr "Invalid file name"
 
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download started"
 msgstr "Download started"
@@ -2827,14 +2837,17 @@ msgstr "Download Type"
 msgid "Select Download Type"
 msgstr "Select Download Type"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Uncategorized (ISOs, IMGs, etc.)"
 msgstr "Uncategorized (ISOs, IMGs, etc.)"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Base / RootFS"
 msgstr "Base / RootFS"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
@@ -2844,10 +2857,12 @@ msgstr "Cloud-Init"
 msgid "Ignore TLS Errors"
 msgstr "Ignore TLS Errors"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
 msgstr "Extract Automatically"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Auto-convert to RAW"
 msgstr "Auto-convert to RAW"
@@ -5029,12 +5044,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5475,13 +5490,11 @@ msgstr "Image"
 msgid "Select Pool"
 msgstr "Select Pool"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "ISO Image"
-msgstr "ISO Image"
+#~ msgid "ISO Image"
+#~ msgstr "ISO Image"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ISO Image"
-msgstr "Select ISO Image"
+#~ msgid "Select ISO Image"
+#~ msgstr "Select ISO Image"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk Path"
@@ -6139,7 +6152,7 @@ msgstr "Error Status"
 msgid "No known data errors"
 msgstr "No known data errors"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
@@ -7159,6 +7172,8 @@ msgid "Select generation"
 msgstr "Select generation"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Snapshot"
 msgstr "Snapshot"
 
@@ -7536,10 +7551,12 @@ msgid "Select bridge"
 msgstr "Select bridge"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: prefill.dataset; 1: properties.name
 #. 0: pool; 1: properties.name
 #. 0: pool; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -8010,10 +8027,8 @@ msgstr "Volume Size"
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 
-#. 0: dataset.name
-#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
-msgid "<0/> Flash File to {0}"
-msgstr "<0/> Flash File to {0}"
+#~ msgid "<0/> Flash File to {0}"
+#~ msgstr "<0/> Flash File to {0}"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "Select File"
@@ -8031,13 +8046,11 @@ msgstr "Volume "
 msgid "Flash"
 msgstr "Flash"
 
-#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
-msgid "Edit Filesystem"
-msgstr "Edit Filesystem"
+#~ msgid "Edit Filesystem"
+#~ msgstr "Edit Filesystem"
 
-#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
-msgid "Delete Filesystem"
-msgstr "Delete Filesystem"
+#~ msgid "Delete Filesystem"
+#~ msgstr "Delete Filesystem"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Delete Datasets"
@@ -8092,13 +8105,11 @@ msgstr "View Periodics"
 msgid "Flash File"
 msgstr "Flash File"
 
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
-msgid "Delete Volume"
-msgstr "Delete Volume"
+#~ msgid "Delete Volume"
+#~ msgstr "Delete Volume"
 
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
-msgid "Edit Volume"
-msgstr "Edit Volume"
+#~ msgid "Edit Volume"
+#~ msgstr "Edit Volume"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Delete Volumes"
@@ -9105,9 +9116,8 @@ msgstr "<0/> Rewrite cloud-init hostname + instance-id"
 msgid "Identity Prefix (optional)"
 msgstr "Identity Prefix (optional)"
 
-#: src/lib/components/custom/VM/Template/Create.svelte
-msgid "If empty, VM name is used"
-msgstr "If empty, VM name is used"
+#~ msgid "If empty, VM name is used"
+#~ msgstr "If empty, VM name is used"
 
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
@@ -9236,3 +9246,93 @@ msgstr "DHCP Lease - Delete Dynamic"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
 msgstr "Enabled (Available to VM)"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "ISO/Image"
+msgstr "ISO/Image"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select ISO/Image"
+msgstr "Select ISO/Image"
+
+#~ msgid "Snapshot Filesystem"
+#~ msgstr "Snapshot Filesystem"
+
+#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Snapshot {0}/{1}@{2} created"
+msgstr "Snapshot {0}/{1}@{2} created"
+
+#~ msgid "Use \"{0}\""
+#~ msgstr "Use \"{0}\""
+
+#~ msgid "Create Snapshot 1"
+#~ msgstr "Create Snapshot 1"
+
+#~ msgid "<0/> Flash File"
+#~ msgstr "<0/> Flash File"
+
+#~ msgid "Select a file below to flash to the ZFS Volume {0}"
+#~ msgstr "Select a file below to flash to the ZFS Volume {0}"
+
+#~ msgid "Select a file below to flash to the ZFS Volume <0/>"
+#~ msgstr "Select a file below to flash to the ZFS Volume <0/>"
+
+#~ msgid "<0/> Flash File To ZFS Volume"
+#~ msgstr "<0/> Flash File To ZFS Volume"
+
+#~ msgid "Flash File To ZFS Volume"
+#~ msgstr "Flash File To ZFS Volume"
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Flash File To Volume"
+msgstr "Flash File To Volume"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to start download from uploaded file"
+msgstr "Failed to start download from uploaded file"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Upload"
+msgstr "Upload"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload failed"
+msgstr "Upload failed"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Uploaded file path is invalid"
+msgstr "Uploaded file path is invalid"
+
+#~ msgid "Upload destination: <0/>"
+#~ msgstr "Upload destination: <0/>"
+
+#~ msgid "File uploaded. Click Download to start."
+#~ msgstr "File uploaded. Click Download to start."
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload a file first"
+msgstr "Upload a file first"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload Type"
+msgstr "Upload Type"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Select Upload Type"
+msgstr "Select Upload Type"
+
+#~ msgid "Move"
+#~ msgstr "Move"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Complete Upload"
+msgstr "Complete Upload"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to start move from uploaded file"
+msgstr "Failed to start move from uploaded file"
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "File uploaded, you can complete upload now"
+msgstr "File uploaded, you can complete upload now"

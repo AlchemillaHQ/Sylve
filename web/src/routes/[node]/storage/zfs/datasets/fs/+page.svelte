@@ -16,6 +16,7 @@
 	import { untrack } from 'svelte';
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import { getBasicSettings } from '$lib/api/system/settings';
+	import CreateDetailed from '$lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte';
 
 	interface Data {
 		settings: BasicSettings;
@@ -26,6 +27,7 @@
 	let tableName = 'tt-zfsDatasets';
 	let visible = new IsDocumentVisible();
 
+	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'basic-settings',
 		async () => {
@@ -38,6 +40,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const datasets = resource(
 		() => 'zfs-filesystems',
 		async (key, prevKey, { signal }) => {
@@ -134,6 +137,11 @@
 			},
 			delete: {
 				open: false
+			},
+			snapshot: {
+				open: false,
+				pool: '',
+				dataset: ''
 			}
 		},
 		bulk: {
@@ -160,8 +168,7 @@
 			>
 				<div class="flex items-center">
 					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-
-					<span>Edit Filesystem</span>
+					<span>Edit</span>
 				</div>
 			</Button>
 		{/if}
@@ -179,7 +186,27 @@
 			>
 				<div class="flex items-center">
 					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete Filesystem</span>
+					<span>Delete</span>
+				</div>
+			</Button>
+		{/if}
+
+		{#if type === 'snapshot-filesystem' && activeDataset?.type === GZFSDatasetTypeSchema.enum.FILESYSTEM && activeDataset?.name.includes('/')}
+			<Button
+				onclick={async () => {
+					if (activeDataset) {
+						modals.fs.snapshot.open = true;
+						modals.fs.snapshot.pool = activeDataset.pool;
+						modals.fs.snapshot.dataset = activeDataset.name;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--camera] mr-1 h-4 w-4"></span>
+					<span>Snapshot</span>
 				</div>
 			</Button>
 		{/if}
@@ -222,6 +249,8 @@
 				<span>New</span>
 			</div>
 		</Button>
+
+		{@render button('snapshot-filesystem')}
 		{@render button('edit-filesystem')}
 		{@render button('delete-filesystem')}
 		{@render button('bulk-delete')}
@@ -236,6 +265,15 @@
 		initialSort={[{ column: 'name', dir: 'asc' }]}
 	/>
 </div>
+
+{#if modals.fs.snapshot.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}
+	<CreateDetailed
+		bind:open={modals.fs.snapshot.open}
+		basicSettings={data.settings}
+		prefill={{ pool: modals.fs.snapshot.pool, dataset: modals.fs.snapshot.dataset }}
+		bind:reload
+	/>
+{/if}
 
 <!-- Delete FS -->
 {#if modals.fs.delete.open && activeDataset && activeDataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM}

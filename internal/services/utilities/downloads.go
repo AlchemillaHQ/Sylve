@@ -176,6 +176,11 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 			return "", fmt.Errorf("file_not_found")
 		}
 		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
+	case "path":
+		if id != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
+		return dl.Path, nil
 	}
 
 	return "", fmt.Errorf("unsupported_download_type")

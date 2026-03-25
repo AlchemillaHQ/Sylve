@@ -18,6 +18,8 @@
 	}
 
 	let { open = $bindable(), dataset, downloads, reload = $bindable() }: Props = $props();
+
+	// svelte-ignore state_referenced_locally
 	let options = {
 		select: {
 			open: false,
@@ -38,10 +40,9 @@
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex justify-between">
-				<div class="flex items-center">
+				<div class="flex items-center gap-2">
 					<span class="icon-[mdi--usb-flash-drive-outline] mr-2 h-6 w-6"></span>
-
-					Flash File to {dataset.name}
+					<span>Flash File To Volume</span>
 				</div>
 				<div class="flex items-center gap-0.5">
 					<Button
@@ -71,9 +72,12 @@
 					</Button>
 				</div>
 			</Dialog.Title>
+			<Dialog.Description>
+				{dataset.name}
+			</Dialog.Description>
 		</Dialog.Header>
 
-		<div class="flex-1 space-y-1">
+		<div class="min-w-0 flex-1 space-y-1 overflow-hidden">
 			<CustomComboBox
 				bind:open={properties.select.open}
 				label="Select File"
@@ -83,6 +87,7 @@
 				placeholder="File"
 				triggerWidth="w-full"
 				width="w-full"
+				shortLabels={true}
 			></CustomComboBox>
 		</div>
 
