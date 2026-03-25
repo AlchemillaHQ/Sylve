@@ -142,7 +142,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
-		&sambaModels.SambaAuditLog{},
 
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},

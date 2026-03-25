@@ -103,9 +103,10 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *utilities.Service:
 		return utilities.NewUtilitiesService(db)
 	case *samba.Service:
-		zfsService := dependencies[0].(zfsServiceInterfaces.ZfsServiceInterface)
-		gzfs := dependencies[1].(*gzfs.Client)
-		return samba.NewSambaService(db, zfsService, gzfs)
+		telemetryDB := dependencies[0].(*gorm.DB)
+		zfsService := dependencies[1].(zfsServiceInterfaces.ZfsServiceInterface)
+		gzfs := dependencies[2].(*gzfs.Client)
+		return samba.NewSambaService(db, telemetryDB, zfsService, gzfs)
 	case *jail.Service:
 		networkService := dependencies[0].(networkServiceInterfaces.NetworkServiceInterface)
 		systemService := dependencies[1].(systemServiceInterfaces.SystemServiceInterface)
@@ -127,7 +128,7 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	}
 }
 
-func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
+func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	gzfs := gzfs.NewClient(gzfs.Options{
 		Sudo:               false,
 		ZDBCacheTTLSeconds: 0,
@@ -140,7 +141,7 @@ func NewServiceRegistry(db *gorm.DB) *ServiceRegistry {
 	infoService := NewService[info.Service](db, gzfs)
 	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
 	utilitiesService := NewService[utilities.Service](db)
-	sambaService := NewService[samba.Service](db, zfsService, gzfs)
+	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)

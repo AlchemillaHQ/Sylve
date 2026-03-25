@@ -19,15 +19,30 @@ import (
 var _ sambaServiceInterfaces.SambaServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB   *gorm.DB
-	ZFS  zfsServiceInterfaces.ZfsServiceInterface
-	GZFS *gzfs.Client
+	DB          *gorm.DB
+	TelemetryDB *gorm.DB
+	ZFS         zfsServiceInterfaces.ZfsServiceInterface
+	GZFS        *gzfs.Client
 }
 
-func NewSambaService(db *gorm.DB, zfs zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) sambaServiceInterfaces.SambaServiceInterface {
+func NewSambaService(
+	db *gorm.DB,
+	telemetryDB *gorm.DB,
+	zfs zfsServiceInterfaces.ZfsServiceInterface,
+	gzfs *gzfs.Client,
+) sambaServiceInterfaces.SambaServiceInterface {
 	return &Service{
-		DB:   db,
-		ZFS:  zfs,
-		GZFS: gzfs,
+		DB:          db,
+		TelemetryDB: telemetryDB,
+		ZFS:         zfs,
+		GZFS:        gzfs,
 	}
+}
+
+func (s *Service) auditDB() *gorm.DB {
+	if s.TelemetryDB != nil {
+		return s.TelemetryDB
+	}
+
+	return s.DB
 }

@@ -67,6 +67,7 @@ func main() {
 	}
 
 	d := db.SetupDatabase(cfg, false)
+	telemetryDB := db.SetupTelemetryDatabase(cfg, d, false)
 	_ = db.SetupCache(cfg)
 
 	go func() {
@@ -86,7 +87,7 @@ func main() {
 	fsm := clusterModels.NewFSMDispatcher(d)
 	clusterModels.RegisterDefaultHandlers(fsm)
 
-	serviceRegistry := services.NewServiceRegistry(d)
+	serviceRegistry := services.NewServiceRegistry(d, telemetryDB)
 	aS := serviceRegistry.AuthService
 	sS := serviceRegistry.StartupService
 	iS := serviceRegistry.InfoService

@@ -27,6 +27,7 @@ import (
 func (s *Service) ParseAuditLogs() error {
 	const logPath = "/var/log/samba4/audit.log"
 	const batchSize = 500
+	auditDB := s.auditDB()
 
 	f, err := os.Open(logPath)
 	if err != nil {
@@ -42,7 +43,7 @@ func (s *Service) ParseAuditLogs() error {
 
 	cutoff := time.Now().Add(-5 * time.Second)
 	var recentDBMkdirs []sambaModels.SambaAuditLog
-	if err := s.DB.Where("action = ? AND created_at >= ?", "mkdirat", cutoff).Find(&recentDBMkdirs).Error; err == nil {
+	if err := auditDB.Where("action = ? AND created_at >= ?", "mkdirat", cutoff).Find(&recentDBMkdirs).Error; err == nil {
 		for _, m := range recentDBMkdirs {
 			recentMkdirs[m.Path] = m.CreatedAt
 		}
@@ -119,7 +120,7 @@ func (s *Service) ParseAuditLogs() error {
 			batch = append(batch, entry)
 
 			if len(batch) >= batchSize {
-				if err := s.DB.CreateInBatches(&batch, len(batch)).Error; err != nil {
+				if err := auditDB.CreateInBatches(&batch, len(batch)).Error; err != nil {
 					return fmt.Errorf("failed to insert audit log batch: %w", err)
 				}
 				batch = batch[:0]
@@ -132,7 +133,7 @@ func (s *Service) ParseAuditLogs() error {
 	}
 
 	if len(batch) > 0 {
-		if err := s.DB.CreateInBatches(&batch, len(batch)).Error; err != nil {
+		if err := auditDB.CreateInBatches(&batch, len(batch)).Error; err != nil {
 			return fmt.Errorf("failed to insert final audit log batch: %w", err)
 		}
 	}
@@ -149,6 +150,8 @@ func (s *Service) GetAuditLogs(
 	size int,
 	sortField, sortDir string,
 ) (*sambaServiceInterfaces.AuditLogsResponse, error) {
+	auditDB := s.auditDB()
+
 	if size <= 0 {
 		size = 100
 	}
@@ -157,7 +160,7 @@ func (s *Service) GetAuditLogs(
 	}
 
 	var total int64
-	if err := s.DB.
+	if err := auditDB.
 		Model(&sambaModels.SambaAuditLog{}).
 		Count(&total).Error; err != nil {
 		return nil, fmt.Errorf("failed to count audit logs: %w", err)
@@ -194,7 +197,7 @@ func (s *Service) GetAuditLogs(
 	offset := (page - 1) * size
 
 	var logs []sambaModels.SambaAuditLog
-	if err := s.DB.
+	if err := auditDB.
 		Order(orderExpr).
 		Offset(offset).
 		Limit(size).

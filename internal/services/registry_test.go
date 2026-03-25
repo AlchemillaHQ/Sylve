@@ -41,7 +41,8 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 		config.ParsedConfig = oldCfg
 	})
 
-	registry := NewServiceRegistry(newRegistryTestDB(t))
+	mainDB := newRegistryTestDB(t)
+	registry := NewServiceRegistry(mainDB, mainDB)
 
 	apiNetwork, ok := registry.NetworkService.(*networkService.Service)
 	if !ok {
