@@ -1369,7 +1369,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		return
 	}
 
-	if strings.TrimSpace(jail.ResolvConf) != "" && jail.Type == jailModels.JailTypeFreeBSD {
+	if strings.TrimSpace(jail.ResolvConf) != "" {
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
 		if err = os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
 			err = fmt.Errorf("failed_to_prepare_resolv_conf_path: %w", err)

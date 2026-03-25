@@ -222,8 +222,6 @@
 				checkBoxes.slaac = false;
 				dhcp = false;
 				slaac = false;
-				checkBoxes.resolvConf = false;
-				resolvConf = '';
 			}
 		}
 	);

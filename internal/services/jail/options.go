@@ -144,16 +144,6 @@ func (s *Service) ModifyResolvConf(ctId uint, resolvConf string) error {
 		return fmt.Errorf("replication_lease_not_owned")
 	}
 
-	jType, err := s.GetJailType(ctId)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_jail_type: %w", err)
-	}
-
-	if jType != jailModels.JailTypeFreeBSD {
-		logger.L.Warn().Msgf("Attempted to set resolv.conf for non-FreeBSD jail (ctId=%d, type=%s)", ctId, jType)
-		return nil
-	}
-
 	if strings.TrimSpace(resolvConf) != "" {
 		mountPoint, err := s.GetJailBaseMountPoint(ctId)
 		if err != nil {
@@ -170,7 +160,7 @@ func (s *Service) ModifyResolvConf(ctId uint, resolvConf string) error {
 		}
 	}
 
-	err = s.DB.
+	err := s.DB.
 		Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
 		Update("resolv_conf", resolvConf).
