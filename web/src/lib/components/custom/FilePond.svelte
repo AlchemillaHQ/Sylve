@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import * as FilePond from 'filepond';
+	import { watch } from 'runed';
 
 	export const registerPlugin = FilePond.registerPlugin;
 	export const isSupported = FilePond.supported();
@@ -32,28 +33,30 @@
 		...options
 	} = $props();
 
-	$effect(() => {
-		if (!isSupported || !root) return;
-
-		if (!instance) {
-			instance = FilePond.create(root, { ...options });
-			addFile = instance.addFile;
-			addFiles = instance.addFiles;
-			removeFile = instance.removeFile;
-			removeFiles = instance.removeFiles;
-			browse = instance.browse;
-			getFile = instance.getFile;
-			getFiles = instance.getFiles;
-			moveFile = instance.moveFile;
-			prepareFile = instance.prepareFile;
-			prepareFiles = instance.prepareFiles;
-			processFile = instance.processFile;
-			processFiles = instance.processFiles;
-			sort = instance.sort;
-		} else {
-			instance.setOptions(options);
+	watch(
+		[() => isSupported, () => root, () => instance, () => options],
+		([isSupported, root, instance, options]) => {
+			if (!isSupported || !root) return;
+			if (!instance) {
+				instance = FilePond.create(root, { ...options });
+				addFile = instance.addFile;
+				addFiles = instance.addFiles;
+				removeFile = instance.removeFile;
+				removeFiles = instance.removeFiles;
+				browse = instance.browse;
+				getFile = instance.getFile;
+				getFiles = instance.getFiles;
+				moveFile = instance.moveFile;
+				prepareFile = instance.prepareFile;
+				prepareFiles = instance.prepareFiles;
+				processFile = instance.processFile;
+				processFiles = instance.processFiles;
+				sort = instance.sort;
+			} else {
+				instance.setOptions(options);
+			}
 		}
-	});
+	);
 
 	onDestroy(() => {
 		if (!instance) return;

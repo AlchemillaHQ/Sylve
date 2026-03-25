@@ -12,6 +12,7 @@
 	import { languageArr, storage } from '$lib';
 	import { loadLocale } from 'wuchale/load-utils';
 	import type { Locales } from '$lib/types/common';
+	import { watch } from 'runed';
 
 	interface Props {
 		onLogin: (
@@ -40,18 +41,24 @@
 	let authType = $state('sylve');
 	let remember = $state(false);
 
-	$effect(() => {
-		if (language) {
-			loadLocale((language || 'en') as Locales);
-			storage.language = language;
+	watch(
+		() => language,
+		(language) => {
+			if (language) {
+				loadLocale((language || 'en') as Locales);
+				storage.language = language;
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (page.url.search.includes('loggedOut')) {
-			revokeJWT();
+	watch(
+		() => page.url.search,
+		(search) => {
+			if (search.includes('loggedOut')) {
+				revokeJWT();
+			}
 		}
-	});
+	);
 
 	async function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {

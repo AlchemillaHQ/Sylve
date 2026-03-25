@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
 	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
@@ -243,18 +244,24 @@
 
 	let { children }: Props = $props();
 
-	$effect(() => {
-		if (page.url.pathname === `/${node}`) {
-			goto(`/${node}/summary`);
-		} else if (page.url.pathname.startsWith(`/${node}/vm`)) {
-			const rid = page.url.pathname.split('/')[3];
-			if (page.url.pathname === `/${node}/vm/${rid}`) {
+	watch([() => page.url.pathname], ([pathName]) => {
+		if (pathName === `/${node}`) {
+			goto(
+				resolve('/[node]/summary', {
+					node: node
+				})
+			);
+		} else if (pathName.startsWith(`/${node}/vm`)) {
+			const rid = pathName.split('/')[3];
+			if (pathName === `/${node}/vm/${rid}`) {
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
 				goto(`/${node}/vm/${rid}/summary`, { replaceState: true });
 			}
-		} else if (page.url.pathname.startsWith(`/${node}/jail`)) {
-			const jailId = page.url.pathname.split('/')[3];
-			if (page.url.pathname === `/${node}/jail/${jailId}`) {
-				goto(`/${node}/jail/${jailId}/summary`, { replaceState: true });
+		} else if (pathName.startsWith(`/${node}/jail`)) {
+			const ctId = pathName.split('/')[3];
+			if (pathName === `/${node}/jail/${ctId}`) {
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				goto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
 			}
 		}
 	});

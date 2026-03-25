@@ -11,30 +11,41 @@ import { defineConfig } from 'eslint/config';
 const gitignorePath = fileURLToPath(new URL('./.gitignore', import.meta.url));
 
 export default defineConfig(
-	{
-		ignores: ['static/**']
-	},
-	includeIgnoreFile(gitignorePath),
-	js.configs.recommended,
-	...ts.configs.recommended,
-	...svelte.configs.recommended,
-	prettier,
-	...svelte.configs.prettier,
-	{
-		languageOptions: {
-			globals: { ...globals.browser, ...globals.node }
-		},
-		rules: { 'no-undef': 'off', 'import/no-unresolved': 'off' }
-	},
-	{
-		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
-		languageOptions: {
-			parserOptions: {
-				projectService: true,
-				extraFileExtensions: ['.svelte'],
-				parser: ts.parser,
-				svelteConfig
-			}
-		}
-	}
+    {
+        ignores: ['static/**']
+    },
+    includeIgnoreFile(gitignorePath),
+    js.configs.recommended,
+    ...ts.configs.recommended,
+    ...svelte.configs.recommended,
+    prettier,
+    ...svelte.configs.prettier,
+    {
+        languageOptions: {
+            globals: { ...globals.browser, ...globals.node }
+        },
+        rules: {
+            'no-undef': 'off', 'import/no-unresolved': 'off',
+            "svelte/no-navigation-without-resolve": [
+                "error",
+                {
+                    "ignoreGoto": false,
+                    "ignoreLinks": true,
+                    "ignorePushState": false,
+                    "ignoreReplaceState": false
+                }
+            ]
+        }
+    },
+    {
+        files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
+        languageOptions: {
+            parserOptions: {
+                projectService: true,
+                extraFileExtensions: ['.svelte'],
+                parser: ts.parser,
+                svelteConfig
+            }
+        }
+    }
 );

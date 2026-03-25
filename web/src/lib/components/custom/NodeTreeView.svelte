@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './NodeTreeView.svelte';
+	import { watch } from 'runed';
 
 	interface SidebarProps {
 		label: string;
@@ -18,7 +19,6 @@
 	}
 
 	let { item, onToggle }: Props = $props();
-
 	let isOpen = $state(false);
 
 	const toggle = (e: MouseEvent) => {
@@ -30,6 +30,7 @@
 		}
 
 		if (item.href) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			goto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
@@ -63,14 +64,14 @@
 		return false;
 	}
 
-	$effect(() => {
+	watch([() => activeUrl, () => item], ([activeUrl, item]) => {
 		isOpen = isItemOpen(item, activeUrl);
 	});
 </script>
 
 <li class="w-full">
 	<a
-		class={`my-0.5 flex w-full items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? '!text-primary' : ' '}`}
+		class={`my-0.5 flex w-full items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 		href={item.href}
 		onclick={toggle}
 	>
