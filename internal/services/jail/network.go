@@ -264,10 +264,6 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 	}
 
 	if jail.Type == jailModels.JailTypeLinux {
-		if ip4 != 0 || ip4gw != 0 || ip6 != 0 || ip6gw != 0 {
-			return fmt.Errorf("cannot_set_ip_when_linux_jail")
-		}
-
 		if dhcp || slaac {
 			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
 		}
@@ -537,6 +533,19 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 				return err
 			}
 
+			if jail.Type == jailModels.JailTypeLinux {
+				filtered := make([]string, 0, len(lines))
+				for _, line := range lines {
+					trimmed := strings.TrimSpace(line)
+					if strings.HasPrefix(trimmed, "exec.start") &&
+						strings.Contains(trimmed, "\"/usr/local/sylve/scripts/start.sh\"") {
+						continue
+					}
+					filtered = append(filtered, line)
+				}
+				lines = filtered
+			}
+
 			var jailCfgBuilder strings.Builder
 			jailCfgBuilder.WriteString("\tvnet;\n")
 
@@ -563,7 +572,15 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 			}
 
 			var preStartBuilder strings.Builder
+			var startBuilder strings.Builder
 			var rcConfLines []string
+
+			if jail.Type == jailModels.JailTypeLinux {
+				binsDir := filepath.Join(mountPoint, ".sylve", "bins")
+				preStartBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", binsDir))
+				preStartBuilder.WriteString(fmt.Sprintf("cp -f /rescue/ifconfig %s\n", filepath.Join(binsDir, "ifconfig")))
+				preStartBuilder.WriteString(fmt.Sprintf("cp -f /rescue/route %s\n\n", filepath.Join(binsDir, "route")))
+			}
 
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {
@@ -606,45 +623,91 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 					preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
 				}
 
-				if n.DHCP {
-					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"SYNCDHCP\"", ctidHash, networkId))
-				} else if n.IPv4ID != nil && *n.IPv4ID > 0 && n.IPv4GwID != nil && *n.IPv4GwID > 0 {
-					ipv4, err := s.NetworkService.GetObjectEntryByID(*n.IPv4ID)
-					if err != nil {
-						return fmt.Errorf("failed to get ipv4 address: %w", err)
-					}
-					ipv4Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv4GwID)
-					if err != nil {
-						return fmt.Errorf("failed to get ipv4 gateway: %w", err)
-					}
-					ip, mask, err := utils.SplitIPv4AndMask(ipv4)
-					if err != nil {
-						return fmt.Errorf("failed to split ipv4 address and mask: %w", err)
+				if jail.Type == jailModels.JailTypeLinux {
+					epairB := fmt.Sprintf("%s_%sb", ctidHash, networkId)
+					hasIPv4Static := n.IPv4ID != nil && *n.IPv4ID > 0 && n.IPv4GwID != nil && *n.IPv4GwID > 0
+					hasIPv6Static := n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0
+
+					if hasIPv4Static {
+						ipv4, err := s.NetworkService.GetObjectEntryByID(*n.IPv4ID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv4 address: %w", err)
+						}
+
+						startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/ifconfig %s inet %s\n", epairB, ipv4))
+
+						if n.DefaultGateway {
+							ipv4Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv4GwID)
+							if err != nil {
+								return fmt.Errorf("failed to get ipv4 gateway: %w", err)
+							}
+
+							startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/route add default %s\n", ipv4Gw))
+						}
 					}
 
-					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"inet %s netmask %s\"", ctidHash, networkId, ip, mask))
+					if hasIPv6Static {
+						ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv6 address: %w", err)
+						}
 
-					if n.DefaultGateway {
-						rcConfLines = append(rcConfLines, fmt.Sprintf("defaultrouter=\"%s\"", ipv4Gw))
-					}
-				}
+						startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/ifconfig %s inet6 %s\n", epairB, ipv6))
 
-				if n.SLAAC {
-					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 accept_rtadv\"", ctidHash, networkId))
-					rcConfLines = append(rcConfLines, "rtsold_enable=\"YES\"")
-				} else if n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0 {
-					ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
-					if err != nil {
-						return fmt.Errorf("failed to get ipv6 address: %w", err)
-					}
-					ipv6Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv6GwID)
-					if err != nil {
-						return fmt.Errorf("failed to get ipv6 gateway: %w", err)
+						if n.DefaultGateway {
+							ipv6Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv6GwID)
+							if err != nil {
+								return fmt.Errorf("failed to get ipv6 gateway: %w", err)
+							}
+
+							startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/route add default %s\n", ipv6Gw))
+						}
 					}
 
-					rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 %s\"", ctidHash, networkId, ipv6))
-					if n.DefaultGateway {
-						rcConfLines = append(rcConfLines, fmt.Sprintf("ipv6_defaultrouter=\"%s\"", ipv6Gw))
+					if hasIPv4Static || hasIPv6Static {
+						startBuilder.WriteString("\n")
+					}
+				} else {
+					if n.DHCP {
+						rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"SYNCDHCP\"", ctidHash, networkId))
+					} else if n.IPv4ID != nil && *n.IPv4ID > 0 && n.IPv4GwID != nil && *n.IPv4GwID > 0 {
+						ipv4, err := s.NetworkService.GetObjectEntryByID(*n.IPv4ID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv4 address: %w", err)
+						}
+						ipv4Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv4GwID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv4 gateway: %w", err)
+						}
+						ip, mask, err := utils.SplitIPv4AndMask(ipv4)
+						if err != nil {
+							return fmt.Errorf("failed to split ipv4 address and mask: %w", err)
+						}
+
+						rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb=\"inet %s netmask %s\"", ctidHash, networkId, ip, mask))
+
+						if n.DefaultGateway {
+							rcConfLines = append(rcConfLines, fmt.Sprintf("defaultrouter=\"%s\"", ipv4Gw))
+						}
+					}
+
+					if n.SLAAC {
+						rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 accept_rtadv\"", ctidHash, networkId))
+						rcConfLines = append(rcConfLines, "rtsold_enable=\"YES\"")
+					} else if n.IPv6ID != nil && *n.IPv6ID > 0 && n.IPv6GwID != nil && *n.IPv6GwID > 0 {
+						ipv6, err := s.NetworkService.GetObjectEntryByID(*n.IPv6ID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv6 address: %w", err)
+						}
+						ipv6Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv6GwID)
+						if err != nil {
+							return fmt.Errorf("failed to get ipv6 gateway: %w", err)
+						}
+
+						rcConfLines = append(rcConfLines, fmt.Sprintf("ifconfig_%s_%sb_ipv6=\"inet6 %s\"", ctidHash, networkId, ipv6))
+						if n.DefaultGateway {
+							rcConfLines = append(rcConfLines, fmt.Sprintf("ipv6_defaultrouter=\"%s\"", ipv6Gw))
+						}
 					}
 				}
 			}
@@ -681,6 +744,35 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 			newPreStartContent := s.AddSylveNetworkToHook(string(currentPreStartContent), preStartBuilder.String())
 			if err := os.WriteFile(preStartPath, []byte(newPreStartContent), 0755); err != nil {
 				return err
+			}
+
+			if jail.Type == jailModels.JailTypeLinux {
+				startPath, err := s.GetHookScriptPath(ctId, "start")
+				if err != nil {
+					return err
+				}
+
+				currentStartContent, err := os.ReadFile(startPath)
+				if err != nil {
+					return err
+				}
+
+				newStartContent := s.AddSylveNetworkToHookAtEnd(string(currentStartContent), startBuilder.String())
+				if err := os.WriteFile(startPath, []byte(newStartContent), 0755); err != nil {
+					return err
+				}
+
+				startInJailPath := filepath.Join(mountPoint, "usr", "local", "sylve", "scripts", "start.sh")
+				if err := os.MkdirAll(filepath.Dir(startInJailPath), 0755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(startInJailPath, []byte(newStartContent), 0755); err != nil {
+					return err
+				}
+
+				if s.hasHookBody(newStartContent) {
+					jailCfgBuilder.WriteString("\texec.start += \"/usr/local/sylve/scripts/start.sh\";\n")
+				}
 			}
 
 			newCfg, err = s.AppendToConfig(ctId, strings.Join(lines, "\n"), jailCfgBuilder.String())
@@ -774,10 +866,6 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 	}
 
 	if jail.Type == jailModels.JailTypeLinux {
-		if ip4 != 0 || ip4gw != 0 || ip6 != 0 || ip6gw != 0 {
-			return fmt.Errorf("cannot_set_ip_when_linux_jail")
-		}
-
 		if dhcp || slaac {
 			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
 		}

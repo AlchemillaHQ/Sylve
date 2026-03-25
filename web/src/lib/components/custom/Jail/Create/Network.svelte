@@ -218,6 +218,10 @@
 		() => jailType,
 		(current) => {
 			if (current === 'linux') {
+				checkBoxes.dhcp = false;
+				checkBoxes.slaac = false;
+				dhcp = false;
+				slaac = false;
 				checkBoxes.resolvConf = false;
 				resolvConf = '';
 			}
@@ -327,15 +331,17 @@
 			></CustomComboBox>
 		</div>
 
-		<div class="mt-1 flex flex-row gap-4">
-			<CustomCheckbox label="DHCP" bind:checked={checkBoxes.dhcp} classes="flex items-center gap-2"
-			></CustomCheckbox>
-			<CustomCheckbox
-				label="SLAAC"
-				bind:checked={checkBoxes.slaac}
-				classes="flex items-center gap-2"
-			></CustomCheckbox>
-		</div>
+		{#if jailType === 'freebsd'}
+			<div class="mt-1 flex flex-row gap-4">
+				<CustomCheckbox label="DHCP" bind:checked={checkBoxes.dhcp} classes="flex items-center gap-2"
+				></CustomCheckbox>
+				<CustomCheckbox
+					label="SLAAC"
+					bind:checked={checkBoxes.slaac}
+					classes="flex items-center gap-2"
+				></CustomCheckbox>
+			</div>
+		{/if}
 	{:else if nwSwitch === 'Inherit'}
 		<div class="mt-1 flex flex-row gap-4">
 			<CustomCheckbox label="IPv4" bind:checked={inheritIPv4} classes="flex items-center gap-2"

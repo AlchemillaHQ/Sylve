@@ -224,11 +224,15 @@ func (s *Service) GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error) {
 	}
 
 	for _, jail := range jails {
-		var state string
+		state := "INACTIVE"
 
 		for _, s := range states {
 			if s.CTID == jail.CTID {
-				state = s.State
+				if strings.TrimSpace(s.State) == "" {
+					state = "UNKNOWN"
+				} else {
+					state = s.State
+				}
 				break
 			}
 		}
@@ -267,7 +271,9 @@ func (s *Service) GetSimpleJail(identifier int, byCTID bool) (jailServiceInterfa
 
 	state, err := s.GetStateByCtId(uint(jail.CTID))
 	if err != nil {
-		state.State = ""
+		state.State = "UNKNOWN"
+	} else if strings.TrimSpace(state.State) == "" {
+		state.State = "UNKNOWN"
 	}
 
 	simple := jailServiceInterfaces.SimpleList{
@@ -457,11 +463,6 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	if data.Type == jailModels.JailTypeLinux {
 		if dhcp || slaac {
 			return fmt.Errorf("linux_jails_cannot_use_dhcp_or_slaac")
-		}
-
-		if !((data.IPv4 == nil && data.IPv6 == nil) ||
-			(data.IPv4 != nil && data.IPv6 != nil && *data.IPv4 == 0 && *data.IPv6 == 0)) {
-			return fmt.Errorf("linux_jails_cannot_use_ip4_or_ip6")
 		}
 	}
 

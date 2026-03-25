@@ -217,6 +217,26 @@ func (s *Service) AddSylveNetworkToHook(content string, networkContent string) s
 	}
 }
 
+func (s *Service) AddSylveNetworkToHookAtEnd(content string, networkContent string) string {
+	const start = "### Start Sylve-Managed Network ###"
+	const end = "### End Sylve-Managed Network ###"
+
+	content = s.ensureShebang(content)
+	content = s.RemoveSylveNetworkFromHook(content)
+
+	trimmedNetwork := strings.TrimSpace(networkContent)
+	if trimmedNetwork == "" {
+		return content
+	}
+
+	trimmedContent := strings.TrimRight(content, "\n")
+	if trimmedContent == "" {
+		trimmedContent = "#!/bin/sh"
+	}
+
+	return trimmedContent + "\n\n" + start + "\n" + trimmedNetwork + "\n" + end + "\n"
+}
+
 func (s *Service) RemoveSylveNetworkFromHook(content string) string {
 	const start = "### Start Sylve-Managed Network ###"
 	const end = "### End Sylve-Managed Network ###"

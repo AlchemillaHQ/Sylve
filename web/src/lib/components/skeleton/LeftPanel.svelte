@@ -168,7 +168,6 @@
 					| 'inactive'
 			})),
 			...simpleJails.current
-				.filter((jail) => jail.state?.trim() !== '')
 				.map((jail) => ({
 					id: `jail-${jail.ctId}`,
 					sortId: jail.ctId,

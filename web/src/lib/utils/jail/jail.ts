@@ -83,11 +83,6 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 
     if (modal.network.switch.toLowerCase() !== 'none') {
         if (modal.advanced.jailType === 'linux') {
-            if (modal.network.ipv4 !== 0 || modal.network.ipv6 !== 0) {
-                toast.error('Linux jails cannot have static IPs assigned', toastConfig);
-                return false;
-            }
-
             if (modal.network.dhcp === true || modal.network.slaac === true) {
                 toast.error('Linux jails cannot use DHCP or SLAAC', toastConfig);
                 return false;

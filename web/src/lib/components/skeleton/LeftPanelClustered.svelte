@@ -119,9 +119,7 @@
 			children: cluster.current.map((n) => {
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
-					...(n.jails ?? [])
-						.filter((jail) => jail.state?.trim() !== '')
-						.map((j) => ({
+					...(n.jails ?? []).map((j) => ({
 							id: `jail-${j.ctId}`,
 							sortId: j.ctId,
 							resourceId: j.ctId,

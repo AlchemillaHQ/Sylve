@@ -257,19 +257,17 @@
 			return;
 		}
 
-		const isLinuxJail = jail.type === 'linux';
-
 		const response = await addNetwork(
 			jail.ctId,
 			properties.name,
 			comboBoxes.sw.value,
 			parseNumberOrZero(comboBoxes.mac.value),
-			isLinuxJail ? 0 : parseNumberOrZero(comboBoxes.ipv4.value),
-			isLinuxJail ? 0 : parseNumberOrZero(comboBoxes.ipv4Gw.value),
-			isLinuxJail ? 0 : parseNumberOrZero(comboBoxes.ipv6.value),
-			isLinuxJail ? 0 : parseNumberOrZero(comboBoxes.ipv6Gw.value),
-			isLinuxJail ? false : properties.dhcp,
-			isLinuxJail ? false : properties.slaac,
+			parseNumberOrZero(comboBoxes.ipv4.value),
+			parseNumberOrZero(comboBoxes.ipv4Gw.value),
+			parseNumberOrZero(comboBoxes.ipv6.value),
+			parseNumberOrZero(comboBoxes.ipv6Gw.value),
+			properties.dhcp,
+			properties.slaac,
 			properties.defaultGateway
 		);
 
@@ -312,19 +310,17 @@
 			return;
 		}
 
-		const isLinuxJail = jail.type === 'linux';
-
 		const response = await updateNetworkAPI(
 			selectedNetwork.id,
 			editProperties.name,
 			editComboBoxes.sw.value,
 			parseNumberOrZero(editComboBoxes.mac.value),
-			isLinuxJail ? 0 : parseNumberOrZero(editComboBoxes.ipv4.value),
-			isLinuxJail ? 0 : parseNumberOrZero(editComboBoxes.ipv4Gw.value),
-			isLinuxJail ? 0 : parseNumberOrZero(editComboBoxes.ipv6.value),
-			isLinuxJail ? 0 : parseNumberOrZero(editComboBoxes.ipv6Gw.value),
-			isLinuxJail ? false : editProperties.dhcp,
-			isLinuxJail ? false : editProperties.slaac,
+			parseNumberOrZero(editComboBoxes.ipv4.value),
+			parseNumberOrZero(editComboBoxes.ipv4Gw.value),
+			parseNumberOrZero(editComboBoxes.ipv6.value),
+			parseNumberOrZero(editComboBoxes.ipv6Gw.value),
+			editProperties.dhcp,
+			editProperties.slaac,
 			editProperties.defaultGateway
 		);
 
@@ -426,7 +422,7 @@
 				/>
 			</div>
 
-			{#if jail.type === 'freebsd'}
+			{#if jail.type === 'freebsd' || jail.type === 'linux'}
 				<div class="grid grid-cols-2 gap-4">
 					<CustomComboBox
 						bind:open={comboBoxes.ipv4.open}
@@ -478,19 +474,21 @@
 				</div>
 
 				<div class="mt-2 flex items-center space-x-4">
-					<CustomCheckbox
-						bind:checked={properties.dhcp}
-						label="DHCP"
-						classes="flex items-center gap-2"
-					/>
+					{#if jail.type === 'freebsd'}
+						<CustomCheckbox
+							bind:checked={properties.dhcp}
+							label="DHCP"
+							classes="flex items-center gap-2"
+						/>
 
-					<CustomCheckbox
-						bind:checked={properties.slaac}
-						label="SLAAC"
-						classes="flex items-center gap-2"
-					/>
+						<CustomCheckbox
+							bind:checked={properties.slaac}
+							label="SLAAC"
+							classes="flex items-center gap-2"
+						/>
+					{/if}
 
-					{#if !(properties.dhcp && properties.slaac)}
+					{#if jail.type !== 'freebsd' || !(properties.dhcp && properties.slaac)}
 						<CustomCheckbox
 							bind:checked={properties.defaultGateway}
 							label="Default Gateway"
@@ -537,7 +535,7 @@
 				/>
 			</div>
 
-			{#if jail.type === 'freebsd'}
+			{#if jail.type === 'freebsd' || jail.type === 'linux'}
 				<div class="grid grid-cols-2 gap-4">
 					<CustomComboBox
 						bind:open={editComboBoxes.ipv4.open}
@@ -589,19 +587,21 @@
 				</div>
 
 				<div class="mt-2 flex items-center space-x-4">
-					<CustomCheckbox
-						bind:checked={editProperties.dhcp}
-						label="DHCP"
-						classes="flex items-center gap-2"
-					/>
+					{#if jail.type === 'freebsd'}
+						<CustomCheckbox
+							bind:checked={editProperties.dhcp}
+							label="DHCP"
+							classes="flex items-center gap-2"
+						/>
 
-					<CustomCheckbox
-						bind:checked={editProperties.slaac}
-						label="SLAAC"
-						classes="flex items-center gap-2"
-					/>
+						<CustomCheckbox
+							bind:checked={editProperties.slaac}
+							label="SLAAC"
+							classes="flex items-center gap-2"
+						/>
+					{/if}
 
-					{#if !(editProperties.dhcp && editProperties.slaac)}
+					{#if jail.type !== 'freebsd' || !(editProperties.dhcp && editProperties.slaac)}
 						<CustomCheckbox
 							bind:checked={editProperties.defaultGateway}
 							label="Default Gateway"
