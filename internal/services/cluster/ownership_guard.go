@@ -24,6 +24,7 @@ func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, lo
 	if guestType == "" || guestID == 0 {
 		return true, nil
 	}
+
 	if localNodeID == "" {
 		return false, fmt.Errorf("local_node_id_unavailable")
 	}
@@ -33,6 +34,7 @@ func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, lo
 	if err == gorm.ErrRecordNotFound {
 		return true, nil
 	}
+
 	if err != nil {
 		return false, err
 	}

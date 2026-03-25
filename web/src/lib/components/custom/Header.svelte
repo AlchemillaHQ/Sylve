@@ -231,7 +231,7 @@
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content class="w-48">
 									<DropdownMenu.Group>
-										{#each languageArr as { value, label }}
+										{#each languageArr as { value, label } (value)}
 											<DropdownMenu.CheckboxItem
 												class="cursor-pointer"
 												checked={storage.language === value}

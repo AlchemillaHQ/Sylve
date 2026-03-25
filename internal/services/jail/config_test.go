@@ -17,7 +17,7 @@ func TestAddSylveNetworkToHookAtEndAppendsAfterUserSection(t *testing.T) {
 	svc := &Service{}
 
 	content := "#!/bin/sh\n### Start User-Managed Hook ###\necho user\n### End User-Managed Hook ###\n"
-	networkContent := "/.sylve/bins/ifconfig abcde_net1b inet 192.168.1.10/24"
+	networkContent := "ifconfig -j abcde abcde_net1b inet 192.168.1.10/24"
 
 	out := svc.AddSylveNetworkToHookAtEnd(content, networkContent)
 

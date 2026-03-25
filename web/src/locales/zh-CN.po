@@ -68,6 +68,7 @@ msgstr "选项"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Notes"
@@ -526,10 +527,12 @@ msgstr "操作"
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -779,6 +782,9 @@ msgstr "创建笔记失败"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -804,6 +810,7 @@ msgstr "名称"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -829,6 +836,10 @@ msgstr "查看"
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
@@ -850,6 +861,8 @@ msgstr "查看"
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -864,6 +877,7 @@ msgstr "删除"
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -893,6 +907,8 @@ msgid "Bulk Delete"
 msgstr "批量删除"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -1177,6 +1193,8 @@ msgstr "重置"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/ui/dialog/dialog-content.svelte
 #: src/lib/components/ui/sheet/sheet-content.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -1191,6 +1209,8 @@ msgstr "重置"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -1268,12 +1288,16 @@ msgstr "删除笔记失败"
 msgid "Failed to delete notes"
 msgstr "删除笔记失败"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "CPU Usage"
 msgstr "CPU 使用率"
 
@@ -1281,6 +1305,7 @@ msgstr "CPU 使用率"
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "RAM Usage"
 msgstr "内存使用率"
 
@@ -1328,18 +1353,21 @@ msgstr "已接收"
 msgid "Sent"
 msgstr "已发送"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, \"Courier New\", monospace"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Disconnect"
 msgstr "断开连接"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
@@ -1358,18 +1386,21 @@ msgstr "主机终端"
 msgid "Host Console Settings"
 msgstr "主机控制台设置"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Font Size"
 msgstr "字体大小"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Background"
 msgstr "背景"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
@@ -1693,6 +1724,8 @@ msgid "Cluster Information"
 msgstr "集群信息"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -1704,6 +1737,8 @@ msgid "Property"
 msgstr "属性"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -1728,8 +1763,11 @@ msgid "Copy"
 msgstr "复制"
 
 #: src/lib/components/custom/Charts/EChartSample.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Memory Usage"
 msgstr "内存使用情况"
 
@@ -1779,12 +1817,17 @@ msgstr "退出登录"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Continue"
 msgstr "继续"
 
@@ -1794,10 +1837,14 @@ msgstr "处理中..."
 
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Are you sure?"
 msgstr "您确定吗？"
 
@@ -1814,12 +1861,17 @@ msgstr "此操作无法撤销。这将永久删除 "
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
@@ -1837,12 +1889,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1906,12 +1958,12 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder' 
+#. 0: isFolder ? 'Folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder' 
+#. 0: isFolder ? 'folder'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
@@ -2152,12 +2204,12 @@ msgstr "未选择组且不允许访客"
 msgid "Share cannot have overlapping groups"
 msgstr "共享不能有重叠的组"
 
-#. 0: edit ? 'edit' 
+#. 0: edit ? 'edit'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "无法{0} Samba 共享"
 
-#. 0: edit ? 'edited' 
+#. 0: edit ? 'edited'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba 共享 {0}"
@@ -2257,6 +2309,8 @@ msgstr "添加"
 msgid "No data"
 msgstr "暂无数据"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Deleting Jail"
@@ -2264,16 +2318,24 @@ msgstr "正在删除 Jail"
 
 #. 0: jail.current.name; 1: jail.current.ctId
 #. 0: jail.current.name; 1: jail.current.ctId
+#. 0: jail.current.name; 1: jail.current.ctId
+#. 0: jail.current.name; 1: jail.current.ctId
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Please wait while Jail <b>{0} ({1})</b> is being deleted"
 msgstr "请稍候，Jail <b>{0} ({1})</b> 正在删除中"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error deleting jail"
 msgstr "删除 Jail 时出错"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail deleted"
@@ -2285,6 +2347,8 @@ msgstr "Jail 已删除"
 #~ msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
 #~ msgstr "请稍候，Jail <b>{0} ({1})</b> 正在停止中"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error stopping jail"
@@ -2299,6 +2363,8 @@ msgstr "停止 Jail 时出错"
 #~ msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
 #~ msgstr "请稍候，Jail <b>{0} ({1})</b> 正在启动中"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Error starting jail"
@@ -2308,33 +2374,49 @@ msgstr "启动 Jail 时出错"
 #~ msgstr "Jail 已启动"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Stop"
 msgstr "停止"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Start"
 msgstr "启动"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "This will permanently delete Jail"
 msgstr "这将永久删除 Jail"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Delete MAC Object(s)"
 msgstr "删除 MAC 对象"
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Delete Root Filesystem"
@@ -2347,6 +2429,9 @@ msgstr "型号"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -2354,6 +2439,7 @@ msgstr "型号"
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2600,10 +2686,14 @@ msgstr "ZFS 存储池已更新"
 
 #. 0: title
 #. 0: title
+#. 0: title
+#. 0: title
 #. 0: activeRow.property
 #. 0: activeRow.property
 #. 0: title
 #. 0: title
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2765,7 +2855,7 @@ msgstr "{0} 个文件夹，{1} 个文件"
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -2877,50 +2967,72 @@ msgstr "删除下载失败"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force Deleting Virtual Machine"
 msgstr "正在强制删除虚拟机"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Deleting Virtual Machine"
 msgstr "正在删除虚拟机"
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
+#. 0: vm.current.name; 1: vm.current.rid
+#. 0: vm.current.name; 1: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being force deleted with best-effort cleanup"
 msgstr "请稍候，正在以尽力而为的清理模式强制删除虚拟机 <b>{0} ({1})</b>"
 
 #. 0: vm.current.name; 1: vm.current.rid
 #. 0: vm.current.name; 1: vm.current.rid
+#. 0: vm.current.name; 1: vm.current.rid
+#. 0: vm.current.name; 1: vm.current.rid
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Please wait while VM <b>{0} ({1})</b> is being deleted"
 msgstr "请稍候，正在删除虚拟机 <b>{0} ({1})</b>"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error force deleting VM"
 msgstr "强制删除虚拟机时出错"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error deleting VM"
 msgstr "删除虚拟机时出错"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM force deleted with warnings"
 msgstr "虚拟机已强制删除，但有警告"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM force deleted"
 msgstr "虚拟机已强制删除"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM deleted"
 msgstr "虚拟机已删除"
 
@@ -2932,6 +3044,8 @@ msgstr "虚拟机已删除"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error starting VM"
 msgstr "启动虚拟机时出错"
 
@@ -2946,6 +3060,8 @@ msgstr "启动虚拟机时出错"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error stopping VM"
 msgstr "停止虚拟机时出错"
 
@@ -2960,6 +3076,8 @@ msgstr "停止虚拟机时出错"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error shutting down VM"
 msgstr "关闭虚拟机时出错"
 
@@ -2974,6 +3092,8 @@ msgstr "关闭虚拟机时出错"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error rebooting VM"
 msgstr "重启虚拟机时出错"
 
@@ -2984,11 +3104,16 @@ msgstr "重启虚拟机时出错"
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force Delete"
 msgstr "强制删除"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2998,6 +3123,14 @@ msgstr "强制删除"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -3007,41 +3140,57 @@ msgstr "正在运行"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Reboot"
 msgstr "重启"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutdown"
 msgstr "关机"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force Delete VM?"
 msgstr "强制删除虚拟机？"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This will force delete VM"
 msgstr "这将强制删除虚拟机"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This will permanently delete VM"
 msgstr "这将永久删除虚拟机"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM network objects. Partial failures will be tolerated."
 msgstr "尽力而为的清理将尝试移除 libvirt/域、虚拟机数据集、虚拟机数据库记录以及虚拟机网络对象。将容忍部分失败。"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Delete RAW Disk(s)"
 msgstr "删除 RAW 磁盘"
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Delete Volume(s)"
 msgstr "删除卷"
 
@@ -3929,6 +4078,8 @@ msgstr "故障恢复"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -3957,6 +4108,8 @@ msgstr "是"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
@@ -4224,6 +4377,9 @@ msgstr "Linux (实验性)"
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4242,6 +4398,9 @@ msgstr "清理环境"
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4363,6 +4522,7 @@ msgstr "开机自启"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource Limits"
 msgstr "资源限制"
@@ -4429,6 +4589,7 @@ msgstr "IPv4 网络"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -4464,6 +4625,7 @@ msgstr "IPv6 网络"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -4552,6 +4714,9 @@ msgid "Lifecycle hooks saved"
 msgstr "生命周期钩子已保存"
 
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4587,6 +4752,9 @@ msgid "Start at Boot"
 msgstr "开机自启"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4598,6 +4766,9 @@ msgid "Manage the fstab entries for this jail"
 msgstr "管理此 Jail 的 fstab 条目"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4614,6 +4785,9 @@ msgstr "管理此 Jail 的附加选项"
 
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -4760,6 +4934,7 @@ msgstr "主网络"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
@@ -4832,11 +5007,13 @@ msgid "Failed to disinherit network"
 msgstr "取消继承网络失败"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Disinherit Network"
 msgstr "取消网络继承"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Inherit Network"
 msgstr "继承网络"
@@ -5044,7 +5221,7 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' 
+#. 0: properties.name; 1: isEdit ? 'updated'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
@@ -5518,12 +5695,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -6152,88 +6329,112 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "The Jail is currently powered off.<0/> Start the Jail to access its console."
 msgstr "该 Jail 当前处于关机状态。<0/> 启动该 Jail 以访问其控制台。"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "控制台已断开连接。<0/> 点击“重新连接”按钮以重新建立连接。"
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Jail terminal"
 msgstr "Jail 终端"
 
 #. 0: jail.current?.name
+#. 0: jail.current?.name
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 msgid "Console Settings - {0}"
 msgstr "控制台设置 - {0}"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Unlimited"
 msgstr "无限制"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Disable Resource Limits"
 msgstr "禁用资源限制"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Enable Resource Limits"
 msgstr "启用资源限制"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Enable resource limits to edit"
 msgstr "启用资源限制以编辑"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "This will give unlimited resources to this jail, proceed with <b>caution!</b>"
 msgstr "这将为此 Jail 提供无限资源，请<b>谨慎</b>操作！"
 
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "This will enable resource limits for this jail, defaulting to <b>1 GB RAM</b> and <b>1 vCPU</b>, you can change this later"
 msgstr "这将为此 Jail 启用资源限制，默认值为 <b>1 GB 内存</b> 和 <b>1 vCPU</b>，您稍后可以更改此设置"
 
 #. 0: adjective
+#. 0: adjective
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Failed to {0} resource limits"
 msgstr "{0}资源限制失败"
 
 #. 0: adjective
+#. 0: adjective
+#: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 msgid "Resource limits {0}"
 msgstr "资源限制已{0}"
 
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Failed to delete network"
 msgstr "删除网络失败"
 
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "Network deleted"
 msgstr "网络已删除"
 
 #. 0: activeRow.switch
+#. 0: activeRow.switch
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 msgid "This will detach the jail from the switch <b>{0}</b>"
 msgstr "这将从交换机 <b>{0}</b> 分离该 Jail"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "ZFS Snapshot Name"
 msgstr "ZFS 快照名称"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot name is required"
 msgstr "必须填写快照名称"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot created"
@@ -6243,6 +6444,8 @@ msgstr "快照已创建"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -6250,11 +6453,14 @@ msgstr "快照已创建"
 msgid "Failed to create snapshot"
 msgstr "创建快照失败"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot rollback started"
 msgstr "快照回滚已开始"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -6262,11 +6468,14 @@ msgstr "快照回滚已开始"
 msgid "Failed to rollback snapshot"
 msgstr "回滚快照失败"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Snapshot deleted"
 msgstr "快照已删除"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -6274,36 +6483,43 @@ msgstr "快照已删除"
 msgid "Failed to delete snapshot"
 msgstr "删除快照失败"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rollback"
 msgstr "回滚"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 msgid "New Jail Snapshot"
 msgstr "新建 Jail 快照"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Clean Slate"
 msgstr "初始状态"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Optional note about why this snapshot was taken"
 msgstr "关于拍摄此快照原因的可选备注"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Creating..."
 msgstr "正在创建..."
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Create Snapshot"
 msgstr "创建快照"
 
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rolling Back"
@@ -6311,6 +6527,8 @@ msgstr "正在回滚"
 
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
+#. 0: selectedSnapshot.name
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
@@ -6318,64 +6536,92 @@ msgstr "回滚至 <b>{0}</b>？这将销毁在其之后创建的快照。"
 
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
+#. 0: selectedSnapshot.name
+#: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
 msgstr "删除快照 <b>{0}</b>？此操作无法撤销。"
 
 #. 0: dateToAgo(jail.current.startedAt)
+#. 0: dateToAgo(jail.current.startedAt)
 #. 0: dateToAgo(vm.current.startedAt)
+#. 0: dateToAgo(vm.current.startedAt)
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Started {0}"
 msgstr "已启动 {0}"
 
 #. 0: dateToAgo(jail.current.stoppedAt)
+#. 0: dateToAgo(jail.current.stoppedAt)
 #. 0: dateToAgo(vm.current.stoppedAt)
+#. 0: dateToAgo(vm.current.stoppedAt)
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Stopped {0}"
 msgstr "已停止 {0}"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "View Logs"
 msgstr "查看日志"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Hourly"
 msgstr "每小时"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Daily"
 msgstr "每天"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Weekly"
 msgstr "每周"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Monthly"
 msgstr "每月"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Yearly"
 msgstr "每年"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Stopped"
 msgstr "已停止"
 
 #. 0: jail.current.name
+#. 0: jail.current.name
 #. 0: vm.current.name
+#. 0: vm.current.name
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "{0} Logs"
 msgstr "{0} 日志"
 
@@ -6420,6 +6666,9 @@ msgstr "删除 DHCP 租约失败"
 msgid "DHCP lease deleted"
 msgstr "DHCP 租约已删除"
 
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
@@ -6763,6 +7012,7 @@ msgstr "池 {0} 已删除"
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "已关闭"
 
@@ -6771,7 +7021,7 @@ msgstr "已关闭"
 msgid "Serial"
 msgstr "串口"
 
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial' 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "切换到 {0} 控制台"
@@ -6877,6 +7127,7 @@ msgstr "忽略未实现的 MSR 访问"
 #~ msgstr "虚拟机已关闭"
 
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Notes about VM"
 msgstr "关于虚拟机的备注"
 
@@ -8148,14 +8399,17 @@ msgstr ""
 #~ msgid "Predefined Configurations"
 #~ msgstr ""
 
-#~ msgid "Cloudflare"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Cloudflare"
+msgstr ""
 
-#~ msgid "Google"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Google"
+msgstr ""
 
-#~ msgid "Quad9"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Quad9"
+msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "DNS Preset"
@@ -8165,17 +8419,14 @@ msgstr ""
 msgid "Select DNS"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "Cloudflare DNS"
-msgstr ""
+#~ msgid "Cloudflare DNS"
+#~ msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "Google DNS"
-msgstr ""
+#~ msgid "Google DNS"
+#~ msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "Quad9 DNS"
-msgstr ""
+#~ msgid "Quad9 DNS"
+#~ msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
@@ -8187,11 +8438,23 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM action already in progress"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM start queued"
 msgstr ""
 
@@ -8199,37 +8462,55 @@ msgstr ""
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force stop requested"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM stop queued"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error requesting force stop"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM shutdown queued"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM reboot queued"
 msgstr ""
 
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force Stop"
 msgstr ""
 
 #~ msgid "<0/> {0} lifecycle action{1} in progress"
 #~ msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -8237,11 +8518,15 @@ msgstr ""
 msgid "Jail action already in progress"
 msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail stop queued"
 msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 msgid "Jail start queued"
@@ -8257,6 +8542,7 @@ msgstr ""
 msgid "This policy needs at least one target server."
 msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 msgid "Connecting..."
@@ -8431,9 +8717,8 @@ msgstr ""
 msgid "Documentation"
 msgstr ""
 
-#: src/lib/components/custom/Jail/Create/Network.svelte
-msgid "This option is not available for Linux jails"
-msgstr ""
+#~ msgid "This option is not available for Linux jails"
+#~ msgstr ""
 
 #~ msgid "B/s"
 #~ msgstr ""

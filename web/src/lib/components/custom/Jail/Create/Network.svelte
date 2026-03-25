@@ -258,13 +258,13 @@
 	<RadioGroup.Root bind:value={nwSwitch} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
 			{#if switches && switches.standard}
-				{#each switches.standard ?? [] as sw}
+				{#each switches.standard ?? [] as sw (sw.name)}
 					{@render radioItem(sw.id, sw.name, 'standard')}
 				{/each}
 			{/if}
 
 			{#if switches && switches.manual}
-				{#each switches.manual ?? [] as sw}
+				{#each switches.manual ?? [] as sw (sw.name)}
 					{@render radioItem(sw.id, sw.name, 'manual')}
 				{/each}
 			{/if}
@@ -333,7 +333,10 @@
 
 		{#if jailType === 'freebsd'}
 			<div class="mt-1 flex flex-row gap-4">
-				<CustomCheckbox label="DHCP" bind:checked={checkBoxes.dhcp} classes="flex items-center gap-2"
+				<CustomCheckbox
+					label="DHCP"
+					bind:checked={checkBoxes.dhcp}
+					classes="flex items-center gap-2"
 				></CustomCheckbox>
 				<CustomCheckbox
 					label="SLAAC"
@@ -356,8 +359,6 @@
 			label="Populate DNS Resolver Configuration"
 			bind:checked={checkBoxes.resolvConf}
 			classes="flex items-center gap-2"
-			disabled={jailType === 'linux'}
-			title={jailType === 'linux' ? 'This option is not available for Linux jails' : ''}
 		/>
 
 		{#if checkBoxes.resolvConf}
@@ -367,9 +368,9 @@
 					placeholder="Select DNS"
 					options={[
 						{ value: 'manual', label: 'Manual' },
-						{ value: 'cloudflare', label: 'Cloudflare DNS' },
-						{ value: 'google', label: 'Google DNS' },
-						{ value: 'quad9', label: 'Quad9 DNS' }
+						{ value: 'cloudflare', label: 'Cloudflare' },
+						{ value: 'google', label: 'Google' },
+						{ value: 'quad9', label: 'Quad9' }
 					]}
 					value={selectedDnsPreset}
 					onChange={(v) => {
@@ -380,13 +381,13 @@
 							return;
 						}
 
-						resolvConf = dnsConfigPresets(v as any);
+						resolvConf = dnsConfigPresets(v as unknown as 'cloudflare' | 'google' | 'quad9');
 					}}
 				/>
 
 				<CustomValueInput
 					label=""
-					placeholder={'nameserver 1.1.1.1\nnameserver 8.8.8.8\nsearch localdomain'}
+					placeholder="nameserver 1.1.1.1\nnameserver 8.8.8.8\nsearch localdomain"
 					type="textarea"
 					textAreaClasses="min-h-28 text-xs/6"
 					bind:value={resolvConf}

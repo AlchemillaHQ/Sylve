@@ -99,7 +99,7 @@ func (s *Service) JailAction(ctId int, action string) error {
 			return err
 		}
 
-		if out, err := run("-f", jailConf, "-c", jailName); err != nil {
+		if out, err := run("-v", "-f", jailConf, "-c", jailName); err != nil {
 			return fmt.Errorf("failed to start jail %s: %v\n%s", jailName, err, out)
 		}
 		jail.StartedAt = &now

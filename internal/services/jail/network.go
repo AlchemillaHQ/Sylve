@@ -45,16 +45,6 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 		return nil
 	}
 
-	preStartPath, err := s.GetHookScriptPath(ctId, "pre-start")
-	if err != nil {
-		return err
-	}
-
-	startPath, err := s.GetHookScriptPath(ctId, "start")
-	if err != nil {
-		return err
-	}
-
 	var inheriting bool
 
 	if ipv4 || ipv6 {
@@ -104,25 +94,22 @@ func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 		}
 	}
 
-	preStartCfg, err := os.ReadFile(preStartPath)
-	if err != nil {
-		return err
-	}
+	hooks := []string{"pre-start", "start", "post-start"}
+	for _, hookName := range hooks {
+		hookPath, err := s.GetHookScriptPath(ctId, hookName)
+		if err != nil {
+			continue
+		}
 
-	startCfg, err := os.ReadFile(startPath)
-	if err != nil {
-		return err
-	}
+		hookContent, err := os.ReadFile(hookPath)
+		if err != nil {
+			return err
+		}
 
-	cleanedPrestartCfg := s.RemoveSylveAdditionsFromHook(string(preStartCfg))
-	cleanedStartCfg := s.RemoveSylveAdditionsFromHook(string(startCfg))
-
-	if err := os.WriteFile(preStartPath, []byte(cleanedPrestartCfg), 0755); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(startPath, []byte(cleanedStartCfg), 0755); err != nil {
-		return err
+		cleanedContent := s.RemoveSylveAdditionsFromHook(string(hookContent))
+		if err := os.WriteFile(hookPath, []byte(cleanedContent), 0755); err != nil {
+			return err
+		}
 	}
 
 	if inheriting {
@@ -528,6 +515,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 	} else {
 		if len(jail.Networks) > 0 {
 			ctidHash := s.GetCTIDHash(ctId)
+			managedPostStartPath, managedPostStartPathErr := s.GetHookScriptPath(ctId, "post-start")
 
 			if err := s.NetworkService.SyncEpairs(false); err != nil {
 				return err
@@ -539,6 +527,11 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 					trimmed := strings.TrimSpace(line)
 					if strings.HasPrefix(trimmed, "exec.start") &&
 						strings.Contains(trimmed, "\"/usr/local/sylve/scripts/start.sh\"") {
+						continue
+					}
+					if managedPostStartPathErr == nil &&
+						strings.HasPrefix(trimmed, "exec.poststart") &&
+						strings.Contains(trimmed, fmt.Sprintf("\"%s\"", managedPostStartPath)) {
 						continue
 					}
 					filtered = append(filtered, line)
@@ -572,15 +565,8 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 			}
 
 			var preStartBuilder strings.Builder
-			var startBuilder strings.Builder
+			var postStartBuilder strings.Builder
 			var rcConfLines []string
-
-			if jail.Type == jailModels.JailTypeLinux {
-				binsDir := filepath.Join(mountPoint, ".sylve", "bins")
-				preStartBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", binsDir))
-				preStartBuilder.WriteString(fmt.Sprintf("cp -f /rescue/ifconfig %s\n", filepath.Join(binsDir, "ifconfig")))
-				preStartBuilder.WriteString(fmt.Sprintf("cp -f /rescue/route %s\n\n", filepath.Join(binsDir, "route")))
-			}
 
 			for _, n := range jail.Networks {
 				if n.SwitchID == 0 {
@@ -634,7 +620,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 							return fmt.Errorf("failed to get ipv4 address: %w", err)
 						}
 
-						startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/ifconfig %s inet %s\n", epairB, ipv4))
+						postStartBuilder.WriteString(fmt.Sprintf("ifconfig -j %s %s inet %s\n", ctidHash, epairB, ipv4))
 
 						if n.DefaultGateway {
 							ipv4Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv4GwID)
@@ -642,7 +628,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 								return fmt.Errorf("failed to get ipv4 gateway: %w", err)
 							}
 
-							startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/route add default %s\n", ipv4Gw))
+							postStartBuilder.WriteString(fmt.Sprintf("route -j %s add default %s\n", ctidHash, ipv4Gw))
 						}
 					}
 
@@ -652,7 +638,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 							return fmt.Errorf("failed to get ipv6 address: %w", err)
 						}
 
-						startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/ifconfig %s inet6 %s\n", epairB, ipv6))
+						postStartBuilder.WriteString(fmt.Sprintf("ifconfig -j %s %s inet6 %s\n", ctidHash, epairB, ipv6))
 
 						if n.DefaultGateway {
 							ipv6Gw, err := s.NetworkService.GetObjectEntryByID(*n.IPv6GwID)
@@ -660,12 +646,12 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 								return fmt.Errorf("failed to get ipv6 gateway: %w", err)
 							}
 
-							startBuilder.WriteString(fmt.Sprintf("/.sylve/bins/route add default %s\n", ipv6Gw))
+							postStartBuilder.WriteString(fmt.Sprintf("route -j %s add default %s\n", ctidHash, ipv6Gw))
 						}
 					}
 
 					if hasIPv4Static || hasIPv6Static {
-						startBuilder.WriteString("\n")
+						postStartBuilder.WriteString("\n")
 					}
 				} else {
 					if n.DHCP {
@@ -747,31 +733,23 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 			}
 
 			if jail.Type == jailModels.JailTypeLinux {
-				startPath, err := s.GetHookScriptPath(ctId, "start")
+				postStartPath, err := s.GetHookScriptPath(ctId, "post-start")
 				if err != nil {
 					return err
 				}
 
-				currentStartContent, err := os.ReadFile(startPath)
+				currentPostStartContent, err := os.ReadFile(postStartPath)
 				if err != nil {
 					return err
 				}
 
-				newStartContent := s.AddSylveNetworkToHookAtEnd(string(currentStartContent), startBuilder.String())
-				if err := os.WriteFile(startPath, []byte(newStartContent), 0755); err != nil {
+				newPostStartContent := s.AddSylveNetworkToHookAtEnd(string(currentPostStartContent), postStartBuilder.String())
+				if err := os.WriteFile(postStartPath, []byte(newPostStartContent), 0755); err != nil {
 					return err
 				}
 
-				startInJailPath := filepath.Join(mountPoint, "usr", "local", "sylve", "scripts", "start.sh")
-				if err := os.MkdirAll(filepath.Dir(startInJailPath), 0755); err != nil {
-					return err
-				}
-				if err := os.WriteFile(startInJailPath, []byte(newStartContent), 0755); err != nil {
-					return err
-				}
-
-				if s.hasHookBody(newStartContent) {
-					jailCfgBuilder.WriteString("\texec.start += \"/usr/local/sylve/scripts/start.sh\";\n")
+				if s.hasHookBody(newPostStartContent) {
+					jailCfgBuilder.WriteString(fmt.Sprintf("\texec.poststart += \"%s\";\n", postStartPath))
 				}
 			}
 

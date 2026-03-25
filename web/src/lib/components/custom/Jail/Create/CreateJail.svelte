@@ -38,7 +38,7 @@
 
 	let downloads = resource(
 		() => 'downloads',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const downloads = await getDownloads();
 			updateCache(key, downloads);
 			return downloads;
@@ -47,7 +47,7 @@
 
 	let networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const switches = await getSwitches();
 			updateCache(key, switches);
 			return switches;
@@ -56,7 +56,7 @@
 
 	let networkObjects = resource(
 		() => 'network-objects',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const objects = await getNetworkObjects();
 			updateCache(key, objects);
 			return objects;
@@ -65,7 +65,7 @@
 
 	let vms = resource(
 		() => 'simple-vm-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const vms = await getSimpleVMs();
 			updateCache(key, vms);
 			return vms;
@@ -74,7 +74,7 @@
 
 	let jails = resource(
 		() => 'simple-jail-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const jails = await getSimpleJails();
 			updateCache(key, jails);
 			return jails;
@@ -83,7 +83,7 @@
 
 	let nodes = resource(
 		() => 'cluster-nodes',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const nodes = await getNodes();
 			updateCache(key, nodes);
 			return nodes;
@@ -92,7 +92,7 @@
 
 	let pools = resource(
 		() => 'pool-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const pools = await getPools();
 			updateCache(key, pools);
 			return pools;
@@ -101,7 +101,7 @@
 
 	const clusterNodes = resource(
 		() => 'cluster-nodes',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getNodes();
 			updateCache(key, result);
 			return result;
@@ -182,15 +182,17 @@
 	};
 
 	let nextId = $derived.by(() => {
-		if (
-			clusterNodes.current &&
-			Array.isArray(clusterNodes.current) &&
-			clusterNodes.current.length > 0
-		) {
-			return getNextGuestId(clusterNodes.current);
-		}
+		if (open) {
+			if (
+				clusterNodes.current &&
+				Array.isArray(clusterNodes.current) &&
+				clusterNodes.current.length > 0
+			) {
+				return getNextGuestId(clusterNodes.current);
+			}
 
-		return getNextId(vms.current || [], jails.current || []);
+			return getNextId(vms.current || [], jails.current || []);
+		}
 	});
 
 	let modal: CreateData = $state(options);
@@ -198,7 +200,7 @@
 	watch(
 		() => nextId,
 		(id) => {
-			if (typeof nextId === 'number') {
+			if (typeof id === 'number') {
 				modal.id = id;
 			}
 		}
@@ -266,9 +268,9 @@
 					<span>Create Jail</span>
 				</div>
 				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title={'Reset'}>
+					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title="Reset">
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
+						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
 						size="sm"
@@ -278,20 +280,14 @@
 							minimize = true;
 							open = false;
 						}}
-						title={'Minimize'}
+						title="Minimize"
 					>
 						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Minimize'}</span>
+						<span class="sr-only">Minimize</span>
 					</Button>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						onclick={() => (open = false)}
-						title={'Close'}
-					>
+					<Button size="sm" variant="link" class="h-4" onclick={() => (open = false)} title="Close">
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
+						<span class="sr-only">Close</span>
 					</Button>
 				</div>
 			</Dialog.Title>
@@ -300,12 +296,12 @@
 		<div class="mt-6 flex-1 overflow-y-auto">
 			<Tabs.Root value="basic" class="w-full overflow-hidden">
 				<Tabs.List class="grid w-full grid-cols-5 p-0">
-					{#each tabs as { value, label }}
+					{#each tabs as { value, label } (value)}
 						<Tabs.Trigger class="border-b" {value}>{label}</Tabs.Trigger>
 					{/each}
 				</Tabs.List>
 
-				{#each tabs as { value, label }}
+				{#each tabs as { value } (value)}
 					<Tabs.Content {value}>
 						<div>
 							{#if value === 'basic' && nodes.current}
