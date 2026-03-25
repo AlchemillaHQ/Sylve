@@ -842,6 +842,8 @@ msgstr "查看"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
@@ -870,6 +872,8 @@ msgstr "删除"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -973,6 +977,8 @@ msgstr "笔记"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
@@ -1107,6 +1113,8 @@ msgstr "重置"
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -1829,12 +1837,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' : ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' : 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1898,17 +1906,18 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' : 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' : 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
 
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Upload File"
 msgstr "<0/> 上传文件"
@@ -2143,12 +2152,12 @@ msgstr "未选择组且不允许访客"
 msgid "Share cannot have overlapping groups"
 msgstr "共享不能有重叠的组"
 
-#. 0: edit ? 'edit'
+#. 0: edit ? 'edit' : 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "无法{0} Samba 共享"
 
-#. 0: edit ? 'edited'
+#. 0: edit ? 'edited' : 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba 共享 {0}"
@@ -2695,12 +2704,12 @@ msgstr "无法擦除忙碌中的磁盘"
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
 
-#. 0: isFolder ? 'folder' ; 1: name
+#. 0: isFolder ? 'folder' : 'file'; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "创建{0}“{1}”失败"
@@ -2746,17 +2755,17 @@ msgstr "<0/> 新建文件夹"
 msgid "{0} items"
 msgstr "{0} 个项目"
 
-#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
+#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} 个文件夹，{1} 个文件"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -2783,6 +2792,7 @@ msgstr "请输入有效的 Magnet、HTTP URL 或路径"
 msgid "Invalid file name"
 msgstr "文件名无效"
 
+#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Download started"
 msgstr "下载已开始"
@@ -2827,14 +2837,17 @@ msgstr "下载类型"
 msgid "Select Download Type"
 msgstr "选择下载类型"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Uncategorized (ISOs, IMGs, etc.)"
 msgstr "未分类 (ISO、IMG 等)"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Base / RootFS"
 msgstr "基础 / RootFS"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Cloud-Init"
@@ -2844,10 +2857,12 @@ msgstr "Cloud-Init"
 msgid "Ignore TLS Errors"
 msgstr "忽略 TLS 错误"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Extract Automatically"
 msgstr "自动解压"
 
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Auto-convert to RAW"
 msgstr "自动转换为 RAW"
@@ -5029,12 +5044,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' : 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -5475,13 +5490,11 @@ msgstr "映像"
 msgid "Select Pool"
 msgstr "选择池"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "ISO Image"
-msgstr "ISO 映像"
+#~ msgid "ISO Image"
+#~ msgstr "ISO 映像"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ISO Image"
-msgstr "选择 ISO 映像"
+#~ msgid "Select ISO Image"
+#~ msgstr "选择 ISO 映像"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk Path"
@@ -6139,7 +6152,7 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"
@@ -7159,6 +7172,8 @@ msgid "Select generation"
 msgstr "选择生成"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Snapshot"
 msgstr "快照"
 
@@ -7536,10 +7551,12 @@ msgid "Select bridge"
 msgstr "选择网桥"
 
 #. 0: dataset.name; 1: properties.name
+#. 0: prefill.dataset; 1: properties.name
 #. 0: pool; 1: properties.name
 #. 0: pool; 1: properties.name
 #. 0: dataset.name; 1: properties.name
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
@@ -8010,10 +8027,8 @@ msgstr "卷大小"
 msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
 msgstr "卷大小不是块大小的倍数，点击此处以自动调整"
 
-#. 0: dataset.name
-#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
-msgid "<0/> Flash File to {0}"
-msgstr "<0/> 写入文件到 {0}"
+#~ msgid "<0/> Flash File to {0}"
+#~ msgstr "<0/> 写入文件到 {0}"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
 msgid "Select File"
@@ -8031,13 +8046,11 @@ msgstr "卷 "
 msgid "Flash"
 msgstr "写入"
 
-#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
-msgid "Edit Filesystem"
-msgstr "编辑文件系统"
+#~ msgid "Edit Filesystem"
+#~ msgstr "编辑文件系统"
 
-#: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
-msgid "Delete Filesystem"
-msgstr "删除文件系统"
+#~ msgid "Delete Filesystem"
+#~ msgstr "删除文件系统"
 
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 msgid "Delete Datasets"
@@ -8092,13 +8105,11 @@ msgstr "查看定期任务"
 msgid "Flash File"
 msgstr "烧录文件"
 
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
-msgid "Delete Volume"
-msgstr "删除卷"
+#~ msgid "Delete Volume"
+#~ msgstr "删除卷"
 
-#: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
-msgid "Edit Volume"
-msgstr "编辑卷"
+#~ msgid "Edit Volume"
+#~ msgstr "编辑卷"
 
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 msgid "Delete Volumes"
@@ -9105,9 +9116,8 @@ msgstr ""
 msgid "Identity Prefix (optional)"
 msgstr ""
 
-#: src/lib/components/custom/VM/Template/Create.svelte
-msgid "If empty, VM name is used"
-msgstr ""
+#~ msgid "If empty, VM name is used"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
@@ -9235,4 +9245,94 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "ISO/Image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select ISO/Image"
+msgstr ""
+
+#~ msgid "Snapshot Filesystem"
+#~ msgstr ""
+
+#. 0: prefill.pool; 1: prefill.dataset; 2: properties.name
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+msgid "Snapshot {0}/{1}@{2} created"
+msgstr ""
+
+#~ msgid "Use \"{0}\""
+#~ msgstr ""
+
+#~ msgid "Create Snapshot 1"
+#~ msgstr ""
+
+#~ msgid "<0/> Flash File"
+#~ msgstr ""
+
+#~ msgid "Select a file below to flash to the ZFS Volume {0}"
+#~ msgstr ""
+
+#~ msgid "Select a file below to flash to the ZFS Volume <0/>"
+#~ msgstr ""
+
+#~ msgid "<0/> Flash File To ZFS Volume"
+#~ msgstr ""
+
+#~ msgid "Flash File To ZFS Volume"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
+msgid "Flash File To Volume"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to start download from uploaded file"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Upload"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload failed"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Uploaded file path is invalid"
+msgstr ""
+
+#~ msgid "Upload destination: <0/>"
+#~ msgstr ""
+
+#~ msgid "File uploaded. Click Download to start."
+#~ msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload a file first"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Upload Type"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Select Upload Type"
+msgstr ""
+
+#~ msgid "Move"
+#~ msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Complete Upload"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Failed to start move from uploaded file"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "File uploaded, you can complete upload now"
 msgstr ""

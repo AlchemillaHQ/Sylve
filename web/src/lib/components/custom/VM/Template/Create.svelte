@@ -366,7 +366,7 @@
 								type="text"
 								bind:value={cloudInitPrefix}
 								label="Identity Prefix (optional)"
-								placeholder="If empty, VM name is used"
+								placeholder="jellyfin"
 								classes="w-full"
 							/>
 						{/if}

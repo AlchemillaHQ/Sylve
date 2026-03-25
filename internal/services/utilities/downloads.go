@@ -176,6 +176,11 @@ func (s *Service) GetFilePathById(uuid string, id int) (string, error) {
 			return "", fmt.Errorf("file_not_found")
 		}
 		return path.Join(config.GetDownloadsPath("http"), dl.Name), nil
+	case "path":
+		if id != int(dl.ID) {
+			return "", fmt.Errorf("file_not_found")
+		}
+		return dl.Path, nil
 	}
 
 	return "", fmt.Errorf("unsupported_download_type")
@@ -343,18 +348,22 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			}
 		}
 
-		destDir := config.GetDownloadsPath("http")
-		destPath := path.Join(destDir, finalName)
+		sourcePath := path.Clean(url)
+		destDir := config.GetDownloadsPath("path")
+		destPath := path.Clean(path.Join(destDir, finalName))
 
-		if _, err := os.Stat(destPath); err == nil {
-			err := os.Remove(destPath)
-			if err != nil {
-				return fmt.Errorf("failed_to_remove_existing_file: %w", err)
+		// Never delete the source file; only replace an existing destination when they differ.
+		if sourcePath != destPath {
+			if _, err := os.Stat(destPath); err == nil {
+				err := os.Remove(destPath)
+				if err != nil {
+					return fmt.Errorf("failed_to_remove_existing_file: %w", err)
+				}
 			}
 		}
 
 		download := utilitiesModels.Downloads{
-			URL:                    url,
+			URL:                    sourcePath,
 			UUID:                   utils.GenerateDeterministicUUID(url),
 			Path:                   destPath,
 			Type:                   utilitiesModels.DownloadTypePath,
@@ -442,18 +451,33 @@ func (s *Service) StartDownload(id *uint) error {
 		s.httpRspMu.Unlock()
 	} else if utils.IsAbsPath(download.URL) {
 		destDir := config.GetDownloadsPath("path")
-		destPath := path.Join(destDir, download.Name)
-		err := utils.CopyFile(download.URL, destPath)
+		destPath := path.Clean(path.Join(destDir, download.Name))
+		sourcePath := path.Clean(download.URL)
 
-		if err != nil {
-			logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_copy_failed")
-			download.Status = utilitiesModels.DownloadStatusFailed
-			download.Error = err.Error()
-			s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
-				"status": download.Status,
-				"error":  download.Error,
-			})
-			return fmt.Errorf("file_copy_failed: %w", err)
+		// If source is already the final destination, avoid self-copy/truncation.
+		if sourcePath != destPath {
+			err := utils.CopyFile(sourcePath, destPath)
+			if err != nil {
+				logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_copy_failed")
+				download.Status = utilitiesModels.DownloadStatusFailed
+				download.Error = err.Error()
+				s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
+					"status": download.Status,
+					"error":  download.Error,
+				})
+				return fmt.Errorf("file_copy_failed: %w", err)
+			}
+		} else {
+			if _, err := os.Stat(destPath); err != nil {
+				logger.L.Error().Uint("download_id", *id).Err(err).Msg("path_source_missing")
+				download.Status = utilitiesModels.DownloadStatusFailed
+				download.Error = err.Error()
+				s.DB.Model(download).Select("Status", "Error").Updates(map[string]any{
+					"status": download.Status,
+					"error":  download.Error,
+				})
+				return fmt.Errorf("path_source_missing: %w", err)
+			}
 		}
 
 		info, err := os.Stat(destPath)
@@ -868,7 +892,7 @@ func (s *Service) DeleteDownload(id int) error {
 		}
 	}
 
-	if download.Type == "http" {
+	if download.Type == utilitiesModels.DownloadTypeHTTP || download.Type == utilitiesModels.DownloadTypePath {
 		if download.UType == utilitiesModels.DownloadUTypeBase && download.ExtractedPath != "" {
 			extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
 			_, err := utils.RunCommand("/bin/chflags", "-R", "noschg", extractsPath)
@@ -895,7 +919,7 @@ func (s *Service) DeleteDownload(id int) error {
 
 		err := utils.DeleteFile(path.Join(config.GetDownloadsPath(dType), download.Name))
 		if err != nil {
-			logger.L.Debug().Msgf("Failed to delete HTTP download file: %v", err)
+			logger.L.Debug().Msgf("Failed to delete download file: %v", err)
 			return err
 		}
 

@@ -341,6 +341,26 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 				Error:   "",
 				Data:    signedURL,
 			})
+		} else if download.Type == "path" {
+			input := fmt.Sprintf("%s:%d", download.UUID, download.ID)
+			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
+			if sigErr != nil {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_sign_download_url",
+					Error:   sigErr.Error(),
+					Data:    nil,
+				})
+				return
+			}
+			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, download.ID)
+
+			c.JSON(http.StatusOK, internal.APIResponse[string]{
+				Status:  "success",
+				Message: "signed_url_generated",
+				Error:   "",
+				Data:    signedURL,
+			})
 		} else {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",

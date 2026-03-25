@@ -8,6 +8,7 @@
 	import CreateVolume from '$lib/components/custom/ZFS/datasets/volumes/Create.svelte';
 	import EditVolume from '$lib/components/custom/ZFS/datasets/volumes/Edit.svelte';
 	import FlashFile from '$lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte';
+	import CreateDetailed from '$lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { BasicSettings } from '$lib/types/system/settings';
@@ -28,6 +29,7 @@
 	let { data }: { data: Data } = $props();
 	let tableName = 'tt-zfsVolumes';
 
+	// svelte-ignore state_referenced_locally
 	const datasets = resource(
 		() => 'zfs-volumes',
 		async () => {
@@ -40,6 +42,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const downloads = resource(
 		() => 'downloads',
 		async () => {
@@ -52,6 +55,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'basic-settings',
 		async () => {
@@ -153,7 +157,9 @@
 		},
 		snapshot: {
 			create: {
-				open: false
+				open: false,
+				pool: '',
+				dataset: ''
 			},
 			delete: {
 				open: false
@@ -172,6 +178,26 @@
 
 {#snippet button(type: string)}
 	{#if activeRows && activeRows.length == 1}
+		{#if type === 'snapshot-volume' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
+			<Button
+				onclick={async () => {
+					if (activeVolume) {
+						modals.snapshot.create.open = true;
+						modals.snapshot.create.pool = activeVolume.pool;
+						modals.snapshot.create.dataset = activeVolume.name;
+					}
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--camera] mr-1 h-4 w-4"></span>
+					<span>Snapshot</span>
+				</div>
+			</Button>
+		{/if}
+
 		{#if type === 'flash-file' && activeVolume?.type === GZFSDatasetTypeSchema.enum.VOLUME}
 			<Button
 				onclick={async () => {
@@ -204,7 +230,7 @@
 			>
 				<div class="flex items-center">
 					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-					<span>Delete Volume</span>
+					<span>Delete</span>
 				</div>
 			</Button>
 		{/if}
@@ -222,7 +248,7 @@
 			>
 				<div class="flex items-center">
 					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
-					<span>Edit Volume</span>
+					<span>Edit</span>
 				</div>
 			</Button>
 		{/if}
@@ -268,6 +294,7 @@
 			</div>
 		</Button>
 
+		{@render button('snapshot-volume')}
 		{@render button('flash-file')}
 		{@render button('edit-volume')}
 		{@render button('delete-volume')}
@@ -283,6 +310,15 @@
 		multipleSelect={true}
 	/>
 </div>
+
+{#if modals.snapshot.create.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}
+	<CreateDetailed
+		bind:open={modals.snapshot.create.open}
+		basicSettings={data.settings}
+		prefill={{ pool: modals.snapshot.create.pool, dataset: modals.snapshot.create.dataset }}
+		bind:reload
+	/>
+{/if}
 
 <!-- Flash File to Volume -->
 {#if modals.volume.flash.open && activeVolume && activeVolume.type === GZFSDatasetTypeSchema.enum.VOLUME}

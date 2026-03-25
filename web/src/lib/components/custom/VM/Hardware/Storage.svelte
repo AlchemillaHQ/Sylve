@@ -473,13 +473,14 @@
 					{#if properties.diskType === 'image'}
 						<CustomComboBox
 							bind:open={imageCombobox.open}
-							label={'ISO Image'}
+							label={'ISO/Image'}
 							bind:value={imageCombobox.value}
 							data={images}
 							classes="flex-1 space-y-1"
-							placeholder="Select ISO Image"
+							placeholder="Select ISO/Image"
 							width="w-3/4"
 							multiple={false}
+							shortLabels={true}
 						></CustomComboBox>
 					{:else if properties.diskType === 'raw'}
 						<CustomValueInput

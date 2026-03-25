@@ -5,8 +5,8 @@
 	export const registerPlugin = FilePond.registerPlugin;
 	export const isSupported = FilePond.supported();
 
-	let root: HTMLInputElement | null = null;
-	let instance: FilePond.FilePond | undefined = undefined;
+	let root = $state<HTMLInputElement | null>(null);
+	let instance = $state<FilePond.FilePond | undefined>(undefined);
 
 	let {
 		class: klass = undefined,

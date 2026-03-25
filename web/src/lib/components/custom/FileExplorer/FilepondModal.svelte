@@ -66,6 +66,7 @@
 
 	$effect(() => {
 		if (pond && droppedFiles.length > 0 && isOpen) {
+			console.log(pond);
 			pond.removeFiles();
 			droppedFiles.forEach((file) => {
 				pond.addFile(file);

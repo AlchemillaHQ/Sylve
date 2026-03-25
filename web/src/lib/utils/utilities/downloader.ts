@@ -111,6 +111,25 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
                 }
 
                 return renderWithIcon('lets-icons:check-fill', '100 %');
+            },
+            copyOnClick: true,
+            copyValue: (cell: CellComponent) => {
+                // const value = cell.getValue();
+                // if (typeof value === 'number') {
+                //     return `${value} %`;
+                // }
+                // return value;
+                // check if we have error.. if we do then we copy that
+                const error = cell.getRow().getData().error;
+                if (error) {
+                    return error;
+                }
+
+                const value = cell.getValue();
+                if (typeof value === 'number') {
+                    return `${value} %`;
+                }
+                return value;
             }
         },
         {

@@ -108,31 +108,34 @@
 	}
 </script>
 
-<div class={classes}>
+<div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
 		<Label class="w-full whitespace-nowrap text-sm" for={label.toLowerCase()}>
 			{label}
 		</Label>
 	{/if}
 	<Popover.Root bind:open>
-		<Popover.Trigger class={triggerWidth} {disabled}>
+		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>
 			<Button
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
-				class="max-h-40! h-full w-full flex-nowrap justify-between gap-1 overflow-y-auto"
+				class="max-h-40! h-full w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
 				{disabled}
 			>
-				<div class="flex min-w-0 flex-1 flex-wrap items-center gap-1 overflow-hidden">
+				<div
+					class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+					class:flex-wrap={multiple}
+				>
 					{#if selectedLabels.length > 0}
 						{#each selectedLabels as lbl, i}
 							<p
 								class={multiple
 									? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
-									: ' rounded px-2 text-sm'}
+									: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
 								title={lbl}
 							>
-								{lbl}
+								{lbl}1
 							</p>
 						{/each}
 					{:else}
