@@ -331,10 +331,6 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 		return fmt.Errorf("no_emulation_type_selected")
 	}
 
-	if err != nil {
-		return fmt.Errorf("unable_to_get_basic_settings")
-	}
-
 	if data.StorageType != libvirtServiceInterfaces.StorageTypeNone {
 		usable, err := s.System.GetUsablePools(ctx)
 		if err != nil {
@@ -1040,6 +1036,12 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 		if err := s.DB.Delete(&p).Error; err != nil {
 			return fmt.Errorf("failed_to_delete_cpupinning: %w", err)
 		}
+	}
+
+	logPath := fmt.Sprintf("/var/log/libvirt/bhyve/%d.log", rid)
+	err = utils.DeleteFileIfExists(logPath)
+	if err != nil {
+		logger.L.Error().Err(err).Msgf("RemoveVM: failed to remove log file %s", logPath)
 	}
 
 	return nil

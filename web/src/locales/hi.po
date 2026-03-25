@@ -1181,6 +1181,8 @@ msgstr "रीसेट करें"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -1827,12 +1829,12 @@ msgstr "सक्षम करने के लिए टिक करें"
 msgid "Saving"
 msgstr "सहेजा जा रहा है"
 
-#. 0: sizes.length > 1 ? 's' 
+#. 0: sizes.length > 1 ? 's'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "विभाजन{0} बनाया गया"
 
-#. 0: sizes.length > 1 ? 'partitions' 
+#. 0: sizes.length > 1 ? 'partitions'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "{0} बनाने में त्रुटि"
@@ -6323,6 +6325,7 @@ msgid "Stopped {0}"
 msgstr "{0} बंद हुआ"
 
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "View Logs"
 msgstr "लॉग्स देखें"
 
@@ -6357,7 +6360,9 @@ msgid "Stopped"
 msgstr "बंद"
 
 #. 0: jail.current.name
+#. 0: vm.current.name
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[node]/summary/+page.svelte
 msgid "{0} Logs"
 msgstr "{0} लॉग्स"
 
