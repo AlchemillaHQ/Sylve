@@ -1,7 +1,9 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
+	DownloadPathsSchema,
 	DownloadSchema,
 	UTypeGroupedDownloadSchema,
+	type DownloadPaths,
 	type Download,
 	type UTypeGroupedDownload
 } from '$lib/types/utilities/downloader';
@@ -15,9 +17,13 @@ export async function getDownloadsByUType(): Promise<UTypeGroupedDownload[]> {
 	return await apiRequest('/utilities/downloads/utype', UTypeGroupedDownloadSchema.array(), 'GET');
 }
 
+export async function getDownloadPaths(): Promise<DownloadPaths> {
+	return await apiRequest('/utilities/downloads/paths', DownloadPathsSchema, 'GET');
+}
+
 export async function startDownload(
 	url: string,
-	downloadType: 'base-rootfs' | 'uncategorized',
+	downloadType: 'base-rootfs' | 'cloud-init' | 'uncategorized',
 	filename?: string,
 	ignoreTLS?: boolean,
 	automaticExtraction?: boolean,

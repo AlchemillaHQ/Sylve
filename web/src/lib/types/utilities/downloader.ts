@@ -31,6 +31,12 @@ export const UTypeGroupedDownloadSchema = z.object({
 	uType: z.enum(['base-rootfs', 'cloud-init', 'uncategorized'])
 });
 
+export const DownloadPathsSchema = z.object({
+	http: z.string(),
+	path: z.string()
+});
+
 export type Download = z.infer<typeof DownloadSchema>;
 export type DownloadedFile = z.infer<typeof DownloadedFileSchema>;
 export type UTypeGroupedDownload = z.infer<typeof UTypeGroupedDownloadSchema>;
+export type DownloadPaths = z.infer<typeof DownloadPathsSchema>;

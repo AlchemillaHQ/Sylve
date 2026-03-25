@@ -10,12 +10,13 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import DownloaderUploadModal from '$lib/components/custom/Utilities/Downloader/UploadModal.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { type APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
-	import type { Download } from '$lib/types/utilities/downloader';
+	import type { Download, DownloadPaths } from '$lib/types/utilities/downloader';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
 		addTrackersToMagnet,
@@ -33,6 +34,16 @@
 
 	interface Data {
 		downloads: Download[];
+		downloadPaths: DownloadPaths;
+	}
+
+	type DownloadType = 'base-rootfs' | 'cloud-init' | 'uncategorized';
+
+	interface UploadedDownloadPayload {
+		path: string;
+		downloadType: DownloadType;
+		automaticExtraction: boolean;
+		automaticRawConversion: boolean;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -95,10 +106,22 @@
 		automaticExtraction: false,
 		automaticRawConversion: false,
 		loading: false,
-		downloadType: 'uncategorized' as 'base-rootfs' | 'uncategorized'
+		downloadType: 'uncategorized' as DownloadType
 	};
 
 	let modalState = $state(options);
+	let uploadModalState = $state({
+		isOpen: false,
+		loading: false
+	});
+	let uploadStagingPath: string = $derived.by(() => {
+		const httpPath =
+			data?.downloadPaths && typeof data.downloadPaths.http === 'string'
+				? data.downloadPaths.http
+				: '';
+
+		return isValidAbsPath(httpPath) ? httpPath : '/tmp';
+	});
 	let tableData = $derived(generateTableData(downloads.current as Download[]));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
@@ -251,6 +274,31 @@
 		}
 	}
 
+	async function handleUploadedFile(payload: UploadedDownloadPayload) {
+		if (uploadModalState.loading) return;
+
+		uploadModalState.loading = true;
+		const result = await startDownload(
+			payload.path,
+			payload.downloadType,
+			undefined,
+			false,
+			payload.automaticExtraction,
+			payload.automaticRawConversion
+		);
+		uploadModalState.loading = false;
+
+		if (isAPIResponse(result) && result.status === 'success') {
+			uploadModalState.isOpen = false;
+			reload = true;
+			toast.success('Download started', { position: 'bottom-center' });
+			return;
+		}
+
+		handleAPIError(result as APIResponse);
+		toast.error('Failed to start download from uploaded file', { position: 'bottom-center' });
+	}
+
 	watch(
 		() => modalState.downloadType,
 		() => {
@@ -311,20 +359,31 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-		<Search bind:query />
+	<div class="flex h-10 w-full items-center justify-between gap-2 border-b p-2">
+		<div class="flex items-center gap-2">
+			<Search bind:query />
 
-		<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
-			<div class="flex items-center">
-				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+			<Button onclick={() => (modalState.isOpen = true)} size="sm" class="h-6">
+				<div class="flex items-center">
+					<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
 
-				<span>New</span>
-			</div>
-		</Button>
+					<span>New</span>
+				</div>
+			</Button>
+		</div>
 
-		{@render button('download')}
-		{@render button('copy')}
-		{@render button('delete')}
+		<div class="flex items-center gap-2">
+			<Button onclick={() => (uploadModalState.isOpen = true)} size="sm" variant="outline" class="h-6.5">
+				<div class="flex items-center">
+					<span class="icon-[lucide--upload] mr-1 h-4 w-4"></span>
+					<span>Upload</span>
+				</div>
+			</Button>
+
+			{@render button('download')}
+			{@render button('copy')}
+			{@render button('delete')}
+		</div>
 	</div>
 
 	<Dialog.Root bind:open={modalState.isOpen}>
@@ -344,7 +403,7 @@
 						size="sm"
 						variant="ghost"
 						class="h-8"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							modalState.isOpen = true;
 							modalState.url = '';
@@ -357,7 +416,7 @@
 						size="sm"
 						variant="ghost"
 						class="h-8"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							modalState.isOpen = false;
 							modalState.url = '';
@@ -370,7 +429,7 @@
 			</div>
 
 			<CustomValueInput
-				label={'Magnet / HTTP URL / Path'}
+				label="Magnet / HTTP URL / Path"
 				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60"
 				bind:value={modalState.url}
 				classes="flex-1 space-y-1"
@@ -382,7 +441,7 @@
 				<div class="flex flex-col gap-4">
 					<div class="flex flex-row gap-4">
 						<CustomValueInput
-							label={'Optional File Name'}
+							label="Optional File Name"
 							placeholder="freebsd-14.3-base-amd64.txz"
 							bind:value={modalState.name}
 							classes="flex-1 space-y-1 mt-2"
@@ -403,7 +462,7 @@
 							}}
 							bind:value={modalState.downloadType}
 							onChange={(value) =>
-								(modalState.downloadType = value as 'base-rootfs' | 'uncategorized')}
+								(modalState.downloadType = value as DownloadType)}
 						/>
 					</div>
 
@@ -443,6 +502,16 @@
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>
+
+	<DownloaderUploadModal
+		bind:open={uploadModalState.isOpen}
+		stagingPath={uploadStagingPath}
+		loading={uploadModalState.loading}
+		onClose={() => {
+			uploadModalState.isOpen = false;
+		}}
+		onUploaded={handleUploadedFile}
+	/>
 
 	<TreeTable
 		data={tableData}

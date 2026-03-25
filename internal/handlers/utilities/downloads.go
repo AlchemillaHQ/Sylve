@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -31,6 +32,33 @@ type BulkDeleteDownloadRequest struct {
 type SignedURLRequest struct {
 	Name       string `json:"name" binding:"required"`
 	ParentUUID string `json:"parentUUID" binding:"required"`
+}
+
+type DownloadPathsResponse struct {
+	HTTP string `json:"http"`
+	Path string `json:"path"`
+}
+
+// @Summary Get Download Paths
+// @Description Get configured filesystem paths used by downloader for HTTP and Path downloads
+// @Tags Utilities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[DownloadPathsResponse] "Success"
+// @Router /utilities/downloads/paths [get]
+func GetDownloadPaths() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, internal.APIResponse[DownloadPathsResponse]{
+			Status:  "success",
+			Message: "download_paths_retrieved",
+			Error:   "",
+			Data: DownloadPathsResponse{
+				HTTP: config.GetDownloadsPath("http"),
+				Path: config.GetDownloadsPath("path"),
+			},
+		})
+	}
 }
 
 // @Summary List Downloads
