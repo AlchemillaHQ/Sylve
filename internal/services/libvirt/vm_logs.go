@@ -11,9 +11,9 @@ package libvirt
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -31,13 +31,11 @@ func (s *Service) GetVMLogs(rid uint) (string, error) {
 	}
 
 	logFilePath := filepath.Join("/var/log/libvirt/bhyve", fmt.Sprintf("%d.log", vm.RID))
-	logBytes, err := os.ReadFile(logFilePath)
+
+	logs, err := utils.ReadLastLines(logFilePath, 512)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
 		return "", fmt.Errorf("failed_to_read_vm_logs: %w", err)
 	}
 
-	return string(logBytes), nil
+	return logs, nil
 }

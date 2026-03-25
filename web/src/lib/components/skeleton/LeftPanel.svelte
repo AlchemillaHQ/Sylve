@@ -167,18 +167,17 @@
 					| 'active'
 					| 'inactive'
 			})),
-			...simpleJails.current
-				.map((jail) => ({
-					id: `jail-${jail.ctId}`,
-					sortId: jail.ctId,
-					resourceId: jail.ctId,
-					resourceType: 'jail' as const,
-					nodeHostname: node,
-					label: `${jail.name} (${jail.ctId})`,
-					icon: 'hugeicons--prison',
-					href: `/${node}/jail/${jail.ctId}`,
-					state: (jail.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
-				}))
+			...simpleJails.current.map((jail) => ({
+				id: `jail-${jail.ctId}`,
+				sortId: jail.ctId,
+				resourceId: jail.ctId,
+				resourceType: 'jail' as const,
+				nodeHostname: node,
+				label: `${jail.name} (${jail.ctId})`,
+				icon: 'hugeicons--prison',
+				href: `/${node}/jail/${jail.ctId}`,
+				state: (jail.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+			}))
 		].sort((a, b) => a.sortId - b.sortId);
 
 		return merged.map(({ sortId: _sortId, ...item }) => item);

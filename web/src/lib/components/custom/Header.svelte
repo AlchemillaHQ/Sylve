@@ -153,7 +153,9 @@
 	</nav>
 	<div class="flex w-full items-center justify-end gap-2 md:ml-auto lg:gap-4">
 		<div class="hidden items-center gap-4 lg:flex">
-			<ReplicationActivity />
+			{#if storage.showReplication}
+				<ReplicationActivity />
+			{/if}
 
 			{#if virtualizationEnabled}
 				<Button class="relative h-6" size="sm" onclick={openCreateVM}>

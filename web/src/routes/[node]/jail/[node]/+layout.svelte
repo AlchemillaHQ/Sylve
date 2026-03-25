@@ -3,6 +3,7 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import { goto } from '$app/navigation';
+	import { setContext } from 'svelte';
 	import { page } from '$app/state';
 	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
@@ -65,7 +66,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: null as JailState | null }
+		{ initialValue: (page.data as { state?: JailState | null }).state ?? null }
 	);
 
 	const lifecycleTask = resource(
@@ -76,6 +77,9 @@
 		},
 		{ initialValue: null as LifecycleTask | null }
 	);
+
+	setContext('jailState', jState);
+	setContext('jailLifecycleTask', lifecycleTask);
 
 	const visible = new IsDocumentVisible();
 

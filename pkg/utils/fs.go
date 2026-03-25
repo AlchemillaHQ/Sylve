@@ -11,6 +11,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -648,4 +649,59 @@ func AtomicAppendFile(path string, data []byte, perm os.FileMode) error {
 	}
 
 	return nil
+}
+
+func ReadLastLines(path string, maxLines int) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	defer f.Close()
+
+	const chunkSize = 4096
+
+	var (
+		offset    int64
+		fileSize  int64
+		lineCount int
+		buffer    []byte
+	)
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	fileSize = info.Size()
+	offset = fileSize
+
+	for offset > 0 && lineCount <= maxLines {
+		readSize := int64(chunkSize)
+		if offset < readSize {
+			readSize = offset
+		}
+
+		offset -= readSize
+
+		chunk := make([]byte, readSize)
+		_, err := f.ReadAt(chunk, offset)
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+
+		buffer = append(chunk, buffer...)
+
+		for i := len(chunk) - 1; i >= 0; i-- {
+			if chunk[i] == '\n' {
+				lineCount++
+				if lineCount > maxLines {
+					return string(buffer[i+1:]), nil
+				}
+			}
+		}
+	}
+
+	return string(buffer), nil
 }

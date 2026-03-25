@@ -3,14 +3,12 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { goto } from '$app/navigation';
 	import * as Card from '$lib/components/ui/card/index.js';
-	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import {
 		actionVm,
 		deleteVM,
 		getStats,
 		getVmById,
 		getVMLogs,
-		getVMDomain,
 		updateDescription
 	} from '$lib/api/vm/vm';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -36,7 +34,7 @@
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
 	import { resource, useInterval, Debounced, IsDocumentVisible, watch } from 'runed';
-	import { untrack } from 'svelte';
+	import { untrack, getContext } from 'svelte';
 	import type { APIResponse, GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
@@ -75,23 +73,9 @@
 		{ initialValue: data.vm }
 	);
 
-	// svelte-ignore state_referenced_locally
-	const domain = resource(
-		() => `vm-domain-${data.vm.rid}`,
-		async (key) => {
-			const result = await getVMDomain(data.vm.rid);
-			updateCache(key, result);
-			return result;
-		},
-		{ initialValue: data.domain }
-	);
-
-	const lifecycleTask = resource(
-		() => `vm-lifecycle-task-${data.vm.rid}`,
-		async () => {
-			return await getActiveLifecycleTaskForGuest('vm', data.vm.rid);
-		},
-		{ initialValue: null as LifecycleTask | null }
+	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
+	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
+		'vmLifecycleTask'
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -119,31 +103,17 @@
 
 	const visible = new IsDocumentVisible();
 
-	useInterval(() => 1000, {
+	useInterval(() => 3000, {
 		callback: () => {
 			if (visible.current && !isDeleteInFlight) {
-				domain.refetch();
-			}
-		}
-	});
-
-	useInterval(() => 1500, {
-		callback: () => {
-			if (visible.current && !isDeleteInFlight) {
-				lifecycleTask.refetch();
+				if (gfsStep === 'hourly') {
+					stats.refetch();
+				}
 			}
 		}
 	});
 
 	useInterval(() => 3000, {
-		callback: () => {
-			if (visible.current && !isDeleteInFlight) {
-				stats.refetch();
-			}
-		}
-	});
-
-	useInterval(() => 1000, {
 		callback: () => {
 			if (visible.current && showLogs) {
 				logs.refetch();
@@ -154,7 +124,7 @@
 	watch(
 		() => domain.current,
 		(currentDomain, prevDomain) => {
-			if (prevDomain?.status !== currentDomain.status) {
+			if (prevDomain?.status !== currentDomain?.status) {
 				vm.refetch();
 			}
 		}
@@ -165,9 +135,7 @@
 		(idle) => {
 			if (!idle && !isDeleteInFlight) {
 				vm.refetch();
-				domain.refetch();
 				stats.refetch();
-				lifecycleTask.refetch();
 			}
 
 			if (!idle && showLogs) {
@@ -469,37 +437,37 @@
 		lifecycleTask.refetch();
 	}
 
-	$effect(() => {
-		const _currentLogs = vmLogs;
-
-		if (showLogs && followLogs) {
-			untrack(() => {
+	watch(
+		() => vmLogs,
+		() => {
+			if (showLogs && followLogs) {
 				if (logsContainerElement) {
 					logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
 				}
-			});
+			}
 		}
-	});
+	);
 
-	$effect(() => {
-		if (showLogs) {
-			followLogs = true;
-			untrack(() => {
+	watch(
+		() => showLogs,
+		(show) => {
+			if (show) {
+				followLogs = true;
 				requestAnimationFrame(() => {
 					if (logsContainerElement) {
 						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
 					}
 				});
-			});
+			}
 		}
-	});
+	);
 
 	let udTime = $derived.by(() => {
-		if (domain.current.status === 'Running') {
+		if (domain.current?.status === 'Running') {
 			if (vm.current.startedAt) {
 				return `Started ${dateToAgo(vm.current.startedAt)}`;
 			}
-		} else if (domain.current.status === 'Stopped' || domain.current.status === 'Shutoff') {
+		} else if (domain.current?.status === 'Stopped' || domain.current?.status === 'Shutoff') {
 			if (vm.current.stoppedAt) {
 				return `Stopped ${dateToAgo(vm.current.stoppedAt)}`;
 			}
@@ -540,7 +508,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && !shouldHideActionButtons && domain.current.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
+	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
@@ -568,7 +536,7 @@
 			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
 			{'Force Delete'}
 		</Button>
-	{:else if type === 'force-stop' && domain.current.id !== -1 && domain.current.status === 'Running' && isShutdownTaskActive}
+	{:else if type === 'force-stop' && domain.current?.id !== -1 && domain.current?.status === 'Running' && isShutdownTaskActive}
 		<Button
 			onclick={() => handleForceStop()}
 			size="sm"
@@ -579,7 +547,7 @@
 				<span>Force Stop</span>
 			</div>
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && domain.current.id !== -1 && domain.current.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && domain.current?.id !== -1 && domain.current?.status === 'Running'}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
@@ -687,7 +655,7 @@
 						{'Status'}
 					</div>
 					<div class="ml-auto">
-						{domain.current.status}
+						{domain.current?.status}
 					</div>
 				</div>
 
@@ -699,7 +667,7 @@
 							{'CPU Usage'}
 						</p>
 						<p class="ml-auto">
-							{#if domain.current.status === 'Running'}
+							{#if domain.current?.status === 'Running'}
 								{`${floatToNDecimals(recentStat.cpuUsage, 2)}% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
 							{:else}
 								{`0% of ${vm.current.cpuCores * vm.current.cpuThreads * vm.current.cpuSockets} vCPU(s)`}
@@ -707,7 +675,7 @@
 						</p>
 					</div>
 
-					{#if domain.current.status === 'Running'}
+					{#if domain.current?.status === 'Running'}
 						<Progress value={recentStat.cpuUsage || 0} max={100} class="ml-auto h-2" />
 					{:else}
 						<Progress value={0} max={100} class="ml-auto h-2" />
@@ -723,7 +691,7 @@
 						</p>
 						<p class="ml-auto">
 							{#if vm}
-								{#if domain.current.status === 'Running'}
+								{#if domain.current?.status === 'Running'}
 									{`${floatToNDecimals(recentStat.memoryUsage, 2)}% of ${formatBytesBinary(vm.current.ram || 0)}`}
 								{:else}
 									{`0% of ${formatBytesBinary(vm.current.ram || 0)}`}
@@ -732,7 +700,7 @@
 						</p>
 					</div>
 
-					{#if domain.current.status === 'Running'}
+					{#if domain.current?.status === 'Running'}
 						<Progress value={recentStat.memoryUsage || 0} max={100} class="ml-auto h-2" />
 					{:else}
 						<Progress value={0} max={100} class="ml-auto h-2" />

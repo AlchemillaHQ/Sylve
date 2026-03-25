@@ -2,13 +2,11 @@
 	import { goto } from '$app/navigation';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
-	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
 		deleteJail,
 		getJailById,
 		getJailLogs,
-		getJailStateById,
 		getStats,
 		jailAction,
 		updateDescription
@@ -39,7 +37,7 @@
 	import { dateToAgo } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
-	import { untrack } from 'svelte';
+	import { untrack, getContext } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
@@ -86,27 +84,10 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	const jState = resource(
-		() => `jail-${ctId}-state`,
-		async (key, prevKey, { signal }) => {
-			const result = await getJailStateById(ctId);
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.state
-		}
-	);
+	const jState = getContext<{ current: JailState | null; refetch(): void }>('jailState');
 
-	const lifecycleTask = resource(
-		() => `jail-lifecycle-task-${ctId}`,
-		async () => {
-			return await getActiveLifecycleTaskForGuest('jail', ctId);
-		},
-		{
-			initialValue: null as LifecycleTask | null
-		}
+	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
+		'jailLifecycleTask'
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -171,9 +152,10 @@
 		callback: async () => {
 			if (visible.current) {
 				jail.refetch();
-				jState.refetch();
-				stats.refetch();
-				lifecycleTask.refetch();
+
+				if (gfsStep === 'hourly') {
+					stats.refetch();
+				}
 
 				if (showLogs || modalState.loading.open) {
 					logs.refetch();
@@ -187,9 +169,7 @@
 		(isVisible) => {
 			if (isVisible) {
 				jail.refetch();
-				jState.refetch();
 				stats.refetch();
-				lifecycleTask.refetch();
 
 				if (showLogs || modalState.loading.open) {
 					logs.refetch();
@@ -241,11 +221,11 @@
 	);
 
 	let udTime = $derived.by(() => {
-		if (jState.current.state === 'ACTIVE') {
+		if (jState.current?.state === 'ACTIVE') {
 			if (jail.current.startedAt) {
 				return `Started ${dateToAgo(jail.current.startedAt)}`;
 			}
-		} else if (jState.current.state === 'INACTIVE' || jState.current.state === 'UNKNOWN') {
+		} else if (jState.current?.state === 'INACTIVE' || jState.current?.state === 'UNKNOWN') {
 			if (jail.current.stoppedAt) {
 				return `Stopped ${dateToAgo(jail.current.stoppedAt)}`;
 			}
@@ -353,31 +333,32 @@
 		lifecycleTask.refetch();
 	}
 
-	$effect(() => {
-		const _currentLogs = logs.current.logs;
-
-		if (showLogs && followLogs) {
-			untrack(() => {
-				// scroll to the bottom of the logs
-				if (logsContainerElement) {
-					logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
-				}
-			});
-		}
-	});
-
-	$effect(() => {
-		if (showLogs) {
-			followLogs = true;
-			untrack(() => {
+	watch(
+		() => logs.current.logs,
+		() => {
+			if (showLogs && followLogs) {
 				requestAnimationFrame(() => {
 					if (logsContainerElement) {
 						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
 					}
 				});
-			});
+			}
 		}
-	});
+	);
+
+	watch(
+		() => showLogs,
+		(isOpen) => {
+			if (isOpen) {
+				followLogs = true;
+				requestAnimationFrame(() => {
+					if (logsContainerElement) {
+						logsContainerElement.scrollTop = logsContainerElement.scrollHeight;
+					}
+				});
+			}
+		}
+	);
 
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');

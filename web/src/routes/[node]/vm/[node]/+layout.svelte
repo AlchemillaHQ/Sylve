@@ -4,6 +4,7 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { goto } from '$app/navigation';
+	import { setContext } from 'svelte';
 	import { page } from '$app/state';
 	import { actionVm, deleteVM, getSimpleVMById, getVMDomain } from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
@@ -67,7 +68,7 @@
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: null as VMDomain | null }
+		{ initialValue: (page.data as { domain?: VMDomain | null }).domain ?? null }
 	);
 
 	const lifecycleTask = resource(
@@ -78,6 +79,9 @@
 		},
 		{ initialValue: null as LifecycleTask | null }
 	);
+
+	setContext('vmDomain', domain);
+	setContext('vmLifecycleTask', lifecycleTask);
 
 	let normalizedDomainStatus = $derived.by(() =>
 		String(domain.current?.status || '')
@@ -141,7 +145,7 @@
 		}
 	);
 
-	useInterval(() => 1000, {
+	useInterval(() => 10000, {
 		callback: () => {
 			if (visible.current && rid && !isDeleteInFlight) {
 				domain.refetch();

@@ -1837,12 +1837,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's' : ''
+#. 0: sizes.length > 1 ? 's' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions' : 'partition'
+#. 0: sizes.length > 1 ? 'partitions' 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1906,12 +1906,12 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder' : 'File'
+#. 0: isFolder ? 'Folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder' : 'file'
+#. 0: isFolder ? 'folder' 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
@@ -2152,12 +2152,12 @@ msgstr "未选择组且不允许访客"
 msgid "Share cannot have overlapping groups"
 msgstr "共享不能有重叠的组"
 
-#. 0: edit ? 'edit' : 'create'
+#. 0: edit ? 'edit' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "无法{0} Samba 共享"
 
-#. 0: edit ? 'edited' : 'created'
+#. 0: edit ? 'edited' 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba 共享 {0}"
@@ -2704,12 +2704,12 @@ msgstr "无法擦除忙碌中的磁盘"
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' : 'deleting partition'; 1: result.error
+#. 0: activeDisk ? 'wiping disk' ; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
 
-#. 0: isFolder ? 'folder' : 'file'; 1: name
+#. 0: isFolder ? 'folder' ; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "创建{0}“{1}”失败"
@@ -2755,17 +2755,17 @@ msgstr "<0/> 新建文件夹"
 msgid "{0} items"
 msgstr "{0} 个项目"
 
-#. 0: sortedItems.filter((item: any) => item.type === 'folder').length; 1: sortedItems.filter((item: any) => item.type === 'file').length
+#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} 个文件夹，{1} 个文件"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' : 'file'; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' : ''
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' 
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -5044,12 +5044,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated' : 'created'
+#. 0: properties.name; 1: isEdit ? 'updated' 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' : 'create'; 1: properties.name
+#. 0: isEdit ? 'update' ; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -6152,7 +6152,7 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` : ''
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"

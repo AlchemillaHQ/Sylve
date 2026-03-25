@@ -135,7 +135,7 @@
 									: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
 								title={lbl}
 							>
-								{lbl}1
+								{lbl}
 							</p>
 						{/each}
 					{:else}

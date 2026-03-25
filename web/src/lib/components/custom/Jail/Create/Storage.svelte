@@ -10,6 +10,7 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { generateSimpleLinuxFSTab } from '$lib/utils/jail/jail';
 	import { untrack } from 'svelte';
+	import { watch } from 'runed';
 
 	interface Props {
 		ctId: number;
@@ -72,8 +73,8 @@
 		]
 	});
 
-	$effect(() => {
-		if (!base && enableFstabInput) {
+	watch([() => base, () => enableFstabInput], ([baseVal, fstabEnabled]) => {
+		if (fstabEnabled && !baseVal) {
 			toast.warning('Select a base/rootfs to add FStab entries', {
 				position: 'bottom-center'
 			});
@@ -89,19 +90,20 @@
 		}
 	}
 
-	$effect(() => {
-		if (ctId && fstabOpts.value === 'simple-linux') {
-			untrack(() => {
-				setFSTab();
-			});
+	watch([() => ctId, () => fstabOpts.value], ([ctIdVal, fstabOptVal]) => {
+		if (ctIdVal && fstabOptVal === 'simple-linux') {
+			setFSTab();
 		}
 	});
 
-	$effect(() => {
-		if (fstabOpts.value === 'manual') {
-			fstab = '';
+	watch(
+		() => fstabOpts.value,
+		(val) => {
+			if (val === 'manual') {
+				fstab = '';
+			}
 		}
-	});
+	);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -113,7 +115,7 @@
 			data={poolOptions}
 			classes="flex-1 space-y-1"
 			placeholder="Select ZFS pool"
-			triggerWidth="w-full "
+			triggerWidth="w-full"
 			width="w-full"
 		></CustomComboBox>
 

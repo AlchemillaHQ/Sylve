@@ -120,16 +120,16 @@
 				const nodeLabel = n.hostname || n.nodeUUID;
 				let mergedChildren = [
 					...(n.jails ?? []).map((j) => ({
-							id: `jail-${j.ctId}`,
-							sortId: j.ctId,
-							resourceId: j.ctId,
-							resourceType: 'jail' as const,
-							nodeHostname: n.hostname,
-							label: `${j.name} (${j.ctId})`,
-							icon: 'hugeicons--prison',
-							href: `/${nodeLabel}/jail/${j.ctId}`,
-							state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
-						})),
+						id: `jail-${j.ctId}`,
+						sortId: j.ctId,
+						resourceId: j.ctId,
+						resourceType: 'jail' as const,
+						nodeHostname: n.hostname,
+						label: `${j.name} (${j.ctId})`,
+						icon: 'hugeicons--prison',
+						href: `/${nodeLabel}/jail/${j.ctId}`,
+						state: (j.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+					})),
 					...(n.vms ?? []).map((vm) => ({
 						id: `vm-${vm.rid}`,
 						sortId: vm.rid,
@@ -150,7 +150,7 @@
 						id: `jail-template-${n.nodeUUID}-${template.id}`,
 						sortId: template.id,
 						resourceId: template.id,
-						resourceType: 'jail-template' as const,
+						resourceType: 'jail-template' as 'jail-template' | 'vm-template',
 						nodeHostname: n.hostname,
 						label: template.name,
 						icon: 'mdi--file-tree-outline'
@@ -160,7 +160,7 @@
 							id: `vm-template-${n.nodeUUID}-${template.id}`,
 							sortId: template.id,
 							resourceId: template.id,
-							resourceType: 'vm-template' as const,
+							resourceType: 'vm-template' as 'jail-template' | 'vm-template',
 							nodeHostname: n.hostname,
 							label: template.name,
 							icon: 'mdi--monitor-shimmer'
