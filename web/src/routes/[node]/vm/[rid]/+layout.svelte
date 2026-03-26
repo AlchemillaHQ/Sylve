@@ -19,12 +19,16 @@
 	import type { SimpleVm, VMDomain, VMLifecycleAction } from '$lib/types/vm/vm';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
+		createVMPendingLifecycleSnapshot,
 		getEffectiveVMLifecycleAction,
 		getVMLifecyclePendingTimeoutMs,
 		getVMLifecycleBadgeStyle,
+		isVMPendingLifecycleActionSettled,
 		isVMLifecycleTransitionPending,
+		markVMPendingSnapshotNonRunning,
 		shouldHideVMLifecycleButtons,
-		removeStaleCacheByRID
+		removeStaleCacheByRID,
+		type VMPendingLifecycleSnapshot
 	} from '$lib/utils/vm/vm';
 	import type { APIResponse } from '$lib/types/common';
 
@@ -34,6 +38,7 @@
 
 	let { children }: Props = $props();
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
+	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
 
@@ -95,7 +100,7 @@
 	);
 
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived.by(() => {
 		if (lifecycleTask.current && !isAPIResponse(lifecycleTask.current)) {
 			return lifecycleTask.current.action;
@@ -103,12 +108,35 @@
 
 		return '';
 	});
+	let isActiveLifecycleActionSettled = $derived.by(() => {
+		if (
+			activeLifecycleAction !== 'start' &&
+			activeLifecycleAction !== 'stop' &&
+			activeLifecycleAction !== 'shutdown' &&
+			activeLifecycleAction !== 'reboot'
+		) {
+			return false;
+		}
+
+		const snapshot =
+			activeLifecycleAction === pendingLifecycleAction && pendingLifecycleSnapshot
+				? pendingLifecycleSnapshot
+				: createVMPendingLifecycleSnapshot(String(domain.current?.status || ''));
+
+		return isVMPendingLifecycleActionSettled(
+			activeLifecycleAction,
+			snapshot,
+			normalizedDomainStatus,
+			isDomainErrorState
+		);
+	});
+	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
 
 	let effectiveLifecycleAction = $derived(
 		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
 	);
 	let isLifecycleTransitionPending = $derived(
-		isVMLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+		isVMLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
 	);
 	let shouldHideActionButtons = $derived(
 		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
@@ -118,6 +146,45 @@
 		if (!lifecycleTask.current || isAPIResponse(lifecycleTask.current)) return false;
 		return lifecycleTask.current.action === 'shutdown' && !lifecycleTask.current.overrideRequested;
 	});
+
+	watch(
+		() => [pendingLifecycleAction, normalizedDomainStatus] as const,
+		([pendingAction, currentStatus]) => {
+			if (pendingAction !== 'reboot' || !pendingLifecycleSnapshot) {
+				return;
+			}
+
+			const updatedSnapshot = markVMPendingSnapshotNonRunning(
+				pendingLifecycleSnapshot,
+				currentStatus,
+				isDomainErrorState
+			);
+			if (updatedSnapshot !== pendingLifecycleSnapshot) {
+				pendingLifecycleSnapshot = updatedSnapshot;
+			}
+		}
+	);
+
+	watch(
+		() => [pendingLifecycleAction, hasLifecycleTaskRecord, normalizedDomainStatus] as const,
+		([pendingAction, hasTask]) => {
+			if (!pendingAction || hasTask) {
+				return;
+			}
+
+			if (
+				isVMPendingLifecycleActionSettled(
+					pendingAction,
+					pendingLifecycleSnapshot,
+					normalizedDomainStatus,
+					isDomainErrorState
+				)
+			) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
+
 	let vmChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
 		const vmIndex = segments.indexOf('vm');
@@ -183,15 +250,6 @@
 		}
 	);
 
-	watch(
-		() => lifecycleTask.current,
-		(task) => {
-			if (task) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
-
 	function openDeleteModal(forceDelete: boolean = false) {
 		if (!vm.current) return;
 		modalState.forceDelete = forceDelete;
@@ -204,6 +262,10 @@
 
 	function beginPendingLifecycleAction(action: VMLifecycleAction) {
 		pendingLifecycleAction = action;
+		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
+			String(domain.current?.status || '')
+		);
+
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 		}
@@ -211,12 +273,14 @@
 		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
 		pendingLifecycleTimer = setTimeout(() => {
 			pendingLifecycleAction = '';
+			pendingLifecycleSnapshot = null;
 			pendingLifecycleTimer = null;
 		}, getVMLifecyclePendingTimeoutMs(action));
 	}
 
 	function clearPendingLifecycleAction() {
 		pendingLifecycleAction = '';
+		pendingLifecycleSnapshot = null;
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 			pendingLifecycleTimer = null;

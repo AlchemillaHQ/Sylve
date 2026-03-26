@@ -17,6 +17,7 @@
 		getEffectiveJailLifecycleAction,
 		getJailLifecycleBadgeStyle,
 		getJailLifecyclePendingTimeoutMs,
+		isJailPendingLifecycleActionSettled,
 		isJailLifecycleTransitionPending,
 		shouldHideJailLifecycleButtons
 	} from '$lib/utils/jail/jail';
@@ -134,15 +135,6 @@
 		}
 	);
 
-	watch(
-		() => lifecycleTask.current,
-		(task) => {
-			if (task) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
-
 	function openDeleteModal() {
 		if (!jail.current) return;
 		modalState.deleteMacs = false;
@@ -153,6 +145,7 @@
 
 	function beginPendingLifecycleAction(action: JailLifecycleAction) {
 		pendingLifecycleAction = action;
+
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 		}
@@ -264,18 +257,39 @@
 		await refreshJailState();
 	}
 
-	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
+	let isActiveLifecycleActionSettled = $derived.by(() => {
+		if (activeLifecycleAction !== 'start' && activeLifecycleAction !== 'stop') {
+			return false;
+		}
+
+		return isJailPendingLifecycleActionSettled(activeLifecycleAction, jState.current?.state);
+	});
+	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
 	let effectiveLifecycleAction = $derived(
 		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
 	);
 	let isLifecycleTransitionPending = $derived(
-		isJailLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+		isJailLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
 	);
 	let shouldHideActionButtons = $derived(
 		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
 	);
 	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
+
+	watch(
+		() => [pendingLifecycleAction, hasLifecycleTaskRecord, jState.current?.state] as const,
+		([pendingAction, hasTask]) => {
+			if (!pendingAction || hasTask) {
+				return;
+			}
+
+			if (isJailPendingLifecycleActionSettled(pendingAction, jState.current?.state)) {
+				clearPendingLifecycleAction();
+			}
+		}
+	);
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">

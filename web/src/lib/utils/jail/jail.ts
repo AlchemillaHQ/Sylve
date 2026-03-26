@@ -153,6 +153,25 @@ export function getEffectiveJailLifecycleAction(
     return activeAction || pendingAction;
 }
 
+export function isJailPendingLifecycleActionSettled(
+    pendingAction: JailLifecycleAction | '',
+    currentState: string | null | undefined
+): boolean {
+    if (!pendingAction || !currentState) {
+        return false;
+    }
+
+    if (pendingAction === 'start') {
+        return currentState === 'ACTIVE';
+    }
+
+    if (pendingAction === 'stop') {
+        return currentState === 'INACTIVE';
+    }
+
+    return false;
+}
+
 export function getJailLifecyclePendingTimeoutMs(_action: JailLifecycleAction): number {
     return 7000;
 }

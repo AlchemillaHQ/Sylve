@@ -251,6 +251,81 @@ const vmLifecycleBadgeStyles: Record<VMLifecycleAction, VMLifecycleBadgeStyle> =
     }
 };
 
+export type VMPendingLifecycleSnapshot = {
+    initialStartedAt: string | null;
+    observedNonRunningDuringReboot: boolean;
+};
+
+export function createVMPendingLifecycleSnapshot(
+    currentDomainStatus: string,
+    initialStartedAt?: string | null
+): VMPendingLifecycleSnapshot {
+    const normalizedStatus = String(currentDomainStatus || '').trim().toLowerCase();
+    return {
+        initialStartedAt: initialStartedAt ?? null,
+        observedNonRunningDuringReboot: normalizedStatus !== 'running'
+    };
+}
+
+export function markVMPendingSnapshotNonRunning(
+    snapshot: VMPendingLifecycleSnapshot | null,
+    normalizedDomainStatus: string,
+    isDomainErrorState: boolean
+): VMPendingLifecycleSnapshot | null {
+    if (!snapshot) {
+        return snapshot;
+    }
+
+    if (
+        normalizedDomainStatus !== '' &&
+        normalizedDomainStatus !== 'running' &&
+        !isDomainErrorState &&
+        !snapshot.observedNonRunningDuringReboot
+    ) {
+        return {
+            ...snapshot,
+            observedNonRunningDuringReboot: true
+        };
+    }
+
+    return snapshot;
+}
+
+export function isVMPendingLifecycleActionSettled(
+    pendingAction: VMLifecycleAction | '',
+    snapshot: VMPendingLifecycleSnapshot | null,
+    normalizedDomainStatus: string,
+    isDomainErrorState: boolean,
+    currentStartedAt?: string | null
+): boolean {
+    if (!pendingAction || !snapshot) {
+        return false;
+    }
+
+    if (pendingAction === 'start') {
+        return normalizedDomainStatus === 'running';
+    }
+
+    if (pendingAction === 'stop' || pendingAction === 'shutdown') {
+        return (
+            normalizedDomainStatus !== '' &&
+            normalizedDomainStatus !== 'running' &&
+            !isDomainErrorState
+        );
+    }
+
+    if (pendingAction === 'reboot') {
+        if (normalizedDomainStatus !== 'running') {
+            return false;
+        }
+
+        const startedAtChanged = (currentStartedAt ?? null) !== snapshot.initialStartedAt;
+        return snapshot.observedNonRunningDuringReboot || startedAtChanged;
+    }
+
+    return false;
+}
+
 export function getEffectiveVMLifecycleAction(
     activeAction: string,
     pendingAction: VMLifecycleAction | ''

@@ -39,13 +39,17 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import {
+		createVMPendingLifecycleSnapshot,
 		getEffectiveVMLifecycleAction,
 		getVMIconByGaId,
 		getVMLifecyclePendingTimeoutMs,
 		getVMLifecycleBadgeStyle,
+		isVMPendingLifecycleActionSettled,
 		isVMLifecycleTransitionPending,
+		markVMPendingSnapshotNonRunning,
 		shouldHideVMLifecycleButtons,
-		removeStaleCacheByRID
+		removeStaleCacheByRID,
+		type VMPendingLifecycleSnapshot
 	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
 	import { fade } from 'svelte/transition';
@@ -169,6 +173,7 @@
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
 	let isDescInitialized = false;
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
+	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
 
@@ -228,6 +233,11 @@
 
 	function beginPendingLifecycleAction(action: VMLifecycleAction) {
 		pendingLifecycleAction = action;
+		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
+			String(domain.current?.status || ''),
+			vm.current.startedAt ?? null
+		);
+
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 		}
@@ -235,16 +245,22 @@
 		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
 		pendingLifecycleTimer = setTimeout(() => {
 			pendingLifecycleAction = '';
+			pendingLifecycleSnapshot = null;
 			pendingLifecycleTimer = null;
 		}, getVMLifecyclePendingTimeoutMs(action));
 	}
 
 	function clearPendingLifecycleAction() {
 		pendingLifecycleAction = '';
+		pendingLifecycleSnapshot = null;
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 			pendingLifecycleTimer = null;
 		}
+	}
+
+	async function refreshLifecycleState() {
+		await Promise.all([domain.refetch(), vm.refetch(), lifecycleTask.refetch()]);
 	}
 
 	async function handleDelete() {
@@ -325,7 +341,7 @@
 		}
 
 		gaRefreshSignal += 1;
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	async function handleStop() {
@@ -359,7 +375,7 @@
 			}
 		}
 
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	async function handleForceStop() {
@@ -385,7 +401,7 @@
 			});
 		}
 
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	async function handleShutdown() {
@@ -411,7 +427,7 @@
 			});
 		}
 
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	async function handleReboot() {
@@ -438,7 +454,7 @@
 		}
 
 		gaRefreshSignal += 1;
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	watch(
@@ -485,13 +501,40 @@
 			.toLowerCase()
 	);
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
+	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let isActiveLifecycleActionSettled = $derived.by(() => {
+		if (
+			activeLifecycleAction !== 'start' &&
+			activeLifecycleAction !== 'stop' &&
+			activeLifecycleAction !== 'shutdown' &&
+			activeLifecycleAction !== 'reboot'
+		) {
+			return false;
+		}
+
+		const snapshot =
+			activeLifecycleAction === pendingLifecycleAction && pendingLifecycleSnapshot
+				? pendingLifecycleSnapshot
+				: createVMPendingLifecycleSnapshot(
+						String(domain.current?.status || ''),
+						vm.current.startedAt ?? null
+					);
+
+		return isVMPendingLifecycleActionSettled(
+			activeLifecycleAction,
+			snapshot,
+			normalizedDomainStatus,
+			isDomainErrorState,
+			vm.current.startedAt ?? null
+		);
+	});
+	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
 	let effectiveLifecycleAction = $derived(
 		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
 	);
 	let isLifecycleTransitionPending = $derived(
-		isVMLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+		isVMLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
 	);
 	let shouldHideActionButtons = $derived(
 		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
@@ -502,9 +545,45 @@
 	);
 
 	watch(
-		() => lifecycleTask.current,
-		(task) => {
-			if (task) {
+		() => [pendingLifecycleAction, normalizedDomainStatus] as const,
+		([pendingAction, currentStatus]) => {
+			if (pendingAction !== 'reboot' || !pendingLifecycleSnapshot) {
+				return;
+			}
+
+			const updatedSnapshot = markVMPendingSnapshotNonRunning(
+				pendingLifecycleSnapshot,
+				currentStatus,
+				isDomainErrorState
+			);
+			if (updatedSnapshot !== pendingLifecycleSnapshot) {
+				pendingLifecycleSnapshot = updatedSnapshot;
+			}
+		}
+	);
+
+	watch(
+		() =>
+			[
+				pendingLifecycleAction,
+				hasLifecycleTaskRecord,
+				normalizedDomainStatus,
+				vm.current.startedAt
+			] as const,
+		([pendingAction, hasTask]) => {
+			if (!pendingAction || hasTask) {
+				return;
+			}
+
+			if (
+				isVMPendingLifecycleActionSettled(
+					pendingAction,
+					pendingLifecycleSnapshot,
+					normalizedDomainStatus,
+					isDomainErrorState,
+					vm.current.startedAt ?? null
+				)
+			) {
 				clearPendingLifecycleAction();
 			}
 		}

@@ -29,6 +29,7 @@
 		getEffectiveJailLifecycleAction,
 		getJailLifecycleBadgeStyle,
 		getJailLifecyclePendingTimeoutMs,
+		isJailPendingLifecycleActionSettled,
 		isJailLifecycleTransitionPending,
 		shouldHideJailLifecycleButtons
 	} from '$lib/utils/jail/jail';
@@ -269,6 +270,7 @@
 
 	function beginPendingLifecycleAction(action: JailLifecycleAction) {
 		pendingLifecycleAction = action;
+
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
 		}
@@ -285,6 +287,10 @@
 			clearTimeout(pendingLifecycleTimer);
 			pendingLifecycleTimer = null;
 		}
+	}
+
+	async function refreshLifecycleState() {
+		await Promise.all([jState.refetch(), jail.refetch(), lifecycleTask.refetch()]);
 	}
 
 	async function handleStop() {
@@ -309,7 +315,7 @@
 			});
 		}
 
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	async function handleStart() {
@@ -334,7 +340,7 @@
 			});
 		}
 
-		lifecycleTask.refetch();
+		await refreshLifecycleState();
 	}
 
 	watch(
@@ -364,13 +370,21 @@
 		}
 	);
 
-	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
 	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
+	let isActiveLifecycleActionSettled = $derived.by(() => {
+		if (activeLifecycleAction !== 'start' && activeLifecycleAction !== 'stop') {
+			return false;
+		}
+
+		return isJailPendingLifecycleActionSettled(activeLifecycleAction, jState.current?.state);
+	});
+	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
 	let effectiveLifecycleAction = $derived(
 		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
 	);
 	let isLifecycleTransitionPending = $derived(
-		isJailLifecycleTransitionPending(pendingLifecycleAction, hasActiveLifecycleTask)
+		isJailLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
 	);
 	let shouldHideActionButtons = $derived(
 		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
@@ -378,9 +392,13 @@
 	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
 
 	watch(
-		() => lifecycleTask.current,
-		(task) => {
-			if (task) {
+		() => [pendingLifecycleAction, hasLifecycleTaskRecord, jState.current?.state] as const,
+		([pendingAction, hasTask]) => {
+			if (!pendingAction || hasTask) {
+				return;
+			}
+
+			if (isJailPendingLifecycleActionSettled(pendingAction, jState.current?.state)) {
 				clearPendingLifecycleAction();
 			}
 		}
