@@ -3311,6 +3311,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/network/dhcp/lease/dynamic": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an active DHCP lease by identifier (MAC or DUID) and IP",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Delete Dynamic DHCP Lease",
+                "parameters": [
+                    {
+                        "description": "Request Body",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/network/dhcp/lease/{id}": {
             "delete": {
                 "security": [
@@ -3757,9 +3808,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Samba share created successfully",
+                        "description": "ID of the created network object",
                         "schema": {
-                            "type": "string"
+                            "type": "uint"
                         }
                     },
                     "400": {
@@ -6569,6 +6620,34 @@ const docTemplate = `{
                 }
             }
         },
+        "/utilities/downloads/paths": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get configured filesystem paths used by downloader for HTTP and Path downloads",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Get Download Paths",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/utilities/downloads/signed-url": {
             "get": {
                 "security": [
@@ -6991,6 +7070,61 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/vm/logs/:rid": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve console log for a specific VM by RID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Get VM Logs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "VM RID",
+                        "name": "rid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "VM Not Found",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -9360,6 +9494,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_utilities.DownloadPathsResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_PoolStatPointResponse": {
             "type": "object",
             "properties": {
@@ -10699,6 +10850,9 @@ const docTemplate = `{
                 "emulation": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType"
                 },
+                "enable": {
+                    "type": "boolean"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -11129,6 +11283,12 @@ const docTemplate = `{
                 "hostname": {
                     "type": "string"
                 },
+                "jailTemplates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList"
+                    }
+                },
                 "jails": {
                     "type": "array",
                     "items": {
@@ -11137,6 +11297,12 @@ const docTemplate = `{
                 },
                 "nodeUUID": {
                     "type": "string"
+                },
+                "vmTemplates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList"
+                    }
                 },
                 "vms": {
                     "type": "array",
@@ -11622,6 +11788,20 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sourceJailName": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_jail.State": {
             "type": "object",
             "properties": {
@@ -11875,6 +12055,20 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sourceVmName": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType": {
             "type": "string",
             "enum": [
@@ -11975,6 +12169,21 @@ const docTemplate = `{
                 },
                 "macId": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest": {
+            "type": "object",
+            "required": [
+                "identifier",
+                "ip"
+            ],
+            "properties": {
+                "identifier": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
                 }
             }
         },
@@ -13301,7 +13510,8 @@ const docTemplate = `{
             "required": [
                 "clusterKey",
                 "nodeId",
-                "nodeIp"
+                "nodeIp",
+                "nodeVersion"
             ],
             "properties": {
                 "clusterKey": {
@@ -13311,6 +13521,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "nodeIp": {
+                    "type": "string"
+                },
+                "nodeVersion": {
                     "type": "string"
                 }
             }
@@ -13902,6 +14115,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers_utilities.DownloadPathsResponse": {
+            "type": "object",
+            "properties": {
+                "http": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_vm.ModifyBootOrderRequest": {
             "type": "object",
             "properties": {
@@ -14304,7 +14528,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.1.1",
+	Version:          "0.2.0",
 	Host:             "sylve.lan:8181",
 	BasePath:         "/api",
 	Schemes:          []string{},

@@ -14,7 +14,7 @@ import (
 	"io"
 )
 
-const Version = "0.1.1"
+const Version = "0.2.0"
 
 func AsciiArt(w io.Writer) {
 	fmt.Fprintln(w, "  ____        _           ")

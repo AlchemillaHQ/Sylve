@@ -570,6 +570,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_utilities.DownloadPathsResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_PoolStatPointResponse:
     properties:
       data:
@@ -1464,6 +1475,8 @@ definitions:
         type: integer
       emulation:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType'
+      enable:
+        type: boolean
       id:
         type: integer
       name:
@@ -1754,12 +1767,20 @@ definitions:
     properties:
       hostname:
         type: string
+      jailTemplates:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList'
+        type: array
       jails:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleList'
         type: array
       nodeUUID:
         type: string
+      vmTemplates:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList'
+        type: array
       vms:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleList'
@@ -2086,6 +2107,15 @@ definitions:
       state:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      sourceJailName:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.State:
     properties:
       ctId:
@@ -2257,6 +2287,15 @@ definitions:
       vncPort:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      sourceVmName:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType:
     enum:
     - virtio-blk
@@ -2329,6 +2368,16 @@ definitions:
         type: integer
     required:
     - dhcpRangeId
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest:
+    properties:
+      identifier:
+        type: string
+      ip:
+        type: string
+    required:
+    - identifier
+    - ip
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.FileLeases:
     properties:
@@ -3221,10 +3270,13 @@ definitions:
         type: string
       nodeIp:
         type: string
+      nodeVersion:
+        type: string
     required:
     - clusterKey
     - nodeId
     - nodeIp
+    - nodeVersion
     type: object
   internal_handlers_cluster.JoinClusterRequest:
     properties:
@@ -3614,6 +3666,13 @@ definitions:
             type: string
         type: object
     type: object
+  internal_handlers_utilities.DownloadPathsResponse:
+    properties:
+      http:
+        type: string
+      path:
+        type: string
+    type: object
   internal_handlers_vm.ModifyBootOrderRequest:
     properties:
       bootOrder:
@@ -3890,7 +3949,7 @@ info:
     url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   termsOfService: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   title: Sylve API
-  version: 0.1.1
+  version: 0.2.0
 paths:
   /auth/groups:
     get:
@@ -5996,6 +6055,38 @@ paths:
       summary: Delete DHCP Lease
       tags:
       - Network
+  /network/dhcp/lease/dynamic:
+    post:
+      consumes:
+      - application/json
+      description: Delete an active DHCP lease by identifier (MAC or DUID) and IP
+      parameters:
+      - description: Request Body
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete Dynamic DHCP Lease
+      tags:
+      - Network
   /network/dhcp/range:
     get:
       consumes:
@@ -6243,9 +6334,9 @@ paths:
       - application/json
       responses:
         "200":
-          description: Samba share created successfully
+          description: ID of the created network object
           schema:
-            type: string
+            type: uint
         "400":
           description: Invalid request
           schema:
@@ -8098,6 +8189,24 @@ paths:
       summary: Bulk Delete Downloads
       tags:
       - Utilities
+  /utilities/downloads/paths:
+    get:
+      consumes:
+      - application/json
+      description: Get configured filesystem paths used by downloader for HTTP and
+        Path downloads
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Download Paths
+      tags:
+      - Utilities
   /utilities/downloads/signed-url:
     get:
       consumes:
@@ -8381,6 +8490,41 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a Virtual Machine's Domain
+      tags:
+      - VM
+  /vm/logs/:rid:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve console log for a specific VM by RID
+      parameters:
+      - description: VM RID
+        in: path
+        name: rid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-string'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: VM Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get VM Logs
       tags:
       - VM
   /vm/simple:
