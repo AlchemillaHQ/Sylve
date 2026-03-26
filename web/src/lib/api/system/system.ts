@@ -5,7 +5,8 @@ import { z } from 'zod/v4';
 export const BasicHealthSchema = z.object({
 	hostname: z.string().optional(),
 	initialized: z.boolean().optional(),
-	restarted: z.boolean().optional()
+	restarted: z.boolean().optional(),
+	sylveVersion: z.string().optional()
 });
 
 export type BasicHealth = z.infer<typeof BasicHealthSchema>;

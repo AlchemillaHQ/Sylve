@@ -9,11 +9,13 @@
 package clusterHandlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -35,9 +37,10 @@ type JoinClusterRequest struct {
 }
 
 type AcceptJoinRequest struct {
-	NodeID     string `json:"nodeId" binding:"required"`
-	NodeIP     string `json:"nodeIp" binding:"required,ip"`
-	ClusterKey string `json:"clusterKey" binding:"required"`
+	NodeID      string `json:"nodeId" binding:"required"`
+	NodeIP      string `json:"nodeIp" binding:"required,ip"`
+	ClusterKey  string `json:"clusterKey" binding:"required"`
+	NodeVersion string `json:"nodeVersion" binding:"required"`
 }
 
 type RemovePeerRequest struct {
@@ -46,6 +49,24 @@ type RemovePeerRequest struct {
 
 func joinLeaderAPIHost(leaderIP string) string {
 	return cluster.ClusterAPIHost(leaderIP)
+}
+
+type basicHealthData struct {
+	SylveVersion string `json:"sylveVersion"`
+}
+
+func fetchNodeVersionFromHealth(healthURL string, payload any, headers map[string]string) (string, error) {
+	body, _, err := utils.HTTPPostJSONRead(healthURL, payload, headers)
+	if err != nil {
+		return "", err
+	}
+
+	var healthResp internal.APIResponse[basicHealthData]
+	if err := json.Unmarshal(body, &healthResp); err != nil {
+		return "", fmt.Errorf("decode_health_response_failed: %w", err)
+	}
+
+	return strings.TrimSpace(healthResp.Data.SylveVersion), nil
 }
 
 // @Summary Get Cluster
@@ -196,11 +217,33 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 			leaderAPIHost,
 		)
 
-		if err := utils.HTTPPostJSON(healthURL, req, headers); err != nil {
+		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, req, headers)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_pinging_cluster_bad_leader_response",
 				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		localVersion := strings.TrimSpace(cmd.Version)
+		if leaderVersion == "" {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_version_mismatch",
+				Error:   "leader_version_unavailable",
+				Data:    nil,
+			})
+			return
+		}
+
+		if localVersion == "" || leaderVersion != localVersion {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_version_mismatch",
+				Error:   fmt.Sprintf("leader=%s,node=%s", leaderVersion, localVersion),
 				Data:    nil,
 			})
 			return
@@ -219,9 +262,10 @@ func JoinCluster(aS *auth.Service, cS *cluster.Service, zS *zelta.Service, fsm r
 
 		acceptURL := fmt.Sprintf("https://%s/api/cluster/accept-join", leaderAPIHost)
 		payload := map[string]any{
-			"nodeId":     req.NodeID,
-			"nodeIp":     req.NodeIP,
-			"clusterKey": req.ClusterKey,
+			"nodeId":      req.NodeID,
+			"nodeIp":      req.NodeIP,
+			"clusterKey":  req.ClusterKey,
+			"nodeVersion": localVersion,
 		}
 
 		if err := utils.HTTPPostJSON(acceptURL, payload, headers); err != nil {
@@ -272,6 +316,49 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 				Status:  "error",
 				Message: "invalid_request_payload",
 				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		localVersion := strings.TrimSpace(cmd.Version)
+		nodeVersion := strings.TrimSpace(req.NodeVersion)
+		if localVersion == "" || nodeVersion == "" || nodeVersion != localVersion {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_version_mismatch",
+				Error:   fmt.Sprintf("leader=%s,node=%s", localVersion, nodeVersion),
+				Data:    nil,
+			})
+			return
+		}
+
+		joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
+		joinerVersion, err := fetchNodeVersionFromHealth(
+			joinerHealthURL,
+			map[string]any{"clusterKey": req.ClusterKey},
+			map[string]string{},
+		)
+		if err != nil || joinerVersion == "" {
+			reason := "joiner_version_unavailable"
+			if err != nil {
+				reason = fmt.Sprintf("joiner_version_unavailable: %v", err)
+			}
+
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_version_mismatch",
+				Error:   reason,
+				Data:    nil,
+			})
+			return
+		}
+
+		if joinerVersion != localVersion || joinerVersion != nodeVersion {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_version_mismatch",
+				Error:   fmt.Sprintf("leader=%s,node=%s", localVersion, joinerVersion),
 				Data:    nil,
 			})
 			return

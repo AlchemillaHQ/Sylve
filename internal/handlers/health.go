@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -46,9 +47,10 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 			Status:  "success",
 			Message: "Basic health is OK",
 			Data: gin.H{
-				"hostname":    h,
-				"initialized": b.Initialized,
-				"restarted":   b.Restarted,
+				"hostname":     h,
+				"initialized":  b.Initialized,
+				"restarted":    b.Restarted,
+				"sylveVersion": cmd.Version,
 			},
 		})
 	}

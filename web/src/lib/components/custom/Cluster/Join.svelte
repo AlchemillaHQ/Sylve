@@ -27,6 +27,19 @@
 	let properties = $state(options);
 	let loading = $state(false);
 
+	function getJoinErrorMessage(response: { message?: string; error?: string | string[] }): string {
+		const backendReportedMismatch =
+			response.message === 'cluster_version_mismatch' ||
+			(typeof response.error === 'string' && response.error.includes('leader=')) ||
+			(Array.isArray(response.error) && response.error.some((item) => item.includes('leader=')));
+
+		if (backendReportedMismatch) {
+			return 'Version mismatch: this node and the leader must run the same Sylve version';
+		}
+
+		return 'Unable to join cluster';
+	}
+
 	async function join() {
 		let error = '';
 
@@ -64,7 +77,7 @@
 
 			if (response.error) {
 				handleAPIError(response);
-				toast.error('Unable to join cluster', {
+				toast.error(getJoinErrorMessage(response), {
 					position: 'bottom-center'
 				});
 				return;

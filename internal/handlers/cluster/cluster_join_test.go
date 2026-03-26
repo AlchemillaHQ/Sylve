@@ -80,6 +80,29 @@ func TestAcceptJoinRejectsPayloadWithoutNodeIP(t *testing.T) {
 	}
 }
 
+func TestAcceptJoinRejectsVersionMismatch(t *testing.T) {
+	r := newClusterLifecycleValidationRouter()
+
+	rr := performJSONRequest(
+		t,
+		r,
+		http.MethodPost,
+		"/cluster/accept-join",
+		[]byte(`{"nodeId":"node-1","nodeIp":"10.0.0.2","clusterKey":"secret","nodeVersion":"0.0.0"}`),
+	)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d with body %s", rr.Code, rr.Body.String())
+	}
+
+	var resp handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+	if resp.Message != "cluster_version_mismatch" {
+		t.Fatalf("expected cluster_version_mismatch, got %q", resp.Message)
+	}
+}
+
 func TestJoinLeaderAPIHostUsesClusterHTTPSPort(t *testing.T) {
 	tests := []struct {
 		name string
