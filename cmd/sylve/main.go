@@ -72,6 +72,14 @@ func main() {
 
 	cfg := config.ParseConfig(cfgResult.ConfigPath)
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
+	logger.L.Info().
+		Str("environment", string(cfg.Environment)).
+		Int8("logLevel", cfg.LogLevel).
+		Str("dataPath", cfg.DataPath).
+		Msg("Sylve configuration loaded")
+
+	logger.L.Info().Msgf("Sylve logs: %s/logs.json", cfg.DataPath)
+
 	if err := preflightRequiredPorts(cfg, portnetwork.TryBindToPort); err != nil {
 		logger.L.Fatal().Err(err).Msg("startup_port_preflight_failed")
 	}
@@ -155,6 +163,7 @@ func main() {
 	go db.StartQueue(qCtx)
 
 	if startAdvancedStartupWorkers {
+		fmt.Fprintln(os.Stderr, "Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
 		go sysS.NetlinkEventsCleaner(qCtx)
 
@@ -171,7 +180,7 @@ func main() {
 		logger.L.Info().
 			Bool("initialized", basicSettings.Initialized).
 			Bool("restarted", basicSettings.Restarted).
-			Msg("System startup not finalized; skipping advanced watchers and autostart queue")
+			Msg("System initialization not finalized; skipping advanced watchers and autostart queue")
 	}
 
 	err = cS.InitRaft(fsm)
