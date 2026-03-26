@@ -356,6 +356,197 @@ func TestMigrateCPUStatsToTelemetryHandlesFreshInstallWithoutLegacyTable(t *test
 	}
 }
 
+func TestMigrateAuditRecordsToTelemetryCopiesRowsAndDropsLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.AuditRecord{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.AuditRecord{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	userID := uint(7)
+	legacyRows := []infoModels.AuditRecord{
+		{
+			ID:        11,
+			UserID:    &userID,
+			User:      "alpha",
+			AuthType:  "password",
+			Node:      "node-a",
+			Started:   now,
+			Ended:     now.Add(2 * time.Second),
+			Action:    "{\"method\":\"POST\"}",
+			Duration:  2 * time.Second,
+			Status:    "success",
+			CreatedAt: now,
+			UpdatedAt: now,
+			Version:   2,
+		},
+		{
+			ID:        12,
+			User:      "beta",
+			AuthType:  "token",
+			Node:      "node-a",
+			Started:   now.Add(1 * time.Second),
+			Ended:     now.Add(3 * time.Second),
+			Action:    "{\"method\":\"DELETE\"}",
+			Duration:  2 * time.Second,
+			Status:    "server_error",
+			CreatedAt: now.Add(1 * time.Second),
+			UpdatedAt: now.Add(1 * time.Second),
+			Version:   2,
+		},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy audit rows: %v", err)
+	}
+
+	dropped, err := migrateAuditRecordsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected legacy table to be dropped after successful audit migration")
+	}
+
+	var got []infoModels.AuditRecord
+	if err := telemetryDB.Order("id ASC").Find(&got).Error; err != nil {
+		t.Fatalf("failed to read telemetry audit rows: %v", err)
+	}
+	if len(got) != len(legacyRows) {
+		t.Fatalf("expected %d telemetry rows, got %d", len(legacyRows), len(got))
+	}
+	if got[0].ID != 11 || got[1].ID != 12 {
+		t.Fatalf("expected legacy IDs to be preserved, got ids: %d, %d", got[0].ID, got[1].ID)
+	}
+
+	if mainDB.Migrator().HasTable(&infoModels.AuditRecord{}) {
+		t.Fatal("expected legacy audit_records table to be dropped")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", auditRecordsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking audit migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected audit migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateAuditRecordsToTelemetryIsIdempotentAfterPartialTargetState(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.AuditRecord{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.AuditRecord{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.AuditRecord{
+		{ID: 1, User: "u1", AuthType: "password", Node: "n1", Started: now, Ended: now, Action: "{\"m\":\"GET\"}", Duration: 0, Status: "success", CreatedAt: now, UpdatedAt: now, Version: 2},
+		{ID: 2, User: "u2", AuthType: "token", Node: "n1", Started: now.Add(time.Second), Ended: now.Add(time.Second), Action: "{\"m\":\"POST\"}", Duration: 0, Status: "success", CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second), Version: 2},
+		{ID: 3, User: "u3", AuthType: "token", Node: "n1", Started: now.Add(2 * time.Second), Ended: now.Add(2 * time.Second), Action: "{\"m\":\"DELETE\"}", Duration: 0, Status: "client_error", CreatedAt: now.Add(2 * time.Second), UpdatedAt: now.Add(2 * time.Second), Version: 2},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy audit rows: %v", err)
+	}
+
+	if err := telemetryDB.Create(&infoModels.AuditRecord{
+		ID:        1,
+		User:      "u1",
+		AuthType:  "password",
+		Node:      "n1",
+		Started:   now,
+		Ended:     now,
+		Action:    "{\"m\":\"GET\"}",
+		Duration:  0,
+		Status:    "success",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Version:   2,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed telemetry preexisting audit row: %v", err)
+	}
+
+	dropped, err := migrateAuditRecordsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("first migration run failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected first migration run to drop legacy audit table")
+	}
+
+	dropped, err = migrateAuditRecordsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("second migration run failed: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected second migration run to be a no-op")
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.AuditRecord{}).Count(&telemetryCount).Error; err != nil {
+		t.Fatalf("failed counting telemetry audit rows: %v", err)
+	}
+	if telemetryCount != 3 {
+		t.Fatalf("expected 3 telemetry audit rows after idempotent migration, got %d", telemetryCount)
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", auditRecordsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking audit migration marker count: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected audit migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateAuditRecordsToTelemetryHandlesFreshInstallWithoutLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.AuditRecord{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db table: %v", err)
+	}
+
+	dropped, err := migrateAuditRecordsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("audit migration failed on fresh-install path: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected no legacy table to be dropped on fresh-install audit path")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", auditRecordsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking audit migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected audit migration marker on fresh-install path, got %d", migrationCount)
+	}
+}
+
 func openSQLiteFileDB(t *testing.T, path string) *gorm.DB {
 	t.Helper()
 

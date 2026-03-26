@@ -18,13 +18,13 @@ import (
 
 func (s *Service) GetAuditRecords(limit int) ([]infoModels.AuditRecord, error) {
 	var records []infoModels.AuditRecord
-	err := s.DB.Order("created_at desc").Limit(limit).Find(&records).Error
+	err := s.auditDB().Order("created_at desc").Limit(limit).Find(&records).Error
 
 	return records, err
 }
 
 func (s *Service) PruneAuditRecords(now time.Time) {
-	if err := db.EnforceAuditRecordRetention(s.DB, now); err != nil {
+	if err := db.EnforceAuditRecordRetention(s.auditDB(), now); err != nil {
 		logger.L.Error().Err(err).Msg("failed to apply audit records retention")
 	}
 }

@@ -124,7 +124,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&infoModels.Swap{},
 		&infoModels.NetworkInterface{},
 		&infoModels.Note{},
-		&infoModels.AuditRecord{},
 
 		&infoModels.ZPoolHistorical{},
 

@@ -22,6 +22,10 @@ const (
 )
 
 func EnforceAuditRecordRetention(db *gorm.DB, now time.Time) error {
+	if !db.Migrator().HasTable(&infoModels.AuditRecord{}) {
+		return nil
+	}
+
 	cutoff := now.Add(-AuditRecordRetentionDays * 24 * time.Hour)
 
 	if err := db.

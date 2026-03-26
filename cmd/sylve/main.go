@@ -188,6 +188,7 @@ func main() {
 		zeltaS,
 		fsm,
 		d,
+		telemetryDB,
 	)
 
 	sigChan := make(chan os.Signal, 1)

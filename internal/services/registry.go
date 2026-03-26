@@ -130,6 +130,10 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 }
 
 func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
+	if telemetryDB == nil {
+		panic("service registry requires a non-nil telemetry database")
+	}
+
 	gzfs := gzfs.NewClient(gzfs.Options{
 		Sudo:               false,
 		ZDBCacheTTLSeconds: 0,

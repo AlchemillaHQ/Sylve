@@ -29,6 +29,10 @@ type Service struct {
 }
 
 func NewInfoService(db *gorm.DB, telemetryDB *gorm.DB, gzfs *gzfs.Client) infoServiceInterfaces.InfoServiceInterface {
+	if telemetryDB == nil {
+		panic("info service requires a non-nil telemetry database")
+	}
+
 	return &Service{
 		DB:          db,
 		TelemetryDB: telemetryDB,
@@ -36,13 +40,17 @@ func NewInfoService(db *gorm.DB, telemetryDB *gorm.DB, gzfs *gzfs.Client) infoSe
 	}
 }
 
-func (s *Service) cpuDB() *gorm.DB {
-	if s.TelemetryDB != nil {
-		return s.TelemetryDB
+func (s *Service) telemetryDB() *gorm.DB {
+	if s.TelemetryDB == nil {
+		panic("info service telemetry database is nil")
 	}
 
-	return s.DB
+	return s.TelemetryDB
 }
+
+func (s *Service) cpuDB() *gorm.DB { return s.telemetryDB() }
+
+func (s *Service) auditDB() *gorm.DB { return s.telemetryDB() }
 
 func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 	nodeInfo := infoServiceInterfaces.NodeInfo{}

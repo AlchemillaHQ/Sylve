@@ -259,7 +259,12 @@ func (w bodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
-func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.HandlerFunc {
+func RequestLoggerMiddleware(telemetryDB *gorm.DB, authService *authService.Service) gin.HandlerFunc {
+	if telemetryDB == nil {
+		panic("request logger middleware requires a non-nil telemetry database")
+	}
+	auditDB := telemetryDB
+
 	return func(c *gin.Context) {
 		if hostname == "" {
 			stored, err := utils.GetSystemHostname()
@@ -350,7 +355,7 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			Version:  2,
 		}
 
-		if err := db.Create(log).Error; err != nil {
+		if err := auditDB.Create(log).Error; err != nil {
 			logger.L.Error().Msgf("Failed to create audit log: %v", err)
 		}
 
@@ -417,7 +422,7 @@ func RequestLoggerMiddleware(db *gorm.DB, authService *authService.Service) gin.
 			}
 		}
 
-		if err := db.Save(log).Error; err != nil {
+		if err := auditDB.Save(log).Error; err != nil {
 			logger.L.Error().Msgf("Failed to update audit log: %v", err)
 		}
 	}

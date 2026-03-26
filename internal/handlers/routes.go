@@ -87,6 +87,7 @@ func RegisterRoutes(r *gin.Engine,
 	zeltaService *zelta.Service,
 	fsm *clusterModels.FSMDispatcher,
 	db *gorm.DB,
+	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
 
@@ -109,7 +110,7 @@ func RegisterRoutes(r *gin.Engine,
 	info := api.Group("/info")
 	info.Use(middleware.EnsureAuthenticated(authService))
 	info.Use(EnsureCorrectHost(db, authService))
-	info.Use(middleware.RequestLoggerMiddleware(db, authService))
+	info.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		info.GET("/basic", infoHandlers.BasicInfo(infoService))
 
@@ -142,7 +143,7 @@ func RegisterRoutes(r *gin.Engine,
 	zfs := api.Group("/zfs")
 	zfs.Use(middleware.EnsureAuthenticated(authService))
 	zfs.Use(EnsureCorrectHost(db, authService))
-	zfs.Use(middleware.RequestLoggerMiddleware(db, authService))
+	zfs.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		zfs.GET("/pool/stats/:interval/:limit", zfsHandlers.PoolStats(zfsService))
 		pools := zfs.Group("/pools")
@@ -189,7 +190,7 @@ func RegisterRoutes(r *gin.Engine,
 	samba := api.Group("/samba")
 	samba.Use(middleware.EnsureAuthenticated(authService))
 	samba.Use(EnsureCorrectHost(db, authService))
-	samba.Use(middleware.RequestLoggerMiddleware(db, authService))
+	samba.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
 		samba.POST("/config", sambaHandlers.SetGlobalConfig(sambaService))
@@ -205,7 +206,7 @@ func RegisterRoutes(r *gin.Engine,
 	disk := api.Group("/disk")
 	disk.Use(middleware.EnsureAuthenticated(authService))
 	disk.Use(EnsureCorrectHost(db, authService))
-	disk.Use(middleware.RequestLoggerMiddleware(db, authService))
+	disk.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		disk.GET("/list", diskHandlers.List(diskService))
 		disk.POST("/wipe", diskHandlers.WipeDisk(diskService, infoService))
@@ -217,7 +218,7 @@ func RegisterRoutes(r *gin.Engine,
 	network := api.Group("/network")
 	network.Use(middleware.EnsureAuthenticated(authService))
 	network.Use(EnsureCorrectHost(db, authService))
-	network.Use(middleware.RequestLoggerMiddleware(db, authService))
+	network.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		network.GET("/object", networkHandlers.ListNetworkObjects(networkService))
 		network.POST("/object", networkHandlers.CreateNetworkObject(networkService))
@@ -252,7 +253,7 @@ func RegisterRoutes(r *gin.Engine,
 	system := api.Group("/system")
 	system.Use(middleware.EnsureAuthenticated(authService))
 	system.Use(EnsureCorrectHost(db, authService))
-	system.Use(middleware.RequestLoggerMiddleware(db, authService))
+	system.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		system.GET("/pci-devices", systemHandlers.ListDevices())
 		system.GET("/ppt-devices", systemHandlers.ListPPTDevices(systemService))
@@ -267,7 +268,7 @@ func RegisterRoutes(r *gin.Engine,
 	fileExplorer := system.Group("/file-explorer")
 	fileExplorer.Use(middleware.EnsureAuthenticated(authService))
 	fileExplorer.Use(EnsureCorrectHost(db, authService))
-	fileExplorer.Use(middleware.RequestLoggerMiddleware(db, authService))
+	fileExplorer.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		fileExplorer.GET("", systemHandlers.Files(systemService))
 		fileExplorer.POST("", systemHandlers.AddFileOrFolder(systemService))
@@ -288,7 +289,7 @@ func RegisterRoutes(r *gin.Engine,
 	vm := api.Group("/vm")
 	vm.Use(middleware.EnsureAuthenticated(authService))
 	vm.Use(EnsureCorrectHost(db, authService))
-	vm.Use(middleware.RequestLoggerMiddleware(db, authService))
+	vm.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		vm.POST("/:action/:rid", vmHandlers.VMActionHandler(lifecycleService))
 		vm.GET("/simple", vmHandlers.ListVMsSimple(libvirtService))
@@ -341,7 +342,7 @@ func RegisterRoutes(r *gin.Engine,
 	jail := api.Group("/jail")
 	jail.Use(middleware.EnsureAuthenticated(authService))
 	jail.Use(EnsureCorrectHost(db, authService))
-	jail.Use(middleware.RequestLoggerMiddleware(db, authService))
+	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
 		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
@@ -390,7 +391,7 @@ func RegisterRoutes(r *gin.Engine,
 	utilities := api.Group("/utilities")
 	utilities.Use(middleware.EnsureAuthenticated(authService))
 	utilities.Use(EnsureCorrectHost(db, authService))
-	utilities.Use(middleware.RequestLoggerMiddleware(db, authService))
+	utilities.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		utilities.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
@@ -409,7 +410,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	auth := api.Group("/auth")
 	auth.Use(middleware.EnsureAuthenticated(authService))
-	auth.Use(middleware.RequestLoggerMiddleware(db, authService))
+	auth.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		auth.POST("/login", authHandlers.LoginHandler(authService))
 		auth.POST("/passkeys/login/begin", authHandlers.BeginPasskeyLoginHandler(authService))
@@ -474,7 +475,7 @@ func RegisterRoutes(r *gin.Engine,
 
 	cluster := api.Group("/cluster")
 	cluster.Use(middleware.EnsureAuthenticated(authService))
-	cluster.Use(middleware.RequestLoggerMiddleware(db, authService))
+	cluster.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		cluster.GET("/nodes", clusterHandlers.Nodes(clusterService))
 		cluster.GET("/resources", clusterHandlers.Resources(clusterService))
@@ -547,13 +548,13 @@ func RegisterRoutes(r *gin.Engine,
 	vnc := api.Group("/vnc")
 	vnc.Use(middleware.EnsureAuthenticated(authService))
 	vnc.Use(EnsureCorrectHost(db, authService))
-	vnc.Use(middleware.RequestLoggerMiddleware(db, authService))
+	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	vnc.GET("/:port", vncHandler.VNCProxyHandler)
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))
 	tasks.Use(EnsureCorrectHost(db, authService))
-	tasks.Use(middleware.RequestLoggerMiddleware(db, authService))
+	tasks.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		lifecycleTasks := tasks.Group("/lifecycle")
 		{
