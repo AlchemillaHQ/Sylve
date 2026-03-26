@@ -11,6 +11,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	static "github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -574,7 +575,18 @@ func RegisterRoutes(r *gin.Engine,
 			log.Fatalln("Initialization of embed folder failed:", err)
 		}
 
+		r.Use(func(c *gin.Context) {
+			path := c.Request.URL.Path
+
+			if strings.HasPrefix(path, "/_app/immutable/") {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			}
+
+			c.Next()
+		})
+
 		r.Use(static.Serve("/", files))
+
 		r.NoRoute(func(c *gin.Context) {
 			indexFile, err := assets.SvelteKitFiles.ReadFile("web-files/index.html")
 			if err != nil {
@@ -582,7 +594,8 @@ func RegisterRoutes(r *gin.Engine,
 				return
 			}
 
-			c.Data(http.StatusOK, "text/html", indexFile)
+			c.Header("Cache-Control", "no-store")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", indexFile)
 		})
 	}
 }

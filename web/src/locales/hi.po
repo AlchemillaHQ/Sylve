@@ -3168,9 +3168,6 @@ msgstr "जबरन हटाएँ"
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
-#: src/routes/[node]/vm/[rid]/+layout.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -9081,15 +9078,15 @@ msgstr ""
 msgid "Invalid jail name prefix"
 msgstr ""
 
-#. 0: createMode === 'single' ? 'Jail' : 'Jails'
-#. 0: createMode === 'single' ? 'VM' : 'VMs'
+#. 0: createMode === 'single' ? 'Jail'
+#. 0: createMode === 'single' ? 'VM'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Creating {0}"
 msgstr ""
 
-#. 0: createMode === 'single' ? 'Jail' : 'Jails'
-#. 0: createMode === 'single' ? 'VM' : 'VMs'
+#. 0: createMode === 'single' ? 'Jail'
+#. 0: createMode === 'single' ? 'VM'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create {0}"

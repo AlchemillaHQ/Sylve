@@ -287,15 +287,13 @@ func main() {
 		srv  *http.Server
 	}
 	startedServers := make([]namedServer, 0, 3)
-	fmt.Fprintf(
-		os.Stderr,
-		"Listener ports: https=%d http=%d cluster_https=%d cluster_ssh=%d raft=%d\n",
-		cfg.Port,
-		cfg.HTTPPort,
-		cluster.ClusterEmbeddedHTTPSPort,
-		cluster.ClusterEmbeddedSSHPort,
-		cluster.ClusterRaftPort,
-	)
+	logger.L.Info().
+		Int("https", cfg.Port).
+		Int("http", cfg.HTTPPort).
+		Int("cluster_https", cluster.ClusterEmbeddedHTTPSPort).
+		Int("cluster_ssh", cluster.ClusterEmbeddedSSHPort).
+		Int("raft", cluster.ClusterRaftPort).
+		Msg("Listener ports")
 
 	if cfg.Port != 0 {
 		startedServers = append(startedServers, namedServer{name: "HTTPS", srv: httpsServer})
