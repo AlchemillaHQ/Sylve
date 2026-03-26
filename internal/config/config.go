@@ -66,7 +66,7 @@ func GetDataPath() (string, error) {
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
-	// 1) Explicit override for testing/packaging.
+	// Explicit override for testing/packaging.
 	if v, ok := os.LookupEnv("SYLVE_DATA_PATH"); ok {
 		v = strings.TrimSpace(v)
 		if v != "" {
@@ -83,16 +83,11 @@ func GetDataPath() (string, error) {
 		}
 	}
 
-	// 2) Configured path takes precedence.
 	if ParsedConfig != nil && ParsedConfig.DataPath != "" {
 		return ParsedConfig.DataPath, nil
 	}
 
-	// 3) Reasonable defaults.
-	//
-	// On FreeBSD, Sylve is typically run as an rc service via daemon(8) with -c,
-	// which chdirs to "/". Using cwd-relative defaults would otherwise end up in
-	// "/data". Prefer "/var/db/sylve" when running as root on FreeBSD.
+	// The port must set this as the default, we will fall back to it if the config file doesn't specify a path
 	dataPath := filepath.Join(cwd, "data")
 	if runtime.GOOS == "freebsd" && os.Geteuid() == 0 {
 		dataPath = "/var/db/sylve"
