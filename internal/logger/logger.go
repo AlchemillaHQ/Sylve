@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
 	"github.com/mattn/go-isatty"
 	"github.com/natefinch/lumberjack"
 	"github.com/rs/zerolog"
@@ -26,7 +27,7 @@ var (
 	logCache sync.Map
 )
 
-func InitLogger(dataDir string, level int8) {
+func InitLogger(environment internal.Environment, dataDir string, level int8) {
 	zerolog.TimeFieldFormat = "2006/01/02 15:04:05"
 
 	switch level {
@@ -62,16 +63,23 @@ func InitLogger(dataDir string, level int8) {
 
 	multiWriter := zerolog.MultiLevelWriter(consoleWriter, fileWriter)
 
-	L = zerolog.New(multiWriter).
-		With().
-		Timestamp().
-		Caller().
-		Logger()
+	if environment == internal.Production {
+		L = zerolog.New(multiWriter).
+			With().
+			Timestamp().
+			Logger()
+	} else {
+		L = zerolog.New(multiWriter).
+			With().
+			Timestamp().
+			Caller().
+			Logger()
+	}
 
 	log.Logger = L
 
 	fmt.Println("")
-	L.Info().Msg("Logger initialized")
+	L.Info().Str("environment", string(environment)).Msg("Logger initialized")
 }
 
 func LogWithDeduplication(level zerolog.Level, message string) {

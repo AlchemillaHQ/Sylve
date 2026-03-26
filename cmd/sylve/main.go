@@ -71,7 +71,7 @@ func main() {
 	}
 
 	cfg := config.ParseConfig(cfgResult.ConfigPath)
-	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
+	logger.InitLogger(cfg.Environment, cfg.DataPath, cfg.LogLevel)
 	logger.L.Info().
 		Str("environment", string(cfg.Environment)).
 		Int8("logLevel", cfg.LogLevel).
