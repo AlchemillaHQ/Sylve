@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/logger"
 
 	"gorm.io/gorm"
 )
@@ -94,6 +95,22 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 
 		if service == models.Jails {
 			if err := s.CheckJails(); err != nil {
+				if err.Error() == "jails_racct_not_enabled" {
+					updated, updateErr := s.ensureJailRacctEnabledAtBoot()
+					if updateErr != nil {
+						errs = append(errs, fmt.Errorf("jails_check_failed: jails_racct_autoconfig_failed: %w", updateErr))
+						continue
+					}
+
+					if updated {
+						logger.L.Warn().Msg("jails_racct_auto_configured_in_loader_conf_reboot_required")
+					} else {
+						logger.L.Warn().Msg("jails_racct_not_enabled_runtime_loader_conf_already_set_reboot_required")
+					}
+
+					continue
+				}
+
 				errs = append(errs, fmt.Errorf("jails_check_failed: %w", err))
 			}
 		}

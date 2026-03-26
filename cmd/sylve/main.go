@@ -163,7 +163,7 @@ func main() {
 	go db.StartQueue(qCtx)
 
 	if startAdvancedStartupWorkers {
-		fmt.Fprintln(os.Stderr, "Starting background watchers and queues")
+		logger.L.Info().Msg("Starting background watchers and queues")
 		go sysS.StartNetlinkWatcher(qCtx)
 		go sysS.NetlinkEventsCleaner(qCtx)
 
@@ -287,6 +287,15 @@ func main() {
 		srv  *http.Server
 	}
 	startedServers := make([]namedServer, 0, 3)
+	fmt.Fprintf(
+		os.Stderr,
+		"Listener ports: https=%d http=%d cluster_https=%d cluster_ssh=%d raft=%d\n",
+		cfg.Port,
+		cfg.HTTPPort,
+		cluster.ClusterEmbeddedHTTPSPort,
+		cluster.ClusterEmbeddedSSHPort,
+		cluster.ClusterRaftPort,
+	)
 
 	if cfg.Port != 0 {
 		startedServers = append(startedServers, namedServer{name: "HTTPS", srv: httpsServer})
