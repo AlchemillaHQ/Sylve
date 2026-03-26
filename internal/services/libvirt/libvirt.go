@@ -89,14 +89,9 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 		}
 	}
 
-	l, version, err := skeleton.connect()
-	if err != nil {
-		logger.L.Warn().Err(err).Msg("failed to initialize libvirt connection; will retry on demand")
-		return skeleton
-	}
-
-	logger.L.Info().Msgf("Libvirt version: %d", version)
-	skeleton.setConn(l)
+	// Defer connection establishment until startup checks or first VM operation.
+	// At this stage libvirtd may not have been onestart'ed yet.
+	logger.L.Debug().Msg("Virtualization enabled, deferring libvirt connection initialization")
 
 	return skeleton
 }
