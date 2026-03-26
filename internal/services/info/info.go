@@ -23,15 +23,25 @@ import (
 var _ infoServiceInterfaces.InfoServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB   *gorm.DB
-	GZFS *gzfs.Client
+	DB          *gorm.DB
+	TelemetryDB *gorm.DB
+	GZFS        *gzfs.Client
 }
 
-func NewInfoService(db *gorm.DB, gzfs *gzfs.Client) infoServiceInterfaces.InfoServiceInterface {
+func NewInfoService(db *gorm.DB, telemetryDB *gorm.DB, gzfs *gzfs.Client) infoServiceInterfaces.InfoServiceInterface {
 	return &Service{
-		DB:   db,
-		GZFS: gzfs,
+		DB:          db,
+		TelemetryDB: telemetryDB,
+		GZFS:        gzfs,
 	}
+}
+
+func (s *Service) cpuDB() *gorm.DB {
+	if s.TelemetryDB != nil {
+		return s.TelemetryDB
+	}
+
+	return s.DB
 }
 
 func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {

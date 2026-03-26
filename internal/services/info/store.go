@@ -26,7 +26,7 @@ func (s *Service) StoreStats() {
 	now := time.Now()
 
 	if c, err := s.GetCPUInfo(true); err == nil {
-		s.DB.Create(&infoModels.CPU{Usage: c.Usage})
+		s.cpuDB().Create(&infoModels.CPU{Usage: c.Usage})
 	} else {
 		logger.L.Err(err).Msg("Failed to get CPU stats")
 	}
@@ -43,7 +43,7 @@ func (s *Service) StoreStats() {
 		logger.L.Err(err).Msg("Failed to get Swap stats")
 	}
 
-	pruneGFS(s.DB, now, infoModels.CPU{})
+	pruneGFS(s.cpuDB(), now, infoModels.CPU{})
 	pruneGFS(s.DB, now, infoModels.RAM{})
 	pruneGFS(s.DB, now, infoModels.Swap{})
 }

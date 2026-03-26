@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/alchemillahq/sylve/internal"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
 
@@ -22,7 +23,10 @@ import (
 	gormLogger "gorm.io/gorm/logger"
 )
 
-const sambaAuditLogsTelemetryMigrationName = "samba_audit_logs_to_telemetry_1"
+const (
+	sambaAuditLogsTelemetryMigrationName = "samba_audit_logs_to_telemetry_1"
+	cpuStatsTelemetryMigrationName       = "cpu_stats_to_telemetry_1"
+)
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
 	if mainDB == nil {
@@ -67,18 +71,23 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 	telemetryDB.Exec("PRAGMA journal_mode = WAL")
 	telemetryDB.Exec("PRAGMA synchronous = NORMAL")
 
-	if err := telemetryDB.AutoMigrate(&sambaModels.SambaAuditLog{}); err != nil {
+	if err := telemetryDB.AutoMigrate(&sambaModels.SambaAuditLog{}, &infoModels.CPU{}); err != nil {
 		logger.L.Fatal().Msgf("Error migrating telemetry database: %v", err)
 	}
 
-	droppedLegacyTable, err := migrateSambaAuditLogsToTelemetry(mainDB, telemetryDB, mainDBPath)
+	droppedSambaAuditLogTable, err := migrateSambaAuditLogsToTelemetry(mainDB, telemetryDB, mainDBPath)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating samba audit logs to telemetry database: %v", err)
 	}
 
-	if droppedLegacyTable && !isTest {
+	droppedCPUTable, err := migrateCPUStatsToTelemetry(mainDB, telemetryDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating CPU stats to telemetry database: %v", err)
+	}
+
+	if (droppedSambaAuditLogTable || droppedCPUTable) && !isTest {
 		if err := mainDB.Exec("VACUUM").Error; err != nil {
-			logger.L.Warn().Msgf("VACUUM failed after dropping legacy samba audit logs table: %v", err)
+			logger.L.Warn().Msgf("VACUUM failed after dropping legacy telemetry tables: %v", err)
 		}
 	}
 
@@ -203,6 +212,126 @@ func copySambaAuditLogsInBatches(mainDB, telemetryDB *gorm.DB) error {
 		}).Error
 	if err != nil {
 		return fmt.Errorf("failed to iterate samba audit logs in batches: %w", err)
+	}
+
+	return nil
+}
+
+func migrateCPUStatsToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath string) (bool, error) {
+	applied, err := migrationApplied(mainDB, cpuStatsTelemetryMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	if !mainDB.Migrator().HasTable(&infoModels.CPU{}) {
+		if err := recordMigration(mainDB, cpuStatsTelemetryMigrationName); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	if err := copyCPUStats(mainDB, telemetryDB, mainDBPath); err != nil {
+		return false, err
+	}
+
+	var legacyCount int64
+	if err := mainDB.Model(&infoModels.CPU{}).Count(&legacyCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count legacy cpu rows: %w", err)
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.CPU{}).Count(&telemetryCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count telemetry cpu rows: %w", err)
+	}
+
+	if telemetryCount < legacyCount {
+		return false, fmt.Errorf("telemetry cpu row count (%d) is lower than legacy count (%d)", telemetryCount, legacyCount)
+	}
+
+	if err := mainDB.Migrator().DropTable(&infoModels.CPU{}); err != nil {
+		return false, fmt.Errorf("failed to drop legacy cpu table: %w", err)
+	}
+
+	if err := recordMigration(mainDB, cpuStatsTelemetryMigrationName); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func copyCPUStats(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
+	if mainDBPath != "" {
+		if err := copyCPUStatsUsingSQL(telemetryDB, mainDBPath); err == nil {
+			return nil
+		} else {
+			logger.L.Warn().Err(err).Msg("SQL-level CPU telemetry copy failed, falling back to batched copy")
+		}
+	}
+
+	return copyCPUStatsInBatches(mainDB, telemetryDB)
+}
+
+func copyCPUStatsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
+	if err := telemetryDB.Exec("ATTACH DATABASE ? AS legacy_main", mainDBPath).Error; err != nil {
+		return fmt.Errorf("failed attaching legacy main database to telemetry db for cpu copy: %w", err)
+	}
+
+	detached := false
+	defer func() {
+		if detached {
+			return
+		}
+		if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+			logger.L.Warn().Err(err).Msg("failed detaching legacy main database from telemetry db after cpu copy")
+		}
+	}()
+
+	copySQL := `
+		INSERT OR IGNORE INTO cpus (
+			"id", "usage", "created_at"
+		)
+		SELECT
+			"id", "usage", "created_at"
+		FROM legacy_main.cpus
+	`
+
+	if err := telemetryDB.Exec(copySQL).Error; err != nil {
+		return fmt.Errorf("failed to bulk-copy cpu rows to telemetry db: %w", err)
+	}
+
+	if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+		return fmt.Errorf("failed detaching legacy main database from telemetry db after cpu copy: %w", err)
+	}
+
+	detached = true
+	return nil
+}
+
+func copyCPUStatsInBatches(mainDB, telemetryDB *gorm.DB) error {
+	const batchSize = 2000
+
+	var batch []infoModels.CPU
+	err := mainDB.Model(&infoModels.CPU{}).
+		Order("id ASC").
+		FindInBatches(&batch, batchSize, func(tx *gorm.DB, _ int) error {
+			if len(batch) == 0 {
+				return nil
+			}
+
+			if err := telemetryDB.
+				Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).
+				Create(&batch).Error; err != nil {
+				return fmt.Errorf("failed inserting cpu batch into telemetry db: %w", err)
+			}
+
+			return nil
+		}).Error
+	if err != nil {
+		return fmt.Errorf("failed to iterate cpu rows in batches: %w", err)
 	}
 
 	return nil

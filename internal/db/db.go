@@ -120,7 +120,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.DHCPStaticLease{},
 		// &networkModels.DHCPOption{},
 
-		&infoModels.CPU{},
 		&infoModels.RAM{},
 		&infoModels.Swap{},
 		&infoModels.NetworkInterface{},

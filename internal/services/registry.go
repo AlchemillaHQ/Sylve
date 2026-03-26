@@ -61,7 +61,8 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *system.Service:
 		return system.NewSystemService(db, dependencies[0].(*gzfs.Client))
 	case *info.Service:
-		return info.NewInfoService(db, dependencies[0].(*gzfs.Client))
+		telemetryDB := dependencies[0].(*gorm.DB)
+		return info.NewInfoService(db, telemetryDB, dependencies[1].(*gzfs.Client))
 	case *libvirt.Service:
 		return libvirt.NewLibvirtService(db,
 			dependencies[0].(systemServiceInterfaces.SystemServiceInterface),
@@ -138,7 +139,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	systemService := NewService[system.Service](db, gzfs)
 	libvirtService := NewService[libvirt.Service](db, systemService, gzfs)
 	networkService := NewService[network.Service](db, libvirtService)
-	infoService := NewService[info.Service](db, gzfs)
+	infoService := NewService[info.Service](db, telemetryDB, gzfs)
 	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
 	utilitiesService := NewService[utilities.Service](db)
 	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
