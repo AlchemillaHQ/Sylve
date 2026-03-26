@@ -22,6 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
+	dbModels "github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/handlers"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -134,22 +135,43 @@ func main() {
 	defer initCancel()
 
 	err = sS.Initialize(aS.(*auth.Service), initContext, qCtx)
-
-	go sysS.StartNetlinkWatcher(qCtx)
-	go sysS.NetlinkEventsCleaner(qCtx)
-	go libvirtSvc.StartLifecycleWatcher(qCtx)
-	go db.StartQueue(qCtx)
-
 	if err != nil {
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
-	} else {
-		logger.L.Info().Msg("Basic initializations complete")
+	}
+
+	logger.L.Info().Msg("Basic initializations complete")
+
+	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
+		var settings dbModels.BasicSettings
+		if err := d.First(&settings).Error; err != nil {
+			return dbModels.BasicSettings{}, err
+		}
+		return settings, nil
+	})
+	if settingsErr != nil {
+		logger.L.Fatal().Err(settingsErr).Msg("Failed to evaluate startup readiness")
+	}
+
+	go db.StartQueue(qCtx)
+
+	if startAdvancedStartupWorkers {
+		go sysS.StartNetlinkWatcher(qCtx)
+		go sysS.NetlinkEventsCleaner(qCtx)
+
+		if libvirtSvc.IsVirtualizationEnabled() {
+			go libvirtSvc.StartLifecycleWatcher(qCtx)
+		}
 
 		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
 			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
 		}
 		enqueueCancel()
+	} else {
+		logger.L.Info().
+			Bool("initialized", basicSettings.Initialized).
+			Bool("restarted", basicSettings.Restarted).
+			Msg("System startup not finalized; skipping advanced watchers and autostart queue")
 	}
 
 	err = cS.InitRaft(fsm)
