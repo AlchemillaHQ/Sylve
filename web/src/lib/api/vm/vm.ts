@@ -16,7 +16,9 @@ import {
     type VMLogs,
     type VMTemplate,
     type VMDomain,
-    type VMStat
+    type VMStat,
+    type OutcomeResponse,
+    OutcomeResponseSchema
 } from '$lib/types/vm/vm';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
@@ -113,8 +115,8 @@ export async function actionVm(
     rid: number | string,
     action: string,
     hostname?: string
-): Promise<APIResponse> {
-    return await apiRequest(`/vm/${action}/${rid}`, APIResponseSchema, 'POST', undefined, { hostname });
+): Promise<OutcomeResponse | APIResponse> {
+    return await apiRequest(`/vm/${action}/${rid}`, OutcomeResponseSchema, 'POST', undefined, { hostname });
 }
 
 export interface ConvertVMToTemplateRequest {
