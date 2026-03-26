@@ -32,20 +32,20 @@ func (s *Service) StoreStats() {
 	}
 
 	if r, err := s.GetRAMInfo(); err == nil {
-		s.DB.Create(&infoModels.RAM{Usage: r.UsedPercent})
+		s.ramDB().Create(&infoModels.RAM{Usage: r.UsedPercent})
 	} else {
 		logger.L.Err(err).Msg("Failed to get RAM stats")
 	}
 
 	if sw, err := s.GetSwapInfo(); err == nil {
-		s.DB.Create(&infoModels.Swap{Usage: sw.UsedPercent})
+		s.swapDB().Create(&infoModels.Swap{Usage: sw.UsedPercent})
 	} else {
 		logger.L.Err(err).Msg("Failed to get Swap stats")
 	}
 
 	pruneGFS(s.cpuDB(), now, infoModels.CPU{})
-	pruneGFS(s.DB, now, infoModels.RAM{})
-	pruneGFS(s.DB, now, infoModels.Swap{})
+	pruneGFS(s.ramDB(), now, infoModels.RAM{})
+	pruneGFS(s.swapDB(), now, infoModels.Swap{})
 }
 
 func pruneGFS[T db.TimeSeriesRow](dbConn *gorm.DB, now time.Time, dummy T) {
@@ -141,13 +141,13 @@ func (s *Service) StoreNetworkInterfaceStats() {
 		return
 	}
 
-	if err := s.DB.Create(&rows).Error; err != nil {
+	if err := s.networkDB().Create(&rows).Error; err != nil {
 		logger.L.Err(err).Msg("failed storing network interface stats")
 		return
 	}
 
 	cutoffPrune := now.Add(-netRetention)
-	if err := s.DB.Unscoped().
+	if err := s.networkDB().Unscoped().
 		Where("created_at < ?", cutoffPrune).
 		Delete(&infoModels.NetworkInterface{}).
 		Error; err != nil {

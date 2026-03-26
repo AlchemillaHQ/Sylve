@@ -547,6 +547,503 @@ func TestMigrateAuditRecordsToTelemetryHandlesFreshInstallWithoutLegacyTable(t *
 	}
 }
 
+func TestMigrateRAMStatsToTelemetryCopiesRowsAndDropsLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.RAM{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.RAM{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.RAM{
+		{ID: 11, Usage: 18.5, CreatedAt: now},
+		{ID: 12, Usage: 29.7, CreatedAt: now.Add(1 * time.Second)},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy ram rows: %v", err)
+	}
+
+	dropped, err := migrateRAMStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected legacy table to be dropped after successful ram migration")
+	}
+
+	var got []infoModels.RAM
+	if err := telemetryDB.Order("id ASC").Find(&got).Error; err != nil {
+		t.Fatalf("failed to read telemetry ram rows: %v", err)
+	}
+	if len(got) != len(legacyRows) {
+		t.Fatalf("expected %d telemetry rows, got %d", len(legacyRows), len(got))
+	}
+	if got[0].ID != 11 || got[1].ID != 12 {
+		t.Fatalf("expected legacy IDs to be preserved, got ids: %d, %d", got[0].ID, got[1].ID)
+	}
+
+	if mainDB.Migrator().HasTable(&infoModels.RAM{}) {
+		t.Fatal("expected legacy rams table to be dropped")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", ramStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking ram migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected ram migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateRAMStatsToTelemetryIsIdempotentAfterPartialTargetState(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.RAM{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.RAM{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.RAM{
+		{ID: 1, Usage: 5.1, CreatedAt: now},
+		{ID: 2, Usage: 15.3, CreatedAt: now.Add(1 * time.Second)},
+		{ID: 3, Usage: 25.4, CreatedAt: now.Add(2 * time.Second)},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy ram rows: %v", err)
+	}
+
+	if err := telemetryDB.Create(&infoModels.RAM{
+		ID:        1,
+		Usage:     5.1,
+		CreatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed telemetry preexisting ram row: %v", err)
+	}
+
+	dropped, err := migrateRAMStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("first migration run failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected first migration run to drop legacy ram table")
+	}
+
+	dropped, err = migrateRAMStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("second migration run failed: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected second migration run to be a no-op")
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.RAM{}).Count(&telemetryCount).Error; err != nil {
+		t.Fatalf("failed counting telemetry ram rows: %v", err)
+	}
+	if telemetryCount != 3 {
+		t.Fatalf("expected 3 telemetry ram rows after idempotent migration, got %d", telemetryCount)
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", ramStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking ram migration marker count: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected ram migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateRAMStatsToTelemetryHandlesFreshInstallWithoutLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.RAM{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db table: %v", err)
+	}
+
+	dropped, err := migrateRAMStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("ram migration failed on fresh-install path: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected no legacy table to be dropped on fresh-install ram path")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", ramStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking ram migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected ram migration marker on fresh-install path, got %d", migrationCount)
+	}
+}
+
+func TestMigrateSwapStatsToTelemetryCopiesRowsAndDropsLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.Swap{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.Swap{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.Swap{
+		{ID: 11, Usage: 18.5, CreatedAt: now},
+		{ID: 12, Usage: 29.7, CreatedAt: now.Add(1 * time.Second)},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy swap rows: %v", err)
+	}
+
+	dropped, err := migrateSwapStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected legacy table to be dropped after successful swap migration")
+	}
+
+	var got []infoModels.Swap
+	if err := telemetryDB.Order("id ASC").Find(&got).Error; err != nil {
+		t.Fatalf("failed to read telemetry swap rows: %v", err)
+	}
+	if len(got) != len(legacyRows) {
+		t.Fatalf("expected %d telemetry rows, got %d", len(legacyRows), len(got))
+	}
+	if got[0].ID != 11 || got[1].ID != 12 {
+		t.Fatalf("expected legacy IDs to be preserved, got ids: %d, %d", got[0].ID, got[1].ID)
+	}
+
+	if mainDB.Migrator().HasTable(&infoModels.Swap{}) {
+		t.Fatal("expected legacy swaps table to be dropped")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", swapStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking swap migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected swap migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateSwapStatsToTelemetryIsIdempotentAfterPartialTargetState(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.Swap{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.Swap{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.Swap{
+		{ID: 1, Usage: 5.1, CreatedAt: now},
+		{ID: 2, Usage: 15.3, CreatedAt: now.Add(1 * time.Second)},
+		{ID: 3, Usage: 25.4, CreatedAt: now.Add(2 * time.Second)},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy swap rows: %v", err)
+	}
+
+	if err := telemetryDB.Create(&infoModels.Swap{
+		ID:        1,
+		Usage:     5.1,
+		CreatedAt: now,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed telemetry preexisting swap row: %v", err)
+	}
+
+	dropped, err := migrateSwapStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("first migration run failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected first migration run to drop legacy swap table")
+	}
+
+	dropped, err = migrateSwapStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("second migration run failed: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected second migration run to be a no-op")
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.Swap{}).Count(&telemetryCount).Error; err != nil {
+		t.Fatalf("failed counting telemetry swap rows: %v", err)
+	}
+	if telemetryCount != 3 {
+		t.Fatalf("expected 3 telemetry swap rows after idempotent migration, got %d", telemetryCount)
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", swapStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking swap migration marker count: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected swap migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateSwapStatsToTelemetryHandlesFreshInstallWithoutLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.Swap{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db table: %v", err)
+	}
+
+	dropped, err := migrateSwapStatsToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("swap migration failed on fresh-install path: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected no legacy table to be dropped on fresh-install swap path")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", swapStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking swap migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected swap migration marker on fresh-install path, got %d", migrationCount)
+	}
+}
+
+func TestMigrateNetworkInterfacesToTelemetryCopiesRowsAndDropsLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.NetworkInterface{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.NetworkInterface{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.NetworkInterface{
+		{
+			ID:              11,
+			Name:            "igb0",
+			Flags:           "UP",
+			IsDelta:         false,
+			Network:         "link#1",
+			Address:         "aa:bb:cc:dd:ee:ff",
+			ReceivedPackets: 10,
+			ReceivedBytes:   1000,
+			SentPackets:     5,
+			SentBytes:       500,
+			Collisions:      0,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              12,
+			Name:            "igb0",
+			Flags:           "UP",
+			IsDelta:         false,
+			Network:         "link#1",
+			Address:         "aa:bb:cc:dd:ee:ff",
+			ReceivedPackets: 15,
+			ReceivedBytes:   1500,
+			SentPackets:     9,
+			SentBytes:       900,
+			Collisions:      0,
+			CreatedAt:       now.Add(1 * time.Second),
+			UpdatedAt:       now.Add(1 * time.Second),
+		},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy network interface rows: %v", err)
+	}
+
+	dropped, err := migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected legacy table to be dropped after successful network interface migration")
+	}
+
+	var got []infoModels.NetworkInterface
+	if err := telemetryDB.Order("id ASC").Find(&got).Error; err != nil {
+		t.Fatalf("failed to read telemetry network interface rows: %v", err)
+	}
+	if len(got) != len(legacyRows) {
+		t.Fatalf("expected %d telemetry rows, got %d", len(legacyRows), len(got))
+	}
+	if got[0].ID != 11 || got[1].ID != 12 {
+		t.Fatalf("expected legacy IDs to be preserved, got ids: %d, %d", got[0].ID, got[1].ID)
+	}
+
+	if mainDB.Migrator().HasTable(&infoModels.NetworkInterface{}) {
+		t.Fatal("expected legacy network_interfaces table to be dropped")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", networkStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking network interface migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected network interface migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateNetworkInterfacesToTelemetryIsIdempotentAfterPartialTargetState(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}, &infoModels.NetworkInterface{}); err != nil {
+		t.Fatalf("failed to migrate legacy db tables: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.NetworkInterface{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db tables: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	legacyRows := []infoModels.NetworkInterface{
+		{ID: 1, Name: "igb0", Flags: "UP", IsDelta: false, Network: "link#1", Address: "aa:bb", ReceivedBytes: 100, SentBytes: 100, CreatedAt: now, UpdatedAt: now},
+		{ID: 2, Name: "igb0", Flags: "UP", IsDelta: false, Network: "link#1", Address: "aa:bb", ReceivedBytes: 200, SentBytes: 250, CreatedAt: now.Add(time.Second), UpdatedAt: now.Add(time.Second)},
+		{ID: 3, Name: "igb1", Flags: "UP", IsDelta: false, Network: "link#2", Address: "cc:dd", ReceivedBytes: 50, SentBytes: 70, CreatedAt: now.Add(2 * time.Second), UpdatedAt: now.Add(2 * time.Second)},
+	}
+	if err := mainDB.Create(&legacyRows).Error; err != nil {
+		t.Fatalf("failed to seed legacy network interface rows: %v", err)
+	}
+
+	if err := telemetryDB.Create(&infoModels.NetworkInterface{
+		ID:            1,
+		Name:          "igb0",
+		Flags:         "UP",
+		IsDelta:       false,
+		Network:       "link#1",
+		Address:       "aa:bb",
+		ReceivedBytes: 100,
+		SentBytes:     100,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed telemetry preexisting network interface row: %v", err)
+	}
+
+	dropped, err := migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("first migration run failed: %v", err)
+	}
+	if !dropped {
+		t.Fatal("expected first migration run to drop legacy network interfaces table")
+	}
+
+	dropped, err = migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("second migration run failed: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected second migration run to be a no-op")
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.NetworkInterface{}).Count(&telemetryCount).Error; err != nil {
+		t.Fatalf("failed counting telemetry network interface rows: %v", err)
+	}
+	if telemetryCount != 3 {
+		t.Fatalf("expected 3 telemetry network interface rows after idempotent migration, got %d", telemetryCount)
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", networkStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking network interface migration marker count: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected network interface migration marker to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestMigrateNetworkInterfacesToTelemetryHandlesFreshInstallWithoutLegacyTable(t *testing.T) {
+	tmp := t.TempDir()
+	mainPath := filepath.Join(tmp, "sylve.db")
+	telemetryPath := filepath.Join(tmp, "telemetry.db")
+
+	mainDB := openSQLiteFileDB(t, mainPath)
+	telemetryDB := openSQLiteFileDB(t, telemetryPath)
+
+	if err := mainDB.AutoMigrate(&models.Migrations{}); err != nil {
+		t.Fatalf("failed to migrate main db migrations table: %v", err)
+	}
+	if err := telemetryDB.AutoMigrate(&infoModels.NetworkInterface{}); err != nil {
+		t.Fatalf("failed to migrate telemetry db table: %v", err)
+	}
+
+	dropped, err := migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB, mainPath)
+	if err != nil {
+		t.Fatalf("network interface migration failed on fresh-install path: %v", err)
+	}
+	if dropped {
+		t.Fatal("expected no legacy table to be dropped on fresh-install network interface path")
+	}
+
+	var migrationCount int64
+	if err := mainDB.Table("migrations").Where("name = ?", networkStatsTelemetryMigrationName).Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking network interface migration marker: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected network interface migration marker on fresh-install path, got %d", migrationCount)
+	}
+}
+
 func openSQLiteFileDB(t *testing.T, path string) *gorm.DB {
 	t.Helper()
 

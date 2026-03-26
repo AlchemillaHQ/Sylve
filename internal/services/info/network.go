@@ -52,7 +52,7 @@ func (s *Service) GetNetworkInterfacesHistorical() ([]infoServiceInterfaces.Hist
 	}
 
 	var rows []row
-	if err := s.DB.
+	if err := s.networkDB().
 		Model(&infoModels.NetworkInterface{}).
 		Select("name, network, created_at, received_bytes, sent_bytes").
 		Where("is_delta = false").

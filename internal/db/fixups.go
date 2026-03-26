@@ -47,11 +47,9 @@ func runNetworkDeltaMigration(db *gorm.DB) {
 		return
 	}
 
-	if err := db.Exec(`DELETE FROM network_interfaces`).Error; err != nil {
-		logger.L.Err(err).Msg("failed deleting network interfaces")
-		return
-	}
-
+	// network_interfaces moved to telemetry.db and are migrated there now.
+	// Keep this historical fixup idempotent without deleting legacy rows before
+	// telemetry migration can copy them.
 	db.Table("migrations").Create(map[string]any{
 		"name": name,
 	})

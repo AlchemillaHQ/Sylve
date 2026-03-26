@@ -27,6 +27,9 @@ const (
 	sambaAuditLogsTelemetryMigrationName = "samba_audit_logs_to_telemetry_1"
 	cpuStatsTelemetryMigrationName       = "cpu_stats_to_telemetry_1"
 	auditRecordsTelemetryMigrationName   = "audit_records_to_telemetry_1"
+	ramStatsTelemetryMigrationName       = "ram_stats_to_telemetry_1"
+	swapStatsTelemetryMigrationName      = "swap_stats_to_telemetry_1"
+	networkStatsTelemetryMigrationName   = "network_interfaces_to_telemetry_1"
 )
 
 func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest bool) *gorm.DB {
@@ -72,7 +75,14 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 	telemetryDB.Exec("PRAGMA journal_mode = WAL")
 	telemetryDB.Exec("PRAGMA synchronous = NORMAL")
 
-	if err := telemetryDB.AutoMigrate(&sambaModels.SambaAuditLog{}, &infoModels.CPU{}, &infoModels.AuditRecord{}); err != nil {
+	if err := telemetryDB.AutoMigrate(
+		&sambaModels.SambaAuditLog{},
+		&infoModels.CPU{},
+		&infoModels.AuditRecord{},
+		&infoModels.RAM{},
+		&infoModels.Swap{},
+		&infoModels.NetworkInterface{},
+	); err != nil {
 		logger.L.Fatal().Msgf("Error migrating telemetry database: %v", err)
 	}
 
@@ -91,7 +101,27 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		logger.L.Fatal().Msgf("Error migrating audit records to telemetry database: %v", err)
 	}
 
-	if (droppedSambaAuditLogTable || droppedCPUTable || droppedAuditRecordTable) && !isTest {
+	droppedRAMTable, err := migrateRAMStatsToTelemetry(mainDB, telemetryDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating RAM stats to telemetry database: %v", err)
+	}
+
+	droppedSwapTable, err := migrateSwapStatsToTelemetry(mainDB, telemetryDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating Swap stats to telemetry database: %v", err)
+	}
+
+	droppedNetworkInterfacesTable, err := migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB, mainDBPath)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error migrating network interface stats to telemetry database: %v", err)
+	}
+
+	if (droppedSambaAuditLogTable ||
+		droppedCPUTable ||
+		droppedAuditRecordTable ||
+		droppedRAMTable ||
+		droppedSwapTable ||
+		droppedNetworkInterfacesTable) && !isTest {
 		if err := mainDB.Exec("VACUUM").Error; err != nil {
 			logger.L.Warn().Msgf("VACUUM failed after dropping legacy telemetry tables: %v", err)
 		}
@@ -458,6 +488,372 @@ func copyAuditRecordsInBatches(mainDB, telemetryDB *gorm.DB) error {
 		}).Error
 	if err != nil {
 		return fmt.Errorf("failed to iterate audit records in batches: %w", err)
+	}
+
+	return nil
+}
+
+func migrateRAMStatsToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath string) (bool, error) {
+	applied, err := migrationApplied(mainDB, ramStatsTelemetryMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	if !mainDB.Migrator().HasTable(&infoModels.RAM{}) {
+		if err := recordMigration(mainDB, ramStatsTelemetryMigrationName); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	if err := copyRAMStats(mainDB, telemetryDB, mainDBPath); err != nil {
+		return false, err
+	}
+
+	var legacyCount int64
+	if err := mainDB.Model(&infoModels.RAM{}).Count(&legacyCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count legacy ram rows: %w", err)
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.RAM{}).Count(&telemetryCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count telemetry ram rows: %w", err)
+	}
+
+	if telemetryCount < legacyCount {
+		return false, fmt.Errorf("telemetry ram row count (%d) is lower than legacy count (%d)", telemetryCount, legacyCount)
+	}
+
+	if err := mainDB.Migrator().DropTable(&infoModels.RAM{}); err != nil {
+		return false, fmt.Errorf("failed to drop legacy ram table: %w", err)
+	}
+
+	if err := recordMigration(mainDB, ramStatsTelemetryMigrationName); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func copyRAMStats(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
+	if mainDBPath != "" {
+		if err := copyRAMStatsUsingSQL(telemetryDB, mainDBPath); err == nil {
+			return nil
+		} else {
+			logger.L.Warn().Err(err).Msg("SQL-level RAM telemetry copy failed, falling back to batched copy")
+		}
+	}
+
+	return copyRAMStatsInBatches(mainDB, telemetryDB)
+}
+
+func copyRAMStatsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
+	if err := telemetryDB.Exec("ATTACH DATABASE ? AS legacy_main", mainDBPath).Error; err != nil {
+		return fmt.Errorf("failed attaching legacy main database to telemetry db for ram copy: %w", err)
+	}
+
+	detached := false
+	defer func() {
+		if detached {
+			return
+		}
+		if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+			logger.L.Warn().Err(err).Msg("failed detaching legacy main database from telemetry db after ram copy")
+		}
+	}()
+
+	copySQL := `
+		INSERT OR IGNORE INTO rams (
+			"id", "usage", "created_at"
+		)
+		SELECT
+			"id", "usage", "created_at"
+		FROM legacy_main.rams
+	`
+
+	if err := telemetryDB.Exec(copySQL).Error; err != nil {
+		return fmt.Errorf("failed to bulk-copy ram rows to telemetry db: %w", err)
+	}
+
+	if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+		return fmt.Errorf("failed detaching legacy main database from telemetry db after ram copy: %w", err)
+	}
+
+	detached = true
+	return nil
+}
+
+func copyRAMStatsInBatches(mainDB, telemetryDB *gorm.DB) error {
+	const batchSize = 2000
+
+	var batch []infoModels.RAM
+	err := mainDB.Model(&infoModels.RAM{}).
+		Order("id ASC").
+		FindInBatches(&batch, batchSize, func(tx *gorm.DB, _ int) error {
+			if len(batch) == 0 {
+				return nil
+			}
+
+			if err := telemetryDB.
+				Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).
+				Create(&batch).Error; err != nil {
+				return fmt.Errorf("failed inserting ram batch into telemetry db: %w", err)
+			}
+
+			return nil
+		}).Error
+	if err != nil {
+		return fmt.Errorf("failed to iterate ram rows in batches: %w", err)
+	}
+
+	return nil
+}
+
+func migrateSwapStatsToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath string) (bool, error) {
+	applied, err := migrationApplied(mainDB, swapStatsTelemetryMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	if !mainDB.Migrator().HasTable(&infoModels.Swap{}) {
+		if err := recordMigration(mainDB, swapStatsTelemetryMigrationName); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	if err := copySwapStats(mainDB, telemetryDB, mainDBPath); err != nil {
+		return false, err
+	}
+
+	var legacyCount int64
+	if err := mainDB.Model(&infoModels.Swap{}).Count(&legacyCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count legacy swap rows: %w", err)
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.Swap{}).Count(&telemetryCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count telemetry swap rows: %w", err)
+	}
+
+	if telemetryCount < legacyCount {
+		return false, fmt.Errorf("telemetry swap row count (%d) is lower than legacy count (%d)", telemetryCount, legacyCount)
+	}
+
+	if err := mainDB.Migrator().DropTable(&infoModels.Swap{}); err != nil {
+		return false, fmt.Errorf("failed to drop legacy swap table: %w", err)
+	}
+
+	if err := recordMigration(mainDB, swapStatsTelemetryMigrationName); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func copySwapStats(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
+	if mainDBPath != "" {
+		if err := copySwapStatsUsingSQL(telemetryDB, mainDBPath); err == nil {
+			return nil
+		} else {
+			logger.L.Warn().Err(err).Msg("SQL-level Swap telemetry copy failed, falling back to batched copy")
+		}
+	}
+
+	return copySwapStatsInBatches(mainDB, telemetryDB)
+}
+
+func copySwapStatsUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
+	if err := telemetryDB.Exec("ATTACH DATABASE ? AS legacy_main", mainDBPath).Error; err != nil {
+		return fmt.Errorf("failed attaching legacy main database to telemetry db for swap copy: %w", err)
+	}
+
+	detached := false
+	defer func() {
+		if detached {
+			return
+		}
+		if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+			logger.L.Warn().Err(err).Msg("failed detaching legacy main database from telemetry db after swap copy")
+		}
+	}()
+
+	copySQL := `
+		INSERT OR IGNORE INTO swaps (
+			"id", "usage", "created_at"
+		)
+		SELECT
+			"id", "usage", "created_at"
+		FROM legacy_main.swaps
+	`
+
+	if err := telemetryDB.Exec(copySQL).Error; err != nil {
+		return fmt.Errorf("failed to bulk-copy swap rows to telemetry db: %w", err)
+	}
+
+	if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+		return fmt.Errorf("failed detaching legacy main database from telemetry db after swap copy: %w", err)
+	}
+
+	detached = true
+	return nil
+}
+
+func copySwapStatsInBatches(mainDB, telemetryDB *gorm.DB) error {
+	const batchSize = 2000
+
+	var batch []infoModels.Swap
+	err := mainDB.Model(&infoModels.Swap{}).
+		Order("id ASC").
+		FindInBatches(&batch, batchSize, func(tx *gorm.DB, _ int) error {
+			if len(batch) == 0 {
+				return nil
+			}
+
+			if err := telemetryDB.
+				Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).
+				Create(&batch).Error; err != nil {
+				return fmt.Errorf("failed inserting swap batch into telemetry db: %w", err)
+			}
+
+			return nil
+		}).Error
+	if err != nil {
+		return fmt.Errorf("failed to iterate swap rows in batches: %w", err)
+	}
+
+	return nil
+}
+
+func migrateNetworkInterfacesToTelemetry(mainDB, telemetryDB *gorm.DB, mainDBPath string) (bool, error) {
+	applied, err := migrationApplied(mainDB, networkStatsTelemetryMigrationName)
+	if err != nil {
+		return false, err
+	}
+
+	if applied {
+		return false, nil
+	}
+
+	if !mainDB.Migrator().HasTable(&infoModels.NetworkInterface{}) {
+		if err := recordMigration(mainDB, networkStatsTelemetryMigrationName); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	if err := copyNetworkInterfaces(mainDB, telemetryDB, mainDBPath); err != nil {
+		return false, err
+	}
+
+	var legacyCount int64
+	if err := mainDB.Model(&infoModels.NetworkInterface{}).Count(&legacyCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count legacy network interface rows: %w", err)
+	}
+
+	var telemetryCount int64
+	if err := telemetryDB.Model(&infoModels.NetworkInterface{}).Count(&telemetryCount).Error; err != nil {
+		return false, fmt.Errorf("failed to count telemetry network interface rows: %w", err)
+	}
+
+	if telemetryCount < legacyCount {
+		return false, fmt.Errorf("telemetry network interface row count (%d) is lower than legacy count (%d)", telemetryCount, legacyCount)
+	}
+
+	if err := mainDB.Migrator().DropTable(&infoModels.NetworkInterface{}); err != nil {
+		return false, fmt.Errorf("failed to drop legacy network interfaces table: %w", err)
+	}
+
+	if err := recordMigration(mainDB, networkStatsTelemetryMigrationName); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func copyNetworkInterfaces(mainDB, telemetryDB *gorm.DB, mainDBPath string) error {
+	if mainDBPath != "" {
+		if err := copyNetworkInterfacesUsingSQL(telemetryDB, mainDBPath); err == nil {
+			return nil
+		} else {
+			logger.L.Warn().Err(err).Msg("SQL-level network interface telemetry copy failed, falling back to batched copy")
+		}
+	}
+
+	return copyNetworkInterfacesInBatches(mainDB, telemetryDB)
+}
+
+func copyNetworkInterfacesUsingSQL(telemetryDB *gorm.DB, mainDBPath string) error {
+	if err := telemetryDB.Exec("ATTACH DATABASE ? AS legacy_main", mainDBPath).Error; err != nil {
+		return fmt.Errorf("failed attaching legacy main database to telemetry db for network interface copy: %w", err)
+	}
+
+	detached := false
+	defer func() {
+		if detached {
+			return
+		}
+		if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+			logger.L.Warn().Err(err).Msg("failed detaching legacy main database from telemetry db after network interface copy")
+		}
+	}()
+
+	copySQL := `
+		INSERT OR IGNORE INTO network_interfaces (
+			"id", "name", "flags", "is_delta", "network", "address",
+			"received_packets", "received_errors", "dropped_packets", "received_bytes",
+			"sent_packets", "send_errors", "sent_bytes", "collisions",
+			"created_at", "updated_at"
+		)
+		SELECT
+			"id", "name", "flags", "is_delta", "network", "address",
+			"received_packets", "received_errors", "dropped_packets", "received_bytes",
+			"sent_packets", "send_errors", "sent_bytes", "collisions",
+			"created_at", "updated_at"
+		FROM legacy_main.network_interfaces
+	`
+
+	if err := telemetryDB.Exec(copySQL).Error; err != nil {
+		return fmt.Errorf("failed to bulk-copy network interface rows to telemetry db: %w", err)
+	}
+
+	if err := telemetryDB.Exec("DETACH DATABASE legacy_main").Error; err != nil {
+		return fmt.Errorf("failed detaching legacy main database from telemetry db after network interface copy: %w", err)
+	}
+
+	detached = true
+	return nil
+}
+
+func copyNetworkInterfacesInBatches(mainDB, telemetryDB *gorm.DB) error {
+	const batchSize = 1000
+
+	var batch []infoModels.NetworkInterface
+	err := mainDB.Model(&infoModels.NetworkInterface{}).
+		Order("id ASC").
+		FindInBatches(&batch, batchSize, func(tx *gorm.DB, _ int) error {
+			if len(batch) == 0 {
+				return nil
+			}
+
+			if err := telemetryDB.
+				Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoNothing: true}).
+				Create(&batch).Error; err != nil {
+				return fmt.Errorf("failed inserting network interface batch into telemetry db: %w", err)
+			}
+
+			return nil
+		}).Error
+	if err != nil {
+		return fmt.Errorf("failed to iterate network interface rows in batches: %w", err)
 	}
 
 	return nil

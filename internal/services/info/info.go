@@ -50,6 +50,12 @@ func (s *Service) telemetryDB() *gorm.DB {
 
 func (s *Service) cpuDB() *gorm.DB { return s.telemetryDB() }
 
+func (s *Service) ramDB() *gorm.DB { return s.telemetryDB() }
+
+func (s *Service) swapDB() *gorm.DB { return s.telemetryDB() }
+
+func (s *Service) networkDB() *gorm.DB { return s.telemetryDB() }
+
 func (s *Service) auditDB() *gorm.DB { return s.telemetryDB() }
 
 func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
