@@ -84,7 +84,7 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 
 		username := strings.TrimSpace(c.GetString("Username"))
 
-		_, _, err = lifecycleService.RequestAction(
+		_, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeJail,
 			uint(ctId),
@@ -126,7 +126,9 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: fmt.Sprintf("jail_%s_queued", action),
-			Data:    nil,
+			Data: map[string]any{
+				"outcome": outcome,
+			},
 			Error:   "",
 		})
 	}

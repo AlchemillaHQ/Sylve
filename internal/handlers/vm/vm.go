@@ -567,7 +567,9 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
 			Status:  "success",
 			Message: message,
-			Data:    nil,
+			Data: map[string]any{
+				"outcome": outcome,
+			},
 			Error:   "",
 		})
 	}
