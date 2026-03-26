@@ -175,6 +175,9 @@
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
+	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
+	let suppressNonRunningActions = $state(false);
+	let suppressNonRunningActionsTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
 
 	watch(
@@ -231,12 +234,37 @@
 		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
+	function beginNonRunningActionsSuppression() {
+		suppressNonRunningActions = true;
+		if (suppressNonRunningActionsTimer) {
+			clearTimeout(suppressNonRunningActionsTimer);
+		}
+
+		suppressNonRunningActionsTimer = setTimeout(() => {
+			suppressNonRunningActions = false;
+			suppressNonRunningActionsTimer = null;
+		}, NON_RUNNING_ACTION_SUPPRESS_MS);
+	}
+
+	function clearNonRunningActionsSuppression() {
+		suppressNonRunningActions = false;
+		if (suppressNonRunningActionsTimer) {
+			clearTimeout(suppressNonRunningActionsTimer);
+			suppressNonRunningActionsTimer = null;
+		}
+	}
+
 	function beginPendingLifecycleAction(action: VMLifecycleAction) {
 		pendingLifecycleAction = action;
 		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
 			String(domain.current?.status || ''),
 			vm.current.startedAt ?? null
 		);
+		if (action === 'start' || action === 'reboot') {
+			beginNonRunningActionsSuppression();
+		} else {
+			clearNonRunningActionsSuppression();
+		}
 
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
@@ -324,6 +352,7 @@
 
 		if (result.status === 'error') {
 			clearPendingLifecycleAction();
+			clearNonRunningActionsSuppression();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'VM action already in progress'
@@ -437,6 +466,7 @@
 
 		if (result.status === 'error') {
 			clearPendingLifecycleAction();
+			clearNonRunningActionsSuppression();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'VM action already in progress'
@@ -539,6 +569,26 @@
 	let shouldHideActionButtons = $derived(
 		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
 	);
+	let isDomainRunningForActions = $derived.by(() => {
+		if (normalizedDomainStatus === 'running') {
+			return true;
+		}
+
+		if (!suppressNonRunningActions || isDomainErrorState) {
+			return false;
+		}
+
+		if (
+			pendingLifecycleAction === 'stop' ||
+			pendingLifecycleAction === 'shutdown' ||
+			activeLifecycleAction === 'stop' ||
+			activeLifecycleAction === 'shutdown'
+		) {
+			return false;
+		}
+
+		return true;
+	});
 	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
 	let isShutdownTaskActive = $derived.by(
 		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
@@ -591,7 +641,7 @@
 </script>
 
 {#snippet button(type: string)}
-	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
+	{#if type === 'start' && !shouldHideActionButtons && domain.current?.id == -1 && !isDomainRunningForActions && !isDomainErrorState}
 		<Button
 			onclick={() => handleStart()}
 			size="sm"
@@ -618,7 +668,7 @@
 			<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
 			<span>Force Delete</span>
 		</Button>
-	{:else if type === 'force-stop' && domain.current?.id !== -1 && domain.current?.status === 'Running' && isShutdownTaskActive}
+	{:else if type === 'force-stop' && (domain.current?.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
 			onclick={() => handleForceStop()}
 			size="sm"
@@ -629,7 +679,7 @@
 				<span>Force Stop</span>
 			</div>
 		</Button>
-	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && domain.current?.id !== -1 && domain.current?.status === 'Running'}
+	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions}
 		<Button
 			onclick={() =>
 				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}

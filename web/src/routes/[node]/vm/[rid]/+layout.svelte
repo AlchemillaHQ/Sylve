@@ -40,6 +40,9 @@
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
+	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
+	let suppressNonRunningActions = $state(false);
+	let suppressNonRunningActionsTimer: ReturnType<typeof setTimeout> | null = null;
 	let isDeleteInFlight = $state(false);
 
 	let rid = $derived.by(() => {
@@ -141,6 +144,26 @@
 	let shouldHideActionButtons = $derived(
 		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
 	);
+	let isDomainRunningForActions = $derived.by(() => {
+		if (normalizedDomainStatus === 'running') {
+			return true;
+		}
+
+		if (!suppressNonRunningActions || isDomainErrorState) {
+			return false;
+		}
+
+		if (
+			pendingLifecycleAction === 'stop' ||
+			pendingLifecycleAction === 'shutdown' ||
+			activeLifecycleAction === 'stop' ||
+			activeLifecycleAction === 'shutdown'
+		) {
+			return false;
+		}
+
+		return true;
+	});
 	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
 	let isShutdownTaskActive = $derived.by(() => {
 		if (!lifecycleTask.current || isAPIResponse(lifecycleTask.current)) return false;
@@ -219,6 +242,7 @@
 	watch(
 		() => rid,
 		(newRid) => {
+			clearNonRunningActionsSuppression();
 			if (newRid) {
 				refreshVmDomain();
 			}
@@ -260,11 +284,36 @@
 		modalState.isDeleteOpen = true;
 	}
 
+	function beginNonRunningActionsSuppression() {
+		suppressNonRunningActions = true;
+		if (suppressNonRunningActionsTimer) {
+			clearTimeout(suppressNonRunningActionsTimer);
+		}
+
+		suppressNonRunningActionsTimer = setTimeout(() => {
+			suppressNonRunningActions = false;
+			suppressNonRunningActionsTimer = null;
+		}, NON_RUNNING_ACTION_SUPPRESS_MS);
+	}
+
+	function clearNonRunningActionsSuppression() {
+		suppressNonRunningActions = false;
+		if (suppressNonRunningActionsTimer) {
+			clearTimeout(suppressNonRunningActionsTimer);
+			suppressNonRunningActionsTimer = null;
+		}
+	}
+
 	function beginPendingLifecycleAction(action: VMLifecycleAction) {
 		pendingLifecycleAction = action;
 		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
 			String(domain.current?.status || '')
 		);
+		if (action === 'start' || action === 'reboot') {
+			beginNonRunningActionsSuppression();
+		} else {
+			clearNonRunningActionsSuppression();
+		}
 
 		if (pendingLifecycleTimer) {
 			clearTimeout(pendingLifecycleTimer);
@@ -346,6 +395,7 @@
 
 		if (result.status === 'error') {
 			clearPendingLifecycleAction();
+			clearNonRunningActionsSuppression();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'VM action already in progress'
@@ -377,6 +427,7 @@
 
 		if (result.status === 'error') {
 			clearPendingLifecycleAction();
+			clearNonRunningActionsSuppression();
 			toast.error(
 				result.message === 'lifecycle_task_in_progress'
 					? 'VM action already in progress'
@@ -531,7 +582,7 @@
 			{#key rid}
 				<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
 					{#if vm.current && domain.current}
-						{#if !shouldHideActionButtons && domain.current.id === -1 && normalizedDomainStatus !== 'running' && !isDomainErrorState}
+						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState}
 							<Button
 								onclick={() => handleStart()}
 								size="sm"
@@ -562,7 +613,7 @@
 							</Button>
 						{/if}
 
-						{#if domain.current.id !== -1 && domain.current.status === 'Running'}
+						{#if (domain.current.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions}
 							{#if isShutdownTaskActive}
 								<Button
 									onclick={() => handleForceStop()}
