@@ -22,6 +22,11 @@
 		multiple?: boolean;
 		allowCustom?: boolean;
 		shortLabels?: boolean;
+		topRightButton?: {
+			icon: string;
+			tooltip: string;
+			function: () => Promise<string>;
+		};
 	}
 
 	let {
@@ -39,7 +44,8 @@
 		multiple = false,
 		allowCustom = false,
 		value = $bindable(multiple ? [] : ''),
-		shortLabels = false
+		shortLabels = false,
+		topRightButton
 	}: Props = $props();
 
 	let search = $state('');
@@ -110,9 +116,26 @@
 
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
-		<Label class="w-full whitespace-nowrap text-sm" for={label.toLowerCase()}>
-			{label}
-		</Label>
+		<div class="flex items-center justify-between w-full">
+			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
+				{label}
+			</Label>
+
+			{#if topRightButton}
+				<Button
+					variant="outline"
+					size="icon"
+					class="h-6 w-6 shrink-0"
+					title={topRightButton.tooltip}
+					onclick={async () => {
+						const result = await topRightButton.function();
+						if (result) value = result;
+					}}
+				>
+					<span class={`icon ${topRightButton.icon} w-4`}></span>
+				</Button>
+			{/if}
+		</div>
 	{/if}
 	<Popover.Root bind:open>
 		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>
@@ -128,7 +151,7 @@
 					class:flex-wrap={multiple}
 				>
 					{#if selectedLabels.length > 0}
-						{#each selectedLabels as lbl, i}
+						{#each selectedLabels as lbl (lbl)}
 							<p
 								class={multiple
 									? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
@@ -169,7 +192,7 @@
 				<Command.Empty>No data</Command.Empty>
 				<div class="max-h-64 overflow-y-auto">
 					<Command.Group>
-						{#each filteredData as element}
+						{#each filteredData as element (element.label)}
 							<Command.Item
 								class={commandClasses}
 								value={element.value}

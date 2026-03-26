@@ -311,13 +311,13 @@ func (s *Service) IsObjectUsed(id uint) (bool, string, error) {
 	return false, "", nil
 }
 
-func (s *Service) CreateObject(name string, oType string, values []string) error {
+func (s *Service) CreateObject(name string, oType string, values []string) (uint, error) {
 	if err := validateType(oType); err != nil {
-		return err
+		return 0, err
 	}
 
 	if err := validateValues(oType, values); err != nil {
-		return err
+		return 0, err
 	}
 
 	var count int64
@@ -325,11 +325,11 @@ func (s *Service) CreateObject(name string, oType string, values []string) error
 		Model(&networkModels.Object{}).
 		Where("name = ?", name).
 		Count(&count).Error; err != nil {
-		return err
+		return 0, err
 	}
 
 	if count > 0 {
-		return fmt.Errorf("object_with_name_already_exists: %s", name)
+		return 0, fmt.Errorf("object_with_name_already_exists: %s", name)
 	}
 
 	entries := make([]networkModels.ObjectEntry, len(values))
@@ -346,10 +346,10 @@ func (s *Service) CreateObject(name string, oType string, values []string) error
 	}
 
 	if err := s.DB.Create(&object).Error; err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return object.ID, nil
 }
 
 func (s *Service) DeleteObject(id uint) error {

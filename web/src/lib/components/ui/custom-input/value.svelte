@@ -5,7 +5,6 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { FullAutoFill } from 'svelte/elements';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	interface Props {
 		label?: string;

@@ -17,7 +17,6 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { resource, watch } from 'runed';
 	import { storage } from '$lib';
-	import { untrack } from 'svelte';
 
 	interface Data {
 		notes: Note[];
@@ -285,15 +284,14 @@
 							{:else}
 								View
 							{/if}
-
-							{'Note'}
+							Note
 						</span>
 					</div>
 					<div class="flex items-center gap-0.5">
 						<Button
 							size="sm"
 							variant="link"
-							title={'Reset'}
+							title="Reset"
 							class="h-4 {modalState.isEditMode && selectedId ? '' : 'hidden'}"
 							onclick={() => {
 								if (
@@ -312,14 +310,13 @@
 							}}
 						>
 							<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-
-							<span class="sr-only">{'Reset'}</span>
+							<span class="sr-only">Reset</span>
 						</Button>
 						<Button
 							size="sm"
 							variant="link"
 							class="h-4"
-							title={'Close'}
+							title="Close"
 							onclick={() => {
 								modalState.isOpen = false;
 								modalState.title = '';
@@ -328,14 +325,14 @@
 						>
 							<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"
 							></span>
-							<span class="sr-only">{'Close'}</span>
+							<span class="sr-only">Close</span>
 						</Button>
 					</div>
 				</Dialog.Title>
 			</Dialog.Header>
 
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="Post Upgrade Summary"
 				bind:value={modalState.title}
 				classes="flex-1 space-y-1"
@@ -346,7 +343,7 @@
 				{#if modalState.isEditMode}
 					<div>
 						<CustomValueInput
-							label={'Content'}
+							label="Content"
 							placeholder="This is a note"
 							bind:value={modalState.content}
 							classes="flex-1 space-y-1 "
@@ -369,9 +366,7 @@
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
 					{#if modalState.isEditMode}
-						<Button onclick={saveNote} type="submit" size="sm" class="w-full lg:w-28"
-							>{'Save'}</Button
-						>
+						<Button onclick={saveNote} type="submit" size="sm" class="w-full lg:w-28">Save</Button>
 					{/if}
 				</div>
 			</Dialog.Footer>

@@ -580,7 +580,7 @@
 <div>
 	<div class="flex h-10 w-full items-center gap-1 border p-4">
 		{#key data.vm.rid}
-			<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
+			<div class="flex items-center gap-1" transition:fade>
 				{@render button('start')}
 				{@render button('force-delete')}
 				{@render button('force-stop')}
@@ -602,20 +602,22 @@
 
 		<div class="ml-auto flex h-full items-center gap-2">
 			{#if vmLogs.length > 0}
-				<Button
-					size="sm"
-					onclick={() => {
-						followLogs = true;
-						showLogs = true;
-						logs.refetch();
-					}}
-					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
-				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
-						<span>View Logs</span>
-					</div>
-				</Button>
+				<div transition:fade>
+					<Button
+						size="sm"
+						onclick={() => {
+							followLogs = true;
+							showLogs = true;
+							logs.refetch();
+						}}
+						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+					>
+						<div class="flex items-center">
+							<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
+							<span>View Logs</span>
+						</div>
+					</Button>
+				</div>
 			{/if}
 
 			<SimpleSelect

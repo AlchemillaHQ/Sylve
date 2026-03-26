@@ -6,6 +6,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
@@ -24,9 +25,22 @@
 		id?: number;
 		networkObjects: NetworkObject[];
 		afterChange: () => void;
+		prefill?: {
+			name: string;
+			type: string;
+			value: string;
+		};
 	}
 
-	let { open = $bindable(), edit = false, id, networkObjects, afterChange }: Props = $props();
+	let {
+		open = $bindable(),
+		edit = false,
+		id,
+		networkObjects,
+		afterChange,
+		prefill = $bindable()
+	}: Props = $props();
+
 	let editingObject: NetworkObject | null = $derived.by(() => {
 		if (edit && id) {
 			const obj = networkObjects.find((o) => o.id === id);
@@ -65,18 +79,24 @@
 	});
 
 	let options = $derived({
-		name: editingObject ? editingObject.name : '',
+		name: editingObject ? editingObject.name : prefill ? prefill.name : '',
 		type: {
 			combobox: {
 				open: false,
-				value: editingObject ? oType : '',
+				value: editingObject ? oType : prefill ? prefill.type : '',
 				options: generateComboboxOptions(['Host(s)', 'Network(s)', 'MAC(s)', 'DUID(s)'] as string[])
 			}
 		},
 		hosts: {
 			combobox: {
 				open: false,
-				value: editingObject ? optionsSelected : ([] as string[]),
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'Host(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
 				options: editingObject
 					? [...generateComboboxOptions(optionsSelected)]
 					: ([] as { label: string; value: string }[])
@@ -85,7 +105,13 @@
 		networks: {
 			combobox: {
 				open: false,
-				value: editingObject ? optionsSelected : ([] as string[]),
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'Network(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
 				options: editingObject
 					? [...generateComboboxOptions(optionsSelected)]
 					: ([] as { label: string; value: string }[])
@@ -94,7 +120,13 @@
 		macs: {
 			combobox: {
 				open: false,
-				value: editingObject ? optionsSelected : ([] as string[]),
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'MAC(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
 				options: editingObject
 					? [...generateComboboxOptions(optionsSelected)]
 					: ([] as { label: string; value: string }[])
@@ -103,7 +135,13 @@
 		duids: {
 			combobox: {
 				open: false,
-				value: editingObject ? optionsSelected : ([] as string[]),
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'DUID(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
 				options: editingObject
 					? [...generateComboboxOptions(optionsSelected)]
 					: ([] as { label: string; value: string }[])
@@ -279,27 +317,36 @@
 
 		let oType = getOType();
 
-		const response = await createNetworkObject(properties.name, oType, values as string[]);
-		afterChange();
-		if (response.error) {
+		const response = (await createNetworkObject(properties.name, oType, values as string[])) as
+			| APIResponse
+			| number;
+
+		if (typeof response !== 'number') {
 			handleAPIError(response);
 
 			let message = 'Failed to create network object';
 
-			if (response.error.startsWith('object_with_name_already')) {
+			if (
+				typeof response.error === 'string' &&
+				response.error.startsWith('object_with_name_already')
+			) {
 				message = 'Object with this name already exists';
 			}
 
 			toast.error(message, {
 				position: 'bottom-center'
 			});
-
 			return;
 		} else {
 			toast.success('Created object', {
 				position: 'bottom-center'
 			});
 
+			if (prefill && response && !isNaN(response as number)) {
+				prefill.value = (response as number).toString();
+			}
+
+			afterChange();
 			open = false;
 		}
 	}
@@ -324,15 +371,24 @@
 			handleAPIError(response);
 			let error = '';
 
-			if (response.error.startsWith('object_with_name_already')) {
+			if (!Array.isArray(response.error) && response.error.startsWith('object_with_name_already')) {
 				error = 'Object with this name already exists';
-			} else if (response.error.includes('please ensure only one IP is provided')) {
+			} else if (
+				!Array.isArray(response.error) &&
+				response.error.includes('please ensure only one IP is provided')
+			) {
 				error = 'Host object used in switch, only one IP is allowed';
-			} else if (response.error.includes('no_detected_changes')) {
+			} else if (!Array.isArray(response.error) && response.error.includes('no_detected_changes')) {
 				error = 'No changes detected';
-			} else if (response.error.includes('cannot_change_object_type')) {
+			} else if (
+				!Array.isArray(response.error) &&
+				response.error.includes('cannot_change_object_type')
+			) {
 				error = 'Cannot change type of object that is in use';
-			} else if (response.error.includes('cannot_change_object_of_active_vm')) {
+			} else if (
+				!Array.isArray(response.error) &&
+				response.error.includes('cannot_change_object_of_active_vm')
+			) {
 				error = 'Cannot change object of active VM';
 			} else {
 				error = 'Failed to update network object';
@@ -383,22 +439,22 @@
 					size="sm"
 					variant="link"
 					class="h-4"
-					title={'Reset'}
+					title="Reset"
 					onclick={() => (properties = options)}
 				>
 					<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Reset'}</span>
+					<span class="sr-only">Reset</span>
 				</Button>
-				<Button size="sm" variant="link" class="h-4" title={'Close'} onclick={() => (open = false)}>
+				<Button size="sm" variant="link" class="h-4" title="Close" onclick={() => (open = false)}>
 					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">{'Close'}</span>
+					<span class="sr-only">Close</span>
 				</Button>
 			</div>
 		</div>
 
 		<div class="flex gap-4">
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="Windows"
 				bind:value={properties.name}
 				classes="flex-1 space-y-1.5"
@@ -407,7 +463,7 @@
 
 			<ComboBox
 				bind:open={properties.type.combobox.open}
-				label={'Type'}
+				label="Type"
 				bind:value={properties.type.combobox.value}
 				data={properties.type.combobox.options}
 				classes="flex-1 space-y-1"
@@ -422,22 +478,22 @@
 					{#if properties.type.combobox.value === 'Host(s)'}
 						<ComboBoxBindable
 							bind:open={properties.hosts.combobox.open}
-							label={'Hosts'}
+							label="Hosts"
 							bind:value={properties.hosts.combobox.value}
 							data={properties.hosts.combobox.options}
 							classes="flex-1 space-y-1"
-							placeholder="Select hosts"
+							placeholder="192.168.1.1, fd01:beef::1"
 							width="w-full"
 							multiple={true}
 						></ComboBoxBindable>
 					{:else if properties.type.combobox.value === 'Network(s)'}
 						<ComboBoxBindable
 							bind:open={properties.networks.combobox.open}
-							label={'Networks'}
+							label="Networks"
 							bind:value={properties.networks.combobox.value}
 							data={properties.networks.combobox.options}
 							classes="flex-1 space-y-1"
-							placeholder="Select networks"
+							placeholder="192.168.1.128/24, fd:beef::/64"
 							width="w-full"
 							multiple={true}
 						></ComboBoxBindable>
@@ -445,11 +501,11 @@
 						<div class="flex w-full items-center space-x-2">
 							<ComboBoxBindable
 								bind:open={properties.macs.combobox.open}
-								label={'MACs'}
+								label="MACs"
 								bind:value={properties.macs.combobox.value}
 								data={properties.macs.combobox.options}
 								classes="flex-1 space-y-1 w-full"
-								placeholder="Select MACs"
+								placeholder="00:1A:2B:3C:4D:5E"
 								width="w-full"
 								multiple={true}
 							></ComboBoxBindable>
@@ -464,11 +520,11 @@
 					{:else if properties.type.combobox.value === 'DUID(s)'}
 						<ComboBoxBindable
 							bind:open={properties.duids.combobox.open}
-							label={'DUIDs'}
+							label="DUIDs"
 							bind:value={properties.duids.combobox.value}
 							data={properties.duids.combobox.options}
 							classes="flex-1 space-y-1"
-							placeholder="Select DUIDs"
+							placeholder="00:01:00:01:23:45:67:89:AB:CD:EF:01"
 							width="w-full"
 							multiple={true}
 						></ComboBoxBindable>

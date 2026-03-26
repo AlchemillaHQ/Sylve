@@ -26,6 +26,15 @@ export default defineConfig(
         },
         rules: {
             'no-undef': 'off', 'import/no-unresolved': 'off',
+            'no-unused-vars': 'off',
+            '@typescript-eslint/no-unused-vars': [
+                'warn',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    caughtErrorsIgnorePattern: '^_'
+                }
+            ],
             "svelte/no-navigation-without-resolve": [
                 "error",
                 {

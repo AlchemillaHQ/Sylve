@@ -9,6 +9,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
+    import { fade } from 'svelte/transition';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -324,11 +325,11 @@
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
 			{#if isConsoleRoute}
-				<div class="h-full w-full overflow-hidden">
+				<div class="h-full w-full overflow-hidden" transition:fade>
 					{@render children?.()}
 				</div>
 			{:else}
-				<div class="h-full w-full overflow-y-auto">
+				<div class="h-full w-full overflow-y-auto" transition:fade>
 					{@render children?.()}
 				</div>
 			{/if}

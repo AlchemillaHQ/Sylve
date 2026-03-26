@@ -1,4 +1,5 @@
 <!-- <span class="icon-[mdi--palette]"></span>
+<span class="icon-[oui--generate]"></span>
 <span class="icon-[mdi--forever]"></span>
 <span class="icon-[meteor-icons--language]"></span>
 <span class="icon-[bi--ethernet]"></span>

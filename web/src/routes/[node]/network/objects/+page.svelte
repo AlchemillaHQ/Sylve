@@ -21,7 +21,7 @@
 	// svelte-ignore state_referenced_locally
 	let objects = resource(
 		() => 'network-objects',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getNetworkObjects();
 			updateCache(key, result);
 			return result;
@@ -119,7 +119,7 @@
 
 	const tableData: { rows: Row[]; columns: Column[] } = $derived({
 		columns,
-		rows: objects.current.map((object) => {
+		rows: (objects.current as NetworkObject[]).map((object) => {
 			return {
 				id: object.id,
 				name: object.name,
@@ -199,7 +199,7 @@
 {#if modals.create.open}
 	<CreateOrEdit
 		bind:open={modals.create.open}
-		networkObjects={objects.current}
+		networkObjects={objects.current as NetworkObject[]}
 		edit={false}
 		afterChange={() => {
 			objects.refetch();
@@ -210,7 +210,7 @@
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
-		networkObjects={objects.current}
+		networkObjects={objects.current as NetworkObject[]}
 		edit={true}
 		id={Number(modals.edit.id)}
 		afterChange={() => {

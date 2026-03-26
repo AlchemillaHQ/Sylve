@@ -16,8 +16,12 @@
 	import { watch } from 'runed';
 	import SimpleSelect from '../../SimpleSelect.svelte';
 	import { dnsConfigPresets } from '$lib/utils/jail/jail';
+	import NetworkObjectCreator from '$lib/components/custom/Network/Objects/CreateOrEdit.svelte';
+	import { getDashedDate } from '$lib/utils/time.svelte';
 
 	interface Props {
+		name: string;
+		ctId: number;
 		switch: string;
 		mac: number;
 		inheritIPv4: boolean;
@@ -32,9 +36,12 @@
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
 		jailType: 'freebsd' | 'linux';
+		refetch: boolean;
 	}
 
 	let {
+		name,
+		ctId,
 		switch: nwSwitch = $bindable(),
 		mac = $bindable(),
 		inheritIPv4 = $bindable(),
@@ -48,7 +55,8 @@
 		resolvConf = $bindable(),
 		switches,
 		networkObjects,
-		jailType
+		jailType,
+		refetch = $bindable()
 	}: Props = $props();
 
 	let usable = $derived({
@@ -225,6 +233,14 @@
 			}
 		}
 	);
+
+	let objectCreator = $state({
+		open: false,
+		name: '',
+		type: 'Network(s)' as 'Network(s)' | 'Host(s)' | 'MAC(s)' | 'DUID(s)',
+		ocType: 'ipv4-net' as 'ipv4-net' | 'ipv6-net' | 'ipv4-gw' | 'ipv6-gw' | 'mac',
+		value: ''
+	});
 </script>
 
 {#snippet radioItem(
@@ -283,6 +299,22 @@
 				placeholder="Select IPv4"
 				width="w-full"
 				disabled={usable.ipv4.length === 0 || checkBoxes.dhcp}
+				topRightButton={{
+					icon: 'icon-[oui--generate]',
+					tooltip: 'Create new IPv4 Network',
+					function: async () => {
+						objectCreator.name = name
+							? `${name} IPv4`
+							: ctId
+								? `Jail ${ctId} IPv4`
+								: `IPv4 Network ${getDashedDate()}`;
+						objectCreator.type = 'Network(s)';
+						objectCreator.ocType = 'ipv4-net';
+						objectCreator.open = true;
+
+						return '';
+					}
+				}}
 			></CustomComboBox>
 
 			<CustomComboBox
@@ -294,6 +326,22 @@
 				placeholder="Select IPv4 Gateway"
 				width="w-full"
 				disabled={usable.ipv4Gateway.length === 0 || checkBoxes.dhcp}
+				topRightButton={{
+					icon: 'icon-[oui--generate]',
+					tooltip: 'Create new IPv4 Gateway',
+					function: async () => {
+						objectCreator.name = name
+							? `${name} IPv4 GW`
+							: ctId
+								? `Jail ${ctId} IPv4 GW`
+								: `IPv4 Gateway ${getDashedDate()}`;
+						objectCreator.type = 'Host(s)';
+						objectCreator.ocType = 'ipv4-gw';
+						objectCreator.open = true;
+
+						return '';
+					}
+				}}
 			></CustomComboBox>
 
 			<CustomComboBox
@@ -305,6 +353,22 @@
 				placeholder="Select IPv6"
 				width="w-full"
 				disabled={usable.ipv6.length === 0 || checkBoxes.slaac}
+				topRightButton={{
+					icon: 'icon-[oui--generate]',
+					tooltip: 'Create new IPv6 Network',
+					function: async () => {
+						objectCreator.name = name
+							? `${name} IPv6`
+							: ctId
+								? `Jail ${ctId} IPv6`
+								: `IPv6 Network ${getDashedDate()}`;
+						objectCreator.type = 'Network(s)';
+						objectCreator.ocType = 'ipv6-net';
+						objectCreator.open = true;
+
+						return '';
+					}
+				}}
 			></CustomComboBox>
 
 			<CustomComboBox
@@ -316,6 +380,22 @@
 				placeholder="Select IPv6 Gateway"
 				width="w-full"
 				disabled={usable.ipv6Gateway.length === 0 || checkBoxes.slaac}
+				topRightButton={{
+					icon: 'icon-[oui--generate]',
+					tooltip: 'Create new IPv6 Gateway',
+					function: async () => {
+						objectCreator.name = name
+							? `${name} IPv6 GW`
+							: ctId
+								? `Jail ${ctId} IPv6 GW`
+								: `IPv6 Gateway ${getDashedDate()}`;
+						objectCreator.type = 'Host(s)';
+						objectCreator.ocType = 'ipv6-gw';
+						objectCreator.open = true;
+
+						return '';
+					}
+				}}
 			></CustomComboBox>
 
 			<CustomComboBox
@@ -326,6 +406,22 @@
 				classes="flex-1 space-y-1"
 				placeholder="Select MAC"
 				width="w-full"
+				topRightButton={{
+					icon: 'icon-[oui--generate]',
+					tooltip: 'Create new MAC Address',
+					function: async () => {
+						objectCreator.name = name
+							? `${name} MAC`
+							: ctId
+								? `Jail ${ctId} MAC`
+								: `MAC ${getDashedDate()}`;
+						objectCreator.type = 'MAC(s)';
+						objectCreator.ocType = 'mac';
+						objectCreator.open = true;
+
+						return '';
+					}
+				}}
 			></CustomComboBox>
 		</div>
 
@@ -395,3 +491,44 @@
 		{/if}
 	</div>
 </div>
+
+{#if objectCreator.open}
+	<NetworkObjectCreator
+		bind:open={objectCreator.open}
+		bind:prefill={objectCreator}
+		{networkObjects}
+		edit={false}
+		afterChange={() => {
+			refetch = false;
+			refetch = true;
+			setTimeout(() => {
+				if (objectCreator.ocType === 'ipv4-net') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.ipv4.value = createdObj.id.toString();
+					}
+				} else if (objectCreator.ocType === 'ipv4-gw') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.ipv4Gateway.value = createdObj.id.toString();
+					}
+				} else if (objectCreator.ocType === 'ipv6-net') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.ipv6.value = createdObj.id.toString();
+					}
+				} else if (objectCreator.ocType === 'ipv6-gw') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.ipv6Gateway.value = createdObj.id.toString();
+					}
+				} else if (objectCreator.ocType === 'mac') {
+					const createdObj = networkObjects.find((obj) => obj.id === Number(objectCreator.value));
+					if (createdObj) {
+						comboBoxes.mac.value = createdObj.id.toString();
+					}
+				}
+			}, 500);
+		}}
+	/>
+{/if}

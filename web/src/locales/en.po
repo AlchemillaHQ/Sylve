@@ -801,6 +801,9 @@ msgstr "Failed to create note"
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -814,6 +817,7 @@ msgstr "Name"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Created"
 msgstr "Created"
@@ -862,6 +866,7 @@ msgstr "View"
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -892,6 +897,8 @@ msgstr "Delete"
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -930,6 +937,9 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -938,7 +948,6 @@ msgstr "Bulk Delete"
 msgid "New"
 msgstr "New"
 
-#: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note"
 msgstr "Note"
@@ -1357,6 +1366,7 @@ msgstr "Sent"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, \"Courier New\", monospace"
 
@@ -1364,6 +1374,7 @@ msgstr "Monaco, Menlo, \"Courier New\", monospace"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Disconnect"
 msgstr "Disconnect"
 
@@ -1371,6 +1382,7 @@ msgstr "Disconnect"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Reconnect"
 msgstr "Reconnect"
 
@@ -1390,6 +1402,7 @@ msgstr "Host Console Settings"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Font Size"
 msgstr "Font Size"
 
@@ -1397,6 +1410,7 @@ msgstr "Font Size"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Background"
 msgstr "Background"
 
@@ -1404,6 +1418,7 @@ msgstr "Background"
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Foreground"
 msgstr "Foreground"
 
@@ -1435,6 +1450,7 @@ msgstr "Staging"
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
 msgstr "Unknown"
@@ -1733,6 +1749,8 @@ msgstr "Cluster Information"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Property"
 msgstr "Property"
 
@@ -1748,6 +1766,8 @@ msgstr "Property"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Value"
 msgstr "Value"
 
@@ -1827,6 +1847,7 @@ msgstr "Log out"
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Continue"
 msgstr "Continue"
@@ -1871,6 +1892,7 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2439,6 +2461,8 @@ msgstr "Model"
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2453,6 +2477,7 @@ msgstr "Description"
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "MAC Address"
 msgstr "MAC Address"
 
@@ -2475,6 +2500,9 @@ msgstr "Attribute"
 msgid "Details - {0}"
 msgstr "Details - {0}"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2485,6 +2513,10 @@ msgstr "Details - {0}"
 msgid "Host(s)"
 msgstr "Host(s)"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2495,6 +2527,8 @@ msgstr "Host(s)"
 msgid "Network(s)"
 msgstr "Network(s)"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2505,6 +2539,7 @@ msgstr "Network(s)"
 msgid "MAC(s)"
 msgstr "MAC(s)"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2634,6 +2669,9 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2656,6 +2694,9 @@ msgstr "Enabled"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2692,6 +2733,8 @@ msgstr "ZFS Pools updated"
 #. 0: activeRow.property
 #. 0: title
 #. 0: title
+#. 0: title
+#. 0: title
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
@@ -2700,6 +2743,8 @@ msgstr "ZFS Pools updated"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Edit {0}"
 msgstr "Edit {0}"
 
@@ -4092,6 +4137,10 @@ msgstr "Failback"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Yes"
 msgstr "Yes"
@@ -4121,6 +4170,10 @@ msgstr "Yes"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "No"
 msgstr "No"
@@ -5185,33 +5238,29 @@ msgstr "Select type"
 msgid "Hosts"
 msgstr "Hosts"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Select hosts"
-msgstr "Select hosts"
+#~ msgid "Select hosts"
+#~ msgstr "Select hosts"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "Networks"
 msgstr "Networks"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Select networks"
-msgstr "Select networks"
+#~ msgid "Select networks"
+#~ msgstr "Select networks"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "MACs"
 msgstr "MACs"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Select MACs"
-msgstr "Select MACs"
+#~ msgid "Select MACs"
+#~ msgstr "Select MACs"
 
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 msgid "DUIDs"
 msgstr "DUIDs"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-msgid "Select DUIDs"
-msgstr "Select DUIDs"
+#~ msgid "Select DUIDs"
+#~ msgstr "Select DUIDs"
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "User Data is required"
@@ -5302,6 +5351,7 @@ msgstr "Docker"
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Local Time"
 msgstr "Local Time"
 
@@ -5334,6 +5384,9 @@ msgstr "Select VNC resolution"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Clock Offset"
 msgstr "Clock Offset"
 
@@ -5350,6 +5403,9 @@ msgstr "Startup/Shutdown Order"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 msgid "Serial Console"
 msgstr "Serial Console"
 
@@ -5362,6 +5418,9 @@ msgstr "VNC Wait"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 msgid "TPM Emulation"
 msgstr "TPM Emulation"
 
@@ -5379,6 +5438,9 @@ msgstr "Ignore Unimplemented MSR Accesses"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "QEMU Guest Agent"
 msgstr "QEMU Guest Agent"
 
@@ -5429,6 +5491,7 @@ msgstr "CPU Threads"
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "VirtIO"
 msgstr "VirtIO"
 
@@ -5537,6 +5600,7 @@ msgstr "VM network updated"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Emulation"
 msgstr "Emulation"
 
@@ -5560,6 +5624,10 @@ msgstr "PCI devices modified"
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 msgid "PCI Devices"
 msgstr "PCI Devices"
 
@@ -5695,12 +5763,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -5877,6 +5945,9 @@ msgstr "Modified Cloud Init data"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Cloud Init"
 msgstr "Cloud Init"
 
@@ -5956,6 +6027,9 @@ msgstr "Modified shutdown wait time"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Shutdown Wait Time"
 msgstr "Shutdown Wait Time"
 
@@ -5971,6 +6045,9 @@ msgstr "Modified WoL setting"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Wake on LAN"
 msgstr "Wake on LAN"
 
@@ -6342,6 +6419,7 @@ msgstr "The Jail is currently powered off.<0/> Start the Jail to access its cons
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 msgstr "The console has been disconnected.<0/> Click the \"Reconnect\" button to re-establish the connection."
 
@@ -6425,18 +6503,21 @@ msgstr "This will detach the jail from the switch <b>{0}</b>"
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "ZFS Snapshot Name"
 msgstr "ZFS Snapshot Name"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Snapshot name is required"
 msgstr "Snapshot name is required"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Snapshot created"
 msgstr "Snapshot created"
 
@@ -6450,12 +6531,15 @@ msgstr "Snapshot created"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Failed to create snapshot"
 msgstr "Failed to create snapshot"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Snapshot rollback started"
 msgstr "Snapshot rollback started"
 
@@ -6465,12 +6549,15 @@ msgstr "Snapshot rollback started"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Failed to rollback snapshot"
 msgstr "Failed to rollback snapshot"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Snapshot deleted"
 msgstr "Snapshot deleted"
 
@@ -6480,12 +6567,15 @@ msgstr "Snapshot deleted"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Failed to delete snapshot"
 msgstr "Failed to delete snapshot"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Rollback"
 msgstr "Rollback"
 
@@ -6497,18 +6587,21 @@ msgstr "New Jail Snapshot"
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Clean Slate"
 msgstr "Clean Slate"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Optional note about why this snapshot was taken"
 msgstr "Optional note about why this snapshot was taken"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Creating..."
 msgstr "Creating..."
 
@@ -6516,30 +6609,36 @@ msgstr "Creating..."
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Create Snapshot"
 msgstr "Create Snapshot"
 
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Rolling Back"
 msgstr "Rolling Back"
 
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
+#. 0: selectedSnapshot.name
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
 msgstr "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
 
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
 #. 0: selectedSnapshot.name
+#. 0: selectedSnapshot.name
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
 msgstr "Delete snapshot <b>{0}</b>? This action cannot be undone."
 
@@ -6675,6 +6774,9 @@ msgstr "DHCP lease deleted"
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Start At Boot / Start Order"
 msgstr "Start At Boot / Start Order"
 
@@ -7012,111 +7114,156 @@ msgstr "Pool {0} deleted"
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "Shutoff"
 
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Serial"
 msgstr "Serial"
 
-#. 0: consoleType === 'vnc' ? 'Serial' 
+#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"
 msgstr "Switch to {0} Console"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "VM Console"
 msgstr "VM Console"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "VM serial terminal"
 msgstr "VM serial terminal"
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "No console is configured for this VM."
 msgstr "No console is configured for this VM."
 
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "The VM is currently powered off.<0/> Start the VM to access its console."
 msgstr "The VM is currently powered off.<0/> Start the VM to access its console."
 
 #. 0: vm.current?.name
+#. 0: vm.current?.name
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Console settings - {0}"
 msgstr "Console settings - {0}"
 
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
+#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 msgid "No Password"
 msgstr "No Password"
 
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "New VM Snapshot"
 msgstr "New VM Snapshot"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Unknown Switch"
 msgstr "Unknown Switch"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Unknown MAC"
 msgstr "Unknown MAC"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Detach"
 msgstr "Detach"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "No available/unused switches to attach to"
 msgstr "No available/unused switches to attach to"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "VM must be shut off to attach network"
 msgstr "VM must be shut off to attach network"
 
 #. 0: vm.current.name; 1: properties.detach.name
+#. 0: vm.current.name; 1: properties.detach.name
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"
 msgstr "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Failed to detach network"
 msgstr "Failed to detach network"
 
 #: src/routes/[node]/vm/[node]/network/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Network detached"
 msgstr "Network detached"
 
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "VM must be shut off to attach storage"
 msgstr "VM must be shut off to attach storage"
 
 #. 0: properties.detach.name; 1: vm.current.name
+#. 0: properties.detach.name; 1: vm.current.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
 msgstr "This will detach the storage {0} from the VM <b>{1}</b>"
 
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Failed to detach storage"
 msgstr "Failed to detach storage"
 
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Storage detached"
 msgstr "Storage detached"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Configured"
 msgstr "Configured"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
 msgstr "Not Configured"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Ignore Unimplemented MSRs Accesses"
 msgstr "Ignore Unimplemented MSRs Accesses"
 
@@ -8545,6 +8692,7 @@ msgstr "This policy needs at least one target server."
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/jail/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[node]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Connecting..."
 msgstr "Connecting..."
 
@@ -9621,3 +9769,78 @@ msgstr "Failed to start move from uploaded file"
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "File uploaded, you can complete upload now"
 msgstr "File uploaded, you can complete upload now"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Create new IPv4 Network"
+msgstr "Create new IPv4 Network"
+
+#~ msgid "Jail - {0} IPv4"
+#~ msgstr "Jail - {0} IPv4"
+
+#. 0: getDashedDate()
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "IPv4 Network {0}"
+msgstr "IPv4 Network {0}"
+
+#~ msgid "Networks(s)"
+#~ msgstr "Networks(s)"
+
+#. 0: ctId
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Jail {0} IPv4"
+msgstr "Jail {0} IPv4"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Create new IPv4 Gateway"
+msgstr "Create new IPv4 Gateway"
+
+#. 0: ctId
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Jail {0} IPv4 GW"
+msgstr "Jail {0} IPv4 GW"
+
+#. 0: getDashedDate()
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "IPv4 Gateway {0}"
+msgstr "IPv4 Gateway {0}"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Create new IPv6 Network"
+msgstr "Create new IPv6 Network"
+
+#. 0: ctId
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Jail {0} IPv6"
+msgstr "Jail {0} IPv6"
+
+#. 0: getDashedDate()
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "IPv6 Network {0}"
+msgstr "IPv6 Network {0}"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Create new IPv6 Gateway"
+msgstr "Create new IPv6 Gateway"
+
+#. 0: ctId
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Jail {0} IPv6 GW"
+msgstr "Jail {0} IPv6 GW"
+
+#. 0: getDashedDate()
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "IPv6 Gateway {0}"
+msgstr "IPv6 Gateway {0}"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Create new MAC Address"
+msgstr "Create new MAC Address"
+
+#. 0: ctId
+#: src/lib/components/custom/Jail/Create/Network.svelte
+msgid "Jail {0} MAC"
+msgstr "Jail {0} MAC"
+
+#: src/routes/[node]/notes/+page.svelte
+msgid "<0/> Note"
+msgstr "<0/> Note"

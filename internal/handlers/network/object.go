@@ -9,6 +9,7 @@
 package networkHandlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -64,7 +65,7 @@ func ListNetworkObjects(svc *network.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateOrEditNetworkObjectRequest true "Create Network Object Request"
-// @Success 200 {string} string "Samba share created successfully"
+// @Success 200 {uint} uint "ID of the created network object"
 // @Failure 400 {string} string "Invalid request"
 // @Failure 500 {string} string "Internal server error"
 // @Router /network/object [post]
@@ -81,7 +82,8 @@ func CreateNetworkObject(svc *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := svc.CreateObject(request.Name, request.Type, request.Values); err != nil {
+		id, err := svc.CreateObject(request.Name, request.Type, request.Values)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_create_object",
@@ -91,11 +93,11 @@ func CreateNetworkObject(svc *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[uint]{
 			Status:  "success",
-			Message: "object_created",
+			Message: fmt.Sprintf("object_created: %d", id),
 			Error:   "",
-			Data:    nil,
+			Data:    id,
 		})
 	}
 }

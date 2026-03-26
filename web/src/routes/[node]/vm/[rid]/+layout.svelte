@@ -26,6 +26,7 @@
 		shouldHideVMLifecycleButtons,
 		removeStaleCacheByRID
 	} from '$lib/utils/vm/vm';
+	import type { APIResponse } from '$lib/types/common';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -73,9 +74,13 @@
 
 	const lifecycleTask = resource(
 		() => `vm-lifecycle-task-${rid}`,
-		async (): Promise<LifecycleTask | null> => {
+		async (): Promise<LifecycleTask | null | APIResponse> => {
 			if (!rid) return null;
-			return await getActiveLifecycleTaskForGuest('vm', rid);
+			const result = await getActiveLifecycleTaskForGuest('vm', rid);
+			if (isAPIResponse(result)) {
+				return null;
+			}
+			return result;
 		},
 		{ initialValue: null as LifecycleTask | null }
 	);
@@ -91,7 +96,14 @@
 
 	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
 	let hasActiveLifecycleTask = $derived(!!lifecycleTask.current);
-	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
+	let activeLifecycleAction = $derived.by(() => {
+		if (lifecycleTask.current && !isAPIResponse(lifecycleTask.current)) {
+			return lifecycleTask.current.action;
+		}
+
+		return '';
+	});
+
 	let effectiveLifecycleAction = $derived(
 		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
 	);
@@ -102,9 +114,10 @@
 		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
 	);
 	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
-	let isShutdownTaskActive = $derived.by(
-		() => lifecycleTask.current?.action === 'shutdown' && !lifecycleTask.current?.overrideRequested
-	);
+	let isShutdownTaskActive = $derived.by(() => {
+		if (!lifecycleTask.current || isAPIResponse(lifecycleTask.current)) return false;
+		return lifecycleTask.current.action === 'shutdown' && !lifecycleTask.current.overrideRequested;
+	});
 	let vmChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
 		const vmIndex = segments.indexOf('vm');
@@ -243,6 +256,7 @@
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
 			await goto(`/${storage.hostname}/summary`);
 			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
@@ -460,7 +474,7 @@
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
 								<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-								{'Start'}
+								<span>Start</span>
 							</Button>
 
 							<Button
@@ -469,7 +483,7 @@
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
 								<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-								{'Delete'}
+								<span>Delete</span>
 							</Button>
 						{/if}
 
@@ -480,7 +494,7 @@
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 							>
 								<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-								{'Force Delete'}
+								<span>Force Delete</span>
 							</Button>
 						{/if}
 

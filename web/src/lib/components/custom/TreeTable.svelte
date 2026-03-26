@@ -80,10 +80,12 @@
 		for (const row of getAllRows(table.getRows())) {
 			const rowData = row.getData();
 
-			if (expandedRows[rowData.id]) {
-				row.treeExpand();
-			} else {
-				row.treeCollapse();
+			if (rowData.children) {
+				if (expandedRows[rowData.id]) {
+					row.treeExpand();
+				} else {
+					row.treeCollapse();
+				}
 			}
 		}
 

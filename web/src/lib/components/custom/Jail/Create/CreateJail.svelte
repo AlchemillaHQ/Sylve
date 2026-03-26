@@ -13,6 +13,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
+	import { fade } from 'svelte/transition';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import Basic from './Basic.svelte';
@@ -21,6 +22,7 @@
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
 	import { getPools } from '$lib/api/zfs/pool';
+	import { type NetworkObject } from '$lib/types/network/object';
 
 	interface Props {
 		open: boolean;
@@ -60,6 +62,18 @@
 			const objects = await getNetworkObjects();
 			updateCache(key, objects);
 			return objects;
+		}
+	);
+
+	let networkRefetch = $state(false);
+
+	watch(
+		() => networkRefetch,
+		(value) => {
+			if (value) {
+				networkObjects.refetch();
+				networkRefetch = false;
+			}
 		}
 	);
 
@@ -305,59 +319,72 @@
 					<Tabs.Content {value}>
 						<div>
 							{#if value === 'basic' && nodes.current}
-								<Basic
-									bind:name={modal.name}
-									bind:id={modal.id}
-									bind:hostname={modal.hostname}
-									bind:description={modal.description}
-									bind:refetch
-									bind:node={modal.node}
-									nodes={nodes.current}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Basic
+										bind:name={modal.name}
+										bind:id={modal.id}
+										bind:hostname={modal.hostname}
+										bind:description={modal.description}
+										bind:refetch
+										bind:node={modal.node}
+										nodes={nodes.current}
+									/>
+								</div>
 							{:else if value === 'storage' && pools.current && downloads.current && jails.current}
-								<Storage
-									downloads={downloads.current}
-									pools={pools.current}
-									ctId={modal.id}
-									bind:pool={modal.storage.pool}
-									bind:base={modal.storage.base}
-									bind:fstab={modal.storage.fstab}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Storage
+										downloads={downloads.current}
+										pools={pools.current}
+										ctId={modal.id}
+										bind:pool={modal.storage.pool}
+										bind:base={modal.storage.base}
+										bind:fstab={modal.storage.fstab}
+									/>
+								</div>
 							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
-								<Network
-									bind:switch={modal.network.switch}
-									bind:mac={modal.network.mac}
-									bind:inheritIPv4={modal.network.inheritIPv4}
-									bind:inheritIPv6={modal.network.inheritIPv6}
-									bind:ipv4={modal.network.ipv4}
-									bind:ipv4Gateway={modal.network.ipv4Gateway}
-									bind:ipv6={modal.network.ipv6}
-									bind:ipv6Gateway={modal.network.ipv6Gateway}
-									bind:dhcp={modal.network.dhcp}
-									bind:slaac={modal.network.slaac}
-									bind:resolvConf={modal.network.resolvConf}
-									jailType={modal.advanced.jailType}
-									switches={networkSwitches.current}
-									networkObjects={networkObjects.current}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Network
+										name={modal.name}
+										ctId={modal.id}
+										bind:switch={modal.network.switch}
+										bind:mac={modal.network.mac}
+										bind:inheritIPv4={modal.network.inheritIPv4}
+										bind:inheritIPv6={modal.network.inheritIPv6}
+										bind:ipv4={modal.network.ipv4}
+										bind:ipv4Gateway={modal.network.ipv4Gateway}
+										bind:ipv6={modal.network.ipv6}
+										bind:ipv6Gateway={modal.network.ipv6Gateway}
+										bind:dhcp={modal.network.dhcp}
+										bind:slaac={modal.network.slaac}
+										bind:resolvConf={modal.network.resolvConf}
+										bind:refetch={networkRefetch}
+										jailType={modal.advanced.jailType}
+										switches={networkSwitches.current}
+										networkObjects={networkObjects.current as NetworkObject[]}
+									/>
+								</div>
 							{:else if value === 'hardware'}
-								<Hardware
-									bind:cpuCores={modal.hardware.cpuCores}
-									bind:ram={modal.hardware.ram}
-									bind:startAtBoot={modal.hardware.startAtBoot}
-									bind:bootOrder={modal.hardware.bootOrder}
-									bind:resourceLimits={modal.hardware.resourceLimits}
-									bind:devfsRuleset={modal.hardware.devfsRuleset}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Hardware
+										bind:cpuCores={modal.hardware.cpuCores}
+										bind:ram={modal.hardware.ram}
+										bind:startAtBoot={modal.hardware.startAtBoot}
+										bind:bootOrder={modal.hardware.bootOrder}
+										bind:resourceLimits={modal.hardware.resourceLimits}
+										bind:devfsRuleset={modal.hardware.devfsRuleset}
+									/>
+								</div>
 							{:else if value === 'advanced'}
-								<Advanced
-									bind:jailType={modal.advanced.jailType}
-									bind:additionalOptions={modal.advanced.additionalOptions}
-									bind:cleanEnvironment={modal.advanced.cleanEnvironment}
-									bind:execScripts={modal.advanced.execScripts}
-									bind:allowedOptions={modal.advanced.allowedOptions}
-									bind:metadata={modal.advanced.metadata}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Advanced
+										bind:jailType={modal.advanced.jailType}
+										bind:additionalOptions={modal.advanced.additionalOptions}
+										bind:cleanEnvironment={modal.advanced.cleanEnvironment}
+										bind:execScripts={modal.advanced.execScripts}
+										bind:allowedOptions={modal.advanced.allowedOptions}
+										bind:metadata={modal.advanced.metadata}
+									/>
+								</div>
 							{/if}
 						</div>
 					</Tabs.Content>

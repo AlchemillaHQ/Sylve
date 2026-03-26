@@ -41,6 +41,7 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import { resolve } from '$app/paths';
+	import { fade } from 'svelte/transition';
 
 	interface Data {
 		node: string;
@@ -387,7 +388,7 @@
 </script>
 
 <div>
-	<div class="flex h-10 w-full items-center gap-1 border p-4">
+	<div class="flex h-10 w-full items-center gap-1 border p-4" transition:fade>
 		{#if jState.current}
 			{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 				<Button
@@ -433,19 +434,21 @@
 
 		<div class="ml-auto flex h-full items-center gap-2">
 			{#if logs.current.logs.length > 0}
-				<Button
-					size="sm"
-					onclick={() => {
-						followLogs = true;
-						showLogs = true;
-					}}
-					class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
-				>
-					<div class="flex items-center">
-						<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
-						<span>View Logs</span>
-					</div>
-				</Button>
+				<div transition:fade>
+					<Button
+						size="sm"
+						onclick={() => {
+							followLogs = true;
+							showLogs = true;
+						}}
+						class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-blue-600 dark:text-white"
+					>
+						<div class="flex items-center">
+							<span class="icon-[mdi--file-document-outline] h-4 w-4"></span>
+							<span>View Logs</span>
+						</div>
+					</Button>
+				</div>
 			{/if}
 
 			<SimpleSelect

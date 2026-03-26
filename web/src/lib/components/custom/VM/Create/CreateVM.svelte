@@ -23,6 +23,8 @@
 	import { toast } from 'svelte-sonner';
 	import { getBasicSettings } from '$lib/api/basic';
 	import { resource, watch } from 'runed';
+	import { fade } from 'svelte/transition';
+	import { type NetworkObject } from '$lib/types/network/object';
 
 	interface Props {
 		open: boolean;
@@ -33,7 +35,7 @@
 
 	const networkObjects = resource(
 		() => 'network-objects',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getNetworkObjects();
 			updateCache(key, result);
 			return result;
@@ -43,7 +45,7 @@
 
 	const networkSwitches = resource(
 		() => 'network-switches',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getSwitches();
 			updateCache(key, result);
 			return result;
@@ -52,7 +54,7 @@
 
 	const pciDevices = resource(
 		() => 'pci-devices',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getPCIDevices();
 			updateCache(key, result);
 			return result;
@@ -62,7 +64,7 @@
 
 	const pptDevices = resource(
 		() => 'ppt-devices',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getPPTDevices();
 			updateCache(key, result);
 			return result;
@@ -72,7 +74,7 @@
 
 	const downloadsByUtype = resource(
 		() => 'downloads-by-utype',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getDownloadsByUType();
 			updateCache(key, result);
 			return result;
@@ -82,7 +84,7 @@
 
 	const vms = resource(
 		() => 'simple-vm-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getSimpleVMs();
 			updateCache(key, result);
 			return result;
@@ -92,7 +94,7 @@
 
 	const jails = resource(
 		() => 'simple-jail-list',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getSimpleJails();
 			updateCache(key, result);
 			return result;
@@ -102,7 +104,7 @@
 
 	const clusterNodes = resource(
 		() => 'cluster-nodes',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getNodes();
 			updateCache(key, result);
 			return result;
@@ -112,7 +114,7 @@
 
 	const basicSettings = resource(
 		() => 'basic-settings',
-		async (key, prevKey, { signal }) => {
+		async (key) => {
 			const result = await getBasicSettings();
 			updateCache(key, result);
 			return result;
@@ -122,7 +124,7 @@
 
 	let reload = $state(false);
 
-	watch([() => reload, () => minimize], ([reload, minimize], [prevReload, prevMinimize]) => {
+	watch([() => reload, () => minimize], ([reload, minimize]) => {
 		if (reload || !minimize) {
 			networkObjects.refetch();
 			networkSwitches.refetch();
@@ -216,7 +218,7 @@
 
 	watch(
 		() => nextId,
-		(nextId, prevNextId) => {
+		(nextId) => {
 			if (typeof nextId === 'number') {
 				modal.id = nextId;
 			}
@@ -263,9 +265,9 @@
 					<span class="cursor-events-none cursor-default">Create Virtual Machine</span>
 				</div>
 				<div class="flex items-center gap-0.5">
-					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title={'Reset'}>
+					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title="Reset">
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
+						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
 						size="sm"
@@ -275,10 +277,10 @@
 							minimize = true;
 							open = false;
 						}}
-						title={'Minimize'}
+						title="Minimize"
 					>
 						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Minimize'}</span>
+						<span class="sr-only">Minimize</span>
 					</Button>
 
 					<Button
@@ -291,10 +293,10 @@
 							lastTab = 'basic';
 							resetModal();
 						}}
-						title={'Close'}
+						title="Close"
 					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
+						<span class="sr-only">Close</span>
 					</Button>
 				</div>
 			</Dialog.Title>
@@ -303,72 +305,82 @@
 		<div class="mt-6 flex-1 overflow-y-auto">
 			<Tabs.Root value={lastTab} class="w-full overflow-hidden">
 				<Tabs.List class="grid w-full grid-cols-5 p-0 ">
-					{#each tabs as { value, label }}
+					{#each tabs as { value, label } (value)}
 						<Tabs.Trigger class="border-b" {value} onclick={() => (lastTab = value)}
 							>{label}</Tabs.Trigger
 						>
 					{/each}
 				</Tabs.List>
 
-				{#each tabs as { value, label }}
+				{#each tabs as { value } (value)}
 					<Tabs.Content {value}>
 						<div>
 							{#if value === 'basic'}
-								<Basic
-									bind:name={modal.name}
-									bind:node={modal.node}
-									bind:id={modal.id}
-									bind:description={modal.description}
-									nodes={clusterNodes.current}
-									bind:refetch={reload}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Basic
+										bind:name={modal.name}
+										bind:node={modal.node}
+										bind:id={modal.id}
+										bind:description={modal.description}
+										nodes={clusterNodes.current}
+										bind:refetch={reload}
+									/>
+								</div>
 							{:else if value === 'storage'}
-								<Storage
-									downloads={downloadsByUtype.current}
-									pools={basicSettings.current.pools}
-									bind:type={modal.storage.type}
-									bind:pool={modal.storage.pool}
-									bind:size={modal.storage.size}
-									bind:emulation={modal.storage.emulation}
-									bind:iso={modal.storage.iso}
-									cloudInit={modal.advanced.cloudInit}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Storage
+										downloads={downloadsByUtype.current}
+										pools={basicSettings.current.pools}
+										bind:type={modal.storage.type}
+										bind:pool={modal.storage.pool}
+										bind:size={modal.storage.size}
+										bind:emulation={modal.storage.emulation}
+										bind:iso={modal.storage.iso}
+										cloudInit={modal.advanced.cloudInit}
+									/>
+								</div>
 							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
-								<Network
-									switches={networkSwitches.current}
-									networkObjects={networkObjects.current}
-									bind:switch={modal.network.switch}
-									bind:mac={modal.network.mac}
-									bind:emulation={modal.network.emulation}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Network
+										switches={networkSwitches.current}
+										networkObjects={networkObjects.current as NetworkObject[]}
+										bind:switch={modal.network.switch}
+										bind:mac={modal.network.mac}
+										bind:emulation={modal.network.emulation}
+									/>
+								</div>
 							{:else if value === 'hardware'}
-								<Hardware
-									devices={passablePci}
-									vms={vms.current}
-									pptDevices={pptDevices.current}
-									bind:isPinningOpen={modal.hardware.isPinningOpen}
-									bind:sockets={modal.hardware.sockets}
-									bind:cores={modal.hardware.cores}
-									bind:threads={modal.hardware.threads}
-									bind:memory={modal.hardware.memory}
-									bind:passthroughIds={modal.hardware.passthroughIds}
-									bind:pinnedCPUs={modal.hardware.pinnedCPUs}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Hardware
+										devices={passablePci}
+										vms={vms.current}
+										pptDevices={pptDevices.current}
+										bind:isPinningOpen={modal.hardware.isPinningOpen}
+										bind:sockets={modal.hardware.sockets}
+										bind:cores={modal.hardware.cores}
+										bind:threads={modal.hardware.threads}
+										bind:memory={modal.hardware.memory}
+										bind:passthroughIds={modal.hardware.passthroughIds}
+										bind:pinnedCPUs={modal.hardware.pinnedCPUs}
+									/>
+								</div>
 							{:else if value === 'advanced'}
-								<Advanced
-									bind:serial={modal.advanced.serial}
-									bind:vncPort={modal.advanced.vncPort}
-									bind:vncPassword={modal.advanced.vncPassword}
-									bind:vncWait={modal.advanced.vncWait}
-									bind:startAtBoot={modal.advanced.startAtBoot}
-									bind:bootOrder={modal.advanced.bootOrder}
-									bind:vncResolution={modal.advanced.vncResolution}
-									bind:tpmEmulation={modal.advanced.tpmEmulation}
-									bind:timeOffset={modal.advanced.timeOffset}
-									bind:cloudInit={modal.advanced.cloudInit}
-									bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
-									bind:qemuGuestAgent={modal.advanced.qemuGuestAgent}
-								/>
+								<div in:fade={{ duration: 200 }}>
+									<Advanced
+										bind:serial={modal.advanced.serial}
+										bind:vncPort={modal.advanced.vncPort}
+										bind:vncPassword={modal.advanced.vncPassword}
+										bind:vncWait={modal.advanced.vncWait}
+										bind:startAtBoot={modal.advanced.startAtBoot}
+										bind:bootOrder={modal.advanced.bootOrder}
+										bind:vncResolution={modal.advanced.vncResolution}
+										bind:tpmEmulation={modal.advanced.tpmEmulation}
+										bind:timeOffset={modal.advanced.timeOffset}
+										bind:cloudInit={modal.advanced.cloudInit}
+										bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
+										bind:qemuGuestAgent={modal.advanced.qemuGuestAgent}
+									/>
+								</div>
 							{/if}
 						</div>
 					</Tabs.Content>

@@ -27,7 +27,7 @@ export async function apiRequest<T extends z.ZodType>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
     body?: unknown,
     options?: APIRequestOptions
-): Promise<z.infer<T>> {
+): Promise<z.infer<T> | APIResponse> {
     function setReloadFlag() {
         if (method !== 'GET') {
             reload.auditLog = true;
@@ -94,16 +94,15 @@ export async function apiRequest<T extends z.ZodType>(
     }
 }
 
-function getDefaultValue<T extends z.ZodType>(schema: T, response: APIResponse): z.infer<T> {
+function getDefaultValue<T extends z.ZodType>(
+    schema: T,
+    response: APIResponse
+): z.infer<T> | APIResponse {
     if (schema instanceof z.ZodArray) {
         return [] as z.infer<T>;
     }
 
-    if (schema instanceof z.ZodObject) {
-        return response as z.infer<T>;
-    }
-
-    return undefined as z.infer<T>;
+    return response;
 }
 
 export async function cachedFetch<T>(
@@ -123,6 +122,7 @@ export async function cachedFetch<T>(
             typeof data === 'object' &&
             data !== null &&
             'status' in data &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (data as any).status === 'error';
 
         if (isFresh && !looksLikeError) {
@@ -140,6 +140,7 @@ export async function cachedFetch<T>(
         !data ||
         typeof data !== 'object' ||
         !('status' in data) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (data as any).status !== 'error'
     ) {
         await kvStorage.setItem(key, data);
@@ -166,6 +167,7 @@ export async function updateCache<T>(key: string, obj: T): Promise<void> {
     }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isAPIResponse(obj: any): obj is APIResponse {
     return (
         obj &&
