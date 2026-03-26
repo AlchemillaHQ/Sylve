@@ -15,7 +15,6 @@ API_BASE="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
 BIN_PATH="/usr/local/sbin/sylve"
 RC_SCRIPT_PATH="/usr/local/etc/rc.d/sylve"
 CONFIG_PATH="/usr/local/etc/sylve/config.json"
-META_PATH="/usr/local/etc/sylve/installer.meta"
 DEFAULT_DATA_PATH="/var/db/sylve"
 
 YES_MODE=0
@@ -361,28 +360,24 @@ resolve_latest_release() {
 	[ -n "$ASSET_URL" ] || die "Missing asset URL."
 }
 
-metadata_read() {
-	key="$1"
-	if [ ! -f "$META_PATH" ]; then
-		return 1
-	fi
-	sed -n "s/^${key}=//p" "$META_PATH" | head -n 1
+extract_version_tag() {
+	printf '%s\n' "$1" | sed -n 's/.*\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -n 1
 }
 
-metadata_write() {
-	method="$1"
-	tag="$2"
-	digest="$3"
-	url="$4"
-	install_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-	mkdir -p "$(dirname "$META_PATH")"
-	{
-		printf "method=%s\n" "$method"
-		printf "tag=%s\n" "$tag"
-		printf "digest=%s\n" "$digest"
-		printf "url=%s\n" "$url"
-		printf "installed_at=%s\n" "$install_time"
-	} > "$META_PATH"
+detect_installed_binary_tag() {
+	if [ ! -x "$BIN_PATH" ]; then
+		return 0
+	fi
+
+	# Use -h for compatibility with older releases (for example v0.1.x).
+	out="$("$BIN_PATH" -h 2>&1 || true)"
+	tag="$(extract_version_tag "$out")"
+	if [ -n "$tag" ]; then
+		printf '%s\n' "$tag"
+		return 0
+	fi
+
+	return 0
 }
 
 mktemp_file() {
@@ -396,13 +391,11 @@ mktemp_file() {
 install_binary_from_release() {
 	resolve_latest_release
 
-	local_tag="$(metadata_read tag 2>/dev/null || true)"
-	if [ -n "$local_tag" ] && [ "$local_tag" = "$RELEASE_TAG" ] && [ "$FORCE_MODE" -eq 0 ]; then
-		if [ -x "$BIN_PATH" ]; then
-			log_ok "Already at latest tag ${RELEASE_TAG}."
-			return 0
-		fi
-		log_warn "Metadata says latest (${RELEASE_TAG}) but ${BIN_PATH} is missing; reinstalling."
+	local_tag="$(detect_installed_binary_tag)"
+
+	if [ -n "$local_tag" ] && [ "$local_tag" = "$RELEASE_TAG" ] && [ "$FORCE_MODE" -eq 0 ] && [ -x "$BIN_PATH" ]; then
+		log_ok "Already at latest tag ${RELEASE_TAG}."
+		return 0
 	fi
 
 	log_info "Downloading ${ASSET_NAME} (${RELEASE_TAG})..."
@@ -425,7 +418,6 @@ install_binary_from_release() {
 	fi
 
 	install -m 755 "$tmp_bin" "$BIN_PATH"
-	metadata_write "github-release" "$RELEASE_TAG" "$ASSET_DIGEST" "$ASSET_URL"
 	log_ok "Installed ${BIN_PATH} (${RELEASE_TAG})"
 
 	rm -f "$tmp_bin"
@@ -445,7 +437,6 @@ pkg_install_or_update() {
 		ASSUME_ALWAYS_YES=yes pkg install -y sylve
 	fi
 
-	metadata_write "pkg" "pkg" "pkg" "pkg"
 	log_ok "pkg operation complete."
 }
 
