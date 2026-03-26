@@ -85,8 +85,30 @@ func TestParseFlags_Help(t *testing.T) {
 	}
 }
 
+func TestParseFlags_HelpShort(t *testing.T) {
+	got, err := ParseFlags([]string{"-h"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !got.ShowHelp {
+		t.Fatalf("expected help true")
+	}
+}
+
 func TestParseFlags_Version(t *testing.T) {
 	got, err := ParseFlags([]string{"-version"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !got.ShowVersion {
+		t.Fatalf("expected version true")
+	}
+}
+
+func TestParseFlags_VersionShort(t *testing.T) {
+	got, err := ParseFlags([]string{"-v"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -51,14 +51,23 @@ import (
 func main() {
 	cmd.AsciiArt(os.Stdout)
 
-	if !sysU.IsRoot() {
-		logger.BootstrapFatal("Root privileges required!")
-	}
-
 	cfgResult, err := cmd.ParseFlags(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
+	}
+
+	if cfgResult.ShowHelp {
+		cmd.PrintUsage(os.Stdout)
+		return
+	}
+
+	if cfgResult.ShowVersion {
+		return
+	}
+
+	if !sysU.IsRoot() {
+		logger.BootstrapFatal("Root privileges required!")
 	}
 
 	startLocalSylve, attachErr := shouldStartLocalSylve(cfgResult.REPL, repl.TryAttachSocketConsole)
