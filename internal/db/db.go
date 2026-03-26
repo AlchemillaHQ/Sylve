@@ -123,7 +123,6 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&infoModels.Note{},
 
 		&infoModels.ZPoolHistorical{},
-
 		&zfsModels.PeriodicSnapshot{},
 
 		&networkModels.ManualSwitch{},

@@ -277,6 +277,10 @@ export const QGAInfoSchema = z.object({
     interfaces: z.array(QGANetworkInterfaceSchema).nullable()
 });
 
+export const OutcomeResponseSchema = z.object({
+    outcome: z.string()
+});
+
 export type VM = z.infer<typeof VMSchema>;
 export type VMCPUPinning = z.infer<typeof VMCPUPinningSchema>;
 export type VMStorage = z.infer<typeof VMStorageSchema>;
@@ -290,10 +294,9 @@ export type VMTemplate = z.infer<typeof VMTemplateSchema>;
 export type VMTemplateStorage = z.infer<typeof VMTemplateStorageSchema>;
 export type VMTemplateNetwork = z.infer<typeof VMTemplateNetworkSchema>;
 export type QGAInfo = z.infer<typeof QGAInfoSchema>;
-
 export type VMLifecycleAction = 'start' | 'stop' | 'shutdown' | 'reboot';
-
 export type VMLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
+export type OutcomeResponse = z.infer<typeof OutcomeResponseSchema>;
 
 export interface VMLifecycleBadgeStyle {
     variant: VMLifecycleBadgeVariant;
