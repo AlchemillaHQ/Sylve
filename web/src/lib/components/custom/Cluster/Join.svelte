@@ -8,6 +8,7 @@
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
+	import { logOut } from '$lib/api/auth';
 
 	interface Props {
 		open: boolean;
@@ -72,7 +73,6 @@
 			);
 
 			loading = false;
-
 			reload = true;
 
 			if (response.error) {
@@ -93,7 +93,7 @@
 				position: 'bottom-center'
 			});
 
-			open = false;
+			await logOut('Login required after joining cluster');
 		} else {
 			toast.error('No Node ID available', {
 				position: 'bottom-center'
@@ -116,7 +116,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -129,7 +129,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							open = false;
 							properties = options;
