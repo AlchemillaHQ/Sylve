@@ -148,3 +148,44 @@ func TestFixJailNetworkNameIndexAfterAutoMigrateOrdering(t *testing.T) {
 		t.Fatalf("expected same network name on different jail to succeed, got: %v", err)
 	}
 }
+
+func TestCleanupLegacyDevdEventsTableDropsLegacyTableAndRecordsMigration(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
+
+	if err := dbConn.Exec(`
+		CREATE TABLE devd_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			payload TEXT
+		)
+	`).Error; err != nil {
+		t.Fatalf("failed creating legacy devd_events table: %v", err)
+	}
+
+	cleanupLegacyDevdEventsTable(dbConn)
+
+	if dbConn.Migrator().HasTable("devd_events") {
+		t.Fatal("expected legacy devd_events table to be dropped")
+	}
+
+	var migrationCount int64
+	if err := dbConn.Table("migrations").Where("name = ?", "drop_legacy_devd_events_table_1").Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking migration row: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected migration row to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestCleanupLegacyDevdEventsTableRecordsMigrationWhenTableAbsent(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{})
+
+	cleanupLegacyDevdEventsTable(dbConn)
+
+	var migrationCount int64
+	if err := dbConn.Table("migrations").Where("name = ?", "drop_legacy_devd_events_table_1").Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking migration row: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected migration row to be recorded once, got %d", migrationCount)
+	}
+}

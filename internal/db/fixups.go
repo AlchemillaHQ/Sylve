@@ -22,6 +22,7 @@ func Fixups(db *gorm.DB) error {
 	createSylveUnixGroup(db)
 	cleanupInvalidTokenRows(db)
 	cleanupInvalidAuditUserIDs(db)
+	cleanupLegacyDevdEventsTable(db)
 
 	return nil
 }
@@ -233,6 +234,37 @@ func cleanupInvalidAuditUserIDs(db *gorm.DB) {
 
 	if result.RowsAffected > 0 {
 		logger.L.Warn().Msgf("Nullified %d invalid audit user IDs", result.RowsAffected)
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func cleanupLegacyDevdEventsTable(db *gorm.DB) {
+	const name = "drop_legacy_devd_events_table_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for cleanup_legacy_devd_events_table")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("devd_events") {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	if err := db.Migrator().DropTable("devd_events"); err != nil {
+		logger.L.Err(err).Msg("failed dropping legacy devd_events table")
+		return
 	}
 
 	db.Table("migrations").Create(map[string]any{
