@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 )
@@ -61,21 +63,45 @@ func ParseConfig(path string) *internal.SylveConfig {
 func GetDataPath() (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		log.Fatal("Failed to get current working directory:", err)
+		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
-	if ParsedConfig == nil {
-		return filepath.Join(cwd, "data"), nil
-	}
-
-	if ParsedConfig.DataPath == "" {
-		ParsedConfig.DataPath = filepath.Join(cwd, "data")
-		if err := os.MkdirAll(ParsedConfig.DataPath, 0755); err != nil {
-			return "", fmt.Errorf("failed to create data directory: %w", err)
+	// Explicit override for testing/packaging.
+	if v, ok := os.LookupEnv("SYLVE_DATA_PATH"); ok {
+		v = strings.TrimSpace(v)
+		if v != "" {
+			if !filepath.IsAbs(v) {
+				v = filepath.Join(cwd, v)
+			}
+			if ParsedConfig != nil {
+				ParsedConfig.DataPath = v
+			}
+			if err := os.MkdirAll(v, 0755); err != nil {
+				return "", fmt.Errorf("failed to create data directory: %w", err)
+			}
+			return v, nil
 		}
 	}
 
-	return ParsedConfig.DataPath, nil
+	if ParsedConfig != nil && ParsedConfig.DataPath != "" {
+		return ParsedConfig.DataPath, nil
+	}
+
+	// The port must set this as the default, we will fall back to it if the config file doesn't specify a path
+	dataPath := filepath.Join(cwd, "data")
+	if runtime.GOOS == "freebsd" && os.Geteuid() == 0 {
+		dataPath = "/var/db/sylve"
+	}
+
+	if ParsedConfig != nil {
+		ParsedConfig.DataPath = dataPath
+	}
+
+	if err := os.MkdirAll(dataPath, 0755); err != nil {
+		return "", fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	return dataPath, nil
 }
 
 func SetupDataPath() error {
@@ -106,30 +132,25 @@ func SetupDataPath() error {
 }
 
 func GetDownloadsPath(dType string) string {
-	if ParsedConfig == nil {
-		cwd, err := os.Getwd()
-
-		if err != nil {
-			log.Fatal("Failed to get current working directory:", err)
-		}
-
-		return filepath.Join(cwd, "data", "downloads")
+	dataPath, err := GetDataPath()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	switch dType {
 	case "torrents":
-		return filepath.Join(ParsedConfig.DataPath, "downloads", "torrents")
+		return filepath.Join(dataPath, "downloads", "torrents")
 	case "torrent.db":
-		return filepath.Join(ParsedConfig.DataPath, "downloads", "torrents", "torrent.db")
+		return filepath.Join(dataPath, "downloads", "torrents", "torrent.db")
 	case "http":
-		return filepath.Join(ParsedConfig.DataPath, "downloads", "http")
+		return filepath.Join(dataPath, "downloads", "http")
 	case "path":
-		return filepath.Join(ParsedConfig.DataPath, "downloads", "path")
+		return filepath.Join(dataPath, "downloads", "path")
 	case "extracted":
-		return filepath.Join(ParsedConfig.DataPath, "downloads", "extracted")
+		return filepath.Join(dataPath, "downloads", "extracted")
 	}
 
-	return filepath.Join(ParsedConfig.DataPath, "downloads")
+	return filepath.Join(dataPath, "downloads")
 }
 
 func GetVMsPath() (string, error) {
