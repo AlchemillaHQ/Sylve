@@ -681,6 +681,56 @@ maybe_enable_and_start_sylve() {
 	fi
 }
 
+get_https_port_from_config() {
+	if [ ! -f "$CONFIG_PATH" ]; then
+		printf "8181\n"
+		return 0
+	fi
+
+	port="$(sed -n 's/.*"port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$CONFIG_PATH" | head -n 1)"
+	if [ -n "$port" ]; then
+		printf "%s\n" "$port"
+		return 0
+	fi
+
+	printf "8181\n"
+}
+
+show_web_ui_urls() {
+	if ! have_cmd ifconfig; then
+		return 0
+	fi
+
+	https_port="$(get_https_port_from_config)"
+	if [ "$https_port" = "0" ]; then
+		return 0
+	fi
+
+	ip_list="$(ifconfig -a 2>/dev/null | awk '
+		/^[A-Za-z0-9].*:$/ { iface=$1; sub(/:$/, "", iface) }
+		$1 == "inet" {
+			ip=$2
+			if (ip !~ /^127\./) print ip
+		}
+		$1 == "inet6" {
+			ip=$2
+			sub(/%.*/, "", ip)
+			if (ip != "::1" && ip !~ /^fe80:/) print "[" ip "]"
+		}
+	' | sort -u)"
+
+	if [ -z "$ip_list" ]; then
+		return 0
+	fi
+
+	printf "\nAccess Web UI at:\n"
+	printf '%s\n' "$ip_list" | while IFS= read -r ip; do
+		[ -n "$ip" ] || continue
+		printf "https://%s:%s\n" "$ip" "$https_port"
+	done
+	printf "\n"
+}
+
 command_install() {
 	require_root
 	validate_platform_and_arch
@@ -700,11 +750,12 @@ command_install() {
 	if [ -n "$GENERATED_ADMIN_PASSWORD" ]; then
 		printf "\n"
 		log_ok "Generated admin password has been written to ${CONFIG_PATH}"
-		printf "Admin username: admin@sylve.local\n"
+		printf "Admin username: admin\n"
 		printf "Admin password: %s\n" "$GENERATED_ADMIN_PASSWORD"
 		printf "\n"
 	fi
 
+	show_web_ui_urls
 	log_ok "Install completed."
 }
 
