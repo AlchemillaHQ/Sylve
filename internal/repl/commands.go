@@ -10,7 +10,6 @@ package repl
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -30,12 +29,17 @@ var commands = []cmdHelp{
 	{"jails", "Manage Jails"},
 	{"vms", "Manage Virtual Machines"},
 	{"switches", "Manage manual/standard switches"},
-	{"quit/exit/shutdown", "Shutdown Sylve"},
+	{"quit/exit", "Exit console session"},
+	{"shutdown", "Shutdown Sylve"},
 }
 
-func handle(ctx *Context, line string) bool {
-	parts := strings.Fields(line)
+func ExecuteLine(ctx *Context, line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return true
+	}
 
+	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return true
 	}
@@ -57,25 +61,30 @@ func handle(ctx *Context, line string) bool {
 		handleSwitches(ctx, args)
 
 	case "help":
-		printHelp()
+		printHelp(ctx)
 
 	case "ping":
-		fmt.Println("pong")
+		println(ctx, "pong")
 
-	case "quit", "exit", "shutdown":
+	case "quit", "exit":
+		return false
+
+	case "shutdown":
 		logger.L.Info().Msg("Shutdown initiated from REPL")
-		ctx.QuitChan <- syscall.SIGTERM
+		if ctx != nil && ctx.QuitChan != nil {
+			ctx.QuitChan <- syscall.SIGTERM
+		}
 		return false
 
 	default:
-		fmt.Printf("Unknown command: '%s'. Type 'help'.\n", head)
+		printf(ctx, "Unknown command: '%s'. Type 'help'.\n", head)
 	}
 
 	return true
 }
 
-func printHelp() {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+func printHelp(ctx *Context) {
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 0, 2, ' ', 0)
 
 	fmt.Fprintln(w, "COMMAND\tDESCRIPTION")
 	fmt.Fprintln(w, "-------\t-----------")
@@ -88,8 +97,8 @@ func printHelp() {
 	w.Flush()
 }
 
-func printSubHelp(title string, cmds []cmdHelp) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+func printSubHelp(ctx *Context, title string, cmds []cmdHelp) {
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 0, 2, ' ', 0)
 	fmt.Fprintf(w, "\n--- %s ---\n", strings.ToUpper(title))
 	for _, cmd := range cmds {
 		fmt.Fprintf(w, "  %s\t%s\n", cmd.Name, cmd.Desc)

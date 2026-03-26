@@ -60,6 +60,15 @@ func main() {
 		os.Exit(2)
 	}
 
+	startLocalSylve, attachErr := shouldStartLocalSylve(cfgResult.REPL, repl.TryAttachSocketConsole)
+	if attachErr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to attach to running Sylve console: %v\n", attachErr)
+		os.Exit(1)
+	}
+	if !startLocalSylve {
+		return
+	}
+
 	cfg := config.ParseConfig(cfgResult.ConfigPath)
 	logger.InitLogger(cfg.DataPath, cfg.LogLevel)
 	if err := preflightRequiredPorts(cfg, portnetwork.TryBindToPort); err != nil {
@@ -194,15 +203,27 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	if cfgResult.REPL {
-		replCtx := &repl.Context{
-			Auth:           aS.(*auth.Service),
-			Jail:           jailSvc,
-			VirtualMachine: libvirtSvc,
-			Network:        nS.(*networkService.Service),
-			QuitChan:       sigChan,
-		}
+	replCtx := &repl.Context{
+		Auth:           aS.(*auth.Service),
+		Jail:           jailSvc,
+		VirtualMachine: libvirtSvc,
+		Network:        nS.(*networkService.Service),
+		QuitChan:       sigChan,
+	}
 
+	replSocketServer, replSocketErr := repl.StartSocketServer(replCtx)
+	if replSocketErr != nil {
+		logger.L.Warn().Err(replSocketErr).Msg("Failed to start REPL socket server")
+	}
+	defer func() {
+		if replSocketServer != nil {
+			if err := replSocketServer.Close(); err != nil {
+				logger.L.Warn().Err(err).Msg("Failed to close REPL socket server")
+			}
+		}
+	}()
+
+	if cfgResult.REPL {
 		go repl.Start(replCtx)
 	}
 

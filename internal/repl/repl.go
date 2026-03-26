@@ -10,6 +10,7 @@ package repl
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -20,28 +21,31 @@ import (
 	"github.com/chzyer/readline"
 )
 
+const replHistoryFile = "/tmp/sylve.repl.history"
+
 type Context struct {
 	Auth           *auth.Service
 	Jail           *jail.Service
 	VirtualMachine *libvirt.Service
 	Network        *network.Service
 	QuitChan       chan os.Signal
+	Out            io.Writer
 }
 
 func Start(ctx *Context) {
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:          "sylve> ",
-		HistoryFile:     "/tmp/sylve.repl.history",
+		HistoryFile:     replHistoryFile,
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
 	})
 	if err != nil {
-		fmt.Println("REPL init failed:", err)
+		fmt.Fprintln(outputWriter(ctx), "REPL init failed:", err)
 		return
 	}
 	defer rl.Close()
 
-	fmt.Println("Sylve REPL ready. Type `help`.")
+	fmt.Fprintln(outputWriter(ctx), "Sylve REPL ready. Type `help`.")
 
 	for {
 		line, err := rl.Readline()
@@ -54,7 +58,7 @@ func Start(ctx *Context) {
 			continue
 		}
 
-		if !handle(ctx, line) {
+		if !ExecuteLine(ctx, line) {
 			return
 		}
 	}

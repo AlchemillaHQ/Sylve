@@ -10,7 +10,6 @@ package repl
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -18,7 +17,7 @@ import (
 
 func handleSwitches(ctx *Context, args []string) {
 	if len(args) == 0 {
-		printSubHelp("switches", []cmdHelp{
+		printSubHelp(ctx, "switches", []cmdHelp{
 			{"list", "List all switches (Standard & Manual)"},
 			{"rm <type> <id>", "Delete a switch (type: 'std' or 'manual')"},
 		})
@@ -34,8 +33,8 @@ func handleSwitches(ctx *Context, args []string) {
 
 	case "rm":
 		if len(subArgs) < 2 {
-			fmt.Println("Error: Missing arguments. Usage: switches rm <type> <id>")
-			fmt.Println("       <type> must be 'std' or 'manual'")
+			println(ctx, "Error: Missing arguments. Usage: switches rm <type> <id>")
+			println(ctx, "       <type> must be 'std' or 'manual'")
 			return
 		}
 
@@ -44,41 +43,41 @@ func handleSwitches(ctx *Context, args []string) {
 
 		id, err := strconv.ParseUint(idStr, 10, 64)
 		if err != nil {
-			fmt.Printf("Error: Invalid ID '%s'\n", idStr)
+			printf(ctx, "Error: Invalid ID '%s'\n", idStr)
 			return
 		}
 
 		if swType != "std" && swType != "manual" {
-			fmt.Printf("Error: Unknown switch type '%s'. Use 'std' or 'manual'.\n", swType)
+			printf(ctx, "Error: Unknown switch type '%s'. Use 'std' or 'manual'.\n", swType)
 			return
 		}
 
 		switchDelete(ctx, swType, uint(id))
 
 	default:
-		fmt.Printf("Unknown switches command: '%s'. Type 'switches' for help.\n", subCmd)
+		printf(ctx, "Unknown switches command: '%s'. Type 'switches' for help.\n", subCmd)
 	}
 }
 
 func switchesList(ctx *Context) {
 	stdSwitches, err := ctx.Network.GetStandardSwitches()
 	if err != nil {
-		fmt.Printf("Error fetching standard switches: %v\n", err)
+		printf(ctx, "Error fetching standard switches: %v\n", err)
 		return
 	}
 
 	manualSwitches, err := ctx.Network.GetManualSwitches()
 	if err != nil {
-		fmt.Printf("Error fetching manual switches: %v\n", err)
+		printf(ctx, "Error fetching manual switches: %v\n", err)
 		return
 	}
 
 	if len(stdSwitches) == 0 && len(manualSwitches) == 0 {
-		fmt.Println("No switches found.")
+		println(ctx, "No switches found.")
 		return
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 8, 2, ' ', 0)
 
 	fmt.Fprintln(w, "ID\tNAME\tTYPE\tBRIDGE\tVLAN\tPORTS/DETAILS")
 	fmt.Fprintln(w, "--\t----\t----\t------\t----\t-------------")
@@ -108,26 +107,26 @@ func switchesList(ctx *Context) {
 	}
 
 	w.Flush()
-	fmt.Println("")
+	println(ctx, "")
 }
 
 func switchDelete(ctx *Context, swType string, id uint) {
 	var err error
 	if swType == "std" {
-		fmt.Printf("Deleting Standard Switch ID %d...\n", id)
+		printf(ctx, "Deleting Standard Switch ID %d...\n", id)
 		err = ctx.Network.DeleteStandardSwitch(int(id))
 	} else {
-		fmt.Printf("Deleting Manual Switch ID %d...\n", id)
+		printf(ctx, "Deleting Manual Switch ID %d...\n", id)
 		err = ctx.Network.DeleteManualSwitch(id)
 	}
 
 	if err != nil {
 		if strings.Contains(err.Error(), "switch_in_use") {
-			fmt.Println("Error: Cannot delete switch because it is currently attached to a VM or Jail.")
+			println(ctx, "Error: Cannot delete switch because it is currently attached to a VM or Jail.")
 			return
 		}
-		fmt.Printf("Failed to delete switch: %v\n", err)
+		printf(ctx, "Failed to delete switch: %v\n", err)
 	} else {
-		fmt.Println("Switch deleted successfully.")
+		println(ctx, "Switch deleted successfully.")
 	}
 }

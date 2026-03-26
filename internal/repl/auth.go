@@ -10,13 +10,12 @@ package repl
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 )
 
 func handleUsers(ctx *Context, args []string) {
 	if len(args) == 0 {
-		printSubHelp("users", []cmdHelp{
+		printSubHelp(ctx, "users", []cmdHelp{
 			{"list", "List all registered users"},
 		})
 		return
@@ -28,23 +27,23 @@ func handleUsers(ctx *Context, args []string) {
 	case "list":
 		usersList(ctx)
 	default:
-		fmt.Printf("Unknown users command: '%s'\n", subCmd)
+		printf(ctx, "Unknown users command: '%s'\n", subCmd)
 	}
 }
 
 func usersList(ctx *Context) {
 	users, err := ctx.Auth.ListUsers()
 	if err != nil {
-		fmt.Printf("Error fetching users: %v\n", err)
+		printf(ctx, "Error fetching users: %v\n", err)
 		return
 	}
 
 	if len(users) == 0 {
-		fmt.Println("No users found")
+		println(ctx, "No users found")
 		return
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 8, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tUSERNAME\tEMAIL")
 	fmt.Fprintln(w, "--\t--------\t-----")
 
@@ -57,5 +56,5 @@ func usersList(ctx *Context) {
 	}
 
 	w.Flush()
-	fmt.Println("")
+	println(ctx, "")
 }

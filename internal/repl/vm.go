@@ -10,7 +10,6 @@ package repl
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"text/tabwriter"
 
@@ -19,7 +18,7 @@ import (
 
 func handleVms(ctx *Context, args []string) {
 	if len(args) == 0 {
-		printSubHelp("vms", []cmdHelp{
+		printSubHelp(ctx, "vms", []cmdHelp{
 			{"list", "List all VMs"},
 			{"networks <rid>", "List networks for a specific VM (by RID)"},
 			{"rmnet <rid> <net_id>", "Remove a network from a VM"},
@@ -36,13 +35,13 @@ func handleVms(ctx *Context, args []string) {
 
 	case "networks":
 		if len(subArgs) < 1 {
-			fmt.Println("Error: Missing VM RID. Usage: vms networks <rid>")
+			println(ctx, "Error: Missing VM RID. Usage: vms networks <rid>")
 			return
 		}
 
 		rid, err := strconv.ParseUint(subArgs[0], 10, 64)
 		if err != nil {
-			fmt.Printf("Error: Invalid RID '%s'\n", subArgs[0])
+			printf(ctx, "Error: Invalid RID '%s'\n", subArgs[0])
 			return
 		}
 
@@ -50,42 +49,42 @@ func handleVms(ctx *Context, args []string) {
 
 	case "rmnet":
 		if len(subArgs) < 2 {
-			fmt.Println("Error: Missing arguments. Usage: vms rmnet <rid> <network_id>")
+			println(ctx, "Error: Missing arguments. Usage: vms rmnet <rid> <network_id>")
 			return
 		}
 
 		rid, err := strconv.ParseUint(subArgs[0], 10, 64)
 		if err != nil {
-			fmt.Printf("Error: Invalid RID '%s'\n", subArgs[0])
+			printf(ctx, "Error: Invalid RID '%s'\n", subArgs[0])
 			return
 		}
 
 		netID, err := strconv.ParseUint(subArgs[1], 10, 64)
 		if err != nil {
-			fmt.Printf("Error: Invalid network ID '%s'\n", subArgs[1])
+			printf(ctx, "Error: Invalid network ID '%s'\n", subArgs[1])
 			return
 		}
 
 		vmRemoveNetwork(ctx, uint(rid), uint(netID))
 
 	default:
-		fmt.Printf("Unknown vms command: '%s'. Type 'vms' for help.\n", subCmd)
+		printf(ctx, "Unknown vms command: '%s'. Type 'vms' for help.\n", subCmd)
 	}
 }
 
 func vmsList(ctx *Context) {
 	vms, err := ctx.VirtualMachine.ListVMs()
 	if err != nil {
-		fmt.Printf("Error fetching VMs: %v\n", err)
+		printf(ctx, "Error fetching VMs: %v\n", err)
 		return
 	}
 
 	if len(vms) == 0 {
-		fmt.Println("No VMs found.")
+		println(ctx, "No VMs found.")
 		return
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 8, 2, ' ', 0)
 	fmt.Fprintln(w, "RID\tNAME\tNETWORKS")
 	fmt.Fprintln(w, "---\t----\t--------")
 
@@ -95,13 +94,13 @@ func vmsList(ctx *Context) {
 	}
 
 	w.Flush()
-	fmt.Println("")
+	println(ctx, "")
 }
 
 func vmsNetworksList(ctx *Context, rid uint) {
 	vms, err := ctx.VirtualMachine.ListVMs()
 	if err != nil {
-		fmt.Printf("Error fetching VMs: %v\n", err)
+		printf(ctx, "Error fetching VMs: %v\n", err)
 		return
 	}
 
@@ -114,18 +113,18 @@ func vmsNetworksList(ctx *Context, rid uint) {
 	}
 
 	if targetVM == nil {
-		fmt.Printf("Error: VM with RID %d not found.\n", rid)
+		printf(ctx, "Error: VM with RID %d not found.\n", rid)
 		return
 	}
 
 	if len(targetVM.Networks) == 0 {
-		fmt.Printf("VM '%s' (RID: %d) has no networks configured.\n", targetVM.Name, targetVM.RID)
+		printf(ctx, "VM '%s' (RID: %d) has no networks configured.\n", targetVM.Name, targetVM.RID)
 		return
 	}
 
-	fmt.Printf("Networks for VM: %s (RID: %d)\n", targetVM.Name, targetVM.RID)
+	printf(ctx, "Networks for VM: %s (RID: %d)\n", targetVM.Name, targetVM.RID)
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+	w := tabwriter.NewWriter(outputWriter(ctx), 0, 8, 2, ' ', 0)
 	fmt.Fprintln(w, "NET ID\tSWITCH\tTYPE\tEMUL\tMAC")
 	fmt.Fprintln(w, "------\t------\t----\t----\t---")
 
@@ -147,27 +146,27 @@ func vmsNetworksList(ctx *Context, rid uint) {
 	}
 
 	w.Flush()
-	fmt.Println("")
+	println(ctx, "")
 }
 
 func vmRemoveNetwork(ctx *Context, rid uint, netID uint) {
 	inactive, err := ctx.VirtualMachine.IsDomainInactive(rid)
 	if err != nil {
-		fmt.Printf("Error checking VM status: %v\n", err)
+		printf(ctx, "Error checking VM status: %v\n", err)
 		return
 	}
 	if !inactive {
-		fmt.Println("Error: VM must be powered off to remove networks.")
+		println(ctx, "Error: VM must be powered off to remove networks.")
 		return
 	}
 
-	fmt.Printf("Removing Network %d from VM RID %d...\n", netID, rid)
+	printf(ctx, "Removing Network %d from VM RID %d...\n", netID, rid)
 
 	err = ctx.VirtualMachine.NetworkDetach(rid, netID)
 
 	if err != nil {
-		fmt.Printf("Failed to delete network: %v\n", err)
+		printf(ctx, "Failed to delete network: %v\n", err)
 	} else {
-		fmt.Println("Network deleted successfully.")
+		println(ctx, "Network deleted successfully.")
 	}
 }
