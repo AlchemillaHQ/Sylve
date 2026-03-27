@@ -565,6 +565,8 @@ msgstr "प्रतिक्रिया क्लिपबोर्ड पर 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/ui/custom-input/combobox.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Enter"
 msgstr "एंटर"
 
@@ -1282,6 +1284,7 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Save"
@@ -1894,6 +1897,7 @@ msgstr "यह क्रिया वापस नहीं ली जा सक
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Cancel"
@@ -2297,6 +2301,8 @@ msgid "Search..."
 msgstr "खोजें..."
 
 #: src/lib/components/custom/TreeTable/Search.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Escape"
 msgstr "एस्केप"
 
@@ -5755,12 +5761,12 @@ msgstr "VirtIO ब्लॉक"
 msgid "Attach Storage"
 msgstr "स्टोरेज संलग्न करें"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' : 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "TPM एमुलेशन {0} करने में विफल रहा"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' : 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM एमुलेशन {0}"
@@ -7131,7 +7137,7 @@ msgid "Serial"
 msgstr "सीरियल"
 
 #. 0: consoleType === 'vnc' ? 'Serial'
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"
@@ -9835,4 +9841,65 @@ msgstr ""
 
 #: src/routes/[node]/notes/+page.svelte
 msgid "<0/> Note"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM - Update Name"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail - Update Name"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM name updated"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Error updating VM name"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Invalid VM name. Use letters, numbers, - or _."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM name is already in use"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "This VM is owned by another node right now"
+msgstr ""
+
+#~ msgid "VM name"
+#~ msgstr ""
+
+#~ msgid "Saving..."
+#~ msgstr ""
+
+#~ msgid "Save Name"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Edit Name"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Jail name updated"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Error updating jail name"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Invalid jail name. Use letters, numbers, - or _."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Jail name is already in use"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "This jail is owned by another node right now"
 msgstr ""

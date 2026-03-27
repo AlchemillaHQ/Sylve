@@ -176,6 +176,16 @@
 	let vmName = $state(vm.current.name || '');
 	let syncedVMName = $state(vm.current.name || '');
 	let isRenameInFlight = $state(false);
+	let isEditingName = $state(false);
+
+	function startEditingName() {
+		isEditingName = true;
+	}
+
+	function cancelEditingName() {
+		vmName = syncedVMName;
+		isEditingName = false;
+	}
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -359,13 +369,9 @@
 		}
 	}
 
-	let isVMNameDirty = $derived.by(
-		() => vmName.trim() !== String(vm.current.name || '').trim()
-	);
+	let isVMNameDirty = $derived.by(() => vmName.trim() !== String(vm.current.name || '').trim());
 
-	let canSaveVMName = $derived.by(
-		() => !isRenameInFlight && vmName.trim() !== '' && isVMNameDirty
-	);
+	let canSaveVMName = $derived.by(() => !isRenameInFlight && vmName.trim() !== '' && isVMNameDirty);
 
 	async function handleRename() {
 		const nextName = vmName.trim();
@@ -378,6 +384,7 @@
 		isRenameInFlight = true;
 		const result = await updateName(vm.current.rid, nextName);
 		if (result.status === 'success') {
+			isEditingName = false;
 			reload.leftPanel = true;
 			await vm.refetch();
 			vmName = vm.current.name || nextName;
@@ -831,14 +838,46 @@
 	<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
-				<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
-					<div class="flex items-center gap-1.5 whitespace-nowrap">
+				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
+					<div class="group flex items-center gap-1.5">
 						{#if isQgaEnabled && initialGaInfo && getVMIconByGaId(initialGaInfo.osInfo.id || '')}
-							<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6"></span>
+							<span class="icon {getVMIconByGaId(initialGaInfo.osInfo.id || '')} h-6 w-6 shrink-0"
+							></span>
 						{/if}
-						<span>{vm.current.name}</span>
-						{#if udTime}
-							<span>({udTime})</span>
+						{#if isEditingName}
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								class="border-b border-current bg-transparent outline-none min-w-0 w-40"
+								bind:value={vmName}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' && canSaveVMName) handleRename();
+									if (e.key === 'Escape') cancelEditingName();
+								}}
+								autofocus
+							/>
+							<button
+								onclick={handleRename}
+								disabled={!canSaveVMName || isRenameInFlight}
+								class="text-current disabled:opacity-40"
+								title="Save"
+							>
+								<span class="icon-[mdi--check] h-5 w-5"></span>
+							</button>
+							<button onclick={cancelEditingName} class="text-current" title="Cancel">
+								<span class="icon-[mdi--close] h-5 w-5"></span>
+							</button>
+						{:else}
+							<span class="whitespace-nowrap">{vm.current.name}</span>
+							{#if udTime}
+								<span class="whitespace-nowrap">({udTime})</span>
+							{/if}
+							<button
+								onclick={startEditingName}
+								class="invisible group-hover:visible transition-opacity text-current"
+								title="Edit Name"
+							>
+								<span class="icon-[mdi--pencil] h-3.5 w-3.5"></span>
+							</button>
 						{/if}
 					</div>
 				</Card.Description>
@@ -905,37 +944,16 @@
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-					Name
+					Description
 				</Card.Description>
 			</Card.Header>
 			<Card.Content class="mt-3 p-0">
 				<CustomValueInput
 					label=""
-					placeholder="VM name"
-					bind:value={vmName}
-					classes=""
-					type="text"
-				/>
-				<div class="mt-2 flex justify-end">
-					<Button
-						size="sm"
-						onclick={handleRename}
-						disabled={!canSaveVMName}
-						class="h-7 bg-muted-foreground/40 dark:bg-muted text-black hover:bg-blue-600 dark:text-white"
-					>
-						{isRenameInFlight ? 'Saving...' : 'Save Name'}
-					</Button>
-				</div>
-
-				<Card.Description class="mt-4 text-md font-normal text-blue-600 dark:text-blue-500">
-					Description
-				</Card.Description>
-				<CustomValueInput
-					label=""
 					placeholder="Notes about VM"
 					bind:value={vmDescription}
 					classes=""
-					textAreaClasses="!h-32"
+					textAreaClasses="!h-28"
 					type="textarea"
 				/>
 			</Card.Content>
