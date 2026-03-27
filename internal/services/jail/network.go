@@ -646,7 +646,7 @@ func (s *Service) SyncNetwork(ctId uint, jail jailModels.Jail) error {
 								return fmt.Errorf("failed to get ipv6 gateway: %w", err)
 							}
 
-							postStartBuilder.WriteString(fmt.Sprintf("route -j %s add default %s\n", ctidHash, ipv6Gw))
+							postStartBuilder.WriteString(fmt.Sprintf("route -6 -j %s add default %s\n", ctidHash, ipv6Gw))
 						}
 					}
 
