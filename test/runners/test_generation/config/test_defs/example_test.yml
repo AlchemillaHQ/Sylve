@@ -1,0 +1,10 @@
+output_dir: tmp
+shellspec_name: "example_spec"
+describe_desc: "Example test"
+test_list:
+  - test_name: zelta_version
+    it_desc: "should display version information: %{when_command}"
+    when_command: zelta --version
+  - test_name: zelta_help
+    it_desc: "should display help message: %{when_command}"
+    when_command: zelta --help
