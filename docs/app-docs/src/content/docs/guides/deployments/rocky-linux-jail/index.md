@@ -29,4 +29,14 @@ Now in the last section, **Advanced**, you need to pick Jail type as `Linux`. Th
 
 ![Create - Advanced](./advanced.png)
 
+## Using the Jail
+
 Once those are done, you can click on the create button and you should be good to go! You can start the jail and open the console to see it flying!
+
+![Console](./console.png)
+
+:::caution
+Try **not** to use MUSL based distributions in a Linux jail, they cause a lot of undefined behavior and are not recommended for use with the linux binary compatibility layer (atleast for now).
+
+Rocky Linux is a great choice for a Linux distribution in a jail, as it is based on RHEL and uses glibc, which has good compatibility with the linux binary compatibility layer, the package manager `dnf` also works without any issues and you can install a wide variety of software using it.
+:::
