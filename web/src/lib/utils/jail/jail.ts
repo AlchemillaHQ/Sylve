@@ -3,6 +3,7 @@ import type {
     JailLifecycleAction,
     JailLifecycleBadgeStyle
 } from '$lib/types/jail/jail';
+import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 
@@ -111,6 +112,88 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
     }
 
     return true;
+}
+
+function toJailCreateErrorText(error: APIResponse['error']): string {
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    if (Array.isArray(error)) {
+        return error.join(' ');
+    }
+
+    return '';
+}
+
+const jailCreateErrorMessageByCode: Record<string, string> = {
+    base_is_not_a_directory:
+        'Selected base image path is not a directory. Re-extract the base/rootfs and retry.',
+    base_path_does_not_exist: 'Selected base image could not be found on disk.',
+    download_uuid_required: 'A base image is required to create a jail.',
+    invalid_ct_id: 'Invalid jail ID. Use a value between 1 and 9999.',
+    invalid_hostname: 'Invalid hostname.',
+    invalid_ipv4_gateway: 'Invalid IPv4 gateway selection.',
+    invalid_ipv6_gateway: 'Invalid IPv6 gateway selection.',
+    invalid_jail_allowed_options: 'One or more allowed options are invalid.',
+    jail_base_fs_with_ctid_already_exists:
+        'A jail root dataset already exists for this CTID. Clean up leftovers before retrying.',
+    jail_create_database_failure: 'Failed to persist jail metadata in the database.',
+    jail_create_dependency_not_ready:
+        'Required jail dependencies are not ready (system/ZFS services).',
+    jail_create_runtime_failure: 'Jail provisioning failed while applying runtime resources.',
+    jail_create_stale_artifacts_detected:
+        'Stale jail artifacts were found for this CTID. Clean up leftovers before retrying.',
+    jail_with_ctid_already_exists:
+        'Jail ID already exists. Choose a different ID or remove the existing jail.',
+    linux_jails_cannot_use_dhcp_or_slaac: 'Linux jails cannot use DHCP or SLAAC.',
+    mac_already_used: 'Selected MAC object is already in use.',
+    pool_not_found: 'Selected storage pool was not found.',
+    standard_switch_not_found: 'Selected network switch was not found.',
+    switch_name_required: 'Network switch selection is required.'
+};
+
+export function getJailCreateErrorCode(response: Pick<APIResponse, 'message' | 'error'>): string {
+    const backendCode =
+        typeof response.message === 'string' ? response.message.trim().toLowerCase() : '';
+    if (backendCode !== '' && backendCode !== 'failed_to_create') {
+        return backendCode;
+    }
+
+    const errorText = toJailCreateErrorText(response.error).toLowerCase();
+    if (errorText === '') {
+        return 'failed_to_create_jail';
+    }
+
+    if (errorText.includes('jail_with_ctid_') && errorText.includes('already_exists')) {
+        return 'jail_with_ctid_already_exists';
+    }
+
+    const fallbackMatchers: Record<string, string> = {
+        failed_to_begin_tx: 'jail_create_database_failure',
+        failed_to_commit_tx: 'jail_create_database_failure',
+        failed_to_create_jail: 'jail_create_runtime_failure',
+        failed_to_create_jail_config: 'jail_create_runtime_failure',
+        failed_to_create_jail_dataset: 'jail_create_runtime_failure',
+        failed_to_create_network: 'jail_create_runtime_failure',
+        failed_to_find_base: 'base_path_does_not_exist'
+    };
+
+    for (const [needle, mappedCode] of Object.entries(fallbackMatchers)) {
+        if (errorText.includes(needle)) {
+            return mappedCode;
+        }
+    }
+
+    return 'failed_to_create_jail';
+}
+
+export function getJailCreateErrorMessage(response: Pick<APIResponse, 'message' | 'error'>): string {
+    const code = getJailCreateErrorCode(response);
+    return (
+        jailCreateErrorMessageByCode[code] ||
+        'Failed to create jail. Check backend logs for details.'
+    );
 }
 
 export function generateSimpleLinuxFSTab(ctId: number, pool: string): string {

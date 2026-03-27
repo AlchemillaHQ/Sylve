@@ -10,7 +10,9 @@ package jailHandlers
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -23,6 +25,137 @@ import (
 type JailEditDescRequest struct {
 	ID          uint   `json:"id" binding:"required"`
 	Description string `json:"description"`
+}
+
+var jailCreateConflictCodes = map[string]struct{}{
+	"ipv4_already_used":                     {},
+	"ipv6_already_used":                     {},
+	"jail_base_fs_with_ctid_already_exists": {},
+	"jail_create_stale_artifacts_detected":  {},
+	"jail_with_ctid_already_exists":         {},
+	"mac_already_used":                      {},
+}
+
+var jailCreateBadRequestCodes = map[string]struct{}{
+	"base_is_not_a_directory":                        {},
+	"base_path_does_not_exist":                       {},
+	"download_is_not_base_or_rootfs":                 {},
+	"download_uuid_required":                         {},
+	"failed_to_find_download":                        {},
+	"invalid_ct_id":                                  {},
+	"invalid_description":                            {},
+	"invalid_hostname":                               {},
+	"invalid_ipv4_gateway":                           {},
+	"invalid_ipv6_gateway":                           {},
+	"invalid_jail_allowed_options":                   {},
+	"invalid_jail_type":                              {},
+	"invalid_vm_name":                                {},
+	"linux_jails_cannot_use_dhcp_or_slaac":           {},
+	"pool_not_found":                                 {},
+	"standard_switch_not_found":                      {},
+	"start_order_must_be_greater_than_or_equal_to_0": {},
+	"switch_name_required":                           {},
+}
+
+var jailCreateAliasCodes = map[string]string{
+	"failed_to_find_base": "base_path_does_not_exist",
+}
+
+func isSnakeCaseErrorCode(value string) bool {
+	if value == "" || !strings.Contains(value, "_") {
+		return false
+	}
+
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
+}
+
+func extractCreateJailErrorCode(message string) string {
+	parts := strings.Split(strings.ToLower(message), ":")
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := strings.TrimSpace(parts[i])
+		if part == "" {
+			continue
+		}
+
+		token := part
+		if idx := strings.IndexAny(token, " \t\r\n,.;()[]{}"); idx >= 0 {
+			token = token[:idx]
+		}
+		token = strings.TrimSpace(token)
+
+		if isSnakeCaseErrorCode(token) {
+			return token
+		}
+	}
+
+	return ""
+}
+
+func classifyCreateJailError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_create_jail"
+	}
+
+	errText := strings.ToLower(err.Error())
+	if strings.Contains(errText, "jail_with_ctid_") && strings.Contains(errText, "already_exists") {
+		return http.StatusConflict, "jail_with_ctid_already_exists"
+	}
+
+	code := extractCreateJailErrorCode(errText)
+	if alias, ok := jailCreateAliasCodes[code]; ok {
+		code = alias
+	}
+
+	switch code {
+	case "failed_to_begin_tx",
+		"failed_to_commit_tx",
+		"failed_to_check_existing_jail":
+		return http.StatusInternalServerError, "jail_create_database_failure"
+	case "failed_to_create_jail_dataset",
+		"failed_to_create_jail",
+		"failed_to_create_network",
+		"failed_to_create_jail_config",
+		"failed_to_copy_base",
+		"failed_to_create_jail_directory",
+		"failed_to_write_jail_config_file",
+		"failed_to_write_log_file",
+		"failed_to_write_fstab_file",
+		"failed_to_prepare_resolv_conf_path",
+		"failed_to_write_resolv_conf_file",
+		"failed_to_create_sylve_directory":
+		return http.StatusInternalServerError, "jail_create_runtime_failure"
+	case "failed_to_list_usable_pools_for_jail_create_precheck",
+		"failed_to_check_jail_root_dataset_for_create_precheck",
+		"system_service_not_initialized",
+		"zfs_client_not_initialized":
+		return http.StatusInternalServerError, "jail_create_dependency_not_ready"
+	}
+
+	if _, ok := jailCreateConflictCodes[code]; ok {
+		return http.StatusConflict, code
+	}
+
+	if _, ok := jailCreateBadRequestCodes[code]; ok {
+		return http.StatusBadRequest, code
+	}
+
+	if strings.HasPrefix(code, "invalid_") {
+		return http.StatusBadRequest, code
+	}
+
+	if code != "" {
+		return http.StatusInternalServerError, code
+	}
+
+	return http.StatusInternalServerError, "failed_to_create_jail"
 }
 
 // @Summary List all Jails
@@ -251,11 +384,13 @@ func CreateJail(jailService *jail.Service) gin.HandlerFunc {
 		err := jailService.CreateJail(ctx, req)
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			statusCode, errorCode := classifyCreateJailError(err)
+
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_create",
+				Message: errorCode,
 				Data:    nil,
-				Error:   err.Error(),
+				Error:   "failed_to_create: " + err.Error(),
 			})
 			return
 		}

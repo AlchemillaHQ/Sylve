@@ -11,7 +11,7 @@
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { isValidCreateData } from '$lib/utils/jail/jail';
+	import { getJailCreateErrorMessage, isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { fade } from 'svelte/transition';
 	import { resource, watch } from 'runed';
@@ -241,21 +241,9 @@
 
 			if (response.error) {
 				handleAPIError(response);
-				let error = 'Failed to create jail';
-
-				switch (response.error) {
-					case 'failed_to_create: invalid_ipv4_gateway_or_address':
-						error = 'Invalid IPv4 gateway or address';
-						break;
-					case 'failed_to_create: invalid_ipv6_gateway_or_address':
-						error = 'Invalid IPv6 gateway or address';
-						break;
-					default:
-						error = 'Failed to create jail';
-				}
 
 				reload.leftPanel = true;
-				toast.error(error, {
+				toast.error(getJailCreateErrorMessage(response), {
 					position: 'bottom-center'
 				});
 				return;

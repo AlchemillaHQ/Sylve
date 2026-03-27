@@ -579,8 +579,7 @@ func (s *Service) hasStaleVMRootDatasetForCreate(ctx context.Context, rid uint) 
 		datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d", poolName, rid)
 		ds, getErr := s.GZFS.ZFS.Get(ctx, datasetName, false)
 		if getErr != nil {
-			msg := strings.ToLower(getErr.Error())
-			if strings.Contains(msg, "dataset does not exist") || strings.Contains(msg, "does not exist") {
+			if isVMDatasetNotFoundError(getErr) {
 				continue
 			}
 
@@ -593,6 +592,72 @@ func (s *Service) hasStaleVMRootDatasetForCreate(ctx context.Context, rid uint) 
 	}
 
 	return false, nil
+}
+
+func (s *Service) countStaleVMZFSDatasetsForCreate(ctx context.Context, rid uint) (int64, error) {
+	if s.System == nil {
+		return 0, fmt.Errorf("system_service_not_initialized")
+	}
+
+	if s.GZFS == nil || s.GZFS.ZFS == nil {
+		return 0, fmt.Errorf("zfs_client_not_initialized")
+	}
+
+	pools, err := s.System.GetUsablePools(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed_to_list_usable_pools_for_vm_create_precheck: %w", err)
+	}
+
+	stale := make(map[string]struct{})
+
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+
+		poolName := strings.TrimSpace(pool.Name)
+		if poolName == "" {
+			continue
+		}
+
+		vmPrefix := fmt.Sprintf("%s/sylve/virtual-machines", poolName)
+		vmRoot := fmt.Sprintf("%s/sylve/virtual-machines/%d", poolName, rid)
+
+		for _, datasetType := range []gzfs.DatasetType{gzfs.DatasetTypeFilesystem, gzfs.DatasetTypeVolume} {
+			datasets, listErr := s.GZFS.ZFS.ListByType(ctx, datasetType, true, vmPrefix)
+			if listErr != nil {
+				if isVMDatasetNotFoundError(listErr) {
+					continue
+				}
+
+				return 0, fmt.Errorf("failed_to_list_vm_datasets_for_create_precheck: %w", listErr)
+			}
+
+			for _, ds := range datasets {
+				if ds == nil {
+					continue
+				}
+
+				datasetName := strings.TrimSpace(ds.Name)
+				if datasetName == "" {
+					continue
+				}
+
+				if !datasetBelongsToVMRID(datasetName, rid) {
+					continue
+				}
+
+				// Root existence is tracked separately so the diagnostic count represents child/legacy artifacts.
+				if datasetName == vmRoot {
+					continue
+				}
+
+				stale[datasetName] = struct{}{}
+			}
+		}
+	}
+
+	return int64(len(stale)), nil
 }
 
 func (s *Service) countStaleVMStorageDatasetRowsForCreate(rid uint) (int64, error) {
@@ -616,16 +681,22 @@ func (s *Service) validateNoStaleVMCreateArtifacts(ctx context.Context, rid uint
 		return err
 	}
 
+	staleZFSDatasetCount, err := s.countStaleVMZFSDatasetsForCreate(ctx, rid)
+	if err != nil {
+		return err
+	}
+
 	staleStorageDatasetRows, err := s.countStaleVMStorageDatasetRowsForCreate(rid)
 	if err != nil {
 		return err
 	}
 
-	if rootDatasetExists || staleStorageDatasetRows > 0 {
+	if rootDatasetExists || staleZFSDatasetCount > 0 || staleStorageDatasetRows > 0 {
 		return fmt.Errorf(
-			"vm_create_stale_artifacts_detected: rid=%d root_dataset_exists=%t stale_storage_dataset_rows=%d",
+			"vm_create_stale_artifacts_detected: rid=%d root_dataset_exists=%t stale_zfs_dataset_count=%d stale_storage_dataset_rows=%d",
 			rid,
 			rootDatasetExists,
+			staleZFSDatasetCount,
 			staleStorageDatasetRows,
 		)
 	}

@@ -177,6 +177,7 @@ func classifyCreateVMError(err error) (int, string) {
 		"failed_to_remove_cloud_init_storage_entry":
 		return http.StatusInternalServerError, "vm_create_runtime_failure"
 	case "failed_to_list_usable_pools_for_vm_create_precheck",
+		"failed_to_list_vm_datasets_for_create_precheck",
 		"libvirt_not_initialized",
 		"system_service_not_initialized",
 		"zfs_client_not_initialized":

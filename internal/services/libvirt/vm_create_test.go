@@ -66,9 +66,13 @@ type vmCreatePrecheckZFSRunner struct {
 
 func (r *vmCreatePrecheckZFSRunner) Run(_ context.Context, _ io.Reader, stdout, _ io.Writer, _ string, args ...string) error {
 	datasetName := ""
+	recursive := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "list", "-p", "-r", "-j":
+		case "list", "-p", "-j":
+			continue
+		case "-r":
+			recursive = true
 			continue
 		case "-o", "-t":
 			i++
@@ -85,12 +89,45 @@ func (r *vmCreatePrecheckZFSRunner) Run(_ context.Context, _ io.Reader, stdout, 
 		return nil
 	}
 
-	if _, ok := r.existing[datasetName]; ok {
-		_, err := io.WriteString(stdout, fmt.Sprintf(
-			`{"output_version":{"name":"zfs","vers_major":0,"vers_minor":0},"datasets":{"%s":{"name":"%s","properties":{"guid":{"value":"1"},"mountpoint":{"value":"/"},"used":{"value":"0"},"available":{"value":"0"},"referenced":{"value":"0"},"compressratio":{"value":"1.00x"}}}}}`,
-			datasetName,
-			datasetName,
-		))
+	datasets := make(map[string]string)
+
+	switch {
+	case datasetName == "":
+		for existing := range r.existing {
+			datasets[existing] = existing
+		}
+	case recursive:
+		prefix := datasetName + "/"
+		for existing := range r.existing {
+			if existing == datasetName || strings.HasPrefix(existing, prefix) {
+				datasets[existing] = existing
+			}
+		}
+	default:
+		if _, ok := r.existing[datasetName]; ok {
+			datasets[datasetName] = datasetName
+		}
+	}
+
+	if len(datasets) > 0 {
+		builder := strings.Builder{}
+		builder.WriteString(`{"output_version":{"name":"zfs","vers_major":0,"vers_minor":0},"datasets":{`)
+		i := 0
+		for name := range datasets {
+			if i > 0 {
+				builder.WriteString(",")
+			}
+			builder.WriteString(fmt.Sprintf(
+				`"%s":{"name":"%s","pool":"%s","properties":{"guid":{"value":"1"},"mountpoint":{"value":"/"},"used":{"value":"0"},"available":{"value":"0"},"referenced":{"value":"0"},"compressratio":{"value":"1.00x"}}}`,
+				name,
+				name,
+				strings.SplitN(strings.TrimPrefix(name, "/"), "/", 2)[0],
+			))
+			i++
+		}
+		builder.WriteString("}}")
+
+		_, err := io.WriteString(stdout, builder.String())
 		return err
 	}
 
@@ -183,6 +220,21 @@ func TestValidateCreate_FailsWhenStaleStorageDatasetRowsExist(t *testing.T) {
 	}
 
 	req := testCreateRequest(512, 59012)
+	err := svc.validateCreate(req, context.Background())
+	if err == nil || !strings.Contains(err.Error(), "vm_create_stale_artifacts_detected") {
+		t.Fatalf("expected stale artifact error, got %v", err)
+	}
+}
+
+func TestValidateCreate_FailsWhenStaleZFSDatasetsExistWithoutDBRows(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+	svc := newVMCreatePrecheckTestService(
+		db,
+		[]string{"tank"},
+		[]string{"tank/sylve/virtual-machines/513.raw-1"},
+	)
+
+	req := testCreateRequest(513, 59013)
 	err := svc.validateCreate(req, context.Background())
 	if err == nil || !strings.Contains(err.Error(), "vm_create_stale_artifacts_detected") {
 		t.Fatalf("expected stale artifact error, got %v", err)
