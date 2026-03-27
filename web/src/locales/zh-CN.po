@@ -5761,12 +5761,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -7137,7 +7137,7 @@ msgid "Serial"
 msgstr "串口"
 
 #. 0: consoleType === 'vnc' ? 'Serial'
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"

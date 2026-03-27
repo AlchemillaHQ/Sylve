@@ -11,7 +11,6 @@
 package system
 
 /*
-#cgo CFLAGS: -I/usr/include
 #include <sys/socket.h>
 #include <netlink/netlink_snl.h>
 #include <netlink/netlink_snl_generic.h>

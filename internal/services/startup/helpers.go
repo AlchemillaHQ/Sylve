@@ -28,9 +28,11 @@ import (
 func (s *Service) SysctlSync() error {
 	intVals := map[string]int32{
 		"net.inet.ip.forwarding":            1,
+		"net.inet6.ip6.forwarding":          1,
 		"net.link.bridge.inherit_mac":       1,
 		"kern.geom.label.disk_ident.enable": 0,
 		"kern.geom.label.gptid.enable":      0,
+		"net.inet6.ip6.dad_count":           0,
 	}
 
 	for k, v := range intVals {

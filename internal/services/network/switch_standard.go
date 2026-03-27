@@ -912,7 +912,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 			return fmt.Errorf("edit_standard_bridge: enable SLAAC: %v", err)
 		}
 	} else if !newSw.DisableIPv6 {
-		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := utils.RunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "-accept_rtadv"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable SLAAC: %v", err)
 		}
 	}
