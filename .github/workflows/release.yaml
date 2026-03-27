@@ -101,6 +101,7 @@ jobs:
           gh release create "${TAG}" \
             --title "${TAG}" \
             --target "${TARGET_SHA}" \
+            --draft \
             --notes "TODO: add release notes."
 
   build-web:
