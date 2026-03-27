@@ -37,6 +37,10 @@ var findISOProbeRawImage = func(path string) bool {
 	return strings.EqualFold(strings.TrimSpace(info.Format), string(qemuimg.FormatRaw))
 }
 
+var flashImageToDiskCtx = utils.FlashImageToDiskCtx
+var inspectDiskImageFormat = qemuimg.Info
+var convertDiskImageToRaw = qemuimg.Convert
+
 func domainReasonToString(state libvirt.DomainState, reason int32) libvirtServiceInterfaces.DomainStateReason {
 	switch state {
 	case libvirt.DomainRunning:
@@ -675,6 +679,23 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 	}
 
 	mediaSize := mediaInfo.Size()
+	mediaFormat := string(qemuimg.FormatRaw)
+
+	if info, infoErr := inspectDiskImageFormat(mediaPath); infoErr == nil && info != nil {
+		if trimmed := strings.TrimSpace(info.Format); trimmed != "" {
+			mediaFormat = strings.ToLower(trimmed)
+		}
+
+		if info.VirtualSize > 0 {
+			mediaSize = info.VirtualSize
+		}
+	} else if infoErr != nil {
+		logger.L.Warn().
+			Uint("rid", vm.RID).
+			Str("mediaPath", mediaPath).
+			Err(infoErr).
+			Msg("cloud_init_media_format_probe_failed_assuming_raw")
+	}
 
 	if diskStorage.Size < mediaSize {
 		return fmt.Errorf("disk_too_small_for_media: disk_size=%d media_size=%d",
@@ -711,8 +732,15 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := utils.FlashImageToDiskCtx(ctx, mediaPath, storagePath); err != nil {
-		return fmt.Errorf("failed_to_flash_media_to_disk: %w", err)
+	if strings.EqualFold(mediaFormat, string(qemuimg.FormatRaw)) {
+		if err := flashImageToDiskCtx(ctx, mediaPath, storagePath); err != nil {
+			return fmt.Errorf("failed_to_flash_media_to_disk: %w", err)
+		}
+		return nil
+	}
+
+	if err := convertDiskImageToRaw(mediaPath, storagePath, qemuimg.FormatRaw); err != nil {
+		return fmt.Errorf("failed_to_convert_media_to_raw_disk: %w", err)
 	}
 
 	return nil
