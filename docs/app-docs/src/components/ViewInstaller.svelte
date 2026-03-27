@@ -21,12 +21,33 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       script = await res.text();
 
-      const { codeToHtml } = await import('shiki');
-      highlighted = await codeToHtml(script, {
-        lang: 'sh',
+      const [
+        { createHighlighterCore },
+        { createOnigurumaEngine },
+        { default: githubLight },
+        { default: githubDark },
+        { default: langBash },
+      ] = await Promise.all([
+        import('shiki/core'),
+        import('shiki/engine/oniguruma'),
+        import('shiki/themes/github-light.mjs'),
+        import('shiki/themes/github-dark.mjs'),
+        import('shiki/langs/bash.mjs'),
+      ]);
+
+      const highlighter = await createHighlighterCore({
+        themes: [githubLight, githubDark],
+        langs: [langBash],
+        engine: createOnigurumaEngine(import('shiki/wasm')),
+      });
+
+      highlighted = highlighter.codeToHtml(script, {
+        lang: 'bash',
         themes: { light: 'github-light', dark: 'github-dark' },
         defaultColor: 'light',
       });
+
+      highlighter.dispose();
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load script';
     }

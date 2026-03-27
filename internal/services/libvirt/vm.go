@@ -14,10 +14,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -311,6 +313,10 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 		return fmt.Errorf("rid_or_name_already_in_use")
 	}
 
+	if err := s.validateNoStaleVMCreateArtifacts(ctx, *data.RID); err != nil {
+		return err
+	}
+
 	if data.Description != "" && (len(data.Description) < 1 || len(data.Description) > 1024) {
 		return fmt.Errorf("invalid_description")
 	}
@@ -502,17 +508,8 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 	}
 
 	if data.ISO != "" && !cloudInit {
-		var count int64
-		err := s.DB.Model(&utilitiesModels.Downloads{}).
-			Where("uuid = ?", data.ISO).
-			Count(&count).Error
-
-		if err != nil {
-			return fmt.Errorf("failed_to_check_iso_usage: %w", err)
-		}
-
-		if count == 0 {
-			return fmt.Errorf("image_not_found: %s", data.ISO)
+		if _, err := s.FindISOByUUID(data.ISO, true); err != nil {
+			return fmt.Errorf("image_not_resolvable: %w", err)
 		}
 	}
 
@@ -536,6 +533,10 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 			if download.UType != "cloud-init" {
 				return fmt.Errorf("media_not_cloud_init_capable: %s", data.ISO)
 			}
+
+			if _, err := s.FindISOByUUID(data.ISO, true); err != nil {
+				return fmt.Errorf("cloud_init_media_not_resolvable: %w", err)
+			}
 		}
 
 		if data.CloudInitData == "" || data.CloudInitMetaData == "" {
@@ -546,6 +547,87 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 			!utils.IsValidYAML(data.CloudInitMetaData) {
 			return fmt.Errorf("invalid_cloud_init_yaml")
 		}
+	}
+
+	return nil
+}
+
+func (s *Service) hasStaleVMRootDatasetForCreate(ctx context.Context, rid uint) (bool, error) {
+	if s.System == nil {
+		return false, fmt.Errorf("system_service_not_initialized")
+	}
+
+	if s.GZFS == nil || s.GZFS.ZFS == nil {
+		return false, fmt.Errorf("zfs_client_not_initialized")
+	}
+
+	pools, err := s.System.GetUsablePools(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed_to_list_usable_pools_for_vm_create_precheck: %w", err)
+	}
+
+	for _, pool := range pools {
+		if pool == nil {
+			continue
+		}
+
+		poolName := strings.TrimSpace(pool.Name)
+		if poolName == "" {
+			continue
+		}
+
+		datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d", poolName, rid)
+		ds, getErr := s.GZFS.ZFS.Get(ctx, datasetName, false)
+		if getErr != nil {
+			msg := strings.ToLower(getErr.Error())
+			if strings.Contains(msg, "dataset does not exist") || strings.Contains(msg, "does not exist") {
+				continue
+			}
+
+			return false, fmt.Errorf("failed_to_check_vm_root_dataset_for_create_precheck: %w", getErr)
+		}
+
+		if ds != nil {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (s *Service) countStaleVMStorageDatasetRowsForCreate(rid uint) (int64, error) {
+	var count int64
+	if err := s.DB.Model(&vmModels.VMStorageDataset{}).
+		Where("name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ?",
+			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
+			fmt.Sprintf("%%/sylve/virtual-machines/%d_%%", rid)).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_check_stale_vm_storage_dataset_rows: %w", err)
+	}
+
+	return count, nil
+}
+
+func (s *Service) validateNoStaleVMCreateArtifacts(ctx context.Context, rid uint) error {
+	rootDatasetExists, err := s.hasStaleVMRootDatasetForCreate(ctx, rid)
+	if err != nil {
+		return err
+	}
+
+	staleStorageDatasetRows, err := s.countStaleVMStorageDatasetRowsForCreate(rid)
+	if err != nil {
+		return err
+	}
+
+	if rootDatasetExists || staleStorageDatasetRows > 0 {
+		return fmt.Errorf(
+			"vm_create_stale_artifacts_detected: rid=%d root_dataset_exists=%t stale_storage_dataset_rows=%d",
+			rid,
+			rootDatasetExists,
+			staleStorageDatasetRows,
+		)
 	}
 
 	return nil
@@ -589,11 +671,117 @@ func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
 	return vm, err
 }
 
-func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
+func (s *Service) cleanupAutoCreatedVMCreateMACObjects(rid uint, autoCreatedMACIDs []uint, warnings *[]string) {
+	for _, macID := range uniqueUintValues(autoCreatedMACIDs) {
+		var vmRefs int64
+		if err := s.DB.Model(&vmModels.Network{}).
+			Where("mac_id = ?", macID).
+			Count(&vmRefs).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_count_vm_network_refs_for_mac_%d", macID), err)
+			continue
+		}
+		if vmRefs > 0 {
+			continue
+		}
+
+		var jailRefs int64
+		if err := s.DB.Model(&jailModels.Network{}).
+			Where("mac_id = ?", macID).
+			Count(&jailRefs).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_count_jail_network_refs_for_mac_%d", macID), err)
+			continue
+		}
+		if jailRefs > 0 {
+			continue
+		}
+
+		var dhcpRefs int64
+		if err := s.DB.Model(&networkModels.DHCPStaticLease{}).
+			Where("mac_object_id = ?", macID).
+			Count(&dhcpRefs).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_count_dhcp_refs_for_mac_%d", macID), err)
+			continue
+		}
+		if dhcpRefs > 0 {
+			continue
+		}
+
+		if err := s.DB.Where("object_id = ?", macID).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_delete_auto_created_mac_entries_%d", macID), err)
+		}
+		if err := s.DB.Where("object_id = ?", macID).Delete(&networkModels.ObjectResolution{}).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_delete_auto_created_mac_resolutions_%d", macID), err)
+		}
+		if err := s.DB.Delete(&networkModels.Object{}, macID).Error; err != nil {
+			appendForceRemoveWarning(warnings, rid, fmt.Sprintf("failed_to_delete_auto_created_mac_object_%d", macID), err)
+		}
+	}
+}
+
+func (s *Service) cleanupFailedVMCreate(rid uint, autoCreatedMACIDs []uint) {
+	if rid == 0 {
+		return
+	}
+
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	warnings := make([]string, 0)
+
+	if s.IsVirtualizationEnabled() {
+		if _, err := s.ensureConnection(); err == nil {
+			if err := s.RemoveLvVm(rid); err != nil {
+				appendForceRemoveWarning(&warnings, rid, "failed_to_remove_vm_domain_during_create_rollback", err)
+			}
+		} else {
+			appendForceRemoveWarning(&warnings, rid, "libvirt_connection_not_available_during_create_rollback", err)
+		}
+	}
+
+	s.forceRemoveVMRuntimeArtifacts(rid, &warnings)
+	s.forceRemoveVMZFSDatasets(cleanupCtx, rid, &warnings)
+	s.forceRemoveVMDBRecords(rid, false, &warnings)
+	s.cleanupAutoCreatedVMCreateMACObjects(rid, autoCreatedMACIDs, &warnings)
+
+	if len(warnings) > 0 {
+		logger.L.Warn().
+			Uint("rid", rid).
+			Strs("warnings", warnings).
+			Msg("vm_create_rollback_cleanup_warnings")
+	}
+}
+
+func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) (err error) {
 	if err := s.validateCreate(data, ctx); err != nil {
 		logger.L.Debug().Err(err).Msg("CreateVM: validation failed")
 		return err
 	}
+
+	rid := *data.RID
+	autoCreatedMACIDs := make([]uint, 0, 1)
+	cleanupRIDArtifacts := false
+
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		if cleanupRIDArtifacts {
+			s.cleanupFailedVMCreate(rid, autoCreatedMACIDs)
+			return
+		}
+
+		if len(autoCreatedMACIDs) > 0 {
+			warnings := make([]string, 0)
+			s.cleanupAutoCreatedVMCreateMACObjects(rid, autoCreatedMACIDs, &warnings)
+			if len(warnings) > 0 {
+				logger.L.Warn().
+					Uint("rid", rid).
+					Strs("warnings", warnings).
+					Msg("vm_create_auto_mac_cleanup_warnings")
+			}
+		}
+	}()
 
 	vncWait := false
 	startAtBoot := false
@@ -719,6 +907,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			if err := s.DB.Create(&macObj).Error; err != nil {
 				return fmt.Errorf("failed_to_create_mac_object: %w", err)
 			}
+			autoCreatedMACIDs = append(autoCreatedMACIDs, macObj.ID)
 
 			macEntry := networkModels.ObjectEntry{
 				ObjectID: macObj.ID,
@@ -775,7 +964,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 
 	vm := &vmModels.VM{
 		Name:                   data.Name,
-		RID:                    *data.RID,
+		RID:                    rid,
 		Description:            data.Description,
 		CPUSockets:             data.CPUSockets,
 		CPUCores:               data.CPUCores,
@@ -818,32 +1007,14 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		logger.L.Debug().Err(err).Msg("create_vm: failed to create vm with associations")
 		return fmt.Errorf("failed_to_create_vm_with_associations: %w", err)
 	}
+	cleanupRIDArtifacts = true
 
 	if err := s.CreateLvVm(int(vm.ID), ctx); err != nil {
-		if err := s.DB.Delete(vm).Error; err != nil {
-			logger.L.Debug().Err(err).Msg("create_vm: failed to delete vm after creation failure")
-			return fmt.Errorf("failed_to_delete_vm_after_creation_failure: %w", err)
-		}
-
-		for _, storage := range storages {
-			if err := s.DB.Delete(&storage).Error; err != nil {
-				logger.L.Debug().Err(err).Msg("create_vm: failed to delete storage after creation failure")
-				return fmt.Errorf("failed_to_delete_storage_after_vm_creation_failure: %w", err)
-			}
-		}
-
-		for _, network := range networks {
-			if err := s.DB.Delete(&network).Error; err != nil {
-				logger.L.Debug().Err(err).Msg("create_vm: failed to delete network after creation failure")
-				return fmt.Errorf("failed_to_delete_network_after_vm_creation_failure: %w", err)
-			}
-		}
-
 		logger.L.Debug().Err(err).Msg("create_vm: failed to create lv vm")
 		return fmt.Errorf("failed_to_create_lv_vm: %w", err)
 	}
 
-	if err := s.WriteVMJson(*data.RID); err != nil {
+	if err := s.WriteVMJson(rid); err != nil {
 		logger.L.Error().Err(err).Msg("failed to write VM JSON after creation")
 	}
 
