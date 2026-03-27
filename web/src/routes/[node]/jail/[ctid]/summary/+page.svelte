@@ -565,6 +565,7 @@
 				<Card.Description class="text-md  font-normal text-blue-600 dark:text-blue-500">
 					<div class="group flex items-center gap-1.5">
 						{#if isEditingName}
+							<!-- svelte-ignore a11y_autofocus -->
 							<input
 								class="border-b border-current bg-transparent outline-none min-w-0 w-40"
 								bind:value={jailName}
@@ -578,10 +579,11 @@
 								onclick={handleRename}
 								disabled={!canSaveJailName || isRenameInFlight}
 								class="text-current disabled:opacity-40"
+								title="Save"
 							>
 								<span class="icon-[mdi--check] h-5 w-5"></span>
 							</button>
-							<button onclick={cancelEditingName} class="text-current">
+							<button onclick={cancelEditingName} class="text-current" title="Cancel">
 								<span class="icon-[mdi--close] h-5 w-5"></span>
 							</button>
 						{:else}
@@ -592,6 +594,7 @@
 							<button
 								onclick={startEditingName}
 								class="invisible group-hover:visible transition-opacity text-current"
+								title="Edit Name"
 							>
 								<span class="icon-[mdi--pencil] h-3.5 w-3.5"></span>
 							</button>
