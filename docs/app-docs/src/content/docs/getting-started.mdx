@@ -15,6 +15,10 @@ Coming from Linux system administration, it can be tempting to run the oldest po
 That said, if your use case requires maximum stability and you do not need the latest features or bug fixes, **15.0-RELEASE** should work perfectly fine.
 :::
 
+## TL;DR
+
+If you want to get going right away, run `fetch -o- sh.sylve.io | sh` on a FreeBSD >= 15 machine and open `https://<host>:8181` in your browser. For more details, continue reading.
+
 ## Software Dependencies
 
 Sylve is designed to run using only **base FreeBSD dependencies** if you prefer. However, we recommend installing the following packages:
@@ -102,34 +106,30 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
 
 ```jsonc
 {
-  "environment": "production",
-  "proxyToVite": false,
-  "dataPath": "/var/db/sylve",
-  "admin": {
-    "email": "admin@sylve.local",
-    "password": "replace-this-with-something-strong",
-  },
-  "tlsConfig": {
-    "certFile": "/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
-    "keyFile": "/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem",
-  },
-  "logLevel": 3,
-  "port": 8181, // You can set to 0 to disable the main/public HTTPS listener
-  "httpPort": 8182, // You can set to 0 to disable the main/public HTTP listener
-  "raft": {
-    "reset": false,
-  },
-  "btt": {
-    "rpc": {
-      "enabled": false,
-      "host": "127.0.0.1",
-      "port": 6890,
-    },
-    "dht": {
-      "enabled": true,
-      "port": 7246,
-    },
-  },
+   "environment":"production",
+   "proxyToVite":false,
+   "dataPath":"/var/db/sylve",
+   "admin":{
+      "email":"admin@sylve.local",
+      "password":"replace-this-with-something-strong"
+   },
+   "logLevel":3,
+   "port":8181,
+   "httpPort":8182,
+   "raft":{
+      "reset":false
+   },
+   "btt":{
+      "rpc":{
+         "enabled":false,
+         "host":"127.0.0.1",
+         "port":6890
+      },
+      "dht":{
+         "enabled":true,
+         "port":7246
+      }
+   }
 }
 ```
 
@@ -138,6 +138,13 @@ Most of the above config is self-explanatory, we will discuss the ones that aren
 - `proxyToVite`: This is a development setting that allows the backend to proxy requests to the Vite development server. It should be set to `false` in production.
 
 - `tlsConfig`: This is where you specify the paths to your TLS certificate and key files. If you want to use HTTPS (which is highly recommended), you need to provide valid paths here. You can use Let's Encrypt or any other certificate authority to obtain your certificates. This is also important if you're going to setup Passkey based authentication.
+
+```json
+"tlsConfig":{
+  "certFile":"/usr/local/etc/letsencrypt/live/sylve.example.com/fullchain.pem",
+  "keyFile":"/usr/local/etc/letsencrypt/live/sylve.example.net/privkey.pem"
+},
+```
 
 - `logLevel`: This controls the verbosity of the logs. The levels are as follows:
   - `0`: Debug

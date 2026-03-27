@@ -2,6 +2,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import CopyButton from "@/components/CopyButton.svelte";
+import ViewInstallerButton from "@/components/ViewInstallerButton.svelte";
 import HeroFrame from "@/components/HeroFrame.svelte";
 import Particles from "../magicui/Particles.svelte";
 import { buttonVariants } from "../ui/button";
@@ -76,22 +77,13 @@ try {
       <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
       <span data-i18n="getStarted">Get Started</span>
     </a>
-    <a
-      href="https://github.com/AlchemillaHQ/Sylve"
-      target="_blank"
-      rel="noopener noreferrer"
-      title="Star on Github"
-      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm"
-    >
-      <span class="icon-[mdi--github] size-4 mr-2"></span>
-      <span data-i18n="starGithub">Star on Github</span>
-    </a>
-    <div class="card-wrapper h-11 border rounded-lg hidden">
+    <div class="card-wrapper h-11 border rounded-lg">
       <div
         class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
       >
-        <span><span class="text-foreground">$</span> pkg install sylve</span>
-        <CopyButton client:load text="pkg install sylve" />
+        <span><span class="text-foreground">$ </span>fetch -o- sh.sylve.io | sh</span>
+        <ViewInstallerButton client:load />
+        <CopyButton client:load text="fetch -o- sh.sylve.io | sh" />
       </div>
     </div>
   </div>

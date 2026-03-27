@@ -19,6 +19,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "radix-ui": "^1.4.3",
+        "runed": "^0.37.1",
         "sharp": "^0.34.2",
         "svelte": "^5.53.7",
         "swiper": "^12.1.2",

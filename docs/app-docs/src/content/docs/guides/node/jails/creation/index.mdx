@@ -42,6 +42,10 @@ You should have also set the download type to Base/RootFS for the selectbox here
 
 You can attach your Jail to a bridge and get DHCP/SLAAC or even use static IPs (actually better), but to keep things simple lets just use "inherited" networking, this means the jail will share the host's network stack, this is the simplest way to get your jail connected to the network, but it has some limitations, for example you won't be able to use port forwarding or have multiple jails with the same IP address, but it's a good option if you just want to get your jail up and running quickly without having to worry about networking.
 
+If you do want to use Static IPs (especially since only inherited/static IPs are supported for Linux jails), you can click on the generate button on the top right of each network object select box that will allow you to create Network Objects on the fly without having to leave the form. Be sure to give just one entry!
+
+![Network - Create Object](./create-object.png)
+
 ## Hardware
 
 Jail hardware provisioning isn't an exact science, it's more about setting limits and reservations for the resources that the jail will use, but it doesn't actually "provision" hardware like in a VM, so if you assign 2 CPU cores to a jail, it doesn't mean that the jail will always use those 2 cores, it just means that the jail can use up to 2 cores if it needs to, but it can also use less if it doesn't need that much.

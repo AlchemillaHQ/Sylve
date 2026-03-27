@@ -994,18 +994,21 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		CTID: *data.CTID,
 	}
 
-	tx := s.DB.Begin()
-	if tx.Error != nil {
-		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
+	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, *data.CTID)
+	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", data.Pool, *data.CTID)
+
+	var dataset *gzfs.Dataset
+	dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, datasetName, map[string]string{})
+	if err != nil || dataset == nil {
+		if err == nil {
+			err = fmt.Errorf("nil_dataset_returned")
+		}
+
+		err = fmt.Errorf("failed_to_create_jail_dataset: %w", err)
+		return
 	}
 
-	txCommitted := false
-	defer func() {
-		if err != nil && !txCommitted {
-			_ = tx.Rollback()
-			s.rollbackJailCreation(ctx, state)
-		}
-	}()
+	state.DatasetName = datasetName
 
 	var jail jailModels.Jail
 
@@ -1077,6 +1080,27 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	jail.DevFSRuleset = data.DevFSRuleset
+
+	jail.Storages = append(jail.Storages, jailModels.Storage{
+		Pool:   data.Pool,
+		GUID:   dataset.GUID,
+		Name:   "Base Filesystem",
+		IsBase: true,
+	})
+
+	tx := s.DB.Begin()
+	if tx.Error != nil {
+		s.rollbackJailCreation(ctx, state)
+		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
+	}
+
+	txCommitted := false
+	defer func() {
+		if err != nil && !txCommitted {
+			_ = tx.Rollback()
+			s.rollbackJailCreation(ctx, state)
+		}
+	}()
 
 	// Create networks first to get their database IDs
 	var createdNetworks []jailModels.Network
@@ -1158,14 +1182,13 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 
 			mac = macObj.ID
 		} else {
-			var macEntry string
-			macEntry, err = s.NetworkService.GetObjectEntryByID(mac)
-			if err != nil {
+			var macEntry networkModels.ObjectEntry
+			if err = tx.Where("object_id = ?", mac).First(&macEntry).Error; err != nil {
 				err = fmt.Errorf("failed_to_get_mac_entry: %w", err)
 				return
 			}
 
-			macStr = macEntry
+			macStr = macEntry.Value
 		}
 
 		var ipv4ID, ipv4GwID, ipv6ID, ipv6GwID *uint
@@ -1230,29 +1253,6 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	if data.InheritIPv6 != nil {
 		jail.InheritIPv6 = *data.InheritIPv6
 	}
-
-	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, *data.CTID)
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", data.Pool, *data.CTID)
-
-	var dataset *gzfs.Dataset
-	dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, datasetName, map[string]string{})
-	if err != nil || dataset == nil {
-		if err == nil {
-			err = fmt.Errorf("nil_dataset_returned")
-		}
-
-		err = fmt.Errorf("failed_to_create_jail_dataset: %w", err)
-		return
-	}
-
-	state.DatasetName = datasetName
-
-	jail.Storages = append(jail.Storages, jailModels.Storage{
-		Pool:   data.Pool,
-		GUID:   dataset.GUID,
-		Name:   "Base Filesystem",
-		IsBase: true,
-	})
 
 	// Associate the created networks with the jail
 	jail.Networks = createdNetworks

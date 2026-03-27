@@ -147,6 +147,7 @@ export default defineConfig({
                                     collapsed: true,
                                     items: [
                                         'guides/node/virtual-machines/creation',
+                                        'guides/node/virtual-machines/templates',
                                         'guides/node/virtual-machines/summary',
                                         'guides/node/virtual-machines/hardware',
                                         'guides/node/virtual-machines/storage',
@@ -187,17 +188,18 @@ export default defineConfig({
                             ],
                         },
                         {
-                            label: 'Advanced Topics',
-                            collapsed: true,
-                            items: [
-                                'guides/advanced-topics/jailing-sylve',
-                            ],
-                        },
-                        {
                             label: 'Deployments',
                             collapsed: false,
                             items: [
                                 'guides/deployments/jellyfin-jail',
+                                'guides/deployments/rocky-linux-jail'
+                            ],
+                        },
+                        {
+                            label: 'Advanced Topics',
+                            collapsed: true,
+                            items: [
+                                'guides/advanced-topics/jailing-sylve',
                             ],
                         },
                     ],

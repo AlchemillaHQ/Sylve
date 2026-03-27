@@ -2,6 +2,6 @@
   "name": "sylve-docs",
   "compatibility_date": "2025-03-10",
   "assets": {
-    "directory": "./dist",
-  },
+    "directory": "./dist"
+  }
 }

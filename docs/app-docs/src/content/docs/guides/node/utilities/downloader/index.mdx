@@ -30,3 +30,11 @@ Let's go over the available options for this download:
 - **Extract Automatically**: If the downloaded file is an archive (like a .txz or .tar.gz), enabling this option will automatically extract the contents after the download is complete. This is very imporatnt for Jail base.txz and rootfs.tar.gz downloads, as it will extract the filesystem that can then be used to create a new Jail.
 
 - **Auto-Convert to RAW**: If the downloaded file is a disk image that is not in RAW format (like .qcow2 or .vmdk), enabling this option will automatically convert it to RAW format after the download is complete. This is important for any downloads that are intended to be used as VM images. We use qemu-tools underneath to do the conversion so pretty much any format that qemu supports can be converted to RAW on the fly during the download.
+
+## Uploading a File
+
+If you have a file on your local machine that you want to add to Sylve, you can use the downloader to do that as well. Click on the "Upload" button on the top right in the context menu.
+
+![New Upload](./upload.png)
+
+Then you can either browser your PC or just drop in a file to upload it. After the upload is complete you can just click on "Complete Upload" and it will be added to your downloads list and you can use it just like any other download.
