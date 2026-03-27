@@ -22,21 +22,26 @@ backend-debug:
 
 backend-cross:
 	mkdir -p $(BIN_DIR)
-	ARCH=$(ARCH) FREEBSD_VERSION=$(FREEBSD_VERSION) FREEBSD_SYSROOT=$(FREEBSD_SYSROOT) \
-		./scripts/setup-freebsd-sysroot.sh
 	@set -eu; \
+	SYSROOT="$(FREEBSD_SYSROOT)"; \
+	case "$$SYSROOT" in \
+		/*) ;; \
+		*) SYSROOT="$$(pwd)/$$SYSROOT" ;; \
+	esac; \
+	ARCH=$(ARCH) FREEBSD_VERSION=$(FREEBSD_VERSION) FREEBSD_SYSROOT="$$SYSROOT" \
+		./scripts/setup-freebsd-sysroot.sh; \
 	case "$(ARCH)" in \
 		amd64) GOARCH=amd64; TARGET=x86_64-unknown-freebsd15.0 ;; \
 		arm64) GOARCH=arm64; TARGET=aarch64-unknown-freebsd15.0 ;; \
 		*) echo "Unsupported ARCH: $(ARCH)" >&2; exit 1 ;; \
 	esac; \
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$$GOARCH \
-	CGO_CFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
-	CGO_CPPFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
-	CGO_CXXFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
-	CGO_LDFLAGS="-fuse-ld=lld --sysroot=$(FREEBSD_SYSROOT)" \
-	CC="clang --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT)" \
-	CXX="clang++ --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT)" \
+	CGO_CFLAGS="--sysroot=$$SYSROOT" \
+	CGO_CPPFLAGS="--sysroot=$$SYSROOT" \
+	CGO_CXXFLAGS="--sysroot=$$SYSROOT" \
+	CGO_LDFLAGS="-fuse-ld=lld --sysroot=$$SYSROOT" \
+	CC="clang --target=$$TARGET --sysroot=$$SYSROOT" \
+	CXX="clang++ --target=$$TARGET --sysroot=$$SYSROOT" \
 	go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 cross-build-amd64:
