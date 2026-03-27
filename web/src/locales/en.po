@@ -4523,18 +4523,14 @@ msgstr "Optional description for this virtual machine"
 msgid "Basic"
 msgstr "Basic"
 
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Failed to create jail"
-msgstr "Failed to create jail"
+#~ msgid "Failed to create jail"
+#~ msgstr "Failed to create jail"
 
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Invalid IPv4 gateway or address"
-msgstr "Invalid IPv4 gateway or address"
+#~ msgid "Invalid IPv4 gateway or address"
+#~ msgstr "Invalid IPv4 gateway or address"
 
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Invalid IPv6 gateway or address"
-msgstr "Invalid IPv6 gateway or address"
+#~ msgid "Invalid IPv6 gateway or address"
+#~ msgstr "Invalid IPv6 gateway or address"
 
 #. 0: data.name
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
@@ -5466,9 +5462,8 @@ msgstr "VM Name"
 msgid "Created VM {0}"
 msgstr "Created VM {0}"
 
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-msgid "Failed to create VM"
-msgstr "Failed to create VM"
+#~ msgid "Failed to create VM"
+#~ msgstr "Failed to create VM"
 
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -5760,12 +5755,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable' : 'disable'
+#. 0: tpmEmulation ? 'enable' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled' : 'disabled'
+#. 0: tpmEmulation ? 'enabled' 
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -9078,15 +9073,15 @@ msgstr "Invalid CTID range"
 msgid "Invalid jail name prefix"
 msgstr "Invalid jail name prefix"
 
-#. 0: createMode === 'single' ? 'Jail'
-#. 0: createMode === 'single' ? 'VM'
+#. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#. 0: createMode === 'single' ? 'VM' : 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Creating {0}"
 msgstr "Creating {0}"
 
-#. 0: createMode === 'single' ? 'Jail'
-#. 0: createMode === 'single' ? 'VM'
+#. 0: createMode === 'single' ? 'Jail' : 'Jails'
+#. 0: createMode === 'single' ? 'VM' : 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create {0}"

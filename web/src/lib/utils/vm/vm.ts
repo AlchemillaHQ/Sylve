@@ -150,33 +150,35 @@ function toVMCreateErrorText(error: APIResponse['error']): string {
 }
 
 const vmCreateErrorMessageByCode: Record<string, string> = {
-    cloud_init_data_missing: 'Cloud-Init requires both user-data and metadata.',
-    cloud_init_requires_iso: 'Cloud-Init requires an installation media image.',
-    cloud_init_requires_storage: 'Cloud-Init requires a VM storage device.',
-    invalid_cloud_init_yaml: 'Cloud-Init YAML is invalid. Verify user-data and metadata syntax.',
-    invalid_iso_or_image_format: 'Invalid or unsupported ISO/image format. Verify the selected media file.',
-    invalid_vm_name: 'Invalid VM name. Use a valid hostname-style name.',
-    iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk.',
-    mac_object_already_in_use: 'Selected MAC object is already in use by another guest.',
-    media_not_cloud_init_capable: 'Selected media is not marked as cloud-init capable.',
-    no_emulation_type_selected: 'No storage emulation type selected.',
-    no_switch_emulation_type_selected: 'No network emulation type selected.',
-    pool_not_found: 'Selected storage pool was not found.',
-    rid_or_name_already_in_use: 'VM ID or name already exists. Choose a different value.',
-    storage_size_greater_than_available: 'Requested storage size is larger than available pool space.',
-    switch_not_found: 'Selected network switch was not found. Refresh and select a valid switch.',
-    vm_create_database_failure: 'Failed to persist VM metadata in the database.',
+    cloud_init_data_missing: 'Cloud-Init requires both user-data and metadata',
+    cloud_init_requires_iso: 'Cloud-Init requires an installation media image',
+    cloud_init_requires_storage: 'Cloud-Init requires a VM storage device',
+    invalid_cloud_init_yaml: 'Cloud-Init YAML is invalid. Verify user-data and metadata syntax',
+    invalid_iso_or_image_format: 'Invalid or unsupported ISO/image format. Verify the selected media file',
+    invalid_vm_name: 'Invalid VM name. Use a valid hostname-style name',
+    iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk',
+    unsupported_download_type:
+        'Selected media source type is unsupported. Re-import the image as HTTP/path/torrent download',
+    mac_object_already_in_use: 'Selected MAC object is already in use by another guest',
+    media_not_cloud_init_capable: 'Selected media is not marked as cloud-init capable',
+    no_emulation_type_selected: 'No storage emulation type selected',
+    no_switch_emulation_type_selected: 'No network emulation type selected',
+    pool_not_found: 'Selected storage pool was not found',
+    rid_or_name_already_in_use: 'VM ID or name already exists. Choose a different value',
+    storage_size_greater_than_available: 'Requested storage size is larger than available pool space',
+    switch_not_found: 'Selected network switch was not found. Refresh and select a valid switch',
+    vm_create_database_failure: 'Failed to persist VM metadata in the database',
     vm_create_dependency_not_ready:
-        'Required VM dependencies are not ready (libvirt/ZFS/system services).',
-    vm_create_runtime_failure: 'VM provisioning failed while applying runtime resources.',
+        'Required VM dependencies are not ready (libvirt/ZFS/system services)',
+    vm_create_runtime_failure: 'VM provisioning failed while applying runtime resources',
     vm_create_stale_artifacts_detected:
-        'Stale VM artifacts were found for this ID. Clean up leftovers before retrying.',
+        'Stale VM artifacts were found for this ID. Clean up leftovers before retrying',
     vm_id_already_exists:
-        'VM ID already exists in libvirt. Choose a different ID or clean up the existing domain.',
+        'VM ID already exists in libvirt. Choose a different ID or clean up the existing domain',
     vnc_port_already_in_use_by_another_service:
-        'VNC port is already used by another service. Choose a different port.',
+        'VNC port is already used by another service. Choose a different port',
     vnc_port_already_in_use_by_another_vm:
-        'VNC port is already used by another VM. Choose a different port.'
+        'VNC port is already used by another VM. Choose a different port'
 };
 
 export function getVMCreateErrorCode(response: Pick<APIResponse, 'message' | 'error'>): string {
@@ -224,14 +226,14 @@ export function getVMCreateErrorMessage(response: Pick<APIResponse, 'message' | 
     const code = getVMCreateErrorCode(response);
 
     if (code.startsWith('no_pool_selected_for_')) {
-        return 'No storage pool selected for the chosen storage type.';
+        return 'No storage pool selected for the chosen storage type';
     }
 
     if (code.startsWith('size_should_be_at_least_')) {
-        return 'Requested storage size is below the minimum supported size.';
+        return 'Requested storage size is below the minimum supported size';
     }
 
-    return vmCreateErrorMessageByCode[code] || 'Failed to create VM. Check backend logs for details.';
+    return vmCreateErrorMessageByCode[code] || 'Failed to create VM, check backend logs for details';
 }
 
 export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]): number {
