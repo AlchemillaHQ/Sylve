@@ -2485,6 +2485,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/jail/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the name of a jail by its ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Edit a Jail's name",
+                "parameters": [
+                    {
+                        "description": "Edit Jail Name Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.JailEditNameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/network": {
             "put": {
                 "security": [
@@ -7131,6 +7176,51 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/vm/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the name of a virtual machine by its RID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Edit a Virtual Machine's name",
+                "parameters": [
+                    {
+                        "description": "Edit Virtual Machine Name Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.VMEditNameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -13664,6 +13754,21 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers_jail.JailEditNameRequest": {
+            "type": "object",
+            "required": [
+                "id",
+                "name"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_jail.JailUpdateCPURequest": {
             "type": "object",
             "required": [
@@ -14246,6 +14351,21 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handlers_vm.VMEditNameRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "rid"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "rid": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handlers_zfs.BulkDeleteByNameRequest": {
             "type": "object",
             "required": [
@@ -14528,7 +14648,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.2.0",
+	Version:          "0.2.1",
 	Host:             "sylve.lan:8181",
 	BasePath:         "/api",
 	Schemes:          []string{},

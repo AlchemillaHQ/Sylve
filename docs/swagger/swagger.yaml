@@ -3369,6 +3369,16 @@ definitions:
     required:
     - id
     type: object
+  internal_handlers_jail.JailEditNameRequest:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    required:
+    - id
+    - name
+    type: object
   internal_handlers_jail.JailUpdateCPURequest:
     properties:
       cores:
@@ -3749,6 +3759,16 @@ definitions:
     required:
     - rid
     type: object
+  internal_handlers_vm.VMEditNameRequest:
+    properties:
+      name:
+        type: string
+      rid:
+        type: integer
+    required:
+    - name
+    - rid
+    type: object
   internal_handlers_zfs.BulkDeleteByNameRequest:
     properties:
       names:
@@ -3949,7 +3969,7 @@ info:
     url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   termsOfService: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   title: Sylve API
-  version: 0.2.0
+  version: 0.2.1
 paths:
   /auth/groups:
     get:
@@ -5539,6 +5559,34 @@ paths:
       security:
       - BearerAuth: []
       summary: Update Jail Memory
+      tags:
+      - Jail
+  /jail/name:
+    put:
+      consumes:
+      - application/json
+      description: Update the name of a jail by its ID
+      parameters:
+      - description: Edit Jail Name Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_jail.JailEditNameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Edit a Jail's name
       tags:
       - Jail
   /jail/network:
@@ -8525,6 +8573,34 @@ paths:
       security:
       - BearerAuth: []
       summary: Get VM Logs
+      tags:
+      - VM
+  /vm/name:
+    put:
+      consumes:
+      - application/json
+      description: Update the name of a virtual machine by its RID
+      parameters:
+      - description: Edit Virtual Machine Name Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.VMEditNameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Edit a Virtual Machine's name
       tags:
       - VM
   /vm/simple:
