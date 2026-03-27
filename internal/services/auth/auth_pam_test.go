@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -82,6 +84,39 @@ func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 	}
 }
 
+func TestVerifyTokenInDbForPAMIdentityWhenPAMDisabled(t *testing.T) {
+	svc := newAuthTestService(t)
+
+	identity, err := svc.getOrCreatePAMIdentity("root")
+	if err != nil {
+		t.Fatalf("failed_to_create_pam_identity: %v", err)
+	}
+
+	token := models.Token{
+		UserID:   identity.ID,
+		Token:    "pam-token-disabled",
+		AuthType: "pam",
+		Expiry:   time.Now().Add(time.Hour),
+	}
+	if err := svc.DB.Create(&token).Error; err != nil {
+		t.Fatalf("failed_to_create_token: %v", err)
+	}
+
+	originalConfig := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: false,
+		},
+	}
+	t.Cleanup(func() {
+		config.ParsedConfig = originalConfig
+	})
+
+	if ok := svc.VerifyTokenInDb("pam-token-disabled"); ok {
+		t.Fatalf("expected_token_to_fail_verification_when_pam_disabled")
+	}
+}
+
 func TestVerifyTokenInDbForLocalUser(t *testing.T) {
 	svc := newAuthTestService(t)
 
@@ -114,5 +149,28 @@ func TestVerifyTokenInDbForLocalUser(t *testing.T) {
 
 	if ok := svc.VerifyTokenInDb("local-token"); ok {
 		t.Fatalf("expected_token_to_fail_verification_without_user")
+	}
+}
+
+func TestCreateJWTPAMAuthDisabled(t *testing.T) {
+	svc := newAuthTestService(t)
+
+	originalConfig := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: false,
+		},
+	}
+	t.Cleanup(func() {
+		config.ParsedConfig = originalConfig
+	})
+
+	_, _, err := svc.CreateJWT("root", "password", "pam", false)
+	if err == nil {
+		t.Fatalf("expected_error_got_nil")
+	}
+
+	if err.Error() != "pam_auth_disabled" {
+		t.Fatalf("expected_pam_auth_disabled_got: %v", err)
 	}
 }

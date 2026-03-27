@@ -91,6 +91,7 @@ func RegisterRoutes(r *gin.Engine,
 	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
+	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
 
 	health := api.Group("/health")
 	health.Use(middleware.EnsureAuthenticated(authService))

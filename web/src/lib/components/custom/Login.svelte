@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { revokeJWT } from '$lib/api/auth';
+	import { getLoginConfig, revokeJWT } from '$lib/api/auth';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
@@ -40,6 +40,7 @@
 	let language = $derived(storage.language ?? 'en');
 	let authType = $state('sylve');
 	let remember = $state(false);
+	let pamEnabled = $state(true);
 
 	watch(
 		() => language,
@@ -60,6 +61,15 @@
 		}
 	);
 
+	watch(
+		() => pamEnabled,
+		(enabled) => {
+			if (!enabled && authType === 'pam') {
+				authType = 'sylve';
+			}
+		}
+	);
+
 	async function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
 			event.preventDefault();
@@ -73,6 +83,11 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeydown);
+
+		void (async () => {
+			const loginConfig = await getLoginConfig();
+			pamEnabled = loginConfig.pamEnabled;
+		})();
 	});
 
 	onDestroy(() => {
@@ -122,14 +137,16 @@
 				<Label for="realm" class="w-44">Realm</Label>
 				<Select.Root type="single" bind:value={authType}>
 					<Select.Trigger class="h-8 w-full">
-						{#if authType === 'pam'}
+						{#if authType === 'pam' && pamEnabled}
 							PAM
-						{:else if authType === 'sylve'}
+						{:else}
 							Sylve
 						{/if}
 					</Select.Trigger>
 					<Select.Content>
-						<Select.Item value="pam">PAM</Select.Item>
+						{#if pamEnabled}
+							<Select.Item value="pam">PAM</Select.Item>
+						{/if}
 						<Select.Item value="sylve">Sylve</Select.Item>
 					</Select.Content>
 				</Select.Root>

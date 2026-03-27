@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -32,6 +33,23 @@ type SuccessfulLogin struct {
 	Hostname      string               `json:"hostname"`
 	NodeID        string               `json:"nodeId"`
 	BasicSettings models.BasicSettings `json:"basicSettings"`
+}
+
+type LoginConfig struct {
+	PAMEnabled bool `json:"pamEnabled"`
+}
+
+func LoginConfigHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "login_config_retrieved",
+			Error:   "",
+			Data: LoginConfig{
+				PAMEnabled: config.IsPAMEnabled(),
+			},
+		})
+	}
 }
 
 // @Summary Login

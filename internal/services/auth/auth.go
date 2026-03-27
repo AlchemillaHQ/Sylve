@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
@@ -145,6 +146,10 @@ func (s *Service) CreateJWT(username, password, authType string, remember bool) 
 			return 0, "", fmt.Errorf("only_admin_allowed")
 		}
 	} else if authType == "pam" {
+		if !config.IsPAMEnabled() {
+			return 0, "", fmt.Errorf("pam_auth_disabled")
+		}
+
 		valid, err := s.AuthenticatePAM(username, password)
 
 		if err != nil {
@@ -350,6 +355,10 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 	}
 
 	if tokenRecord.AuthType == "pam" {
+		if !config.IsPAMEnabled() {
+			return false
+		}
+
 		var pamIdentity models.PAMIdentity
 
 		if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&pamIdentity).Error; err != nil {

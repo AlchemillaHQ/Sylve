@@ -135,6 +135,28 @@ export async function login(
     return false;
 }
 
+export async function getLoginConfig(): Promise<{ pamEnabled: boolean }> {
+    try {
+        const response = await fetch('/api/auth/login/config', {
+            method: 'GET'
+        });
+
+        const responseData = await parseJSONResponse(response);
+        if (
+            response.status === 200 &&
+            responseData &&
+            responseData.data &&
+            typeof responseData.data.pamEnabled === 'boolean'
+        ) {
+            return { pamEnabled: responseData.data.pamEnabled };
+        }
+    } catch (error) {
+        console.warn('Failed to load login config', error);
+    }
+
+    return { pamEnabled: true };
+}
+
 export async function loginWithPasskey(remember: boolean): Promise<boolean> {
     try {
         if (!isPasskeySupported()) {

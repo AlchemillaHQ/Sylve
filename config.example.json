@@ -11,6 +11,9 @@
     "raft": {
         "reset": false
     },
+    "auth": {
+        "enablePAM": true
+    },
     "btt": {
         "rpc": {
             "enabled": false,

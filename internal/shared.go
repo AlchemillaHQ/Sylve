@@ -38,6 +38,10 @@ type BTT struct {
 	DHT DHTConfig `json:"dht"`
 }
 
+type AuthConfig struct {
+	EnablePAM bool `json:"enablePAM"`
+}
+
 type Environment string
 
 const (
@@ -59,6 +63,7 @@ type SylveConfig struct {
 	TLS           TLSConfig       `json:"tlsConfig"`
 	Raft          Raft            `json:"raft"`
 	BTT           BTT             `json:"btt"`
+	Auth          AuthConfig      `json:"auth"`
 }
 
 type APIResponse[T any] struct {

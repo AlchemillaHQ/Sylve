@@ -40,7 +40,11 @@ func ParseConfig(path string) *internal.SylveConfig {
 	}(file)
 
 	decoder := json.NewDecoder(file)
-	ParsedConfig = &internal.SylveConfig{}
+	ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: true,
+		},
+	}
 	err = decoder.Decode(ParsedConfig)
 
 	if err != nil {
@@ -58,6 +62,14 @@ func ParseConfig(path string) *internal.SylveConfig {
 	}
 
 	return ParsedConfig
+}
+
+func IsPAMEnabled() bool {
+	if ParsedConfig == nil {
+		return true
+	}
+
+	return ParsedConfig.Auth.EnablePAM
 }
 
 func GetDataPath() (string, error) {
