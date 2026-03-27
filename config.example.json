@@ -1,6 +1,9 @@
 {
     "environment": "development",
     "proxyToVite": false,
+    "auth": {
+        "enablePAM": true
+    },
     "admin": {
         "email": "admin@sylve.local",
         "password": "admin"
@@ -10,9 +13,6 @@
     "httpPort": 8182,
     "raft": {
         "reset": false
-    },
-    "auth": {
-        "enablePAM": true
     },
     "btt": {
         "rpc": {
