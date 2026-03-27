@@ -1,5 +1,0 @@
---helperdir test
---require test_helper
---default-path test
---shell sh
---format tap
