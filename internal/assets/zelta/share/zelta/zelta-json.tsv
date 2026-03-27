@@ -1,0 +1,25 @@
+# MAP_KEY	# VAR_SOURCE	 # VAR_KEY	# MAP_KEY	# NULL_MODE
+# Field name	# Awk array	# Array key
+startTime	Summary	startTime
+endTime	Summary	endTime
+runTime	Summary	runTime
+sourceUser	Opt	SRC_USER
+sourceHost	Opt	SRC_HOST
+sourceDataset	Opt	SRC_DS
+sourceSnapshot	Opt	SRC_SNAP
+sourceEndpoint	Opt	SRC_ID
+sourceListTime	Summary	sourceListTime
+sourceWritten	Summary	sourceWritten
+targetUser	Opt	TGT_USER
+targetHost	Opt	TGT_HOST
+targetDataset	Opt	TGT_DS
+targetSnapshot	Opt	TGT_SNAP
+targetEndpoint	Opt	TGT_ID
+targetListTime	Summary	targetListTime
+targetsCloned	Summary	targetsCloned
+targetsResumed	Summary	targetsResumed
+replicationSize	Summary	replicationSize
+replicationStreamsSent	Summary	replicationStreamsSent
+replicationStreamsReceived	Summary	replicationStreamsReceived
+replicationErrorCode	Summary	replicationErrorCode
+replicationTime	Summary	replicationTime

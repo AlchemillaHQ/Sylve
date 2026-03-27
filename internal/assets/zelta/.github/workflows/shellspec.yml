@@ -1,0 +1,46 @@
+name: ShellSpec Tests
+
+on:
+  push:
+    branches: [main, dev, "feature/**"]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zfsutils-linux man-db
+
+      - name: Install ShellSpec
+        run: curl -fsSL https://git.io/shellspec | sudo sh -s -- --yes --prefix /usr/local
+
+      - name: Create test user
+        run: |
+          sudo useradd -m -s /bin/bash testuser
+          echo 'testuser ALL=(ALL) NOPASSWD: /usr/bin/dd *, /usr/bin/rm -f /tmp/*, /usr/bin/truncate *, /usr/sbin/zpool *, /usr/sbin/zfs *' \
+            | sudo tee /etc/sudoers.d/testuser
+          sudo chown root:root /etc/sudoers.d/testuser
+          sudo chmod 0440 /etc/sudoers.d/testuser
+          sudo visudo -cf /etc/sudoers.d/testuser
+
+      - name: Copy repo for test user
+        run: |
+          sudo cp -r "$GITHUB_WORKSPACE" /home/testuser/zelta
+          sudo chown -R testuser:testuser /home/testuser/zelta
+
+      - name: Run ShellSpec tests
+        run: |
+          sudo -u testuser env \
+            SANDBOX_ZELTA_SRC_POOL=apool \
+            SANDBOX_ZELTA_TGT_POOL=bpool \
+            SANDBOX_ZELTA_SRC_DS=apool/treetop \
+            SANDBOX_ZELTA_TGT_DS=bpool/backups \
+            bash -c 'cd /home/testuser/zelta && shellspec'

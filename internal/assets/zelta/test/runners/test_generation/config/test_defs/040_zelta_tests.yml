@@ -1,0 +1,23 @@
+output_dir: tmp
+shellspec_name: "040_zelta_tests_spec"
+describe_desc: "Run zelta commands on divergent tree"
+skip_if_list:
+  - condition: if 'SANDBOX_ZELTA_SRC_DS undefined' test -z "$SANDBOX_ZELTA_SRC_DS"
+  - condition: if 'SANDBOX_ZELTA_TGT_DS undefined' test -z "$SANDBOX_ZELTA_TGT_DS"
+
+test_list:
+  - test_name: match_after_divergence
+    it_desc: show divergence - %{when_command}
+    when_command: zelta match "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+  - test_name: rotate_after_divergence
+    it_desc: rotates after divergence - %{when_command}
+    when_command: zelta rotate "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+  - test_name: match_after_rotate
+    it_desc: match after rotate - %{when_command}
+    when_command: zelta match "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"
+
+  - test_name: backup_after_rotate
+    it_desc: backup after rotate - %{when_command}
+    when_command: zelta backup "$SANDBOX_ZELTA_SRC_EP" "$SANDBOX_ZELTA_TGT_EP"

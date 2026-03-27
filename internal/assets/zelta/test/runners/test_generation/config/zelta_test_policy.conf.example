@@ -1,0 +1,12 @@
+# This is an example file to show the format of the automatically generated
+# shellspec test policy file. The generated file will be
+# written to test/runners/test_generation/config/zelta_test_policy.conf
+# and is ignored by git.
+
+# shellspec auto generated test zelta policy file at: (0000-00-00_00.00.00)
+# NOTE: this file is dynamically generated during shellspec runs, do not modify.
+# NOTE: shellspec will create a local version of this file from your environment.
+BACKUP_SITE:
+  user@source-host:
+    datasets:
+    - srcpool/data: user@backup-host:dstpool/backups
