@@ -292,6 +292,7 @@ func newJailCreateTestService(db *gorm.DB, runner *jailCreateTestZFSRunner, pool
 			ZpoolBin: "zpool",
 			ZDBBin:   "zdb",
 		}),
+		ctidHashByCTID: make(map[uint]string),
 	}
 }
 
@@ -436,6 +437,68 @@ func TestCreateJail_FailsWhenBaseIsNotDirectoryBeforeProvisioningSideEffects(t *
 	assertModelCount(t, db, &jailModels.Jail{}, 0, "")
 	assertModelCount(t, db, &jailModels.Storage{}, 0, "")
 	assertModelCount(t, db, &jailModels.Network{}, 0, "")
+}
+
+func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.Network{},
+		&jailModels.JailHooks{},
+		&jailModels.JailStats{},
+		&jailModels.JailSnapshot{},
+		&utilitiesModels.Downloads{},
+	)
+
+	tmp := t.TempDir()
+	poolDir := filepath.Join(tmp, "pool")
+	if err := os.MkdirAll(poolDir, 0755); err != nil {
+		t.Fatalf("failed to create pool directory: %v", err)
+	}
+
+	baseDir := filepath.Join(tmp, "base")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(baseDir, "README"), []byte("seed"), 0644); err != nil {
+		t.Fatalf("failed to seed base content: %v", err)
+	}
+
+	seedBaseDownload(t, db, "base-linux-resolv", baseDir)
+
+	runner := newJailCreateTestZFSRunner(nil)
+	svc := newJailCreateTestService(db, runner, poolDir)
+
+	const ctid uint = 770
+	const resolvConf = "nameserver 1.1.1.1\nnameserver 1.0.0.1\n"
+
+	req := jailCreateRequest(ctid, poolDir, "base-linux-resolv")
+	req.Type = jailModels.JailTypeLinux
+	req.ResolvConf = resolvConf
+
+	if err := svc.CreateJail(context.Background(), req); err != nil {
+		t.Fatalf("expected linux jail create to succeed, got %v", err)
+	}
+
+	var created jailModels.Jail
+	if err := db.Where("ct_id = ?", ctid).First(&created).Error; err != nil {
+		t.Fatalf("failed to query created jail row: %v", err)
+	}
+	if created.ResolvConf != resolvConf {
+		t.Fatalf("expected resolv_conf %q, got %q", resolvConf, created.ResolvConf)
+	}
+
+	resolvPath := filepath.Join(poolDir, "sylve", "jails", fmt.Sprintf("%d", ctid), "etc", "resolv.conf")
+	gotResolv, err := os.ReadFile(resolvPath)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", resolvPath, err)
+	}
+	if string(gotResolv) != resolvConf {
+		t.Fatalf("expected resolv.conf content %q, got %q", resolvConf, string(gotResolv))
+	}
 }
 
 func TestCleanupFailedJailCreate_RemovesArtifactsAndOnlyAutoCreatedMACs(t *testing.T) {

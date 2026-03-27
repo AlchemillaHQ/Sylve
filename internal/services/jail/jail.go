@@ -513,6 +513,130 @@ func isZFSDatasetMissingError(err error) bool {
 		strings.Contains(msg, "does not exist")
 }
 
+func isZFSDatasetBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "dataset is busy") ||
+		strings.Contains(msg, "resource busy")
+}
+
+func isZFSDatasetDependentCloneError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "dependent clones") ||
+		strings.Contains(msg, "filesystem has dependent clones")
+}
+
+func isRetriableZFSDestroyError(err error) bool {
+	return isZFSDatasetBusyError(err) || isZFSDatasetDependentCloneError(err)
+}
+
+func (s *Service) stopJailBeforeDelete(ctID uint) {
+	if ctID == 0 {
+		return
+	}
+
+	active, err := s.IsJailActive(ctID)
+	if err != nil {
+		logger.L.Debug().
+			Err(err).
+			Uint("ctid", ctID).
+			Msg("delete_jail: failed to check jail activity before delete")
+		return
+	}
+
+	if !active {
+		return
+	}
+
+	if err := s.JailAction(int(ctID), "stop"); err != nil {
+		logger.L.Warn().
+			Err(err).
+			Uint("ctid", ctID).
+			Msg("delete_jail: failed to stop jail before destroying root dataset")
+		return
+	}
+
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		active, err = s.IsJailActive(ctID)
+		if err != nil {
+			return
+		}
+		if !active {
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+func (s *Service) destroyStorageDatasetForDelete(ctx context.Context, datasetName string) error {
+	if s.GZFS == nil || s.GZFS.ZFS == nil {
+		return fmt.Errorf("zfs_client_not_initialized")
+	}
+
+	datasetName = strings.TrimSpace(datasetName)
+	if datasetName == "" {
+		return nil
+	}
+
+	const maxAttempts = 8
+	const retryDelay = 750 * time.Millisecond
+
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		dataset, err := s.GZFS.ZFS.Get(ctx, datasetName, true)
+		if err != nil {
+			if isZFSDatasetMissingError(err) {
+				return nil
+			}
+			return fmt.Errorf("failed_to_get_dataset_for_storage: %w", err)
+		}
+		if dataset == nil {
+			return nil
+		}
+
+		err = dataset.Destroy(ctx, true, false)
+		if err == nil || isZFSDatasetMissingError(err) {
+			return nil
+		}
+
+		lastErr = err
+		if isRetriableZFSDestroyError(err) {
+			out, forceErr := utils.RunCommandWithContext(ctx, "zfs", "destroy", "-R", "-f", datasetName)
+			if forceErr == nil {
+				return nil
+			}
+
+			combinedErr := fmt.Errorf("command execution failed: %v, output: %s", forceErr, strings.TrimSpace(out))
+			if isZFSDatasetMissingError(combinedErr) {
+				return nil
+			}
+
+			lastErr = fmt.Errorf("failed_to_force_destroy_storage_dataset: %w", combinedErr)
+		}
+
+		if attempt == maxAttempts || !isRetriableZFSDestroyError(lastErr) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("failed_to_destroy_storage_dataset_canceled: %w", ctx.Err())
+		case <-time.After(retryDelay):
+		}
+	}
+
+	return fmt.Errorf("failed_to_destroy_storage_dataset_after_retries: %w", lastErr)
+}
+
 func appendJailCreateCleanupWarning(warnings *[]string, ctid uint, code string, err error) {
 	message := code
 	if err != nil {
@@ -1417,11 +1541,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	jail.AdditionalOptions = data.AdditionalOptions
 	jail.Fstab = data.Fstab
 
-	if data.Type == jailModels.JailTypeFreeBSD {
-		jail.ResolvConf = data.ResolvConf
-	} else {
-		jail.ResolvConf = ""
-	}
+	jail.ResolvConf = data.ResolvConf
 
 	jail.AllowedOptions = data.AllowedOptions
 	jail.Type = data.Type
@@ -1801,28 +1921,21 @@ func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, de
 		return err
 	}
 
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Network{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_networks: %w", err)
+	if deleteRootFS {
+		s.stopJailBeforeDelete(ctId)
+
+		if len(jail.Storages) > 0 {
+			for _, storage := range jail.Storages {
+				if !storage.IsBase {
+					continue
+				}
+
+				datasetName := fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId)
+				if err := s.destroyStorageDatasetForDelete(ctx, datasetName); err != nil {
+					return err
+				}
+			}
 		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailHooks{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_hooks: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailStats{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_stats: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
-		}
-		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Storage{}).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail_storages: %w", err)
-		}
-		if err := tx.Delete(&jail).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_jail: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	jailsPath, err := config.GetJailsPath()
@@ -1871,25 +1984,28 @@ func (s *Service) DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, de
 		}
 	}
 
-	if deleteRootFS {
-		if len(jail.Storages) > 0 {
-			for _, storage := range jail.Storages {
-				if storage.IsBase {
-					dataset, err := s.GZFS.ZFS.Get(ctx, fmt.Sprintf("%s/sylve/jails/%d", storage.Pool, ctId), true)
-					if err != nil {
-						return fmt.Errorf("failed_to_get_dataset_for_storage: %w", err)
-					}
-
-					if dataset == nil {
-						continue
-					}
-
-					if err := dataset.Destroy(ctx, true, false); err != nil {
-						return fmt.Errorf("failed_to_destroy_storage_dataset: %w", err)
-					}
-				}
-			}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Network{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_networks: %w", err)
 		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailHooks{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_hooks: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailStats{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_stats: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
+		}
+		if err := tx.Where("jid = ?", jail.ID).Delete(&jailModels.Storage{}).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail_storages: %w", err)
+		}
+		if err := tx.Delete(&jail).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_jail: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil

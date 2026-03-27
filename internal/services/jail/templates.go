@@ -823,7 +823,7 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_write_template_fstab: %w", err)
 	}
 
-	if strings.TrimSpace(createdJail.ResolvConf) != "" && createdJail.Type == jailModels.JailTypeFreeBSD {
+	if strings.TrimSpace(createdJail.ResolvConf) != "" {
 		resolvPath := filepath.Join(mountPoint, "etc", "resolv.conf")
 		if err := os.MkdirAll(filepath.Dir(resolvPath), 0755); err != nil {
 			return fmt.Errorf("failed_to_prepare_resolv_path: %w", err)
