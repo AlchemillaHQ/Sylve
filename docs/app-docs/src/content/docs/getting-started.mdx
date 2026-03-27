@@ -104,36 +104,38 @@ We will setup an `rc` script for running Sylve but prior to that we need to do 2
 
 1. Create a `config.json` file:
 
-```jsonc
+```json
 {
-   "environment":"production",
-   "proxyToVite":false,
-   "dataPath":"/var/db/sylve",
-   "admin":{
-      "email":"admin@sylve.local",
-      "password":"replace-this-with-something-strong"
-   },
-   "logLevel":3,
-   "port":8181,
-   "httpPort":8182,
-   "raft":{
-      "reset":false
-   },
-   "btt":{
-      "rpc":{
-         "enabled":false,
-         "host":"127.0.0.1",
-         "port":6890
-      },
-      "dht":{
-         "enabled":true,
-         "port":7246
-      }
-   }
+  "environment": "production",
+  "proxyToVite": false,
+  "dataPath": "/var/db/sylve",
+  "admin": {
+    "email": "admin@sylve.local",
+    "password": "replace-this-with-something-strong"
+  },
+  "logLevel": 3,
+  "port": 8181,
+  "httpPort": 8182,
+  "raft": {
+    "reset": false
+  },
+  "btt": {
+    "rpc": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 6890
+    },
+    "dht": {
+      "enabled": true,
+      "port": 7246
+    }
+  }
 }
 ```
 
 Most of the above config is self-explanatory, we will discuss the ones that aren't:
+
+- `password`: During initial setup, you can enter the password here, once that is done you can set this value to be empty, and sylve will ignore it and keep the existing password.
 
 - `proxyToVite`: This is a development setting that allows the backend to proxy requests to the Vite development server. It should be set to `false` in production.
 
