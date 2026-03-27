@@ -1135,6 +1135,7 @@ func (s *Service) ConvertVMToTemplate(
 	template := vmModels.VMTemplate{
 		Name:                   normalizeVMTemplateName(req.Name),
 		SourceVMName:           vm.Name,
+		SourceVMRID:            vm.RID,
 		Description:            vm.Description,
 		CPUSockets:             vm.CPUSockets,
 		CPUCores:               vm.CPUCores,

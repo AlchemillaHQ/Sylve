@@ -9,7 +9,8 @@
 		getJailLogs,
 		getStats,
 		jailAction,
-		updateDescription
+		updateDescription,
+		updateName
 	} from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
@@ -188,6 +189,9 @@
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let isDescInitialized = false;
+	let jailName = $state(jail.current.name || '');
+	let syncedJailName = $state(jail.current.name || '');
+	let isRenameInFlight = $state(false);
 	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -218,6 +222,17 @@
 					updateDescription(jail.current.id, curr);
 				}
 			}
+		}
+	);
+
+	watch(
+		() => jail.current.name,
+		(currentName) => {
+			const normalized = currentName || '';
+			if (!isRenameInFlight && jailName === syncedJailName) {
+				jailName = normalized;
+			}
+			syncedJailName = normalized;
 		}
 	);
 
@@ -266,6 +281,52 @@
 
 			modalState.isDeleteOpen = false;
 		}
+	}
+
+	let isJailNameDirty = $derived.by(
+		() => jailName.trim() !== String(jail.current.name || '').trim()
+	);
+
+	let canSaveJailName = $derived.by(
+		() => !isRenameInFlight && jailName.trim() !== '' && isJailNameDirty
+	);
+
+	async function handleRename() {
+		const nextName = jailName.trim();
+		const currentName = String(jail.current.name || '').trim();
+
+		if (!nextName || nextName === currentName || isRenameInFlight) {
+			return;
+		}
+
+		isRenameInFlight = true;
+		const result = await updateName(jail.current.id, nextName);
+		if (result.status === 'success') {
+			reload.leftPanel = true;
+			await jail.refetch();
+			jailName = jail.current.name || nextName;
+			syncedJailName = jailName;
+			toast.success('Jail name updated', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else {
+			let errorMessage = 'Error updating jail name';
+			if (result.message === 'invalid_vm_name') {
+				errorMessage = 'Invalid jail name. Use letters, numbers, - or _.';
+			} else if (result.message === 'jail_name_already_in_use') {
+				errorMessage = 'Jail name is already in use';
+			} else if (result.message === 'replication_lease_not_owned') {
+				errorMessage = 'This jail is owned by another node right now';
+			}
+
+			toast.error(errorMessage, {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		isRenameInFlight = false;
 	}
 
 	function beginPendingLifecycleAction(action: JailLifecycleAction) {
@@ -558,10 +619,30 @@
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-					Description
+					Name
 				</Card.Description>
 			</Card.Header>
 			<Card.Content class="mt-3 p-0">
+				<CustomValueInput
+					placeholder="Jail name"
+					bind:value={jailName}
+					classes=""
+					type="text"
+				/>
+				<div class="mt-2 flex justify-end">
+					<Button
+						size="sm"
+						onclick={handleRename}
+						disabled={!canSaveJailName}
+						class="h-7 bg-muted-foreground/40 dark:bg-muted text-black hover:bg-blue-600 dark:text-white"
+					>
+						{isRenameInFlight ? 'Saving...' : 'Save Name'}
+					</Button>
+				</div>
+
+				<Card.Description class="mt-4 text-md font-normal text-blue-600 dark:text-blue-500">
+					Description
+				</Card.Description>
 				<CustomValueInput
 					placeholder="Notes"
 					bind:value={jailDesc}

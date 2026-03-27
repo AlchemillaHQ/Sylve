@@ -160,6 +160,13 @@ export async function updateDescription(id: number, description: string): Promis
     });
 }
 
+export async function updateName(id: number, name: string): Promise<APIResponse> {
+    return await apiRequest('/jail/name', APIResponseSchema, 'PUT', {
+        id,
+        name
+    });
+}
+
 export async function getJailLogs(id: number): Promise<JailLogs> {
     return await apiRequest(`/jail/${id}/logs`, JailLogsSchema, 'GET');
 }

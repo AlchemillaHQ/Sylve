@@ -181,6 +181,13 @@ export async function updateDescription(rid: number, description: string): Promi
     });
 }
 
+export async function updateName(rid: number, name: string): Promise<APIResponse> {
+    return await apiRequest(`/vm/name`, APIResponseSchema, 'PUT', {
+        rid,
+        name
+    });
+}
+
 export async function modifyWoL(rid: number, enabled: boolean): Promise<APIResponse> {
     return await apiRequest(`/vm/options/wol/${rid}`, APIResponseSchema, 'PUT', {
         enabled

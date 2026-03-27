@@ -647,3 +647,39 @@ func UpdateBackupJobStateInternal(cS *cluster.Service) gin.HandlerFunc {
 		})
 	}
 }
+
+func UpdateBackupJobFriendlySourceInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+
+		var req cluster.BackupJobFriendlySourceUpdate
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := cS.SyncBackupJobFriendlySourceByGuest(req, cS.Raft == nil); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "backup_job_friendly_source_update_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "backup_job_friendly_source_updated",
+			Data:    nil,
+		})
+	}
+}

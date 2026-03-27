@@ -1375,3 +1375,59 @@ func (s *Service) UpdateDescription(rid uint, description string) error {
 
 	return nil
 }
+
+func (s *Service) UpdateName(rid uint, name string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+
+	name = strings.TrimSpace(name)
+	if name == "" || !utils.IsValidVMName(name) {
+		return fmt.Errorf("invalid_vm_name")
+	}
+
+	var vm vmModels.VM
+	if err := s.DB.Select("id", "rid", "name").Where("rid = ?", rid).First(&vm).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("vm_not_found: %d", rid)
+		}
+		return fmt.Errorf("failed_to_find_vm: %w", err)
+	}
+
+	var count int64
+	if err := s.DB.Model(&vmModels.VM{}).Where("name = ? AND rid <> ?", name, rid).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_vm_name_conflict: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("vm_name_already_in_use")
+	}
+
+	if strings.TrimSpace(vm.Name) == name {
+		return nil
+	}
+
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&vmModels.VM{}).Where("rid = ?", rid).Update("name", name).Error; err != nil {
+			return fmt.Errorf("failed_to_update_vm_name: %w", err)
+		}
+
+		if err := tx.Model(&vmModels.VMTemplate{}).
+			Where("source_vm_rid = ?", rid).
+			Update("source_vm_name", name).Error; err != nil {
+			return fmt.Errorf("failed_to_update_vm_template_source_name: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	err := s.WriteVMJson(rid)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("failed to write VM JSON after name update")
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_rename_%d", rid))
+
+	return nil
+}

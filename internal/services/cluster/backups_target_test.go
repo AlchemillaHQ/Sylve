@@ -251,3 +251,78 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		t.Fatalf("unexpected delete error: %v", err)
 	}
 }
+
+func TestSyncBackupJobFriendlySourceByGuestBypassRaftUpdatesMatchingJobs(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.BackupJob{})
+	s := &Service{DB: db}
+
+	jobs := []clusterModels.BackupJob{
+		{
+			ID:            11,
+			Name:          "vm-job-match",
+			TargetID:      1,
+			Mode:          clusterModels.BackupJobModeVM,
+			SourceDataset: "zroot/sylve/virtual-machines/901",
+			FriendlySrc:   "vm-old",
+			CronExpr:      "* * * * *",
+			Enabled:       true,
+		},
+		{
+			ID:            12,
+			Name:          "vm-job-other",
+			TargetID:      1,
+			Mode:          clusterModels.BackupJobModeVM,
+			SourceDataset: "zroot/sylve/virtual-machines/902",
+			FriendlySrc:   "vm-other",
+			CronExpr:      "* * * * *",
+			Enabled:       true,
+		},
+		{
+			ID:              13,
+			Name:            "jail-job-match",
+			TargetID:        1,
+			Mode:            clusterModels.BackupJobModeJail,
+			JailRootDataset: "zroot/sylve/jails/903",
+			FriendlySrc:     "jail-old",
+			CronExpr:        "* * * * *",
+			Enabled:         true,
+		},
+	}
+	if err := db.Create(&jobs).Error; err != nil {
+		t.Fatalf("failed to seed backup jobs: %v", err)
+	}
+
+	if err := s.SyncBackupJobFriendlySourceByGuest(BackupJobFriendlySourceUpdate{
+		GuestType:   clusterModels.ReplicationGuestTypeVM,
+		GuestID:     901,
+		FriendlySrc: "vm-new",
+	}, true); err != nil {
+		t.Fatalf("vm friendly source sync failed: %v", err)
+	}
+
+	if err := s.SyncBackupJobFriendlySourceByGuest(BackupJobFriendlySourceUpdate{
+		GuestType:   clusterModels.ReplicationGuestTypeJail,
+		GuestID:     903,
+		FriendlySrc: "jail-new",
+	}, true); err != nil {
+		t.Fatalf("jail friendly source sync failed: %v", err)
+	}
+
+	var refreshed []clusterModels.BackupJob
+	if err := db.Order("id asc").Find(&refreshed).Error; err != nil {
+		t.Fatalf("failed to read refreshed jobs: %v", err)
+	}
+	if len(refreshed) != 3 {
+		t.Fatalf("expected 3 jobs, got %d", len(refreshed))
+	}
+
+	if refreshed[0].FriendlySrc != "vm-new" {
+		t.Fatalf("expected vm matching job friendly source to be updated, got %q", refreshed[0].FriendlySrc)
+	}
+	if refreshed[1].FriendlySrc != "vm-other" {
+		t.Fatalf("expected non-matching vm job friendly source unchanged, got %q", refreshed[1].FriendlySrc)
+	}
+	if refreshed[2].FriendlySrc != "jail-new" {
+		t.Fatalf("expected jail matching job friendly source to be updated, got %q", refreshed[2].FriendlySrc)
+	}
+}

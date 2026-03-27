@@ -9,7 +9,8 @@
 		getStats,
 		getVmById,
 		getVMLogs,
-		updateDescription
+		updateDescription,
+		updateName
 	} from '$lib/api/vm/vm';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
@@ -172,6 +173,9 @@
 	let vmDescription = $state(vm.current.description || '');
 	let debouncedDesc = new Debounced(() => vmDescription, 500);
 	let isDescInitialized = false;
+	let vmName = $state(vm.current.name || '');
+	let syncedVMName = $state(vm.current.name || '');
+	let isRenameInFlight = $state(false);
 	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
 	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
 	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -193,6 +197,17 @@
 					updateDescription(vm.current.rid, curr);
 				}
 			}
+		}
+	);
+
+	watch(
+		() => vm.current.name,
+		(currentName) => {
+			const normalized = currentName || '';
+			if (!isRenameInFlight && vmName === syncedVMName) {
+				vmName = normalized;
+			}
+			syncedVMName = normalized;
 		}
 	);
 
@@ -342,6 +357,52 @@
 
 			removeStaleCacheByRID(vm.current.rid);
 		}
+	}
+
+	let isVMNameDirty = $derived.by(
+		() => vmName.trim() !== String(vm.current.name || '').trim()
+	);
+
+	let canSaveVMName = $derived.by(
+		() => !isRenameInFlight && vmName.trim() !== '' && isVMNameDirty
+	);
+
+	async function handleRename() {
+		const nextName = vmName.trim();
+		const currentName = String(vm.current.name || '').trim();
+
+		if (!nextName || nextName === currentName || isRenameInFlight) {
+			return;
+		}
+
+		isRenameInFlight = true;
+		const result = await updateName(vm.current.rid, nextName);
+		if (result.status === 'success') {
+			reload.leftPanel = true;
+			await vm.refetch();
+			vmName = vm.current.name || nextName;
+			syncedVMName = vmName;
+			toast.success('VM name updated', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} else {
+			let errorMessage = 'Error updating VM name';
+			if (result.message === 'invalid_vm_name') {
+				errorMessage = 'Invalid VM name. Use letters, numbers, - or _.';
+			} else if (result.message === 'vm_name_already_in_use') {
+				errorMessage = 'VM name is already in use';
+			} else if (result.message === 'replication_lease_not_owned') {
+				errorMessage = 'This VM is owned by another node right now';
+			}
+
+			toast.error(errorMessage, {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		}
+
+		isRenameInFlight = false;
 	}
 
 	async function handleStart() {
@@ -844,10 +905,31 @@
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description class="text-md font-normal text-blue-600 dark:text-blue-500">
-					Description
+					Name
 				</Card.Description>
 			</Card.Header>
 			<Card.Content class="mt-3 p-0">
+				<CustomValueInput
+					label=""
+					placeholder="VM name"
+					bind:value={vmName}
+					classes=""
+					type="text"
+				/>
+				<div class="mt-2 flex justify-end">
+					<Button
+						size="sm"
+						onclick={handleRename}
+						disabled={!canSaveVMName}
+						class="h-7 bg-muted-foreground/40 dark:bg-muted text-black hover:bg-blue-600 dark:text-white"
+					>
+						{isRenameInFlight ? 'Saving...' : 'Save Name'}
+					</Button>
+				</div>
+
+				<Card.Description class="mt-4 text-md font-normal text-blue-600 dark:text-blue-500">
+					Description
+				</Card.Description>
 				<CustomValueInput
 					label=""
 					placeholder="Notes about VM"

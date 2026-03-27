@@ -9,18 +9,36 @@
 package cluster
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 )
+
+type forwardingAuthStub struct {
+	serviceInterfaces.AuthServiceInterface
+}
+
+func (forwardingAuthStub) CreateInternalClusterJWT(_, _ string) (string, error) {
+	return "test-cluster-token", nil
+}
 
 func backupTargetsForNode(node *clusterRaftTestNode) ([]clusterModels.BackupTarget, error) {
 	var targets []clusterModels.BackupTarget
 	err := node.service.DB.Order("id ASC").Find(&targets).Error
 	return targets, err
+}
+
+func backupJobsForNode(node *clusterRaftTestNode) ([]clusterModels.BackupJob, error) {
+	var jobs []clusterModels.BackupJob
+	err := node.service.DB.Order("id ASC").Find(&jobs).Error
+	return jobs, err
 }
 
 func TestRaftBackupTargetsReplicationTwoNodes(t *testing.T) {
@@ -269,4 +287,167 @@ func TestRaftBackupTargetDeleteBlockedWhenInUse(t *testing.T) {
 		}
 		return true
 	})
+}
+
+func TestRaftBackupJobFriendlySourceSyncReplicatesAcrossNodes(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	job := clusterModels.BackupJob{
+		ID:            31,
+		Name:          "vm-backup-job",
+		TargetID:      1,
+		Mode:          clusterModels.BackupJobModeVM,
+		SourceDataset: "zroot/sylve/virtual-machines/444",
+		FriendlySrc:   "vm-old",
+		CronExpr:      "* * * * *",
+		Enabled:       true,
+	}
+	jobRaw, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("failed marshaling backup job: %v", err)
+	}
+
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type:   "backup_job",
+		Action: "create",
+		Data:   jobRaw,
+	}); err != nil {
+		t.Fatalf("failed creating backup job through raft command: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "backup job create replication before friendly source sync", func() bool {
+		for _, node := range nodes {
+			jobs, queryErr := backupJobsForNode(node)
+			if queryErr != nil || len(jobs) != 1 {
+				return false
+			}
+			if jobs[0].FriendlySrc != "vm-old" {
+				return false
+			}
+		}
+		return true
+	})
+
+	if err := leader.service.SyncBackupJobFriendlySourceByGuest(BackupJobFriendlySourceUpdate{
+		GuestType:   clusterModels.ReplicationGuestTypeVM,
+		GuestID:     444,
+		FriendlySrc: "vm-new",
+	}, false); err != nil {
+		t.Fatalf("friendly source sync failed: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "backup job friendly source sync replication to 2 nodes", func() bool {
+		for _, node := range nodes {
+			jobs, queryErr := backupJobsForNode(node)
+			if queryErr != nil || len(jobs) != 1 {
+				return false
+			}
+			if jobs[0].FriendlySrc != "vm-new" {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func TestBackupFriendlySourceSyncForwardsFromFollowerToLeaderEndpoint(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.ClusterNode{})
+	defer cleanupClusterRaftTestNodes(t, nodes)
+
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	var follower *clusterRaftTestNode
+	for _, node := range nodes {
+		if node.id != leader.id {
+			follower = node
+			break
+		}
+	}
+	if follower == nil {
+		t.Fatal("expected follower node")
+	}
+
+	job := clusterModels.BackupJob{
+		ID:            41,
+		Name:          "vm-forward-job",
+		TargetID:      1,
+		Mode:          clusterModels.BackupJobModeVM,
+		SourceDataset: "zroot/sylve/virtual-machines/777",
+		FriendlySrc:   "vm-old",
+		CronExpr:      "* * * * *",
+		Enabled:       true,
+	}
+	jobRaw, err := json.Marshal(job)
+	if err != nil {
+		t.Fatalf("failed marshaling backup job: %v", err)
+	}
+	if err := leader.service.applyRaftCommand(clusterModels.Command{
+		Type:   "backup_job",
+		Action: "create",
+		Data:   jobRaw,
+	}); err != nil {
+		t.Fatalf("failed creating backup job through raft command: %v", err)
+	}
+
+	waitForClusterCondition(t, 8*time.Second, "backup job replication before follower forward test", func() bool {
+		for _, node := range nodes {
+			jobs, queryErr := backupJobsForNode(node)
+			if queryErr != nil || len(jobs) != 1 {
+				return false
+			}
+		}
+		return true
+	})
+
+	var forwardedPayload BackupJobFriendlySourceUpdate
+	forwardCalled := false
+	forwardServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/intra-cluster/backup-job-friendly-source" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method_not_allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		forwardCalled = true
+		if err := json.NewDecoder(r.Body).Decode(&forwardedPayload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer forwardServer.Close()
+
+	leaderAPI := strings.TrimPrefix(forwardServer.URL, "https://")
+	if err := follower.service.DB.Create(&clusterModels.ClusterNode{
+		NodeUUID: leader.id,
+		API:      leaderAPI,
+	}).Error; err != nil {
+		t.Fatalf("failed seeding cluster node api for forwarding: %v", err)
+	}
+	follower.service.AuthService = forwardingAuthStub{}
+
+	err = follower.service.SyncBackupJobFriendlySourceByGuestClusterWide(BackupJobFriendlySourceUpdate{
+		GuestType:   clusterModels.ReplicationGuestTypeVM,
+		GuestID:     777,
+		FriendlySrc: "vm-forwarded",
+	})
+	if err != nil {
+		t.Fatalf("expected follower forward to succeed, got %v", err)
+	}
+
+	if !forwardCalled {
+		t.Fatal("expected follower sync to call leader forwarding endpoint")
+	}
+	if forwardedPayload.GuestType != clusterModels.ReplicationGuestTypeVM ||
+		forwardedPayload.GuestID != 777 ||
+		forwardedPayload.FriendlySrc != "vm-forwarded" {
+		t.Fatalf("unexpected forwarded payload: %+v", forwardedPayload)
+	}
 }

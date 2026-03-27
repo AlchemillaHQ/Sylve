@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -62,6 +63,17 @@ type BackupJobRuntimeStateUpdate struct {
 	LastStatus string     `json:"lastStatus"`
 	LastError  string     `json:"lastError"`
 	NextRunAt  *time.Time `json:"nextRunAt"`
+}
+
+type BackupJobFriendlySourceUpdate struct {
+	GuestType   string `json:"guestType"`
+	GuestID     uint   `json:"guestId"`
+	FriendlySrc string `json:"friendlySrc"`
+}
+
+type backupJobFriendlySourceCommandPayload struct {
+	JobIDs      []uint `json:"jobIds"`
+	FriendlySrc string `json:"friendlySrc"`
 }
 
 func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
@@ -294,6 +306,212 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 		Action: "update",
 		Data:   data,
 	})
+}
+
+func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySourceUpdate, bypassRaft bool) error {
+	update.GuestType = strings.TrimSpace(strings.ToLower(update.GuestType))
+	update.FriendlySrc = strings.TrimSpace(update.FriendlySrc)
+	if update.GuestType != clusterModels.ReplicationGuestTypeVM && update.GuestType != clusterModels.ReplicationGuestTypeJail {
+		return fmt.Errorf("invalid_guest_type")
+	}
+	if update.GuestID == 0 {
+		return fmt.Errorf("guest_id_required")
+	}
+	if update.FriendlySrc == "" {
+		return fmt.Errorf("friendly_src_required")
+	}
+
+	jobIDs, err := s.matchBackupJobIDsForGuest(update.GuestType, update.GuestID)
+	if err != nil {
+		return err
+	}
+	if len(jobIDs) == 0 {
+		return nil
+	}
+
+	if bypassRaft {
+		return s.DB.Model(&clusterModels.BackupJob{}).
+			Where("id IN ?", jobIDs).
+			Update("friendly_src", update.FriendlySrc).Error
+	}
+
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if s.Raft.State() != raft.Leader {
+		return fmt.Errorf("not_leader")
+	}
+
+	data, err := json.Marshal(backupJobFriendlySourceCommandPayload{
+		JobIDs:      jobIDs,
+		FriendlySrc: update.FriendlySrc,
+	})
+	if err != nil {
+		return fmt.Errorf("failed_to_marshal_backup_job_friendly_source_payload: %w", err)
+	}
+
+	return s.applyRaftCommand(clusterModels.Command{
+		Type:   "backup_job_friendly_source",
+		Action: "update",
+		Data:   data,
+	})
+}
+
+func (s *Service) SyncBackupJobFriendlySourceByGuestClusterWide(update BackupJobFriendlySourceUpdate) error {
+	err := s.SyncBackupJobFriendlySourceByGuest(update, s.Raft == nil)
+	if err == nil {
+		return nil
+	}
+
+	if s.Raft != nil && strings.Contains(strings.ToLower(err.Error()), "not_leader") {
+		return s.forwardBackupJobFriendlySourceToLeader(update)
+	}
+
+	return err
+}
+
+func (s *Service) matchBackupJobIDsForGuest(guestType string, guestID uint) ([]uint, error) {
+	type jobRow struct {
+		ID              uint
+		SourceDataset   string
+		JailRootDataset string
+	}
+
+	rows := []jobRow{}
+	query := s.DB.Model(&clusterModels.BackupJob{}).
+		Select("id", "source_dataset", "jail_root_dataset")
+
+	switch guestType {
+	case clusterModels.ReplicationGuestTypeVM:
+		query = query.Where("mode = ?", clusterModels.BackupJobModeVM)
+	case clusterModels.ReplicationGuestTypeJail:
+		query = query.Where("mode = ?", clusterModels.BackupJobModeJail)
+	default:
+		return nil, fmt.Errorf("invalid_guest_type")
+	}
+
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_list_backup_jobs_for_guest: %w", err)
+	}
+
+	jobIDs := make([]uint, 0, len(rows))
+	for _, row := range rows {
+		switch guestType {
+		case clusterModels.ReplicationGuestTypeVM:
+			rid, ok := parseVMRIDFromDataset(row.SourceDataset)
+			if ok && rid == guestID {
+				jobIDs = append(jobIDs, row.ID)
+			}
+		case clusterModels.ReplicationGuestTypeJail:
+			ctid, ok := parseJailCTIDFromDataset(row.JailRootDataset)
+			if (!ok || ctid == 0) && strings.TrimSpace(row.SourceDataset) != "" {
+				ctid, ok = parseJailCTIDFromDataset(row.SourceDataset)
+			}
+			if ok && ctid == guestID {
+				jobIDs = append(jobIDs, row.ID)
+			}
+		}
+	}
+
+	return jobIDs, nil
+}
+
+func (s *Service) forwardBackupJobFriendlySourceToLeader(update BackupJobFriendlySourceUpdate) error {
+	if s == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+
+	_, leaderID := s.Raft.LeaderWithID()
+	leaderNodeID := strings.TrimSpace(string(leaderID))
+	if leaderNodeID == "" {
+		return fmt.Errorf("leader_unknown")
+	}
+
+	targetAPI, err := s.resolveClusterNodeAPIByNodeID(leaderNodeID)
+	if err != nil {
+		return err
+	}
+
+	hostname, err := utils.GetSystemHostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "cluster"
+	}
+
+	if s.AuthService == nil {
+		return fmt.Errorf("auth_service_unavailable")
+	}
+
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname, "")
+	if err != nil {
+		return fmt.Errorf("create_cluster_token_failed: %w", err)
+	}
+
+	body, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("marshal_backup_job_friendly_source_payload_failed: %w", err)
+	}
+
+	_, statusCode, err := utils.HTTPPostJSONWithTimeout(
+		fmt.Sprintf("https://%s/api/intra-cluster/backup-job-friendly-source", targetAPI),
+		body,
+		map[string]string{
+			"Accept":          "application/json",
+			"Content-Type":    "application/json",
+			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+		},
+		5*time.Second,
+	)
+	if err != nil {
+		return fmt.Errorf("forward_backup_job_friendly_source_failed_status_%d: %w", statusCode, err)
+	}
+
+	return nil
+}
+
+func (s *Service) resolveClusterNodeAPIByNodeID(nodeID string) (string, error) {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return "", fmt.Errorf("cluster_node_not_found")
+	}
+
+	nodes, err := s.Nodes()
+	if err == nil {
+		for _, node := range nodes {
+			if strings.TrimSpace(node.NodeUUID) == nodeID {
+				api := strings.TrimSpace(node.API)
+				if api != "" {
+					return api, nil
+				}
+			}
+		}
+	}
+
+	if s.Raft != nil {
+		fut := s.Raft.GetConfiguration()
+		if err := fut.Error(); err == nil {
+			for _, server := range fut.Configuration().Servers {
+				if strings.TrimSpace(string(server.ID)) != nodeID {
+					continue
+				}
+
+				host, _, splitErr := net.SplitHostPort(string(server.Address))
+				if splitErr != nil {
+					host = string(server.Address)
+				}
+
+				if strings.TrimSpace(host) == "" {
+					continue
+				}
+
+				return net.JoinHostPort(strings.TrimSpace(host), strconv.Itoa(ClusterEmbeddedHTTPSPort)), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("cluster_node_not_found")
 }
 
 /*

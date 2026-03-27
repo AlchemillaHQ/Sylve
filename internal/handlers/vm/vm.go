@@ -15,9 +15,12 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
@@ -27,6 +30,11 @@ import (
 type VMEditDescRequest struct {
 	RID         uint   `json:"rid" binding:"required"`
 	Description string `json:"description"`
+}
+
+type VMEditNameRequest struct {
+	RID  uint   `json:"rid" binding:"required"`
+	Name string `json:"name" binding:"required"`
 }
 
 var vmCreateConflictCodes = map[string]struct{}{
@@ -207,6 +215,40 @@ func classifyCreateVMError(err error) (int, string) {
 	}
 
 	return http.StatusInternalServerError, "failed_to_create_vm"
+}
+
+func classifyUpdateVMNameError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_update_vm_name"
+	}
+
+	errText := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(errText, "vm_not_found"):
+		return http.StatusNotFound, "vm_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	}
+
+	code := extractVMCreateErrorCode(errText)
+	switch code {
+	case "invalid_vm_name":
+		return http.StatusBadRequest, code
+	case "vm_name_already_in_use":
+		return http.StatusConflict, code
+	case "replication_lease_check_failed":
+		return http.StatusInternalServerError, code
+	}
+
+	if strings.HasPrefix(code, "invalid_") {
+		return http.StatusBadRequest, code
+	}
+	if code != "" {
+		return http.StatusInternalServerError, code
+	}
+
+	return http.StatusInternalServerError, "failed_to_update_vm_name"
 }
 
 // @Summary Get a Virtual Machine by RID or ID
@@ -786,6 +828,63 @@ func UpdateVMDescription(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "vm_description_updated",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Edit a Virtual Machine's name
+// @Description Update the name of a virtual machine by its RID
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body VMEditNameRequest true "Edit Virtual Machine Name Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Router /vm/name [put]
+func UpdateVMName(libvirtService *libvirt.Service, clusterService *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req VMEditNameRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.UpdateName(req.RID, req.Name); err != nil {
+			statusCode, errorCode := classifyUpdateVMNameError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: errorCode,
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		if clusterService != nil {
+			syncErr := clusterService.SyncBackupJobFriendlySourceByGuestClusterWide(cluster.BackupJobFriendlySourceUpdate{
+				GuestType:   clusterModels.ReplicationGuestTypeVM,
+				GuestID:     req.RID,
+				FriendlySrc: strings.TrimSpace(req.Name),
+			})
+			if syncErr != nil {
+				logger.L.Warn().
+					Err(syncErr).
+					Uint("vm_rid", req.RID).
+					Msg("failed_to_sync_backup_friendly_source_after_vm_rename")
+			}
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "vm_name_updated",
 			Data:    nil,
 			Error:   "",
 		})

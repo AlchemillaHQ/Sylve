@@ -173,6 +173,7 @@ type JailTemplate struct {
 
 	Name           string `json:"name" gorm:"not null;uniqueIndex"`
 	SourceJailName string `json:"sourceJailName" gorm:"column:source_jail_name"`
+	SourceJailCTID uint   `json:"sourceJailCtid" gorm:"column:source_jail_ctid;index"`
 
 	Pool        string `json:"pool" gorm:"not null"`
 	RootDataset string `json:"rootDataset" gorm:"column:root_dataset;not null;uniqueIndex"`

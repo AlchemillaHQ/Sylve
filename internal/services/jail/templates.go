@@ -401,6 +401,7 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 	template := jailModels.JailTemplate{
 		Name:              templateName,
 		SourceJailName:    jail.Name,
+		SourceJailCTID:    jail.CTID,
 		Pool:              pool,
 		RootDataset:       templateDataset,
 		Type:              jail.Type,

@@ -9,7 +9,10 @@
 package db
 
 import (
+	"strings"
+
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"gorm.io/gorm"
@@ -19,6 +22,7 @@ func Fixups(db *gorm.DB) error {
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
 	backfillVMStorageEnableDefaults(db)
+	backfillTemplateSourceGuestIDs(db)
 	createSylveUnixGroup(db)
 	cleanupInvalidTokenRows(db)
 	cleanupInvalidAuditUserIDs(db)
@@ -263,6 +267,139 @@ func cleanupLegacyDevdEventsTable(db *gorm.DB) {
 	if err := db.Migrator().DropTable("devd_events"); err != nil {
 		logger.L.Err(err).Msg("failed dropping legacy devd_events table")
 		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func backfillTemplateSourceGuestIDs(db *gorm.DB) {
+	const name = "template_source_guest_id_backfill_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for backfill_template_source_guest_ids")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if db.Migrator().HasTable(&vmModels.VMTemplate{}) && db.Migrator().HasTable(&vmModels.VM{}) {
+		var vms []vmModels.VM
+		if err := db.Model(&vmModels.VM{}).Select("name", "rid").Find(&vms).Error; err != nil {
+			logger.L.Err(err).Msg("failed loading vm sources for template source id backfill")
+			return
+		}
+
+		ridByName := make(map[string]uint, len(vms))
+		ambiguous := make(map[string]struct{})
+		for _, vm := range vms {
+			sourceName := strings.TrimSpace(vm.Name)
+			if sourceName == "" || vm.RID == 0 {
+				continue
+			}
+
+			if existing, exists := ridByName[sourceName]; exists && existing != vm.RID {
+				ambiguous[sourceName] = struct{}{}
+				continue
+			}
+
+			ridByName[sourceName] = vm.RID
+		}
+
+		var templates []vmModels.VMTemplate
+		if err := db.Model(&vmModels.VMTemplate{}).
+			Select("id", "source_vm_name", "source_vm_rid").
+			Where("source_vm_rid = ?", 0).
+			Find(&templates).Error; err != nil {
+			logger.L.Err(err).Msg("failed loading vm templates for source id backfill")
+			return
+		}
+
+		for _, tpl := range templates {
+			sourceName := strings.TrimSpace(tpl.SourceVMName)
+			if sourceName == "" {
+				continue
+			}
+
+			if _, exists := ambiguous[sourceName]; exists {
+				continue
+			}
+
+			rid, exists := ridByName[sourceName]
+			if !exists || rid == 0 {
+				continue
+			}
+
+			if err := db.Model(&vmModels.VMTemplate{}).
+				Where("id = ?", tpl.ID).
+				Update("source_vm_rid", rid).Error; err != nil {
+				logger.L.Err(err).Uint("template_id", tpl.ID).Msg("failed backfilling vm template source rid")
+				return
+			}
+		}
+	}
+
+	if db.Migrator().HasTable(&jailModels.JailTemplate{}) && db.Migrator().HasTable(&jailModels.Jail{}) {
+		var jails []jailModels.Jail
+		if err := db.Model(&jailModels.Jail{}).Select("name", "ct_id").Find(&jails).Error; err != nil {
+			logger.L.Err(err).Msg("failed loading jail sources for template source id backfill")
+			return
+		}
+
+		ctidByName := make(map[string]uint, len(jails))
+		ambiguous := make(map[string]struct{})
+		for _, jail := range jails {
+			sourceName := strings.TrimSpace(jail.Name)
+			if sourceName == "" || jail.CTID == 0 {
+				continue
+			}
+
+			if existing, exists := ctidByName[sourceName]; exists && existing != jail.CTID {
+				ambiguous[sourceName] = struct{}{}
+				continue
+			}
+
+			ctidByName[sourceName] = jail.CTID
+		}
+
+		var templates []jailModels.JailTemplate
+		if err := db.Model(&jailModels.JailTemplate{}).
+			Select("id", "source_jail_name", "source_jail_ctid").
+			Where("source_jail_ctid = ?", 0).
+			Find(&templates).Error; err != nil {
+			logger.L.Err(err).Msg("failed loading jail templates for source id backfill")
+			return
+		}
+
+		for _, tpl := range templates {
+			sourceName := strings.TrimSpace(tpl.SourceJailName)
+			if sourceName == "" {
+				continue
+			}
+
+			if _, exists := ambiguous[sourceName]; exists {
+				continue
+			}
+
+			ctid, exists := ctidByName[sourceName]
+			if !exists || ctid == 0 {
+				continue
+			}
+
+			if err := db.Model(&jailModels.JailTemplate{}).
+				Where("id = ?", tpl.ID).
+				Update("source_jail_ctid", ctid).Error; err != nil {
+				logger.L.Err(err).Uint("template_id", tpl.ID).Msg("failed backfilling jail template source ctid")
+				return
+			}
+		}
 	}
 
 	db.Table("migrations").Create(map[string]any{

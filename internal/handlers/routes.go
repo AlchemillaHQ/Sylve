@@ -313,6 +313,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.GET("/logs/:rid", vmHandlers.GetVMLogs(libvirtService))
 		vm.GET("/stats/:rid/:step", vmHandlers.GetVMStats(libvirtService))
 		vm.PUT("/description", vmHandlers.UpdateVMDescription(libvirtService))
+		vm.PUT("/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
 
 		vm.POST("/storage/detach", vmHandlers.StorageDetach(libvirtService))
 		vm.POST("/storage/attach", vmHandlers.StorageAttach(libvirtService))
@@ -363,6 +364,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.DELETE("/snapshots/:id/:snapshotId", jailHandlers.DeleteJailSnapshot(jailService))
 		jail.POST("/action/:action/:ctId", jailHandlers.JailAction(jailService, lifecycleService))
 		jail.PUT("/description", jailHandlers.UpdateJailDescription(jailService))
+		jail.PUT("/name", jailHandlers.UpdateJailName(jailService, clusterService))
 		jail.GET("/:id/logs", jailHandlers.GetJailLogs(jailService))
 		jail.PUT("/memory", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/cpu", jailHandlers.UpdateJailCPU(jailService))
@@ -473,6 +475,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/cleanup-policy-delete", clusterHandlers.CleanupReplicationPolicyDeleteInternal(clusterService, zeltaService))
 		intraCluster.POST("/replication-receipt", clusterHandlers.UpsertReplicationReceiptInternal(clusterService))
 		intraCluster.POST("/backup-job-state", clusterHandlers.UpdateBackupJobStateInternal(clusterService))
+		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 	}
 
 	cluster := api.Group("/cluster")

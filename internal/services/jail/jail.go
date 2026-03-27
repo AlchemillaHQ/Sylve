@@ -1936,6 +1936,70 @@ func (s *Service) UpdateDescription(id uint, description string) error {
 	return nil
 }
 
+func (s *Service) UpdateName(id uint, name string) (uint, error) {
+	if id == 0 {
+		return 0, fmt.Errorf("invalid_jail_id")
+	}
+
+	name = strings.TrimSpace(name)
+	if name == "" || !utils.IsValidVMName(name) {
+		return 0, fmt.Errorf("invalid_vm_name")
+	}
+
+	var jail jailModels.Jail
+	if err := s.DB.Select("id", "ct_id", "name").Where("id = ?", id).First(&jail).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return 0, fmt.Errorf("jail_not_found")
+		}
+		return 0, fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+
+	ctid := jail.CTID
+	allowed, leaseErr := s.canMutateProtectedJail(ctid)
+	if leaseErr != nil {
+		return 0, fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return 0, fmt.Errorf("replication_lease_not_owned")
+	}
+
+	var count int64
+	if err := s.DB.Model(&jailModels.Jail{}).Where("name = ? AND id <> ?", name, id).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_check_jail_name_conflict: %w", err)
+	}
+	if count > 0 {
+		return 0, fmt.Errorf("jail_name_already_in_use")
+	}
+
+	if strings.TrimSpace(jail.Name) == name {
+		return ctid, nil
+	}
+
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&jailModels.Jail{}).Where("id = ?", id).Update("name", name).Error; err != nil {
+			return fmt.Errorf("failed_to_update_jail_name: %w", err)
+		}
+
+		if err := tx.Model(&jailModels.JailTemplate{}).
+			Where("source_jail_ctid = ?", ctid).
+			Update("source_jail_name", name).Error; err != nil {
+			return fmt.Errorf("failed_to_update_jail_template_source_name: %w", err)
+		}
+
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+
+	if ctid != 0 {
+		_ = s.WriteJailJSON(ctid)
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("jail_rename_%d", ctid))
+
+	return ctid, nil
+}
+
 func (s *Service) WriteJailJSON(ctId uint) error {
 	if ctId == 0 {
 		return fmt.Errorf("invalid_ct_id")

@@ -415,6 +415,48 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("backup_job_friendly_source", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		switch action {
+		case "update":
+			var payload struct {
+				JobIDs      []uint `json:"jobIds"`
+				FriendlySrc string `json:"friendlySrc"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+
+			payload.FriendlySrc = strings.TrimSpace(payload.FriendlySrc)
+			if payload.FriendlySrc == "" {
+				return fmt.Errorf("friendly_src_required")
+			}
+
+			if len(payload.JobIDs) == 0 {
+				return nil
+			}
+
+			seen := make(map[uint]struct{}, len(payload.JobIDs))
+			jobIDs := make([]uint, 0, len(payload.JobIDs))
+			for _, id := range payload.JobIDs {
+				if id == 0 {
+					continue
+				}
+				if _, exists := seen[id]; exists {
+					continue
+				}
+				seen[id] = struct{}{}
+				jobIDs = append(jobIDs, id)
+			}
+			if len(jobIDs) == 0 {
+				return nil
+			}
+
+			return db.Model(&BackupJob{}).Where("id IN ?", jobIDs).Update("friendly_src", payload.FriendlySrc).Error
+		default:
+			return nil
+		}
+	})
+
 	fsm.Register("replication_policy", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
 		case "create", "update":

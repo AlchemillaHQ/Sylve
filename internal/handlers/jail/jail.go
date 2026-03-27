@@ -15,8 +15,11 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +28,11 @@ import (
 type JailEditDescRequest struct {
 	ID          uint   `json:"id" binding:"required"`
 	Description string `json:"description"`
+}
+
+type JailEditNameRequest struct {
+	ID   uint   `json:"id" binding:"required"`
+	Name string `json:"name" binding:"required"`
 }
 
 var jailCreateConflictCodes = map[string]struct{}{
@@ -156,6 +164,40 @@ func classifyCreateJailError(err error) (int, string) {
 	}
 
 	return http.StatusInternalServerError, "failed_to_create_jail"
+}
+
+func classifyUpdateJailNameError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_update_jail_name"
+	}
+
+	errText := strings.ToLower(err.Error())
+
+	switch {
+	case strings.Contains(errText, "jail_not_found"):
+		return http.StatusNotFound, "jail_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	}
+
+	code := extractCreateJailErrorCode(errText)
+	switch code {
+	case "invalid_jail_id", "invalid_vm_name":
+		return http.StatusBadRequest, code
+	case "jail_name_already_in_use":
+		return http.StatusConflict, code
+	case "replication_lease_check_failed":
+		return http.StatusInternalServerError, code
+	}
+
+	if strings.HasPrefix(code, "invalid_") {
+		return http.StatusBadRequest, code
+	}
+	if code != "" {
+		return http.StatusInternalServerError, code
+	}
+
+	return http.StatusInternalServerError, "failed_to_update_jail_name"
 }
 
 // @Summary List all Jails
@@ -565,6 +607,64 @@ func UpdateJailDescription(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_description_updated",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Edit a Jail's name
+// @Description Update the name of a jail by its ID
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body JailEditNameRequest true "Edit Jail Name Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Router /jail/name [put]
+func UpdateJailName(jailService *jail.Service, clusterService *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req JailEditNameRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_data",
+				Data:    nil,
+				Error:   "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		ctID, err := jailService.UpdateName(req.ID, req.Name)
+		if err != nil {
+			statusCode, errorCode := classifyUpdateJailNameError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: errorCode,
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		if clusterService != nil && ctID > 0 {
+			syncErr := clusterService.SyncBackupJobFriendlySourceByGuestClusterWide(cluster.BackupJobFriendlySourceUpdate{
+				GuestType:   clusterModels.ReplicationGuestTypeJail,
+				GuestID:     ctID,
+				FriendlySrc: strings.TrimSpace(req.Name),
+			})
+			if syncErr != nil {
+				logger.L.Warn().
+					Err(syncErr).
+					Uint("jail_ctid", ctID).
+					Msg("failed_to_sync_backup_friendly_source_after_jail_rename")
+			}
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "jail_name_updated",
 			Data:    nil,
 			Error:   "",
 		})

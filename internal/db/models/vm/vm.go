@@ -318,6 +318,7 @@ type VMTemplate struct {
 
 	Name         string `json:"name" gorm:"not null;uniqueIndex"`
 	SourceVMName string `json:"sourceVmName" gorm:"column:source_vm_name"`
+	SourceVMRID  uint   `json:"sourceVmRid" gorm:"column:source_vm_rid;index"`
 
 	Description string `json:"description"`
 
