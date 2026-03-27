@@ -34,9 +34,9 @@ backend-cross:
 	CGO_CFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
 	CGO_CPPFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
 	CGO_CXXFLAGS="--sysroot=$(FREEBSD_SYSROOT)" \
-	CGO_LDFLAGS="--sysroot=$(FREEBSD_SYSROOT) -fuse-ld=lld" \
-	CC="clang --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT) -fuse-ld=lld" \
-	CXX="clang++ --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT) -fuse-ld=lld" \
+	CGO_LDFLAGS="-fuse-ld=lld --sysroot=$(FREEBSD_SYSROOT)" \
+	CC="clang --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT)" \
+	CXX="clang++ --target=$$TARGET --sysroot=$(FREEBSD_SYSROOT)" \
 	go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 cross-build-amd64:
