@@ -5755,12 +5755,12 @@ msgstr "VirtIO ब्लॉक"
 msgid "Attach Storage"
 msgstr "स्टोरेज संलग्न करें"
 
-#. 0: tpmEmulation ? 'enable' 
+#. 0: tpmEmulation ? 'enable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "TPM एमुलेशन {0} करने में विफल रहा"
 
-#. 0: tpmEmulation ? 'enabled' 
+#. 0: tpmEmulation ? 'enabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM एमुलेशन {0}"
@@ -7131,7 +7131,7 @@ msgid "Serial"
 msgstr "सीरियल"
 
 #. 0: consoleType === 'vnc' ? 'Serial'
-#. 0: consoleType === 'vnc' ? 'Serial' : 'VNC'
+#. 0: consoleType === 'vnc' ? 'Serial'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"

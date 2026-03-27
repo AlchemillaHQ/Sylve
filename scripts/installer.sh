@@ -488,6 +488,9 @@ write_default_config() {
   "environment": "production",
   "proxyToVite": false,
   "dataPath": "${DATA_PATH}",
+  "auth": {
+    "enablePAM": true
+  },
   "admin": {
     "email": "admin@sylve.local",
     "password": "${GENERATED_ADMIN_PASSWORD}"
