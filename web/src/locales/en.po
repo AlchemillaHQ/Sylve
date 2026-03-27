@@ -2318,7 +2318,7 @@ msgstr "Command Palette"
 msgid "Search for a command to run"
 msgstr "Search for a command to run"
 
-#. 0: (selectedCount || 0) + (hasSelection ? 0 : inUseCount)
+#. 0: (selectedCount || 0) + (hasSelection ? 0 \\: inUseCount)
 #. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
@@ -3797,6 +3797,7 @@ msgstr "Review"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -4625,6 +4626,7 @@ msgstr "Inherit network from the host"
 msgid "No network switch will be allocated now, you can add it later"
 msgstr "No network switch will be allocated now, you can add it later"
 
+#: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
@@ -9040,7 +9042,7 @@ msgstr "Create Jail Template - {0} (Jail CTID {1})"
 msgid "Create Jail Template - Jail CTID {0}"
 msgstr "Create Jail Template - Jail CTID {0}"
 
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' : 's'
+#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' \\: 's'
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "<0/> {0} active lifecycle task{1}"
 msgstr "<0/> {0} active lifecycle task{1}"
@@ -9079,15 +9081,15 @@ msgstr "Invalid CTID range"
 msgid "Invalid jail name prefix"
 msgstr "Invalid jail name prefix"
 
-#. 0: createMode === 'single' ? 'Jail' : 'Jails'
-#. 0: createMode === 'single' ? 'VM' : 'VMs'
+#. 0: createMode === 'single' ? 'Jail' \\: 'Jails'
+#. 0: createMode === 'single' ? 'VM' \\: 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Creating {0}"
 msgstr "Creating {0}"
 
-#. 0: createMode === 'single' ? 'Jail' : 'Jails'
-#. 0: createMode === 'single' ? 'VM' : 'VMs'
+#. 0: createMode === 'single' ? 'Jail' \\: 'Jails'
+#. 0: createMode === 'single' ? 'VM' \\: 'VMs'
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Create {0}"
@@ -9903,3 +9905,7 @@ msgstr "Jail name is already in use"
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 msgid "This jail is owned by another node right now"
 msgstr "This jail is owned by another node right now"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select a base/rootfs to add FStab entries"
+msgstr "Select a base/rootfs to add FStab entries"

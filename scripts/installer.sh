@@ -2,7 +2,7 @@
 set -eu
 
 PROGRAM="sylve-installer"
-PROGRAM_VERSION="0.2.0"
+PROGRAM_VERSION="0.2.1"
 
 # We should Flip this to 1 when pkg/port is ready and want this script
 # to automatically use pkg instead of GitHub release binaries.
