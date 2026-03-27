@@ -146,18 +146,28 @@ jobs:
       - prepare-release
       - build-web
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    env:
+      FREEBSD_VERSION: 15.0-RELEASE
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            vm_arch: x86_64
           - arch: arm64
-            vm_arch: aarch64
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Install cross-build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld xz-utils tar file
 
       - name: Download Web Assets
         uses: actions/download-artifact@v4
@@ -165,15 +175,27 @@ jobs:
           name: release-web-assets
           path: internal/assets/web-files
 
-      - name: Build on FreeBSD ${{ matrix.arch }}
-        uses: vmactions/freebsd-vm@v1
+      - name: Cache FreeBSD sysroot
+        uses: actions/cache@v4
         with:
-          arch: ${{ matrix.vm_arch }}
-          sync: scp
-          usesh: true
-          prepare: pkg install -y go git
-          run: |
-            make backend ARCH=${{ matrix.arch }}
+          path: .cache/freebsd/${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
+          key: freebsd-sysroot-${{ runner.os }}-${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
+
+      - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
+        run: |
+          make cross-build-${{ matrix.arch }} FREEBSD_VERSION=${{ env.FREEBSD_VERSION }}
+
+      - name: Verify binary format
+        run: |
+          set -euo pipefail
+          file bin/sylve | tee /tmp/sylve-file.txt
+          grep -q "FreeBSD" /tmp/sylve-file.txt
+
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            grep -Eq "x86-64|amd64" /tmp/sylve-file.txt
+          else
+            grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
+          fi
 
       - name: Upload binary to release
         env:
