@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Pick self-hosted runner when available
         id: pick
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
           script: |
