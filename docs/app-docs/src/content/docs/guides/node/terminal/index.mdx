@@ -3,6 +3,10 @@ title: Terminal
 description: Ghostty based web terminal for your node
 ---
 
+:::caution
+The terminal requires a secure context (HTTPS) to function. Sylve automatically configures HTTPS for your nodes, so no additional setup is needed. However, if you access Sylve over HTTP, the terminal will not work. Ensure you are using HTTPS when accessing Sylve.
+:::
+
 Sylve includes a web-based terminal for each node, powered by [Ghostty](https://github.com/coder/ghostty-web). This allows you to access the command line of your node directly from the Sylve interface, without needing to use SSH or other remote access tools.
 
 ![Host Terminal](./terminal.png)
