@@ -90,7 +90,7 @@
     <p class="text-xs text-muted-foreground">
       After installation, open <span class="font-mono text-foreground">http://&lt;host&gt;:8080</span> in your browser.
     </p>
-    <CopyButton text="fetch -o- sh.sylve.io | sh" />
+    <CopyButton text="fetch -o- https://sh.sylve.io | sh" />
   {/snippet}
 </Modal>
 
