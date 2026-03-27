@@ -29,6 +29,73 @@ type VMEditDescRequest struct {
 	Description string `json:"description"`
 }
 
+var vmCreateConflictCodes = map[string]struct{}{
+	"mac_object_already_in_use":                  {},
+	"rid_or_name_already_in_use":                 {},
+	"vm_create_stale_artifacts_detected":         {},
+	"vm_id_already_exists":                       {},
+	"vnc_port_already_in_use_by_another_vm":      {},
+	"vnc_port_already_in_use_by_another_service": {},
+}
+
+var vmCreateBadRequestCodes = map[string]struct{}{
+	"calculated_core_out_of_range":                     {},
+	"cloud_init_data_missing":                          {},
+	"cloud_init_requires_iso":                          {},
+	"cloud_init_requires_storage":                      {},
+	"core_conflict":                                    {},
+	"core_index_out_of_range":                          {},
+	"cpu_pinning_exceeds_logical_cores":                {},
+	"cpu_pinning_exceeds_total_vcpus":                  {},
+	"cpu_sockets_cores_threads_must_be_greater_than_1": {},
+	"disk_size_must_be_greater_than_128mb":             {},
+	"duplicate_core_across_sockets":                    {},
+	"duplicate_core_within_socket":                     {},
+	"duplicate_socket_in_request":                      {},
+	"empty_core_list_for_socket":                       {},
+	"invalid_cloud_init_yaml":                          {},
+	"invalid_iso_or_image_format":                      {},
+	"invalid_mac_object_type":                          {},
+	"invalid_rid":                                      {},
+	"invalid_topology_vcpu_is_zero":                    {},
+	"invalid_vm_name":                                  {},
+	"iso_or_image_not_found":                           {},
+	"mac_object_has_no_entries":                        {},
+	"mac_object_not_found":                             {},
+	"media_not_cloud_init_capable":                     {},
+	"memory_must_be_greater_than_128mb":                {},
+	"no_emulation_type_selected":                       {},
+	"no_switch_emulation_type_selected":                {},
+	"passthrough_device_does_not_exist":                {},
+	"pool_not_found":                                   {},
+	"socket_capacity_exceeded":                         {},
+	"socket_index_out_of_range":                        {},
+	"start_order_must_be_greater_than_or_equal_to_0":   {},
+	"storage_size_greater_than_available":              {},
+	"switch_not_found":                                 {},
+	"unsupported_download_type":                        {},
+	"vnc_password_cannot_contain_commas":               {},
+	"vnc_password_required":                            {},
+	"vnc_port_must_be_between_1_and_65535":             {},
+}
+
+var vmCreateBadRequestCodePrefixes = []string{
+	"no_pool_selected_for_",
+	"size_should_be_at_least_",
+}
+
+var vmCreateAliasCodes = map[string]string{
+	"cloud_init_media_not_resolvable":               "iso_or_image_not_found",
+	"failed_to_fetch_iso_for_cloud_init_validation": "iso_or_image_not_found",
+	"failed_to_find_download":                       "iso_or_image_not_found",
+	"failed_to_find_iso":                            "iso_or_image_not_found",
+	"failed_to_find_iso_by_uuid":                    "iso_or_image_not_found",
+	"image_not_resolvable":                          "iso_or_image_not_found",
+	"iso_or_img_not_found":                          "iso_or_image_not_found",
+	"iso_or_img_not_found_in_path":                  "iso_or_image_not_found",
+	"iso_or_img_not_found_in_torrent":               "iso_or_image_not_found",
+}
+
 func isVMNotFoundError(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "vm_not_found")
 }
@@ -40,6 +107,105 @@ func isVMDomainNotFoundError(err error) bool {
 
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "failed_to_lookup_domain")
+}
+
+func isSnakeCaseErrorCode(value string) bool {
+	if value == "" || !strings.Contains(value, "_") {
+		return false
+	}
+
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			continue
+		}
+
+		return false
+	}
+
+	return true
+}
+
+func extractVMCreateErrorCode(message string) string {
+	parts := strings.Split(strings.ToLower(message), ":")
+	for i := len(parts) - 1; i >= 0; i-- {
+		part := strings.TrimSpace(parts[i])
+		if part == "" {
+			continue
+		}
+
+		token := part
+		if idx := strings.IndexAny(token, " \t\r\n,.;()[]{}"); idx >= 0 {
+			token = token[:idx]
+		}
+		token = strings.TrimSpace(token)
+
+		if isSnakeCaseErrorCode(token) {
+			return token
+		}
+	}
+
+	return ""
+}
+
+func classifyCreateVMError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_create_vm"
+	}
+
+	errText := strings.ToLower(err.Error())
+
+	if strings.Contains(errText, "exists=true, allowed=false") {
+		return http.StatusBadRequest, "invalid_iso_or_image_format"
+	}
+
+	if strings.Contains(errText, "failed to define vm domain") && strings.Contains(errText, "already exists") {
+		return http.StatusConflict, "vm_id_already_exists"
+	}
+
+	code := extractVMCreateErrorCode(errText)
+	if alias, ok := vmCreateAliasCodes[code]; ok {
+		code = alias
+	}
+
+	switch code {
+	case "failed_to_create_vm_with_associations":
+		return http.StatusInternalServerError, "vm_create_database_failure"
+	case "failed_to_create_lv_vm",
+		"failed_to_create_cloud_init_iso",
+		"failed_to_create_storage_parent",
+		"failed_to_flash_cloud_init_to_disk",
+		"failed_to_remove_cloud_init_storage_entry":
+		return http.StatusInternalServerError, "vm_create_runtime_failure"
+	case "failed_to_list_usable_pools_for_vm_create_precheck",
+		"libvirt_not_initialized",
+		"system_service_not_initialized",
+		"zfs_client_not_initialized":
+		return http.StatusInternalServerError, "vm_create_dependency_not_ready"
+	}
+
+	if _, ok := vmCreateConflictCodes[code]; ok {
+		return http.StatusConflict, code
+	}
+
+	if _, ok := vmCreateBadRequestCodes[code]; ok {
+		return http.StatusBadRequest, code
+	}
+
+	for _, prefix := range vmCreateBadRequestCodePrefixes {
+		if strings.HasPrefix(code, prefix) {
+			return http.StatusBadRequest, code
+		}
+	}
+
+	if strings.HasPrefix(code, "invalid_") {
+		return http.StatusBadRequest, code
+	}
+
+	if code != "" {
+		return http.StatusInternalServerError, code
+	}
+
+	return http.StatusInternalServerError, "failed_to_create_vm"
 }
 
 // @Summary Get a Virtual Machine by RID or ID
@@ -261,7 +427,14 @@ func CreateVM(libvirtService *libvirt.Service) gin.HandlerFunc {
 		err := libvirtService.CreateVM(req, ctx)
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_create: " + err.Error()})
+			statusCode, errorCode := classifyCreateVMError(err)
+
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: errorCode,
+				Data:    nil,
+				Error:   "failed_to_create: " + err.Error(),
+			})
 			return
 		}
 
@@ -570,7 +743,7 @@ func VMActionHandler(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 			Data: map[string]any{
 				"outcome": outcome,
 			},
-			Error:   "",
+			Error: "",
 		})
 	}
 }

@@ -8,7 +8,12 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PCIDevice } from '$lib/types/system/pci';
 	import { generatePassword } from '$lib/utils/string';
-	import { getNextGuestId, getNextId, isValidCreateData } from '$lib/utils/vm/vm';
+	import {
+		getNextGuestId,
+		getNextId,
+		getVMCreateErrorMessage,
+		isValidCreateData
+	} from '$lib/utils/vm/vm';
 	import Advanced from './Advanced.svelte';
 	import Basic from './Basic.svelte';
 	import Hardware from './Hardware.svelte';
@@ -239,7 +244,7 @@
 				open = false;
 			} else {
 				handleAPIError(response);
-				toast.error('Failed to create VM', {
+				toast.error(getVMCreateErrorMessage(response), {
 					duration: 3000,
 					position: 'bottom-center'
 				});

@@ -6,6 +6,7 @@ import type {
     VMLifecycleAction,
     VMLifecycleBadgeStyle
 } from '$lib/types/vm/vm';
+import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
 import { isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
@@ -134,6 +135,103 @@ export function isValidCreateData(
     }
 
     return true;
+}
+
+function toVMCreateErrorText(error: APIResponse['error']): string {
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    if (Array.isArray(error)) {
+        return error.join(' ');
+    }
+
+    return '';
+}
+
+const vmCreateErrorMessageByCode: Record<string, string> = {
+    cloud_init_data_missing: 'Cloud-Init requires both user-data and metadata.',
+    cloud_init_requires_iso: 'Cloud-Init requires an installation media image.',
+    cloud_init_requires_storage: 'Cloud-Init requires a VM storage device.',
+    invalid_cloud_init_yaml: 'Cloud-Init YAML is invalid. Verify user-data and metadata syntax.',
+    invalid_iso_or_image_format: 'Invalid or unsupported ISO/image format. Verify the selected media file.',
+    invalid_vm_name: 'Invalid VM name. Use a valid hostname-style name.',
+    iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk.',
+    mac_object_already_in_use: 'Selected MAC object is already in use by another guest.',
+    media_not_cloud_init_capable: 'Selected media is not marked as cloud-init capable.',
+    no_emulation_type_selected: 'No storage emulation type selected.',
+    no_switch_emulation_type_selected: 'No network emulation type selected.',
+    pool_not_found: 'Selected storage pool was not found.',
+    rid_or_name_already_in_use: 'VM ID or name already exists. Choose a different value.',
+    storage_size_greater_than_available: 'Requested storage size is larger than available pool space.',
+    switch_not_found: 'Selected network switch was not found. Refresh and select a valid switch.',
+    vm_create_database_failure: 'Failed to persist VM metadata in the database.',
+    vm_create_dependency_not_ready:
+        'Required VM dependencies are not ready (libvirt/ZFS/system services).',
+    vm_create_runtime_failure: 'VM provisioning failed while applying runtime resources.',
+    vm_create_stale_artifacts_detected:
+        'Stale VM artifacts were found for this ID. Clean up leftovers before retrying.',
+    vm_id_already_exists:
+        'VM ID already exists in libvirt. Choose a different ID or clean up the existing domain.',
+    vnc_port_already_in_use_by_another_service:
+        'VNC port is already used by another service. Choose a different port.',
+    vnc_port_already_in_use_by_another_vm:
+        'VNC port is already used by another VM. Choose a different port.'
+};
+
+export function getVMCreateErrorCode(response: Pick<APIResponse, 'message' | 'error'>): string {
+    const backendCode =
+        typeof response.message === 'string' ? response.message.trim().toLowerCase() : '';
+    if (backendCode !== '' && backendCode !== 'failed_to_create') {
+        return backendCode;
+    }
+
+    const errorText = toVMCreateErrorText(response.error).toLowerCase();
+    if (errorText === '') {
+        return 'failed_to_create_vm';
+    }
+
+    if (errorText.includes('exists=true, allowed=false')) {
+        return 'invalid_iso_or_image_format';
+    }
+
+    if (errorText.includes('failed to define vm domain') && errorText.includes('already exists')) {
+        return 'vm_id_already_exists';
+    }
+
+    const fallbackMatchers: Record<string, string> = {
+        cloud_init_media_not_resolvable: 'iso_or_image_not_found',
+        failed_to_create_lv_vm: 'vm_create_runtime_failure',
+        failed_to_create_vm_with_associations: 'vm_create_database_failure',
+        failed_to_fetch_iso_for_cloud_init_validation: 'iso_or_image_not_found',
+        failed_to_find_download: 'iso_or_image_not_found',
+        failed_to_find_iso: 'iso_or_image_not_found',
+        failed_to_find_iso_by_uuid: 'iso_or_image_not_found',
+        image_not_resolvable: 'iso_or_image_not_found',
+        iso_or_img_not_found: 'iso_or_image_not_found'
+    };
+
+    for (const [needle, mappedCode] of Object.entries(fallbackMatchers)) {
+        if (errorText.includes(needle)) {
+            return mappedCode;
+        }
+    }
+
+    return 'failed_to_create_vm';
+}
+
+export function getVMCreateErrorMessage(response: Pick<APIResponse, 'message' | 'error'>): string {
+    const code = getVMCreateErrorCode(response);
+
+    if (code.startsWith('no_pool_selected_for_')) {
+        return 'No storage pool selected for the chosen storage type.';
+    }
+
+    if (code.startsWith('size_should_be_at_least_')) {
+        return 'Requested storage size is below the minimum supported size.';
+    }
+
+    return vmCreateErrorMessageByCode[code] || 'Failed to create VM. Check backend logs for details.';
 }
 
 export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]): number {
