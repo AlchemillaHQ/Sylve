@@ -559,7 +559,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 			/* MAC Used in a Jail */
 			if len(jailNetworks) > 0 && oType == "Mac" {
-				err := s.AddNetworkObjectEditJailTrigger(id, values)
+				err := s.AddNetworkObjectEditJailTrigger(id, name, oType, values)
 				if err != nil {
 					return fmt.Errorf("failed to add network object edit jail trigger for object %d: %w", id, err)
 				}
@@ -693,7 +693,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(jailNetworks) > 0 && oType == "Host" {
-				err := s.AddNetworkObjectEditJailTrigger(id, values)
+				err := s.AddNetworkObjectEditJailTrigger(id, name, oType, values)
 				if err != nil {
 					return fmt.Errorf("failed to add network object edit jail trigger for object %d: %w", id, err)
 				}
@@ -832,7 +832,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(jailNetworks) > 0 && oType == "Network" {
-				err := s.AddNetworkObjectEditJailTrigger(id, values)
+				err := s.AddNetworkObjectEditJailTrigger(id, name, oType, values)
 				if err != nil {
 					return fmt.Errorf("failed to add network object edit jail trigger for object %d: %w", id, err)
 				}
@@ -843,9 +843,18 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 	return nil
 }
 
-func (s *Service) AddNetworkObjectEditJailTrigger(id uint, values []string) error {
+func (s *Service) AddNetworkObjectEditJailTrigger(id uint, name string, oType string, values []string) error {
 	if len(values) != 1 {
 		return fmt.Errorf("at_most_1_entry_allowed")
+	}
+
+	if err := s.DB.Model(&networkModels.Object{}).Where("id = ?", id).Updates(
+		map[string]interface{}{
+			"name": name,
+			"type": oType,
+		},
+	).Error; err != nil {
+		return fmt.Errorf("failed to update object %d metadata: %w", id, err)
 	}
 
 	if err := s.DB.Where("object_id = ?", id).Delete(&networkModels.ObjectEntry{}).Error; err != nil {
