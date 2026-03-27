@@ -28,18 +28,13 @@ import (
 	"github.com/klauspost/cpuid/v2"
 )
 
-var findISOProbeRawImage = func(path string) bool {
-	info, err := qemuimg.Info(path)
-	if err != nil || info == nil {
-		return false
-	}
-
-	return strings.EqualFold(strings.TrimSpace(info.Format), string(qemuimg.FormatRaw))
-}
-
 var flashImageToDiskCtx = utils.FlashImageToDiskCtx
 var inspectDiskImageFormat = qemuimg.Info
 var convertDiskImageToRaw = qemuimg.Convert
+var sniffMediaMIME = func(path string) (string, error) {
+	mime, _, err := utils.SniffMIME(path)
+	return mime, err
+}
 
 func domainReasonToString(state libvirt.DomainState, reason int32) libvirtServiceInterfaces.DomainStateReason {
 	switch state {
@@ -129,14 +124,6 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 		return "", fmt.Errorf("failed_to_find_download: %w", err)
 	}
 
-	hasAllowedExt := func(p string) bool {
-		if p == "" {
-			return false
-		}
-		l := strings.ToLower(p)
-		return strings.HasSuffix(l, ".iso") || (includeImg && (strings.HasSuffix(l, ".img") || strings.HasSuffix(l, ".raw")))
-	}
-
 	fileExists := func(p string) bool {
 		if p == "" {
 			return false
@@ -144,164 +131,191 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 		fi, err := os.Stat(p)
 		return err == nil && !fi.IsDir()
 	}
+	compressedCache := map[string]bool{}
 
-	probeCache := map[string]bool{}
+	isCompressedContainer := func(p string) bool {
+		if !fileExists(p) {
+			return false
+		}
+
+		if cached, ok := compressedCache[p]; ok {
+			return cached
+		}
+
+		mime, err := sniffMediaMIME(p)
+		if err != nil {
+			compressedCache[p] = false
+			return false
+		}
+
+		switch mime {
+		case "application/gzip",
+			"application/x-bzip2",
+			"application/x-xz",
+			"application/zstd",
+			"application/x-compress":
+			compressedCache[p] = true
+			return true
+		default:
+			compressedCache[p] = false
+			return false
+		}
+	}
+
+	isISOPath := func(p string) bool {
+		if p == "" {
+			return false
+		}
+
+		l := strings.ToLower(p)
+		if strings.HasSuffix(l, ".iso") {
+			return true
+		}
+
+		mime, err := sniffMediaMIME(p)
+		if err != nil {
+			return false
+		}
+
+		return strings.Contains(strings.ToLower(mime), "iso9660")
+	}
+
+	qemuUsableCache := map[string]bool{}
+	isQemuUsableImage := func(p string) bool {
+		if !fileExists(p) {
+			return false
+		}
+
+		if cached, ok := qemuUsableCache[p]; ok {
+			return cached
+		}
+
+		info, err := inspectDiskImageFormat(p)
+		if err != nil || info == nil {
+			qemuUsableCache[p] = false
+			return false
+		}
+
+		format := strings.ToLower(strings.TrimSpace(info.Format))
+		usable := format != ""
+		qemuUsableCache[p] = usable
+		return usable
+	}
+
 	isResolvableMediaFile := func(p string) bool {
 		if !fileExists(p) {
 			return false
 		}
 
-		if hasAllowedExt(p) {
-			return true
-		}
-
-		if !includeImg {
+		if isCompressedContainer(p) {
 			return false
 		}
 
-		if cached, ok := probeCache[p]; ok {
-			return cached
+		if !includeImg {
+			return isISOPath(p)
 		}
 
-		isRaw := findISOProbeRawImage(p)
-		probeCache[p] = isRaw
-		return isRaw
+		if isQemuUsableImage(p) {
+			return true
+		}
+
+		return isISOPath(p)
 	}
 
-	findAllowedInDir := func(dir string) string {
+	candidates := make([]string, 0, 12)
+	seen := make(map[string]struct{})
+	addCandidate := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return
+		}
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		candidates = append(candidates, p)
+	}
+
+	addCandidatesFromDir := func(dir string) {
 		if dir == "" {
-			return ""
+			return
 		}
 
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			return ""
+			return
 		}
 
 		for _, entry := range entries {
-			full := filepath.Join(dir, entry.Name())
-			if isResolvableMediaFile(full) {
-				return full
+			if entry.IsDir() {
+				continue
 			}
+			full := filepath.Join(dir, entry.Name())
+			addCandidate(full)
 		}
-
-		return ""
 	}
+
+	httpMainPath := filepath.Join(config.GetDownloadsPath("http"), download.Name)
+	pathFallbackPath := filepath.Join(config.GetDownloadsPath("path"), download.Name)
+	extractedRoot := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
 
 	switch download.Type {
 	case "http":
-		downloadsDir := config.GetDownloadsPath("http")
-		isoPath := filepath.Join(downloadsDir, download.Name)
-
-		mainExists := isResolvableMediaFile(isoPath)
-		extractExists := isResolvableMediaFile(download.ExtractedPath)
-
-		if mainExists {
-			return isoPath, nil
-		}
-
-		if extractExists {
-			return download.ExtractedPath, nil
-		}
-
-		if download.ExtractedPath != "" {
-			files, err := os.ReadDir(download.ExtractedPath)
-			if err == nil {
-				for _, f := range files {
-					full := filepath.Join(download.ExtractedPath, f.Name())
-					if isResolvableMediaFile(full) {
-						return full, nil
-					}
-				}
-			}
-		}
-
-		// Nothing usable; craft a helpful error (often main is compressed like .iso.bz2).
-		return "", fmt.Errorf(
-			"iso_or_img_not_found: main=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
-			isoPath, fileExists(isoPath), mainExists,
-			download.ExtractedPath, fileExists(download.ExtractedPath), extractExists,
-		)
+		addCandidate(httpMainPath)
+		addCandidate(download.ExtractedPath)
+		addCandidatesFromDir(download.ExtractedPath)
+		addCandidate(extractedRoot)
+		addCandidatesFromDir(extractedRoot)
 
 	case "torrent":
-		torrentsDir := config.GetDownloadsPath("torrents")
-
-		var isoCandidate, imgCandidate string
+		torrentsRoot := filepath.Join(config.GetDownloadsPath("torrents"), uuid)
 		for _, f := range download.Files {
-			full := filepath.Join(torrentsDir, uuid, f.Name)
-			if !fileExists(full) {
-				continue
-			}
-
-			l := strings.ToLower(f.Name)
-
-			if strings.HasSuffix(l, ".iso") && isoCandidate == "" {
-				isoCandidate = full
-			} else if includeImg &&
-				(strings.HasSuffix(l, ".img") || strings.HasSuffix(l, ".raw")) &&
-				imgCandidate == "" {
-				imgCandidate = full
-			} else if includeImg && imgCandidate == "" && isResolvableMediaFile(full) {
-				imgCandidate = full
-			}
+			addCandidate(filepath.Join(torrentsRoot, f.Name))
 		}
 
-		if isoCandidate == "" && imgCandidate == "" {
-			isoCandidate = filepath.Join(torrentsDir, uuid, download.Name)
-			if !isResolvableMediaFile(isoCandidate) {
-				isoCandidate = ""
-			}
-		}
-
-		if isoCandidate != "" {
-			return isoCandidate, nil
-		}
-
-		if includeImg && imgCandidate != "" {
-			return imgCandidate, nil
-		}
-
-		return "", fmt.Errorf("iso_or_img_not_found_in_torrent: %s", uuid)
+		addCandidate(filepath.Join(torrentsRoot, download.Name))
+		addCandidatesFromDir(torrentsRoot)
+		addCandidate(download.ExtractedPath)
+		addCandidatesFromDir(download.ExtractedPath)
+		addCandidate(extractedRoot)
+		addCandidatesFromDir(extractedRoot)
 
 	case "path":
-		pathDir := config.GetDownloadsPath("path")
-		fallbackPath := filepath.Join(pathDir, download.Name)
-
-		if isResolvableMediaFile(download.Path) {
-			return download.Path, nil
-		}
-
-		if isResolvableMediaFile(fallbackPath) {
-			return fallbackPath, nil
-		}
-
-		if isResolvableMediaFile(download.ExtractedPath) {
-			return download.ExtractedPath, nil
-		}
-
-		if candidate := findAllowedInDir(download.ExtractedPath); candidate != "" {
-			return candidate, nil
-		}
-
-		extractedRoot := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
-		if isResolvableMediaFile(extractedRoot) {
-			return extractedRoot, nil
-		}
-
-		if candidate := findAllowedInDir(extractedRoot); candidate != "" {
-			return candidate, nil
-		}
-
-		return "", fmt.Errorf(
-			"iso_or_img_not_found_in_path: path=%s (exists=%t, allowed=%t) fallback=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
-			download.Path, fileExists(download.Path), isResolvableMediaFile(download.Path),
-			fallbackPath, fileExists(fallbackPath), isResolvableMediaFile(fallbackPath),
-			download.ExtractedPath, fileExists(download.ExtractedPath), isResolvableMediaFile(download.ExtractedPath),
-		)
+		addCandidate(download.Path)
+		addCandidate(pathFallbackPath)
+		addCandidate(download.ExtractedPath)
+		addCandidatesFromDir(download.ExtractedPath)
+		addCandidate(extractedRoot)
+		addCandidatesFromDir(extractedRoot)
 
 	default:
 		return "", fmt.Errorf("unsupported_download_type: %s", download.Type)
 	}
+
+	for _, candidate := range candidates {
+		if isResolvableMediaFile(candidate) {
+			return candidate, nil
+		}
+	}
+
+	if download.Type == "torrent" {
+		return "", fmt.Errorf("iso_or_img_not_found_in_torrent: %s", uuid)
+	}
+
+	if download.Type == "path" {
+		return "", fmt.Errorf(
+			"iso_or_img_not_found_in_path: path=%s (exists=%t, allowed=%t) fallback=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
+			download.Path, fileExists(download.Path), isResolvableMediaFile(download.Path),
+			pathFallbackPath, fileExists(pathFallbackPath), isResolvableMediaFile(pathFallbackPath),
+			download.ExtractedPath, fileExists(download.ExtractedPath), isResolvableMediaFile(download.ExtractedPath),
+		)
+	}
+
+	return "", fmt.Errorf(
+		"iso_or_img_not_found: main=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
+		httpMainPath, fileExists(httpMainPath), isResolvableMediaFile(httpMainPath),
+		download.ExtractedPath, fileExists(download.ExtractedPath), isResolvableMediaFile(download.ExtractedPath),
+	)
 }
 
 func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, error) {

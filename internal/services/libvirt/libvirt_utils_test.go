@@ -41,12 +41,15 @@ func TestFindISOByUUID_HTTPType_ResolvesRawImageWithoutExtensionUsingProbe(t *te
 		t.Fatalf("failed to create http download file: %v", err)
 	}
 
-	origProbe := findISOProbeRawImage
-	findISOProbeRawImage = func(path string) bool {
-		return path == httpPath
+	origInspect := inspectDiskImageFormat
+	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+		if path == httpPath {
+			return &qemuimg.ImageInfo{Format: "raw"}, nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
 	}
 	t.Cleanup(func() {
-		findISOProbeRawImage = origProbe
+		inspectDiskImageFormat = origInspect
 	})
 
 	download := utilitiesModels.Downloads{
@@ -71,6 +74,144 @@ func TestFindISOByUUID_HTTPType_ResolvesRawImageWithoutExtensionUsingProbe(t *te
 
 	if isoPath != httpPath {
 		t.Fatalf("expected %q, got %q", httpPath, isoPath)
+	}
+}
+
+func TestFindISOByUUID_HTTPType_PrefersExtractedMediaWhenMainIsCompressed(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	svc := &Service{DB: db}
+
+	const uuid = "http-download-compressed-main"
+	const fileName = "FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-zfs"
+
+	httpDir := config.GetDownloadsPath("http")
+	if err := os.MkdirAll(httpDir, 0o755); err != nil {
+		t.Fatalf("failed to create http downloads dir: %v", err)
+	}
+
+	mainPath := filepath.Join(httpDir, fileName)
+	if err := os.WriteFile(mainPath, []byte("xz-bytes"), 0o644); err != nil {
+		t.Fatalf("failed to create main compressed file: %v", err)
+	}
+
+	extractedDir := filepath.Join(config.GetDownloadsPath("extracted"), uuid)
+	if err := os.MkdirAll(extractedDir, 0o755); err != nil {
+		t.Fatalf("failed to create extracted dir: %v", err)
+	}
+
+	extractedPath := filepath.Join(extractedDir, "FreeBSD-14")
+	if err := os.WriteFile(extractedPath, []byte("raw-image"), 0o644); err != nil {
+		t.Fatalf("failed to create extracted raw file: %v", err)
+	}
+
+	origInspect := inspectDiskImageFormat
+	origSniff := sniffMediaMIME
+	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+		if path == mainPath || path == extractedPath {
+			return &qemuimg.ImageInfo{Format: "raw"}, nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	}
+	sniffMediaMIME = func(path string) (string, error) {
+		if path == mainPath {
+			return "application/x-xz", nil
+		}
+		return "", fmt.Errorf("unknown format")
+	}
+	t.Cleanup(func() {
+		inspectDiskImageFormat = origInspect
+		sniffMediaMIME = origSniff
+	})
+
+	download := utilitiesModels.Downloads{
+		UUID:                uuid,
+		Path:                mainPath,
+		Name:                fileName,
+		Type:                utilitiesModels.DownloadTypeHTTP,
+		URL:                 "https://example.invalid/" + fileName + ".raw.xz",
+		Progress:            100,
+		Size:                8,
+		UType:               utilitiesModels.DownloadUTypeCloudInit,
+		Status:              utilitiesModels.DownloadStatusDone,
+		AutomaticExtraction: true,
+		ExtractedPath:       extractedPath,
+	}
+	if err := db.Create(&download).Error; err != nil {
+		t.Fatalf("failed to seed download row: %v", err)
+	}
+
+	isoPath, err := svc.FindISOByUUID(uuid, true)
+	if err != nil {
+		t.Fatalf("expected extracted raw media to resolve, got error: %v", err)
+	}
+
+	if isoPath != extractedPath {
+		t.Fatalf("expected extracted path %q, got %q", extractedPath, isoPath)
+	}
+}
+
+func TestFindISOByUUID_HTTPType_RejectsCompressedMainWithoutExtraction(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	svc := &Service{DB: db}
+
+	const uuid = "http-download-reject-compressed-main"
+	const fileName = "FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-zfs"
+
+	httpDir := config.GetDownloadsPath("http")
+	if err := os.MkdirAll(httpDir, 0o755); err != nil {
+		t.Fatalf("failed to create http downloads dir: %v", err)
+	}
+
+	mainPath := filepath.Join(httpDir, fileName)
+	if err := os.WriteFile(mainPath, []byte("xz-bytes"), 0o644); err != nil {
+		t.Fatalf("failed to create main compressed file: %v", err)
+	}
+
+	origInspect := inspectDiskImageFormat
+	origSniff := sniffMediaMIME
+	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+		if path == mainPath {
+			return &qemuimg.ImageInfo{Format: "raw"}, nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	}
+	sniffMediaMIME = func(path string) (string, error) {
+		if path == mainPath {
+			return "application/x-xz", nil
+		}
+		return "", fmt.Errorf("unknown format")
+	}
+	t.Cleanup(func() {
+		inspectDiskImageFormat = origInspect
+		sniffMediaMIME = origSniff
+	})
+
+	download := utilitiesModels.Downloads{
+		UUID:     uuid,
+		Path:     mainPath,
+		Name:     fileName,
+		Type:     utilitiesModels.DownloadTypeHTTP,
+		URL:      "https://example.invalid/" + fileName + ".raw.xz",
+		Progress: 100,
+		Size:     8,
+		UType:    utilitiesModels.DownloadUTypeCloudInit,
+		Status:   utilitiesModels.DownloadStatusDone,
+	}
+	if err := db.Create(&download).Error; err != nil {
+		t.Fatalf("failed to seed download row: %v", err)
+	}
+
+	_, err := svc.FindISOByUUID(uuid, true)
+	if err == nil {
+		t.Fatalf("expected compressed main payload to be rejected")
+	}
+
+	if !strings.Contains(err.Error(), "iso_or_img_not_found") {
+		t.Fatalf("expected iso_or_img_not_found error, got: %v", err)
 	}
 }
 
@@ -148,6 +289,17 @@ func TestFindISOByUUID_PathType_ResolvesExtractedDirectoryFallback(t *testing.T)
 	if err := db.Create(&download).Error; err != nil {
 		t.Fatalf("failed to seed download row: %v", err)
 	}
+
+	origInspect := inspectDiskImageFormat
+	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+		if path == rawPath {
+			return &qemuimg.ImageInfo{Format: "raw"}, nil
+		}
+		return nil, fmt.Errorf("unexpected path: %s", path)
+	}
+	t.Cleanup(func() {
+		inspectDiskImageFormat = origInspect
+	})
 
 	isoPath, err := svc.FindISOByUUID(uuid, true)
 	if err != nil {
