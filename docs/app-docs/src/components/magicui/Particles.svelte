@@ -48,6 +48,19 @@
     magnetism: number;
   }
 
+  interface ShootingStar {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    alpha: number;
+    length: number;
+    fadeRate: number;
+  }
+
+  let shootingStars: ShootingStar[] = [];
+  let autoSpawnInterval = 0;
+
   function hexToRgb(hex: string): number[] {
     let normalized = hex.replace("#", "");
 
@@ -166,6 +179,7 @@
       }
     });
 
+    drawShootingStars();
     animationFrame = window.requestAnimationFrame(animate);
   }
 
@@ -188,6 +202,113 @@
     }
   }
 
+  function getStarRgb(): number[] {
+    const isDark = document.documentElement.classList.contains("dark");
+    return isDark ? hexToRgb(color) : [15, 15, 30];
+  }
+
+  function spawnShootingStar(clientX: number, clientY: number) {
+    if (!canvasRef) return;
+    const rect = canvasRef.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 5 + Math.random() * 4;
+    shootingStars.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      alpha: 1,
+      length: 90 + Math.random() * 70,
+      fadeRate: 0.018,
+    });
+  }
+
+  function spawnAutoShootingStar() {
+    if (!canvasRef || canvasSize.w === 0) return;
+    // Pick a random edge to spawn from (0=top, 1=right, 2=bottom, 3=left)
+    const edge = Math.floor(Math.random() * 4);
+    let x: number, y: number, angle: number;
+    const spread = Math.PI / 5;
+    if (edge === 0) {
+      x = Math.random() * canvasSize.w;
+      y = -10;
+      angle = Math.PI / 2 + (Math.random() - 0.5) * spread;
+    } else if (edge === 1) {
+      x = canvasSize.w + 10;
+      y = Math.random() * canvasSize.h;
+      angle = Math.PI + (Math.random() - 0.5) * spread;
+    } else if (edge === 2) {
+      x = Math.random() * canvasSize.w;
+      y = canvasSize.h + 10;
+      angle = -Math.PI / 2 + (Math.random() - 0.5) * spread;
+    } else {
+      x = -10;
+      y = Math.random() * canvasSize.h;
+      angle = (Math.random() - 0.5) * spread;
+    }
+    const speed = 0.8 + Math.random() * 0.8;
+    shootingStars.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      alpha: 1,
+      length: 110 + Math.random() * 90,
+      fadeRate: 0.004,
+    });
+  }
+
+  function drawShootingStars() {
+    if (!context) return;
+    const rgb = getStarRgb();
+    for (let i = shootingStars.length - 1; i >= 0; i--) {
+      const star = shootingStars[i];
+      const spd = Math.sqrt(star.vx * star.vx + star.vy * star.vy);
+      const nx = star.vx / spd;
+      const ny = star.vy / spd;
+      const tailX = star.x - nx * star.length * star.alpha;
+      const tailY = star.y - ny * star.length * star.alpha;
+
+      const grad = context.createLinearGradient(tailX, tailY, star.x, star.y);
+      grad.addColorStop(0, `rgba(${rgb.join(", ")}, 0)`);
+      grad.addColorStop(1, `rgba(${rgb.join(", ")}, ${star.alpha})`);
+
+      context.save();
+      context.strokeStyle = grad;
+      context.lineWidth = 1.5;
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(tailX, tailY);
+      context.lineTo(star.x, star.y);
+      context.stroke();
+      context.beginPath();
+      context.arc(star.x, star.y, 1.5, 0, Math.PI * 2);
+      context.fillStyle = `rgba(${rgb.join(", ")}, ${star.alpha})`;
+      context.fill();
+      context.restore();
+
+      star.x += star.vx;
+      star.y += star.vy;
+      star.alpha -= star.fadeRate;
+
+      if (
+        star.alpha <= 0 ||
+        star.x < -star.length ||
+        star.x > canvasSize.w + star.length ||
+        star.y < -star.length ||
+        star.y > canvasSize.h + star.length
+      ) {
+        shootingStars.splice(i, 1);
+      }
+    }
+  }
+
+  function onCanvasClick(event: MouseEvent) {
+    spawnShootingStar(event.clientX, event.clientY);
+  }
+
   onMount(() => {
     dpr = typeof window !== "undefined" ? window.devicePixelRatio : 1;
     context = canvasRef.getContext("2d");
@@ -196,10 +317,14 @@
 
     window.addEventListener("resize", initCanvas);
     window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("click", onCanvasClick);
+    autoSpawnInterval = window.setInterval(spawnAutoShootingStar, 3000);
 
     return () => {
       window.removeEventListener("resize", initCanvas);
       window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("click", onCanvasClick);
+      window.clearInterval(autoSpawnInterval);
       window.cancelAnimationFrame(animationFrame);
     };
   });

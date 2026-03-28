@@ -30,7 +30,8 @@ try {
 }
 ---
 
-<div class="hero-section text-center pt-5 mt-0">
+<div class="hero-section relative text-center pt-5 mt-0">
+  <div class="relative z-10">
   <div
     class="-translate-y-4 animate-fade-in opacity-0"
     style="--animation-delay: 80ms"
@@ -67,17 +68,28 @@ try {
   </p>
 
   <div
-    class="flex justify-center items-center mt-10 gap-4 -translate-y-4 animate-fade-in opacity-0"
+    class="flex flex-col md:flex-row justify-center items-center mt-10 gap-4 -translate-y-4 animate-fade-in opacity-0"
     style="--animation-delay: 320ms"
   >
-    <a
-      href="/docs/"
-      class="inline-flex items-center justify-between border px-4 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background"
-    >
-      <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
-      <span data-i18n="getStarted">Get Started</span>
-    </a>
-    <div class="card-wrapper h-11 border rounded-lg">
+    <div class="order-2 md:order-1 flex flex-row gap-3 md:contents">
+      <a
+        href="/docs/"
+        class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background border"
+      >
+        <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
+        <span data-i18n="getStarted">Get Started</span>
+      </a>
+      <a
+        href="https://github.com/AlchemillaHQ/Sylve"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm border border-foreground/25 dark:border-white/50 md:hidden"
+      >
+        <span class="icon-[mdi--github] size-4 mr-2"></span>
+        GitHub
+      </a>
+    </div>
+    <div class="order-1 md:order-2 card-wrapper h-11 border rounded-lg">
       <div
         class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
       >
@@ -88,13 +100,14 @@ try {
     </div>
   </div>
   <Particles
-    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen"
+    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen z-0"
     quantity={80}
     ease={70}
     color="#ffffff"
     refresh={true}
     client:load
   />
+  </div>
   <HeroFrame
     client:load
     screenshotsLight={lightScreens}
