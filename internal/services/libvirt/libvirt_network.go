@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
+	"gorm.io/gorm"
 )
 
 func (s *Service) NetworkDetach(rid uint, networkId uint) error {
@@ -711,9 +712,12 @@ func (s *Service) FindVmByMac(mac string) (vmModels.VM, error) {
 	var vm vmModels.VM
 
 	err := s.DB.
-		Joins("LEFT JOIN objects ON networks.mac_id = objects.id").
+		Session(&gorm.Session{SkipHooks: true}).
+		Model(&vmModels.Network{}).
+		Select("vm_networks.id", "vm_networks.vm_id").
+		Joins("LEFT JOIN objects ON vm_networks.mac_id = objects.id").
 		Joins("LEFT JOIN object_entries ON object_entries.object_id = objects.id").
-		Where("LOWER(object_entries.value) = ?", mac).
+		Where("LOWER(object_entries.value) = ? OR LOWER(vm_networks.mac) = ?", mac, mac).
 		First(&netIf).Error
 	if err != nil {
 		return vm, fmt.Errorf("failed_to_find_network: %w", err)

@@ -34,6 +34,9 @@ func (s *Service) WolTasks() {
 					} else if strings.Contains(err.Error(), "record not found") {
 						logger.L.Debug().Msgf("Failed to find VM associated with MAC: %s", wol.Mac)
 						status = "vm_not_found"
+					} else {
+						logger.L.Warn().Err(err).Str("mac", wol.Mac).Msg("failed_to_resolve_vm_for_wol")
+						status = fmt.Sprintf("failed_to_resolve_vm: %s", err.Error())
 					}
 
 					if err := s.DB.Model(&wol).Update("status", status).Error; err != nil {
