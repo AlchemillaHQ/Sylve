@@ -711,6 +711,8 @@ msgid "Select an option"
 msgstr "Select an option"
 
 #: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "No data available"
 msgstr "No data available"
@@ -988,6 +990,8 @@ msgstr "Note"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -1119,6 +1123,8 @@ msgstr "Reset"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -1266,6 +1272,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -1282,6 +1289,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -1888,6 +1896,7 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1915,12 +1924,12 @@ msgstr "Check to enable"
 msgid "Saving"
 msgstr "Saving"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' \\: ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "Partition{0} created"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' \\: 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "Error creating {0}"
@@ -1984,12 +1993,12 @@ msgstr "Folder"
 msgid "File"
 msgstr "File"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' \\: 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> Create {0}"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' \\: 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "Enter {0} name"
@@ -2230,12 +2239,12 @@ msgstr "No groups selected and guests are not allowed"
 msgid "Share cannot have overlapping groups"
 msgstr "Share cannot have overlapping groups"
 
-#. 0: edit ? 'edit'
+#. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "Failed to {0} Samba share"
 
-#. 0: edit ? 'edited'
+#. 0: edit ? 'edited' \\: 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba share {0}"
@@ -2759,7 +2768,7 @@ msgstr "Edit {0}"
 msgid "Toggle {0}"
 msgstr "Toggle {0}"
 
-#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
@@ -2845,12 +2854,12 @@ msgstr "Unable to wipe busy disk"
 msgid "Unable to delete busy partition"
 msgstr "Unable to delete busy partition"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' \\: 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "Error {0}: {1}"
 
-#. 0: isFolder ? 'folder' ; 1: name
+#. 0: isFolder ? 'folder' \\: 'file'; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "Failed to create {0} \"{1}\""
@@ -2896,17 +2905,17 @@ msgstr "<0/> New Folder"
 msgid "{0} items"
 msgstr "{0} items"
 
-#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
+#. 0: sortedItems.filter((item\\: any) => item.type === 'folder').length; 1: sortedItems.filter((item\\: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} folders, {1} files"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' \\: 'file'; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "Failed to delete {0} \"{1}\"."
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' \\: ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "Failed to delete {0} item{1}."
@@ -5271,12 +5280,12 @@ msgstr "User Data is required"
 msgid "Meta Data is required"
 msgstr "Meta Data is required"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' \\: 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "Template {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' \\: 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "Failed to {0} template {1}"
@@ -5763,12 +5772,12 @@ msgstr "VirtIO Block"
 msgid "Attach Storage"
 msgstr "Attach Storage"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' \\: 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "Failed to {0} TPM emulation"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' \\: 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM emulation {0}"
@@ -5890,8 +5899,8 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -6033,15 +6042,21 @@ msgstr "Modified shutdown wait time"
 msgid "Shutdown Wait Time"
 msgstr "Shutdown Wait Time"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "Failed to modify WoL setting"
 msgstr "Failed to modify WoL setting"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "Modified WoL setting"
 msgstr "Modified WoL setting"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -6055,6 +6070,7 @@ msgstr "Wake on LAN"
 msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this VM for all MAC addresses attached to it"
 msgstr "Setting this option to be <0>on</0> will enable Wake on LAN for this VM for all MAC addresses attached to it"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "WoL"
 msgstr "WoL"
@@ -6170,6 +6186,7 @@ msgstr "Remove {0} from VDEV {1}"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partitions"
 msgstr "Partitions"
 
@@ -6406,7 +6423,7 @@ msgstr "Error Status"
 msgid "No known data errors"
 msgstr "No known data errors"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` \\: ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "Errors detected{0}"
@@ -7139,7 +7156,7 @@ msgid "Serial"
 msgstr "Serial"
 
 #. 0: consoleType === 'vnc' ? 'Serial'
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' \\: 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"
@@ -7751,7 +7768,7 @@ msgstr "New Backup Target"
 msgid "SSH Port"
 msgstr "SSH Port"
 
-#. 0: edit ? '(leave empty to keep existing)'
+#. 0: edit ? '(leave empty to keep existing)' \\: ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH Private Key {0}"
@@ -7816,7 +7833,7 @@ msgstr "Failed to edit lease"
 msgid "Lease edited"
 msgstr "Lease edited"
 
-#. 0: selectedLease ? 'Edit'
+#. 0: selectedLease ? 'Edit' \\: 'Create'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP Lease"
@@ -7904,7 +7921,7 @@ msgstr "Error updating DHCP range"
 msgid "Updated DHCP range"
 msgstr "Updated DHCP range"
 
-#. 0: selectedRange ? 'Edit'
+#. 0: selectedRange ? 'Edit' \\: 'Create'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr "{0} DHCP Range"
@@ -7966,8 +7983,8 @@ msgstr "Snapshot {0}@{1} created"
 msgid "Snapshot {0}@{1} already exists"
 msgstr "Snapshot {0}@{1} already exists"
 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot - {0}"
@@ -9882,6 +9899,7 @@ msgstr "This VM is owned by another node right now"
 #~ msgid "Save Name"
 #~ msgstr "Save Name"
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Edit Name"
 msgstr "Edit Name"
@@ -9909,3 +9927,34 @@ msgstr "This jail is owned by another node right now"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select a base/rootfs to add FStab entries"
 msgstr "Select a base/rootfs to add FStab entries"
+
+#. 0: textToCopy
+#. 0: truncated
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "Copied \"{0}\" to clipboard"
+msgstr "Copied \"{0}\" to clipboard"
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unused"
+msgstr "Unused"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Version mismatch: this node and the leader must run the same Sylve version"
+msgstr "Version mismatch: this node and the leader must run the same Sylve version"
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Login required after joining cluster"
+msgstr "Login required after joining cluster"
+
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this jail for all MAC addresses attached to it"
+msgstr "Setting this option to be <0>on</0> will enable Wake on LAN for this jail for all MAC addresses attached to it"
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "At least one CPU must be left unpinned"
+msgstr "At least one CPU must be left unpinned"
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Invalid expiry format, resetting to 12h"
+msgstr "Invalid expiry format, resetting to 12h"

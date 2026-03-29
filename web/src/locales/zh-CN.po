@@ -711,6 +711,8 @@ msgid "Select an option"
 msgstr "选择一个选项"
 
 #: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "No data available"
 msgstr "暂无数据"
@@ -988,6 +990,8 @@ msgstr "笔记"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
@@ -1119,6 +1123,8 @@ msgstr "重置"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -1266,6 +1272,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -1282,6 +1289,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -1888,6 +1896,7 @@ msgstr "此操作无法撤销。这将永久删除 "
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -1915,12 +1924,12 @@ msgstr "勾选以启用"
 msgid "Saving"
 msgstr "正在保存"
 
-#. 0: sizes.length > 1 ? 's'
+#. 0: sizes.length > 1 ? 's' \\: ''
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Partition{0} created"
 msgstr "已创建分区{0}"
 
-#. 0: sizes.length > 1 ? 'partitions'
+#. 0: sizes.length > 1 ? 'partitions' \\: 'partition'
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Error creating {0}"
 msgstr "创建 {0} 时出错"
@@ -1984,12 +1993,12 @@ msgstr "文件夹"
 msgid "File"
 msgstr "文件"
 
-#. 0: isFolder ? 'Folder'
+#. 0: isFolder ? 'Folder' \\: 'File'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "<0/> Create {0}"
 msgstr "<0/> 创建 {0}"
 
-#. 0: isFolder ? 'folder'
+#. 0: isFolder ? 'folder' \\: 'file'
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 msgid "Enter {0} name"
 msgstr "输入 {0} 名称"
@@ -2230,12 +2239,12 @@ msgstr "未选择组且不允许访客"
 msgid "Share cannot have overlapping groups"
 msgstr "共享不能有重叠的组"
 
-#. 0: edit ? 'edit'
+#. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Failed to {0} Samba share"
 msgstr "无法{0} Samba 共享"
 
-#. 0: edit ? 'edited'
+#. 0: edit ? 'edited' \\: 'created'
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Samba share {0}"
 msgstr "Samba 共享 {0}"
@@ -2759,7 +2768,7 @@ msgstr "编辑 {0}"
 msgid "Toggle {0}"
 msgstr "切换 {0}"
 
-#. 0: enabled ? 'disable' ; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "您即将 {0} {1}，{2}您将需要重启 Sylve 或主机系统以使更改生效"
@@ -2845,12 +2854,12 @@ msgstr "无法擦除忙碌中的磁盘"
 msgid "Unable to delete busy partition"
 msgstr "无法删除忙碌中的分区"
 
-#. 0: activeDisk ? 'wiping disk' ; 1: result.error
+#. 0: activeDisk ? 'wiping disk' \\: 'deleting partition'; 1: result.error
 #: src/routes/[node]/storage/disks/+page.svelte
 msgid "Error {0}: {1}"
 msgstr "错误 {0}: {1}"
 
-#. 0: isFolder ? 'folder' ; 1: name
+#. 0: isFolder ? 'folder' \\: 'file'; 1: name
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to create {0} \"{1}\""
 msgstr "创建{0}“{1}”失败"
@@ -2896,17 +2905,17 @@ msgstr "<0/> 新建文件夹"
 msgid "{0} items"
 msgstr "{0} 个项目"
 
-#. 0: sortedItems.filter((item; 1: sortedItems.filter((item
+#. 0: sortedItems.filter((item\\: any) => item.type === 'folder').length; 1: sortedItems.filter((item\\: any) => item.type === 'file').length
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "{0} folders, {1} files"
 msgstr "{0} 个文件夹，{1} 个文件"
 
-#. 0: modals.delete.item.type === 'folder' ? 'folder' ; 1: modals.delete.item.id.split('/').pop() || ''
+#. 0: modals.delete.item.type === 'folder' ? 'folder' \\: 'file'; 1: modals.delete.item.id.split('/').pop() || ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} \"{1}\"."
 msgstr "删除{0}“{1}”失败。"
 
-#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's'
+#. 0: selectedItems.length; 1: selectedItems.length > 1 ? 's' \\: ''
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "Failed to delete {0} item{1}."
 msgstr "删除 {0} 个项目{1}失败。"
@@ -5271,12 +5280,12 @@ msgstr "用户数据是必填项"
 msgid "Meta Data is required"
 msgstr "元数据是必填项"
 
-#. 0: properties.name; 1: isEdit ? 'updated'
+#. 0: properties.name; 1: isEdit ? 'updated' \\: 'created'
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Template {0} {1}"
 msgstr "模板 {0} {1}"
 
-#. 0: isEdit ? 'update' ; 1: properties.name
+#. 0: isEdit ? 'update' \\: 'create'; 1: properties.name
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Failed to {0} template {1}"
 msgstr "{0}模板 {1} 失败"
@@ -5763,12 +5772,12 @@ msgstr "VirtIO 块设备"
 msgid "Attach Storage"
 msgstr "连接存储"
 
-#. 0: tpmEmulation ? 'enable'
+#. 0: tpmEmulation ? 'enable' \\: 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "Failed to {0} TPM emulation"
 msgstr "无法{0}TPM模拟"
 
-#. 0: tpmEmulation ? 'enabled'
+#. 0: tpmEmulation ? 'enabled' \\: 'disabled'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 msgid "TPM emulation {0}"
 msgstr "TPM模拟{0}"
@@ -5890,7 +5899,7 @@ msgstr "保存并返回插槽"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新 "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6033,15 +6042,21 @@ msgstr "已修改关机等待时间"
 msgid "Shutdown Wait Time"
 msgstr "关机等待时间"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "Failed to modify WoL setting"
 msgstr "修改 WoL 设置失败"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "Modified WoL setting"
 msgstr "已修改 WoL 设置"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -6055,6 +6070,7 @@ msgstr "网络唤醒"
 msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this VM for all MAC addresses attached to it"
 msgstr "将此选项设置为 <0>开启</0> 将为该虚拟机关联的所有 MAC 地址启用网络唤醒"
 
+#: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 msgid "WoL"
 msgstr "WoL"
@@ -6170,6 +6186,7 @@ msgstr "从 VDEV {1} 中移除 {0}"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/storage/disks/+page.svelte
 msgid "Partitions"
 msgstr "分区"
 
@@ -6406,7 +6423,7 @@ msgstr "错误状态"
 msgid "No known data errors"
 msgstr "无已知数据错误"
 
-#. 0: scanErrors > 0 ? ` during scan (${scanErrors})`
+#. 0: scanErrors > 0 ? ` during scan (${scanErrors})` \\: ''
 #: src/lib/components/custom/ZFS/pools/Status.svelte
 msgid "Errors detected{0}"
 msgstr "检测到错误{0}"
@@ -7139,7 +7156,7 @@ msgid "Serial"
 msgstr "串口"
 
 #. 0: consoleType === 'vnc' ? 'Serial'
-#. 0: consoleType === 'vnc' ? 'Serial'
+#. 0: consoleType === 'vnc' ? 'Serial' \\: 'VNC'
 #: src/routes/[node]/vm/[node]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Switch to {0} Console"
@@ -7751,7 +7768,7 @@ msgstr "新建备份目标"
 msgid "SSH Port"
 msgstr "SSH 端口"
 
-#. 0: edit ? '(leave empty to keep existing)'
+#. 0: edit ? '(leave empty to keep existing)' \\: ''
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 msgid "SSH Private Key {0}"
 msgstr "SSH 私钥 {0}"
@@ -7816,7 +7833,7 @@ msgstr "编辑租约失败"
 msgid "Lease edited"
 msgstr "租约已编辑"
 
-#. 0: selectedLease ? 'Edit'
+#. 0: selectedLease ? 'Edit' \\: 'Create'
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "{0} DHCP Lease"
 msgstr "{0} DHCP 租约"
@@ -7904,7 +7921,7 @@ msgstr ""
 msgid "Updated DHCP range"
 msgstr ""
 
-#. 0: selectedRange ? 'Edit'
+#. 0: selectedRange ? 'Edit' \\: 'Create'
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "{0} DHCP Range"
 msgstr ""
@@ -7966,8 +7983,8 @@ msgstr "快照 {0}@{1} 已创建"
 msgid "Snapshot {0}@{1} already exists"
 msgstr "快照 {0}@{1} 已存在"
 
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
-#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
+#. 0: properties.name !== '' ? `${dataset.name}@${properties.name}` \\: `${dataset.name}`
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 msgid "Snapshot - {0}"
@@ -9882,6 +9899,7 @@ msgstr ""
 #~ msgid "Save Name"
 #~ msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Edit Name"
 msgstr ""
@@ -9908,4 +9926,35 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Select a base/rootfs to add FStab entries"
+msgstr ""
+
+#. 0: textToCopy
+#. 0: truncated
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "Copied \"{0}\" to clipboard"
+msgstr ""
+
+#: src/routes/[node]/storage/disks/+page.svelte
+msgid "Unused"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Version mismatch: this node and the leader must run the same Sylve version"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Login required after joining cluster"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/WoL.svelte
+msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this jail for all MAC addresses attached to it"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/CPU.svelte
+msgid "At least one CPU must be left unpinned"
+msgstr ""
+
+#: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+msgid "Invalid expiry format, resetting to 12h"
 msgstr ""
