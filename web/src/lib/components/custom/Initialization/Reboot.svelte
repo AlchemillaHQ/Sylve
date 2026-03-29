@@ -58,7 +58,9 @@
 		});
 
 		rebootPromise.then(() => {
-			goto('/datacenter/summary', { replaceState: true });
+			setTimeout(() => {
+				window.location.href = '/datacenter/summary';
+			}, 1000);
 		});
 	}
 </script>
