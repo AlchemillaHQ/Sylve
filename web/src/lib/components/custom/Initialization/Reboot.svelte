@@ -52,15 +52,14 @@
 
 		toast.promise(rebootPromise, {
 			loading: 'System is restarting…',
-			success: 'System is back online',
+			success: () => {
+				setTimeout(() => {
+					window.location.href = '/datacenter/summary';
+				}, 1000);
+				return 'System is back online';
+			},
 			error: 'System did not come back online in time',
 			position: 'bottom-center'
-		});
-
-		rebootPromise.then(() => {
-			setTimeout(() => {
-				window.location.href = '/datacenter/summary';
-			}, 1000);
 		});
 	}
 </script>

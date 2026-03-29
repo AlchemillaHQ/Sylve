@@ -36,6 +36,7 @@
 	import { onDestroy } from 'svelte';
 	import { handleCommandKeydown } from '$lib/system.js';
 	import Index from '$lib/components/custom/Command/Index.svelte';
+	import { resolve } from '$app/paths';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -69,7 +70,7 @@
 				[isInit, isRebooted] = await isInitialized();
 				initialized = isInit;
 				rebooted = isRebooted;
-			} catch (error) {
+			} catch {
 				initialized = false;
 				rebooted = false;
 			}
@@ -78,7 +79,7 @@
 
 			if (initialized && rebooted && page.url.pathname === '/') {
 				await preloadData('/datacenter/summary');
-				await goto('/datacenter/summary', { replaceState: true });
+				await goto(resolve('/datacenter/summary'), { replaceState: true });
 			}
 
 			await sleep(1500);
@@ -122,7 +123,7 @@
 					rebooted = false;
 				}
 
-				await goto('/');
+				await goto(resolve('/'));
 
 				loading.initialization = false;
 
@@ -136,10 +137,12 @@
 				}
 
 				if (target === '/') {
-					target = '/datacenter/summary';
+					target = resolve('/datacenter/summary');
 				}
 
 				await preloadData(target);
+
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
 				await goto(target, { replaceState: true });
 
 				await sleep(1500);
@@ -149,7 +152,7 @@
 				isError = true;
 				loading.login = false;
 			}
-		} catch (error) {
+		} catch {
 			isError = true;
 			loading.login = false;
 		} finally {
@@ -182,7 +185,7 @@
 					rebooted = false;
 				}
 
-				await goto('/');
+				await goto(resolve('/'));
 
 				loading.initialization = false;
 
@@ -194,10 +197,12 @@
 					target = page.url.pathname;
 				}
 				if (target === '/') {
-					target = '/datacenter/summary';
+					target = resolve('/datacenter/summary');
 				}
 
 				await preloadData(target);
+
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
 				await goto(target, { replaceState: true });
 
 				await sleep(1500);
@@ -207,7 +212,7 @@
 				isError = true;
 				loading.passkey = false;
 			}
-		} catch (error) {
+		} catch {
 			isError = true;
 			loading.passkey = false;
 		} finally {
@@ -267,7 +272,7 @@
 		<Throbber />
 	{:else if storage.token && !loading.throbber && !loading.login}
 		{#if initialized === null}
-			<Throbber />
+			<!-- Waiting for initialization state -->
 		{:else if initialized === false || rebooted === false}
 			{#if !initialized}
 				<div transition:fade|global={{ duration: 400 }}>
