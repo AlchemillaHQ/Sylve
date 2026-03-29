@@ -267,6 +267,12 @@ export async function modifyBootOrder(
     });
 }
 
+export async function modifyWoL(ctId: number, enabled: boolean): Promise<APIResponse> {
+    return await apiRequest(`/jail/options/wol/${ctId}`, APIResponseSchema, 'PUT', {
+        enabled
+    });
+}
+
 export async function modifyFstab(ctId: number, fstab: string): Promise<APIResponse> {
     return await apiRequest(`/jail/options/fstab/${ctId}`, APIResponseSchema, 'PUT', {
         fstab

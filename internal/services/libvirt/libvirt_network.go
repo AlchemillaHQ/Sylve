@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
@@ -707,29 +708,89 @@ func (s *Service) FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 }
 
 func (s *Service) FindVmByMac(mac string) (vmModels.VM, error) {
-	mac = strings.ToLower(strings.TrimSpace(mac))
-	var netIf vmModels.Network
 	var vm vmModels.VM
 
-	err := s.DB.
-		Session(&gorm.Session{SkipHooks: true}).
-		Model(&vmModels.Network{}).
-		Select("vm_networks.id", "vm_networks.vm_id").
-		Joins("LEFT JOIN objects ON vm_networks.mac_id = objects.id").
-		Joins("LEFT JOIN object_entries ON object_entries.object_id = objects.id").
-		Where("LOWER(object_entries.value) = ? OR LOWER(vm_networks.mac) = ?", mac, mac).
-		First(&netIf).Error
+	vms, err := s.FindVMsByMac(mac)
 	if err != nil {
 		return vm, fmt.Errorf("failed_to_find_network: %w", err)
 	}
 
-	if err := s.DB.First(&vm, "id = ?", netIf.VMID).Error; err != nil {
-		return vm, fmt.Errorf("failed_to_find_vm: %w", err)
+	if len(vms) == 0 {
+		return vm, fmt.Errorf("failed_to_find_network: %w", gorm.ErrRecordNotFound)
 	}
 
-	if vm.WoL == false {
-		return vm, fmt.Errorf("vm_wol_disabled: %s", vm.Name)
+	for _, candidate := range vms {
+		if candidate.WoL {
+			return candidate, nil
+		}
 	}
 
-	return vm, nil
+	vm = vms[0]
+	return vm, fmt.Errorf("vm_wol_disabled: %s", vm.Name)
+}
+
+func (s *Service) FindVMsByMac(mac string) ([]vmModels.VM, error) {
+	mac = strings.ToLower(strings.TrimSpace(mac))
+	if mac == "" {
+		return []vmModels.VM{}, nil
+	}
+
+	var vmIDs []uint
+	err := s.DB.
+		Session(&gorm.Session{SkipHooks: true}).
+		Model(&vmModels.Network{}).
+		Joins("LEFT JOIN objects ON vm_networks.mac_id = objects.id").
+		Joins("LEFT JOIN object_entries ON object_entries.object_id = objects.id").
+		Where("LOWER(object_entries.value) = ? OR LOWER(vm_networks.mac) = ?", mac, mac).
+		Distinct("vm_networks.vm_id").
+		Pluck("vm_networks.vm_id", &vmIDs).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_find_vm_networks: %w", err)
+	}
+
+	if len(vmIDs) == 0 {
+		return []vmModels.VM{}, nil
+	}
+
+	var vms []vmModels.VM
+	if err := s.DB.
+		Where("id IN ?", vmIDs).
+		Find(&vms).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_find_vms: %w", err)
+	}
+
+	return vms, nil
+}
+
+func (s *Service) FindJailsByMac(mac string) ([]jailModels.Jail, error) {
+	mac = strings.ToLower(strings.TrimSpace(mac))
+	if mac == "" {
+		return []jailModels.Jail{}, nil
+	}
+
+	var jailIDs []uint
+	err := s.DB.
+		Session(&gorm.Session{SkipHooks: true}).
+		Model(&jailModels.Network{}).
+		Joins("LEFT JOIN objects ON jail_networks.mac_id = objects.id").
+		Joins("LEFT JOIN object_entries ON object_entries.object_id = objects.id").
+		Where("LOWER(object_entries.value) = ?", mac).
+		Distinct("jail_networks.jid").
+		Pluck("jail_networks.jid", &jailIDs).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_find_jail_networks: %w", err)
+	}
+
+	if len(jailIDs) == 0 {
+		return []jailModels.Jail{}, nil
+	}
+
+	var jails []jailModels.Jail
+	if err := s.DB.
+		Where("id IN ?", jailIDs).
+		Find(&jails).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_find_jails: %w", err)
+	}
+
+	return jails, nil
 }

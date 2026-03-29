@@ -23,8 +23,6 @@ type LibvirtServiceInterface interface {
 	ModifyVNC(rid uint, req ModifyVNCRequest) error
 	ModifyPassthrough(rid uint, pciDevices []int) error
 
-	WolTasks()
-
 	NetworkDetach(rid uint, networkId uint) error
 	NetworkAttach(req NetworkAttachRequest) error
 	NetworkUpdate(req NetworkUpdateRequest) error

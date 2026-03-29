@@ -10137,6 +10137,9 @@ const docTemplate = `{
                 },
                 "updatedAt": {
                     "type": "string"
+                },
+                "wol": {
+                    "type": "boolean"
                 }
             }
         },
@@ -13869,6 +13872,14 @@ const docTemplate = `{
             "properties": {
                 "resolvConf": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyWakeOnLanRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },

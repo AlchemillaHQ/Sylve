@@ -179,6 +179,7 @@ type JailTemplate struct {
 	RootDataset string `json:"rootDataset" gorm:"column:root_dataset;not null;uniqueIndex"`
 
 	Type JailType `json:"type"`
+	WoL  bool     `json:"wol" gorm:"default:false"`
 
 	ResourceLimits *bool `json:"resourceLimits" gorm:"default:true"`
 	Cores          int   `json:"cores"`
@@ -241,6 +242,7 @@ type Jail struct {
 
 	StartAtBoot *bool `json:"startAtBoot" gorm:"default:false"`
 	StartOrder  int   `json:"startOrder"`
+	WoL         bool  `json:"wol" gorm:"default:false"`
 
 	InheritIPv4 bool `json:"inheritIPv4"`
 	InheritIPv6 bool `json:"inheritIPv6"`

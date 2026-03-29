@@ -56,6 +56,28 @@ func (s *Service) ModifyBootOrder(ctId uint, startAtBoot bool, bootOrder int) er
 	return err
 }
 
+func (s *Service) ModifyWakeOnLan(ctId uint, enabled bool) error {
+	allowed, leaseErr := s.canMutateProtectedJail(ctId)
+	if leaseErr != nil {
+		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_lease_not_owned")
+	}
+
+	err := s.DB.
+		Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctId).
+		Update("wo_l", enabled).Error
+
+	err = s.WriteJailJSON(ctId)
+	if err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write jail JSON after WoL update")
+	}
+
+	return err
+}
+
 func (s *Service) ModifyFstab(ctId uint, fstab string) error {
 	allowed, leaseErr := s.canMutateProtectedJail(ctId)
 	if leaseErr != nil {

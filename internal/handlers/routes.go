@@ -382,6 +382,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/network", jailHandlers.EditNetwork(jailService))
 		jail.DELETE("/network/:ctId/:networkId", jailHandlers.DeleteNetwork(jailService))
 
+		jail.PUT("/options/wol/:rid", jailHandlers.ModifyWakeOnLan(jailService))
 		jail.PUT("/options/boot-order/:rid", jailHandlers.ModifyBootOrder(jailService))
 		jail.PUT("/options/fstab/:rid", jailHandlers.ModifyFstab(jailService))
 		jail.PUT("/options/resolv-conf/:rid", jailHandlers.ModifyResolvConf(jailService))

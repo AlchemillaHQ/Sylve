@@ -102,7 +102,9 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *network.Service:
 		return network.NewNetworkService(db, dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface))
 	case *utilities.Service:
-		return utilities.NewUtilitiesService(db)
+		vmService := dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface)
+		jailService := dependencies[1].(jailServiceInterfaces.JailServiceInterface)
+		return utilities.NewUtilitiesService(db, vmService, jailService)
 	case *samba.Service:
 		telemetryDB := dependencies[0].(*gorm.DB)
 		zfsService := dependencies[1].(zfsServiceInterfaces.ZfsServiceInterface)
@@ -145,9 +147,9 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	networkService := NewService[network.Service](db, libvirtService)
 	infoService := NewService[info.Service](db, telemetryDB, gzfs)
 	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
-	utilitiesService := NewService[utilities.Service](db)
-	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)
+	utilitiesService := NewService[utilities.Service](db, libvirtService, jailService)
+	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
 	zeltaService := NewService[zelta.Service](db, clusterService, jailService, networkService, libvirtService, gzfs)

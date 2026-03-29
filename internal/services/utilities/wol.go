@@ -9,6 +9,7 @@
 package utilities
 
 import (
+	"context"
 	"net"
 	"sync"
 	"time"
@@ -135,13 +136,20 @@ func (s *Service) StartWOLServer() error {
 
 				if utils.IsWOLPacket(payload) && shouldEmit(payload) {
 					mac := utils.FormatMAC(payload[6:12])
-
-					if err := s.DB.Create(&utilitiesModels.WoL{
+					wol := utilitiesModels.WoL{
 						Mac:    mac,
 						Status: "pending",
-					}).Error; err != nil {
+					}
+
+					if err := s.DB.Create(&wol).Error; err != nil {
 						logger.L.Warn().Err(err).Str("mac", mac).Str("iface", ifname).Msg("db insert failed")
 					} else {
+						if err := s.enqueueWoLTask(context.Background(), wol.ID); err != nil {
+							failureStatus := "failed_to_resolve_guest: failed_to_enqueue_wol_task"
+							_ = s.DB.Model(&wol).Update("status", failureStatus).Error
+							logger.L.Warn().Err(err).Uint("wol_id", wol.ID).Str("mac", mac).Str("iface", ifname).Msg("wol enqueue failed")
+							goto next
+						}
 						logger.L.Debug().Msgf("⚡ WOL packet detected on %s for MAC: %s", ifname, mac)
 					}
 				}

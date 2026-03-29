@@ -10131,6 +10131,9 @@
                 },
                 "updatedAt": {
                     "type": "string"
+                },
+                "wol": {
+                    "type": "boolean"
                 }
             }
         },
@@ -13863,6 +13866,14 @@
             "properties": {
                 "resolvConf": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyWakeOnLanRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         },

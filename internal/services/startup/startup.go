@@ -202,7 +202,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()
-		go s.Libvirt.WolTasks()
 	}
 
 	if slices.Contains(basicSettings.Services, models.DHCPServer) {

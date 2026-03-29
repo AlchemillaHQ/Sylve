@@ -936,6 +936,8 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType'
       updatedAt:
         type: string
+      wol:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_db_models_jail.JailHookPhase:
     enum:
@@ -3444,6 +3446,11 @@ definitions:
     properties:
       resolvConf:
         type: string
+    type: object
+  internal_handlers_jail.ModifyWakeOnLanRequest:
+    properties:
+      enabled:
+        type: boolean
     type: object
   internal_handlers_jail.SetInheritanceRequest:
     properties:

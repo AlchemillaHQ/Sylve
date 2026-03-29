@@ -23,6 +23,10 @@ type ModifyBootOrderRequest struct {
 	BootOrder   *int  `json:"bootOrder"`
 }
 
+type ModifyWakeOnLanRequest struct {
+	Enabled *bool `json:"enabled"`
+}
+
 type ModifyFstabRequest struct {
 	Fstab *string `json:"fstab"`
 }
@@ -110,6 +114,65 @@ func ModifyBootOrder(jailService *jail.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "boot_order_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Wake-on-LAN of a Jail
+// @Description Modify the Wake-on-LAN configuration of a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyWakeOnLanRequest true "Modify Wake-on-LAN Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/wol/:rid [put]
+func ModifyWakeOnLan(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		var req ModifyWakeOnLanRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		enabled := false
+		if req.Enabled != nil {
+			enabled = *req.Enabled
+		}
+
+		if err := jailService.ModifyWakeOnLan(rid, enabled); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "wol_modified",
 			Data:    nil,
 			Error:   "",
 		})

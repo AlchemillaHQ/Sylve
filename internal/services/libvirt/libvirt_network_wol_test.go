@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -132,5 +133,53 @@ func TestFindVmByMac_ReturnsWolDisabled(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "vm_wol_disabled") {
 		t.Fatalf("FindVmByMac() error = %q, want vm_wol_disabled", err.Error())
+	}
+}
+
+func TestFindJailsByMac_ResolvesFromMACObjectEntry(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+	)
+
+	jail := jailModels.Jail{Name: "jail-a", CTID: 201, WoL: true}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("failed to seed jail: %v", err)
+	}
+
+	macObj := networkModels.Object{Name: "jail-a-mac", Type: "Mac"}
+	if err := db.Create(&macObj).Error; err != nil {
+		t.Fatalf("failed to seed MAC object: %v", err)
+	}
+	if err := db.Create(&networkModels.ObjectEntry{
+		ObjectID: macObj.ID,
+		Value:    "f6:94:a4:b3:aa:21",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed MAC object entry: %v", err)
+	}
+
+	if err := db.Create(&jailModels.Network{
+		JailID: jail.ID,
+		Name:   "net0",
+		MacID:  &macObj.ID,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed jail network: %v", err)
+	}
+
+	svc := &Service{DB: db}
+	jails, err := svc.FindJailsByMac("F6:94:A4:B3:AA:21")
+	if err != nil {
+		t.Fatalf("FindJailsByMac returned error: %v", err)
+	}
+
+	if len(jails) != 1 {
+		t.Fatalf("FindJailsByMac returned %d jail(s), want 1", len(jails))
+	}
+
+	if jails[0].ID != jail.ID {
+		t.Fatalf("FindJailsByMac returned jail %d, want %d", jails[0].ID, jail.ID)
 	}
 }

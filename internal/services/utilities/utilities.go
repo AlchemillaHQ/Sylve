@@ -17,6 +17,9 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 
@@ -35,6 +38,12 @@ type Service struct {
 	GrabClient   *grab.Client
 	GrabInsecure *grab.Client
 
+	VMService   libvirtServiceInterfaces.LibvirtServiceInterface
+	JailService jailServiceInterfaces.JailServiceInterface
+
+	wolStartVMFn   func(vm vmModels.VM) error
+	wolStartJailFn func(ctid int) error
+
 	httpRspMu     sync.Mutex
 	httpResponses map[string]*grab.Response
 
@@ -48,7 +57,11 @@ type Service struct {
 	downloadSignSecret string
 }
 
-func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServiceInterface {
+func NewUtilitiesService(
+	db *gorm.DB,
+	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
+	jailService jailServiceInterfaces.JailServiceInterface,
+) utilitiesServiceInterfaces.UtilitiesServiceInterface {
 	torrent.DisableLogging()
 	cfg := torrent.DefaultConfig
 	cfg.Database = config.GetDownloadsPath("torrent.db")
@@ -86,6 +99,8 @@ func NewUtilitiesService(db *gorm.DB) utilitiesServiceInterfaces.UtilitiesServic
 		GrabInsecure:  insecureClient,
 		httpResponses: make(map[string]*grab.Response),
 		inflight:      make(map[uint]struct{}),
+		VMService:     vmService,
+		JailService:   jailService,
 	}
 }
 
@@ -124,4 +139,6 @@ func (s *Service) RegisterJobs() {
 
 		return nil
 	})
+
+	s.registerWoLJobs()
 }

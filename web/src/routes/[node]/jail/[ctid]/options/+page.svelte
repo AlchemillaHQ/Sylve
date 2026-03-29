@@ -4,6 +4,7 @@
 	import LifecycleHooks from '$lib/components/custom/Jail/Options/LifecycleHooks.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
+	import WoL from '$lib/components/custom/Jail/Options/WoL.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
@@ -58,6 +59,11 @@
 				id: generateNanoId('startOrder'),
 				property: 'Start At Boot / Start Order',
 				value: `${jail?.current.startAtBoot ? 'Yes' : 'No'} / ${jail?.current.startOrder || 0}`
+			},
+			{
+				id: generateNanoId('wol'),
+				property: 'Wake on LAN',
+				value: jail?.current.wol || false
 			},
 			{
 				id: generateNanoId('fstab'),
@@ -140,6 +146,7 @@
 
 	let properties = $state({
 		startOrder: { open: false },
+		wol: { open: false },
 		fstab: { open: false },
 		resolvConf: { open: false },
 		devfsRules: { open: false },
@@ -163,6 +170,7 @@
 {#snippet button(
 	type:
 		| 'startOrder'
+		| 'wol'
 		| 'fstab'
 		| 'resolvConf'
 		| 'devfsRules'
@@ -192,6 +200,8 @@
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow.property === 'Start At Boot / Start Order'}
 				{@render button('startOrder', 'Start At Boot / Start Order')}
+			{:else if activeRow.property === 'Wake on LAN'}
+				{@render button('wol', 'Wake on LAN')}
 			{:else if activeRow.property === 'FSTab Entries'}
 				{@render button('fstab', 'FSTab Entries')}
 			{:else if activeRow.property === '/etc/resolv.conf'}
@@ -223,6 +233,10 @@
 
 {#if properties.startOrder.open && jail.current}
 	<StartOrder bind:open={properties.startOrder.open} jail={jail.current} bind:reload />
+{/if}
+
+{#if properties.wol.open && jail.current}
+	<WoL bind:open={properties.wol.open} jail={jail.current} bind:reload />
 {/if}
 
 {#if properties.fstab.open && jail.current}
