@@ -15,6 +15,10 @@
 			try {
 				const health = await getBasicHealth();
 
+				if (!health || ('status' in health && health.status === 'error')) {
+					throw new Error('System is down');
+				}
+
 				if (!wentDown) {
 					// still up → wait for it to go down
 					await new Promise((r) => setTimeout(r, intervalMs));
