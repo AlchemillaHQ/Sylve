@@ -298,6 +298,7 @@ msgstr "File Explorer - Delete"
 msgid "File Explorer"
 msgstr "File Explorer"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Filesystem"
 msgstr "ZFS Filesystem"
@@ -2258,6 +2259,7 @@ msgid "Create Samba Share"
 msgstr "Create Samba Share"
 
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
@@ -5608,6 +5610,7 @@ msgstr "VM network updated"
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Emulation"
@@ -5675,13 +5678,11 @@ msgstr "Unable to find disk"
 msgid "Please select a ZFS Volume"
 msgstr "Please select a ZFS Volume"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to import disk"
-msgstr "Failed to import disk"
+#~ msgid "Failed to import disk"
+#~ msgstr "Failed to import disk"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Disk imported"
-msgstr "Disk imported"
+#~ msgid "Disk imported"
+#~ msgstr "Disk imported"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -5693,13 +5694,11 @@ msgstr "Please specify a size"
 msgid "Invalid size format"
 msgstr "Invalid size format"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to attach disk"
-msgstr "Failed to attach disk"
+#~ msgid "Failed to attach disk"
+#~ msgstr "Failed to attach disk"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Disk attached"
-msgstr "Disk attached"
+#~ msgid "Disk attached"
+#~ msgstr "Disk attached"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -9958,3 +9957,37 @@ msgstr "At least one CPU must be left unpinned"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 msgid "Invalid expiry format, resetting to 12h"
 msgstr "Invalid expiry format, resetting to 12h"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to import storage"
+msgstr "Failed to import storage"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Storage imported"
+msgstr "Storage imported"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Please select a ZFS filesystem dataset"
+msgstr "Please select a ZFS filesystem dataset"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Invalid 9P target name (letters, numbers, '.', '_' and '-' only)"
+msgstr "Invalid 9P target name (letters, numbers, '.', '_' and '-' only)"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Failed to attach storage"
+msgstr "Failed to attach storage"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Storage attached"
+msgstr "Storage attached"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Select ZFS filesystem"
+msgstr "Select ZFS filesystem"
+
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
+msgid "Read-only share"
+msgstr "Read-only share"

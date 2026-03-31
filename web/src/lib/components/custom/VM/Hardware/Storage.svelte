@@ -94,9 +94,7 @@
 	let editOptions = {
 		name: selectedStorage ? selectedStorage.name || (selectedName ?? '') : '',
 		size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
-		emulation: selectedStorage
-			? selectedStorage.emulation
-			: ('ahci-hd' as StorageEmulation),
+		emulation: selectedStorage ? selectedStorage.emulation : ('ahci-hd' as StorageEmulation),
 		filesystemTarget: selectedStorage?.filesystemTarget || '',
 		filesystemReadOnly: selectedStorage?.readOnly ?? false,
 		enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
@@ -267,7 +265,7 @@
 				properties.diskType as 'raw' | 'zvol',
 				properties.diskType === 'raw' ? properties.rawPath : '',
 				properties.diskType === 'zvol' ? zvolCombobox.value : '',
-				(properties.emulation === 'virtio-9p' ? 'ahci-hd' : properties.emulation),
+				properties.emulation === 'virtio-9p' ? 'ahci-hd' : properties.emulation,
 				properties.pool,
 				Number(properties.bootOrder)
 			);
@@ -308,7 +306,10 @@
 				}
 
 				if (!isValid9PTargetName(properties.filesystemTarget.trim())) {
-					toast.error("Invalid 9P target name (letters, numbers, '.', '_' and '-' only)", toastOptions);
+					toast.error(
+						"Invalid 9P target name (letters, numbers, '.', '_' and '-' only)",
+						toastOptions
+					);
 					return;
 				}
 			}
@@ -608,7 +609,7 @@
 						data={filesystemDatasetOptions}
 						classes="flex-1 space-y-1"
 						placeholder="Select ZFS filesystem"
-						width="w-full"
+						width="w-1/2"
 						multiple={false}
 					></CustomComboBox>
 				{/if}
@@ -632,8 +633,7 @@
 							{ value: 'virtio-blk', label: 'VirtIO Block' }
 						]}
 						bind:value={properties.emulation}
-						onChange={(value) =>
-							(properties.emulation = value as StorageEmulation)}
+						onChange={(value) => (properties.emulation = value as StorageEmulation)}
 					/>
 				{/if}
 
@@ -647,7 +647,7 @@
 			</div>
 
 			{#if properties.type === 'new' && properties.diskType === 'filesystem'}
-				<div class="mt-3 grid grid-cols-2 gap-4">
+				<div class="mt-[-1] grid grid-cols-1 gap-2">
 					<CustomValueInput
 						label="9P Target Name"
 						placeholder="shared_dir"
@@ -657,7 +657,7 @@
 					<CustomCheckbox
 						label="Read-only share"
 						bind:checked={properties.filesystemReadOnly}
-						classes="mt-7 flex items-center gap-2"
+						classes="mt-1 flex items-center gap-2"
 					/>
 				</div>
 			{/if}
@@ -707,8 +707,7 @@
 							{ value: 'virtio-blk', label: 'VirtIO Block' }
 						]}
 						bind:value={editProperties.emulation}
-						onChange={(value) =>
-							(editProperties.emulation = value as StorageEmulation)}
+						onChange={(value) => (editProperties.emulation = value as StorageEmulation)}
 					/>
 				{/if}
 
