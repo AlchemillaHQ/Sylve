@@ -108,6 +108,15 @@ func (s *Service) resolveFilesystemSourcePath(ctx context.Context, storage vmMod
 
 	datasetName := strings.TrimSpace(storage.Dataset.Name)
 	if datasetName == "" {
+		var datasetRecord vmModels.VMStorageDataset
+		if err := s.DB.First(&datasetRecord, "id = ?", *storage.DatasetID).Error; err != nil {
+			return "", fmt.Errorf("failed_to_find_storage_dataset_record: %w", err)
+		}
+
+		datasetName = strings.TrimSpace(datasetRecord.Name)
+	}
+
+	if datasetName == "" {
 		return "", fmt.Errorf("filesystem_storage_dataset_name_missing")
 	}
 
@@ -345,6 +354,7 @@ func (s *Service) SyncVMDisks(rid uint) error {
 
 	var storages []vmModels.Storage
 	if err := s.DB.
+		Preload("Dataset").
 		Where("vm_id = ?", vm.ID).
 		Order("boot_order ASC").
 		Find(&storages).Error; err != nil {
