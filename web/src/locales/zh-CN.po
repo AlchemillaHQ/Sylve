@@ -9693,6 +9693,7 @@ msgstr ""
 #~ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
 msgstr ""
 

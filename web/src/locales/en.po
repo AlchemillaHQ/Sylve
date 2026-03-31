@@ -5898,8 +5898,8 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -9692,6 +9692,7 @@ msgstr "DHCP Lease - Delete Dynamic"
 #~ msgid "Enabled (Attached to VM)"
 #~ msgstr "Enabled (Attached to VM)"
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
 msgstr "Enabled (Available to VM)"

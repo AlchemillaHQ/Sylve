@@ -5898,7 +5898,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -9692,6 +9692,7 @@ msgstr ""
 #~ msgid "Enabled (Attached to VM)"
 #~ msgstr ""
 
+#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
 msgstr ""

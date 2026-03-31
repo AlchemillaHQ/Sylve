@@ -649,17 +649,18 @@
 						bind:value={properties.bootOrder as number}
 						classes="flex-1 space-y-1"
 					/>
-				{/if}
-			</div>
-
-			{#if properties.type === 'new' && properties.diskType === 'filesystem'}
-				<div class="mt-[-1] grid grid-cols-1 gap-2">
+				{:else}
 					<CustomValueInput
 						label="9P Target Name"
 						placeholder="shared_dir"
 						bind:value={properties.filesystemTarget}
 						classes="flex-1 space-y-1"
 					/>
+				{/if}
+			</div>
+
+			{#if properties.type === 'new' && properties.diskType === 'filesystem'}
+				<div class="mt-[-1] grid grid-cols-1 gap-2">
 					<CustomCheckbox
 						label="Read-only share"
 						bind:checked={properties.filesystemReadOnly}
@@ -675,7 +676,7 @@
 				classes="flex-1 space-y-1"
 			/>
 
-			<div class="grid grid-cols-3 gap-4">
+			<div class={`grid gap-4 ${isFilesystemStorageEdit ? 'grid-cols-2' : 'grid-cols-3'}`}>
 				{#if isFilesystemStorageEdit}
 					<CustomValueInput
 						label="Dataset"
@@ -729,18 +730,25 @@
 			</div>
 
 			{#if isFilesystemStorageEdit}
+				<div class="mt-3 flex items-center gap-6">
+					<CustomCheckbox
+						label="Read-only share"
+						bind:checked={editProperties.filesystemReadOnly}
+						classes="flex items-center gap-2"
+					/>
+					<CustomCheckbox
+						label="Enabled (Available to VM)"
+						bind:checked={editProperties.enable}
+						classes="flex items-center gap-2"
+					/>
+				</div>
+			{:else}
 				<CustomCheckbox
-					label="Read-only share"
-					bind:checked={editProperties.filesystemReadOnly}
+					label="Enabled (Available to VM)"
+					bind:checked={editProperties.enable}
 					classes="mt-3 flex items-center gap-2"
 				/>
 			{/if}
-
-			<CustomCheckbox
-				label="Enabled (Available to VM)"
-				bind:checked={editProperties.enable}
-				classes="mt-3 flex items-center gap-2"
-			/>
 		{/if}
 
 		<Dialog.Footer>
