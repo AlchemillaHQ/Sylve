@@ -1479,12 +1479,16 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType'
       enable:
         type: boolean
+      filesystemTarget:
+        type: string
       id:
         type: integer
       name:
         type: string
       pool:
         type: string
+      readOnly:
+        type: boolean
       recordSize:
         type: integer
       size:
@@ -1660,12 +1664,14 @@ definitions:
   github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType:
     enum:
     - virtio-blk
+    - virtio-9p
     - ahci-hd
     - ahci-cd
     - nvme
     type: string
     x-enum-varnames:
     - VirtIOStorageEmulation
+    - VirtIO9PStorageEmulation
     - AHCIHDStorageEmulation
     - AHCICDStorageEmulation
     - NVMEStorageEmulation
@@ -1674,11 +1680,13 @@ definitions:
     - raw
     - zvol
     - image
+    - filesystem
     type: string
     x-enum-varnames:
     - VMStorageTypeRaw
     - VMStorageTypeZVol
     - VMStorageTypeDiskImage
+    - VMStorageTypeFilesystem
   github_com_alchemillahq_sylve_internal_db_models_zfs.PeriodicSnapshot:
     properties:
       createdAt:
@@ -2301,12 +2309,14 @@ definitions:
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType:
     enum:
     - virtio-blk
+    - virtio-9p
     - ahci-hd
     - ahci-cd
     - nvme
     type: string
     x-enum-varnames:
     - VirtIOStorageEmulation
+    - VirtIO9PStorageEmulation
     - AHCIHDStorageEmulation
     - AHCICDStorageEmulation
     - NVMEStorageEmulation
@@ -2315,12 +2325,14 @@ definitions:
     - raw
     - zvol
     - image
+    - filesystem
     - none
     type: string
     x-enum-varnames:
     - StorageTypeRaw
     - StorageTypeZVOL
     - StorageTypeDiskImage
+    - StorageTypeFilesystem
     - StorageTypeNone
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.TimeOffset:
     enum:
@@ -3976,7 +3988,7 @@ info:
     url: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   termsOfService: https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
   title: Sylve API
-  version: 0.2.2
+  version: 0.2.3
 paths:
   /auth/groups:
     get:

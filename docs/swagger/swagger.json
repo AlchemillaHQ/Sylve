@@ -13,7 +13,7 @@
             "name": "BSD-2-Clause",
             "url": "https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE"
         },
-        "version": "0.2.2"
+        "version": "0.2.3"
     },
     "host": "sylve.lan:8181",
     "basePath": "/api",
@@ -10940,6 +10940,9 @@
                 "enable": {
                     "type": "boolean"
                 },
+                "filesystemTarget": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -10948,6 +10951,9 @@
                 },
                 "pool": {
                     "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
                 },
                 "recordSize": {
                     "type": "integer"
@@ -11213,12 +11219,14 @@
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -11229,12 +11237,14 @@
             "enum": [
                 "raw",
                 "zvol",
-                "image"
+                "image",
+                "filesystem"
             ],
             "x-enum-varnames": [
                 "VMStorageTypeRaw",
                 "VMStorageTypeZVol",
-                "VMStorageTypeDiskImage"
+                "VMStorageTypeDiskImage",
+                "VMStorageTypeFilesystem"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_zfs.PeriodicSnapshot": {
@@ -12160,12 +12170,14 @@
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -12177,12 +12189,14 @@
                 "raw",
                 "zvol",
                 "image",
+                "filesystem",
                 "none"
             ],
             "x-enum-varnames": [
                 "StorageTypeRaw",
                 "StorageTypeZVOL",
                 "StorageTypeDiskImage",
+                "StorageTypeFilesystem",
                 "StorageTypeNone"
             ]
         },

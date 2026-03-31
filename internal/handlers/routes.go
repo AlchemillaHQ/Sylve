@@ -52,7 +52,7 @@ import (
 )
 
 // @title           Sylve API
-// @version         0.2.2
+// @version         0.2.3
 // @description     Sylve is a lightweight GUI for managing Bhyve, Jails, ZFS, networking, and more on FreeBSD.
 // @termsOfService  https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE
 

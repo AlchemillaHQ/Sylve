@@ -10946,6 +10946,9 @@ const docTemplate = `{
                 "enable": {
                     "type": "boolean"
                 },
+                "filesystemTarget": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -10954,6 +10957,9 @@ const docTemplate = `{
                 },
                 "pool": {
                     "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
                 },
                 "recordSize": {
                     "type": "integer"
@@ -11219,12 +11225,14 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -11235,12 +11243,14 @@ const docTemplate = `{
             "enum": [
                 "raw",
                 "zvol",
-                "image"
+                "image",
+                "filesystem"
             ],
             "x-enum-varnames": [
                 "VMStorageTypeRaw",
                 "VMStorageTypeZVol",
-                "VMStorageTypeDiskImage"
+                "VMStorageTypeDiskImage",
+                "VMStorageTypeFilesystem"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_zfs.PeriodicSnapshot": {
@@ -12166,12 +12176,14 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -12183,12 +12195,14 @@ const docTemplate = `{
                 "raw",
                 "zvol",
                 "image",
+                "filesystem",
                 "none"
             ],
             "x-enum-varnames": [
                 "StorageTypeRaw",
                 "StorageTypeZVOL",
                 "StorageTypeDiskImage",
+                "StorageTypeFilesystem",
                 "StorageTypeNone"
             ]
         },
@@ -14659,7 +14673,7 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "0.2.2",
+	Version:          "0.2.3",
 	Host:             "sylve.lan:8181",
 	BasePath:         "/api",
 	Schemes:          []string{},
