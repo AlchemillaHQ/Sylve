@@ -119,6 +119,30 @@ func TestIPAndCIDRValidation(t *testing.T) {
 	}
 }
 
+func TestAssignableCIDRValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		cidr string
+		want bool
+	}{
+		{"assignable ipv4 host cidr", "10.80.0.254/24", true},
+		{"reject ipv4 subnet base", "10.80.0.0/24", false},
+		{"reject ipv4 directed broadcast", "10.80.0.255/24", false},
+		{"allow ipv4 /32", "10.80.0.254/32", true},
+		{"assignable ipv6 host cidr", "2001:db8::5/64", true},
+		{"reject ipv6 subnet base", "2001:db8::/64", false},
+		{"allow ipv6 /128", "2001:db8::5/128", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAssignableCIDR(tt.cidr); got != tt.want {
+				t.Fatalf("IsAssignableCIDR(%q) = %v, want %v", tt.cidr, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMiscNetworkValidation(t *testing.T) {
 	t.Run("mac", func(t *testing.T) {
 		if !IsValidMAC("aa:bb:cc:dd:ee:ff") {

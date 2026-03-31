@@ -899,3 +899,155 @@ func TestSyncStandardSwitchesEditActionLoadsCurrentSwitchAndPorts(t *testing.T) 
 		t.Fatalf("expected DB preloaded ports, got %+v", gotNew.Ports)
 	}
 }
+
+func TestCreateStandardBridgeAssignsHostLikeIPv4WithoutGateway(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge42\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:        "host-like-create",
+		BridgeName:  "vm-host-create",
+		DisableIPv6: true,
+		NetworkObj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "10.80.0.254/24"}},
+		},
+	}
+
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("expected create bridge success, got %v", err)
+	}
+
+	var sawAssign bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-host-create inet 10.80.0.254/24" {
+			sawAssign = true
+			break
+		}
+	}
+	if !sawAssign {
+		t.Fatalf("expected IPv4 assignment command, got commands: %v", commands)
+	}
+}
+
+func TestCreateStandardBridgeSkipsSubnetBaseIPv4WithoutGateway(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge43\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:        "subnet-base-create",
+		BridgeName:  "vm-subnet-create",
+		DisableIPv6: true,
+		NetworkObj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "10.80.0.0/24"}},
+		},
+	}
+
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("expected create bridge success, got %v", err)
+	}
+
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-subnet-create inet 10.80.0.0/24" {
+			t.Fatalf("expected no IPv4 assignment for subnet-base CIDR, got commands: %v", commands)
+		}
+	}
+}
+
+func TestEditStandardBridgeAssignsHostLikeIPv4WithoutGateway(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-host",
+		BridgeName:  "vm-edit-host",
+		DisableIPv6: true,
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-host",
+		BridgeName:  "vm-edit-host",
+		DisableIPv6: true,
+		NetworkObj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "10.90.0.254/24"}},
+		},
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	var sawAssign bool
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-edit-host inet 10.90.0.254/24" {
+			sawAssign = true
+			break
+		}
+	}
+	if !sawAssign {
+		t.Fatalf("expected IPv4 assignment command, got commands: %v", commands)
+	}
+}
+
+func TestEditStandardBridgeSkipsSubnetBaseIPv4WithoutGateway(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			return "", nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:        "old-edit-subnet",
+		BridgeName:  "vm-edit-subnet",
+		DisableIPv6: true,
+	}
+	newSw := networkModels.StandardSwitch{
+		Name:        "new-edit-subnet",
+		BridgeName:  "vm-edit-subnet",
+		DisableIPv6: true,
+		NetworkObj: &networkModels.Object{
+			Entries: []networkModels.ObjectEntry{{Value: "10.90.0.0/24"}},
+		},
+	}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("expected edit bridge success, got %v", err)
+	}
+
+	for _, cmd := range commands {
+		if cmd == "/sbin/ifconfig vm-edit-subnet inet 10.90.0.0/24" {
+			t.Fatalf("expected no IPv4 assignment for subnet-base CIDR, got commands: %v", commands)
+		}
+	}
+}

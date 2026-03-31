@@ -74,6 +74,79 @@ func IsValidIPv6CIDR(cidr string) bool {
 	return ip.To4() == nil && ip.To16() != nil
 }
 
+func IsAssignableIPv4CIDR(cidr string) bool {
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return false
+	}
+
+	networkIPv4 := network.IP.To4()
+	if networkIPv4 == nil {
+		return false
+	}
+
+	ones, bits := network.Mask.Size()
+	if bits != net.IPv4len*8 {
+		return false
+	}
+
+	// Reject subnet base address except /32, where the only address is assignable.
+	if ones < net.IPv4len*8 && ipv4.Equal(networkIPv4) {
+		return false
+	}
+
+	// Reject directed broadcast where applicable (/30 and larger networks).
+	if ones <= 30 {
+		broadcast := make(net.IP, net.IPv4len)
+		for i := 0; i < net.IPv4len; i++ {
+			broadcast[i] = networkIPv4[i] | ^network.Mask[i]
+		}
+		if ipv4.Equal(broadcast) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func IsAssignableIPv6CIDR(cidr string) bool {
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+
+	ipv6 := ip.To16()
+	if ipv6 == nil || ip.To4() != nil {
+		return false
+	}
+
+	networkIPv6 := network.IP.To16()
+	if networkIPv6 == nil {
+		return false
+	}
+
+	ones, bits := network.Mask.Size()
+	if bits != net.IPv6len*8 {
+		return false
+	}
+
+	// Reject subnet base address except /128, where the only address is assignable.
+	if ones < net.IPv6len*8 && ipv6.Equal(networkIPv6) {
+		return false
+	}
+
+	return true
+}
+
+func IsAssignableCIDR(cidr string) bool {
+	return IsAssignableIPv4CIDR(cidr) || IsAssignableIPv6CIDR(cidr)
+}
+
 func IsValidMAC(mac string) bool {
 	_, err := net.ParseMAC(mac)
 	return err == nil

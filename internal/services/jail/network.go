@@ -22,6 +22,20 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+func validateAssignableJailIPv4CIDR(cidr string) error {
+	if !utils.IsAssignableIPv4CIDR(cidr) {
+		return fmt.Errorf("invalid_ip4_cidr_not_assignable")
+	}
+	return nil
+}
+
+func validateAssignableJailIPv6CIDR(cidr string) error {
+	if !utils.IsAssignableIPv6CIDR(cidr) {
+		return fmt.Errorf("invalid_ip6_cidr_not_assignable")
+	}
+	return nil
+}
+
 func (s *Service) SetInheritance(ctId uint, ipv4 bool, ipv6 bool) error {
 	allowed, leaseErr := s.canMutateProtectedJail(ctId)
 	if leaseErr != nil {
@@ -287,9 +301,12 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 
 	if !dhcp {
 		if ip4 != 0 && ip4gw != 0 {
-			_, err := s.NetworkService.GetObjectEntryByID(ip4)
+			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
+				return err
 			}
 
 			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
@@ -306,9 +323,12 @@ func (s *Service) AddNetwork(req jailServiceInterfaces.AddJailNetworkRequest) er
 
 	if !slaac {
 		if ip6 != 0 && ip6gw != 0 {
-			_, err := s.NetworkService.GetObjectEntryByID(ip6)
+			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
+			}
+			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
+				return err
 			}
 
 			_, err = s.NetworkService.GetObjectEntryByID(ip6gw)
@@ -891,9 +911,12 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 
 	if !dhcp {
 		if ip4 != 0 && ip4gw != 0 {
-			_, err := s.NetworkService.GetObjectEntryByID(ip4)
+			ipv4CIDR, err := s.NetworkService.GetObjectEntryByID(ip4)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_ip4_object: %w", err)
+			}
+			if err := validateAssignableJailIPv4CIDR(ipv4CIDR); err != nil {
+				return err
 			}
 
 			_, err = s.NetworkService.GetObjectEntryByID(ip4gw)
@@ -910,9 +933,12 @@ func (s *Service) EditNetwork(req jailServiceInterfaces.EditJailNetworkRequest) 
 
 	if !slaac {
 		if ip6 != 0 && ip6gw != 0 {
-			_, err := s.NetworkService.GetObjectEntryByID(ip6)
+			ipv6CIDR, err := s.NetworkService.GetObjectEntryByID(ip6)
 			if err != nil {
 				return fmt.Errorf("failed_to_get_ip6_object: %w", err)
+			}
+			if err := validateAssignableJailIPv6CIDR(ipv6CIDR); err != nil {
+				return err
 			}
 
 			_, err = s.NetworkService.GetObjectEntryByID(ip6gw)
