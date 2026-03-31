@@ -53,8 +53,8 @@ export interface CreateData {
     };
 }
 
-export type VMStorageType = 'raw' | 'zvol' | 'image';
-export type VMStorageEmulationType = 'virtio-blk' | 'ahci-hd' | 'ahci-cd' | 'nvme';
+export type VMStorageType = 'raw' | 'zvol' | 'image' | 'filesystem';
+export type VMStorageEmulationType = 'virtio-blk' | 'virtio-9p' | 'ahci-hd' | 'ahci-cd' | 'nvme';
 
 export const VMStorageDatasetSchema = z.object({
     id: z.number().int(),
@@ -67,14 +67,16 @@ export const VMStorageSchema = z.object({
     id: z.number().int(),
     vmId: z.number().int().optional(),
     name: z.string().optional(),
-    type: z.enum(['raw', 'zvol', 'image']),
+    type: z.enum(['raw', 'zvol', 'image', 'filesystem']),
     enable: z.boolean().optional().default(true),
     uuid: z.string().optional(),
     pool: z.string().optional().default(''),
     datasetId: z.number().int().nullable(),
     dataset: VMStorageDatasetSchema.nullable(),
     size: z.number().int(),
-    emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
+    emulation: z.enum(['virtio-blk', 'virtio-9p', 'ahci-hd', 'ahci-cd', 'nvme']),
+    filesystemTarget: z.string().optional().default(''),
+    readOnly: z.boolean().optional().default(false),
     recordSize: z.number().int().optional(),
     volBlockSize: z.number().int().optional(),
     bootOrder: z.number().int().optional()

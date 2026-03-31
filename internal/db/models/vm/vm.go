@@ -25,9 +25,10 @@ func (Storage) TableName() string {
 type VMStorageType string
 
 const (
-	VMStorageTypeRaw       VMStorageType = "raw"
-	VMStorageTypeZVol      VMStorageType = "zvol"
-	VMStorageTypeDiskImage VMStorageType = "image"
+	VMStorageTypeRaw        VMStorageType = "raw"
+	VMStorageTypeZVol       VMStorageType = "zvol"
+	VMStorageTypeDiskImage  VMStorageType = "image"
+	VMStorageTypeFilesystem VMStorageType = "filesystem"
 )
 
 type VMTemplateStorage struct {
@@ -54,10 +55,11 @@ type VMTemplateNetwork struct {
 type VMStorageEmulationType string
 
 const (
-	VirtIOStorageEmulation VMStorageEmulationType = "virtio-blk"
-	AHCIHDStorageEmulation VMStorageEmulationType = "ahci-hd"
-	AHCICDStorageEmulation VMStorageEmulationType = "ahci-cd"
-	NVMEStorageEmulation   VMStorageEmulationType = "nvme"
+	VirtIOStorageEmulation   VMStorageEmulationType = "virtio-blk"
+	VirtIO9PStorageEmulation VMStorageEmulationType = "virtio-9p"
+	AHCIHDStorageEmulation   VMStorageEmulationType = "ahci-hd"
+	AHCICDStorageEmulation   VMStorageEmulationType = "ahci-cd"
+	NVMEStorageEmulation     VMStorageEmulationType = "nvme"
 )
 
 type TimeOffset string
@@ -91,8 +93,10 @@ type Storage struct {
 	DatasetID *uint            `json:"datasetId" gorm:"column:dataset_id"`
 	Dataset   VMStorageDataset `json:"dataset" gorm:"foreignKey:DatasetID;references:ID"`
 
-	Size      int64                  `json:"size"`
-	Emulation VMStorageEmulationType `json:"emulation"`
+	Size             int64                  `json:"size"`
+	Emulation        VMStorageEmulationType `json:"emulation"`
+	FilesystemTarget string                 `json:"filesystemTarget"`
+	ReadOnly         bool                   `json:"readOnly"`
 
 	RecordSize   int `json:"recordSize"`
 	VolBlockSize int `json:"volBlockSize"`

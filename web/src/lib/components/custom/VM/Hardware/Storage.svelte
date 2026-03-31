@@ -14,7 +14,7 @@
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import { getPathParent, isValidAbsPath } from '$lib/utils/string';
+	import { getPathParent, isValid9PTargetName, isValidAbsPath } from '$lib/utils/string';
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { roundUpToBlock } from '$lib/utils/zfs';
@@ -69,15 +69,22 @@
 	});
 	let selectedStorageType = $derived.by(() => selectedStorage?.type ?? null);
 	let isImageStorageEdit = $derived.by(() => selectedStorageType === 'image');
+	let isFilesystemStorageEdit = $derived.by(() => selectedStorageType === 'filesystem');
+
+	type StorageAttachType = 'import' | 'new';
+	type StorageDiskType = 'raw' | 'zvol' | 'image' | 'filesystem';
+	type StorageEmulation = 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk' | 'virtio-9p';
 
 	let options = {
 		name: '',
-		type: 'new' as 'import' | 'new',
-		diskType: 'zvol' as 'raw' | 'zvol' | 'image',
+		type: 'new' as StorageAttachType,
+		diskType: 'zvol' as StorageDiskType,
 		rawPath: '',
 		dataset: '',
 		size: '',
-		emulation: 'ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk',
+		filesystemTarget: '',
+		filesystemReadOnly: false,
+		emulation: 'ahci-hd' as StorageEmulation,
 		pool: '',
 		bootOrder: null as number | null,
 		loading: false
@@ -89,7 +96,9 @@
 		size: selectedStorage ? (normalizeSizeInputExact(selectedStorageDisplaySize) ?? '') : '',
 		emulation: selectedStorage
 			? selectedStorage.emulation
-			: ('ahci-hd' as 'ahci-cd' | 'ahci-hd' | 'nvme' | 'virtio-blk'),
+			: ('ahci-hd' as StorageEmulation),
+		filesystemTarget: selectedStorage?.filesystemTarget || '',
+		filesystemReadOnly: selectedStorage?.readOnly ?? false,
 		enable: selectedStorage ? (selectedStorage.enable ?? true) : true,
 		bootOrder: selectedStorage ? selectedStorage.bootOrder : 0,
 		loading: false
@@ -137,12 +146,44 @@
 		value: ''
 	});
 
+	let filesystemCombobox = $state({
+		open: false,
+		value: ''
+	});
+
+	let filesystemDatasetOptions = $derived.by(() =>
+		datasets
+			.filter((dataset) => dataset.type === GZFSDatasetTypeSchema.enum.FILESYSTEM)
+			.map((dataset) => ({
+				value: dataset.guid || dataset.name,
+				label: `${dataset.name} (${dataset.mountpoint})`
+			}))
+	);
+
+	$effect(() => {
+		if (properties.diskType === 'filesystem' && properties.type !== 'new') {
+			properties.type = 'new';
+		}
+
+		if (properties.diskType === 'filesystem') {
+			properties.emulation = 'virtio-9p';
+		} else if (properties.emulation === 'virtio-9p') {
+			properties.emulation = 'ahci-hd';
+		}
+	});
+
+	$effect(() => {
+		if (isFilesystemStorageEdit) {
+			editProperties.emulation = 'virtio-9p';
+		}
+	});
+
 	const toastOptions = {
 		position: 'bottom-center' as const
 	};
 
 	function handleEditSizeBlur() {
-		if (isImageStorageEdit) {
+		if (isImageStorageEdit || isFilesystemStorageEdit) {
 			return;
 		}
 
@@ -180,7 +221,11 @@
 			return;
 		}
 
-		if (properties.pool === '' && properties.diskType !== 'image') {
+		if (
+			properties.pool === '' &&
+			properties.diskType !== 'image' &&
+			properties.diskType !== 'filesystem'
+		) {
 			toast.error('No ZFS pool selected', toastOptions);
 			return;
 		}
@@ -222,60 +267,77 @@
 				properties.diskType as 'raw' | 'zvol',
 				properties.diskType === 'raw' ? properties.rawPath : '',
 				properties.diskType === 'zvol' ? zvolCombobox.value : '',
-				properties.emulation,
+				(properties.emulation === 'virtio-9p' ? 'ahci-hd' : properties.emulation),
 				properties.pool,
 				Number(properties.bootOrder)
 			);
 
 			if (response.error) {
 				handleAPIError(response);
-				toast.error('Failed to import disk', {
+				toast.error('Failed to import storage', {
 					position: 'bottom-center'
 				});
 
 				return;
 			}
 
-			toast.success('Disk imported', toastOptions);
+			toast.success('Storage imported', toastOptions);
 			reload = true;
 			properties = options;
 			open = false;
 		} else if (properties.type === 'new') {
-			if (properties.size === '') {
-				toast.error('Please specify a size', toastOptions);
-				return;
+			let parsedSize: number | undefined = undefined;
+			if (properties.diskType !== 'image' && properties.diskType !== 'filesystem') {
+				if (properties.size === '') {
+					toast.error('Please specify a size', toastOptions);
+					return;
+				}
+
+				const parsed = parseSizeInputToBytes(properties.size);
+				if (parsed === null) {
+					toast.error('Invalid size format', toastOptions);
+					return;
+				}
+				parsedSize = parsed;
 			}
 
-			let parsedSize: number = 0;
-			const parsed = parseSizeInputToBytes(properties.size);
-			if (parsed === null) {
-				toast.error('Invalid size format', toastOptions);
-				return;
+			if (properties.diskType === 'filesystem') {
+				if (!filesystemCombobox.value) {
+					toast.error('Please select a ZFS filesystem dataset', toastOptions);
+					return;
+				}
+
+				if (!isValid9PTargetName(properties.filesystemTarget.trim())) {
+					toast.error("Invalid 9P target name (letters, numbers, '.', '_' and '-' only)", toastOptions);
+					return;
+				}
 			}
-			parsedSize = parsed;
 
 			const response = await storageNew(
 				vm.rid,
 				properties.name,
-				properties.diskType as 'zvol' | 'raw' | 'image',
+				properties.diskType,
 				parsedSize,
-				properties.emulation,
+				properties.diskType === 'filesystem' ? 'virtio-9p' : properties.emulation,
 				properties.pool,
-				Number(properties.bootOrder)
+				Number(properties.bootOrder),
+				properties.diskType === 'filesystem' ? filesystemCombobox.value : '',
+				properties.diskType === 'filesystem' ? properties.filesystemTarget.trim() : '',
+				properties.diskType === 'filesystem' ? properties.filesystemReadOnly : false
 			);
 
 			reload = true;
 
 			if (response.error) {
 				handleAPIError(response);
-				toast.error('Failed to attach disk', {
+				toast.error('Failed to attach storage', {
 					position: 'bottom-center'
 				});
 
 				return;
 			}
 
-			toast.success('Disk attached', toastOptions);
+			toast.success('Storage attached', toastOptions);
 			properties = options;
 			open = false;
 		}
@@ -292,7 +354,7 @@
 		}
 
 		let parsedSize: number | undefined = undefined;
-		if (!isImageStorageEdit) {
+		if (!isImageStorageEdit && !isFilesystemStorageEdit) {
 			if (editProperties.size === '') {
 				toast.error('Please specify a size', toastOptions);
 				return;
@@ -313,6 +375,14 @@
 					return;
 				}
 			}
+		}
+
+		if (
+			isFilesystemStorageEdit &&
+			!isValid9PTargetName((editProperties.filesystemTarget || '').trim())
+		) {
+			toast.error("Invalid 9P target name (letters, numbers, '.', '_' and '-' only)", toastOptions);
+			return;
 		}
 
 		if (editProperties.bootOrder === null) {
@@ -353,9 +423,11 @@
 			selectedStorage ? selectedStorage.id : 0,
 			editProperties.name,
 			roundedSize,
-			editProperties.emulation,
+			isFilesystemStorageEdit ? 'virtio-9p' : editProperties.emulation,
 			Number(editProperties.bootOrder),
-			editProperties.enable
+			editProperties.enable,
+			isFilesystemStorageEdit ? editProperties.filesystemTarget.trim() : undefined,
+			isFilesystemStorageEdit ? editProperties.filesystemReadOnly : undefined
 		);
 
 		reload = true;
@@ -443,7 +515,8 @@
 						{ value: 'import', label: 'Import' }
 					]}
 					bind:value={properties.type}
-					onChange={(value) => (properties.type = value as 'import' | 'new')}
+					onChange={(value) => (properties.type = value as StorageAttachType)}
+					disabled={properties.diskType === 'filesystem'}
 				/>
 
 				<SimpleSelect
@@ -452,10 +525,11 @@
 					options={[
 						{ value: 'zvol', label: 'ZFS Volume' },
 						{ value: 'raw', label: 'Raw Disk' },
+						{ value: 'filesystem', label: '9P Filesystem Share' },
 						...(properties.type !== 'new' ? [{ value: 'image', label: 'Image' }] : [])
 					]}
 					bind:value={properties.diskType}
-					onChange={(value) => (properties.diskType = value as 'zvol' | 'raw')}
+					onChange={(value) => (properties.diskType = value as StorageDiskType)}
 				/>
 
 				<SimpleSelect
@@ -464,7 +538,7 @@
 					options={pools.map((pool) => ({ value: pool.name, label: pool.name }))}
 					bind:value={properties.pool}
 					onChange={(value) => (properties.pool = value as string)}
-					disabled={properties.diskType === 'image'}
+					disabled={properties.diskType === 'image' || properties.diskType === 'filesystem'}
 				/>
 			</div>
 
@@ -513,7 +587,7 @@
 							multiple={false}
 						></CustomComboBox>
 					{/if}
-				{:else if properties.type === 'new' && properties.diskType !== 'image'}
+				{:else if properties.type === 'new' && properties.diskType !== 'image' && properties.diskType !== 'filesystem'}
 					<CustomValueInput
 						label="Size"
 						placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
@@ -526,21 +600,42 @@
 							}
 						}}
 					/>
+				{:else if properties.type === 'new' && properties.diskType === 'filesystem'}
+					<CustomComboBox
+						bind:open={filesystemCombobox.open}
+						label={'ZFS Filesystem'}
+						bind:value={filesystemCombobox.value}
+						data={filesystemDatasetOptions}
+						classes="flex-1 space-y-1"
+						placeholder="Select ZFS filesystem"
+						width="w-full"
+						multiple={false}
+					></CustomComboBox>
 				{/if}
 
-				<SimpleSelect
-					label="Emulation"
-					placeholder="Select Emulation"
-					options={[
-						{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
-						{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
-						{ value: 'nvme', label: 'NVMe' },
-						{ value: 'virtio-blk', label: 'VirtIO Block' }
-					]}
-					bind:value={properties.emulation}
-					onChange={(value) =>
-						(properties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
-				/>
+				{#if properties.diskType === 'filesystem'}
+					<CustomValueInput
+						label="Emulation"
+						placeholder=""
+						value={'virtio-9p'}
+						disabled={true}
+						classes="flex-1 space-y-1"
+					/>
+				{:else}
+					<SimpleSelect
+						label="Emulation"
+						placeholder="Select Emulation"
+						options={[
+							{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
+							{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
+							{ value: 'nvme', label: 'NVMe' },
+							{ value: 'virtio-blk', label: 'VirtIO Block' }
+						]}
+						bind:value={properties.emulation}
+						onChange={(value) =>
+							(properties.emulation = value as StorageEmulation)}
+					/>
+				{/if}
 
 				<CustomValueInput
 					label="Boot Order"
@@ -550,6 +645,22 @@
 					classes="flex-1 space-y-1"
 				/>
 			</div>
+
+			{#if properties.type === 'new' && properties.diskType === 'filesystem'}
+				<div class="mt-3 grid grid-cols-2 gap-4">
+					<CustomValueInput
+						label="9P Target Name"
+						placeholder="shared_dir"
+						bind:value={properties.filesystemTarget}
+						classes="flex-1 space-y-1"
+					/>
+					<CustomCheckbox
+						label="Read-only share"
+						bind:checked={properties.filesystemReadOnly}
+						classes="mt-7 flex items-center gap-2"
+					/>
+				</div>
+			{/if}
 		{:else}
 			<CustomValueInput
 				label="Name"
@@ -559,28 +670,47 @@
 			/>
 
 			<div class="grid grid-cols-3 gap-4">
-				<CustomValueInput
-					label={isImageStorageEdit ? 'Size (Read-only)' : 'Size'}
-					placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
-					bind:value={editProperties.size}
-					classes="flex-1 space-y-1"
-					onBlur={handleEditSizeBlur}
-					disabled={isImageStorageEdit}
-				/>
+				{#if isFilesystemStorageEdit}
+					<CustomValueInput
+						label="Dataset"
+						placeholder=""
+						value={selectedStorage?.dataset?.name || '-'}
+						disabled={true}
+						classes="flex-1 space-y-1"
+					/>
+				{:else}
+					<CustomValueInput
+						label={isImageStorageEdit ? 'Size (Read-only)' : 'Size'}
+						placeholder={normalizeSizeInputExact(10 * 1024 * 1024 * 1024) ?? '10737418240 B'}
+						bind:value={editProperties.size}
+						classes="flex-1 space-y-1"
+						onBlur={handleEditSizeBlur}
+						disabled={isImageStorageEdit}
+					/>
+				{/if}
 
-				<SimpleSelect
-					label="Emulation"
-					placeholder="Select Emulation"
-					options={[
-						{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
-						{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
-						{ value: 'nvme', label: 'NVMe' },
-						{ value: 'virtio-blk', label: 'VirtIO Block' }
-					]}
-					bind:value={editProperties.emulation}
-					onChange={(value) =>
-						(editProperties.emulation = value as 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk')}
-				/>
+				{#if isFilesystemStorageEdit}
+					<CustomValueInput
+						label="9P Target Name"
+						placeholder="shared_dir"
+						bind:value={editProperties.filesystemTarget}
+						classes="flex-1 space-y-1"
+					/>
+				{:else}
+					<SimpleSelect
+						label="Emulation"
+						placeholder="Select Emulation"
+						options={[
+							{ value: 'ahci-hd', label: 'AHCI Hard Disk' },
+							{ value: 'ahci-cd', label: 'AHCI CD-ROM' },
+							{ value: 'nvme', label: 'NVMe' },
+							{ value: 'virtio-blk', label: 'VirtIO Block' }
+						]}
+						bind:value={editProperties.emulation}
+						onChange={(value) =>
+							(editProperties.emulation = value as StorageEmulation)}
+					/>
+				{/if}
 
 				<CustomValueInput
 					label="Boot Order"
@@ -590,6 +720,14 @@
 					classes="flex-1 space-y-1"
 				/>
 			</div>
+
+			{#if isFilesystemStorageEdit}
+				<CustomCheckbox
+					label="Read-only share"
+					bind:checked={editProperties.filesystemReadOnly}
+					classes="mt-3 flex items-center gap-2"
+				/>
+			{/if}
 
 			<CustomCheckbox
 				label="Enabled (Available to VM)"

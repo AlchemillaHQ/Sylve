@@ -193,6 +193,11 @@ export function isValidVMName(name: string): boolean {
     return regex.test(name);
 }
 
+export function isValid9PTargetName(name: string): boolean {
+    const regex = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+    return regex.test(name);
+}
+
 export function isValidMACAddress(mac: string): boolean {
     return isMACAddress(mac, { no_colons: false });
 }

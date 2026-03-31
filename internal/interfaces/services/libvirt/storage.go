@@ -15,19 +15,21 @@ import (
 type StorageType string
 
 const (
-	StorageTypeRaw       StorageType = "raw"
-	StorageTypeZVOL      StorageType = "zvol"
-	StorageTypeDiskImage StorageType = "image"
-	StorageTypeNone      StorageType = "none"
+	StorageTypeRaw        StorageType = "raw"
+	StorageTypeZVOL       StorageType = "zvol"
+	StorageTypeDiskImage  StorageType = "image"
+	StorageTypeFilesystem StorageType = "filesystem"
+	StorageTypeNone       StorageType = "none"
 )
 
 type StorageEmulationType string
 
 const (
-	VirtIOStorageEmulation StorageEmulationType = "virtio-blk"
-	AHCIHDStorageEmulation StorageEmulationType = "ahci-hd"
-	AHCICDStorageEmulation StorageEmulationType = "ahci-cd"
-	NVMEStorageEmulation   StorageEmulationType = "nvme"
+	VirtIOStorageEmulation   StorageEmulationType = "virtio-blk"
+	VirtIO9PStorageEmulation StorageEmulationType = "virtio-9p"
+	AHCIHDStorageEmulation   StorageEmulationType = "ahci-hd"
+	AHCICDStorageEmulation   StorageEmulationType = "ahci-cd"
+	NVMEStorageEmulation     StorageEmulationType = "nvme"
 )
 
 type StorageAttachType string
@@ -56,17 +58,19 @@ type StoragePool struct {
 }
 
 type StorageAttachRequest struct {
-	AttachType StorageAttachType `json:"attachType" binding:"required"`
-	RawPath    string            `json:"rawPath"`
-	Dataset    string            `json:"dataset"`
+	AttachType       StorageAttachType `json:"attachType" binding:"required,oneof=import new"`
+	RawPath          string            `json:"rawPath"`
+	Dataset          string            `json:"dataset"`
+	FilesystemTarget string            `json:"filesystemTarget"`
+	ReadOnly         *bool             `json:"readOnly"`
 
 	RID  uint   `json:"rid" binding:"required"`
 	Name string `json:"name"`
 	UUID string `json:"downloadUUID"`
 
 	Pool        *string              `json:"pool"`
-	StorageType StorageType          `json:"storageType" binding:"required"`
-	Emulation   StorageEmulationType `json:"emulation" binding:"required"`
+	StorageType StorageType          `json:"storageType" binding:"required,oneof=raw zvol image filesystem"`
+	Emulation   StorageEmulationType `json:"emulation" binding:"required,oneof=virtio-blk virtio-9p ahci-hd ahci-cd nvme"`
 
 	Size         *int64 `json:"size"`
 	RecordSize   *int   `json:"recordSize"`
@@ -75,12 +79,14 @@ type StorageAttachRequest struct {
 }
 
 type StorageUpdateRequest struct {
-	ID        int                  `json:"id" binding:"required"`
-	Name      string               `json:"name" binding:"required"`
-	Size      *int64               `json:"size"`
-	Emulation StorageEmulationType `json:"emulation" binding:"required"`
-	BootOrder *int                 `json:"bootOrder"`
-	Enable    *bool                `json:"enable"`
+	ID               int                  `json:"id" binding:"required"`
+	Name             string               `json:"name" binding:"required"`
+	Size             *int64               `json:"size"`
+	Emulation        StorageEmulationType `json:"emulation" binding:"required,oneof=virtio-blk virtio-9p ahci-hd ahci-cd nvme"`
+	BootOrder        *int                 `json:"bootOrder"`
+	Enable           *bool                `json:"enable"`
+	FilesystemTarget *string              `json:"filesystemTarget"`
+	ReadOnly         *bool                `json:"readOnly"`
 }
 
 type StorageDetachRequest struct {

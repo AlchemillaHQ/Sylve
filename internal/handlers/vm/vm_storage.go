@@ -9,12 +9,19 @@
 package libvirtHandlers
 
 import (
+	"context"
+
 	"github.com/alchemillahq/sylve/internal"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"github.com/alchemillahq/sylve/internal/services/libvirt"
 
 	"github.com/gin-gonic/gin"
 )
+
+type vmStorageService interface {
+	StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error
+	StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error
+	StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) error
+}
 
 // @Summary Detach Storage from a Virtual Machine
 // @Description Detach a storage volume from a virtual machine
@@ -26,7 +33,7 @@ import (
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /storage/detach [post]
-func StorageDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
+func StorageDetach(libvirtService vmStorageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req libvirtServiceInterfaces.StorageDetachRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -68,7 +75,7 @@ func StorageDetach(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /storage/attach [post]
-func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
+func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req libvirtServiceInterfaces.StorageAttachRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -112,7 +119,7 @@ func StorageAttach(libvirtService *libvirt.Service) gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /storage/update [post]
-func StorageUpdate(libvirtService *libvirt.Service) gin.HandlerFunc {
+func StorageUpdate(libvirtService vmStorageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req libvirtServiceInterfaces.StorageUpdateRequest
 		if err := c.ShouldBindJSON(&req); err != nil {

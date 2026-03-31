@@ -52,6 +52,8 @@ export function generateTableData(
                     );
                 } else if (row.type === 'raw') {
                     return renderWithIcon('carbon:volume-block-storage', value, 'text-blue-500', 'Raw Disk');
+                } else if (row.type === 'filesystem') {
+                    return renderWithIcon('mdi:folder-network', value, 'text-amber-500', '9P Filesystem');
                 }
                 return value;
             }
@@ -70,6 +72,8 @@ export function generateTableData(
                         return 'AHCI Hard Disk';
                     case 'nvme':
                         return 'NVMe';
+                    case 'virtio-9p':
+                        return 'VirtIO 9P';
                     default:
                         break;
                 }
@@ -121,6 +125,12 @@ export function generateTableData(
                 rawCount++;
                 name = storage.name ? storage.name : `Raw Disk - ${rawCount}`;
             }
+        } else if (storage.type === 'filesystem') {
+            const datasetName = storage.dataset?.name || 'Unknown dataset';
+            const target = storage.filesystemTarget || storage.name || `share-${storage.id}`;
+            const mode = storage.readOnly ? 'ro' : 'rw';
+            name = `${target} (${datasetName}, ${mode})`;
+            size = 0;
         }
 
         rows.push({

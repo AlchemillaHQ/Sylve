@@ -120,6 +120,25 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				if err != nil {
 					return "", fmt.Errorf("failed_to_find_iso: %w", err)
 				}
+			} else if storage.Type == vmModels.VMStorageTypeFilesystem {
+				sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
+				}
+
+				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+					{
+						Value: buildVirtio9PArg(
+							sIndex,
+							strings.TrimSpace(storage.FilesystemTarget),
+							sourcePath,
+							storage.ReadOnly,
+						),
+					},
+				})
+
+				sIndex++
+				continue
 			}
 
 			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{

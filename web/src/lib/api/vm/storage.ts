@@ -36,21 +36,27 @@ export async function storageImport(
 export async function storageNew(
     rid: number,
     name: string,
-    storageType: 'zvol' | 'raw' | 'image',
-    size: number,
-    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
+    storageType: 'zvol' | 'raw' | 'image' | 'filesystem',
+    size: number | undefined,
+    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
     pool: string,
-    bootOrder: number
+    bootOrder: number,
+    dataset: string = '',
+    filesystemTarget: string = '',
+    readOnly: boolean = false
 ) {
     return await apiRequest('/vm/storage/attach', APIResponseSchema, 'POST', {
         rid,
         name,
         attachType: 'new',
-        size,
+        ...(size !== undefined ? { size } : {}),
         emulation,
         storageType,
-        pool,
-        bootOrder
+        ...(storageType === 'filesystem' ? {} : { pool }),
+        bootOrder,
+        ...(storageType === 'filesystem'
+            ? { dataset, filesystemTarget, readOnly }
+            : {})
     });
 }
 
@@ -58,9 +64,11 @@ export async function storageUpdate(
     id: number,
     name: string,
     size: number | undefined,
-    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk',
+    emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
     bootOrder: number,
-    enable?: boolean
+    enable?: boolean,
+    filesystemTarget?: string,
+    readOnly?: boolean
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/storage/update`, APIResponseSchema, 'PUT', {
         id,
@@ -68,6 +76,8 @@ export async function storageUpdate(
         ...(size !== undefined ? { size } : {}),
         emulation,
         bootOrder,
-        ...(enable !== undefined ? { enable } : {})
+        ...(enable !== undefined ? { enable } : {}),
+        ...(filesystemTarget !== undefined ? { filesystemTarget } : {}),
+        ...(readOnly !== undefined ? { readOnly } : {})
     });
 }

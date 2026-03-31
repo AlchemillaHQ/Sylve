@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,107 @@ import (
 
 	"github.com/beevik/etree"
 )
+
+var filesystemTargetNameRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func isValidFilesystemTargetName(target string) bool {
+	return filesystemTargetNameRegexp.MatchString(strings.TrimSpace(target))
+}
+
+func buildVirtio9PArg(index int, target string, sourcePath string, readOnly bool) string {
+	device := fmt.Sprintf("%s=%s", target, sourcePath)
+	if readOnly {
+		device += ",ro"
+	}
+
+	return fmt.Sprintf("-s %d:0,virtio-9p,%s", index, device)
+}
+
+func (s *Service) findFilesystemDatasetByGUID(
+	ctx context.Context,
+	datasetGUID string,
+	poolFilter string,
+) (*gzfs.Dataset, error) {
+	trimmedGUID := strings.TrimSpace(datasetGUID)
+	if trimmedGUID == "" {
+		return nil, fmt.Errorf("filesystem_dataset_guid_required")
+	}
+
+	usablePools, err := s.System.GetUsablePools(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_get_usable_pools: %w", err)
+	}
+
+	for _, pool := range usablePools {
+		if pool == nil {
+			continue
+		}
+
+		if strings.TrimSpace(poolFilter) != "" && pool.Name != poolFilter {
+			continue
+		}
+
+		datasets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, true, pool.Name)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+				continue
+			}
+			return nil, fmt.Errorf("failed_to_list_filesystems_in_pool_%s: %w", pool.Name, err)
+		}
+
+		for _, ds := range datasets {
+			if ds == nil {
+				continue
+			}
+
+			if strings.TrimSpace(ds.GUID) == trimmedGUID {
+				return ds, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("filesystem_dataset_not_found: %s", trimmedGUID)
+}
+
+func ensureUsableFilesystemMountpoint(dataset *gzfs.Dataset) (string, error) {
+	if dataset == nil {
+		return "", fmt.Errorf("filesystem_dataset_not_found")
+	}
+
+	mountpoint := strings.TrimSpace(dataset.Mountpoint)
+	if mountpoint == "" || mountpoint == "-" || mountpoint == "none" || mountpoint == "legacy" {
+		return "", fmt.Errorf("filesystem_dataset_mountpoint_not_usable")
+	}
+
+	return mountpoint, nil
+}
+
+func (s *Service) resolveFilesystemSourcePath(ctx context.Context, storage vmModels.Storage) (string, error) {
+	if storage.DatasetID == nil || *storage.DatasetID == 0 {
+		return "", fmt.Errorf("filesystem_storage_dataset_not_set")
+	}
+
+	datasetName := strings.TrimSpace(storage.Dataset.Name)
+	if datasetName == "" {
+		return "", fmt.Errorf("filesystem_storage_dataset_name_missing")
+	}
+
+	datasets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, datasetName)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_filesystem_dataset_%s: %w", datasetName, err)
+	}
+
+	if len(datasets) == 0 {
+		return "", fmt.Errorf("filesystem_dataset_not_found: %s", datasetName)
+	}
+
+	mountpoint, err := ensureUsableFilesystemMountpoint(datasets[0])
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", err, datasetName)
+	}
+
+	return mountpoint, nil
+}
 
 func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error {
 	usable, err := s.System.GetUsablePools(ctx)
@@ -228,6 +330,7 @@ func (s *Service) SyncVMDisks(rid uint) error {
 			string(libvirtServiceInterfaces.AHCIHDStorageEmulation),
 			string(libvirtServiceInterfaces.NVMEStorageEmulation),
 			string(libvirtServiceInterfaces.VirtIOStorageEmulation),
+			string(libvirtServiceInterfaces.VirtIO9PStorageEmulation),
 		}
 
 		if utils.PartialStringInSlice(val, emulations) {
@@ -294,6 +397,20 @@ func (s *Service) SyncVMDisks(rid uint) error {
 			}
 
 			diskValue = fmt.Sprintf("%s,ro", diskValue)
+		} else if storage.Type == vmModels.VMStorageTypeFilesystem {
+			sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
+			if err != nil {
+				return fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
+			}
+
+			argValue = buildVirtio9PArg(
+				index,
+				strings.TrimSpace(storage.FilesystemTarget),
+				sourcePath,
+				storage.ReadOnly,
+			)
+			argValues = append(argValues, argValue)
+			continue
 		}
 
 		argValue = fmt.Sprintf("%s,%s", argCommon, diskValue)
@@ -401,6 +518,8 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 			rid,
 			storage.ID,
 		)
+	} else if storage.Type == vmModels.VMStorageTypeFilesystem {
+		filePath = strings.TrimSpace(storage.FilesystemTarget) + "="
 	}
 
 	if filePath == "" {
@@ -421,6 +540,12 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 		if (storage.Type == vmModels.VMStorageTypeDiskImage ||
 			storage.Type == vmModels.VMStorageTypeRaw ||
 			storage.Type == vmModels.VMStorageTypeZVol) &&
+			strings.Contains(val, filePath) {
+			bhyveCommandline.RemoveChild(arg)
+		}
+
+		if storage.Type == vmModels.VMStorageTypeFilesystem &&
+			strings.Contains(val, ",virtio-9p,") &&
 			strings.Contains(val, filePath) {
 			bhyveCommandline.RemoveChild(arg)
 		}
@@ -745,7 +870,11 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 	}
 
 	storage.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
-	storage.Size = *req.Size
+	if req.Size != nil {
+		storage.Size = *req.Size
+	} else {
+		storage.Size = 0
+	}
 	storage.BootOrder = *req.BootOrder
 	storage.Enable = true
 
@@ -784,6 +913,45 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 
 		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
+		}
+	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeFilesystem {
+		if !isValidFilesystemTargetName(req.FilesystemTarget) {
+			return fmt.Errorf("invalid_filesystem_target_name")
+		}
+
+		dataset, err := s.findFilesystemDatasetByGUID(ctx, req.Dataset, "")
+		if err != nil {
+			return fmt.Errorf("failed_to_find_filesystem_dataset: %w", err)
+		}
+
+		if _, err := ensureUsableFilesystemMountpoint(dataset); err != nil {
+			return fmt.Errorf("failed_to_validate_filesystem_mountpoint: %w", err)
+		}
+
+		storage.Type = vmModels.VMStorageTypeFilesystem
+		storage.Emulation = vmModels.VirtIO9PStorageEmulation
+		storage.Size = 0
+		storage.Pool = dataset.Pool
+		storage.FilesystemTarget = strings.TrimSpace(req.FilesystemTarget)
+		storage.ReadOnly = req.ReadOnly != nil && *req.ReadOnly
+
+		if err := s.DB.Create(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_create_storage_record: %w", err)
+		}
+
+		storageDataset := vmModels.VMStorageDataset{
+			Pool: dataset.Pool,
+			Name: dataset.Name,
+			GUID: dataset.GUID,
+		}
+
+		if err := s.DB.Create(&storageDataset).Error; err != nil {
+			return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
+		}
+
+		storage.DatasetID = &storageDataset.ID
+		if err := s.DB.Save(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 		}
 	}
 
@@ -842,10 +1010,27 @@ func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachReques
 		return fmt.Errorf("invalid_pool")
 	}
 
+	if req.StorageType == libvirtServiceInterfaces.StorageTypeFilesystem {
+		if req.AttachType != libvirtServiceInterfaces.StorageAttachTypeNew {
+			return fmt.Errorf("invalid_attach_type_for_filesystem_storage")
+		}
+
+		if strings.TrimSpace(req.Dataset) == "" {
+			return fmt.Errorf("filesystem_dataset_guid_required")
+		}
+
+		if !isValidFilesystemTargetName(req.FilesystemTarget) {
+			return fmt.Errorf("invalid_filesystem_target_name")
+		}
+	}
+
 	if req.StorageType != libvirtServiceInterfaces.StorageTypeDiskImage {
-		err = s.CreateStorageParent(vm.RID, *req.Pool, ctx)
-		if err != nil {
-			return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+		if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw ||
+			req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL {
+			err = s.CreateStorageParent(vm.RID, *req.Pool, ctx)
+			if err != nil {
+				return fmt.Errorf("failed_to_create_storage_parent: %w", err)
+			}
 		}
 	}
 
@@ -906,7 +1091,9 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 		current.BootOrder = *req.BootOrder
 	}
 
-	if req.Size == nil && current.Type != vmModels.VMStorageTypeDiskImage {
+	if req.Size == nil &&
+		current.Type != vmModels.VMStorageTypeDiskImage &&
+		current.Type != vmModels.VMStorageTypeFilesystem {
 		return fmt.Errorf("size_required_for_storage_type: %s", current.Type)
 	}
 
@@ -975,6 +1162,8 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 
 		case vmModels.VMStorageTypeDiskImage:
 			return fmt.Errorf("size_edit_not_supported_for_disk_image_storage")
+		case vmModels.VMStorageTypeFilesystem:
+			return fmt.Errorf("size_edit_not_supported_for_filesystem_storage")
 		default:
 			return fmt.Errorf("size_edit_not_supported_for_storage_type: %s", current.Type)
 		}
@@ -984,6 +1173,22 @@ func (s *Service) StorageUpdate(req libvirtServiceInterfaces.StorageUpdateReques
 
 	current.Name = req.Name
 	current.Emulation = vmModels.VMStorageEmulationType(req.Emulation)
+	if current.Type == vmModels.VMStorageTypeFilesystem {
+		current.Emulation = vmModels.VirtIO9PStorageEmulation
+	}
+
+	if req.FilesystemTarget != nil && current.Type == vmModels.VMStorageTypeFilesystem {
+		target := strings.TrimSpace(*req.FilesystemTarget)
+		if !isValidFilesystemTargetName(target) {
+			return fmt.Errorf("invalid_filesystem_target_name")
+		}
+		current.FilesystemTarget = target
+	}
+
+	if req.ReadOnly != nil && current.Type == vmModels.VMStorageTypeFilesystem {
+		current.ReadOnly = *req.ReadOnly
+	}
+
 	if req.Enable != nil {
 		current.Enable = *req.Enable
 	}
