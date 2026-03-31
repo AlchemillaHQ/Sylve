@@ -40,7 +40,7 @@ export async function storageNew(
     size: number | undefined,
     emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
     pool: string,
-    bootOrder: number,
+    bootOrder?: number,
     dataset: string = '',
     filesystemTarget: string = '',
     readOnly: boolean = false
@@ -53,7 +53,7 @@ export async function storageNew(
         emulation,
         storageType,
         ...(storageType === 'filesystem' ? {} : { pool }),
-        bootOrder,
+        ...(bootOrder !== undefined ? { bootOrder } : {}),
         ...(storageType === 'filesystem'
             ? { dataset, filesystemTarget, readOnly }
             : {})
@@ -65,7 +65,7 @@ export async function storageUpdate(
     name: string,
     size: number | undefined,
     emulation: 'ahci-hd' | 'ahci-cd' | 'nvme' | 'virtio-blk' | 'virtio-9p',
-    bootOrder: number,
+    bootOrder?: number,
     enable?: boolean,
     filesystemTarget?: string,
     readOnly?: boolean
@@ -75,7 +75,7 @@ export async function storageUpdate(
         name,
         ...(size !== undefined ? { size } : {}),
         emulation,
-        bootOrder,
+        ...(bootOrder !== undefined ? { bootOrder } : {}),
         ...(enable !== undefined ? { enable } : {}),
         ...(filesystemTarget !== undefined ? { filesystemTarget } : {}),
         ...(readOnly !== undefined ? { readOnly } : {})

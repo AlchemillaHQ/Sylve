@@ -228,12 +228,14 @@
 			return;
 		}
 
-		if (properties.bootOrder === null) {
-			toast.error('Please specify a boot order', toastOptions);
-			return;
-		} else if (usedBootOrders.includes(Number(properties.bootOrder))) {
-			toast.error('Boot order already in use', toastOptions);
-			return;
+		if (properties.diskType !== 'filesystem') {
+			if (properties.bootOrder === null) {
+				toast.error('Please specify a boot order', toastOptions);
+				return;
+			} else if (usedBootOrders.includes(Number(properties.bootOrder))) {
+				toast.error('Boot order already in use', toastOptions);
+				return;
+			}
 		}
 
 		if (properties.type === 'import') {
@@ -321,7 +323,7 @@
 				parsedSize,
 				properties.diskType === 'filesystem' ? 'virtio-9p' : properties.emulation,
 				properties.pool,
-				Number(properties.bootOrder),
+				properties.diskType === 'filesystem' ? undefined : Number(properties.bootOrder),
 				properties.diskType === 'filesystem' ? filesystemCombobox.value : '',
 				properties.diskType === 'filesystem' ? properties.filesystemTarget.trim() : '',
 				properties.diskType === 'filesystem' ? properties.filesystemReadOnly : false
@@ -386,14 +388,16 @@
 			return;
 		}
 
-		if (editProperties.bootOrder === null) {
-			toast.error('Please specify a boot order', toastOptions);
-			return;
-		}
+		if (!isFilesystemStorageEdit) {
+			if (editProperties.bootOrder === null) {
+				toast.error('Please specify a boot order', toastOptions);
+				return;
+			}
 
-		if (usedBootOrders.includes(Number(editProperties.bootOrder))) {
-			toast.error('Boot order already in use', toastOptions);
-			return;
+			if (usedBootOrders.includes(Number(editProperties.bootOrder))) {
+				toast.error('Boot order already in use', toastOptions);
+				return;
+			}
 		}
 
 		let roundedSize: number | undefined = undefined;
@@ -425,7 +429,7 @@
 			editProperties.name,
 			roundedSize,
 			isFilesystemStorageEdit ? 'virtio-9p' : editProperties.emulation,
-			Number(editProperties.bootOrder),
+			isFilesystemStorageEdit ? undefined : Number(editProperties.bootOrder),
 			editProperties.enable,
 			isFilesystemStorageEdit ? editProperties.filesystemTarget.trim() : undefined,
 			isFilesystemStorageEdit ? editProperties.filesystemReadOnly : undefined
@@ -637,13 +641,15 @@
 					/>
 				{/if}
 
-				<CustomValueInput
-					label="Boot Order"
-					placeholder="2"
-					type="number"
-					bind:value={properties.bootOrder as number}
-					classes="flex-1 space-y-1"
-				/>
+				{#if properties.diskType !== 'filesystem'}
+					<CustomValueInput
+						label="Boot Order"
+						placeholder="2"
+						type="number"
+						bind:value={properties.bootOrder as number}
+						classes="flex-1 space-y-1"
+					/>
+				{/if}
 			</div>
 
 			{#if properties.type === 'new' && properties.diskType === 'filesystem'}
@@ -711,13 +717,15 @@
 					/>
 				{/if}
 
-				<CustomValueInput
-					label="Boot Order"
-					placeholder="2"
-					type="number"
-					bind:value={editProperties.bootOrder as number}
-					classes="flex-1 space-y-1"
-				/>
+				{#if !isFilesystemStorageEdit}
+					<CustomValueInput
+						label="Boot Order"
+						placeholder="2"
+						type="number"
+						bind:value={editProperties.bootOrder as number}
+						classes="flex-1 space-y-1"
+					/>
+				{/if}
 			</div>
 
 			{#if isFilesystemStorageEdit}
