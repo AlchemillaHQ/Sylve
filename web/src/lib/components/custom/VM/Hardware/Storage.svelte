@@ -122,6 +122,10 @@
 	let usedBootOrders = $derived.by(() => {
 		const used = [] as number[];
 		for (const storage of vm.storages) {
+			if (storage.type === 'filesystem') {
+				continue;
+			}
+
 			if (storageId && storage.id === storageId) {
 				continue;
 			}

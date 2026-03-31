@@ -138,7 +138,7 @@ export function generateTableData(
             enabled: storage.enable,
             type: storage.type,
             emulation: storage.emulation,
-            bootorder: storage.bootOrder || 0,
+            bootorder: storage.type === 'filesystem' ? undefined : (storage.bootOrder ?? 0),
             name: name,
             size: size || storage.size
         });

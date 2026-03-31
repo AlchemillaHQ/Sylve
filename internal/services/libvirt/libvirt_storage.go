@@ -630,7 +630,7 @@ func (s *Service) GetNextBootOrderIndex(vmId int) (int, error) {
 	var maxBootOrder sql.NullInt64
 	err := s.DB.
 		Model(&vmModels.Storage{}).
-		Where("vm_id = ?", vmId).
+		Where("vm_id = ? AND type != ?", vmId, vmModels.VMStorageTypeFilesystem).
 		Select("MAX(boot_order)").
 		Scan(&maxBootOrder).Error
 	if err != nil {
@@ -648,7 +648,7 @@ func (s *Service) ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error) 
 	var count int64
 	err := s.DB.
 		Model(&vmModels.Storage{}).
-		Where("vm_id = ? AND boot_order = ?", vmId, bootOrder).
+		Where("vm_id = ? AND type != ? AND boot_order = ?", vmId, vmModels.VMStorageTypeFilesystem, bootOrder).
 		Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("failed_to_validate_boot_order_index: %w", err)
