@@ -39,6 +39,10 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("share_with_name_exists")
 	}
 
+	if err := s.DB.Where("dataset = ?", dataset).First(&sambaModels.SambaShare{}).Error; err == nil {
+		return fmt.Errorf("share_with_dataset_exists")
+	}
+
 	if len(readOnlyGroups) > 0 && readOnly {
 		return fmt.Errorf("cannot_create_read_only_share_with_read_only_groups")
 	}

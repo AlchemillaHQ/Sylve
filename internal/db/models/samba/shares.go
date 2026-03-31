@@ -18,7 +18,7 @@ type SambaShare struct {
 	ID              int            `json:"id" gorm:"primaryKey"`
 	Name            string         `json:"name" gorm:"uniqueIndex"`
 	Dataset         string         `json:"dataset" gorm:"uniqueIndex"`
-	Path            string         `json:"path" gorm:"uniqueIndex"`
+	Path            string         `json:"path"`
 	ReadOnlyGroups  []models.Group `json:"readOnlyGroups" gorm:"many2many:samba_share_read_only_groups;"`
 	WriteableGroups []models.Group `json:"writeableGroups" gorm:"many2many:samba_share_writeable_groups;"`
 	CreateMask      string         `json:"createMask" gorm:"default:'0664'"`

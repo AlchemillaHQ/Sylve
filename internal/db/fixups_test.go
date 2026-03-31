@@ -13,6 +13,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -188,6 +189,34 @@ func TestCleanupLegacyDevdEventsTableRecordsMigrationWhenTableAbsent(t *testing.
 	}
 	if migrationCount != 1 {
 		t.Fatalf("expected migration row to be recorded once, got %d", migrationCount)
+	}
+}
+
+func TestDropSambaSharePathUniqueIndexDropsLegacyPathUniqueness(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &sambaModels.SambaShare{})
+
+	if err := dbConn.Exec(`CREATE UNIQUE INDEX idx_samba_shares_path_legacy ON samba_shares(path)`).Error; err != nil {
+		t.Fatalf("failed creating legacy samba_shares path unique index: %v", err)
+	}
+
+	dropSambaSharePathUniqueIndex(dbConn)
+
+	var migrationCount int64
+	if err := dbConn.Table("migrations").Where("name = ?", "drop_samba_share_path_unique_index_1").Count(&migrationCount).Error; err != nil {
+		t.Fatalf("failed checking migration row: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("expected migration row to be recorded once, got %d", migrationCount)
+	}
+
+	first := sambaModels.SambaShare{Name: "share-one", Dataset: "dataset-one", Path: "/mnt/dup"}
+	if err := dbConn.Create(&first).Error; err != nil {
+		t.Fatalf("failed creating first samba share: %v", err)
+	}
+
+	second := sambaModels.SambaShare{Name: "share-two", Dataset: "dataset-two", Path: "/mnt/dup"}
+	if err := dbConn.Create(&second).Error; err != nil {
+		t.Fatalf("expected duplicate path to be allowed after fixup, got: %v", err)
 	}
 }
 

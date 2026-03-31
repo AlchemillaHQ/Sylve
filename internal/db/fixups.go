@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
@@ -27,6 +28,7 @@ func Fixups(db *gorm.DB) error {
 	cleanupInvalidTokenRows(db)
 	cleanupInvalidAuditUserIDs(db)
 	cleanupLegacyDevdEventsTable(db)
+	dropSambaSharePathUniqueIndex(db)
 
 	return nil
 }
@@ -267,6 +269,55 @@ func cleanupLegacyDevdEventsTable(db *gorm.DB) {
 	if err := db.Migrator().DropTable("devd_events"); err != nil {
 		logger.L.Err(err).Msg("failed dropping legacy devd_events table")
 		return
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func dropSambaSharePathUniqueIndex(db *gorm.DB) {
+	const name = "drop_samba_share_path_unique_index_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for drop_samba_share_path_unique_index")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable(&sambaModels.SambaShare{}) {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	indexes, err := db.Migrator().GetIndexes(&sambaModels.SambaShare{})
+	if err != nil {
+		logger.L.Err(err).Msg("failed retrieving samba_shares indexes")
+		return
+	}
+
+	for _, idx := range indexes {
+		unique, ok := idx.Unique()
+		if !ok || !unique {
+			continue
+		}
+
+		columns := idx.Columns()
+		if len(columns) != 1 || !strings.EqualFold(columns[0], "path") {
+			continue
+		}
+
+		if err := db.Migrator().DropIndex(&sambaModels.SambaShare{}, idx.Name()); err != nil {
+			logger.L.Err(err).Str("index", idx.Name()).Msg("failed dropping samba_shares path unique index")
+			return
+		}
 	}
 
 	db.Table("migrations").Create(map[string]any{
