@@ -130,7 +130,7 @@ The following steps assume your other services are configured in different jails
 
 To begin, we should create a new ZFS dataset. A ZFS dataset acts as a separate filesystem, similar to BTRFS volumes. You can specify different options to a dataset, e.g., you can enable compression, configure record sizes, disable access time modification and you can even create complex access control lists to restrict access to your files.
 
-Let's get started with creating our ZFS dataset where we will store the media files used by our services, and where Jellyfin can access this media.
+Let's get started with creating our ZFS dataset where we will store the media files used by our services and where Jellyfin can access this media.
 
 1. Go to your node and select `Storage > ZFS > Datasets > File Systems`. Click **New** to create a new dataset.
 
@@ -146,7 +146,7 @@ For the mount point, I chose **/media/jellyfin**, the path you can access your d
 
 In my case, I want to mount the new filesystem in `/media/jellyfin`, so this directory was already created on the jail itself.
 
-Select an existing jail on your node (e.g. the newly created Jellyfin jail), go to `Options > FSTab Entries` and click **Edit FSTab Entries**.
+Select an existing jail on your node (e.g. the newly created jail), go to `Options > FSTab Entries` and click **Edit FSTab Entries**.
 
 ![Jail - Options - FSTab Entries](jellyfin-dataset-2.webp)
 
@@ -163,12 +163,12 @@ zroot/jellyfin /zroot/sylve/jails/<jail-id>/media/jellyfin nullfs rw 0 0
 
 3. We have created the shared directory, now we need to setup the permissions for it, so that our different services can read and write to it. 
 
-One thing to note, however, is that the user ID for your different services might not be the same depending on your setup. Thankfully, with ZFS ACLs, we can simply allow read-write access to different user IDs.
+One thing to keep in mind is that the user ID for the user account of your services might not be the same depending on your setup. That is, two different services may not share the same UID. Thankfully with ZFS ACLs, we can simply allow read-write access to overcome this issue.
 
-Open a shell in your node, and type the following command apply add read, write and execute permissions for the Jellyfin user in our newly created filesystem. Jellyfin typically uses user ID 868 in FreeBSD, although:
+Open a shell in your node and type the following command to add read, write and execute permissions for the Jellyfin user in our newly created filesystem. Jellyfin typically uses UID 868 in FreeBSD:
 
 ```bash
 setfacl -m u:868:rwx:fd:allow /zroot/jellyfin
 ```
 
-And that's it! If you have more jails you want to share the directory with, just repeat these simple steps, and make sure to add permissions for the new user IDs.
+And that's it! If you have more jails you want to share the directory with, just repeat these simple steps, and make sure to add permissions for the new UIDs.
