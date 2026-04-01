@@ -10,7 +10,7 @@
   let { open = $bindable() }: Props = $props();
 
   const SCRIPT_URL =
-    "https://raw.githubusercontent.com/AlchemillaHQ/Sylve/refs/heads/master/scripts/installer.sh";
+    "https://raw.githubusercontent.com/freebsd/freebsd-ports/refs/heads/main/sysutils/sylve/Makefile";
 
   let script = $state("");
   let highlighted = $state("");
