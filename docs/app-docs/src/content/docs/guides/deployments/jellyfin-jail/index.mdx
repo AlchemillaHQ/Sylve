@@ -121,3 +121,54 @@ On jellifin's web interface, navigate to `Dashboard > Playback > Transcoding` an
 ![Jellyfin - Transcoding setup](jellyfin-transcoding.webp)
 
 That should be pretty much it! You can now enjoy your media server with hardware-accelerated transcoding.
+
+## Sharing data storage with other jails
+
+After configuring Jellyfin, maybe you also want to integrate it with other software stack, like [*arr](https://wiki.servarr.com/), to have a fully fledged media library. Thanks to Sylve's integration with ZFS, doing it is quite simple!
+
+The following steps assume your other services are configured in different jails.
+
+To begin, we should create a new ZFS dataset. A ZFS dataset acts as a separate filesystem, similar to BTRFS volumes. You can specify different options to a dataset, e.g., you can enable compression, configure record sizes, disable access time modification and you can even create complex access control lists to restrict access to your files.
+
+Let's get started with creating our ZFS dataset where we will store the media files used by our services and where Jellyfin can access this media.
+
+1. Go to your node and select `Storage > ZFS > Datasets > File Systems`. Click **New** to create a new dataset.
+
+![Storage - ZFS - Datasets - File Systems](jellyfin-dataset-1.webp)
+
+:::note
+You can configure the dataset based on your own needs. It's recommended to disable **atime** and to set record size to 1M, as we are mostly dealing with media files, which are considered large files. 
+
+For the mount point, I chose **/media/jellyfin**, the path you can access your dataset in the host system. I also chose a 256GiB quota for it, but you're free to choose any value you want (setting that field to empty disables quotas).
+:::
+
+2. Now we need to mount the filesystem to our jails. You can add the dataset to a new jail directly through the UI, but I advise against it because you need to create the mount point before the jail is created, otherwise it won't turn on.
+
+In my case, I want to mount the new filesystem in `/media/jellyfin`, so this directory was already created on the jail itself.
+
+Select an existing jail on your node (e.g. the newly created jail), go to `Options > FSTab Entries` and click **Edit FSTab Entries**.
+
+![Jail - Options - FSTab Entries](jellyfin-dataset-2.webp)
+
+You can check the snippet for the fstab entry below. Make sure to replace `<jail-id>` with the ID of your jail. 
+
+:::note
+We are mounting the ZFS dataset as a nullfs. It's the most recommended filesystem type for sharing data between jails in FreeBSD. You can read more information about it [on FreeBSD's website](https://man.freebsd.org/cgi/man.cgi?query=nullfs&manpath=FreeBSD+15.0-RELEASE+and+Ports.quarterly).
+:::
+
+```bash
+# <device> <dir> <type> <options> <dump> <fsck>
+zroot/jellyfin /zroot/sylve/jails/<jail-id>/media/jellyfin nullfs rw 0 0
+```
+
+3. We have created the shared directory, now we need to setup the permissions for it, so that our different services can read and write to it. 
+
+One thing to keep in mind is that the user ID for the user account of your services might not be the same depending on your setup. That is, two different services may not share the same UID. Thankfully with ZFS ACLs, we can simply allow read-write access to overcome this issue.
+
+Open a shell in your node and type the following command to add read, write and execute permissions for the Jellyfin user in our newly created filesystem. Jellyfin typically uses UID 868 in FreeBSD:
+
+```bash
+setfacl -m u:868:rwx:fd:allow /zroot/jellyfin
+```
+
+And that's it! If you have more jails you want to share the directory with, just repeat these simple steps, and make sure to add permissions for the new UIDs.
