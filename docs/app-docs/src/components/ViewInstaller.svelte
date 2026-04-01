@@ -104,7 +104,7 @@
         >https://&lt;host&gt;:8181</span
       > in your browser.
     </p>
-    <CopyButton text="fetch -o- https://sh.sylve.io | sh" />
+    <CopyButton text="pkg install sylve" />
   {/snippet}
 </Modal>
 

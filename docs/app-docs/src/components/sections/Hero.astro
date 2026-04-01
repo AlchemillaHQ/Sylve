@@ -32,87 +32,87 @@ try {
 
 <div class="hero-section relative text-center pt-5 mt-0">
   <div class="relative z-10">
-  <div
-    class="-translate-y-4 animate-fade-in opacity-0"
-    style="--animation-delay: 80ms"
-  >
-    <span
-      class:list={[
-        buttonVariants({ variant: "outline" }),
-        "rounded-full inline-flex",
-      ]}
+    <div
+      class="-translate-y-4 animate-fade-in opacity-0"
+      style="--animation-delay: 80ms"
     >
-      <div class="size-2 animate-pulse bg-emerald-500 rounded-full"></div>
-      Free & Open Source • BSD-2
-    </span>
-  </div>
-
-  <h1
-    class="dark-text-gradient text-gradient my-6 text-4xl md:text-7xl font-normal tracking-tighter md:tracking-tight text-center mx-auto max-w-[90vw] md:max-w-full -translate-y-4 animate-fade-in opacity-0"
-    style="--animation-delay: 160ms"
-  >
-    Strong Foundation.
-    <span class="block mt-2 md:mt-2.5 pb-2">Simple Control.</span>
-  </h1>
-
-  <p
-    class="mb-12 text-lg md:text-xl leading-relaxed text-muted-foreground text-center mx-auto max-w-[85vw] md:max-w-3xl -translate-y-4 animate-fade-in opacity-0"
-    style="--animation-delay: 240ms"
-  >
-    Utilize your rock solid
-    <span
-      class="icon-[mdi--freebsd] text-[#b5010f] inline-block align-text-bottom mx-1 size-[1.1em]"
-    ></span>FreeBSD&trade; environment through a
-    <br class="hidden md:block" />
-    unified, high-performance management layer.
-  </p>
-
-  <div
-    class="flex flex-col md:flex-row justify-center items-center mt-10 gap-4 -translate-y-4 animate-fade-in opacity-0"
-    style="--animation-delay: 320ms"
-  >
-    <div class="order-2 md:order-1 flex flex-row gap-3 md:contents">
-      <a
-        href="/docs/"
-        class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background border"
+      <span
+        class:list={[
+          buttonVariants({ variant: "outline" }),
+          "rounded-full inline-flex",
+        ]}
       >
-        <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
-        <span data-i18n="getStarted">Get Started</span>
-      </a>
-      <a
-        href="https://github.com/AlchemillaHQ/Sylve"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm border border-foreground/25 dark:border-white/50 md:hidden"
-      >
-        <span class="icon-[mdi--github] size-4 mr-2"></span>
-        GitHub
-      </a>
+        <div class="size-2 animate-pulse bg-emerald-500 rounded-full"></div>
+        Free & Open Source • BSD-2
+      </span>
     </div>
-    <div class="order-1 md:order-2 card-wrapper h-11 border rounded-lg">
-      <div
-        class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
-      >
-        <span><span class="text-foreground">$ </span>fetch -o- https://sh.sylve.io | sh</span>
-        <ViewInstallerButton client:load />
-        <CopyButton client:load text="fetch -o- https://sh.sylve.io | sh" />
+
+    <h1
+      class="dark-text-gradient text-gradient my-6 text-4xl md:text-7xl font-normal tracking-tighter md:tracking-tight text-center mx-auto max-w-[90vw] md:max-w-full -translate-y-4 animate-fade-in opacity-0"
+      style="--animation-delay: 160ms"
+    >
+      Strong Foundation.
+      <span class="block mt-2 md:mt-2.5 pb-2">Simple Control.</span>
+    </h1>
+
+    <p
+      class="mb-12 text-lg md:text-xl leading-relaxed text-muted-foreground text-center mx-auto max-w-[85vw] md:max-w-3xl -translate-y-4 animate-fade-in opacity-0"
+      style="--animation-delay: 240ms"
+    >
+      Utilize your rock solid
+      <span
+        class="icon-[mdi--freebsd] text-[#b5010f] inline-block align-text-bottom mx-1 size-[1.1em]"
+      ></span>FreeBSD&trade; environment through a
+      <br class="hidden md:block" />
+      unified, high-performance management layer.
+    </p>
+
+    <div
+      class="flex flex-col md:flex-row justify-center items-center mt-10 gap-4 -translate-y-4 animate-fade-in opacity-0"
+      style="--animation-delay: 320ms"
+    >
+      <div class="order-2 md:order-1 flex flex-row gap-3 md:contents">
+        <a
+          href="/docs/"
+          class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm dark:bg-foreground dark:text-background border"
+        >
+          <span class="icon-[mdi--book-open-variant] size-4 mr-2"></span>
+          <span data-i18n="getStarted">Get Started</span>
+        </a>
+        <a
+          href="https://github.com/AlchemillaHQ/Sylve"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center justify-center px-8 py-2.5 rounded-lg font-mono text-sm border border-foreground/25 dark:border-white/50 md:hidden"
+        >
+          <span class="icon-[mdi--github] size-4 mr-2"></span>
+          GitHub
+        </a>
+      </div>
+      <div class="order-1 md:order-2 card-wrapper h-11 border rounded-lg">
+        <div
+          class="card-content inline-flex items-center justify-between px-4 py-2 rounded-lg font-mono text-sm"
+        >
+          <span><span class="text-foreground">$ </span>pkg install sylve</span>
+          <ViewInstallerButton client:load />
+          <CopyButton client:load text="pkg install sylve" />
+        </div>
       </div>
     </div>
-  </div>
-  <Particles
-    className="absolute inset-0 top-0 left-0 pointer-events-none h-screen z-0"
-    quantity={80}
-    ease={70}
-    color="#ffffff"
-    refresh={true}
-    client:load
-  />
+    <Particles
+      className="absolute inset-0 top-0 left-0 pointer-events-none h-screen z-0"
+      quantity={80}
+      ease={70}
+      color="#ffffff"
+      refresh={true}
+      client:load
+    />
   </div>
   <div class="relative z-10">
-  <HeroFrame
-    client:load
-    screenshotsLight={lightScreens}
-    screenshotsDark={darkScreens}
-  />
+    <HeroFrame
+      client:load
+      screenshotsLight={lightScreens}
+      screenshotsDark={darkScreens}
+    />
   </div>
 </div>
