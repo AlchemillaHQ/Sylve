@@ -67,8 +67,10 @@
 
   <div class="flex flex-col gap-3">
     <p class="text-sm text-muted-foreground">
-      Sylve runs on FreeBSD and the script below will help you get up and
-      running!
+      Sylve runs on FreeBSD and the makefile below is the recommended
+      installation method. You can find the full port information <a
+        href="https://www.freshports.org/sysutils/sylve/">here.</a
+      >
     </p>
 
     <div
@@ -76,7 +78,7 @@
     >
       {#if error}
         <div class="p-4 text-sm text-destructive font-mono">
-          Failed to load script: {error}
+          Failed to load makefile: {error}
         </div>
       {:else if highlighted}
         <div class="absolute top-2 right-2 z-10">
@@ -92,7 +94,7 @@
           class="flex items-center gap-2 p-4 text-sm text-muted-foreground font-mono"
         >
           <span class="icon-[lucide--loader-circle] size-4 animate-spin"></span>
-          Loading installer script…
+          Loading makefile…
         </div>
       {/if}
     </div>
