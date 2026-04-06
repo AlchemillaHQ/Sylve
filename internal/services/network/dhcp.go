@@ -354,6 +354,8 @@ func (s *Service) WriteDHCPConfig() error {
 	}
 
 	config += "\n"
+	// quick hack: add dhcp-options for add default-route
+	config += "dhcp-option=option:router,10.0.1.1\n"
 
 	filePath := "/usr/local/etc/dnsmasq.conf"
 
