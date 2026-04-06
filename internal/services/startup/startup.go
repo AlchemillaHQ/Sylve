@@ -161,6 +161,18 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 	}
 
+	s.Network.StartFirewallMonitor(dCtx)
+
+	if slices.Contains(basicSettings.Services, models.WireGuard) {
+		if err := s.Network.EnableWireGuardService(dCtx); err != nil {
+			return fmt.Errorf("failed to enable wireguard service: %w", err)
+		}
+	}
+
+	if err := s.Network.ReconcileManagedRoutes(); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_reconcile_managed_routes_on_startup")
+	}
+
 	if err := s.System.ReconcilePreparedPPTDevices(); err != nil {
 		return fmt.Errorf("failed to reconcile prepared passthrough devices: %w", err)
 	}

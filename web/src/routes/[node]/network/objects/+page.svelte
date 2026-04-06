@@ -69,10 +69,16 @@
 						return 'Host(s)';
 					case 'Network':
 						return 'Network(s)';
+					case 'Port':
+						return 'Port(s)';
 					case 'Mac':
 						return 'MAC(s)';
 					case 'DUID':
 						return 'DUID(s)';
+					case 'FQDN':
+						return 'FQDN(s)';
+					case 'List':
+						return 'List(s)';
 					default:
 						return value || '-';
 				}
@@ -114,6 +120,26 @@
 				const value = cell.getValue();
 				return value ? new Date(value).toLocaleString() : '-';
 			}
+		},
+		{
+			field: 'refreshStatus',
+			title: 'Refresh',
+			formatter: (cell: CellComponent) => {
+				const value = cell.getValue() as { type: string; at: string | null; err: string };
+				if (!value || (value.type !== 'FQDN' && value.type !== 'List')) {
+					return '-';
+				}
+
+				if (value.err) {
+					return `Error: ${value.err}`;
+				}
+
+				if (value.at) {
+					return `OK @ ${new Date(value.at).toLocaleString()}`;
+				}
+
+				return 'Pending';
+			}
 		}
 	]);
 
@@ -125,7 +151,12 @@
 				name: object.name,
 				type: object.type,
 				entries: object.entries,
-				updatedAt: object.updatedAt
+				updatedAt: object.updatedAt,
+				refreshStatus: {
+					type: object.type,
+					at: object.lastRefreshAt ?? null,
+					err: object.lastRefreshError ?? ''
+				}
 			};
 		})
 	});

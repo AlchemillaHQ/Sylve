@@ -100,7 +100,11 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 
 		return disk.NewDiskService(db, zfsService, gzfs)
 	case *network.Service:
-		return network.NewNetworkService(db, dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface))
+		return network.NewNetworkService(
+			db,
+			dependencies[0].(*gorm.DB),
+			dependencies[1].(libvirtServiceInterfaces.LibvirtServiceInterface),
+		)
 	case *utilities.Service:
 		vmService := dependencies[0].(libvirtServiceInterfaces.LibvirtServiceInterface)
 		jailService := dependencies[1].(jailServiceInterfaces.JailServiceInterface)
@@ -144,7 +148,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	authService := NewService[auth.Service](db)
 	systemService := NewService[system.Service](db, gzfs)
 	libvirtService := NewService[libvirt.Service](db, systemService, gzfs)
-	networkService := NewService[network.Service](db, libvirtService)
+	networkService := NewService[network.Service](db, telemetryDB, libvirtService)
 	infoService := NewService[info.Service](db, telemetryDB, gzfs)
 	zfsService := NewService[zfs.Service](db, libvirtService, gzfs)
 	jailService := NewService[jail.Service](db, networkService, systemService, gzfs)

@@ -123,3 +123,15 @@ func (s *Service) CheckSambaServer() error {
 
 	return nil
 }
+
+func (s *Service) CheckWireGuard() error {
+	if _, err := utils.RunCommand("/sbin/kldstat", "-m", "if_wg"); err == nil {
+		return nil
+	}
+
+	if _, err := utils.RunCommand("/sbin/kldload", "-n", "if_wg"); err != nil {
+		return fmt.Errorf("wireguard_failed_to_load_if_wg: %w", err)
+	}
+
+	return nil
+}

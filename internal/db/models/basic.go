@@ -16,6 +16,8 @@ const (
 	SambaServer    AvailableService = "samba-server"
 	Virtualization AvailableService = "virtualization"
 	WoLServer      AvailableService = "wol-server"
+	Firewall       AvailableService = "firewall"
+	WireGuard      AvailableService = "wireguard"
 )
 
 type BasicSettings struct {

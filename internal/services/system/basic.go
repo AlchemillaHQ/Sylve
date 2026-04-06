@@ -126,6 +126,16 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 				errs = append(errs, fmt.Errorf("samba_server_check_failed: %w", err))
 			}
 		}
+
+		if service == models.Firewall {
+			// PF is part of base FreeBSD; no package precheck needed.
+		}
+
+		if service == models.WireGuard {
+			if err := s.CheckWireGuard(); err != nil {
+				errs = append(errs, fmt.Errorf("wireguard_check_failed: %w", err))
+			}
+		}
 	}
 
 	if len(errs) > 0 {

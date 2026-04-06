@@ -5,12 +5,22 @@ export type AvailableService =
 	| 'jails'
 	| 'dhcp-server'
 	| 'samba-server'
-	| 'wol-server';
+	| 'wol-server'
+	| 'firewall'
+	| 'wireguard';
 
 export const BasicSettingsSchema = z.object({
 	pools: z.array(z.string()),
 	services: z.array(
-		z.enum(['virtualization', 'jails', 'dhcp-server', 'samba-server', 'wol-server'])
+		z.enum([
+			'virtualization',
+			'jails',
+			'dhcp-server',
+			'samba-server',
+			'wol-server',
+			'firewall',
+			'wireguard'
+		])
 	),
 	initialized: z.boolean()
 });

@@ -53,7 +53,17 @@ export const PasskeySchema = z.object({
 export const BasicSettingsSchema = z.object({
 	pools: z.array(z.string()).nullable().default([]),
 	services: z
-		.array(z.enum(['dhcp-server', 'samba-server']))
+		.array(
+			z.enum([
+				'dhcp-server',
+				'samba-server',
+				'virtualization',
+				'jails',
+				'wol-server',
+				'firewall',
+				'wireguard'
+			])
+		)
 		.nullable()
 		.default([]),
 	initialized: z.boolean()

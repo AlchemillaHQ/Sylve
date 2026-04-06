@@ -11,17 +11,24 @@ package network
 import (
 	"testing"
 
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
 
 func newNetworkServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
-	return testutil.NewSQLiteTestDB(t, migrateModels...)
+	models := append([]any{}, migrateModels...)
+	models = append(models, &networkModels.ObjectListSnapshot{})
+	return testutil.NewSQLiteTestDB(t, models...)
 }
 
 func newNetworkServiceForTest(t *testing.T, migrateModels ...any) (*Service, *gorm.DB) {
 	t.Helper()
 
 	db := newNetworkServiceTestDB(t, migrateModels...)
-	return &Service{DB: db}, db
+	return &Service{
+		DB:                db,
+		TelemetryDB:       db,
+		firewallTelemetry: newFirewallTelemetryRuntime(),
+	}, db
 }

@@ -29,6 +29,7 @@ func Fixups(db *gorm.DB) error {
 	cleanupInvalidAuditUserIDs(db)
 	cleanupLegacyDevdEventsTable(db)
 	dropSambaSharePathUniqueIndex(db)
+	backfillFirewallRuleVisibilityDefaults(db)
 
 	return nil
 }
@@ -316,6 +317,39 @@ func dropSambaSharePathUniqueIndex(db *gorm.DB) {
 
 		if err := db.Migrator().DropIndex(&sambaModels.SambaShare{}, idx.Name()); err != nil {
 			logger.L.Err(err).Str("index", idx.Name()).Msg("failed dropping samba_shares path unique index")
+			return
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func backfillFirewallRuleVisibilityDefaults(db *gorm.DB) {
+	const name = "backfill_firewall_rule_visibility_defaults_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for backfill_firewall_rule_visibility_defaults")
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	if db.Migrator().HasTable("firewall_traffic_rules") && db.Migrator().HasColumn("firewall_traffic_rules", "visible") {
+		if err := db.Exec(`UPDATE firewall_traffic_rules SET visible = 1`).Error; err != nil {
+			logger.L.Err(err).Msg("failed to backfill firewall_traffic_rules.visible")
+			return
+		}
+	}
+	if db.Migrator().HasTable("firewall_nat_rules") && db.Migrator().HasColumn("firewall_nat_rules", "visible") {
+		if err := db.Exec(`UPDATE firewall_nat_rules SET visible = 1`).Error; err != nil {
+			logger.L.Err(err).Msg("failed to backfill firewall_nat_rules.visible")
 			return
 		}
 	}

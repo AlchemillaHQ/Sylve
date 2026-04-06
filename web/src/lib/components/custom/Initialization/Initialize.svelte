@@ -43,7 +43,9 @@
 			dhcpServer: true,
 			virtualization: true,
 			jails: true,
-			wolServer: false
+			wolServer: false,
+			firewall: false,
+			wireguard: false
 		}
 	};
 
@@ -58,6 +60,8 @@
 		if (properties.services.sambaServer) services.push('samba-server');
 		if (properties.services.dhcpServer) services.push('dhcp-server');
 		if (properties.services.wolServer) services.push('wol-server');
+		if (properties.services.firewall) services.push('firewall');
+		if (properties.services.wireguard) services.push('wireguard');
 
 		const errors = await initialize(pools, services);
 		if (errors.length === 0) {
@@ -135,6 +139,16 @@
 					<CustomCheckbox
 						label="WOL Server"
 						bind:checked={properties.services.wolServer}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="Firewall"
+						bind:checked={properties.services.firewall}
+						classes="flex items-center gap-2"
+					></CustomCheckbox>
+					<CustomCheckbox
+						label="WireGuard"
+						bind:checked={properties.services.wireguard}
 						classes="flex items-center gap-2"
 					></CustomCheckbox>
 				</div>

@@ -23,6 +23,7 @@
 			return savedIds.size > 0 ? savedIds : new Set<string>(['datacenter']);
 		})()
 	);
+
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
 	let hasInitializedOpenIds = $state(false);
 

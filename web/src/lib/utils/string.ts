@@ -557,3 +557,13 @@ export function parseNumberOrZero(value: string): number {
     const num = Number(value);
     return isNaN(num) ? 0 : num;
 }
+
+export function stringToTextDownload(content: string, filename: string) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+
+    link.click();
+    URL.revokeObjectURL(link.href);
+}

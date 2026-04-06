@@ -227,6 +227,48 @@ func RegisterRoutes(r *gin.Engine,
 		network.DELETE("/object/:id", networkHandlers.DeleteNetworkObject(networkService))
 		network.PUT("/object/:id", networkHandlers.EditNetworkObject(networkService))
 
+		network.GET("/firewall/traffic", networkHandlers.ListFirewallTrafficRules(networkService))
+		network.GET("/firewall/traffic/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
+		network.POST("/firewall/traffic", networkHandlers.CreateFirewallTrafficRule(networkService))
+		network.PUT("/firewall/traffic/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
+		network.PUT("/firewall/traffic/:id", networkHandlers.EditFirewallTrafficRule(networkService))
+		network.DELETE("/firewall/traffic/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+
+		network.GET("/firewall/nat", networkHandlers.ListFirewallNATRules(networkService))
+		network.GET("/firewall/nat/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
+		network.POST("/firewall/nat", networkHandlers.CreateFirewallNATRule(networkService))
+		network.PUT("/firewall/nat/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
+		network.PUT("/firewall/nat/:id", networkHandlers.EditFirewallNATRule(networkService))
+		network.DELETE("/firewall/nat/:id", networkHandlers.DeleteFirewallNATRule(networkService))
+		network.GET("/firewall/logs/live", networkHandlers.ListFirewallLiveHits(networkService))
+
+		network.GET("/firewall/advanced", networkHandlers.GetFirewallAdvancedSettings(networkService))
+		network.PUT("/firewall/advanced", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
+
+		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
+		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))
+		network.PUT("/route/:id", networkHandlers.EditStaticRoute(networkService))
+		network.DELETE("/route/:id", networkHandlers.DeleteStaticRoute(networkService))
+		network.POST("/route/suggest-from-nat/:id", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
+
+		network.GET("/wireguard/server", networkHandlers.GetWireGuardServer(networkService))
+		network.POST("/wireguard/server", networkHandlers.InitWireGuardServer(networkService))
+		network.PUT("/wireguard/server", networkHandlers.EditWireGuardServer(networkService))
+		network.DELETE("/wireguard/server", networkHandlers.DeinitWireGuardServer(networkService))
+		network.PUT("/wireguard/server/toggle", networkHandlers.ToggleWireGuardServer(networkService))
+
+		network.POST("/wireguard/server/peer", networkHandlers.AddWireGuardServerPeer(networkService))
+		network.PUT("/wireguard/server/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
+		network.PUT("/wireguard/server/peer/toggle/:peerId", networkHandlers.ToggleWireGuardServerPeer(networkService))
+		network.DELETE("/wireguard/server/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
+		network.DELETE("/wireguard/server/peer/bulk-delete", networkHandlers.RemoveWireGuardServerPeers(networkService))
+
+		network.GET("/wireguard/clients", networkHandlers.GetWireGuardClients(networkService))
+		network.POST("/wireguard/clients", networkHandlers.CreateWireGuardClient(networkService))
+		network.PUT("/wireguard/clients/:clientId", networkHandlers.EditWireGuardClient(networkService))
+		network.DELETE("/wireguard/clients/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
+		network.PUT("/wireguard/clients/toggle/:clientId", networkHandlers.ToggleWireGuardClient(networkService))
+
 		network.GET("/interface", networkHandlers.ListInterfaces(networkService))
 
 		network.POST("/manual-switch", networkHandlers.CreateManualSwitch(networkService))
@@ -264,7 +306,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
-		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
+		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")

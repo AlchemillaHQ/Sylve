@@ -158,6 +158,12 @@ func main() {
 
 	logger.L.Info().Msg("Basic initializations complete")
 
+	if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_sync_firewall_runtime_state_during_startup")
+	}
+
+	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
+
 	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
 		var settings dbModels.BasicSettings
 		if err := d.First(&settings).Error; err != nil {
