@@ -247,6 +247,7 @@ msgstr "Cluster"
 msgid "Backups"
 msgstr "Backups"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -557,6 +558,7 @@ msgstr "Action"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -987,6 +989,8 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
@@ -1138,6 +1142,10 @@ msgstr "Note"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1310,6 +1318,12 @@ msgstr "Reset"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1387,6 +1401,7 @@ msgstr "This is a note"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1536,6 +1551,7 @@ msgstr "Node ID"
 
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Address"
 msgstr "Address"
@@ -1558,6 +1574,7 @@ msgstr "Staging"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1782,6 +1799,8 @@ msgstr "Admin"
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Create"
 msgstr "Create"
 
@@ -2014,6 +2033,8 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2460,6 +2481,8 @@ msgid "Type to create"
 msgstr "Type to create"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Add"
 msgstr "Add"
 
@@ -2822,6 +2845,7 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2846,6 +2870,7 @@ msgstr "Enabled"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -3625,6 +3650,7 @@ msgstr "SSH Host"
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
 msgstr "Port"
@@ -3638,6 +3664,7 @@ msgstr "Backup Root"
 msgid "Backup target deleted"
 msgstr "Backup target deleted"
 
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Failed to delete target"
 msgstr "Failed to delete target"
@@ -3984,6 +4011,14 @@ msgstr "Review"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -7115,6 +7150,8 @@ msgstr "Default Sylve Group (sylve_g)"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Created At"
 msgstr "Created At"
@@ -7992,10 +8029,12 @@ msgid "Backup root not found on target"
 msgstr "Backup root not found on target"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Failed to update target"
 msgstr "Failed to update target"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Failed to create target"
 msgstr "Failed to create target"
 
@@ -11113,6 +11152,7 @@ msgid "Rule"
 msgstr "Rule"
 
 #: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Details"
 msgstr "Details"
 
@@ -11740,6 +11780,7 @@ msgstr "Connecting"
 
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 msgid "Connected"
 msgstr "Connected"
 
@@ -12289,3 +12330,411 @@ msgstr "Failed to delete objects"
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "This will permanently delete {0} network objects"
 msgstr "This will permanently delete {0} network objects"
+
+#~ msgid "Bootstrap a base"
+#~ msgstr "Bootstrap a base"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Queued..."
+msgstr "Queued..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Creating ZFS dataset..."
+msgstr "Creating ZFS dataset..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Copying signing keys..."
+msgstr "Copying signing keys..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Writing repository config..."
+msgstr "Writing repository config..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Fetching package index..."
+msgstr "Fetching package index..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Installing packages..."
+msgstr "Installing packages..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Writing jail config..."
+msgstr "Writing jail config..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Pre-flight checks..."
+msgstr "Pre-flight checks..."
+
+#. 0: msg
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap failed to start: {0}"
+msgstr "Bootstrap failed to start: {0}"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap Jail Bases"
+msgstr "Bootstrap Jail Bases"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "<0/> Loading..."
+msgstr "<0/> Loading..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "No supported versions available."
+msgstr "No supported versions available."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Unknown error"
+msgstr "Unknown error"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "<0/> Installed"
+msgstr "<0/> Installed"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Retry"
+msgstr "Retry"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap"
+msgstr "Bootstrap"
+
+#. 0: msg
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Failed to delete bootstrap: {0}"
+msgstr "Failed to delete bootstrap: {0}"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Delete bootstrap"
+msgstr "Delete bootstrap"
+
+#~ msgid "Select a jail base to bootstrap with the help of pkgbase. This will create a new ZFS dataset with the selected base and install the necessary packages to make it a valid jail root. Once bootstrapped, you can select this base when creating a new jail."
+#~ msgstr "Select a jail base to bootstrap with the help of pkgbase. This will create a new ZFS dataset with the selected base and install the necessary packages to make it a valid jail root. Once bootstrapped, you can select this base when creating a new jail."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails."
+msgstr "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails."
+
+#: src/routes/[node]/+layout.svelte
+msgid "Initiators"
+msgstr "Initiators"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to create initiator"
+msgstr "Failed to create initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator created"
+msgstr "Initiator created"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to update initiator"
+msgstr "Failed to update initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator updated"
+msgstr "Initiator updated"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Nickname"
+msgstr "Nickname"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target Address"
+msgstr "Target Address"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target Name"
+msgstr "Target Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Auth Method"
+msgstr "Auth Method"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Not connected"
+msgstr "Not connected"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target Name (IQN)"
+msgstr "Target Name (IQN)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator Name (IQN, optional)"
+msgstr "Initiator Name (IQN, optional)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP (one-way)"
+msgstr "CHAP (one-way)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "MutualCHAP"
+msgstr "MutualCHAP"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "MutualCHAP (two-way)"
+msgstr "MutualCHAP (two-way)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Name"
+msgstr "CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Secret"
+msgstr "CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Name"
+msgstr "Target CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Secret"
+msgstr "Target CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Edit Initiator"
+msgstr "Edit Initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Delete Initiator"
+msgstr "Delete Initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "New iSCSI Initiator"
+msgstr "New iSCSI Initiator"
+
+#~ msgid "Configure a new iSCSI initiator connection."
+#~ msgstr "Configure a new iSCSI initiator connection."
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Edit iSCSI Initiator"
+msgstr "Edit iSCSI Initiator"
+
+#~ msgid "Update the iSCSI initiator configuration."
+#~ msgstr "Update the iSCSI initiator configuration."
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to delete initiator"
+msgstr "Failed to delete initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator deleted"
+msgstr "Initiator deleted"
+
+#~ msgid "CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr "CHAP Secret must be 12–16 characters (RFC 3720)"
+
+#~ msgid "Target CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr "Target CHAP Secret must be 12–16 characters (RFC 3720)"
+
+#~ msgid "Initiator Name <0>(IQN, optional)</0>"
+#~ msgstr "Initiator Name <0>(IQN, optional)</0>"
+
+#~ msgid "<0/> Initiator CHAP Credentials"
+#~ msgstr "<0/> Initiator CHAP Credentials"
+
+#~ msgid "CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr "CHAP Secret <0>(12–16 chars)</0>"
+
+#~ msgid "<0/> Target CHAP Credentials"
+#~ msgstr "<0/> Target CHAP Credentials"
+
+#~ msgid "Target CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr "Target CHAP Secret <0>(12–16 chars)</0>"
+
+#~ msgid "CHAP Secret (12–16 chars)"
+#~ msgstr "CHAP Secret (12–16 chars)"
+
+#~ msgid "Target CHAP Secret (12–16 chars)"
+#~ msgstr "Target CHAP Secret (12–16 chars)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Password (12-16 characters)"
+msgstr "Password (12-16 characters)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Must be 12-16 characters (RFC 3720)"
+msgstr "Must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "Target CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#~ msgid "Test"
+#~ msgstr "Test"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target created"
+msgstr "Target created"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target updated"
+msgstr "Target updated"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to add portal"
+msgstr "Failed to add portal"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portal added"
+msgstr "Portal added"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to remove portal"
+msgstr "Failed to remove portal"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portal removed"
+msgstr "Portal removed"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to add LUN"
+msgstr "Failed to add LUN"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN added"
+msgstr "LUN added"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to remove LUN"
+msgstr "Failed to remove LUN"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN removed"
+msgstr "LUN removed"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Alias"
+msgstr "Alias"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portals"
+msgstr "Portals"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUNs"
+msgstr "LUNs"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Alias (optional)"
+msgstr "Alias (optional)"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "My Storage Target"
+msgstr "My Storage Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Name"
+msgstr "Mutual CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Secret"
+msgstr "Mutual CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Edit iSCSI Target"
+msgstr "Edit iSCSI Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Save Details"
+msgstr "Save Details"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No portals configured."
+msgstr "No portals configured."
+
+#~ msgid "LUN {0}:"
+#~ msgstr "LUN {0}:"
+
+#. 0: lun.zvol
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "/dev/zvol/{0}"
+msgstr "/dev/zvol/{0}"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No LUNs configured."
+msgstr "No LUNs configured."
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "ZVol"
+msgstr "ZVol"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Select a volume..."
+msgstr "Select a volume..."
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Edit Target"
+msgstr "Edit Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Delete Target"
+msgstr "Delete Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "New iSCSI Target"
+msgstr "New iSCSI Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target deleted"
+msgstr "Target deleted"
+
+#. 0: lun.lunNumber
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN {0}"
+msgstr "LUN {0}"

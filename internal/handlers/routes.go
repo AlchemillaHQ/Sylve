@@ -26,6 +26,7 @@ import (
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
+	iscsiHandlers "github.com/alchemillahq/sylve/internal/handlers/iscsi"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
@@ -40,6 +41,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
+	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -82,6 +84,7 @@ func RegisterRoutes(r *gin.Engine,
 	systemService *systemService.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
+	iscsiService *iscsi.Service,
 	jailService *jail.Service,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
@@ -203,6 +206,27 @@ func RegisterRoutes(r *gin.Engine,
 		samba.DELETE("/shares/:id", sambaHandlers.DeleteShare(sambaService))
 
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))
+	}
+
+	iscsiGroup := api.Group("/iscsi")
+	iscsiGroup.Use(middleware.EnsureAuthenticated(authService))
+	iscsiGroup.Use(EnsureCorrectHost(db, authService))
+	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		iscsiGroup.GET("/initiators", iscsiHandlers.GetInitiators(iscsiService))
+		iscsiGroup.POST("/initiators", iscsiHandlers.CreateInitiator(iscsiService))
+		iscsiGroup.PUT("/initiators", iscsiHandlers.UpdateInitiator(iscsiService))
+		iscsiGroup.DELETE("/initiators/:id", iscsiHandlers.DeleteInitiator(iscsiService))
+		iscsiGroup.GET("/status", iscsiHandlers.GetStatus(iscsiService))
+
+		iscsiGroup.GET("/targets", iscsiHandlers.GetTargets(iscsiService))
+		iscsiGroup.POST("/targets", iscsiHandlers.CreateTarget(iscsiService))
+		iscsiGroup.PUT("/targets", iscsiHandlers.UpdateTarget(iscsiService))
+		iscsiGroup.DELETE("/targets/:id", iscsiHandlers.DeleteTarget(iscsiService))
+		iscsiGroup.POST("/targets/:id/portals", iscsiHandlers.AddPortal(iscsiService))
+		iscsiGroup.DELETE("/targets/portals/:portalId", iscsiHandlers.RemovePortal(iscsiService))
+		iscsiGroup.POST("/targets/:id/luns", iscsiHandlers.AddLUN(iscsiService))
+		iscsiGroup.DELETE("/targets/luns/:lunId", iscsiHandlers.RemoveLUN(iscsiService))
 	}
 
 	disk := api.Group("/disk")

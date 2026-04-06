@@ -19,6 +19,7 @@ import (
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
+	iscsiServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/iscsi"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -44,6 +45,7 @@ type Service struct {
 	Samba     sambaServiceInterfaces.SambaServiceInterface
 	Jail      jailServiceInterfaces.JailServiceInterface
 	Cluster   clusterServiceInterfaces.ClusterServiceInterface
+	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
 }
 
 func NewStartupService(db *gorm.DB,
@@ -56,6 +58,7 @@ func NewStartupService(db *gorm.DB,
 	samba sambaServiceInterfaces.SambaServiceInterface,
 	jail jailServiceInterfaces.JailServiceInterface,
 	cluster clusterServiceInterfaces.ClusterServiceInterface,
+	iscsiSvc iscsiServiceInterfaces.ISCSIServiceInterface,
 ) serviceInterfaces.StartupServiceInterface {
 	return &Service{
 		DB:        db,
@@ -68,6 +71,7 @@ func NewStartupService(db *gorm.DB,
 		Samba:     samba,
 		Jail:      jail,
 		Cluster:   cluster,
+		ISCSI:     iscsiSvc,
 	}
 }
 
@@ -196,6 +200,20 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 
 		go s.Samba.WatchAuditLogs(dCtx)
+	}
+
+	if slices.Contains(basicSettings.Services, models.ISCSI) {
+		if err := s.InitISCSI(ctx); err != nil {
+			return fmt.Errorf("failed to initialize iSCSI: %w", err)
+		}
+
+		if err := ensureServiceStarted("iscsid"); err != nil {
+			logger.L.Error().Err(err).Msg("unable to start iscsid")
+		}
+
+		if err := ensureServiceStarted("iscsictl"); err != nil {
+			logger.L.Error().Err(err).Msg("unable to start iscsictl")
+		}
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {

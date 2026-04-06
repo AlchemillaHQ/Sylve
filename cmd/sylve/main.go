@@ -32,6 +32,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/info"
+	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -131,6 +132,7 @@ func main() {
 	sysS := serviceRegistry.SystemService
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
+	iscsiSvc := serviceRegistry.ISCSIService.(*iscsi.Service)
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
@@ -243,6 +245,7 @@ func main() {
 		sysS.(*system.Service),
 		libvirtSvc,
 		smbS.(*samba.Service),
+		iscsiSvc,
 		jailSvc,
 		lifecycleSvc,
 		clusterSvc,

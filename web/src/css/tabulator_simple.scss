@@ -59,6 +59,8 @@
 		}
 
 		.tabulator-cell {
+			display: inline-flex !important;
+			align-items: center;
 			white-space: nowrap;
 			text-overflow: ellipsis;
 			overflow: hidden;

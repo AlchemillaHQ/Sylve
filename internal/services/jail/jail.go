@@ -61,6 +61,8 @@ type Service struct {
 	usagePersistQueue   chan struct{}
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
+
+	bootstrapActiveMu sync.Map
 }
 
 func NewJailService(

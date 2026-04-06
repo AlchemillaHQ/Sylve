@@ -121,6 +121,11 @@
 				id: generateNanoId('wireguard'),
 				property: 'WireGuard',
 				value: basicSettings.current.services.includes('wireguard') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('iscsi'),
+				property: 'iSCSI',
+				value: basicSettings.current.services.includes('iscsi') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -162,6 +167,10 @@
 		wireguard: {
 			open: false,
 			enabled: basicSettings.current.services.includes('wireguard')
+		},
+		iscsi: {
+			open: false,
+			enabled: basicSettings.current.services.includes('iscsi')
 		}
 	});
 
@@ -185,7 +194,8 @@
 			modals.virtualization.open ||
 			modals.jails.open ||
 			modals.firewall.open ||
-			modals.wireguard.open
+			modals.wireguard.open ||
+			modals.iscsi.open
 	);
 
 	useInterval(3000, {
@@ -273,6 +283,8 @@
 					modals['firewall'].open = true;
 				} else if (activeRow?.property === 'WireGuard') {
 					modals['wireguard'].open = true;
+				} else if (activeRow?.property === 'iSCSI') {
+					modals['iscsi'].open = true;
 				}
 			}}
 		>
@@ -296,7 +308,8 @@
 		| 'virtualization'
 		| 'jails'
 		| 'firewall'
-		| 'wireguard',
+		| 'wireguard'
+		| 'iscsi',
 	enabled: boolean
 )}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
@@ -367,3 +380,4 @@
 {@render serviceToggleDialog('Jails', 'jails', modals['jails'].enabled)}
 {@render serviceToggleDialog('Firewall', 'firewall', modals['firewall'].enabled)}
 {@render serviceToggleDialog('WireGuard', 'wireguard', modals['wireguard'].enabled)}
+{@render serviceToggleDialog('iSCSI', 'iscsi', modals['iscsi'].enabled)}

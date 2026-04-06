@@ -18,6 +18,7 @@ const (
 	WoLServer      AvailableService = "wol-server"
 	Firewall       AvailableService = "firewall"
 	WireGuard      AvailableService = "wireguard"
+	ISCSI          AvailableService = "iscsi"
 )
 
 type BasicSettings struct {

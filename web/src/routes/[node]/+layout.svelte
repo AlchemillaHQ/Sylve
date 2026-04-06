@@ -38,6 +38,7 @@
 		const hasSamba = storage.enabledServices?.includes('samba-server');
 		const hasFirewall = storage.enabledServices?.includes('firewall');
 		const hasWireGuard = storage.enabledServices?.includes('wireguard');
+		const hasIscsi = storage.enabledServices?.includes('iscsi');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];
@@ -241,6 +242,22 @@
 								label: 'Audit Logs',
 								icon: 'tabler--logs',
 								href: `/${node}/storage/samba/audit-logs`
+							}
+						]
+					},
+					hasIscsi && {
+						label: 'iSCSI',
+						icon: 'carbon--block-storage-alt',
+						children: [
+							{
+								label: 'Initiators',
+								icon: 'material-symbols--outbound-outline-rounded',
+								href: `/${node}/storage/iscsi/initiators`
+							},
+							{
+								label: 'Targets',
+								icon: 'mdi--server',
+								href: `/${node}/storage/iscsi/targets`
 							}
 						]
 					}
