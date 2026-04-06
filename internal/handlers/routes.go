@@ -415,6 +415,9 @@ func RegisterRoutes(r *gin.Engine,
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
+		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
+		jail.POST("/bootstrap", jailHandlers.CreateBootstrap(jailService))
+		jail.DELETE("/bootstrap", jailHandlers.DeleteBootstrap(jailService))
 		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
 		jail.GET("/templates/:id", jailHandlers.GetJailTemplateByID(jailService))
 		jail.POST("/templates/convert/:ctid", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))

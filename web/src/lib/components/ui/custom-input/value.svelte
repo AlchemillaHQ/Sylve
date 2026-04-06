@@ -55,7 +55,7 @@
 
 <div class={`${classes}`}>
 	{#if label}
-		<div class="flex items-center justify-between w-full">
+		<div class="flex min-h-6 items-center justify-between w-full">
 			<Label class="whitespace-nowrap text-sm" for={nanoId}>
 				{#if labelHTML}
 					<!-- eslint-disable-next-line svelte/no-at-html-tags-->

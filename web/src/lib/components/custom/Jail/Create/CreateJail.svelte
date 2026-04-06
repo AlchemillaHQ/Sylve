@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails, newJail } from '$lib/api/jail/jail';
+	import { getBootstraps } from '$lib/api/jail/bootstrap';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { getDownloads } from '$lib/api/utilities/downloader';
@@ -22,7 +23,8 @@
 	import Network from './Network.svelte';
 	import Storage from './Storage.svelte';
 	import { getPools } from '$lib/api/zfs/pool';
-	import { type NetworkObject } from '$lib/types/network/object';
+	import type { NetworkObject } from '$lib/types/network/object';
+	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
 
 	interface Props {
 		open: boolean;
@@ -122,6 +124,31 @@
 		}
 	);
 
+	let bootstrapRefetch = $state(false);
+
+	let bootstraps = resource(
+		() => (open && modal.storage.pool ? `bootstraps-${modal.storage.pool}` : null),
+		async (key) => {
+			if (!modal.storage.pool) return [] as BootstrapEntry[];
+			const result = await getBootstraps(modal.storage.pool);
+			if (key !== null) {
+				updateCache(key, result);
+			}
+			return result;
+		},
+		{ initialValue: [] as BootstrapEntry[] }
+	);
+
+	watch(
+		() => bootstrapRefetch,
+		(value) => {
+			if (value) {
+				bootstraps.refetch();
+				bootstrapRefetch = false;
+			}
+		}
+	);
+
 	let refetch = $state(false);
 
 	watch(
@@ -135,6 +162,7 @@
 				jails.refetch();
 				nodes.refetch();
 				pools.refetch();
+				bootstraps.refetch();
 
 				refetch = false;
 			}
@@ -152,6 +180,7 @@
 		storage: {
 			pool: '',
 			base: '',
+			bootstrapName: '',
 			fstab: ''
 		},
 		network: {
@@ -230,6 +259,14 @@
 		if (data.hardware.resourceLimits === false) {
 			data.hardware.cpuCores = 0;
 			data.hardware.ram = 0;
+		}
+
+		// Detect bootstrap: prefix and route accordingly
+		if (data.storage.base.startsWith('bootstrap:')) {
+			data.storage.bootstrapName = data.storage.base.slice('bootstrap:'.length);
+			data.storage.base = '';
+		} else {
+			data.storage.bootstrapName = '';
 		}
 
 		if (!(await isValidCreateData(data))) {
@@ -323,6 +360,8 @@
 									<Storage
 										downloads={downloads.current}
 										pools={pools.current}
+										bootstraps={bootstraps.current}
+										bind:bootstrapRefetch
 										ctId={modal.id}
 										bind:pool={modal.storage.pool}
 										bind:base={modal.storage.base}

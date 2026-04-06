@@ -20,6 +20,7 @@ var requiredSylveDatasets = []string{
 	"sylve",
 	"sylve/virtual-machines",
 	"sylve/jails",
+	"sylve/bootstraps",
 }
 
 func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) ([]*gzfs.Dataset, error) {

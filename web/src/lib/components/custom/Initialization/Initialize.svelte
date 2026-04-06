@@ -104,7 +104,7 @@
 			<div class="flex flex-col gap-4">
 				<ComboBox
 					bind:open={properties.pools.combobox.open}
-					label={'ZFS Storage Pools'}
+					label="ZFS Storage Pools"
 					bind:value={properties.pools.combobox.values}
 					data={generateComboboxOptions(pools.current.map((p) => p.name))}
 					classes="flex-1 space-y-3"
@@ -164,7 +164,7 @@
 					</Alert.Title>
 					<Alert.Description>
 						<ul class="list-inside list-disc text-sm">
-							{#each shownErrors as error}
+							{#each shownErrors as error (shownErrors.indexOf(error))}
 								<li>{error}</li>
 							{/each}
 						</ul>
@@ -174,7 +174,7 @@
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={startInit} type="submit" size="sm">{'Initialize'}</Button>
+					<Button onclick={startInit} type="submit" size="sm">Initialize</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>

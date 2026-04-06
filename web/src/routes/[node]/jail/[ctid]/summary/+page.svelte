@@ -70,7 +70,8 @@
 			open: false,
 			title: '',
 			description: '',
-			iconColor: ''
+			iconColor: '',
+			showLogs: false
 		}
 	});
 
@@ -744,7 +745,7 @@
 	title={modalState.loading.title}
 	description={modalState.loading.description}
 	iconColor={modalState.loading.iconColor}
-	logs={logs.current.logs}
+	logs={modalState.loading.showLogs ? logs.current.logs : undefined}
 />
 
 <Dialog.Root bind:open={showLogs}>

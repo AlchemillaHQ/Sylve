@@ -1183,6 +1183,8 @@ msgstr "重置"
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
@@ -3345,6 +3347,7 @@ msgid "Force Delete"
 msgstr "强制删除"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -7422,9 +7425,6 @@ msgstr "池 {0} 已删除"
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "已关闭"
@@ -10607,6 +10607,7 @@ msgstr ""
 msgid "Error: {0}"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Pending"
 msgstr ""
@@ -12331,8 +12332,9 @@ msgstr ""
 msgid "This will permanently delete {0} network objects"
 msgstr ""
 
-#~ msgid "Bootstrap a base"
-#~ msgstr ""
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Bootstrap a base"
+msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
@@ -12738,3 +12740,19 @@ msgstr ""
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "LUN {0}"
 msgstr ""
+
+#. 0: modals.bulkDelete.count
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+msgstr "<<<<<<< Updated upstream"
+
+#~ msgid "Bootstrap a base>>>>>>> Stashed changes"
+#~ msgstr ">>>>>>> Stashed changes"
+
+#~ msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails.<<<<<<< Updated upstream"
+#~ msgstr "<<<<<<< Updated upstream"
+
+#. 0: lun.lunNumber
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN {0}=======>>>>>>> Stashed changes"
+msgstr "=======>>>>>>> Stashed changes"

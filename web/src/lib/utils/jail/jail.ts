@@ -77,7 +77,7 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
         return false;
     }
 
-    if (modal.storage.base.length < 1) {
+    if (modal.storage.base.length < 1 && modal.storage.bootstrapName.length < 1) {
         toast.error('No base selected', toastConfig);
         return false;
     }
