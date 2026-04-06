@@ -128,7 +128,7 @@ func TestCreateUnixUser(t *testing.T) {
 
 		runCommand = func(command string, args ...string) (string, error) {
 			want := []string{
-				"user", "add", "-n", "alice", "-m",
+				"user", "add", "-n", "alice",
 				"-s", "/usr/sbin/nologin",
 				"-d", "/nonexistent",
 			}
