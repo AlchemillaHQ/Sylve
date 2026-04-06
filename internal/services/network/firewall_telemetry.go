@@ -816,7 +816,14 @@ func (s *Service) GetFirewallNATRuleCounters() ([]networkServiceInterfaces.Firew
 		return []networkServiceInterfaces.FirewallNATRuleCounter{}, nil
 	}
 
-	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("nat")
+	updatedAt := time.Now().UTC()
+	totalsByRuleID := make(map[uint]trafficRuleCounterTotals)
+
+	if s.isPFEnabled() {
+		if totals, _, pfErr := s.collectNATCountersFromPF(); pfErr == nil {
+			totalsByRuleID = totals
+		}
+	}
 
 	counters := make([]networkServiceInterfaces.FirewallNATRuleCounter, 0, len(rules))
 	for _, rule := range rules {

@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -220,6 +221,7 @@ func (s *Service) DisableFirewall() error {
 func (s *Service) GetFirewallTrafficRules() ([]networkModels.FirewallTrafficRule, error) {
 	var rules []networkModels.FirewallTrafficRule
 	if err := s.DB.
+		Where("visible = ?", true).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
 		return nil, err
@@ -297,7 +299,14 @@ func (s *Service) GetFirewallTrafficRuleCounters() ([]networkServiceInterfaces.F
 		return []networkServiceInterfaces.FirewallTrafficRuleCounter{}, nil
 	}
 
-	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("traffic")
+	updatedAt := time.Now().UTC()
+	totalsByRuleID := make(map[uint]trafficRuleCounterTotals)
+
+	if s.isPFEnabled() {
+		if totals, _, pfErr := s.collectTrafficCountersFromPF(); pfErr == nil {
+			totalsByRuleID = totals
+		}
+	}
 
 	counters := make([]networkServiceInterfaces.FirewallTrafficRuleCounter, 0, len(rules))
 	for _, rule := range rules {
@@ -362,6 +371,7 @@ func (s *Service) ensureDefaultAllowTrafficRules() error {
 func (s *Service) GetFirewallNATRules() ([]networkModels.FirewallNATRule, error) {
 	var rules []networkModels.FirewallNATRule
 	if err := s.DB.
+		Where("visible = ?", true).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
 		return nil, err
@@ -1843,12 +1853,14 @@ func buildPFMainConfig(preRules string, postRules string, objectTablesPath strin
 	b.WriteString(pfManagedHeader)
 	b.WriteString("\n\n")
 
-	b.WriteString(fmt.Sprintf("include \"%s\"\n\n", objectTablesPath))
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("binat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("anchor \"sylve/nat-rules\"\n")
 	b.WriteString(fmt.Sprintf("load anchor \"sylve/nat-rules\" from \"%s\"\n\n", natPath))
+
+	b.WriteString("anchor \"sylve/object-tables\"\n")
+	b.WriteString(fmt.Sprintf("load anchor \"sylve/object-tables\" from \"%s\"\n\n", objectTablesPath))
 
 	if strings.TrimSpace(preRules) != "" {
 		b.WriteString("# --- sylve: pre rules ---\n")
