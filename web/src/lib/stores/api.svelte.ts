@@ -14,6 +14,10 @@ export const reload = $state({
     clusterDetails: false
 });
 
+export const connection = $state({
+    sseConnected: null as boolean | null
+});
+
 export const jailPowerSignal = $state({
     token: 0,
     ctId: 0,

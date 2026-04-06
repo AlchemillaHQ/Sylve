@@ -24,6 +24,7 @@ type SambaConfigRequest struct {
 	ServerString       string `json:"serverString"`
 	Interfaces         string `json:"interfaces"`
 	BindInterfacesOnly *bool  `json:"bindInterfacesOnly"`
+	AppleExtensions    *bool  `json:"appleExtensions"`
 }
 
 // @Summary Get Samba Global Configuration
@@ -84,6 +85,11 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			bindInterfaces = *req.BindInterfacesOnly
 		}
 
+		appleExtensions := false
+		if req.AppleExtensions != nil {
+			appleExtensions = *req.AppleExtensions
+		}
+
 		ctx := c.Request.Context()
 		err := smbService.SetGlobalConfig(
 			ctx,
@@ -91,7 +97,8 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			req.Workgroup,
 			req.ServerString,
 			req.Interfaces,
-			bindInterfaces)
+			bindInterfaces,
+			appleExtensions)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{

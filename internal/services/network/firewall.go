@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -221,7 +220,6 @@ func (s *Service) DisableFirewall() error {
 func (s *Service) GetFirewallTrafficRules() ([]networkModels.FirewallTrafficRule, error) {
 	var rules []networkModels.FirewallTrafficRule
 	if err := s.DB.
-		Where("visible = ?", true).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
 		return nil, err
@@ -299,11 +297,7 @@ func (s *Service) GetFirewallTrafficRuleCounters() ([]networkServiceInterfaces.F
 		return []networkServiceInterfaces.FirewallTrafficRuleCounter{}, nil
 	}
 
-	totalsByRuleID, updatedAt, available := s.getCounterSnapshotByType("traffic")
-	if !available || updatedAt.IsZero() {
-		totalsByRuleID = s.fallbackTrafficCounters()
-		updatedAt = time.Now().UTC()
-	}
+	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("traffic")
 
 	counters := make([]networkServiceInterfaces.FirewallTrafficRuleCounter, 0, len(rules))
 	for _, rule := range rules {
@@ -321,7 +315,7 @@ func (s *Service) GetFirewallTrafficRuleCounters() ([]networkServiceInterfaces.F
 
 func (s *Service) ensureDefaultAllowTrafficRules() error {
 	var count int64
-	if err := s.DB.Model(&networkModels.FirewallTrafficRule{}).Count(&count).Error; err != nil {
+	if err := s.DB.Model(&networkModels.FirewallTrafficRule{}).Where("visible = ?", true).Count(&count).Error; err != nil {
 		return err
 	}
 
@@ -368,7 +362,6 @@ func (s *Service) ensureDefaultAllowTrafficRules() error {
 func (s *Service) GetFirewallNATRules() ([]networkModels.FirewallNATRule, error) {
 	var rules []networkModels.FirewallNATRule
 	if err := s.DB.
-		Where("visible = ?", true).
 		Order("priority ASC, id ASC").
 		Find(&rules).Error; err != nil {
 		return nil, err
@@ -1173,6 +1166,15 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 		previous[rule.ID] = rule.Priority
 	}
 
+	seenPriorities := make(map[int]struct{}, len(req))
+	for _, item := range req {
+		p := normalizePriority(item.Priority)
+		if _, ok := seenPriorities[p]; ok {
+			return fmt.Errorf("duplicate_priority_in_reorder_request: %d", p)
+		}
+		seenPriorities[p] = struct{}{}
+	}
+
 	maxHidden, err := s.maxHiddenTrafficPriority(s.DB)
 	if err != nil {
 		return err
@@ -1180,10 +1182,7 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, item := range req {
-			targetPriority := normalizePriority(item.Priority)
-			if targetPriority <= maxHidden {
-				targetPriority = maxHidden + 1
-			}
+			targetPriority := normalizePriority(item.Priority) + maxHidden
 			if err := tx.Model(&networkModels.FirewallTrafficRule{}).Where("id = ?", item.ID).Update("priority", targetPriority).Error; err != nil {
 				return err
 			}
@@ -1445,6 +1444,15 @@ func (s *Service) ReorderFirewallNATRules(req []networkServiceInterfaces.Firewal
 		previous[rule.ID] = rule.Priority
 	}
 
+	seenPriorities := make(map[int]struct{}, len(req))
+	for _, item := range req {
+		p := normalizePriority(item.Priority)
+		if _, ok := seenPriorities[p]; ok {
+			return fmt.Errorf("duplicate_priority_in_reorder_request: %d", p)
+		}
+		seenPriorities[p] = struct{}{}
+	}
+
 	maxHidden, err := s.maxHiddenNATPriority(s.DB)
 	if err != nil {
 		return err
@@ -1452,10 +1460,7 @@ func (s *Service) ReorderFirewallNATRules(req []networkServiceInterfaces.Firewal
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, item := range req {
-			targetPriority := normalizePriority(item.Priority)
-			if targetPriority <= maxHidden {
-				targetPriority = maxHidden + 1
-			}
+			targetPriority := normalizePriority(item.Priority) + maxHidden
 			if err := tx.Model(&networkModels.FirewallNATRule{}).Where("id = ?", item.ID).Update("priority", targetPriority).Error; err != nil {
 				return err
 			}
@@ -1729,6 +1734,9 @@ func (s *Service) ApplyFirewallConfig() error {
 	if err := atomicWriteFile(pfMainConfPath, []byte(finalMain), 0644); err != nil {
 		return err
 	}
+
+	s.flushFirewallCounterDeltas()
+	s.updateFirewallRuleNames()
 
 	if s.isPFEnabled() {
 		if err := system.ServiceAction("pf", "onereload"); err != nil {

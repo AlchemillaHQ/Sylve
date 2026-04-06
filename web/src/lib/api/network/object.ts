@@ -34,3 +34,7 @@ export async function updateNetworkObject(
 export async function deleteNetworkObject(id: number): Promise<APIResponse> {
     return await apiRequest(`/network/object/${id}`, APIResponseSchema, 'DELETE');
 }
+
+export async function bulkDeleteNetworkObjects(ids: number[]): Promise<APIResponse> {
+    return await apiRequest('/network/object/bulk-delete', APIResponseSchema, 'POST', { ids });
+}

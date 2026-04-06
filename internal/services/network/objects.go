@@ -594,6 +594,31 @@ func (s *Service) DeleteObject(id uint) error {
 	return nil
 }
 
+func (s *Service) BulkDeleteObjects(ids []uint) error {
+	for _, id := range ids {
+		used, _, err := s.IsObjectUsed(id)
+		if err != nil {
+			return fmt.Errorf("failed to check if object %d is used: %w", id, err)
+		}
+
+		if used {
+			var obj networkModels.Object
+			if dErr := s.DB.First(&obj, id).Error; dErr == nil {
+				return fmt.Errorf("object '%s' is in use and cannot be deleted", obj.Name)
+			}
+			return fmt.Errorf("object %d is in use and cannot be deleted", id)
+		}
+	}
+
+	for _, id := range ids {
+		if err := s.DeleteObject(id); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) IsObjectUsedByJail(id uint) (bool, []uint, error) {
 	var jailNetworks []jailModels.Network
 	var jailIds []uint

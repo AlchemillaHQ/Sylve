@@ -339,6 +339,9 @@
 		</Card.Header>
 		<Card.Content class="space-y-3">
 			<div class="grid grid-cols-1 gap-4 md:grid-cols-5 md:items-end">
+				<input type="text" style="display:none" autocomplete="username" />
+				<input type="password" style="display:none" autocomplete="new-password" />
+
 				<CustomValueInput
 					label="Listen Port"
 					type="number"

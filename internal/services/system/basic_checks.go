@@ -121,6 +121,10 @@ func (s *Service) CheckSambaServer() error {
 		return fmt.Errorf("samba4XX_erquired_package_not_installed")
 	}
 
+	if !pkg.IsPackageInstalled("avahi-app") {
+		return fmt.Errorf("avahi_required_package_avahi-app_not_installed")
+	}
+
 	return nil
 }
 

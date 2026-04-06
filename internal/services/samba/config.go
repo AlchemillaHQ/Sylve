@@ -37,7 +37,8 @@ func (s *Service) SetGlobalConfig(
 	workgroup string,
 	serverString string,
 	interfaces string,
-	bindInterfacesOnly bool) error {
+	bindInterfacesOnly bool,
+	appleExtensions bool) error {
 	if unixCharset == "" || workgroup == "" || serverString == "" {
 		return fmt.Errorf("unixCharset, workgroup, and serverString cannot be empty")
 	}
@@ -90,6 +91,7 @@ func (s *Service) SetGlobalConfig(
 	settings.ServerString = serverString
 	settings.Interfaces = interfaces
 	settings.BindInterfacesOnly = bindInterfacesOnly
+	settings.AppleExtensions = appleExtensions
 
 	if err := s.DB.Save(&settings).Error; err != nil {
 		return fmt.Errorf("failed to update Samba settings: %w", err)
@@ -127,7 +129,20 @@ func (s *Service) GlobalConfig() (string, error) {
 		config += "bind interfaces only = no\n"
 	}
 
-	config += "vfs objects = full_audit zfsacl\n"
+	if settings.AppleExtensions {
+		config += "min protocol = SMB2\n"
+		config += "ea support = yes\n"
+		config += "vfs objects = fruit streams_xattr full_audit zfsacl\n"
+		config += "fruit:metadata = stream\n"
+		config += "fruit:model = MacSamba\n"
+		config += "fruit:veto_appledouble = no\n"
+		config += "fruit:nfs_aces = no\n"
+		config += "fruit:wipe_intentionally_left_blank_rfork = yes\n"
+		config += "fruit:delete_empty_adfiles = yes\n"
+		config += "fruit:posix_rename = yes\n"
+	} else {
+		config += "vfs objects = full_audit zfsacl\n"
+	}
 	config += "inherit acls = yes\n"
 
 	return config, nil
@@ -208,6 +223,12 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 		config.WriteString(fmt.Sprintf("\tcreate mask = %s\n", share.CreateMask))
 		config.WriteString(fmt.Sprintf("\tdirectory mask = %s\n", share.DirectoryMask))
+		if share.TimeMachine {
+			config.WriteString("\tfruit:time machine = yes\n")
+			if share.TimeMachineMaxSize > 0 {
+				config.WriteString(fmt.Sprintf("\tfruit:time machine max size = %dG\n", share.TimeMachineMaxSize))
+			}
+		}
 		config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
 		config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
 		config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
@@ -241,6 +262,48 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 	return config.String(), nil
 }
 
+func (s *Service) WriteAvahiConfig() error {
+	var shares []sambaModels.SambaShare
+	if err := s.DB.Where("time_machine = ?", true).Find(&shares).Error; err != nil {
+		return fmt.Errorf("failed to retrieve Time Machine shares: %w", err)
+	}
+
+	var diskEntries string
+	for i, share := range shares {
+		diskEntries += fmt.Sprintf("\t\t<txt-record>dk%d=adVN=%s,adVF=0x82</txt-record>\n", i, share.Name)
+	}
+
+	xml := fmt.Sprintf(`<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+	<name replace-wildcards="yes">%%h</name>
+	<service>
+		<type>_smb._tcp</type>
+		<port>445</port>
+	</service>
+	<service>
+		<type>_device-info._tcp</type>
+		<port>0</port>
+		<txt-record>model=RackMac</txt-record>
+	</service>
+	<service>
+		<type>_adisk._tcp</type>
+		<txt-record>sys=waMa=0,adVF=0x100</txt-record>
+%s	</service>
+</service-group>`, diskEntries)
+
+	dir := "/usr/local/etc/avahi/services"
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create avahi services directory: %w", err)
+	}
+
+	if err := os.WriteFile(dir+"/timemachine.service", []byte(xml), 0644); err != nil {
+		return fmt.Errorf("failed to write Avahi config: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	gCfg, err := s.GlobalConfig()
 	if err != nil {
@@ -263,9 +326,36 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 		return fmt.Errorf("failed to write Samba configuration to %s: %w", filePath, err)
 	}
 
+	settings, err := s.GetGlobalConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get global config for avahi management: %w", err)
+	}
+
+	if settings.AppleExtensions {
+		if err := s.WriteAvahiConfig(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to write avahi config")
+		}
+		if err := system.ServiceAction("dbus", "onerestart"); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to restart dbus")
+		}
+		if err := system.ServiceAction("avahi-daemon", "onerestart"); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to restart avahi-daemon")
+		}
+	} else {
+		avahiPath := "/usr/local/etc/avahi/services/timemachine.service"
+		if _, err := os.Stat(avahiPath); err == nil {
+			if err := os.Remove(avahiPath); err != nil {
+				logger.L.Warn().Err(err).Msg("failed to remove avahi timemachine service file")
+			}
+		}
+		if err := system.ServiceAction("avahi-daemon", "onestop"); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to stop avahi-daemon")
+		}
+	}
+
 	if reload {
-		if err := system.ServiceAction("samba_server", "onereload"); err != nil {
-			return fmt.Errorf("failed to reload Samba service: %w", err)
+		if err := system.ServiceAction("samba_server", "onerestart"); err != nil {
+			return fmt.Errorf("failed to restart Samba service: %w", err)
 		}
 	}
 

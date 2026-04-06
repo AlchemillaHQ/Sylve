@@ -260,10 +260,11 @@
 	});
 
 	async function handleDelete() {
+		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Jail';
 		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being deleted`;
-		modalState.loading.open = false;
+		modalState.loading.iconColor = 'text-red-500';
 
 		const result = await deleteJail(
 			jail.current.ctId,
@@ -271,25 +272,23 @@
 			modalState.deleteRootFS
 		);
 		reload.leftPanel = true;
-		modalState.loading.open = false;
 
 		if (result.status === 'error') {
+			modalState.loading.open = false;
 			toast.error('Error deleting jail', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
 		} else if (result.status === 'success') {
+			toast.success('Jail deleted', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
 			goto(
 				resolve(`/[node]/summary`, {
 					node: data.node
 				})
 			);
-			toast.success('Jail deleted', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-
-			modalState.isDeleteOpen = false;
 		}
 	}
 

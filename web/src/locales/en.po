@@ -963,6 +963,7 @@ msgstr "Delete"
 msgid "Edit"
 msgstr "Edit"
 
+#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -3034,6 +3035,7 @@ msgstr "Files will be uploaded to the current folder"
 msgid "<0/> Refresh"
 msgstr "<0/> Refresh"
 
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Paste"
 msgstr "<0/> Paste"
@@ -4324,6 +4326,11 @@ msgstr "Failback"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -4353,6 +4360,10 @@ msgstr "Yes"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -11048,7 +11059,6 @@ msgstr "Failed to refresh traffic counters"
 msgid "Hits"
 msgstr "Hits"
 
-#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
@@ -11304,7 +11314,6 @@ msgstr "Listen Port"
 msgid "Interface Addresses"
 msgstr "Interface Addresses"
 
-#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "One CIDR per line"
 msgstr "One CIDR per line"
@@ -12080,7 +12089,7 @@ msgstr "PresharedKey"
 msgid "PersistentKeepalive"
 msgstr "PersistentKeepalive"
 
-#. 0: file.name
+#. 0: sourceName
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Config imported from {0}"
 msgstr "Config imported from {0}"
@@ -12178,9 +12187,8 @@ msgstr "Your private key…"
 msgid "<0/> Advanced Options"
 msgstr "<0/> Advanced Options"
 
-#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
-msgid "0 = random"
-msgstr "0 = random"
+#~ msgid "0 = random"
+#~ msgstr "0 = random"
 
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Interface Metric"
@@ -12214,3 +12222,70 @@ msgstr "Masquerade IPv4"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Masquerade IPv6"
 msgstr "Masquerade IPv6"
+
+#~ msgid "Paste a config first"
+#~ msgstr "Paste a config first"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Import Config"
+msgstr "Import Config"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "<0/> File"
+msgstr "<0/> File"
+
+#~ msgid "Apply Config"
+#~ msgstr "Apply Config"
+
+#~ msgid "Paste WireGuard Config"
+#~ msgstr "Paste WireGuard Config"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "One address per line"
+msgstr "One address per line"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Set a specific local port to listen on. Leave as 0 to auto-assign."
+msgstr "Set a specific local port to listen on. Leave as 0 to auto-assign."
+
+#: src/routes/+layout.svelte
+msgid "Connection lost"
+msgstr "Connection lost"
+
+#: src/routes/+layout.svelte
+msgid "Trying to reconnect to the server…"
+msgstr "Trying to reconnect to the server…"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Apple Extensions"
+msgstr "Apple Extensions"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine"
+msgstr "Time Machine"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size (GB, 0 = unlimited)"
+msgstr "Time Machine Max Size (GB, 0 = unlimited)"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size"
+msgstr "Time Machine Max Size"
+
+#. 0: o!.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object '{0}' is in use and cannot be deleted"
+msgstr "Object '{0}' is in use and cannot be deleted"
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Failed to delete objects"
+msgstr "Failed to delete objects"
+
+#~ msgid "This will permanently delete {0} objects"
+#~ msgstr "This will permanently delete {0} objects"
+
+#. 0: modals.bulkDelete.count
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "This will permanently delete {0} network objects"
+msgstr "This will permanently delete {0} network objects"

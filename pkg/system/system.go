@@ -29,7 +29,11 @@ func UnixUserExists(name string) (bool, error) {
 }
 
 func CreateUnixUser(name string, shell string, dir string, group string) error {
-	args := []string{"user", "add", "-n", name, "-m"}
+	args := []string{"user", "add", "-n", name}
+
+	if dir != "" && dir != "/nonexistent" {
+		args = append(args, "-m")
+	}
 
 	if group != "" {
 		if unixGroupExists(group) {

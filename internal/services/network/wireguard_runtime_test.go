@@ -14,7 +14,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -275,52 +274,31 @@ func TestAddRouteViaInterfaceIncludesFIB(t *testing.T) {
 }
 
 func TestConfigureWireGuardInterfaceAppliesFIB(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
-	fibCalls := 0
-	fibValue := uint(0)
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		addAddress: func(string, string) error { return nil },
-		setMTU:     func(string, uint) error { return nil },
-		setMetric:  func(string, uint) error { return nil },
-		setFIB: func(_ string, fib uint) error {
-			fibCalls++
-			fibValue = fib
-			return nil
-		},
-		up: func(string) error { return nil },
-	}
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
-	addressCheckCalls := 0
 	wireGuardInterfaceHasAddress = func(string, string) (bool, error) {
-		addressCheckCalls++
-		if addressCheckCalls == 1 {
-			return false, nil
-		}
-		return true, nil
+		return false, nil
 	}
+
+	var shellCalls []string
 	wireGuardRunCommand = func(command string, args ...string) (string, error) {
-		t.Fatalf("unexpected shell fallback call: %s %v", command, args)
+		shellCalls = append(shellCalls, strings.Join(append([]string{command}, args...), " "))
 		return "", nil
 	}
 
 	if err := configureWireGuardInterface("wgc2", []string{"10.254.1.7/32"}, 1420, 0, 1); err != nil {
 		t.Fatalf("expected configure success, got error: %v", err)
 	}
-	if fibCalls != 1 {
-		t.Fatalf("expected one SetFIB call, got %d", fibCalls)
+	if len(shellCalls) == 0 {
+		t.Fatal("expected at least one shell call")
 	}
-	if fibValue != 1 {
-		t.Fatalf("expected SetFIB to use fib=1, got %d", fibValue)
+	if !strings.HasSuffix(shellCalls[0], "fib 1") {
+		t.Fatalf("expected first shell call to apply fib, got: %s", shellCalls[0])
 	}
 }
 
@@ -495,87 +473,49 @@ func TestApplyWireGuardClientRuntimeFailureRollsBackInterface(t *testing.T) {
 	}
 }
 
-func TestEnsureWireGuardInterfaceUsesNativeOpsWithoutShellFallback(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
+func TestEnsureWireGuardInterfaceUsesShellCommands(t *testing.T) {
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 	})
 
-	calls := make([]string, 0, 4)
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		exists: func(name string) (bool, error) {
-			calls = append(calls, "exists:"+name)
-			return false, nil
-		},
-		create: func(cloneType string) (string, error) {
-			calls = append(calls, "create:"+cloneType)
-			return "wg1", nil
-		},
-		rename: func(currentName string, newName string) error {
-			calls = append(calls, "rename:"+currentName+"->"+newName)
-			return nil
-		},
-	}
-	wireGuardShouldFallbackInterface = func(error) bool {
-		return true
-	}
+	var calls []string
 	wireGuardRunCommand = func(command string, args ...string) (string, error) {
-		t.Fatalf("unexpected shell fallback call: %s %v", command, args)
+		all := append([]string{command}, args...)
+		calls = append(calls, strings.Join(all, " "))
+		if command == "/sbin/ifconfig" && len(args) == 1 {
+			return "", errors.New("does not exist")
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "wg" && args[1] == "create" {
+			return "wg1\n", nil
+		}
 		return "", nil
 	}
 
 	if err := ensureWireGuardInterface(wireGuardServerInterfaceName); err != nil {
-		t.Fatalf("expected native ensure to succeed, got error: %v", err)
+		t.Fatalf("expected ensure to succeed, got error: %v", err)
 	}
 
 	expected := []string{
-		"exists:wgs0",
-		"create:wg",
-		"rename:wg1->wgs0",
+		"/sbin/ifconfig wgs0",
+		"/sbin/ifconfig wg create",
+		"/sbin/ifconfig wg1 name wgs0",
 	}
 	if strings.Join(calls, ",") != strings.Join(expected, ",") {
-		t.Fatalf("unexpected native operation order: got %v want %v", calls, expected)
+		t.Fatalf("unexpected shell operation order: got %v want %v", calls, expected)
 	}
 }
 
-func TestConfigureWireGuardInterfaceNativeUnsupportedFallsBackToShell(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
+func TestConfigureWireGuardInterfaceCallsShellCommands(t *testing.T) {
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		addAddress: func(string, string) error {
-			return errWireGuardInterfaceOpsUnsupported
-		},
-		setMTU: func(string, uint) error {
-			return errWireGuardInterfaceOpsUnsupported
-		},
-		setMetric: func(string, uint) error {
-			return errWireGuardInterfaceOpsUnsupported
-		},
-		up: func(string) error {
-			return errWireGuardInterfaceOpsUnsupported
-		},
-	}
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
-	addressCheckCalls := 0
 	wireGuardInterfaceHasAddress = func(string, string) (bool, error) {
-		addressCheckCalls++
-		if addressCheckCalls == 1 {
-			return false, nil
-		}
-		return true, nil
+		return false, nil
 	}
 
 	shellCalls := 0
@@ -588,121 +528,84 @@ func TestConfigureWireGuardInterfaceNativeUnsupportedFallsBackToShell(t *testing
 	}
 
 	if err := configureWireGuardInterface("wgs0", []string{"10.210.0.1/24"}, 1420, 10, 0); err != nil {
-		t.Fatalf("expected configure to fallback and succeed, got error: %v", err)
+		t.Fatalf("expected configure to succeed, got error: %v", err)
 	}
 
 	if shellCalls != 4 {
-		t.Fatalf("expected 4 shell fallback calls, got %d", shellCalls)
+		t.Fatalf("expected 4 shell calls (add-address, mtu, metric, up), got %d", shellCalls)
 	}
 }
 
-func TestConfigureWireGuardInterfaceNativePermissionErrorDoesNotFallback(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
+func TestConfigureWireGuardInterfaceShellErrorPropagates(t *testing.T) {
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		addAddress: func(string, string) error {
-			return syscall.EPERM
-		},
+	wireGuardInterfaceHasAddress = func(string, string) (bool, error) {
+		return false, nil
 	}
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
-
-	shellCalls := 0
 	wireGuardRunCommand = func(string, ...string) (string, error) {
-		shellCalls++
-		return "", nil
+		return "", errors.New("operation not permitted")
 	}
 
 	err := configureWireGuardInterface("wgs0", []string{"10.210.0.1/24"}, 0, 0, 0)
 	if err == nil {
-		t.Fatal("expected configure failure for native permission error")
-	}
-	if shellCalls != 0 {
-		t.Fatalf("expected no shell fallback calls, got %d", shellCalls)
+		t.Fatal("expected configure failure when shell add-address returns error")
 	}
 }
 
 func TestConfigureWireGuardInterfaceAddressExistsOnInterfaceIsIdempotent(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		addAddress: func(string, string) error {
-			return syscall.EEXIST
-		},
-		up: func(string) error {
-			return nil
-		},
-	}
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
 	wireGuardInterfaceHasAddress = func(name string, hostCIDR string) (bool, error) {
 		return true, nil
 	}
 
-	shellCalls := 0
-	wireGuardRunCommand = func(string, ...string) (string, error) {
-		shellCalls++
+	addressShellCalls := 0
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/ifconfig" && len(args) >= 2 && args[1] == "inet" {
+			addressShellCalls++
+		}
 		return "", nil
 	}
 
 	if err := configureWireGuardInterface("wgs0", []string{"10.210.0.1/24"}, 0, 0, 0); err != nil {
 		t.Fatalf("expected configure success when address already exists on interface, got: %v", err)
 	}
-	if shellCalls != 0 {
-		t.Fatalf("expected no shell fallback calls, got %d", shellCalls)
+	if addressShellCalls != 0 {
+		t.Fatalf("expected no add-address shell calls when address already present, got %d", addressShellCalls)
 	}
 }
 
 func TestConfigureWireGuardInterfaceAddressExistsErrorStillFailsWhenAddressMissing(t *testing.T) {
-	previousInterfaceOps := wireGuardInterfaceOpsBackend
 	previousRunCommand := wireGuardRunCommand
-	previousFallback := wireGuardShouldFallbackInterface
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
-		wireGuardInterfaceOpsBackend = previousInterfaceOps
 		wireGuardRunCommand = previousRunCommand
-		wireGuardShouldFallbackInterface = previousFallback
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
-	wireGuardInterfaceOpsBackend = fakeWireGuardInterfaceOps{
-		addAddress: func(string, string) error {
-			return syscall.EEXIST
-		},
-	}
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
 	wireGuardInterfaceHasAddress = func(name string, hostCIDR string) (bool, error) {
 		return false, nil
 	}
-
-	shellCalls := 0
-	wireGuardRunCommand = func(string, ...string) (string, error) {
-		shellCalls++
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/ifconfig" && len(args) >= 2 && args[1] == "inet" {
+			return "", errors.New("file exists")
+		}
 		return "", nil
 	}
 
 	err := configureWireGuardInterface("wgs0", []string{"10.210.0.1/24"}, 0, 0, 0)
 	if err == nil {
-		t.Fatal("expected configure failure when address exists error is not idempotent on target interface")
-	}
-	if shellCalls != 0 {
-		t.Fatalf("expected no shell fallback calls, got %d", shellCalls)
+		t.Fatal("expected configure failure when address does not exist on the interface after add error")
 	}
 }
 
@@ -760,81 +663,6 @@ type fakeWireGuardRuntime struct {
 	ifaces         map[string]bool
 	ifaceCounter   int
 	destroyCounter map[string]int
-}
-
-type fakeWireGuardInterfaceOps struct {
-	exists     func(name string) (bool, error)
-	create     func(cloneType string) (string, error)
-	rename     func(currentName string, newName string) error
-	destroy    func(name string) error
-	addAddress func(name string, hostCIDR string) error
-	setMTU     func(name string, mtu uint) error
-	setMetric  func(name string, metric uint) error
-	setFIB     func(name string, fib uint) error
-	up         func(name string) error
-}
-
-func (f fakeWireGuardInterfaceOps) Exists(name string) (bool, error) {
-	if f.exists != nil {
-		return f.exists(name)
-	}
-	return false, errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) Create(cloneType string) (string, error) {
-	if f.create != nil {
-		return f.create(cloneType)
-	}
-	return "", errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) Rename(currentName string, newName string) error {
-	if f.rename != nil {
-		return f.rename(currentName, newName)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) Destroy(name string) error {
-	if f.destroy != nil {
-		return f.destroy(name)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) AddAddress(name string, hostCIDR string) error {
-	if f.addAddress != nil {
-		return f.addAddress(name, hostCIDR)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) SetMTU(name string, mtu uint) error {
-	if f.setMTU != nil {
-		return f.setMTU(name, mtu)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) SetMetric(name string, metric uint) error {
-	if f.setMetric != nil {
-		return f.setMetric(name, metric)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) SetFIB(name string, fib uint) error {
-	if f.setFIB != nil {
-		return f.setFIB(name, fib)
-	}
-	return errWireGuardInterfaceOpsUnsupported
-}
-
-func (f fakeWireGuardInterfaceOps) Up(name string) error {
-	if f.up != nil {
-		return f.up(name)
-	}
-	return errWireGuardInterfaceOpsUnsupported
 }
 
 func newFakeWireGuardRuntime() *fakeWireGuardRuntime {

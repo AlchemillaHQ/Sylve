@@ -13,10 +13,11 @@
 	interface Props {
 		open: boolean;
 		client: WireGuardClient | null;
+		clients: WireGuardClient[];
 		onSaved: () => Promise<void>;
 	}
 
-	let { open = $bindable(), client, onSaved }: Props = $props();
+	let { open = $bindable(), client, clients, onSaved }: Props = $props();
 
 	function defaultForm() {
 		return {
@@ -40,12 +41,16 @@
 
 	let form = $state(defaultForm());
 	let fileInput: HTMLInputElement | undefined = $state();
+	let importMode = $state<'upload' | 'paste'>('upload');
+	let pastedConfig = $state('');
 
 	watch(
 		() => open,
 		(isOpen) => {
 			if (isOpen) {
 				form = defaultForm();
+				importMode = 'upload';
+				pastedConfig = '';
 			}
 		}
 	);
@@ -63,52 +68,60 @@
 
 	function reset() {
 		form = defaultForm();
+		importMode = 'upload';
+		pastedConfig = '';
+	}
+
+	function parseConfigText(text: string, sourceName: string, opts: { silent?: boolean } = {}) {
+		const lines = text.split('\n');
+		let section = '';
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (trimmed.startsWith('#') || trimmed === '') continue;
+			if (trimmed.startsWith('[')) {
+				section = trimmed.toLowerCase();
+			} else if (trimmed.includes('=')) {
+				const idx = trimmed.indexOf('=');
+				const key = trimmed.slice(0, idx).trim();
+				const value = trimmed.slice(idx + 1).trim();
+				if (section === '[interface]') {
+					if (key === 'PrivateKey') form.privateKey = value;
+					if (key === 'Address')
+						form.addresses = value
+							.split(',')
+							.map((ip) => ip.trim())
+							.join('\n');
+					if (key === 'ListenPort') form.listenPort = Number(value);
+					if (key === 'MTU') form.mtu = Number(value);
+				} else if (section === '[peer]') {
+					if (key === 'PublicKey') form.peerPublicKey = value;
+					if (key === 'Endpoint') {
+						const lastColon = value.lastIndexOf(':');
+						if (lastColon !== -1) {
+							form.endpointHost = value.slice(0, lastColon);
+							form.endpointPort = Number(value.slice(lastColon + 1));
+						}
+					}
+					if (key === 'AllowedIPs')
+						form.allowedIPs = value
+							.split(',')
+							.map((ip) => ip.trim())
+							.join('\n');
+					if (key === 'PresharedKey') form.preSharedKey = value;
+					if (key === 'PersistentKeepalive') form.persistentKeepalive = value !== '0';
+				}
+			}
+		}
+		if (!opts.silent) {
+			form.importedFileName = sourceName;
+			toast.success(`Config imported from ${sourceName}`, { position: 'bottom-center' });
+		}
 	}
 
 	async function parseConfigFile(file: File) {
 		try {
 			const text = await file.text();
-			const lines = text.split('\n');
-			let section = '';
-			for (const line of lines) {
-				const trimmed = line.trim();
-				if (trimmed.startsWith('#') || trimmed === '') continue;
-				if (trimmed.startsWith('[')) {
-					section = trimmed.toLowerCase();
-				} else if (trimmed.includes('=')) {
-					const idx = trimmed.indexOf('=');
-					const key = trimmed.slice(0, idx).trim();
-					const value = trimmed.slice(idx + 1).trim();
-					if (section === '[interface]') {
-						if (key === 'PrivateKey') form.privateKey = value;
-						if (key === 'Address')
-							form.addresses = value
-								.split(',')
-								.map((ip) => ip.trim())
-								.join('\n');
-						if (key === 'ListenPort') form.listenPort = Number(value);
-						if (key === 'MTU') form.mtu = Number(value);
-					} else if (section === '[peer]') {
-						if (key === 'PublicKey') form.peerPublicKey = value;
-						if (key === 'Endpoint') {
-							const lastColon = value.lastIndexOf(':');
-							if (lastColon !== -1) {
-								form.endpointHost = value.slice(0, lastColon);
-								form.endpointPort = Number(value.slice(lastColon + 1));
-							}
-						}
-						if (key === 'AllowedIPs')
-							form.allowedIPs = value
-								.split(',')
-								.map((ip) => ip.trim())
-								.join('\n');
-						if (key === 'PresharedKey') form.preSharedKey = value;
-						if (key === 'PersistentKeepalive') form.persistentKeepalive = value !== '0';
-					}
-				}
-			}
-			form.importedFileName = file.name;
-			toast.success(`Config imported from ${file.name}`, { position: 'bottom-center' });
+			parseConfigText(text, file.name);
 		} catch {
 			toast.error('Failed to parse config file', { position: 'bottom-center' });
 		}
@@ -189,6 +202,48 @@
 		handleAPIError(response);
 		toast.error(response.message || 'Failed to save client', { position: 'bottom-center' });
 	}
+
+	const ROUTE_ALL_IPS = ['0.0.0.0/0', '::/0'];
+	const MAX_FIBS = 8;
+
+	function usedFibs(): Set<number> {
+		const used = new Set<number>();
+		for (const c of clients) {
+			if (c.id === client?.id) continue;
+			used.add(c.fib);
+		}
+		return used;
+	}
+
+	function nextAvailableFib(): number {
+		const used = usedFibs();
+		for (let i = 1; i < MAX_FIBS; i++) {
+			if (!used.has(i)) return i;
+		}
+		return 1;
+	}
+
+	watch(
+		() => form.allowedIPs,
+		(value) => {
+			const lines = splitLines(value);
+			const hasRouteAll = ROUTE_ALL_IPS.some((ip) => lines.includes(ip));
+			if (hasRouteAll && form.fib === 0) {
+				form.fib = nextAvailableFib();
+			} else if (!hasRouteAll && form.fib !== 0) {
+				form.fib = 0;
+			}
+		}
+	);
+
+	watch(
+		() => pastedConfig,
+		(value) => {
+			if (importMode === 'paste') {
+				parseConfigText(value, '', { silent: true });
+			}
+		}
+	);
 </script>
 
 <Dialog.Root bind:open>
@@ -253,14 +308,59 @@
 					</Button>
 				</div>
 			{:else}
-				<button
-					type="button"
-					class="flex h-20 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 bg-accent/10 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/20 hover:text-foreground"
-					onclick={() => fileInput?.click()}
-				>
-					<span class="icon icon-[mdi--file-upload-outline] size-5"></span>
-					<span>Import .conf file to auto-populate fields</span>
-				</button>
+				<div class="space-y-2">
+					<div class="flex items-center justify-between">
+						<span class="text-xs font-semibold uppercase text-muted-foreground">Import Config</span>
+						<div class="flex overflow-hidden rounded-md border border-border/50">
+							<button
+								type="button"
+								class={[
+									'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
+									importMode === 'upload'
+										? 'bg-primary text-primary-foreground'
+										: 'text-muted-foreground hover:text-foreground'
+								].join(' ')}
+								onclick={() => (importMode = 'upload')}
+							>
+								<span class="icon icon-[mdi--file-upload-outline] size-3"></span>
+								File
+							</button>
+							<button
+								type="button"
+								class={[
+									'flex items-center gap-1 px-2.5 py-1 text-xs transition-colors',
+									importMode === 'paste'
+										? 'bg-primary text-primary-foreground'
+										: 'text-muted-foreground hover:text-foreground'
+								].join(' ')}
+								onclick={() => (importMode = 'paste')}
+							>
+								<span class="icon icon-[mdi--clipboard-text-outline] size-3"></span>
+								Paste
+							</button>
+						</div>
+					</div>
+					{#if importMode === 'upload'}
+						<button
+							type="button"
+							class="flex h-20 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 bg-accent/10 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/20 hover:text-foreground"
+							onclick={() => fileInput?.click()}
+						>
+							<span class="icon icon-[mdi--file-upload-outline] size-5"></span>
+							<span>Import .conf file to auto-populate fields</span>
+						</button>
+					{:else}
+						<div class="space-y-2">
+							<CustomValueInput
+								placeholder="[Interface]..."
+								bind:value={pastedConfig}
+								type="textarea"
+								classes="space-y-1"
+								textAreaClasses="min-h-20 max-h-40 font-mono"
+							/>
+						</div>
+					{/if}
+				</div>
 			{/if}
 
 			<!-- Basic configuration -->
@@ -296,6 +396,9 @@
 					</div>
 
 					<div class="grid grid-cols-2 gap-3">
+						<input type="text" style="display:none;" name="dummy_username" />
+						<input type="password" style="display:none;" name="dummy_password" />
+
 						<CustomValueInput
 							label="Peer Public Key"
 							placeholder="Peer's public key…"
@@ -321,8 +424,8 @@
 								type="textarea"
 								classes="space-y-1"
 								textAreaClasses="min-h-16 max-h-24"
+								hint="One CIDR per line"
 							/>
-							<p class="text-[10px] text-muted-foreground">One CIDR per line</p>
 						</div>
 						<div class="space-y-1">
 							<CustomValueInput
@@ -332,8 +435,8 @@
 								type="textarea"
 								classes="space-y-1"
 								textAreaClasses="min-h-16 max-h-24"
+								hint="One address per line"
 							/>
-							<p class="text-[10px] text-muted-foreground">One CIDR per line</p>
 						</div>
 					</div>
 
@@ -362,8 +465,8 @@
 										type="number"
 										bind:value={form.listenPort}
 										classes="space-y-1"
+										hint="Set a specific local port to listen on. Leave as 0 to auto-assign."
 									/>
-									<p class="text-[10px] text-muted-foreground">0 = random</p>
 								</div>
 								<div class="space-y-1">
 									<CustomValueInput
@@ -373,7 +476,6 @@
 										bind:value={form.mtu}
 										classes="space-y-1"
 									/>
-									<p class="text-[10px] text-muted-foreground">Bytes</p>
 								</div>
 								<CustomValueInput
 									label="Interface Metric"

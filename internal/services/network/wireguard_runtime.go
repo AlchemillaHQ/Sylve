@@ -609,7 +609,7 @@ func addEndpointHostRoute(endpointIP string, fib uint) error {
 
 	addArgs := append(append([]string{}, args...), "add", "-host", target)
 	usingGateway := gateway != "" && !strings.HasPrefix(strings.ToLower(gateway), "link#")
-	if gateway != "" && !strings.HasPrefix(strings.ToLower(gateway), "link#") {
+	if usingGateway {
 		addArgs = append(addArgs, gateway)
 	} else {
 		if iface == "" {
@@ -674,14 +674,15 @@ func deleteEndpointHostRoute(endpointIP string, fib uint) error {
 }
 
 func parseRouteGetField(output string, key string) string {
+	lowerKey := strings.ToLower(key)
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(strings.ToLower(trimmed), strings.ToLower(key)) {
+		if !strings.HasPrefix(strings.ToLower(trimmed), lowerKey) {
 			continue
 		}
 
-		value := strings.TrimSpace(strings.TrimPrefix(trimmed, key))
+		value := strings.TrimSpace(trimmed[len(key):])
 		if value != "" {
 			return value
 		}

@@ -31,6 +31,7 @@
 		movable?: boolean;
 		onRowMoved?: (rows: Row[]) => void;
 		persistSort?: boolean;
+		rowFormatter?: (row: RowComponent) => void;
 	}
 
 	let {
@@ -43,7 +44,8 @@
 		initialSort,
 		movable = false,
 		onRowMoved,
-		persistSort = true
+		persistSort = true,
+		rowFormatter
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -243,6 +245,7 @@
 				paginationSize: 25,
 				paginationCounter: 'pages',
 				initialSort: initialSort ? initialSort : [],
+				rowFormatter,
 				debugInvalidOptions: false,
 				...(movable
 					? {
@@ -435,5 +438,11 @@
 	:global(.s-tree-table-container > .tabulator > .tabulator-tableholder) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	:global(.s-tree-table-container .tabulator-row.managed-row .tabulator-row-handle) {
+		pointer-events: none;
+		cursor: default;
+		opacity: 0.25;
 	}
 </style>

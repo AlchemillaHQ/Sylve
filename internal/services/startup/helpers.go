@@ -160,6 +160,8 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 			if !sambaInstalled {
 				requiredPackages = append(requiredPackages, "samba4XX")
 			}
+
+			requiredPackages = append(requiredPackages, "avahi-app")
 		}
 	}
 

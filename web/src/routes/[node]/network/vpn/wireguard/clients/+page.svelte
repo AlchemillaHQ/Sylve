@@ -160,7 +160,7 @@
 		</Button>
 	</div>
 
-	<div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+	<div class="grid gap-4 grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
 		{#each clients as client (client.id)}
 			{@const status = wireGuardClientStatus(client)}
 			<Card.Root
@@ -335,6 +335,7 @@
 	<ClientForm
 		bind:open={modals.create}
 		client={null}
+		{clients}
 		onSaved={async () => {
 			await clientsResource.refetch();
 		}}
@@ -345,6 +346,7 @@
 	<ClientForm
 		bind:open={modals.edit}
 		client={modals.data}
+		{clients}
 		onSaved={async () => {
 			await clientsResource.refetch();
 			modals.data = null;

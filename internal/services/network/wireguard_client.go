@@ -442,7 +442,7 @@ func (s *Service) teardownWireGuardClientRuntime(client *networkModels.WireGuard
 	for _, cidr := range expandedWireGuardRouteCIDRs(client.AllowedIPs) {
 		_ = deleteRouteViaInterface(cidr, interfaceName, client.FIB)
 	}
-	if hasDefaultWireGuardRouteCIDR(client.AllowedIPs) {
+	if client.RouteAllowedIPs && hasDefaultWireGuardRouteCIDR(client.AllowedIPs) {
 		if endpointIPs, err := resolveEndpointIPs(client.EndpointHost); err == nil {
 			for _, endpointIP := range endpointIPs {
 				_ = deleteEndpointHostRoute(endpointIP, client.FIB)

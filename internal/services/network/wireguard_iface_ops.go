@@ -13,78 +13,12 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"syscall"
-
-	"github.com/alchemillahq/sylve/internal/logger"
 )
 
-var errWireGuardInterfaceOpsUnsupported = errors.New("wireguard_interface_ops_unsupported")
-
-type wireGuardInterfaceOps interface {
-	Exists(name string) (bool, error)
-	Create(cloneType string) (string, error)
-	Rename(currentName string, newName string) error
-	Destroy(name string) error
-	AddAddress(name string, hostCIDR string) error
-	SetMTU(name string, mtu uint) error
-	SetMetric(name string, metric uint) error
-	SetFIB(name string, fib uint) error
-	Up(name string) error
-}
-
-var (
-	wireGuardInterfaceOpsBackend     = newWireGuardInterfaceOps()
-	wireGuardShouldFallbackInterface = shouldFallbackWireGuardInterfaceOperation
-	wireGuardInterfaceHasAddress     = wireGuardInterfaceHasAddressCIDR
-	wireGuardFallbackWarnedOps       sync.Map
-)
-
-func shouldFallbackWireGuardInterfaceOperation(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	if errors.Is(err, errWireGuardInterfaceOpsUnsupported) {
-		return true
-	}
-
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		if errno == syscall.ENOSYS ||
-			errno == syscall.ENOTSUP ||
-			errno == syscall.EOPNOTSUPP ||
-			errno == syscall.ENOTTY {
-			return true
-		}
-	}
-
-	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "not supported") || strings.Contains(lower, "not implemented")
-}
-
-func logWireGuardInterfaceFallbackOnce(operation string, nativeErr error) {
-	if _, loaded := wireGuardFallbackWarnedOps.LoadOrStore(operation, struct{}{}); loaded {
-		return
-	}
-
-	logger.L.Warn().
-		Err(nativeErr).
-		Str("operation", operation).
-		Msg("wireguard native interface operation failed; falling back to shell")
-}
+var wireGuardInterfaceHasAddress = wireGuardInterfaceHasAddressCIDR
 
 func wireGuardInterfaceExistsNativeOrShell(name string) (bool, error) {
-	exists, err := wireGuardInterfaceOpsBackend.Exists(name)
-	if err == nil {
-		return exists, nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return false, fmt.Errorf("failed_to_check_wireguard_interface_%s: %w", name, err)
-	}
-
-	logWireGuardInterfaceFallbackOnce("exists", err)
 	_, shellErr := wireGuardRunCommand("/sbin/ifconfig", name)
 	if shellErr == nil {
 		return true, nil
@@ -97,22 +31,12 @@ func wireGuardInterfaceExistsNativeOrShell(name string) (bool, error) {
 }
 
 func wireGuardCreateInterfaceNativeOrShell(cloneType string) (string, error) {
-	created, err := wireGuardInterfaceOpsBackend.Create(cloneType)
-	if err == nil {
-		return created, nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return "", fmt.Errorf("failed_to_create_wireguard_interface: %w", err)
-	}
-
-	logWireGuardInterfaceFallbackOnce("create", err)
 	out, shellErr := wireGuardRunCommand("/sbin/ifconfig", cloneType, "create")
 	if shellErr != nil {
 		return "", fmt.Errorf("failed_to_create_wireguard_interface: %w", shellErr)
 	}
 
-	created = strings.TrimSpace(out)
+	created := strings.TrimSpace(out)
 	if idx := strings.IndexByte(created, '\n'); idx >= 0 {
 		created = strings.TrimSpace(created[:idx])
 	}
@@ -124,16 +48,6 @@ func wireGuardCreateInterfaceNativeOrShell(cloneType string) (string, error) {
 }
 
 func wireGuardRenameInterfaceNativeOrShell(currentName string, newName string) error {
-	err := wireGuardInterfaceOpsBackend.Rename(currentName, newName)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return fmt.Errorf("failed_to_rename_wireguard_interface: %w", err)
-	}
-
-	logWireGuardInterfaceFallbackOnce("rename", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", currentName, "name", newName); shellErr != nil {
 		return fmt.Errorf("failed_to_rename_wireguard_interface: %w", shellErr)
 	}
@@ -142,16 +56,6 @@ func wireGuardRenameInterfaceNativeOrShell(currentName string, newName string) e
 }
 
 func wireGuardDestroyInterfaceNativeOrShell(name string) error {
-	err := wireGuardInterfaceOpsBackend.Destroy(name)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return fmt.Errorf("failed_to_destroy_wireguard_interface_%s: %w", name, err)
-	}
-
-	logWireGuardInterfaceFallbackOnce("destroy", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", name, "destroy"); shellErr != nil {
 		return fmt.Errorf("failed_to_destroy_wireguard_interface_%s: %w", name, shellErr)
 	}
@@ -165,27 +69,6 @@ func wireGuardAddAddressNativeOrShell(name string, hostCIDR string, ipv6 bool) e
 		return nil
 	}
 
-	err := wireGuardInterfaceOpsBackend.AddAddress(name, hostCIDR)
-	if err == nil {
-		return nil
-	}
-
-	if isWireGuardAddressExistsError(err) {
-		// Kernel reported EEXIST. Verify the address is actually on this interface.
-		if hasAddress, _ := wireGuardInterfaceHasAddress(name, hostCIDR); hasAddress {
-			return nil
-		}
-		// EEXIST but the address is not visible on this interface (may be assigned
-		// to a different interface). Fall through to the shell fallback only when
-		// this error class is configured as fallback-eligible.
-		if !wireGuardShouldFallbackInterface(err) {
-			return err
-		}
-	} else if !wireGuardShouldFallbackInterface(err) {
-		return err
-	}
-
-	logWireGuardInterfaceFallbackOnce("add-address", err)
 	args := []string{name}
 	if ipv6 {
 		args = append(args, "inet6", hostCIDR, "alias")
@@ -219,7 +102,7 @@ func isWireGuardAddressExistsError(err error) bool {
 }
 
 func wireGuardInterfaceHasAddressCIDR(name string, hostCIDR string) (bool, error) {
-	targetIP, targetNetwork, err := net.ParseCIDR(strings.TrimSpace(hostCIDR))
+	targetIP, _, err := net.ParseCIDR(strings.TrimSpace(hostCIDR))
 	if err != nil {
 		return false, err
 	}
@@ -233,8 +116,6 @@ func wireGuardInterfaceHasAddressCIDR(name string, hostCIDR string) (bool, error
 	if targetIP == nil {
 		return false, nil
 	}
-
-	targetOnes, targetBits := targetNetwork.Mask.Size()
 
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
@@ -270,13 +151,9 @@ func wireGuardInterfaceHasAddressCIDR(name string, hostCIDR string) (bool, error
 		}
 
 		if candidateIP.Equal(targetIP) {
-			ones, bits := ipNet.Mask.Size()
-			if ones != targetOnes || bits != targetBits {
-				// FreeBSD can expose wg interface addresses through net.Interface with a
-				// host mask even when the configured mask is wider. If IP matches, treat
-				// it as already present to keep startup/apply idempotent.
-				return true, nil
-			}
+			// FreeBSD can expose wg interface addresses through net.Interface with a
+			// host mask even when the configured mask is wider. If IP matches, treat
+			// it as already present to keep startup/apply idempotent.
 			return true, nil
 		}
 	}
@@ -285,16 +162,6 @@ func wireGuardInterfaceHasAddressCIDR(name string, hostCIDR string) (bool, error
 }
 
 func wireGuardSetMTUNativeOrShell(name string, mtu uint) error {
-	err := wireGuardInterfaceOpsBackend.SetMTU(name, mtu)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return err
-	}
-
-	logWireGuardInterfaceFallbackOnce("set-mtu", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", name, "mtu", fmt.Sprintf("%d", mtu)); shellErr != nil {
 		return shellErr
 	}
@@ -303,16 +170,6 @@ func wireGuardSetMTUNativeOrShell(name string, mtu uint) error {
 }
 
 func wireGuardSetMetricNativeOrShell(name string, metric uint) error {
-	err := wireGuardInterfaceOpsBackend.SetMetric(name, metric)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return err
-	}
-
-	logWireGuardInterfaceFallbackOnce("set-metric", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", name, "metric", fmt.Sprintf("%d", metric)); shellErr != nil {
 		return shellErr
 	}
@@ -321,16 +178,6 @@ func wireGuardSetMetricNativeOrShell(name string, metric uint) error {
 }
 
 func wireGuardSetFIBNativeOrShell(name string, fib uint) error {
-	err := wireGuardInterfaceOpsBackend.SetFIB(name, fib)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return err
-	}
-
-	logWireGuardInterfaceFallbackOnce("set-fib", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", name, "fib", fmt.Sprintf("%d", fib)); shellErr != nil {
 		return shellErr
 	}
@@ -339,16 +186,6 @@ func wireGuardSetFIBNativeOrShell(name string, fib uint) error {
 }
 
 func wireGuardSetUpNativeOrShell(name string) error {
-	err := wireGuardInterfaceOpsBackend.Up(name)
-	if err == nil {
-		return nil
-	}
-
-	if !wireGuardShouldFallbackInterface(err) {
-		return err
-	}
-
-	logWireGuardInterfaceFallbackOnce("set-up", err)
 	if _, shellErr := wireGuardRunCommand("/sbin/ifconfig", name, "up"); shellErr != nil {
 		return shellErr
 	}

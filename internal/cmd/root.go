@@ -12,6 +12,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+)
+
+const (
+	DefaultConfigLocal  = "./config.json"
+	DefaultConfigSystem = "/usr/local/etc/sylve/config.json"
 )
 
 const Version = "0.2.3"
@@ -37,7 +43,7 @@ func newFlagSet(output io.Writer) (*flag.FlagSet, *string, *bool, *bool, *bool, 
 	fs := flag.NewFlagSet("sylve", flag.ContinueOnError)
 	fs.SetOutput(output)
 
-	configPath := fs.String("config", "./config.json", "path to config file")
+	configPath := fs.String("config", "", "path to config file (default: ./config.json, then /usr/local/etc/sylve/config.json)")
 	help := fs.Bool("help", false, "print help and exit")
 	helpShort := fs.Bool("h", false, "print help and exit")
 	version := fs.Bool("version", false, "print version and exit")
@@ -60,6 +66,30 @@ func ParseFlags(args []string) (FlagResult, error) {
 		ShowHelp:    *help || *helpShort,
 		ShowVersion: *version || *versionShort,
 	}, nil
+}
+
+// ResolveConfigPath returns the config file path to use, following this priority:
+//  1. explicit (from -config flag) — must exist or returns an error
+//  2. ./config.json
+//  3. /usr/local/etc/sylve/config.json
+//
+// Returns an error if none of the candidates are found.
+func ResolveConfigPath(explicit string) (string, error) {
+	if explicit != "" {
+		if _, err := os.Stat(explicit); err != nil {
+			return "", fmt.Errorf("config file not found: %s", explicit)
+		}
+		return explicit, nil
+	}
+
+	for _, candidate := range []string{DefaultConfigLocal, DefaultConfigSystem} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("no config file found; tried %q and %q; use -config to specify one",
+		DefaultConfigLocal, DefaultConfigSystem)
 }
 
 func PrintUsage(w io.Writer) {

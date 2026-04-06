@@ -30,7 +30,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { onMount } from 'svelte';
-	import type { CellComponent } from 'tabulator-tables';
+	import type { CellComponent, RowComponent } from 'tabulator-tables';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -184,6 +184,17 @@
 		return object.name;
 	}
 
+	function resolvePortValue(
+		raw: string | null | undefined,
+		objId: number | null | undefined
+	): string {
+		if (raw) return raw;
+		if (!objId) return '';
+		const obj = objects.find((o) => o.id === objId);
+		if (!obj) return '';
+		return (obj.entries ?? []).map((e) => e.value).join(', ');
+	}
+
 	function formatEnabled(value: boolean): string {
 		if (value) return renderWithIcon('mdi:check-circle', '', 'text-green-500');
 		return renderWithIcon('mdi:close-circle', '', 'text-red-400');
@@ -277,16 +288,22 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
-		const payload: FirewallReorderRequest[] = rows.map((row, index) => ({
+		const visibleRows = rows.filter((row) => row.visible !== false);
+		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
 			id: Number(row.id),
 			priority: index + 1
 		}));
+		if (payload.length === 0) {
+			await trafficRulesResource.refetch();
+			return;
+		}
 		const result = await reorderFirewallTrafficRules(payload);
 		if (result.status === 'success') {
 			await trafficRulesResource.refetch();
 		} else {
 			handleAPIError(result);
 			toast.error('Failed to reorder traffic rules', { position: 'bottom-center' });
+			await trafficRulesResource.refetch();
 		}
 	}
 
@@ -340,7 +357,18 @@
 				return formatAction(d.action, d.direction, d.quick, d.log);
 			}
 		},
-		{ field: 'name', title: 'Name' },
+		{
+			field: 'name',
+			title: 'Name',
+			formatter: (cell: CellComponent) => {
+				const name = String(cell.getValue() ?? '');
+				const d = cell.getRow().getData();
+				if (d.visible === false) {
+					return `<span class="inline-flex items-center gap-1.5">${name} <span class="inline-flex items-center text-xs font-mono px-1 rounded border text-zinc-400 border-zinc-400/50 leading-tight">MANAGED</span></span>`;
+				}
+				return name;
+			}
+		},
 		{
 			field: 'ingressInterfaces',
 			title: 'Ingress',
@@ -402,11 +430,12 @@
 					(rule.egressInterfaces ?? []).map(resolveInterfaceName).join(', ') || 'any',
 				source: rule.sourceRaw || formatObjectName(rule.sourceObjId),
 				sourceIsObj: !rule.sourceRaw && !!rule.sourceObjId,
-				srcPort: rule.srcPortsRaw || '',
+				srcPort: resolvePortValue(rule.srcPortsRaw, rule.srcPortObjId),
 				destination: rule.destRaw || formatObjectName(rule.destObjId),
 				destIsObj: !rule.destRaw && !!rule.destObjId,
-				dstPort: rule.dstPortsRaw || '',
+				dstPort: resolvePortValue(rule.dstPortsRaw, rule.dstPortObjId),
 				enabled: rule.enabled ?? true,
+				visible: rule.visible ?? true,
 				hits: counter?.packets ?? 0,
 				bytes: counter?.bytes ?? 0,
 				updatedAt: rule.updatedAt
@@ -439,7 +468,7 @@
 
 {#snippet button(type: string)}
 	{#if activeRow !== null && activeRow.length === 1}
-		{#if type === 'edit-rule'}
+		{#if type === 'edit-rule' && activeRow[0]?.visible !== false}
 			<Button
 				onclick={() => {
 					modals.edit.open = true;
@@ -456,7 +485,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'delete-rule'}
+		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
 			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
 				<div class="flex items-center">
 					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
@@ -501,6 +530,12 @@
 			persistSort={false}
 			movable={true}
 			onRowMoved={handleRowMoved}
+			rowFormatter={(row: RowComponent) => {
+				const d = row.getData();
+				if (d.visible === false) {
+					row.getElement().classList.add('managed-row');
+				}
+			}}
 		/>
 	</div>
 </div>

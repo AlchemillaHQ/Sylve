@@ -1,4 +1,5 @@
 <!-- <span class="icon-[mdi--palette]"></span>
+<span class="icon-[mdi--pound]"></span>
 <span class="icon-[mdi--call-split]"></span>
 <span class="icon-[gridicons--cross-circle]"></span>
 <span class="icon-[mdi--router-wireless]"></span>

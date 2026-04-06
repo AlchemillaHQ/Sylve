@@ -79,7 +79,13 @@ func main() {
 		return
 	}
 
-	cfg := config.ParseConfig(cfgResult.ConfigPath)
+	resolvedConfigPath, err := cmd.ResolveConfigPath(cfgResult.ConfigPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	cfg := config.ParseConfig(resolvedConfigPath)
 	logger.InitLogger(cfg.Environment, cfg.DataPath, cfg.LogLevel)
 	logger.L.Info().
 		Str("environment", string(cfg.Environment)).

@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { deleteNetworkObject, getNetworkObjects } from '$lib/api/network/object';
+	import {
+		deleteNetworkObject,
+		getNetworkObjects,
+		bulkDeleteNetworkObjects
+	} from '$lib/api/network/object';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CreateOrEdit from '$lib/components/custom/Network/Objects/CreateOrEdit.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -42,6 +46,10 @@
 		delete: {
 			open: false,
 			id: 0
+		},
+		bulkDelete: {
+			open: false,
+			count: 0
 		}
 	});
 
@@ -202,6 +210,39 @@
 			</Button>
 		{/if}
 	{/if}
+
+	{#if activeRows && activeRows.length > 1}
+		{#if type === 'bulk-delete'}
+			<Button
+				onclick={() => {
+					const currentObjects = objects.current as NetworkObject[];
+					const inUse = activeRows!
+						.map((row) => currentObjects.find((o) => o.id === Number(row.id)))
+						.filter((o) => o?.isUsed);
+
+					if (inUse.length > 0) {
+						for (const o of inUse) {
+							toast.error(`Object '${o!.name}' is in use and cannot be deleted`, {
+								position: 'bottom-center'
+							});
+						}
+						return;
+					}
+
+					modals.bulkDelete.open = true;
+					modals.bulkDelete.count = activeRows!.length;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[material-symbols--delete-sweep] mr-1 h-4 w-4"></span>
+					<span>Bulk Delete</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
@@ -216,12 +257,12 @@
 
 		{@render button('edit')}
 		{@render button('delete')}
+		{@render button('bulk-delete')}
 	</div>
 
 	<TreeTable
 		data={tableData}
 		name="tt-network-objects"
-		multipleSelect={false}
 		bind:parentActiveRow={activeRows}
 		bind:query
 	/>
@@ -281,6 +322,39 @@
 		onCancel: () => {
 			activeRows = null;
 			modals.delete.open = false;
+		}
+	}}
+></AlertDialog>
+
+<AlertDialog
+	open={modals.bulkDelete.open}
+	customTitle={`This will permanently delete ${modals.bulkDelete.count} network objects`}
+	actions={{
+		onConfirm: async () => {
+			const ids = activeRows
+				? activeRows.map((row) =>
+						typeof row.id === 'number' ? row.id : parseInt(row.id as string)
+					)
+				: [];
+			const result = await bulkDeleteNetworkObjects(ids);
+			objects.refetch();
+			if (isAPIResponse(result) && result.status === 'success') {
+				toast.success(`${ids.length} objects deleted`, { position: 'bottom-center' });
+				activeRows = null;
+				modals.bulkDelete.open = false;
+			} else {
+				handleAPIError(result);
+				toast.error(
+					typeof result.error === 'string'
+						? result.error
+						: (result.error?.join(', ') ?? 'Failed to delete objects'),
+					{ position: 'bottom-center' }
+				);
+				modals.bulkDelete.open = false;
+			}
+		},
+		onCancel: () => {
+			modals.bulkDelete.open = false;
 		}
 	}}
 ></AlertDialog>

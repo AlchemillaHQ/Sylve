@@ -40,6 +40,8 @@ func TestCreateShareReturnsDatasetConflictBeforeDBDuplicate(t *testing.T) {
 		"2775",
 		true,
 		false,
+		false,
+		0,
 	)
 	if err == nil {
 		t.Fatal("expected dataset conflict error, got nil")
