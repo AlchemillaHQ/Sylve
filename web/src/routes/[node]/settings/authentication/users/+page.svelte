@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { listGroups } from '$lib/api/auth/groups';
 	import { deleteUser, listUsers } from '$lib/api/auth/local';
 	import CreateOrEdit from '$lib/components/custom/Authentication/CreateOrEdit.svelte';
 	import Passkeys from '$lib/components/custom/Authentication/Passkeys.svelte';
@@ -6,7 +7,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { User } from '$lib/types/auth';
+	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
@@ -16,6 +17,7 @@
 
 	interface Data {
 		users: User[];
+		groups: Group[];
 	}
 
 	let { data }: { data: Data } = $props();
@@ -73,6 +75,18 @@
 		}
 	);
 
+	const groups = resource(
+		() => 'groups',
+		async (key, prevKey, { signal }) => {
+			const results = await listGroups();
+			updateCache('groups', results);
+			return results;
+		},
+		{
+			initialValue: data.groups
+		}
+	);
+
 	let reload = $state(false);
 
 	watch(
@@ -80,6 +94,7 @@
 		(value) => {
 			if (value) {
 				users.refetch();
+				groups.refetch();
 				reload = false;
 			}
 		}
@@ -173,7 +188,7 @@
 
 	<TreeTable
 		data={tableData}
-		name={'tt-users'}
+		name="tt-users"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={false}
 		bind:query
@@ -181,13 +196,19 @@
 </div>
 
 {#if modals.create.open}
-	<CreateOrEdit bind:open={modals.create.open} users={users.current} bind:reload />
+	<CreateOrEdit
+		bind:open={modals.create.open}
+		users={users.current}
+		groups={groups.current}
+		bind:reload
+	/>
 {/if}
 
 {#if modals.edit.open}
 	<CreateOrEdit
 		bind:open={modals.edit.open}
 		users={users.current}
+		groups={groups.current}
 		edit={true}
 		user={activeRow ? (users.current.find((u) => u.id === activeRow.id) as User) : undefined}
 		bind:reload

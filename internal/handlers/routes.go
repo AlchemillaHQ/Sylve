@@ -505,6 +505,8 @@ func RegisterRoutes(r *gin.Engine,
 	users.Use(middleware.RequireLocalAdmin(authService))
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
+		users.GET("/uid/next", authHandlers.GetNextUIDHandler(authService))
+		users.GET("/capabilities", authHandlers.UserCapabilitiesHandler())
 		users.POST("", authHandlers.CreateUserHandler(authService))
 		users.DELETE("/:id", authHandlers.DeleteUserHandler(authService))
 		users.PUT("", authHandlers.EditUserHandler(authService))

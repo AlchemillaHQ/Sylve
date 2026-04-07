@@ -787,3 +787,506 @@ func TestIsRoot(t *testing.T) {
 		}
 	})
 }
+
+func TestDoasAvailable(t *testing.T) {
+	// DoasAvailable checks os.Stat("/usr/local/bin/doas").
+	// We can't easily mock os.Stat, so we just verify it returns a bool
+	// without panicking.
+	result := DoasAvailable()
+	_ = result // either true or false is valid
+}
+
+func TestCreateUnixUserFullNonexistent(t *testing.T) {
+	t.Run("nonexistent dir does not create home", func(t *testing.T) {
+		defer resetTestHooks()
+
+		var sawArgs []string
+		runCommand = func(command string, args ...string) (string, error) {
+			sawArgs = args
+			return "", nil
+		}
+
+		err := CreateUnixUserFull(UnixUserCreateOpts{
+			Name:       "john",
+			Shell:      "/bin/sh",
+			Dir:        "/nonexistent",
+			CreateHome: false,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Should NOT contain -m flag
+		for _, arg := range sawArgs {
+			if arg == "-m" {
+				t.Fatalf("expected no -m flag for /nonexistent dir, but found it in args: %v", sawArgs)
+			}
+		}
+	})
+
+	t.Run("real dir with CreateHome creates home", func(t *testing.T) {
+		defer resetTestHooks()
+
+		var sawArgs []string
+		runCommand = func(command string, args ...string) (string, error) {
+			sawArgs = args
+			return "", nil
+		}
+
+		err := CreateUnixUserFull(UnixUserCreateOpts{
+			Name:       "john",
+			Shell:      "/bin/sh",
+			Dir:        "/home/john",
+			CreateHome: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		found := false
+		for _, arg := range sawArgs {
+			if arg == "-m" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected -m flag for real home dir, but not found in args: %v", sawArgs)
+		}
+	})
+
+	t.Run("nonexistent dir with CreateHome true still no -m", func(t *testing.T) {
+		defer resetTestHooks()
+
+		var sawArgs []string
+		runCommand = func(command string, args ...string) (string, error) {
+			sawArgs = args
+			return "", nil
+		}
+
+		err := CreateUnixUserFull(UnixUserCreateOpts{
+			Name:       "john",
+			Shell:      "/bin/sh",
+			Dir:        "/nonexistent",
+			CreateHome: true,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		for _, arg := range sawArgs {
+			if arg == "-m" {
+				t.Fatalf("should not pass -m for /nonexistent even when CreateHome=true")
+			}
+		}
+	})
+
+	t.Run("UID is passed when > 0", func(t *testing.T) {
+		defer resetTestHooks()
+
+		var sawArgs []string
+		runCommand = func(command string, args ...string) (string, error) {
+			sawArgs = args
+			return "", nil
+		}
+
+		err := CreateUnixUserFull(UnixUserCreateOpts{
+			Name:  "john",
+			Shell: "/bin/sh",
+			Dir:   "/nonexistent",
+			UID:   1005,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		foundUID := false
+		for i, arg := range sawArgs {
+			if arg == "-u" && i+1 < len(sawArgs) && sawArgs[i+1] == "1005" {
+				foundUID = true
+				break
+			}
+		}
+		if !foundUID {
+			t.Fatalf("expected -u 1005 in args: %v", sawArgs)
+		}
+	})
+
+	t.Run("group specified but missing", func(t *testing.T) {
+		defer resetTestHooks()
+
+		unixGroupExists = func(name string) bool { return false }
+
+		err := CreateUnixUserFull(UnixUserCreateOpts{
+			Name:  "john",
+			Group: "nogroup",
+		})
+		if err == nil {
+			t.Fatalf("expected error for non-existent group")
+		}
+	})
+}
+
+func TestGetNextUnixUID(t *testing.T) {
+	t.Run("returns 1000 on pw failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("pw failed")
+		}
+
+		uid, err := GetNextUnixUID()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if uid != 1000 {
+			t.Fatalf("expected 1000, got: %d", uid)
+		}
+	})
+
+	t.Run("skips used UIDs", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "root:*:0:0::0:0:Charlie Root:/root:/bin/csh\njohn:*:1000:1000::0:0:John:/home/john:/bin/sh\n", nil
+		}
+
+		uid, err := GetNextUnixUID()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if uid != 1001 {
+			t.Fatalf("expected 1001, got: %d", uid)
+		}
+	})
+
+	t.Run("returns 1000 when no UIDs in range used", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "root:*:0:0::0:0:Charlie Root:/root:/bin/csh\n", nil
+		}
+
+		uid, err := GetNextUnixUID()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if uid != 1000 {
+			t.Fatalf("expected 1000, got: %d", uid)
+		}
+	})
+}
+
+func TestChangeUnixUserUID(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-u", "2000"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+
+		if err := ChangeUnixUserUID("alice", 2000); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("pw failed")
+		}
+
+		if err := ChangeUnixUserUID("alice", 2000); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+}
+
+func TestChangeUnixUserPrimaryGroup(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-g", "wheel"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+
+		if err := ChangeUnixUserPrimaryGroup("alice", "wheel"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestChangeUnixUserHomeDir(t *testing.T) {
+	t.Run("change to real dir with createHome", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-d", "/home/alice", "-m"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v, want %#v", args, want)
+			}
+			return "", nil
+		}
+
+		if err := ChangeUnixUserHomeDir("alice", "/home/alice", true); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("change to nonexistent without createHome flag", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-d", "/nonexistent"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v, want %#v", args, want)
+			}
+			return "", nil
+		}
+
+		if err := ChangeUnixUserHomeDir("alice", "/nonexistent", false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("createHome false skips -m flag", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-d", "/home/alice"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v, want %#v", args, want)
+			}
+			return "", nil
+		}
+
+		if err := ChangeUnixUserHomeDir("alice", "/home/alice", false); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("pw failed")
+		}
+
+		if err := ChangeUnixUserHomeDir("alice", "/home/alice", true); err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+}
+
+func TestSetUnixUserShell(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-s", "/bin/zsh"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+
+		if err := SetUnixUserShell("alice", "/bin/zsh"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestLockUnlockUnixUser(t *testing.T) {
+	t.Run("lock success", func(t *testing.T) {
+		defer resetTestHooks()
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"lock", "alice"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+		if err := LockUnixUser("alice"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("unlock success", func(t *testing.T) {
+		defer resetTestHooks()
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"unlock", "alice"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+		if err := UnlockUnixUser("alice"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestDisableUnixUserPassword(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+		runCommand = func(command string, args ...string) (string, error) {
+			want := []string{"usermod", "alice", "-h", "-"}
+			if !reflect.DeepEqual(args, want) {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+			return "", nil
+		}
+		if err := DisableUnixUserPassword("alice"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestGetUnixGroupGID(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			if command == "/usr/bin/getent" && len(args) == 2 && args[0] == "group" && args[1] == "wheel" {
+				return "wheel:*:0:root", nil
+			}
+			return "", errors.New("unexpected call")
+		}
+
+		gid, err := GetUnixGroupGID("wheel")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gid != 0 {
+			t.Fatalf("expected GID 0, got: %d", gid)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("no such group")
+		}
+
+		_, err := GetUnixGroupGID("nonexistent")
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+	})
+
+	t.Run("malformed output", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "wheel", nil
+		}
+
+		_, err := GetUnixGroupGID("wheel")
+		if err == nil {
+			t.Fatalf("expected error for malformed output")
+		}
+	})
+}
+
+func TestChownHome(t *testing.T) {
+	t.Run("skips nonexistent", func(t *testing.T) {
+		defer resetTestHooks()
+
+		// Should not call runCommand at all
+		runCommand = func(command string, args ...string) (string, error) {
+			t.Fatalf("should not be called for /nonexistent")
+			return "", nil
+		}
+
+		if err := ChownHome("/nonexistent", 1000, "wheel"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("skips empty path", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			t.Fatalf("should not be called for empty path")
+			return "", nil
+		}
+
+		if err := ChownHome("", 1000, "wheel"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		defer resetTestHooks()
+
+		calls := 0
+		runCommand = func(command string, args ...string) (string, error) {
+			calls++
+			if calls == 1 {
+				// getent group call
+				if command != "/usr/bin/getent" {
+					t.Fatalf("expected getent, got: %s", command)
+				}
+				return "vega:*:1001:alice", nil
+			}
+			if calls == 2 {
+				// chown call
+				if command != "/usr/sbin/chown" {
+					t.Fatalf("expected chown, got: %s", command)
+				}
+				want := []string{"-R", "1000:1001", "/home/alice"}
+				if !reflect.DeepEqual(args, want) {
+					t.Fatalf("unexpected chown args: %#v, want %#v", args, want)
+				}
+				return "", nil
+			}
+			return "", errors.New("unexpected call")
+		}
+
+		if err := ChownHome("/home/alice", 1000, "vega"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if calls != 2 {
+			t.Fatalf("expected 2 calls, got: %d", calls)
+		}
+	})
+
+	t.Run("group lookup failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		runCommand = func(command string, args ...string) (string, error) {
+			return "", errors.New("no such group")
+		}
+
+		if err := ChownHome("/home/alice", 1000, "badgroup"); err == nil {
+			t.Fatalf("expected error for bad group")
+		}
+	})
+
+	t.Run("chown failure", func(t *testing.T) {
+		defer resetTestHooks()
+
+		calls := 0
+		runCommand = func(command string, args ...string) (string, error) {
+			calls++
+			if calls == 1 {
+				return "vega:*:1001:alice", nil
+			}
+			return "", errors.New("chown failed")
+		}
+
+		if err := ChownHome("/home/alice", 1000, "vega"); err == nil {
+			t.Fatalf("expected error for chown failure")
+		}
+	})
+}

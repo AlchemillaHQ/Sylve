@@ -202,6 +202,7 @@ msgstr "系统"
 msgid "PCI Passthrough"
 msgstr "PCI 直通"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Authentication"
 msgstr "身份验证"
@@ -535,6 +536,7 @@ msgstr "结束时间"
 msgid "Node"
 msgstr "节点"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User"
@@ -583,6 +585,7 @@ msgstr "无响应"
 msgid "Copied response to clipboard"
 msgstr "已将响应复制到剪贴板"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -1704,14 +1707,11 @@ msgstr "ID"
 msgid "Last Ping"
 msgstr "最后 Ping 时间"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Username and password are required"
-msgstr "用户名和密码是必填项"
+#~ msgid "Username and password are required"
+#~ msgstr "用户名和密码是必填项"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Invalid username"
-msgstr "用户名无效"
+#~ msgid "Invalid username"
+#~ msgstr "用户名无效"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -1719,14 +1719,11 @@ msgid "Username already exists"
 msgstr "用户名已存在"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Invalid email address"
 msgstr "电子邮件地址无效"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Password must be at least 8 characters long"
-msgstr "密码长度必须至少为 8 个字符"
+#~ msgid "Password must be at least 8 characters long"
+#~ msgstr "密码长度必须至少为 8 个字符"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to create user"
@@ -1736,9 +1733,8 @@ msgstr "创建用户失败"
 msgid "User created"
 msgstr "用户已创建"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "No user selected for editing"
-msgstr "未选择要编辑的用户"
+#~ msgid "No user selected for editing"
+#~ msgstr "未选择要编辑的用户"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to edit user"
@@ -1762,7 +1758,6 @@ msgstr "编辑用户 - {0}"
 msgid "E-Mail"
 msgstr "电子邮件"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Enter or generate password"
 msgstr "输入或生成密码"
@@ -2012,6 +2007,9 @@ msgstr "您确定吗？"
 msgid "This action cannot be undone. This will permanently delete "
 msgstr "此操作无法撤销。这将永久删除 "
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
@@ -2453,6 +2451,7 @@ msgstr "切换搜索"
 msgid "Search..."
 msgstr "搜索..."
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/TreeTable/Search.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -3071,6 +3070,7 @@ msgstr "<0/> 粘贴"
 msgid "<0/> New File"
 msgstr "<0/> 新建文件"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New Folder"
 msgstr "<0/> 新建文件夹"
@@ -4496,6 +4496,7 @@ msgstr "请选择存储类型"
 msgid "Create Storage"
 msgstr "创建存储"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Directory"
 msgstr "目录"
@@ -10728,8 +10729,9 @@ msgstr ""
 msgid "Rule Settings"
 msgstr ""
 
-#~ msgid "Select"
-#~ msgstr ""
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select"
+msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
@@ -12752,7 +12754,213 @@ msgstr "<<<<<<< Updated upstream"
 #~ msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails.<<<<<<< Updated upstream"
 #~ msgstr "<<<<<<< Updated upstream"
 
-#. 0: lun.lunNumber
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "LUN {0}=======>>>>>>> Stashed changes"
-msgstr "=======>>>>>>> Stashed changes"
+#~ msgid "LUN {0}=======>>>>>>> Stashed changes"
+#~ msgstr "=======>>>>>>> Stashed changes"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Username is required"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Invalid username format"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password is required"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password must be at least 8 characters"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Passwords do not match"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home directory is required"
+msgstr ""
+
+#~ msgid "Edit User — {0}"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Identification"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "ID & Groups"
+msgstr ""
+
+#~ msgid "Directories"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Full Name"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "John Doe"
+msgstr ""
+
+#~ msgid "Generate Password"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Confirm Password"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "User ID (UID)"
+msgstr ""
+
+#~ msgid "New Primary Group (create group named after username)"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Primary Group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select primary group..."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Auxiliary Groups"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select auxiliary groups..."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home Directory"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home Directory Permissions"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Read"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Write"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Execute"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Other"
+msgstr ""
+
+#. 0: computedPerms.toString(8).padStart(3, '0')
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Octal: 0{0}"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "SSH Public Key"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Shell"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select shell..."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Disable Password"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Lock User"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Permit Doas"
+msgstr ""
+
+#. 0: properties.uid; 1: collision.username
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "UID {0} is already used by \"{1}\""
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Primary group cannot also be an auxiliary group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> Browse"
+msgstr ""
+
+#~ msgid "Select Directory"
+#~ msgstr ""
+
+#~ msgid "Loading..."
+#~ msgstr ""
+
+#~ msgid "No subdirectories"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Failed to create folder"
+msgstr ""
+
+#~ msgid "Failed to delete folder"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "New folder name"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Confirm"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "No subdirectories — right-click to create one"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> New Folder inside"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> New Folder here"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> Select Directory"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Go up"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Loading…"
+msgstr ""
+
+#~ msgid "New Primary Group (Create group named after username)"
+#~ msgstr ""
+
+#~ msgid "New User Primary Group"
+#~ msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Create User Primary Group"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Use /home/<username>"
+msgstr ""

@@ -11,6 +11,7 @@ package db
 import (
 	"strings"
 
+	authModels "github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -30,6 +31,7 @@ func Fixups(db *gorm.DB) error {
 	cleanupLegacyDevdEventsTable(db)
 	dropSambaSharePathUniqueIndex(db)
 	backfillFirewallRuleVisibilityDefaults(db)
+	backfillUserSystemData(db)
 
 	return nil
 }
@@ -561,4 +563,59 @@ func deduplicateJailHooks(db *gorm.DB) {
 	})
 
 	logger.L.Info().Msg("Deduplicated jail hooks and migrated schema")
+}
+
+func backfillUserSystemData(db *gorm.DB) {
+	const name = "backfill_user_system_data_v1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for backfill_user_system_data")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	var users []authModels.User
+	if err := db.Find(&users).Error; err != nil {
+		logger.L.Err(err).Msg("failed to list users for backfill_user_system_data")
+		return
+	}
+
+	for i := range users {
+		updates := map[string]any{}
+
+		if users[i].UID == 0 {
+			uid, shell, err := system.GetUnixUserInfo(users[i].Username)
+			if err != nil {
+				logger.L.Warn().Msgf("backfill_user_system_data: failed to get info for %s: %v", users[i].Username, err)
+			} else {
+				if uid > 0 {
+					updates["uid"] = uid
+				}
+				if shell != "" {
+					updates["shell"] = shell
+				}
+			}
+		}
+
+		if users[i].HomeDirPerms == 0 {
+			updates["home_dir_perms"] = 493
+		}
+
+		if len(updates) > 0 {
+			if err := db.Model(&users[i]).Updates(updates).Error; err != nil {
+				logger.L.Warn().Msgf("backfill_user_system_data: failed to update user %s: %v", users[i].Username, err)
+			}
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
 }

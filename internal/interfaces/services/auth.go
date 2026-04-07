@@ -22,6 +22,32 @@ type CustomClaims struct {
 	TokenUse string `json:"tokenUse,omitempty"`
 }
 
+// CreateUserOpts contains create-time-only parameters not stored directly on the model.
+type CreateUserOpts struct {
+	NewPrimaryGroup bool
+	AuxGroupIDs     []uint
+}
+
+// EditUserOpts contains all editable fields for an existing user.
+type EditUserOpts struct {
+	FullName        string
+	Username        string
+	Password        string
+	Email           string
+	Admin           bool
+	UID             int
+	Shell           string
+	HomeDirectory   string
+	HomeDirPerms    uint
+	SSHPublicKey    string
+	DisablePassword bool
+	Locked          bool
+	DoasEnabled     bool
+	NewPrimaryGroup bool
+	PrimaryGroupID  *uint
+	AuxGroupIDs     []uint
+}
+
 type AuthServiceInterface interface {
 	GetJWTSecret() (string, error)
 	GetClusterKey() (string, error)
@@ -49,9 +75,10 @@ type AuthServiceInterface interface {
 
 	ListUsers() ([]models.User, error)
 	GetUserByID(id uint) (*models.User, error)
-	CreateUser(user *models.User) error
+	CreateUser(user *models.User, opts CreateUserOpts) error
 	DeleteUser(userID uint) error
-	EditUser(userID uint, username string, password string, email string, admin bool) error
+	EditUser(userID uint, opts EditUserOpts) error
+	GetNextUID() (int, error)
 	UpdateLastUsageTime(userID uint) error
 
 	AuthenticatePAM(username, password string) (bool, error)
