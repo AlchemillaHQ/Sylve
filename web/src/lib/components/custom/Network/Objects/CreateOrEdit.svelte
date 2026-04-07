@@ -10,14 +10,71 @@
 	import type { NetworkObject } from '$lib/types/network/object';
 	import { handleAPIError } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
+	import { objectLists } from '$lib/utils/network/object';
 	import {
 		generateUnicastMAC,
 		isValidDUID,
 		isValidIPv4,
 		isValidIPv6,
-		isValidMACAddress
+		isValidMACAddress,
+		isValidPortNumber
 	} from '$lib/utils/string';
+
+	const predefinedListOptions = [
+		...objectLists('firehol'),
+		...objectLists('cloudflare'),
+		...objectLists('abusedb')
+	];
 	import { toast } from 'svelte-sonner';
+	import { SvelteSet } from 'svelte/reactivity';
+
+	const objectTypeOptions = [
+		'Host(s)',
+		'Network(s)',
+		'Port(s)',
+		'MAC(s)',
+		'DUID(s)',
+		'FQDN(s)',
+		'List(s)'
+	];
+
+	function isValidFQDN(value: string): boolean {
+		const v = value.trim();
+		if (!v || v.length > 253) return false;
+		const labels = v.split('.');
+		if (labels.length < 2) return false;
+		return labels.every(
+			(label) =>
+				/^[a-zA-Z0-9-]{1,63}$/.test(label) && !label.startsWith('-') && !label.endsWith('-')
+		);
+	}
+
+	function isValidListSourceURL(value: string): boolean {
+		try {
+			const parsed = new URL(value.trim());
+			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+		} catch {
+			return false;
+		}
+	}
+
+	function isValidPortToken(value: string): boolean {
+		const v = value.trim();
+		if (!v || /[\s,]/.test(v)) return false;
+
+		if (v.includes(':')) {
+			const parts = v.split(':');
+			if (parts.length !== 2) return false;
+			const start = parts[0].trim();
+			const end = parts[1].trim();
+			if (!/^\d+$/.test(start) || !/^\d+$/.test(end)) return false;
+			if (!isValidPortNumber(start) || !isValidPortNumber(end)) return false;
+			return Number(start) <= Number(end);
+		}
+
+		if (!/^\d+$/.test(v)) return false;
+		return isValidPortNumber(v);
+	}
 
 	interface Props {
 		open: boolean;
@@ -59,10 +116,16 @@
 					return 'Host(s)';
 				case 'Network':
 					return 'Network(s)';
+				case 'Port':
+					return 'Port(s)';
 				case 'Mac':
 					return 'MAC(s)';
 				case 'DUID':
 					return 'DUID(s)';
+				case 'FQDN':
+					return 'FQDN(s)';
+				case 'List':
+					return 'List(s)';
 				default:
 					return '';
 			}
@@ -84,7 +147,7 @@
 			combobox: {
 				open: false,
 				value: editingObject ? oType : prefill ? prefill.type : '',
-				options: generateComboboxOptions(['Host(s)', 'Network(s)', 'MAC(s)', 'DUID(s)'] as string[])
+				options: generateComboboxOptions(objectTypeOptions as string[])
 			}
 		},
 		hosts: {
@@ -109,6 +172,21 @@
 					? optionsSelected
 					: prefill
 						? prefill.type === 'Network(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
+				options: editingObject
+					? [...generateComboboxOptions(optionsSelected)]
+					: ([] as { label: string; value: string }[])
+			}
+		},
+		ports: {
+			combobox: {
+				open: false,
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'Port(s)'
 							? optionsSelected
 							: ([] as string[])
 						: ([] as string[]),
@@ -146,6 +224,48 @@
 					? [...generateComboboxOptions(optionsSelected)]
 					: ([] as { label: string; value: string }[])
 			}
+		},
+		fqdns: {
+			combobox: {
+				open: false,
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'FQDN(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
+				options: editingObject
+					? [...generateComboboxOptions(optionsSelected)]
+					: ([] as { label: string; value: string }[])
+			}
+		},
+		lists: {
+			combobox: {
+				open: false,
+				value: editingObject
+					? optionsSelected
+					: prefill
+						? prefill.type === 'List(s)'
+							? optionsSelected
+							: ([] as string[])
+						: ([] as string[]),
+				options: editingObject
+					? (() => {
+							const predefinedByValue = new Map(predefinedListOptions.map((p) => [p.value, p]));
+							const result: { label: string; value: string }[] = [];
+							const addedValues = new SvelteSet<string>();
+							for (const url of optionsSelected) {
+								result.push(predefinedByValue.get(url) ?? { label: url, value: url });
+								addedValues.add(url);
+							}
+							for (const p of predefinedListOptions) {
+								if (!addedValues.has(p.value)) result.push(p);
+							}
+							return result;
+						})()
+					: [...predefinedListOptions]
+			}
 		}
 	});
 
@@ -174,6 +294,11 @@
 		) {
 			error = 'At least one network must be selected';
 		} else if (
+			properties.type.combobox.value === 'Port(s)' &&
+			properties.ports.combobox.value.length === 0
+		) {
+			error = 'At least one port must be selected';
+		} else if (
 			properties.type.combobox.value === 'MAC(s)' &&
 			properties.macs.combobox.value.length === 0
 		) {
@@ -183,6 +308,23 @@
 			properties.duids.combobox.value.length === 0
 		) {
 			error = 'At least one DUID must be selected';
+		} else if (
+			properties.type.combobox.value === 'FQDN(s)' &&
+			properties.fqdns.combobox.value.length === 0
+		) {
+			error = 'At least one FQDN must be selected';
+		} else if (
+			properties.type.combobox.value === 'List(s)' &&
+			properties.lists.combobox.value.length === 0
+		) {
+			error = 'At least one list URL must be selected';
+		}
+
+		if (error) {
+			toast.error(error, {
+				position: 'bottom-center'
+			});
+			return;
 		}
 
 		let values = [] as string[];
@@ -207,6 +349,13 @@
 
 			if (!error && hasIPv4 && hasIPv6) {
 				error = 'Cannot mix IPv4 and IPv6 addresses';
+			}
+
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
 			}
 
 			values = hosts;
@@ -235,7 +384,45 @@
 				error = 'Cannot mix IPv4 and IPv6 networks';
 			}
 
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			values = networks;
+			return values;
+		}
+
+		if (properties.type.combobox.value === 'Port(s)') {
+			const ports = Array.from(
+				new Set(properties.ports.combobox.value.map((v) => v.trim()).filter(Boolean))
+			);
+			properties.ports.combobox.value = ports;
+
+			if (ports.length === 0) {
+				toast.error('At least one port must be selected', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			for (const port of ports) {
+				if (!isValidPortToken(port)) {
+					error = `Invalid port token: ${port}`;
+					break;
+				}
+			}
+
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			values = ports;
 			return values;
 		}
 
@@ -248,6 +435,13 @@
 					error = `Invalid MAC address: ${mac}`;
 					break;
 				}
+			}
+
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
 			}
 
 			values = macs;
@@ -272,7 +466,58 @@
 				}
 			}
 
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			values = duids;
+			return values;
+		}
+
+		if (properties.type.combobox.value === 'FQDN(s)') {
+			const fqdns = Array.from(new Set(properties.fqdns.combobox.value.map((v) => v.trim())));
+			properties.fqdns.combobox.value = fqdns;
+
+			for (const fqdn of fqdns) {
+				if (!isValidFQDN(fqdn)) {
+					error = `Invalid FQDN: ${fqdn}`;
+					break;
+				}
+			}
+
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			values = fqdns;
+			return values;
+		}
+
+		if (properties.type.combobox.value === 'List(s)') {
+			const lists = Array.from(new Set(properties.lists.combobox.value.map((v) => v.trim())));
+			properties.lists.combobox.value = lists;
+
+			for (const entry of lists) {
+				if (!isValidListSourceURL(entry)) {
+					error = `Invalid list source URL: ${entry}`;
+					break;
+				}
+			}
+
+			if (error) {
+				toast.error(error, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			values = lists;
 			return values;
 		}
 
@@ -296,11 +541,20 @@
 			case 'Network(s)':
 				oType = 'Network';
 				break;
+			case 'Port(s)':
+				oType = 'Port';
+				break;
 			case 'MAC(s)':
 				oType = 'Mac';
 				break;
 			case 'DUID(s)':
 				oType = 'DUID';
+				break;
+			case 'FQDN(s)':
+				oType = 'FQDN';
+				break;
+			case 'List(s)':
+				oType = 'List';
 				break;
 			default:
 				oType = properties.type.combobox.value;
@@ -365,7 +619,6 @@
 			oType,
 			values as string[]
 		);
-		afterChange();
 
 		if (response.error) {
 			handleAPIError(response);
@@ -399,13 +652,12 @@
 					position: 'bottom-center'
 				});
 			}
-
-			open = false;
 		} else {
 			toast.success('Updated object', {
 				position: 'bottom-center'
 			});
 
+			afterChange();
 			open = false;
 		}
 	}
@@ -474,7 +726,7 @@
 
 		{#if properties.type.combobox.value !== ''}
 			<div class="flex gap-4 overflow-auto">
-				{#if properties.type.combobox.value === 'Host(s)' || properties.type.combobox.value === 'Network(s)' || properties.type.combobox.value === 'MAC(s)' || properties.type.combobox.value === 'DUID(s)'}
+				{#if properties.type.combobox.value === 'Host(s)' || properties.type.combobox.value === 'Network(s)' || properties.type.combobox.value === 'Port(s)' || properties.type.combobox.value === 'MAC(s)' || properties.type.combobox.value === 'DUID(s)' || properties.type.combobox.value === 'FQDN(s)' || properties.type.combobox.value === 'List(s)'}
 					{#if properties.type.combobox.value === 'Host(s)'}
 						<ComboBoxBindable
 							bind:open={properties.hosts.combobox.open}
@@ -494,6 +746,17 @@
 							data={properties.networks.combobox.options}
 							classes="flex-1 space-y-1"
 							placeholder="192.168.1.128/24, fd:beef::/64"
+							width="w-full"
+							multiple={true}
+						></ComboBoxBindable>
+					{:else if properties.type.combobox.value === 'Port(s)'}
+						<ComboBoxBindable
+							bind:open={properties.ports.combobox.open}
+							label="Ports"
+							bind:value={properties.ports.combobox.value}
+							data={properties.ports.combobox.options}
+							classes="flex-1 space-y-1"
+							placeholder="80 or 8000:9000 (one token per entry)"
 							width="w-full"
 							multiple={true}
 						></ComboBoxBindable>
@@ -525,6 +788,28 @@
 							data={properties.duids.combobox.options}
 							classes="flex-1 space-y-1"
 							placeholder="00:01:00:01:23:45:67:89:AB:CD:EF:01"
+							width="w-full"
+							multiple={true}
+						></ComboBoxBindable>
+					{:else if properties.type.combobox.value === 'FQDN(s)'}
+						<ComboBoxBindable
+							bind:open={properties.fqdns.combobox.open}
+							label="FQDNs"
+							bind:value={properties.fqdns.combobox.value}
+							data={properties.fqdns.combobox.options}
+							classes="flex-1 space-y-1"
+							placeholder="example.com"
+							width="w-full"
+							multiple={true}
+						></ComboBoxBindable>
+					{:else if properties.type.combobox.value === 'List(s)'}
+						<ComboBoxBindable
+							bind:open={properties.lists.combobox.open}
+							label="List URLs"
+							bind:value={properties.lists.combobox.value}
+							data={properties.lists.combobox.options}
+							classes="flex-1 space-y-1"
+							placeholder="https://example.com/blocklist.txt"
 							width="w-full"
 							multiple={true}
 						></ComboBoxBindable>

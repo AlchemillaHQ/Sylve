@@ -10,6 +10,7 @@ export interface CreateData {
     storage: {
         pool: string;
         base: string;
+        bootstrapName: string;
         fstab: string;
     };
     network: {

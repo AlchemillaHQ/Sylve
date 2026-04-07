@@ -30,6 +30,7 @@ export async function newJail(data: CreateData): Promise<APIResponse> {
         description: data.description,
         pool: data.storage.pool,
         base: data.storage.base,
+        bootstrapName: data.storage.bootstrapName,
         fstab: data.storage.fstab,
         resolvConf: data.network.resolvConf,
         switchName: data.network.switch,

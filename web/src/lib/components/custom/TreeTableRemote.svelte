@@ -12,6 +12,7 @@
 		type RowComponent
 	} from 'tabulator-tables';
 	import { PersistedState } from 'runed';
+	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 
 	let tableComponent: HTMLDivElement | null = null;
 	let table: Tabulator | null = $state(null);
@@ -48,8 +49,35 @@
 	// svelte-ignore state_referenced_locally
 	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
 		columnWidths: {},
-		expandedRows: {}
+		expandedRows: {},
+		hiddenColumns: {}
 	});
+
+	let hiddenColumns = $state<Record<string, boolean>>(tableState.current.hiddenColumns ?? {});
+
+	function isColumnVisible(field: string): boolean {
+		if (field in hiddenColumns) {
+			return !hiddenColumns[field];
+		}
+		const col = data.columns.find((c) => c.field === field);
+		return col?.visible !== false;
+	}
+
+	function toggleColumnVisibility(field: string) {
+		if (!table) return;
+		const col = table.getColumn(field);
+		if (!col) return;
+
+		if (isColumnVisible(field)) {
+			col.hide();
+			hiddenColumns = { ...hiddenColumns, [field]: true };
+		} else {
+			col.show();
+			hiddenColumns = { ...hiddenColumns, [field]: false };
+		}
+
+		tableState.current = { ...tableState.current, hiddenColumns };
+	}
 
 	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
@@ -146,12 +174,20 @@
 				'.tabulator-tableholder'
 			) as HTMLDivElement | null;
 
-			// Restore column widths from saved state
 			const widths = tableState.current.columnWidths || {};
+			const persistedHidden = tableState.current.hiddenColumns || {};
 			table?.getColumns().forEach((col) => {
-				const width = widths[col.getField() as string];
+				const field = col.getField() as string;
+				const width = widths[field];
 				if (width) {
 					col.setWidth(width);
+				}
+				if (field in persistedHidden) {
+					if (persistedHidden[field]) {
+						col.hide();
+					} else {
+						col.show();
+					}
 				}
 			});
 		});
@@ -231,8 +267,25 @@
 	);
 </script>
 
-<div
-	bind:this={tableComponent}
-	class="flex-1 cursor-pointer s-tree-table-container"
-	id={name}
-></div>
+<ContextMenu.Root>
+	<ContextMenu.Trigger class="flex flex-1">
+		<div
+			bind:this={tableComponent}
+			class="flex-1 cursor-pointer s-tree-table-container"
+			id={name}
+		></div>
+	</ContextMenu.Trigger>
+	<ContextMenu.Content>
+		<ContextMenu.Label>Columns</ContextMenu.Label>
+		<ContextMenu.Separator />
+		{#each data.columns.filter((c) => !!c.field && !!c.title && c.title[0] !== c.title[0].toLowerCase()) as col (col.field)}
+			<ContextMenu.CheckboxItem
+				checked={isColumnVisible(col.field)}
+				onCheckedChange={() => toggleColumnVisibility(col.field)}
+				closeOnSelect={false}
+			>
+				{col.title}
+			</ContextMenu.CheckboxItem>
+		{/each}
+	</ContextMenu.Content>
+</ContextMenu.Root>

@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
-	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
-	import { getVMDomain, getVMs } from '$lib/api/vm/vm';
+	import { getVMs } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import CPU from '$lib/components/custom/VM/Hardware/CPU.svelte';
 	import PCIDevices from '$lib/components/custom/VM/Hardware/PCIDevices.svelte';
@@ -20,19 +19,24 @@
 	import { resource, watch } from 'runed';
 	import type { Row } from '$lib/types/components/tree-table';
 	import TPM from '$lib/components/custom/VM/Hardware/TPM.svelte';
-	import { sleep } from '$lib/utils';
+	import { getContext } from 'svelte';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 
 	interface Data {
 		rid: number;
 		vms: VM[];
 		vm: VM | undefined;
 		ram: RAMInfo;
-		domain: VMDomain;
 		pciDevices: PCIDevice[];
 		pptDevices: PPTDevice[];
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
+	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
+		'vmLifecycleTask'
+	);
 
 	// svelte-ignore state_referenced_locally
 	const vms = resource(
@@ -73,19 +77,6 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	const domain = resource(
-		() => `vm-domain-${data.rid}`,
-		async (key) => {
-			const result = await getVMDomain(Number(data.rid));
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.domain
-		}
-	);
-
 	let vm: VM | null = $derived(
 		vms && data.vm ? (vms.current.find((v: VM) => v.rid === data.vm?.rid) ?? null) : null
 	);
@@ -99,7 +90,6 @@
 				vms.refetch();
 				pciDevices.refetch();
 				pptDevices.refetch();
-				domain.refetch();
 				reload = false;
 			}
 		}
@@ -111,50 +101,17 @@
 			vms.refetch();
 			pciDevices.refetch();
 			pptDevices.refetch();
-			domain.refetch();
 		}
 	);
 
-	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
-		for (let i = 0; i < attempts; i += 1) {
-			await Promise.all([vms.refetch(), domain.refetch()]);
-			if (
-				String(domain.current?.status || '')
-					.trim()
-					.toLowerCase() === targetStatus
-			) {
-				return true;
-			}
-
-			if (i < attempts - 1) {
-				await sleep(500);
-			}
-		}
-
-		return (
+	let isLifecycleActive = $derived(
+		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
+	);
+	let isDomainShutoff = $derived(
+		!isLifecycleActive &&
 			String(domain.current?.status || '')
 				.trim()
-				.toLowerCase() === targetStatus
-		);
-	}
-
-	watch(
-		() => vmPowerSignal.token,
-		() => {
-			void (async () => {
-				if (vmPowerSignal.rid !== Number(data.rid)) return;
-
-				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
-					await refetchUntilDomainStatus('shutoff');
-					return;
-				}
-
-				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
-					await refetchUntilDomainStatus('running');
-				}
-			})();
-		},
-		{ lazy: true }
+				.toLowerCase() === 'shutoff'
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -334,10 +291,8 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={domain.current.status === 'Shutoff'
-			? ''
-			: `${title} can only be edited when the VM is shut off`}
-		disabled={domain.current.status ? domain.current.status !== 'Shutoff' : false}
+		title={isDomainShutoff ? '' : `${title} can only be edited when the VM is shut off`}
+		disabled={!isDomainShutoff}
 	>
 		<div class="flex items-center">
 			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
@@ -347,7 +302,7 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0 && domain.current.status && domain.current.status === 'Shutoff'}
+	{#if activeRows && activeRows?.length !== 0 && isDomainShutoff}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow && activeRow.property === 'RAM'}
 				{@render button('ram', 'RAM')}

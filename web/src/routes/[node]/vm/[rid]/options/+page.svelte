@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
+	import { getVmById } from '$lib/api/vm/vm';
 	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
@@ -17,15 +17,20 @@
 	import type { CellComponent } from 'tabulator-tables';
 	import { resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
-	import { sleep } from '$lib/utils';
+	import { getContext } from 'svelte';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
 
 	interface Data {
 		rid: number;
 		vm: VM;
-		domain: VMDomain;
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
+	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
+		'vmLifecycleTask'
+	);
 
 	// svelte-ignore state_referenced_locally
 	const vm = resource(
@@ -41,27 +46,12 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	const domain = resource(
-		() => `vm-domain-${data.rid}`,
-		async (key) => {
-			const result = await getVMDomain(data.rid);
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.domain
-		}
-	);
-
 	let reload = $state(false);
 
 	useInterval(() => 1000, {
 		callback: () => {
 			if (storage.visible) {
 				vm.refetch();
-				domain.refetch();
 			}
 		}
 	});
@@ -69,49 +59,17 @@
 	watch([() => storage.visible, () => reload], ([newVisible], [newReload]) => {
 		if (newVisible || newReload) {
 			vm.refetch();
-			domain.refetch();
 		}
 	});
 
-	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
-		for (let i = 0; i < attempts; i += 1) {
-			await Promise.all([vm.refetch(), domain.refetch()]);
-			if (
-				String(domain.current?.status || '')
-					.trim()
-					.toLowerCase() === targetStatus
-			) {
-				return true;
-			}
-
-			if (i < attempts - 1) {
-				await sleep(500);
-			}
-		}
-
-		return (
+	let isLifecycleActive = $derived(
+		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
+	);
+	let isDomainShutoff = $derived(
+		!isLifecycleActive &&
 			String(domain.current?.status || '')
 				.trim()
-				.toLowerCase() === targetStatus
-		);
-	}
-
-	watch(
-		() => vmPowerSignal.token,
-		() => {
-			void (async () => {
-				if (vmPowerSignal.rid !== data.rid) return;
-				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
-					await refetchUntilDomainStatus('shutoff');
-					return;
-				}
-
-				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
-					await refetchUntilDomainStatus('running');
-				}
-			})();
-		},
-		{ lazy: true }
+				.toLowerCase() === 'shutoff'
 	);
 
 	let activeRows: Row[] | null = $state(null);
@@ -210,14 +168,10 @@
 		size="sm"
 		variant="outline"
 		class="h-6.5"
-		title={requireShutoff && domain.current.status !== 'Shutoff'
+		title={requireShutoff && !isDomainShutoff
 			? `${title} can only be edited when the VM is shut off`
 			: ''}
-		disabled={requireShutoff
-			? domain.current.status
-				? domain.current.status !== 'Shutoff'
-				: false
-			: false}
+		disabled={requireShutoff ? !isDomainShutoff : false}
 	>
 		<div class="flex items-center">
 			<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>

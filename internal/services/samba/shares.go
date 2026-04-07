@@ -34,7 +34,9 @@ func (s *Service) CreateShare(
 	createMask string,
 	directoryMask string,
 	guestOk bool,
-	readOnly bool) error {
+	readOnly bool,
+	timeMachine bool,
+	timeMachineMaxSize uint64) error {
 	if err := s.DB.Where("name = ?", name).First(&sambaModels.SambaShare{}).Error; err == nil {
 		return fmt.Errorf("share_with_name_exists")
 	}
@@ -92,14 +94,16 @@ func (s *Service) CreateShare(
 	}
 
 	share := sambaModels.SambaShare{
-		Name:            name,
-		Dataset:         dataset,
-		ReadOnlyGroups:  roGroups,
-		WriteableGroups: wrGroups,
-		CreateMask:      createMask,
-		DirectoryMask:   directoryMask,
-		GuestOk:         guestOk,
-		ReadOnly:        readOnly,
+		Name:               name,
+		Dataset:            dataset,
+		ReadOnlyGroups:     roGroups,
+		WriteableGroups:    wrGroups,
+		CreateMask:         createMask,
+		DirectoryMask:      directoryMask,
+		GuestOk:            guestOk,
+		ReadOnly:           readOnly,
+		TimeMachine:        timeMachine,
+		TimeMachineMaxSize: timeMachineMaxSize,
 	}
 
 	if err := s.DB.Create(&share).Error; err != nil {
@@ -120,6 +124,8 @@ func (s *Service) UpdateShare(
 	directoryMask string,
 	guestOk bool,
 	readOnly bool,
+	timeMachine bool,
+	timeMachineMaxSize uint64,
 ) error {
 	var share sambaModels.SambaShare
 	if err := s.DB.Preload("ReadOnlyGroups").Preload("WriteableGroups").First(&share, id).Error; err != nil {
@@ -215,6 +221,8 @@ func (s *Service) UpdateShare(
 	share.DirectoryMask = directoryMask
 	share.GuestOk = guestOk
 	share.ReadOnly = readOnly
+	share.TimeMachine = timeMachine
+	share.TimeMachineMaxSize = timeMachineMaxSize
 
 	if err := tx.Save(&share).Error; err != nil {
 		tx.Rollback()

@@ -111,6 +111,21 @@
 				id: generateNanoId('jails'),
 				property: 'Jails',
 				value: basicSettings.current.services.includes('jails') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('firewall'),
+				property: 'Firewall',
+				value: basicSettings.current.services.includes('firewall') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('wireguard'),
+				property: 'WireGuard',
+				value: basicSettings.current.services.includes('wireguard') ? 'Enabled' : 'Disabled'
+			},
+			{
+				id: generateNanoId('iscsi'),
+				property: 'iSCSI',
+				value: basicSettings.current.services.includes('iscsi') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -144,6 +159,18 @@
 		jails: {
 			open: false,
 			enabled: basicSettings.current.services.includes('jails')
+		},
+		firewall: {
+			open: false,
+			enabled: basicSettings.current.services.includes('firewall')
+		},
+		wireguard: {
+			open: false,
+			enabled: basicSettings.current.services.includes('wireguard')
+		},
+		iscsi: {
+			open: false,
+			enabled: basicSettings.current.services.includes('iscsi')
 		}
 	});
 
@@ -165,7 +192,10 @@
 			modals['wol-server'].open ||
 			modals['samba-server'].open ||
 			modals.virtualization.open ||
-			modals.jails.open
+			modals.jails.open ||
+			modals.firewall.open ||
+			modals.wireguard.open ||
+			modals.iscsi.open
 	);
 
 	useInterval(3000, {
@@ -249,6 +279,12 @@
 					modals['virtualization'].open = true;
 				} else if (activeRow?.property === 'Jails') {
 					modals['jails'].open = true;
+				} else if (activeRow?.property === 'Firewall') {
+					modals['firewall'].open = true;
+				} else if (activeRow?.property === 'WireGuard') {
+					modals['wireguard'].open = true;
+				} else if (activeRow?.property === 'iSCSI') {
+					modals['iscsi'].open = true;
 				}
 			}}
 		>
@@ -265,11 +301,19 @@
 
 {#snippet serviceToggleDialog(
 	serviceName: string,
-	serviceKey: 'dhcp-server' | 'wol-server' | 'samba-server' | 'virtualization' | 'jails',
+	serviceKey:
+		| 'dhcp-server'
+		| 'wol-server'
+		| 'samba-server'
+		| 'virtualization'
+		| 'jails'
+		| 'firewall'
+		| 'wireguard'
+		| 'iscsi',
 	enabled: boolean
 )}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
-	{@const hasNetworkWarning = serviceName === 'DHCP Server'}
+	{@const hasNetworkWarning = serviceName === 'DHCP Server' || serviceName === 'Firewall'}
 	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
 	{@const networkWarning = hasNetworkWarning ? 'this may affect network configurations, ' : ''}
 
@@ -334,3 +378,6 @@
 {@render serviceToggleDialog('Samba Server', 'samba-server', modals['samba-server'].enabled)}
 {@render serviceToggleDialog('Virtualization', 'virtualization', modals['virtualization'].enabled)}
 {@render serviceToggleDialog('Jails', 'jails', modals['jails'].enabled)}
+{@render serviceToggleDialog('Firewall', 'firewall', modals['firewall'].enabled)}
+{@render serviceToggleDialog('WireGuard', 'wireguard', modals['wireguard'].enabled)}
+{@render serviceToggleDialog('iSCSI', 'iscsi', modals['iscsi'].enabled)}

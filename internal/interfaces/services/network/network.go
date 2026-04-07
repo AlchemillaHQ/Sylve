@@ -8,6 +8,8 @@
 
 package networkServiceInterfaces
 
+import "context"
+
 import networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 
 type NetworkServiceInterface interface {
@@ -47,5 +49,9 @@ type NetworkServiceInterface interface {
 	CreateEpair(name string) error
 	SyncEpairs(forceStart bool) error
 	DeleteEpair(name string) error
+	StartFirewallMonitor(ctx context.Context)
+	EnableWireGuardService(ctx context.Context) error
+	DisableWireGuardService(ctx context.Context) error
+	ReconcileManagedRoutes() error
 	RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint))
 }

@@ -9,10 +9,12 @@
 package systemHandlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/gin-gonic/gin"
 )
@@ -102,7 +104,7 @@ func AddUsablePools(systemService *system.Service) gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /system/basic-settings/toggle-service/:service [put]
-func ToggleService(systemService *system.Service) gin.HandlerFunc {
+func ToggleService(systemService *system.Service, networkSvc *networkService.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		serviceParam := c.Param("service")
 		if serviceParam == "" {
@@ -122,12 +124,26 @@ func ToggleService(systemService *system.Service) gin.HandlerFunc {
 			models.Jails,
 			models.SambaServer,
 			models.Virtualization,
-			models.WoLServer:
+			models.WoLServer,
+			models.Firewall,
+			models.WireGuard,
+			models.ISCSI:
 		default:
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_service",
 				Error:   "unsupported_service",
+				Data:    nil,
+			})
+			return
+		}
+
+		before, beforeErr := systemService.GetBasicSettings()
+		if beforeErr != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "toggle_failed",
+				Error:   beforeErr.Error(),
 				Data:    nil,
 			})
 			return
@@ -141,6 +157,111 @@ func ToggleService(systemService *system.Service) gin.HandlerFunc {
 				Data:    nil,
 			})
 			return
+		}
+
+		after, afterErr := systemService.GetBasicSettings()
+		if afterErr != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "toggle_failed",
+				Error:   afterErr.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if service == models.Firewall && networkSvc != nil {
+			wasEnabled := false
+			isEnabled := false
+			for _, s := range before.Services {
+				if s == models.Firewall {
+					wasEnabled = true
+					break
+				}
+			}
+			for _, s := range after.Services {
+				if s == models.Firewall {
+					isEnabled = true
+					break
+				}
+			}
+
+			if !wasEnabled && isEnabled {
+				if err := networkSvc.ApplyFirewallConfig(); err != nil {
+					if rollbackErr := systemService.ServiceToggle(service); rollbackErr != nil {
+						err = errors.Join(err, rollbackErr)
+					}
+					c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "toggle_failed",
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
+
+			if wasEnabled && !isEnabled {
+				if err := networkSvc.DisableFirewall(); err != nil {
+					if rollbackErr := systemService.ServiceToggle(service); rollbackErr != nil {
+						err = errors.Join(err, rollbackErr)
+					}
+					c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "toggle_failed",
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
+		}
+
+		if service == models.WireGuard && networkSvc != nil {
+			wasEnabled := false
+			isEnabled := false
+			for _, s := range before.Services {
+				if s == models.WireGuard {
+					wasEnabled = true
+					break
+				}
+			}
+			for _, s := range after.Services {
+				if s == models.WireGuard {
+					isEnabled = true
+					break
+				}
+			}
+
+			if !wasEnabled && isEnabled {
+				if err := networkSvc.EnableWireGuardService(c.Request.Context()); err != nil {
+					if rollbackErr := systemService.ServiceToggle(service); rollbackErr != nil {
+						err = errors.Join(err, rollbackErr)
+					}
+					c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "toggle_failed",
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
+
+			if wasEnabled && !isEnabled {
+				if err := networkSvc.DisableWireGuardService(c.Request.Context()); err != nil {
+					if rollbackErr := systemService.ServiceToggle(service); rollbackErr != nil {
+						err = errors.Join(err, rollbackErr)
+					}
+					c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+						Status:  "error",
+						Message: "toggle_failed",
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{

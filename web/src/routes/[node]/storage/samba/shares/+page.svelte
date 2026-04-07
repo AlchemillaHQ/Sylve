@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { listGroups } from '$lib/api/auth/groups';
+	import { getSambaConfig } from '$lib/api/samba/config';
 	import { deleteSambaShare, getSambaShares } from '$lib/api/samba/share';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
@@ -9,6 +10,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Group } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { SambaConfig } from '$lib/types/samba/config';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
@@ -21,10 +23,12 @@
 		shares: SambaShare[];
 		datasets: Dataset[];
 		groups: Group[];
+		sambaConfig: SambaConfig;
 	}
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let datasets = resource(
 		() => 'zfs-filesystems',
 		async () => {
@@ -37,6 +41,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let shares = resource(
 		() => 'samba-shares',
 		async () => {
@@ -49,6 +54,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let groups = resource(
 		() => 'groups',
 		async () => {
@@ -58,6 +64,19 @@
 		},
 		{
 			initialValue: data.groups
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
+	let sambaConfig = resource(
+		() => 'samba-config',
+		async () => {
+			const result = await getSambaConfig();
+			updateCache('samba-config', result);
+			return result;
+		},
+		{
+			initialValue: data.sambaConfig
 		}
 	);
 
@@ -96,8 +115,7 @@
 
 	function generateTableData(
 		shares: SambaShare[],
-		datasets: Dataset[],
-		groups: Group[]
+		datasets: Dataset[]
 	): {
 		rows: Row[];
 		columns: Column[];
@@ -168,7 +186,7 @@
 		};
 	}
 
-	let tableData = $derived(generateTableData(shares.current, datasets.current, groups.current));
+	let tableData = $derived(generateTableData(shares.current, datasets.current));
 </script>
 
 {#snippet button(type: string)}
@@ -235,7 +253,7 @@
 
 	<TreeTable
 		data={tableData}
-		name={'shares-tt'}
+		name="samba-shares-tt"
 		bind:parentActiveRow={activeRows}
 		multipleSelect={true}
 		bind:query
@@ -248,6 +266,7 @@
 		shares={shares.current}
 		datasets={datasets.current}
 		groups={groups.current}
+		appleExtensions={sambaConfig.current.appleExtensions}
 		bind:reload
 	/>
 {/if}
@@ -260,6 +279,7 @@
 		groups={groups.current}
 		share={properties.edit.share}
 		edit={properties.edit.open}
+		appleExtensions={sambaConfig.current.appleExtensions}
 		bind:reload
 	/>
 {/if}

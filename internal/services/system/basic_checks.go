@@ -121,5 +121,21 @@ func (s *Service) CheckSambaServer() error {
 		return fmt.Errorf("samba4XX_erquired_package_not_installed")
 	}
 
+	if !pkg.IsPackageInstalled("avahi-app") {
+		return fmt.Errorf("avahi_required_package_avahi-app_not_installed")
+	}
+
+	return nil
+}
+
+func (s *Service) CheckWireGuard() error {
+	if _, err := utils.RunCommand("/sbin/kldstat", "-m", "if_wg"); err == nil {
+		return nil
+	}
+
+	if _, err := utils.RunCommand("/sbin/kldload", "-n", "if_wg"); err != nil {
+		return fmt.Errorf("wireguard_failed_to_load_if_wg: %w", err)
+	}
+
 	return nil
 }

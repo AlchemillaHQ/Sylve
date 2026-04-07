@@ -142,7 +142,6 @@
 		}
 	}
 
-	let tableName = 'tt-notes';
 	let columns: Column[] = $derived([
 		{
 			field: 'id',
@@ -374,7 +373,7 @@
 	</Dialog.Root>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		<TreeTable data={tableData} name={tableName} bind:parentActiveRow={activeRow} bind:query />
+		<TreeTable data={tableData} name="tt-notes" bind:parentActiveRow={activeRow} bind:query />
 	</div>
 
 	<AlertDialog

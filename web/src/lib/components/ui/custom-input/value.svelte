@@ -5,6 +5,7 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { generateNanoId } from '$lib/utils/string';
 	import type { FullAutoFill } from 'svelte/elements';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	interface Props {
 		label?: string;
@@ -12,10 +13,12 @@
 		value: string | number;
 		placeholder: string;
 		autocomplete?: FullAutoFill | null | undefined;
-		classes: string;
+		classes?: string;
 		type?: string;
+		hint?: string;
 		textAreaClasses?: string;
 		disabled?: boolean;
+		revealOnFocus?: boolean;
 		onChange?: (value: string | number) => void;
 		onBlur?: () => void;
 		topRightButton?: {
@@ -29,6 +32,7 @@
 		value = $bindable(''),
 		label = '',
 		labelHTML = false,
+		hint = '',
 		placeholder = '',
 		autocomplete = 'off',
 		classes = 'space-y-1.5',
@@ -36,24 +40,47 @@
 		textAreaClasses = 'min-h-56',
 		topRightButton,
 		disabled = false,
+		revealOnFocus = false,
 		onChange,
 		onBlur
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let nanoId = $state(generateNanoId(label));
+	let passwordFocused = $state(false);
+	let effectiveType = $derived(
+		type === 'password' && revealOnFocus && passwordFocused ? 'text' : type
+	);
 </script>
 
 <div class={`${classes}`}>
 	{#if label}
-		<div class="flex items-center justify-between w-full">
+		<div class="flex min-h-6 items-center justify-between w-full">
 			<Label class="whitespace-nowrap text-sm" for={nanoId}>
 				{#if labelHTML}
+					<!-- eslint-disable-next-line svelte/no-at-html-tags-->
 					{@html label}
 				{:else}
 					{label}
 				{/if}
 			</Label>
+
+			{#if hint}
+				<Tooltip.Root>
+					<Tooltip.Trigger
+						aria-label="Help Information"
+						class="inline-flex items-center justify-center"
+					>
+						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
+					</Tooltip.Trigger>
+
+					<Tooltip.Content
+						class="w-fit max-w-62.5 min-w-0 text-balance wrap-break-word whitespace-normal"
+					>
+						{hint}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 
 			{#if topRightButton}
 				<Button
@@ -90,10 +117,13 @@
 		/>
 	{:else}
 		<Input
-			{type}
+			{...{ type: effectiveType }}
 			id={nanoId}
 			{placeholder}
 			{autocomplete}
+			onfocus={() => {
+				if (type === 'password' && revealOnFocus) passwordFocused = true;
+			}}
 			bind:value
 			{disabled}
 			oninput={(e) => {
@@ -101,6 +131,7 @@
 				if (onChange) onChange(value);
 			}}
 			onblur={() => {
+				if (type === 'password' && revealOnFocus) passwordFocused = false;
 				if (onBlur) onBlur();
 			}}
 		/>

@@ -1,6 +1,5 @@
 import { getDownloads } from '$lib/api/utilities/downloader';
-import { getVmById } from '$lib/api/vm/vm';
-import { getVMDomain, getVMs } from '$lib/api/vm/vm';
+import { getVmById, getVMs } from '$lib/api/vm/vm';
 import { getDatasets } from '$lib/api/zfs/datasets';
 import { getPools } from '$lib/api/zfs/pool';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
@@ -11,10 +10,9 @@ export async function load({ params }) {
     const cacheDuration = SEVEN_DAYS;
     const rid = Number(params.rid);
 
-    const [vms, vm, domain, filesystems, volumes, pools, downloads] = await Promise.all([
+    const [vms, vm, filesystems, volumes, pools, downloads] = await Promise.all([
         cachedFetch('vms', async () => await getVMs(), cacheDuration),
         cachedFetch(`vm-${rid}`, async () => await getVmById(rid, 'rid'), cacheDuration),
-        cachedFetch(`vm-domain-${rid}`, async () => getVMDomain(rid), cacheDuration),
         cachedFetch(
             'zfs-filesystems',
             async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
@@ -33,7 +31,6 @@ export async function load({ params }) {
         vms: vms,
         vm: vm,
         rid: rid,
-        domain: domain,
         filesystems: filesystems,
         volumes: volumes,
         pools: pools,

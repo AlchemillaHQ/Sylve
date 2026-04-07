@@ -1,3 +1,4 @@
+difuse/
 .gocache/
 data/*
 !data/.gitignore

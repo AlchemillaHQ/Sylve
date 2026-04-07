@@ -116,7 +116,7 @@
 
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
-		<div class="flex items-center justify-between w-full">
+		<div class="flex min-h-6 items-center justify-between w-full">
 			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
 				{label}
 			</Label>

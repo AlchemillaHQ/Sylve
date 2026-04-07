@@ -32,6 +32,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/info"
+	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -79,7 +80,13 @@ func main() {
 		return
 	}
 
-	cfg := config.ParseConfig(cfgResult.ConfigPath)
+	resolvedConfigPath, err := cmd.ResolveConfigPath(cfgResult.ConfigPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	cfg := config.ParseConfig(resolvedConfigPath)
 	logger.InitLogger(cfg.Environment, cfg.DataPath, cfg.LogLevel)
 	logger.L.Info().
 		Str("environment", string(cfg.Environment)).
@@ -125,6 +132,7 @@ func main() {
 	sysS := serviceRegistry.SystemService
 	lvS := serviceRegistry.LibvirtService
 	smbS := serviceRegistry.SambaService
+	iscsiSvc := serviceRegistry.ISCSIService.(*iscsi.Service)
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
@@ -157,6 +165,12 @@ func main() {
 	}
 
 	logger.L.Info().Msg("Basic initializations complete")
+
+	if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_sync_firewall_runtime_state_during_startup")
+	}
+
+	go nS.(*networkService.Service).StartObjectRefreshWorker(qCtx)
 
 	startAdvancedStartupWorkers, basicSettings, settingsErr := shouldStartAdvancedStartupWorkers(func() (dbModels.BasicSettings, error) {
 		var settings dbModels.BasicSettings
@@ -231,6 +245,7 @@ func main() {
 		sysS.(*system.Service),
 		libvirtSvc,
 		smbS.(*samba.Service),
+		iscsiSvc,
 		jailSvc,
 		lifecycleSvc,
 		clusterSvc,

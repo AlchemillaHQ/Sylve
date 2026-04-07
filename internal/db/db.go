@@ -15,6 +15,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
@@ -106,6 +107,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&jailModels.JailSnapshot{},
 		&jailModels.JailTemplate{},
 		&jailModels.Jail{},
+		&jailModels.JailBootstrap{},
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},
@@ -114,6 +116,14 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
+		&networkModels.ObjectListSnapshot{},
+		&networkModels.FirewallTrafficRule{},
+		&networkModels.FirewallNATRule{},
+		&networkModels.FirewallAdvancedSettings{},
+		&networkModels.StaticRoute{},
+		&networkModels.WireGuardServer{},
+		&networkModels.WireGuardServerPeer{},
+		&networkModels.WireGuardClient{},
 
 		&networkModels.DHCPConfig{},
 		&networkModels.DHCPRange{},
@@ -136,6 +146,11 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
+
+		&iscsiModels.ISCSIInitiator{},
+		&iscsiModels.ISCSITarget{},
+		&iscsiModels.ISCSITargetPortal{},
+		&iscsiModels.ISCSITargetLUN{},
 
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
@@ -175,6 +190,11 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	err = initDHCPConfig(db)
 	if err != nil {
 		logger.L.Fatal().Msgf("Error initializing DHCP config: %v", err)
+	}
+
+	err = initFirewallConfig(db)
+	if err != nil {
+		logger.L.Fatal().Msgf("Error initializing firewall config: %v", err)
 	}
 
 	err = Fixups(db)
@@ -350,6 +370,30 @@ func initDHCPConfig(db *gorm.DB) error {
 
 	if err := db.Create(dhcpConfig).Error; err != nil {
 		logger.L.Error().Msgf("Failed to create initial DHCP config record: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func initFirewallConfig(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&networkModels.FirewallAdvancedSettings{}).Count(&count).Error; err != nil {
+		logger.L.Error().Msgf("Failed to query firewall config count: %v", err)
+		return err
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	firewallConfig := &networkModels.FirewallAdvancedSettings{
+		PreRules:  "",
+		PostRules: "",
+	}
+
+	if err := db.Create(firewallConfig).Error; err != nil {
+		logger.L.Error().Msgf("Failed to create initial firewall config record: %v", err)
 		return err
 	}
 

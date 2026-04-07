@@ -69,3 +69,7 @@ export function isValidVLAN(vlan: number): boolean {
 export function pad(n: number) {
     return String(n).padStart(2, '0');
 }
+
+export function randInt(max: number): number {
+    return Math.floor(Math.random() * max);
+}

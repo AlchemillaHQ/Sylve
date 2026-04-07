@@ -31,15 +31,15 @@ export function parseSMART(disk: Disk): SmartAttribute | SmartAttribute[] {
                 'Volatile Memory Backup': (disk.smartData as SmartNVMe).criticalWarningState
                     .volatileMemoryBackup
             },
-            'Data Units Read': (disk.smartData as SmartNVMe).dataUnitsRead,
-            'Data Units Written': (disk.smartData as SmartNVMe).dataUnitsWritten,
+            'Data Units Read': `${(disk.smartData as SmartNVMe).dataUnitsRead} (${formatBytesBinary((disk.smartData as SmartNVMe).dataUnitsRead * 512)})`,
+            'Data Units Written': `${(disk.smartData as SmartNVMe).dataUnitsWritten} (${formatBytesBinary((disk.smartData as SmartNVMe).dataUnitsWritten * 512)})`,
             'Error Info Log Entries': (disk.smartData as SmartNVMe).errorInfoLogEntries,
             'Host Read Commands': (disk.smartData as SmartNVMe).hostReadCommands,
             'Host Write Commands': (disk.smartData as SmartNVMe).hostWriteCommands,
             'Media Errors': (disk.smartData as SmartNVMe).mediaErrors,
             'Percentage Used': (disk.smartData as SmartNVMe).percentageUsed,
             'Power Cycles': (disk.smartData as SmartNVMe).power_cycle_count,
-            'Power On Hours': (disk.smartData as SmartNVMe).power_on_hours,
+            'Power On Hours (Days)': `${(disk.smartData as SmartNVMe).power_on_hours} (${Math.floor((disk.smartData as SmartNVMe).power_on_hours / 24)} days)`,
             Temperature: (disk.smartData as SmartNVMe).temperature,
             'Temperature 1 Transition Count': (disk.smartData as SmartNVMe).temperature1TransitionCnt,
             'Temperature 2 Transition Count': (disk.smartData as SmartNVMe).temperature2TransitionCnt,

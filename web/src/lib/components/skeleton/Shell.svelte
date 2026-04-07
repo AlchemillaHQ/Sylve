@@ -40,12 +40,10 @@
 	let leftPaneDefaultSize = $state(12);
 	let topPaneDefaultSize = $state(90);
 	let bottomPaneDefaultSize = $state(10);
-	let lifecyclePaneActive = $state(false);
 
 	const lifecyclePaneBoost = 6;
 
 	function handleLifecycleActiveChange(active: boolean) {
-		lifecyclePaneActive = active;
 		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
 		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
 	}

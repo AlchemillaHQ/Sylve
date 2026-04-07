@@ -64,7 +64,7 @@
 		return false;
 	}
 
-	watch([() => activeUrl, () => item], ([activeUrl, item]) => {
+	watch([() => activeUrl], ([activeUrl]) => {
 		isOpen = isItemOpen(item, activeUrl);
 	});
 </script>

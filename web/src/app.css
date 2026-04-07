@@ -175,4 +175,16 @@
 	@import './css/tabulator_simple.css';
 	@import 'filepond/dist/filepond.css';
 	@import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+	.tabulator-popup-container {
+		background: var(--popover);
+		border-color: var(--border);
+		color: var(--popover-foreground);
+	}
+
+	.tabulator-tooltip {
+		background: var(--popover);
+		border: 1px solid var(--border);
+		color: var(--popover-foreground);
+	}
 }

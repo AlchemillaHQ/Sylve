@@ -12,6 +12,7 @@
 		type RowComponent
 	} from 'tabulator-tables';
 	import { PersistedState } from 'runed';
+	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 
 	let tableComponent: HTMLDivElement | null = null;
 	let table: Tabulator | null = $state(null);
@@ -27,6 +28,10 @@
 		multipleSelect?: boolean;
 		customPlaceholder?: string;
 		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
+		movable?: boolean;
+		onRowMoved?: (rows: Row[]) => void;
+		persistSort?: boolean;
+		rowFormatter?: (row: RowComponent) => void;
 	}
 
 	let {
@@ -36,14 +41,47 @@
 		query = $bindable(),
 		multipleSelect = true,
 		customPlaceholder = 'No data available',
-		initialSort
+		initialSort,
+		movable = false,
+		onRowMoved,
+		persistSort = true,
+		rowFormatter
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	const tableState = new PersistedState<TreeTableState>(`${name}-state`, {
 		columnWidths: {},
-		expandedRows: {}
+		expandedRows: {},
+		hiddenColumns: {}
 	});
+
+	// hiddenColumns values: true = hidden, false = explicitly shown (overrides visible:false default)
+	// missing key = use column definition's visible property
+	let hiddenColumns = $state<Record<string, boolean>>(tableState.current.hiddenColumns ?? {});
+
+	function isColumnVisible(field: string): boolean {
+		if (field in hiddenColumns) {
+			return !hiddenColumns[field];
+		}
+		const col = data.columns.find((c) => c.field === field);
+		return col?.visible !== false;
+	}
+
+	function toggleColumnVisibility(field: string) {
+		if (!table) return;
+		const col = table.getColumn(field);
+		if (!col) return;
+
+		if (isColumnVisible(field)) {
+			col.hide();
+			hiddenColumns = { ...hiddenColumns, [field]: true };
+		} else {
+			col.show();
+			hiddenColumns = { ...hiddenColumns, [field]: false };
+		}
+
+		tableState.current = { ...tableState.current, hiddenColumns };
+	}
 
 	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
@@ -189,7 +227,7 @@
 				data: pruneEmptyChildren(data.rows),
 				reactiveData: false,
 				columns: data.columns as ColumnDefinition[],
-				layout: 'fitColumns',
+				layout: 'fitDataStretch',
 				selectableRows: multipleSelect ? true : 1,
 				dataTreeChildIndent: 16,
 				dataTree: true,
@@ -198,7 +236,7 @@
 				persistenceID: name,
 				paginationMode: 'local',
 				persistence: {
-					sort: true,
+					sort: persistSort,
 					page: true,
 					filter: true
 				},
@@ -207,12 +245,33 @@
 				paginationSize: 25,
 				paginationCounter: 'pages',
 				initialSort: initialSort ? initialSort : [],
-				debugInvalidOptions: false
+				rowFormatter,
+				debugInvalidOptions: false,
+				...(movable
+					? {
+							movableRows: true,
+							rowHeader: {
+								headerSort: false,
+								resizable: false,
+								minWidth: 30,
+								width: 30,
+								rowHandle: true,
+								formatter: 'handle'
+							}
+						}
+					: {})
 			});
 		}
 
 		table?.on('rowSelected', updateParentActiveRows);
 		table?.on('rowDeselected', updateParentActiveRows);
+
+		if (movable) {
+			table?.on('rowMoved', () => {
+				const rows = (table?.getData() as Row[]) ?? [];
+				onRowMoved?.(rows);
+			});
+		}
 
 		table?.on('rowDblClick', (_event: UIEvent, row: RowComponent) => {
 			row.toggleSelect();
@@ -225,11 +284,22 @@
 			) as HTMLDivElement | null;
 
 			const widths = tableState.current.columnWidths || {};
+			const persistedHidden = tableState.current.hiddenColumns || {};
 			table?.getColumns().forEach((col) => {
-				const width = widths[col.getField() as string];
+				const field = col.getField() as string;
+				const width = widths[field];
 				if (width) {
 					col.setWidth(width);
 				}
+				if (field in persistedHidden) {
+					// true = explicitly hidden, false = explicitly shown (overrides visible:false)
+					if (persistedHidden[field]) {
+						col.hide();
+					} else {
+						col.show();
+					}
+				}
+				// no entry → leave Tabulator's default (from column definition) as-is
 			});
 
 			restoreExpandedState();
@@ -282,6 +352,8 @@
 		});
 
 		table?.on('columnResized', () => {
+			console.log('Column resized, saving widths...');
+
 			const colWidths: Record<string, number> = {};
 
 			table?.getColumns().forEach((col) => {
@@ -332,8 +404,45 @@
 	);
 </script>
 
-<div
-	bind:this={tableComponent}
-	class="flex-1 cursor-pointer s-tree-table-container"
-	id={name}
-></div>
+<ContextMenu.Root>
+	<ContextMenu.Trigger class="flex flex-1 min-h-0">
+		<div
+			bind:this={tableComponent}
+			class="flex-1 min-h-0 cursor-pointer s-tree-table-container"
+			id={name}
+		></div>
+	</ContextMenu.Trigger>
+	<ContextMenu.Content>
+		<ContextMenu.Label>Columns</ContextMenu.Label>
+		<ContextMenu.Separator />
+		{#each data.columns.filter((c) => !!c.field && !!c.title && c.title[0] !== c.title[0].toLowerCase()) as col (col.field)}
+			<ContextMenu.CheckboxItem
+				checked={isColumnVisible(col.field)}
+				onCheckedChange={() => toggleColumnVisibility(col.field)}
+				closeOnSelect={false}
+			>
+				{col.title}
+			</ContextMenu.CheckboxItem>
+		{/each}
+	</ContextMenu.Content>
+</ContextMenu.Root>
+
+<style>
+	:global(.s-tree-table-container > .tabulator) {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	:global(.s-tree-table-container > .tabulator > .tabulator-tableholder) {
+		flex: 1;
+		min-height: 0;
+	}
+
+	:global(.s-tree-table-container .tabulator-row.managed-row .tabulator-row-handle) {
+		pointer-events: none;
+		cursor: default;
+		opacity: 0.25;
+	}
+</style>

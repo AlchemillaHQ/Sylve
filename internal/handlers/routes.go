@@ -26,6 +26,7 @@ import (
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
 	infoHandlers "github.com/alchemillahq/sylve/internal/handlers/info"
+	iscsiHandlers "github.com/alchemillahq/sylve/internal/handlers/iscsi"
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
@@ -40,6 +41,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
+	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -82,6 +84,7 @@ func RegisterRoutes(r *gin.Engine,
 	systemService *systemService.Service,
 	libvirtService *libvirt.Service,
 	sambaService *samba.Service,
+	iscsiService *iscsi.Service,
 	jailService *jail.Service,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
@@ -205,6 +208,27 @@ func RegisterRoutes(r *gin.Engine,
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))
 	}
 
+	iscsiGroup := api.Group("/iscsi")
+	iscsiGroup.Use(middleware.EnsureAuthenticated(authService))
+	iscsiGroup.Use(EnsureCorrectHost(db, authService))
+	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		iscsiGroup.GET("/initiators", iscsiHandlers.GetInitiators(iscsiService))
+		iscsiGroup.POST("/initiators", iscsiHandlers.CreateInitiator(iscsiService))
+		iscsiGroup.PUT("/initiators", iscsiHandlers.UpdateInitiator(iscsiService))
+		iscsiGroup.DELETE("/initiators/:id", iscsiHandlers.DeleteInitiator(iscsiService))
+		iscsiGroup.GET("/status", iscsiHandlers.GetStatus(iscsiService))
+
+		iscsiGroup.GET("/targets", iscsiHandlers.GetTargets(iscsiService))
+		iscsiGroup.POST("/targets", iscsiHandlers.CreateTarget(iscsiService))
+		iscsiGroup.PUT("/targets", iscsiHandlers.UpdateTarget(iscsiService))
+		iscsiGroup.DELETE("/targets/:id", iscsiHandlers.DeleteTarget(iscsiService))
+		iscsiGroup.POST("/targets/:id/portals", iscsiHandlers.AddPortal(iscsiService))
+		iscsiGroup.DELETE("/targets/portals/:portalId", iscsiHandlers.RemovePortal(iscsiService))
+		iscsiGroup.POST("/targets/:id/luns", iscsiHandlers.AddLUN(iscsiService))
+		iscsiGroup.DELETE("/targets/luns/:lunId", iscsiHandlers.RemoveLUN(iscsiService))
+	}
+
 	disk := api.Group("/disk")
 	disk.Use(middleware.EnsureAuthenticated(authService))
 	disk.Use(EnsureCorrectHost(db, authService))
@@ -224,8 +248,51 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		network.GET("/object", networkHandlers.ListNetworkObjects(networkService))
 		network.POST("/object", networkHandlers.CreateNetworkObject(networkService))
+		network.POST("/object/bulk-delete", networkHandlers.BulkDeleteNetworkObjects(networkService))
 		network.DELETE("/object/:id", networkHandlers.DeleteNetworkObject(networkService))
 		network.PUT("/object/:id", networkHandlers.EditNetworkObject(networkService))
+
+		network.GET("/firewall/traffic", networkHandlers.ListFirewallTrafficRules(networkService))
+		network.GET("/firewall/traffic/counters", networkHandlers.ListFirewallTrafficRuleCounters(networkService))
+		network.POST("/firewall/traffic", networkHandlers.CreateFirewallTrafficRule(networkService))
+		network.PUT("/firewall/traffic/reorder", networkHandlers.ReorderFirewallTrafficRules(networkService))
+		network.PUT("/firewall/traffic/:id", networkHandlers.EditFirewallTrafficRule(networkService))
+		network.DELETE("/firewall/traffic/:id", networkHandlers.DeleteFirewallTrafficRule(networkService))
+
+		network.GET("/firewall/nat", networkHandlers.ListFirewallNATRules(networkService))
+		network.GET("/firewall/nat/counters", networkHandlers.ListFirewallNATRuleCounters(networkService))
+		network.POST("/firewall/nat", networkHandlers.CreateFirewallNATRule(networkService))
+		network.PUT("/firewall/nat/reorder", networkHandlers.ReorderFirewallNATRules(networkService))
+		network.PUT("/firewall/nat/:id", networkHandlers.EditFirewallNATRule(networkService))
+		network.DELETE("/firewall/nat/:id", networkHandlers.DeleteFirewallNATRule(networkService))
+		network.GET("/firewall/logs/live", networkHandlers.ListFirewallLiveHits(networkService))
+
+		network.GET("/firewall/advanced", networkHandlers.GetFirewallAdvancedSettings(networkService))
+		network.PUT("/firewall/advanced", networkHandlers.UpdateFirewallAdvancedSettings(networkService))
+
+		network.GET("/route", networkHandlers.ListStaticRoutes(networkService))
+		network.POST("/route", networkHandlers.CreateStaticRoute(networkService))
+		network.PUT("/route/:id", networkHandlers.EditStaticRoute(networkService))
+		network.DELETE("/route/:id", networkHandlers.DeleteStaticRoute(networkService))
+		network.POST("/route/suggest-from-nat/:id", networkHandlers.SuggestStaticRoutesFromNATRule(networkService))
+
+		network.GET("/wireguard/server", networkHandlers.GetWireGuardServer(networkService))
+		network.POST("/wireguard/server", networkHandlers.InitWireGuardServer(networkService))
+		network.PUT("/wireguard/server", networkHandlers.EditWireGuardServer(networkService))
+		network.DELETE("/wireguard/server", networkHandlers.DeinitWireGuardServer(networkService))
+		network.PUT("/wireguard/server/toggle", networkHandlers.ToggleWireGuardServer(networkService))
+
+		network.POST("/wireguard/server/peer", networkHandlers.AddWireGuardServerPeer(networkService))
+		network.PUT("/wireguard/server/peer/:peerId", networkHandlers.EditWireGuardServerPeer(networkService))
+		network.PUT("/wireguard/server/peer/toggle/:peerId", networkHandlers.ToggleWireGuardServerPeer(networkService))
+		network.DELETE("/wireguard/server/peer/:peerId", networkHandlers.RemoveWireGuardServerPeer(networkService))
+		network.DELETE("/wireguard/server/peer/bulk-delete", networkHandlers.RemoveWireGuardServerPeers(networkService))
+
+		network.GET("/wireguard/clients", networkHandlers.GetWireGuardClients(networkService))
+		network.POST("/wireguard/clients", networkHandlers.CreateWireGuardClient(networkService))
+		network.PUT("/wireguard/clients/:clientId", networkHandlers.EditWireGuardClient(networkService))
+		network.DELETE("/wireguard/clients/:clientId", networkHandlers.DeleteWireGuardClient(networkService))
+		network.PUT("/wireguard/clients/toggle/:clientId", networkHandlers.ToggleWireGuardClient(networkService))
 
 		network.GET("/interface", networkHandlers.ListInterfaces(networkService))
 
@@ -264,7 +331,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
-		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService))
+		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
 	}
 
 	fileExplorer := system.Group("/file-explorer")
@@ -348,6 +415,9 @@ func RegisterRoutes(r *gin.Engine,
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
+		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
+		jail.POST("/bootstrap", jailHandlers.CreateBootstrap(jailService))
+		jail.DELETE("/bootstrap", jailHandlers.DeleteBootstrap(jailService))
 		jail.GET("/templates/simple", jailHandlers.ListJailTemplatesSimple(jailService))
 		jail.GET("/templates/:id", jailHandlers.GetJailTemplateByID(jailService))
 		jail.POST("/templates/convert/:ctid", jailHandlers.ConvertJailToTemplate(jailService, lifecycleService))
@@ -435,6 +505,8 @@ func RegisterRoutes(r *gin.Engine,
 	users.Use(middleware.RequireLocalAdmin(authService))
 	{
 		users.GET("", authHandlers.ListUsersHandler(authService))
+		users.GET("/uid/next", authHandlers.GetNextUIDHandler(authService))
+		users.GET("/capabilities", authHandlers.UserCapabilitiesHandler())
 		users.POST("", authHandlers.CreateUserHandler(authService))
 		users.DELETE("/:id", authHandlers.DeleteUserHandler(authService))
 		users.PUT("", authHandlers.EditUserHandler(authService))

@@ -43,7 +43,18 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
@@ -51,6 +62,10 @@ msgstr "Hardware"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 msgid "Network"
 msgstr "Network"
 
@@ -82,7 +97,11 @@ msgstr "Terminal"
 msgid "Objects"
 msgstr "Objects"
 
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -183,6 +202,7 @@ msgstr "System"
 msgid "PCI Passthrough"
 msgstr "PCI Passthrough"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Authentication"
 msgstr "Authentication"
@@ -228,6 +248,7 @@ msgstr "Cluster"
 msgid "Backups"
 msgstr "Backups"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -515,13 +536,20 @@ msgstr "End Time"
 msgid "Node"
 msgstr "Node"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 msgid "User"
 msgstr "User"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Action"
 msgstr "Action"
@@ -531,6 +559,8 @@ msgstr "Action"
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -555,6 +585,7 @@ msgstr "No response"
 msgid "Copied response to clipboard"
 msgstr "Copied response to clipboard"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
@@ -774,8 +805,15 @@ msgstr "Failed to create note"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -793,8 +831,13 @@ msgstr "Failed to create note"
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -829,6 +872,8 @@ msgstr "Created"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Updated"
@@ -856,7 +901,12 @@ msgstr "View"
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -883,6 +933,7 @@ msgstr "Delete"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
@@ -891,7 +942,12 @@ msgstr "Delete"
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -912,6 +968,7 @@ msgstr "Delete"
 msgid "Edit"
 msgstr "Edit"
 
+#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -925,13 +982,18 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/manual/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
@@ -1001,10 +1063,22 @@ msgstr "Note"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1061,6 +1135,8 @@ msgstr "Note"
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
@@ -1069,6 +1145,10 @@ msgstr "Note"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1106,6 +1186,8 @@ msgstr "Reset"
 #: src/lib/components/custom/FileExplorer/FilepondModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
 #: src/lib/components/custom/FileExplorer/RenameModal.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
@@ -1137,10 +1219,28 @@ msgstr "Reset"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1223,6 +1323,12 @@ msgstr "Reset"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1276,7 +1382,13 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
@@ -1292,7 +1404,9 @@ msgstr "This is a note"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1346,6 +1460,7 @@ msgstr "CPU(s)"
 msgid "Operating System"
 msgstr "Operating System"
 
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/summary/+page.svelte
 msgid "Uptime"
 msgstr "Uptime"
@@ -1439,6 +1554,9 @@ msgstr "Foreground"
 msgid "Node ID"
 msgstr "Node ID"
 
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Address"
 msgstr "Address"
@@ -1461,6 +1579,7 @@ msgstr "Staging"
 
 #: src/lib/components/custom/Charts/LineBrush/Multiple.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
@@ -1588,14 +1707,11 @@ msgstr "ID"
 msgid "Last Ping"
 msgstr "Last Ping"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Username and password are required"
-msgstr "Username and password are required"
+#~ msgid "Username and password are required"
+#~ msgstr "Username and password are required"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Invalid username"
-msgstr "Invalid username"
+#~ msgid "Invalid username"
+#~ msgstr "Invalid username"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
@@ -1603,14 +1719,11 @@ msgid "Username already exists"
 msgstr "Username already exists"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Invalid email address"
 msgstr "Invalid email address"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "Password must be at least 8 characters long"
-msgstr "Password must be at least 8 characters long"
+#~ msgid "Password must be at least 8 characters long"
+#~ msgstr "Password must be at least 8 characters long"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to create user"
@@ -1620,9 +1733,8 @@ msgstr "Failed to create user"
 msgid "User created"
 msgstr "User created"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
-msgid "No user selected for editing"
-msgstr "No user selected for editing"
+#~ msgid "No user selected for editing"
+#~ msgstr "No user selected for editing"
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Failed to edit user"
@@ -1646,7 +1758,6 @@ msgstr "Edit User - {0}"
 msgid "E-Mail"
 msgstr "E-Mail"
 
-#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Enter or generate password"
 msgstr "Enter or generate password"
@@ -1666,7 +1777,13 @@ msgstr "Admin"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
@@ -1675,8 +1792,12 @@ msgstr "Admin"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Rollback.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Create"
 msgstr "Create"
 
@@ -1855,6 +1976,7 @@ msgstr "Log out"
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1885,11 +2007,21 @@ msgstr "Are you sure?"
 msgid "This action cannot be undone. This will permanently delete "
 msgstr "This action cannot be undone. This will permanently delete "
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -1901,6 +2033,8 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/routes/[node]/jail/[node]/+layout.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/vm/[node]/+layout.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -1954,6 +2088,8 @@ msgid "Size"
 msgstr "Size"
 
 #: src/lib/components/custom/Disk/CreatePartition.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 msgid "Actions"
 msgstr "Actions"
 
@@ -2111,9 +2247,12 @@ msgstr "First Modified"
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
@@ -2182,6 +2321,7 @@ msgid "We've hit errors during initialization"
 msgstr "We've hit errors during initialization"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "Initialize"
 msgstr "Initialize"
 
@@ -2311,6 +2451,7 @@ msgstr "Toggle Search"
 msgid "Search..."
 msgstr "Search..."
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/TreeTable/Search.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2341,6 +2482,8 @@ msgid "Type to create"
 msgstr "Type to create"
 
 #: src/lib/components/ui/custom-input/combobox-bindable.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Add"
 msgstr "Add"
 
@@ -2467,6 +2610,12 @@ msgstr "Model"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -2474,6 +2623,8 @@ msgstr "Model"
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -2677,7 +2828,20 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/network/routes/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2702,7 +2866,14 @@ msgstr "Enabled"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
@@ -2890,6 +3061,7 @@ msgstr "Files will be uploaded to the current folder"
 msgid "<0/> Refresh"
 msgstr "<0/> Refresh"
 
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> Paste"
 msgstr "<0/> Paste"
@@ -2898,6 +3070,7 @@ msgstr "<0/> Paste"
 msgid "<0/> New File"
 msgstr "<0/> New File"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/routes/[node]/storage/explorer/+page.svelte
 msgid "<0/> New Folder"
 msgstr "<0/> New Folder"
@@ -3174,6 +3347,7 @@ msgid "Force Delete"
 msgstr "Force Delete"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -3300,6 +3474,14 @@ msgstr "Interrupted"
 msgid "Failed to load event progress"
 msgstr "Failed to load event progress"
 
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
@@ -3317,6 +3499,7 @@ msgid "Target"
 msgstr "Target"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Mode"
@@ -3446,6 +3629,7 @@ msgid "OOB Restore"
 msgstr "OOB Restore"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -3457,7 +3641,19 @@ msgstr "Refresh"
 msgid "SSH Host"
 msgstr "SSH Host"
 
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
 msgstr "Port"
@@ -3471,6 +3667,7 @@ msgstr "Backup Root"
 msgid "Backup target deleted"
 msgstr "Backup target deleted"
 
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Failed to delete target"
 msgstr "Failed to delete target"
@@ -3797,6 +3994,7 @@ msgstr "Failover"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Advanced"
 msgstr "Advanced"
@@ -3816,6 +4014,14 @@ msgstr "Review"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3851,9 +4057,11 @@ msgstr "Auto move back"
 msgid "Manual move back"
 msgstr "Manual move back"
 
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -4073,6 +4281,14 @@ msgstr "Target server"
 msgid "Choose target"
 msgstr "Choose target"
 
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Priority"
 msgstr "Priority"
@@ -4148,6 +4364,11 @@ msgstr "Failback"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -4177,6 +4398,10 @@ msgstr "Yes"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -4271,6 +4496,7 @@ msgstr "Please select a storage type"
 msgid "Create Storage"
 msgstr "Create Storage"
 
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
 msgid "Directory"
 msgstr "Directory"
@@ -4281,6 +4507,7 @@ msgid "Select Type"
 msgstr "Select Type"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
 msgstr "Endpoint"
 
@@ -4502,8 +4729,10 @@ msgstr "Custom Jail Lifecycle Hooks (exec.* scripts)"
 
 #: src/lib/components/custom/Jail/Create/Advanced.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 msgid "Enable"
 msgstr "Enable"
 
@@ -4614,7 +4843,27 @@ msgstr "Mac"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 msgid "Host"
 msgstr "Host"
 
@@ -4654,9 +4903,18 @@ msgstr "IPv4 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4"
@@ -4690,9 +4948,18 @@ msgstr "IPv6 Network"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[node]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6"
@@ -5045,6 +5312,8 @@ msgid "Default Gateway"
 msgstr "Default Gateway"
 
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -5785,8 +6054,10 @@ msgstr "TPM emulation {0}"
 msgid "Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling this option after it has been enabled may lead to boot issues if the guest OS relies on TPM functionality."
 msgstr "Enable or disable TPM (Trusted Platform Module) emulation for this virtual machine. Disabling this option after it has been enabled may lead to boot issues if the guest OS relies on TPM functionality."
 
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 msgid "Disable"
 msgstr "Disable"
 
@@ -5898,6 +6169,8 @@ msgstr "Save & Back to Sockets"
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
 msgid "Update "
 msgstr "Update "
 
@@ -6102,7 +6375,12 @@ msgstr "Architecture"
 msgid "Version ID"
 msgstr "Version ID"
 
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
 msgid "Interface"
 msgstr "Interface"
 
@@ -6111,6 +6389,7 @@ msgid "IP Addresses"
 msgstr "IP Addresses"
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "RX / TX"
 msgstr "RX / TX"
 
@@ -6407,6 +6686,7 @@ msgid "No devices found"
 msgstr "No devices found"
 
 #: src/lib/components/custom/ZFS/pools/Status.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Logs"
 msgstr "Logs"
 
@@ -6874,6 +7154,8 @@ msgstr "Default Sylve Group (sylve_g)"
 
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Created At"
 msgstr "Created At"
@@ -6975,6 +7257,9 @@ msgstr "Select IPv4 Network"
 msgid "Select IPv6 Network"
 msgstr "Select IPv6 Network"
 
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Ports"
@@ -7141,9 +7426,6 @@ msgstr "Pool {0} deleted"
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "Shutoff"
@@ -7748,10 +8030,12 @@ msgid "Backup root not found on target"
 msgstr "Backup root not found on target"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Failed to update target"
 msgstr "Failed to update target"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Failed to create target"
 msgstr "Failed to create target"
 
@@ -9534,6 +9818,7 @@ msgstr "<0/> Loading template details..."
 msgid "Template data unavailable"
 msgstr "Template data unavailable"
 
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Optional"
 msgstr "Optional"
@@ -9992,3 +10277,2690 @@ msgstr "Select ZFS filesystem"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Read-only share"
 msgstr "Read-only share"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "Firewall"
+msgstr "Firewall"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - Firewall"
+msgstr "Toggle - Firewall"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall - Traffic Rule"
+msgstr "Firewall - Traffic Rule"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall - NAT Rule"
+msgstr "Firewall - NAT Rule"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Firewall - Advanced Rules"
+msgstr "Firewall - Advanced Rules"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "FQDN(s)"
+msgstr "FQDN(s)"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "List(s)"
+msgstr "List(s)"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one FQDN must be selected"
+msgstr "At least one FQDN must be selected"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one list URL must be selected"
+msgstr "At least one list URL must be selected"
+
+#. 0: fqdn
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid FQDN: {0}"
+msgstr "Invalid FQDN: {0}"
+
+#. 0: entry
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid list source URL: {0}"
+msgstr "Invalid list source URL: {0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "List"
+msgstr "List"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "FQDNs"
+msgstr "FQDNs"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "List URLs"
+msgstr "List URLs"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Traffic rule name is required"
+msgstr "Traffic rule name is required"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Traffic rule saved"
+msgstr "Traffic rule saved"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Failed to save traffic rule"
+msgstr "Failed to save traffic rule"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Traffic rule deleted"
+msgstr "Traffic rule deleted"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Failed to delete traffic rule"
+msgstr "Failed to delete traffic rule"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Traffic rule order updated"
+msgstr "Traffic rule order updated"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Failed to reorder traffic rules"
+msgstr "Failed to reorder traffic rules"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "NAT rule name is required"
+msgstr "NAT rule name is required"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "NAT rule saved"
+msgstr "NAT rule saved"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Failed to save NAT rule"
+msgstr "Failed to save NAT rule"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "NAT rule deleted"
+msgstr "NAT rule deleted"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Failed to delete NAT rule"
+msgstr "Failed to delete NAT rule"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "NAT rule order updated"
+msgstr "NAT rule order updated"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Failed to reorder NAT rules"
+msgstr "Failed to reorder NAT rules"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Advanced firewall settings saved"
+msgstr "Advanced firewall settings saved"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Failed to save advanced settings"
+msgstr "Failed to save advanced settings"
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Traffic Rules"
+msgstr "Traffic Rules"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Rule name"
+msgstr "Rule name"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "pass"
+msgstr "pass"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "block"
+msgstr "block"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "in"
+msgstr "in"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "out"
+msgstr "out"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "any"
+msgstr "any"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "tcp"
+msgstr "tcp"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "udp"
+msgstr "udp"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "icmp"
+msgstr "icmp"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "inet"
+msgstr "inet"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "inet6"
+msgstr "inet6"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Interfaces (comma separated)"
+msgstr "Interfaces (comma separated)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "<0/> Enabled"
+msgstr "<0/> Enabled"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Source raw (optional)"
+msgstr "Source raw (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Source object (optional)"
+msgstr "Source object (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Destination raw (optional)"
+msgstr "Destination raw (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Destination object (optional)"
+msgstr "Destination object (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Source ports raw (optional)"
+msgstr "Source ports raw (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Source port object (optional)"
+msgstr "Source port object (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Destination ports raw (optional)"
+msgstr "Destination ports raw (optional)"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Destination port object (optional)"
+msgstr "Destination port object (optional)"
+
+#. 0: trafficForm.id > 0 ? 'Update' \\: 'Create'
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "{0} Rule"
+msgstr "{0} Rule"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Destination"
+msgstr "Destination"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Up"
+msgstr "Up"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Down"
+msgstr "Down"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "NAT Rules (Outbound)"
+msgstr "NAT Rules (Outbound)"
+
+#. 0: natForm.id > 0 ? 'Update' \\: 'Create'
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "{0} NAT Rule"
+msgstr "{0} NAT Rule"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Advanced Settings"
+msgstr "Advanced Settings"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Custom PF text injected globally before and after Sylve anchors."
+msgstr "Custom PF text injected globally before and after Sylve anchors."
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Pre Rules"
+msgstr "Pre Rules"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Post Rules"
+msgstr "Post Rules"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Save Advanced Settings"
+msgstr "Save Advanced Settings"
+
+#: src/routes/[node]/network/firewall/+page.svelte
+msgid "Interface Reference"
+msgstr "Interface Reference"
+
+#. 0: value.err
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Error: {0}"
+msgstr "Error: {0}"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Pending"
+msgstr "Pending"
+
+#: src/routes/[node]/+layout.svelte
+msgid "NAT Rules"
+msgstr "NAT Rules"
+
+#. 0: id
+#. 0: id
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Object #{0}"
+msgstr "Object #{0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Rule name is required"
+msgstr "Rule name is required"
+
+#. 0: edit ? 'updated' \\: 'created'
+#. 0: edit ? 'updated' \\: 'created'
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "NAT rule {0}"
+msgstr "NAT rule {0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Protocol"
+msgstr "Protocol"
+
+#~ msgid "Edit NAT Rule"
+#~ msgstr "Edit NAT Rule"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Create NAT Rule"
+msgstr "Create NAT Rule"
+
+#~ msgid "Available interfaces"
+#~ msgstr "Available interfaces"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Advanced firewall settings updated"
+msgstr "Advanced firewall settings updated"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Failed to update advanced settings"
+msgstr "Failed to update advanced settings"
+
+#~ msgid "Global PF text injected before and after Sylve anchors in <0/>."
+#~ msgstr "Global PF text injected before and after Sylve anchors in <0/>."
+
+#~ msgid "Rules placed before Sylve anchors"
+#~ msgstr "Rules placed before Sylve anchors"
+
+#~ msgid "Rules placed after Sylve anchors"
+#~ msgstr "Rules placed after Sylve anchors"
+
+#. 0: edit ? 'updated' \\: 'created'
+#. 0: edit ? 'updated' \\: 'created'
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Traffic rule {0}"
+msgstr "Traffic rule {0}"
+
+#~ msgid "Edit Traffic Rule"
+#~ msgstr "Edit Traffic Rule"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Create Traffic Rule"
+msgstr "Create Traffic Rule"
+
+#. 0: edit ? 'update' \\: 'create'
+#. 0: edit ? 'update' \\: 'create'
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Failed to {0} traffic rule"
+msgstr "Failed to {0} traffic rule"
+
+#. 0: editingRule.name
+#. 0: editingRule.name
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Edit Rule — {0}"
+msgstr "Edit Rule — {0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+msgid "Basic Info"
+msgstr "Basic Info"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Block External Traffic"
+msgstr "Block External Traffic"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Optional description"
+msgstr "Optional description"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Rule Settings"
+msgstr "Rule Settings"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select"
+msgstr "Select"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Direction"
+msgstr "Direction"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Family"
+msgstr "Family"
+
+#~ msgid "Apply to interfaces"
+#~ msgstr "Apply to interfaces"
+
+#~ msgid "Any (leave empty for all)"
+#~ msgstr "Any (leave empty for all)"
+
+#~ msgid "No interfaces available — rule applies to all."
+#~ msgstr "No interfaces available — rule applies to all."
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Source & Destination"
+msgstr "Source & Destination"
+
+#~ msgid "Raw address / CIDR"
+#~ msgstr "Raw address / CIDR"
+
+#~ msgid "or"
+#~ msgstr "or"
+
+#~ msgid "Network object"
+#~ msgstr "Network object"
+
+#~ msgid "Select object"
+#~ msgstr "Select object"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Source Ports"
+msgstr "Source Ports"
+
+#~ msgid "Raw ports"
+#~ msgstr "Raw ports"
+
+#~ msgid "Port object"
+#~ msgstr "Port object"
+
+#~ msgid "Select port object"
+#~ msgstr "Select port object"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Destination Ports"
+msgstr "Destination Ports"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+msgid "Select a network object or type a raw IP / CIDR. Leave empty to match any."
+msgstr "Select a network object or type a raw IP / CIDR. Leave empty to match any."
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave empty for any."
+msgstr "Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave empty for any."
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Pass"
+msgstr "Pass"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Block"
+msgstr "Block"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "In"
+msgstr "In"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Out"
+msgstr "Out"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Any"
+msgstr "Any"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Quick"
+msgstr "Quick"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Copied action to clipboard"
+msgstr "Copied action to clipboard"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Index"
+msgstr "Index"
+
+#. 0: edit ? 'update' \\: 'create'
+#. 0: edit ? 'update' \\: 'create'
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Failed to {0} NAT rule"
+msgstr "Failed to {0} NAT rule"
+
+#. 0: editingRule.name
+#. 0: editingRule.name
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Edit NAT Rule — {0}"
+msgstr "Edit NAT Rule — {0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Masquerade LAN"
+msgstr "Masquerade LAN"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Ingress"
+msgstr "Ingress"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Egress"
+msgstr "Egress"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Invalid traffic rule"
+msgstr "Invalid traffic rule"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Ingress Interfaces"
+msgstr "Ingress Interfaces"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Any ingress interface"
+msgstr "Any ingress interface"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Egress Interfaces"
+msgstr "Egress Interfaces"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Any egress interface"
+msgstr "Any egress interface"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "No interfaces available — rule matches on any interface direction."
+msgstr "No interfaces available — rule matches on any interface direction."
+
+#~ msgid "DNAT (rdr)"
+#~ msgstr "DNAT (rdr)"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Interface Address"
+msgstr "Interface Address"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Specific Address"
+msgstr "Specific Address"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Invalid NAT rule"
+msgstr "Invalid NAT rule"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "NAT Type"
+msgstr "NAT Type"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Directional Interfaces"
+msgstr "Directional Interfaces"
+
+#~ msgid "Not used for SNAT/BINAT"
+#~ msgstr "Not used for SNAT/BINAT"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Not used for DNAT"
+msgstr "Not used for DNAT"
+
+#~ msgid "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface."
+#~ msgstr "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface."
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "No interfaces available. Add network interfaces before creating NAT rules."
+msgstr "No interfaces available. Add network interfaces before creating NAT rules."
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Source & Destination Match"
+msgstr "Source & Destination Match"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Translation"
+msgstr "Translation"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Translate Mode"
+msgstr "Translate Mode"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Translate To"
+msgstr "Translate To"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Host object or 198.51.100.50"
+msgstr "Host object or 198.51.100.50"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "For interface mode, PF uses the selected egress interface address automatically."
+msgstr "For interface mode, PF uses the selected egress interface address automatically."
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "DNAT Target"
+msgstr "DNAT Target"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Target Host"
+msgstr "Target Host"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Host object or 10.0.0.10"
+msgstr "Host object or 10.0.0.10"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "DNAT Ports"
+msgstr "DNAT Ports"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Match Destination Port"
+msgstr "Match Destination Port"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Port object, 443, or 8000:8080"
+msgstr "Port object, 443, or 8000:8080"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Rewrite To Port"
+msgstr "Rewrite To Port"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Optional target port"
+msgstr "Optional target port"
+
+#~ msgid "Destination/rewrite ports are available only for TCP or UDP DNAT rules."
+#~ msgstr "Destination/rewrite ports are available only for TCP or UDP DNAT rules."
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Not used for outbound rules"
+msgstr "Not used for outbound rules"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Not used for inbound rules"
+msgstr "Not used for inbound rules"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Advanced Firewall Settings"
+msgstr "Advanced Firewall Settings"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Global PF rules injected before and after Sylve anchors in <0/>."
+msgstr "Global PF rules injected before and after Sylve anchors in <0/>."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Rules here are applied globally and may override managed rules. Use with caution."
+msgstr "Rules here are applied globally and may override managed rules. Use with caution."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Pre Rules"
+msgstr "<0/> Pre Rules"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Injected before all Sylve-managed anchors."
+msgstr "Injected before all Sylve-managed anchors."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Post Rules"
+msgstr "<0/> Post Rules"
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "Injected after all Sylve-managed anchors."
+msgstr "Injected after all Sylve-managed anchors."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Changes take effect immediately upon saving."
+msgstr "<0/> Changes take effect immediately upon saving."
+
+#: src/routes/[node]/network/firewall/advanced/+page.svelte
+msgid "<0/> Save Settings"
+msgstr "<0/> Save Settings"
+
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Failed to refresh traffic counters"
+msgstr "Failed to refresh traffic counters"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Hits"
+msgstr "Hits"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Bytes"
+msgstr "Bytes"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Refresh Counters"
+msgstr "Refresh Counters"
+
+#~ msgid "Counters stale"
+#~ msgstr "Counters stale"
+
+#~ msgid "Counters updated {0}"
+#~ msgstr "Counters updated {0}"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Log"
+msgstr "Log"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Failed to refresh firewall logs"
+msgstr "Failed to refresh firewall logs"
+
+#~ msgid "Clear"
+#~ msgstr "Clear"
+
+#~ msgid "Log stream stale"
+#~ msgstr "Log stream stale"
+
+#~ msgid "Live stream connected"
+#~ msgstr "Live stream connected"
+
+#~ msgid "Live stream unavailable"
+#~ msgstr "Live stream unavailable"
+
+#~ msgid "Updated {0}"
+#~ msgstr "Updated {0}"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Time"
+msgstr "Time"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Rule"
+msgstr "Rule"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Details"
+msgstr "Details"
+
+#~ msgid "No firewall hits captured yet."
+#~ msgstr "No firewall hits captured yet."
+
+#. 0: d.ruleId
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Rule #{0}"
+msgstr "Rule #{0}"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Failed to refresh NAT counters"
+msgstr "Failed to refresh NAT counters"
+
+#~ msgid "Filter…"
+#~ msgstr "Filter…"
+
+#: src/lib/components/custom/TreeTableInfinite.svelte
+msgid "No log entries captured yet"
+msgstr "No log entries captured yet"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Filter"
+msgstr "Filter"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Rule Type"
+msgstr "Rule Type"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Search"
+msgstr "Search"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Rule, interface, raw log…"
+msgstr "Rule, interface, raw log…"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Clear all filters"
+msgstr "Clear all filters"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "type:"
+msgstr "type:"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "action:"
+msgstr "action:"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "dir:"
+msgstr "dir:"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "search:"
+msgstr "search:"
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard Server"
+msgstr "WireGuard Server"
+
+#~ msgid "WireGuard Clients"
+#~ msgstr "WireGuard Clients"
+
+#: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/+page.svelte
+msgid "WireGuard"
+msgstr "WireGuard"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Toggle - WireGuard"
+msgstr "Toggle - WireGuard"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Server"
+msgstr "WireGuard - Server"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Server Toggle"
+msgstr "WireGuard - Server Toggle"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Server Peer"
+msgstr "WireGuard - Server Peer"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Client"
+msgstr "WireGuard - Client"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "WireGuard - Client Toggle"
+msgstr "WireGuard - Client Toggle"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard service is disabled"
+msgstr "WireGuard service is disabled"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard server initialized"
+msgstr "WireGuard server initialized"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard server updated"
+msgstr "WireGuard server updated"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to save WireGuard server"
+msgstr "Failed to save WireGuard server"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard server toggled"
+msgstr "WireGuard server toggled"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to toggle WireGuard server"
+msgstr "Failed to toggle WireGuard server"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard server deinitialized"
+msgstr "WireGuard server deinitialized"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to deinitialize WireGuard server"
+msgstr "Failed to deinitialize WireGuard server"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Peer updated"
+msgstr "Peer updated"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Peer added"
+msgstr "Peer added"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Failed to save peer"
+msgstr "Failed to save peer"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Peer toggled"
+msgstr "Peer toggled"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to toggle peer"
+msgstr "Failed to toggle peer"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Peer removed"
+msgstr "Peer removed"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Failed to remove peer"
+msgstr "Failed to remove peer"
+
+#~ msgid "PrivateKey = {0}"
+#~ msgstr "PrivateKey = {0}"
+
+#~ msgid "Address = {0}"
+#~ msgstr "Address = {0}"
+
+#~ msgid "PublicKey = {0}"
+#~ msgstr "PublicKey = {0}"
+
+#~ msgid "Endpoint = <server-host-or-ip>:{0}"
+#~ msgstr "Endpoint = <server-host-or-ip>:{0}"
+
+#~ msgid "AllowedIPs = {0}"
+#~ msgstr "AllowedIPs = {0}"
+
+#~ msgid "PresharedKey = {0}"
+#~ msgstr "PresharedKey = {0}"
+
+#~ msgid "PersistentKeepalive = 25"
+#~ msgstr "PersistentKeepalive = 25"
+
+#~ msgid "Peer config copied"
+#~ msgstr "Peer config copied"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard service is disabled. Enable it from System Settings to manage runtime configuration."
+msgstr "WireGuard service is disabled. Enable it from System Settings to manage runtime configuration."
+
+#~ msgid "Configure the deterministic server interface `wgs0`."
+#~ msgstr "Configure the deterministic server interface `wgs0`."
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Listen Port"
+msgstr "Listen Port"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Interface Addresses"
+msgstr "Interface Addresses"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "One CIDR per line"
+msgstr "One CIDR per line"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Disable Server"
+msgstr "Disable Server"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Enable Server"
+msgstr "Enable Server"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "<0/> Deinitialize"
+msgstr "<0/> Deinitialize"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Last Restart"
+msgstr "Last Restart"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Peers"
+msgstr "Peers"
+
+#~ msgid "Manage inbound peers and export client config."
+#~ msgstr "Manage inbound peers and export client config."
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "<0/> Add Peer"
+msgstr "<0/> Add Peer"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Initialize the server first to manage peers."
+msgstr "Initialize the server first to manage peers."
+
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "No peers configured yet."
+msgstr "No peers configured yet."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "Client IPs"
+msgstr "Client IPs"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "Routable IPs"
+msgstr "Routable IPs"
+
+#~ msgid "Handshake"
+#~ msgstr "Handshake"
+
+#~ msgid "Export"
+#~ msgstr "Export"
+
+#~ msgid "Edit Peer"
+#~ msgstr "Edit Peer"
+
+#~ msgid "Add Peer"
+#~ msgstr "Add Peer"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Peer Name"
+msgstr "Peer Name"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Optional, one CIDR per line"
+msgstr "Optional, one CIDR per line"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Pre-shared Key"
+msgstr "Pre-shared Key"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Persistent Keepalive"
+msgstr "Persistent Keepalive"
+
+#~ msgid "Route IPs"
+#~ msgstr "Route IPs"
+
+#~ msgid "Save Peer"
+#~ msgstr "Save Peer"
+
+#~ msgid "Peer Config Preview"
+#~ msgstr "Peer Config Preview"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "This will remove the WireGuard server runtime state and peer records. Continue?"
+msgstr "This will remove the WireGuard server runtime state and peer records. Continue?"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "WireGuard Peer"
+msgstr "WireGuard Peer"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "This action removes the selected peer. Continue?"
+msgstr "This action removes the selected peer. Continue?"
+
+#~ msgid "Client updated"
+#~ msgstr "Client updated"
+
+#~ msgid "Client created"
+#~ msgstr "Client created"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Failed to save client"
+msgstr "Failed to save client"
+
+#~ msgid "Client toggled"
+#~ msgstr "Client toggled"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Failed to toggle client"
+msgstr "Failed to toggle client"
+
+#~ msgid "Client removed"
+#~ msgstr "Client removed"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Failed to remove client"
+msgstr "Failed to remove client"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "WireGuard service is disabled. Enable it from System Settings to manage clients."
+msgstr "WireGuard service is disabled. Enable it from System Settings to manage clients."
+
+#~ msgid "Manage deterministic client interfaces (`wgc<id>`) for outbound WireGuard tunnels."
+#~ msgstr "Manage deterministic client interfaces (`wgc<id>`) for outbound WireGuard tunnels."
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "<0/> New Client"
+msgstr "<0/> New Client"
+
+#~ msgid "No clients configured."
+#~ msgstr "No clients configured."
+
+#~ msgid "Endpoint: {0}:{1}"
+#~ msgstr "Endpoint: {0}:{1}"
+
+#~ msgid "RX / TX: {0} / {1}"
+#~ msgstr "RX / TX: {0} / {1}"
+
+#~ msgid "Uptime: {0}"
+#~ msgstr "Uptime: {0}"
+
+#~ msgid "Last Handshake: {0}"
+#~ msgstr "Last Handshake: {0}"
+
+#~ msgid "Interface: wgc{0}"
+#~ msgstr "Interface: wgc{0}"
+
+#~ msgid "Edit Client"
+#~ msgstr "Edit Client"
+
+#~ msgid "Create Client"
+#~ msgstr "Create Client"
+
+#~ msgid "Private keys are generated by backend automatically."
+#~ msgstr "Private keys are generated by backend automatically."
+
+#~ msgid "Remote Site"
+#~ msgstr "Remote Site"
+
+#~ msgid "Endpoint Host"
+#~ msgstr "Endpoint Host"
+
+#~ msgid "Endpoint Port"
+#~ msgstr "Endpoint Port"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Peer Public Key"
+msgstr "Peer Public Key"
+
+#~ msgid "Required"
+#~ msgstr "Required"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Addresses"
+msgstr "Addresses"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Allowed IPs"
+msgstr "Allowed IPs"
+
+#~ msgid "No Host Routes"
+#~ msgstr "No Host Routes"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Route Allowed IPs"
+msgstr "Route Allowed IPs"
+
+#~ msgid "Save Client"
+#~ msgstr "Save Client"
+
+#~ msgid "WireGuard Client"
+#~ msgstr "WireGuard Client"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "This action removes the selected WireGuard client. Continue?"
+msgstr "This action removes the selected WireGuard client. Continue?"
+
+#~ msgid "Provide the local private key for this outbound client."
+#~ msgstr "Provide the local private key for this outbound client."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Private Key"
+msgstr "Private Key"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Server"
+msgstr "Server"
+
+#: src/routes/[node]/+layout.svelte
+msgid "Clients"
+msgstr "Clients"
+
+#. 0: gw
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "On ({0})"
+msgstr "On ({0})"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "On"
+msgstr "On"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Policy Routing"
+msgstr "Policy Routing"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Enable policy routing"
+msgstr "Enable policy routing"
+
+#~ msgid "Policy route gateway (optional)"
+#~ msgstr "Policy route gateway (optional)"
+
+#~ msgid "When enabled, exactly one egress interface is required. Optional gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+#~ msgstr "When enabled, exactly one egress interface is required. Optional gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Policy route gateway"
+msgstr "Policy route gateway"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+msgid "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+msgstr "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+
+#: src/routes/[node]/+layout.svelte
+msgid "Routes"
+msgstr "Routes"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "No route suggestion available for this NAT rule"
+msgstr "No route suggestion available for this NAT rule"
+
+#: src/routes/[node]/network/firewall/nat/+page.svelte
+msgid "Route Helper"
+msgstr "Route Helper"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Gateway"
+msgstr "Gateway"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Invalid route"
+msgstr "Invalid route"
+
+#. 0: edit ? 'updated' \\: 'created'
+#. 0: edit ? 'updated' \\: 'created'
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Route {0}"
+msgstr "Route {0}"
+
+#. 0: edit ? 'update' \\: 'create'
+#. 0: edit ? 'update' \\: 'create'
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Failed to {0} route"
+msgstr "Failed to {0} route"
+
+#. 0: editingRoute.name
+#. 0: editingRoute.name
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Edit Route — {0}"
+msgstr "Edit Route — {0}"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Create Route"
+msgstr "Create Route"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Suggestion"
+msgstr "Suggestion"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "LAN return route"
+msgstr "LAN return route"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+msgid "Destination Type"
+msgstr "Destination Type"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+msgid "Next Hop Mode"
+msgstr "Next Hop Mode"
+
+#: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Routes/Form.svelte
+msgid "Select interface"
+msgstr "Select interface"
+
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Next Hop"
+msgstr "Next Hop"
+
+#~ msgid "Gateway: {0}"
+#~ msgstr "Gateway: {0}"
+
+#~ msgid "Iface: {0}"
+#~ msgstr "Iface: {0}"
+
+#. 0: String(activeRow?.name ?? '')
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Route {0} deleted"
+msgstr "Route {0} deleted"
+
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Failed to delete route"
+msgstr "Failed to delete route"
+
+#~ msgid "Iface: {0} ({1})"
+#~ msgstr "Iface: {0} ({1})"
+
+#~ msgid "Network: {0}"
+#~ msgstr "Network: {0}"
+
+#~ msgid "Host: {0}"
+#~ msgstr "Host: {0}"
+
+#. 0: String(cell.getValue() ?? '')
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Network → {0}"
+msgstr "Network → {0}"
+
+#. 0: String(cell.getValue() ?? '')
+#: src/routes/[node]/network/routes/+page.svelte
+msgid "Host → {0}"
+msgstr "Host → {0}"
+
+#: src/lib/components/custom/TreeTable.svelte
+#: src/lib/components/custom/TreeTableInfinite.svelte
+#: src/lib/components/custom/TreeTableRemote.svelte
+msgid "Columns"
+msgstr "Columns"
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Select a network object or type a raw IP / CIDR, leave empty to match any."
+msgstr "Select a network object or type a raw IP / CIDR, leave empty to match any."
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Optional scope for policy routing"
+msgstr "Optional scope for policy routing"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Enable policy routing to scope ingress"
+msgstr "Enable policy routing to scope ingress"
+
+#: src/lib/components/custom/Network/Firewall/NAT/CreateOrEdit.svelte
+msgid "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+msgstr "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family."
+msgstr "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family."
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Port(s)"
+msgstr "Port(s)"
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "At least one port must be selected"
+msgstr "At least one port must be selected"
+
+#. 0: port
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "Invalid port token: {0}"
+msgstr "Invalid port token: {0}"
+
+#~ msgid "DNAT requires at least one ingress interface. and SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+#~ msgstr "DNAT requires at least one ingress interface. and SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "DNAT needs an ingress interface. SNAT/BINAT need an egress interface; ingress is optional (for policy routing scope)."
+msgstr "DNAT needs an ingress interface. SNAT/BINAT need an egress interface; ingress is optional (for policy routing scope)."
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Connecting"
+msgstr "Connecting"
+
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Connected"
+msgstr "Connected"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Resume live log streaming"
+msgstr "Resume live log streaming"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "Pause live log streaming"
+msgstr "Pause live log streaming"
+
+#: src/routes/[node]/network/firewall/logs/+page.svelte
+msgid "<0/> Paused"
+msgstr "<0/> Paused"
+
+#~ msgid "Invalid private key — must be a valid 32-byte base64-encoded WireGuard key"
+#~ msgstr "Invalid private key — must be a valid 32-byte base64-encoded WireGuard key"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Auto-generated if empty"
+msgstr "Auto-generated if empty"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Generate new keypair"
+msgstr "Generate new keypair"
+
+#: src/lib/components/ui/custom-input/value.svelte
+msgid "Help Information"
+msgstr "Help Information"
+
+#~ msgid "Generate random private address"
+#~ msgstr "Generate random private address"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Generate random private addresses"
+msgstr "Generate random private addresses"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Invalid private key - must be a valid 32-byte base64-encoded WireGuard key"
+msgstr "Invalid private key - must be a valid 32-byte base64-encoded WireGuard key"
+
+#~ msgid "Hide"
+#~ msgstr "Hide"
+
+#~ msgid "Show"
+#~ msgstr "Show"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Peer name is required"
+msgstr "Peer name is required"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "At least one client IP is required"
+msgstr "At least one client IP is required"
+
+#~ msgid "Edit Peer — {0}"
+#~ msgstr "Edit Peer — {0}"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Add New Peer"
+msgstr "Add New Peer"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Configure identity and routing for a WireGuard peer connection."
+msgstr "Configure identity and routing for a WireGuard peer connection."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "<0/> Basic"
+msgstr "<0/> Basic"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "<0/> Keys"
+msgstr "<0/> Keys"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "<0/> Routing"
+msgstr "<0/> Routing"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Randy's Phone"
+msgstr "Randy's Phone"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Disabled peers cannot connect to the server."
+msgstr "Disabled peers cannot connect to the server."
+
+#~ msgid "Enable Persistent Keepalive"
+#~ msgstr "Enable Persistent Keepalive"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Recommended for peers behind NAT to maintain a stable connection."
+msgstr "Recommended for peers behind NAT to maintain a stable connection."
+
+#~ msgid "<0/> Auto-generate Pre-shared Key"
+#~ msgstr "<0/> Auto-generate Pre-shared Key"
+
+#~ msgid "Use this peer to route the above IPs"
+#~ msgstr "Use this peer to route the above IPs"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Create Peer"
+msgstr "Create Peer"
+
+#~ msgid "Leave empty to auto-generate"
+#~ msgstr "Leave empty to auto-generate"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Public Key"
+msgstr "Public Key"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Computed from private key"
+msgstr "Computed from private key"
+
+#~ msgid "<0/> Auto-generate All Keys"
+#~ msgstr "<0/> Auto-generate All Keys"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Auto-generate next available IPs from server subnet"
+msgstr "Auto-generate next available IPs from server subnet"
+
+#~ msgid "<0/> Auto generate All Keys"
+#~ msgstr "<0/> Auto generate All Keys"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "<0/> Auto Generate All Keys"
+msgstr "<0/> Auto Generate All Keys"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Leave empty to auto generate"
+msgstr "Leave empty to auto generate"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Route above IPs"
+msgstr "Route above IPs"
+
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "Export config"
+msgstr "Export config"
+
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "Delete peer"
+msgstr "Delete peer"
+
+#. 0: peer?.name ?? ''
+#: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+msgid "Edit Peer - {0}"
+msgstr "Edit Peer - {0}"
+
+#: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+msgid "No recent handshake"
+msgstr "No recent handshake"
+
+#~ msgid "Export Peer — {0}"
+#~ msgstr "Export Peer — {0}"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Review, edit, and export the peer configuration for distribution."
+msgstr "Review, edit, and export the peer configuration for distribution."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> Edit"
+msgstr "<0/> Edit"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Fill in all required fields first"
+msgstr "Fill in all required fields first"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> Export"
+msgstr "<0/> Export"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Endpoint Address"
+msgstr "Endpoint Address"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Reset to WireGuard subnets"
+msgstr "Reset to WireGuard subnets"
+
+#~ msgid "<0/> Route All Traffic"
+#~ msgstr "<0/> Route All Traffic"
+
+#~ msgid "<0/> Continue to Export"
+#~ msgstr "<0/> Continue to Export"
+
+#~ msgid "Scan to import on a mobile device."
+#~ msgstr "Scan to import on a mobile device."
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Copy configuration"
+msgstr "Copy configuration"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> View Configuration Text"
+msgstr "<0/> View Configuration Text"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> View QR Code"
+msgstr "<0/> View QR Code"
+
+#. 0: peer.name
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "WireGuard-{0}.conf"
+msgstr "WireGuard-{0}.conf"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> Download Config"
+msgstr "<0/> Download Config"
+
+#. 0: peer.name
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "WireGuard-{0}.png"
+msgstr "WireGuard-{0}.png"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "<0/> Download QR"
+msgstr "<0/> Download QR"
+
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Route All Traffic"
+msgstr "Route All Traffic"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Persistent Keepalive (25s)"
+msgstr "Persistent Keepalive (25s)"
+
+#. 0: peer.name
+#: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
+msgid "Export Peer - {0}"
+msgstr "Export Peer - {0}"
+
+#~ msgid "Auto generated WireGuard allow rule"
+#~ msgstr "Auto generated WireGuard allow rule"
+
+#~ msgid "Allow WireGuard"
+#~ msgstr "Allow WireGuard"
+
+#~ msgid "WireGuard firewall rule created"
+#~ msgstr "WireGuard firewall rule created"
+
+#~ msgid "Failed to create WireGuard firewall rule"
+#~ msgstr "Failed to create WireGuard firewall rule"
+
+#~ msgid "WireGuard firewall rule removed"
+#~ msgstr "WireGuard firewall rule removed"
+
+#~ msgid "Failed to remove WireGuard firewall rule"
+#~ msgstr "Failed to remove WireGuard firewall rule"
+
+#~ msgid "Allow WireGuard traffic in firewall (UDP port {0})"
+#~ msgstr "Allow WireGuard traffic in firewall (UDP port {0})"
+
+#~ msgid "Manage inbound peers and client config."
+#~ msgstr "Manage inbound peers and client config."
+
+#~ msgid "Manage inbound peers and client config"
+#~ msgstr "Manage inbound peers and client config"
+
+#. 0: name
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Client \"{0}\" removed"
+msgstr "Client \"{0}\" removed"
+
+#. 0: name; 1: status === 'disabled' ? 'enabled' \\: 'disabled'
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Client \"{0}\" {1}"
+msgstr "Client \"{0}\" {1}"
+
+#. 0: modals.data.name
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Enable WireGuard client \"{0}\"?"
+msgstr "Enable WireGuard client \"{0}\"?"
+
+#. 0: modals.data.name
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Disable WireGuard client \"{0}\"?"
+msgstr "Disable WireGuard client \"{0}\"?"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Outbound Clients"
+msgstr "Outbound Clients"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Manage independent WireGuard instances that connect to remote endpoints."
+msgstr "Manage independent WireGuard instances that connect to remote endpoints."
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Downloaded"
+msgstr "Downloaded"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Uploaded"
+msgstr "Uploaded"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "<0/> Interface"
+msgstr "<0/> Interface"
+
+#. 0: client.id
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "wgc{0}"
+msgstr "wgc{0}"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "<0/> Last Handshake"
+msgstr "<0/> Last Handshake"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "<0/> Enable"
+msgstr "<0/> Enable"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "<0/> Disable"
+msgstr "<0/> Disable"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Add New Client"
+msgstr "Add New Client"
+
+#: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+msgid "Configure a new independent tunnel to a remote WireGuard endpoint"
+msgstr "Configure a new independent tunnel to a remote WireGuard endpoint"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "PrivateKey"
+msgstr "PrivateKey"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "ListenPort"
+msgstr "ListenPort"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "PublicKey"
+msgstr "PublicKey"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "AllowedIPs"
+msgstr "AllowedIPs"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "PresharedKey"
+msgstr "PresharedKey"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "PersistentKeepalive"
+msgstr "PersistentKeepalive"
+
+#. 0: sourceName
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Config imported from {0}"
+msgstr "Config imported from {0}"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Failed to parse config file"
+msgstr "Failed to parse config file"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Please upload a .conf or .txt file"
+msgstr "Please upload a .conf or .txt file"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Instance name is required"
+msgstr "Instance name is required"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Remote endpoint host is required"
+msgstr "Remote endpoint host is required"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Peer public key is required"
+msgstr "Peer public key is required"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Private key is required"
+msgstr "Private key is required"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "At least one allowed IP is required"
+msgstr "At least one allowed IP is required"
+
+#. 0: form.name
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Client \"{0}\" updated"
+msgstr "Client \"{0}\" updated"
+
+#. 0: form.name
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Client \"{0}\" created"
+msgstr "Client \"{0}\" created"
+
+#~ msgid "Edit Client — {0}"
+#~ msgstr "Edit Client — {0}"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "New Outbound Client"
+msgstr "New Outbound Client"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Configure an independent connection to a remote WireGuard endpoint."
+msgstr "Configure an independent connection to a remote WireGuard endpoint."
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Config auto-populated from file"
+msgstr "Config auto-populated from file"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Import .conf file to auto-populate fields"
+msgstr "Import .conf file to auto-populate fields"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "<0/> Basic Configuration"
+msgstr "<0/> Basic Configuration"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Instance Name"
+msgstr "Instance Name"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Office — Dubai"
+msgstr "Office — Dubai"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Remote Host"
+msgstr "Remote Host"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Remote Port"
+msgstr "Remote Port"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Peer's public key…"
+msgstr "Peer's public key…"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Your Private Key"
+msgstr "Your Private Key"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Your private key…"
+msgstr "Your private key…"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "<0/> Advanced Options"
+msgstr "<0/> Advanced Options"
+
+#~ msgid "0 = random"
+#~ msgstr "0 = random"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Interface Metric"
+msgstr "Interface Metric"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Pre-Shared Key"
+msgstr "Pre-Shared Key"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Optional PSK…"
+msgstr "Optional PSK…"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Initialize Client"
+msgstr "Initialize Client"
+
+#. 0: client.name
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Edit Client - {0}"
+msgstr "Edit Client - {0}"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Allow WireGuard Port"
+msgstr "Allow WireGuard Port"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Masquerade IPv4"
+msgstr "Masquerade IPv4"
+
+#: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+msgid "Masquerade IPv6"
+msgstr "Masquerade IPv6"
+
+#~ msgid "Paste a config first"
+#~ msgstr "Paste a config first"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Import Config"
+msgstr "Import Config"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "<0/> File"
+msgstr "<0/> File"
+
+#~ msgid "Apply Config"
+#~ msgstr "Apply Config"
+
+#~ msgid "Paste WireGuard Config"
+#~ msgstr "Paste WireGuard Config"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "One address per line"
+msgstr "One address per line"
+
+#: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+msgid "Set a specific local port to listen on. Leave as 0 to auto-assign."
+msgstr "Set a specific local port to listen on. Leave as 0 to auto-assign."
+
+#: src/routes/+layout.svelte
+msgid "Connection lost"
+msgstr "Connection lost"
+
+#: src/routes/+layout.svelte
+msgid "Trying to reconnect to the server…"
+msgstr "Trying to reconnect to the server…"
+
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Apple Extensions"
+msgstr "Apple Extensions"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine"
+msgstr "Time Machine"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size (GB, 0 = unlimited)"
+msgstr "Time Machine Max Size (GB, 0 = unlimited)"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size"
+msgstr "Time Machine Max Size"
+
+#. 0: o!.name
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Object '{0}' is in use and cannot be deleted"
+msgstr "Object '{0}' is in use and cannot be deleted"
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Failed to delete objects"
+msgstr "Failed to delete objects"
+
+#~ msgid "This will permanently delete {0} objects"
+#~ msgstr "This will permanently delete {0} objects"
+
+#. 0: modals.bulkDelete.count
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "This will permanently delete {0} network objects"
+msgstr "This will permanently delete {0} network objects"
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Bootstrap a base"
+msgstr "Bootstrap a base"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Queued..."
+msgstr "Queued..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Creating ZFS dataset..."
+msgstr "Creating ZFS dataset..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Copying signing keys..."
+msgstr "Copying signing keys..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Writing repository config..."
+msgstr "Writing repository config..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Fetching package index..."
+msgstr "Fetching package index..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Installing packages..."
+msgstr "Installing packages..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Writing jail config..."
+msgstr "Writing jail config..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Pre-flight checks..."
+msgstr "Pre-flight checks..."
+
+#. 0: msg
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap failed to start: {0}"
+msgstr "Bootstrap failed to start: {0}"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap Jail Bases"
+msgstr "Bootstrap Jail Bases"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "<0/> Loading..."
+msgstr "<0/> Loading..."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "No supported versions available."
+msgstr "No supported versions available."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Unknown error"
+msgstr "Unknown error"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "<0/> Installed"
+msgstr "<0/> Installed"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Retry"
+msgstr "Retry"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap"
+msgstr "Bootstrap"
+
+#. 0: msg
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Failed to delete bootstrap: {0}"
+msgstr "Failed to delete bootstrap: {0}"
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Delete bootstrap"
+msgstr "Delete bootstrap"
+
+#~ msgid "Select a jail base to bootstrap with the help of pkgbase. This will create a new ZFS dataset with the selected base and install the necessary packages to make it a valid jail root. Once bootstrapped, you can select this base when creating a new jail."
+#~ msgstr "Select a jail base to bootstrap with the help of pkgbase. This will create a new ZFS dataset with the selected base and install the necessary packages to make it a valid jail root. Once bootstrapped, you can select this base when creating a new jail."
+
+#: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails."
+msgstr "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails."
+
+#: src/routes/[node]/+layout.svelte
+msgid "Initiators"
+msgstr "Initiators"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to create initiator"
+msgstr "Failed to create initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator created"
+msgstr "Initiator created"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to update initiator"
+msgstr "Failed to update initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator updated"
+msgstr "Initiator updated"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Nickname"
+msgstr "Nickname"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target Address"
+msgstr "Target Address"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target Name"
+msgstr "Target Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Auth Method"
+msgstr "Auth Method"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Not connected"
+msgstr "Not connected"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target Name (IQN)"
+msgstr "Target Name (IQN)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator Name (IQN, optional)"
+msgstr "Initiator Name (IQN, optional)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP (one-way)"
+msgstr "CHAP (one-way)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "MutualCHAP"
+msgstr "MutualCHAP"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "MutualCHAP (two-way)"
+msgstr "MutualCHAP (two-way)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Name"
+msgstr "CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Secret"
+msgstr "CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Name"
+msgstr "Target CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Secret"
+msgstr "Target CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Edit Initiator"
+msgstr "Edit Initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Delete Initiator"
+msgstr "Delete Initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "New iSCSI Initiator"
+msgstr "New iSCSI Initiator"
+
+#~ msgid "Configure a new iSCSI initiator connection."
+#~ msgstr "Configure a new iSCSI initiator connection."
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Edit iSCSI Initiator"
+msgstr "Edit iSCSI Initiator"
+
+#~ msgid "Update the iSCSI initiator configuration."
+#~ msgstr "Update the iSCSI initiator configuration."
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Failed to delete initiator"
+msgstr "Failed to delete initiator"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Initiator deleted"
+msgstr "Initiator deleted"
+
+#~ msgid "CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr "CHAP Secret must be 12–16 characters (RFC 3720)"
+
+#~ msgid "Target CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr "Target CHAP Secret must be 12–16 characters (RFC 3720)"
+
+#~ msgid "Initiator Name <0>(IQN, optional)</0>"
+#~ msgstr "Initiator Name <0>(IQN, optional)</0>"
+
+#~ msgid "<0/> Initiator CHAP Credentials"
+#~ msgstr "<0/> Initiator CHAP Credentials"
+
+#~ msgid "CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr "CHAP Secret <0>(12–16 chars)</0>"
+
+#~ msgid "<0/> Target CHAP Credentials"
+#~ msgstr "<0/> Target CHAP Credentials"
+
+#~ msgid "Target CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr "Target CHAP Secret <0>(12–16 chars)</0>"
+
+#~ msgid "CHAP Secret (12–16 chars)"
+#~ msgstr "CHAP Secret (12–16 chars)"
+
+#~ msgid "Target CHAP Secret (12–16 chars)"
+#~ msgstr "Target CHAP Secret (12–16 chars)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Password (12-16 characters)"
+msgstr "Password (12-16 characters)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Must be 12-16 characters (RFC 3720)"
+msgstr "Must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/initiators/+page.svelte
+msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "Target CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#~ msgid "Test"
+#~ msgstr "Test"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
+msgstr "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target created"
+msgstr "Target created"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target updated"
+msgstr "Target updated"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to add portal"
+msgstr "Failed to add portal"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portal added"
+msgstr "Portal added"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to remove portal"
+msgstr "Failed to remove portal"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portal removed"
+msgstr "Portal removed"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to add LUN"
+msgstr "Failed to add LUN"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN added"
+msgstr "LUN added"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Failed to remove LUN"
+msgstr "Failed to remove LUN"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN removed"
+msgstr "LUN removed"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Alias"
+msgstr "Alias"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Portals"
+msgstr "Portals"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUNs"
+msgstr "LUNs"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Alias (optional)"
+msgstr "Alias (optional)"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "My Storage Target"
+msgstr "My Storage Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Name"
+msgstr "Mutual CHAP Name"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Mutual CHAP Secret"
+msgstr "Mutual CHAP Secret"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Edit iSCSI Target"
+msgstr "Edit iSCSI Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Save Details"
+msgstr "Save Details"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No portals configured."
+msgstr "No portals configured."
+
+#~ msgid "LUN {0}:"
+#~ msgstr "LUN {0}:"
+
+#. 0: lun.zvol
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "/dev/zvol/{0}"
+msgstr "/dev/zvol/{0}"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "No LUNs configured."
+msgstr "No LUNs configured."
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "ZVol"
+msgstr "ZVol"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Select a volume..."
+msgstr "Select a volume..."
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Edit Target"
+msgstr "Edit Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Delete Target"
+msgstr "Delete Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "New iSCSI Target"
+msgstr "New iSCSI Target"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target deleted"
+msgstr "Target deleted"
+
+#. 0: lun.lunNumber
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN {0}"
+msgstr "LUN {0}"
+
+#. 0: modals.bulkDelete.count
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+msgstr "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+
+#~ msgid "Bootstrap a base>>>>>>> Stashed changes"
+#~ msgstr "Bootstrap a base>>>>>>> Stashed changes"
+
+#~ msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails.<<<<<<< Updated upstream"
+#~ msgstr "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails.<<<<<<< Updated upstream"
+
+#~ msgid "LUN {0}=======>>>>>>> Stashed changes"
+#~ msgstr "LUN {0}=======>>>>>>> Stashed changes"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Username is required"
+msgstr "Username is required"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Invalid username format"
+msgstr "Invalid username format"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password is required"
+msgstr "Password is required"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Password must be at least 8 characters"
+msgstr "Password must be at least 8 characters"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Passwords do not match"
+msgstr "Passwords do not match"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home directory is required"
+msgstr "Home directory is required"
+
+#~ msgid "Edit User — {0}"
+#~ msgstr "Edit User — {0}"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Identification"
+msgstr "Identification"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "ID & Groups"
+msgstr "ID & Groups"
+
+#~ msgid "Directories"
+#~ msgstr "Directories"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Full Name"
+msgstr "Full Name"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "John Doe"
+msgstr "John Doe"
+
+#~ msgid "Generate Password"
+#~ msgstr "Generate Password"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Confirm Password"
+msgstr "Confirm Password"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "User ID (UID)"
+msgstr "User ID (UID)"
+
+#~ msgid "New Primary Group (create group named after username)"
+#~ msgstr "New Primary Group (create group named after username)"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Primary Group"
+msgstr "Primary Group"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select primary group..."
+msgstr "Select primary group..."
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Auxiliary Groups"
+msgstr "Auxiliary Groups"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select auxiliary groups..."
+msgstr "Select auxiliary groups..."
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home Directory"
+msgstr "Home Directory"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Home Directory Permissions"
+msgstr "Home Directory Permissions"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Read"
+msgstr "Read"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Write"
+msgstr "Write"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Execute"
+msgstr "Execute"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Group"
+msgstr "Group"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Other"
+msgstr "Other"
+
+#. 0: computedPerms.toString(8).padStart(3, '0')
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Octal: 0{0}"
+msgstr "Octal: 0{0}"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "SSH Public Key"
+msgstr "SSH Public Key"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Shell"
+msgstr "Shell"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Select shell..."
+msgstr "Select shell..."
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Disable Password"
+msgstr "Disable Password"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Lock User"
+msgstr "Lock User"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Permit Doas"
+msgstr "Permit Doas"
+
+#. 0: properties.uid; 1: collision.username
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "UID {0} is already used by \"{1}\""
+msgstr "UID {0} is already used by \"{1}\""
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Primary group cannot also be an auxiliary group"
+msgstr "Primary group cannot also be an auxiliary group"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> Browse"
+msgstr "<0/> Browse"
+
+#~ msgid "Select Directory"
+#~ msgstr "Select Directory"
+
+#~ msgid "Loading..."
+#~ msgstr "Loading..."
+
+#~ msgid "No subdirectories"
+#~ msgstr "No subdirectories"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Failed to create folder"
+msgstr "Failed to create folder"
+
+#~ msgid "Failed to delete folder"
+#~ msgstr "Failed to delete folder"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "New folder name"
+msgstr "New folder name"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Confirm"
+msgstr "Confirm"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "No subdirectories — right-click to create one"
+msgstr "No subdirectories — right-click to create one"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> New Folder inside"
+msgstr "<0/> New Folder inside"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> New Folder here"
+msgstr "<0/> New Folder here"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "<0/> Select Directory"
+msgstr "<0/> Select Directory"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Go up"
+msgstr "Go up"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Loading…"
+msgstr "Loading…"
+
+#~ msgid "New Primary Group (Create group named after username)"
+#~ msgstr "New Primary Group (Create group named after username)"
+
+#~ msgid "New User Primary Group"
+#~ msgstr "New User Primary Group"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Create User Primary Group"
+msgstr "Create User Primary Group"
+
+#: src/lib/components/custom/Authentication/CreateOrEdit.svelte
+msgid "Use /home/<username>"
+msgstr "Use /home/<username>"

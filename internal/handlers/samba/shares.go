@@ -20,26 +20,30 @@ import (
 )
 
 type CreateSambaShareRequest struct {
-	Name            string   `json:"name"`
-	Dataset         string   `json:"dataset"`
-	ReadOnlyGroups  []string `json:"readOnlyGroups"`
-	WriteableGroups []string `json:"writeableGroups"`
-	CreateMask      string   `json:"createMask"`
-	DirectoryMask   string   `json:"directoryMask"`
-	GuestOk         *bool    `json:"guestOk"`
-	ReadOnly        *bool    `json:"readOnly"`
+	Name               string   `json:"name"`
+	Dataset            string   `json:"dataset"`
+	ReadOnlyGroups     []string `json:"readOnlyGroups"`
+	WriteableGroups    []string `json:"writeableGroups"`
+	CreateMask         string   `json:"createMask"`
+	DirectoryMask      string   `json:"directoryMask"`
+	GuestOk            *bool    `json:"guestOk"`
+	ReadOnly           *bool    `json:"readOnly"`
+	TimeMachine        *bool    `json:"timeMachine"`
+	TimeMachineMaxSize *uint64  `json:"timeMachineMaxSize"`
 }
 
 type UpdateSambaShareRequest struct {
-	ID              uint     `json:"id"`
-	Name            string   `json:"name"`
-	Dataset         string   `json:"dataset"`
-	ReadOnlyGroups  []string `json:"readOnlyGroups"`
-	WriteableGroups []string `json:"writeableGroups"`
-	CreateMask      string   `json:"createMask"`
-	DirectoryMask   string   `json:"directoryMask"`
-	GuestOk         *bool    `json:"guestOk"`
-	ReadOnly        *bool    `json:"readOnly"`
+	ID                 uint     `json:"id"`
+	Name               string   `json:"name"`
+	Dataset            string   `json:"dataset"`
+	ReadOnlyGroups     []string `json:"readOnlyGroups"`
+	WriteableGroups    []string `json:"writeableGroups"`
+	CreateMask         string   `json:"createMask"`
+	DirectoryMask      string   `json:"directoryMask"`
+	GuestOk            *bool    `json:"guestOk"`
+	ReadOnly           *bool    `json:"readOnly"`
+	TimeMachine        *bool    `json:"timeMachine"`
+	TimeMachineMaxSize *uint64  `json:"timeMachineMaxSize"`
 }
 
 // @Summary Get Samba Shares
@@ -107,6 +111,16 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			readOnly = *request.ReadOnly
 		}
 
+		timeMachine := false
+		if request.TimeMachine != nil {
+			timeMachine = *request.TimeMachine
+		}
+
+		var timeMachineMaxSize uint64
+		if request.TimeMachineMaxSize != nil {
+			timeMachineMaxSize = *request.TimeMachineMaxSize
+		}
+
 		ctx := c.Request.Context()
 		if err := smbService.CreateShare(
 			ctx,
@@ -118,6 +132,8 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.DirectoryMask,
 			guestOk,
 			readOnly,
+			timeMachine,
+			timeMachineMaxSize,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -172,6 +188,16 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			readOnly = *request.ReadOnly
 		}
 
+		timeMachine := false
+		if request.TimeMachine != nil {
+			timeMachine = *request.TimeMachine
+		}
+
+		var timeMachineMaxSize uint64
+		if request.TimeMachineMaxSize != nil {
+			timeMachineMaxSize = *request.TimeMachineMaxSize
+		}
+
 		ctx := c.Request.Context()
 		if err := smbService.UpdateShare(
 			ctx,
@@ -184,6 +210,8 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.DirectoryMask,
 			guestOk,
 			readOnly,
+			timeMachine,
+			timeMachineMaxSize,
 		); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

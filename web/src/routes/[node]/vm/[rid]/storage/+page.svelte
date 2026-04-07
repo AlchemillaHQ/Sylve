@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { getDownloads } from '$lib/api/utilities/downloader';
 	import { storageDetach } from '$lib/api/vm/storage';
-	import { getVmById, getVMDomain, getVMs } from '$lib/api/vm/vm';
+	import { getVmById, getVMs } from '$lib/api/vm/vm';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import { getPools } from '$lib/api/zfs/pool';
-	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Storage from '$lib/components/custom/VM/Hardware/Storage.svelte';
@@ -18,12 +17,12 @@
 	import { generateTableData } from '$lib/utils/vm/storage';
 	import { toast } from 'svelte-sonner';
 	import { resource, watch } from 'runed';
-	import { sleep } from '$lib/utils';
+	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import { getContext } from 'svelte';
 
 	interface Data {
 		vms: VM[];
 		vm: VM;
-		domain: VMDomain;
 		filesystems: Dataset[];
 		volumes: Dataset[];
 		pools: Zpool[];
@@ -32,6 +31,11 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
+	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
+		'vmLifecycleTask'
+	);
 
 	// svelte-ignore state_referenced_locally
 	const vms = resource(
@@ -56,19 +60,6 @@
 		},
 		{
 			initialValue: data.vm
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
-	const domain = resource(
-		() => `vm-domain-${data.rid}`,
-		async (key) => {
-			const result = await getVMDomain(Number(data.rid));
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.domain
 		}
 	);
 
@@ -120,33 +111,9 @@
 	function refreshData() {
 		vm.refetch();
 		vms.refetch();
-		domain.refetch();
 		pools.refetch();
 		datasets.refetch();
 		downloads.refetch();
-	}
-
-	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 8) {
-		for (let i = 0; i < attempts; i += 1) {
-			await Promise.all([vm.refetch(), domain.refetch()]);
-			if (
-				String(domain.current?.status || '')
-					.trim()
-					.toLowerCase() === targetStatus
-			) {
-				return true;
-			}
-
-			if (i < attempts - 1) {
-				await sleep(500);
-			}
-		}
-
-		return (
-			String(domain.current?.status || '')
-				.trim()
-				.toLowerCase() === targetStatus
-		);
 	}
 
 	let activeRows: Row[] = $state([]);
@@ -179,28 +146,19 @@
 		}
 	);
 
-	watch(
-		() => vmPowerSignal.token,
-		() => {
-			void (async () => {
-				if (vmPowerSignal.rid !== Number(data.rid)) return;
-
-				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
-					await refetchUntilDomainStatus('shutoff');
-					return;
-				}
-
-				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
-					await refetchUntilDomainStatus('running');
-				}
-			})();
-		},
-		{ lazy: true }
+	let isLifecycleActive = $derived(
+		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
+	);
+	let isDomainShutoff = $derived(
+		!isLifecycleActive &&
+			String(domain.current?.status || '')
+				.trim()
+				.toLowerCase() === 'shutoff'
 	);
 </script>
 
 {#snippet button(type: string)}
-	{#if domain && domain.current.status === 'Shutoff'}
+	{#if isDomainShutoff}
 		{#if type === 'detach' && activeRows && activeRows.length === 1}
 			<Button
 				onclick={() => {
@@ -246,10 +204,8 @@
 			}}
 			size="sm"
 			class="h-6"
-			title={domain && domain.current.status !== 'Shutoff'
-				? 'VM must be shut off to attach storage'
-				: ''}
-			disabled={domain && domain.current.status !== 'Shutoff'}
+			title={!isDomainShutoff ? 'VM must be shut off to attach storage' : ''}
+			disabled={!isDomainShutoff}
 		>
 			<div class="flex items-center">
 				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>

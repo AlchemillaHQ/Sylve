@@ -61,6 +61,8 @@ type Service struct {
 	usagePersistQueue   chan struct{}
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
+
+	bootstrapActiveMu sync.Map
 }
 
 func NewJailService(
@@ -83,6 +85,7 @@ func NewJailService(
 	go s.networkUpdateWorker()
 	go s.jailUsagePersistWorker()
 	go s.jailUsageRetentionWorker()
+	go s.RecoverInterruptedBootstraps(context.Background())
 
 	networkService.RegisterOnJailObjectUpdateCallback(func(jailIDs []uint) {
 		for _, id := range jailIDs {
@@ -355,6 +358,10 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return fmt.Errorf("pool_not_found")
 	}
 
+	if data.Base != "" && data.BootstrapName != "" {
+		return fmt.Errorf("base_and_bootstrap_name_are_mutually_exclusive")
+	}
+
 	if data.Base != "" {
 		ex, err := s.FindBaseByUUID(data.Base)
 		if err != nil {
@@ -374,8 +381,28 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		if !isDir {
 			return fmt.Errorf("base_is_not_a_directory")
 		}
+	} else if data.BootstrapName != "" {
+		bootstrapDataset := fmt.Sprintf("%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
+		bootstrapMount := fmt.Sprintf("/%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
+
+		var bRecord jailModels.JailBootstrap
+		if err := s.DB.Where("pool = ? AND name = ?", data.Pool, data.BootstrapName).First(&bRecord).Error; err != nil {
+			return fmt.Errorf("bootstrap_not_found")
+		}
+		if bRecord.Status != "completed" {
+			return fmt.Errorf("bootstrap_not_completed")
+		}
+
+		ds, _ := s.GZFS.ZFS.Get(ctx, bootstrapDataset, false)
+		if ds == nil {
+			return fmt.Errorf("bootstrap_dataset_does_not_exist")
+		}
+
+		if _, err := os.Stat(bootstrapMount); os.IsNotExist(err) {
+			return fmt.Errorf("bootstrap_mount_does_not_exist")
+		}
 	} else {
-		return fmt.Errorf("download_uuid_required")
+		return fmt.Errorf("download_uuid_or_bootstrap_name_required")
 	}
 
 	existingDataset, err := s.GZFS.ZFS.Get(ctx, fmt.Sprintf("%s/sylve/jails/%d", foundPool, *data.CTID), false)
@@ -1822,22 +1849,30 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 	txCommitted = true
 
-	var base string
-	base, err = s.FindBaseByUUID(data.Base)
-	if err != nil {
-		err = fmt.Errorf("failed_to_find_base: %w", err)
-		return
-	}
-
-	isDir, _ := utils.IsDir(base)
-	if isDir {
-		if err = utils.CopyDirContents(base, mountPoint); err != nil {
-			err = fmt.Errorf("failed_to_copy_base: %w", err)
+	if data.BootstrapName != "" {
+		bootstrapMount := fmt.Sprintf("/%s/sylve/bootstraps/%s", data.Pool, data.BootstrapName)
+		if err = utils.CopyDirContents(bootstrapMount, mountPoint); err != nil {
+			err = fmt.Errorf("failed_to_copy_bootstrap: %w", err)
 			return
 		}
 	} else {
-		err = fmt.Errorf("base_is_not_a_directory")
-		return
+		var base string
+		base, err = s.FindBaseByUUID(data.Base)
+		if err != nil {
+			err = fmt.Errorf("failed_to_find_base: %w", err)
+			return
+		}
+
+		isDir, _ := utils.IsDir(base)
+		if isDir {
+			if err = utils.CopyDirContents(base, mountPoint); err != nil {
+				err = fmt.Errorf("failed_to_copy_base: %w", err)
+				return
+			}
+		} else {
+			err = fmt.Errorf("base_is_not_a_directory")
+			return
+		}
 	}
 
 	var jailsPath string

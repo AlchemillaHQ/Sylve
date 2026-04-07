@@ -1,22 +1,24 @@
 <script lang="ts">
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
-	import type { Jail } from '$lib/types/jail/jail';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import type { Zpool } from '$lib/types/zfs/pool';
+	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { fstabPlaceholder } from '$lib/utils/placeholders';
 	import { toast } from 'svelte-sonner';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { generateSimpleLinuxFSTab } from '$lib/utils/jail/jail';
-	import { untrack } from 'svelte';
 	import { watch } from 'runed';
+	import Bootstrap from './Bootstrap.svelte';
 
 	interface Props {
 		ctId: number;
 		pools: Zpool[];
 		pool: string;
 		downloads: Download[];
+		bootstraps: BootstrapEntry[];
+		bootstrapRefetch: boolean;
 		base: string;
 		fstab: string;
 	}
@@ -25,10 +27,14 @@
 		ctId,
 		pools,
 		downloads,
+		bootstraps,
+		bootstrapRefetch = $bindable(),
 		pool = $bindable(),
 		base = $bindable(),
 		fstab = $bindable()
 	}: Props = $props();
+
+	let bootstrapModalOpen = $state(false);
 
 	let poolOptions = $derived.by(() => {
 		return pools.map((pool) => ({
@@ -38,12 +44,21 @@
 	});
 
 	let baseOptions = $derived.by(() => {
-		return downloads
+		const downloadOpts = downloads
 			.filter((download) => download.uType === 'base-rootfs')
 			.map((download) => ({
 				label: download.name,
 				value: download.uuid
 			}));
+
+		const bootstrapOpts = bootstraps
+			.filter((b) => b.exists && b.status === 'completed')
+			.map((b) => ({
+				label: b.label,
+				value: `bootstrap:${b.name}`
+			}));
+
+		return [...bootstrapOpts, ...downloadOpts];
 	});
 
 	let comboBoxes = $state({
@@ -129,6 +144,16 @@
 			triggerWidth="w-full"
 			width="w-full"
 			disabled={disableBaseSelection}
+			topRightButton={pool
+				? {
+						icon: 'icon-[mdi--download-box-outline]',
+						tooltip: 'Bootstrap a base',
+						function: async () => {
+							bootstrapModalOpen = true;
+							return '';
+						}
+					}
+				: undefined}
 		></CustomComboBox>
 	</div>
 	<CustomCheckbox
@@ -165,3 +190,11 @@
 		</div>
 	{/if}
 </div>
+
+<Bootstrap
+	bind:open={bootstrapModalOpen}
+	{pool}
+	onComplete={() => {
+		bootstrapRefetch = true;
+	}}
+/>
