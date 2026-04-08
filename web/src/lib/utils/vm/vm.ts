@@ -8,7 +8,7 @@ import type {
 } from '$lib/types/vm/vm';
 import type { APIResponse } from '$lib/types/common';
 import { toast } from 'svelte-sonner';
-import { isValidVMName } from '../string';
+import { isValidIPv4, isValidIPv6, isValidVMName } from '../string';
 import type { UTypeGroupedDownload } from '$lib/types/utilities/downloader';
 import { type ClusterNode } from '$lib/types/cluster/cluster';
 import { kvStorage } from '$lib/types/db';
@@ -86,19 +86,26 @@ export function isValidCreateData(
         return false;
     }
 
-    if (modal.advanced.vncPort < 1 || modal.advanced.vncPort > 65535) {
-        toast.error('VNC port must be between 1 and 65535', toastConfig);
+    if (!isValidIPv4(modal.advanced.vncBind) && !isValidIPv6(modal.advanced.vncBind)) {
+        toast.error('VNC bind IP must be a valid IPv4 or IPv6 address', toastConfig);
         return false;
     }
 
-    if (modal.advanced.vncPassword && modal.advanced.vncPassword.length < 1) {
-        toast.error('VNC password required', toastConfig);
-        return false;
-    }
+    if (modal.advanced.vncEnabled) {
+        if (modal.advanced.vncPort < 1 || modal.advanced.vncPort > 65535) {
+            toast.error('VNC port must be between 1 and 65535', toastConfig);
+            return false;
+        }
 
-    if (modal.advanced.vncResolution === '') {
-        toast.error('No VNC resolution selected', toastConfig);
-        return false;
+        if (modal.advanced.vncPassword && modal.advanced.vncPassword.length < 1) {
+            toast.error('VNC password required', toastConfig);
+            return false;
+        }
+
+        if (modal.advanced.vncResolution === '') {
+            toast.error('No VNC resolution selected', toastConfig);
+            return false;
+        }
     }
 
     if (
@@ -155,6 +162,7 @@ const vmCreateErrorMessageByCode: Record<string, string> = {
     cloud_init_requires_storage: 'Cloud-Init requires a VM storage device',
     invalid_cloud_init_yaml: 'Cloud-Init YAML is invalid. Verify user-data and metadata syntax',
     invalid_iso_or_image_format: 'Invalid or unsupported ISO/image format. Verify the selected media file',
+    invalid_vnc_bind_ip: 'VNC bind IP must be a valid IPv4 or IPv6 address',
     invalid_vm_name: 'Invalid VM name. Use a valid hostname-style name',
     iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk',
     unsupported_download_type:

@@ -99,14 +99,6 @@ func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces
 		return fmt.Errorf("unsupported_bootstrap_type: %s", req.Type)
 	}
 
-	keyDir := fmt.Sprintf("/usr/share/keys/pkgbase-%d/trusted", req.Major)
-	if _, err := os.Stat(keyDir); os.IsNotExist(err) {
-		return fmt.Errorf("pkgbase_signing_keys_not_found: %s", keyDir)
-	}
-	if _, err := exec.LookPath("pkg"); err != nil {
-		return fmt.Errorf("pkg_not_found")
-	}
-
 	pools, err := s.System.GetUsablePools(ctx)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
@@ -143,15 +135,27 @@ func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces
 		case "completed":
 			s.bootstrapActiveMu.Delete(lockKey)
 			return nil
-		default:
-			if err := s.DB.Model(&record).Updates(map[string]interface{}{
-				"status": "pending",
-				"phase":  "",
-				"error":  "",
-			}).Error; err != nil {
-				s.bootstrapActiveMu.Delete(lockKey)
-				return fmt.Errorf("failed_to_reset_bootstrap_record: %w", err)
-			}
+		}
+	}
+
+	keyDir := fmt.Sprintf("/usr/share/keys/pkgbase-%d/trusted", req.Major)
+	if _, err := os.Stat(keyDir); os.IsNotExist(err) {
+		s.bootstrapActiveMu.Delete(lockKey)
+		return fmt.Errorf("pkgbase_signing_keys_not_found: %s", keyDir)
+	}
+	if _, err := exec.LookPath("pkg"); err != nil {
+		s.bootstrapActiveMu.Delete(lockKey)
+		return fmt.Errorf("pkg_not_found")
+	}
+
+	if record.ID != 0 {
+		if err := s.DB.Model(&record).Updates(map[string]interface{}{
+			"status": "pending",
+			"phase":  "",
+			"error":  "",
+		}).Error; err != nil {
+			s.bootstrapActiveMu.Delete(lockKey)
+			return fmt.Errorf("failed_to_reset_bootstrap_record: %w", err)
 		}
 	} else {
 		record = jailModels.JailBootstrap{

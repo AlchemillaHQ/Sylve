@@ -14,6 +14,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -327,54 +328,57 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		}
 	}
 
-	width, height, f := strings.Cut(vm.VNCResolution, "x")
-	if f != true {
-		return "", fmt.Errorf("invalid_vnc_resolution")
-	}
+	if vm.VNCEnabled {
+		width, height, f := strings.Cut(vm.VNCResolution, "x")
+		if f != true {
+			return "", fmt.Errorf("invalid_vnc_resolution")
+		}
 
-	vncWait := ""
-	if vm.VNCWait {
-		vncWait = ",wait"
-	}
+		vncWait := ""
+		if vm.VNCWait {
+			vncWait = ",wait"
+		}
 
-	/* Libvirt doesn't allow wait yet, so we're going to resort to using bhyve args for now
-	domain.Devices.Graphics = &libvirtServiceInterfaces.Graphics{
-		Type:     "vnc",
-		Port:     fmt.Sprintf("%d", vm.VNCPort),
-		Password: vm.VNCPassword,
-		Listen: libvirtServiceInterfaces.GraphicsListen{
-			Type:    "address",
-			Address: "127.0.0.1",
-		},
-	}
-
-	domain.Devices.Video = &libvirtServiceInterfaces.Video{
-		Model: libvirtServiceInterfaces.VideoModel{
-			Type:    "gop",
-			Heads:   "1",
-			Primary: "yes",
-			Res: &libvirtServiceInterfaces.VideoResolution{
-				X: width,
-				Y: height,
+		/* Libvirt doesn't allow wait yet, so we're going to resort to using bhyve args for now
+		domain.Devices.Graphics = &libvirtServiceInterfaces.Graphics{
+			Type:     "vnc",
+			Port:     fmt.Sprintf("%d", vm.VNCPort),
+			Password: vm.VNCPassword,
+			Listen: libvirtServiceInterfaces.GraphicsListen{
+				Type:    "address",
+				Address: "127.0.0.1",
 			},
-		},
+		}
+
+		domain.Devices.Video = &libvirtServiceInterfaces.Video{
+			Model: libvirtServiceInterfaces.VideoModel{
+				Type:    "gop",
+				Heads:   "1",
+				Primary: "yes",
+				Res: &libvirtServiceInterfaces.VideoResolution{
+					X: width,
+					Y: height,
+				},
+			},
+		}
+		*/
+
+		vncHostPort := net.JoinHostPort(NormalizeVNCBindAddress(vm.VNCBind), strconv.Itoa(vm.VNCPort))
+		vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=%s,w=%s,h=%s,password=%s%s",
+			sIndex,
+			vncHostPort,
+			width,
+			height,
+			vm.VNCPassword,
+			vncWait,
+		)
+
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: vncArg,
+			},
+		})
 	}
-	*/
-
-	vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%s,h=%s,password=%s%s",
-		sIndex,
-		vm.VNCPort,
-		width,
-		height,
-		vm.VNCPassword,
-		vncWait,
-	)
-
-	bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-		{
-			Value: vncArg,
-		},
-	})
 
 	if vm.IgnoreUMSR {
 		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{

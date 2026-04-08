@@ -160,6 +160,17 @@ func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfa
 	return simple, nil
 }
 
+func (s *Service) GetVMByVNCPort(vncPort int) (vmModels.VM, error) {
+	var vm vmModels.VM
+	if err := s.DB.
+		Where("vnc_enabled = ? AND vnc_port = ?", true, vncPort).
+		First(&vm).Error; err != nil {
+		return vmModels.VM{}, err
+	}
+
+	return vm, nil
+}
+
 func validateCPUPins(
 	db *gorm.DB,
 	req libvirtServiceInterfaces.CreateVMRequest,
@@ -441,36 +452,47 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 		return fmt.Errorf("memory_must_be_greater_than_128mb")
 	}
 
-	if data.VNCPort < 1 || data.VNCPort > 65535 {
-		return fmt.Errorf("vnc_port_must_be_between_1_and_65535")
-	} else {
-		var count int64
-
-		if err := s.DB.Model(&vmModels.VM{}).
-			Where("vnc_port = ?", data.VNCPort).
-			Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_check_vnc_port_usage: %w", err)
-		}
-
-		if count > 0 {
-			return fmt.Errorf("vnc_port_already_in_use_by_another_vm")
-		}
-
-		if utils.IsPortInUse(data.VNCPort) {
-			return fmt.Errorf("vnc_port_already_in_use_by_another_service")
-		}
+	vncEnabled := true
+	if data.VNCEnabled != nil {
+		vncEnabled = *data.VNCEnabled
 	}
 
-	if data.VNCPassword != "" && len(data.VNCPassword) < 1 {
-		return fmt.Errorf("vnc_password_required")
+	if err := ValidateVNCBindAddress(data.VNCBind); err != nil {
+		return err
 	}
 
-	if strings.Contains(data.VNCPassword, ",") {
-		return fmt.Errorf("vnc_password_cannot_contain_commas")
-	}
+	if vncEnabled {
+		if data.VNCPort < 1 || data.VNCPort > 65535 {
+			return fmt.Errorf("vnc_port_must_be_between_1_and_65535")
+		} else {
+			var count int64
 
-	if data.VNCResolution == "" {
-		return fmt.Errorf("no_vnc_resolution_selected")
+			if err := s.DB.Model(&vmModels.VM{}).
+				Where("vnc_port = ?", data.VNCPort).
+				Count(&count).Error; err != nil {
+				return fmt.Errorf("failed_to_check_vnc_port_usage: %w", err)
+			}
+
+			if count > 0 {
+				return fmt.Errorf("vnc_port_already_in_use_by_another_vm")
+			}
+
+			if utils.IsPortInUse(data.VNCPort) {
+				return fmt.Errorf("vnc_port_already_in_use_by_another_service")
+			}
+		}
+
+		if data.VNCPassword != "" && len(data.VNCPassword) < 1 {
+			return fmt.Errorf("vnc_password_required")
+		}
+
+		if strings.Contains(data.VNCPassword, ",") {
+			return fmt.Errorf("vnc_password_cannot_contain_commas")
+		}
+
+		if data.VNCResolution == "" {
+			return fmt.Errorf("no_vnc_resolution_selected")
+		}
 	}
 
 	if data.StartOrder < 0 {
@@ -858,6 +880,9 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	startAtBoot := false
 	tpmEmulation := false
 	serial := false
+	vncEnabled := true
+	vncPort := data.VNCPort
+	vncBind := NormalizeVNCBindAddress(data.VNCBind)
 	apic := true
 	acpi := true
 	ignoreUMSRs := false
@@ -885,6 +910,14 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		serial = *data.Serial
 	} else {
 		serial = false
+	}
+
+	if data.VNCEnabled != nil {
+		vncEnabled = *data.VNCEnabled
+	}
+
+	if !vncEnabled {
+		vncPort = 0
 	}
 
 	var macId uint
@@ -1042,8 +1075,9 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		CPUThreads:             data.CPUThreads,
 		RAM:                    data.RAM,
 		Serial:                 serial,
-		VNCEnabled:             true,
-		VNCPort:                data.VNCPort,
+		VNCEnabled:             vncEnabled,
+		VNCPort:                vncPort,
+		VNCBind:                vncBind,
 		VNCPassword:            data.VNCPassword,
 		VNCResolution:          data.VNCResolution,
 		VNCWait:                vncWait,

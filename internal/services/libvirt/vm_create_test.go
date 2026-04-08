@@ -335,3 +335,32 @@ func TestCleanupFailedVMCreate_RemovesAutoMACAndStaleDatasetRows(t *testing.T) {
 		t.Fatalf("expected stale vm_storage_datasets row to be deleted, found %d rows", staleDatasetCount)
 	}
 }
+
+func TestValidateCreate_AllowsDisabledVNCWithZeroPort(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+
+	req := testCreateRequest(514, 0)
+	disabled := false
+	req.VNCEnabled = &disabled
+	req.VNCBind = "127.0.0.1"
+	req.VNCResolution = ""
+	req.VNCPassword = ""
+
+	if err := svc.validateCreate(req, context.Background()); err != nil {
+		t.Fatalf("expected disabled VNC create validation to pass, got %v", err)
+	}
+}
+
+func TestValidateCreate_FailsWhenVNCBindInvalid(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+
+	req := testCreateRequest(515, 59015)
+	req.VNCBind = "invalid-bind-value"
+
+	err := svc.validateCreate(req, context.Background())
+	if err == nil || !strings.Contains(err.Error(), "invalid_vnc_bind_ip") {
+		t.Fatalf("expected invalid_vnc_bind_ip error, got %v", err)
+	}
+}

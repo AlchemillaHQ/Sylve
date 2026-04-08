@@ -627,7 +627,7 @@ func RegisterRoutes(r *gin.Engine,
 	vnc.Use(middleware.EnsureAuthenticated(authService))
 	vnc.Use(EnsureCorrectHost(db, authService))
 	vnc.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
-	vnc.GET("/:port", vncHandler.VNCProxyHandler)
+	vnc.GET("/:port", vncHandler.VNCProxyHandler(libvirtService))
 
 	tasks := api.Group("/tasks")
 	tasks.Use(middleware.EnsureAuthenticated(authService))

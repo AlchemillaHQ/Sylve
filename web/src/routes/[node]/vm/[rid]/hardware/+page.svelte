@@ -139,6 +139,7 @@
 			enabled: data.vm?.vncEnabled,
 			resolution: data.vm?.vncResolution,
 			port: data.vm?.vncPort,
+			bind: data.vm?.vncBind || '127.0.0.1',
 			password: data.vm?.vncPassword,
 			open: false
 		},
@@ -164,6 +165,7 @@
 				properties.ram.value = vm.ram;
 				properties.vnc.enabled = vm.vncEnabled;
 				properties.vnc.port = vm.vncPort;
+				properties.vnc.bind = vm.vncBind;
 				properties.vnc.password = vm.vncPassword;
 				properties.vnc.resolution = vm.vncResolution;
 				properties.pciDevices.value = vm.pciDevices;
@@ -218,6 +220,9 @@
                                 <span>
                                     ${properties.vnc.resolution} / ${properties.vnc.port}
                                 </span>
+                                <span>
+                                    Bind: ${properties.vnc.bind || '127.0.0.1'}
+                                </span>
                                 <span >
                                     ${properties.vnc.password || 'No Password'}
                                 </span>
@@ -258,7 +263,7 @@
 				property: 'VNC',
 				value: properties.vnc,
 				toCopy: properties.vnc.enabled
-					? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${window.location.hostname}:${properties.vnc.port}`
+					? `vnc://${properties.vnc.password ? `:${properties.vnc.password}@` : ''}${properties.vnc.bind || window.location.hostname}:${properties.vnc.port}`
 					: ''
 			},
 			{

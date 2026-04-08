@@ -65,6 +65,7 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"invalid_iso_or_image_format":                      {},
 	"invalid_mac_object_type":                          {},
 	"invalid_rid":                                      {},
+	"invalid_vnc_bind_ip":                              {},
 	"invalid_topology_vcpu_is_zero":                    {},
 	"invalid_vm_name":                                  {},
 	"iso_or_image_not_found":                           {},

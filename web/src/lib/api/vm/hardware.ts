@@ -27,6 +27,7 @@ export async function modifyVNC(
 	rid: number,
 	vncEnabled: boolean,
 	vncPort: number,
+	vncBind: string,
 	vncResolution: string,
 	vncPassword: string,
 	vncWait: boolean
@@ -34,6 +35,7 @@ export async function modifyVNC(
 	return await apiRequest(`/vm/hardware/vnc/${rid}`, APIResponseSchema, 'PUT', {
 		vncEnabled,
 		vncPort,
+		vncBind,
 		vncResolution,
 		vncPassword,
 		vncWait

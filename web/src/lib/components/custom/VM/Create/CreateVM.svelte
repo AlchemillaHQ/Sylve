@@ -185,8 +185,10 @@
 			isPinningOpen: false
 		},
 		advanced: {
+			vncEnabled: true,
 			serial: false,
 			vncPort: 0,
+			vncBind: '127.0.0.1',
 			vncPassword: generatePassword(),
 			vncWait: false,
 			vncResolution: '640x480',
@@ -372,8 +374,10 @@
 							{:else if value === 'advanced'}
 								<div in:fade={{ duration: 200 }}>
 									<Advanced
+										bind:vncEnabled={modal.advanced.vncEnabled}
 										bind:serial={modal.advanced.serial}
 										bind:vncPort={modal.advanced.vncPort}
+										bind:vncBind={modal.advanced.vncBind}
 										bind:vncPassword={modal.advanced.vncPassword}
 										bind:vncWait={modal.advanced.vncWait}
 										bind:startAtBoot={modal.advanced.startAtBoot}

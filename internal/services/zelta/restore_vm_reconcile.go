@@ -25,6 +25,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"gorm.io/gorm"
 )
 
@@ -125,6 +126,7 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 			ShutdownWaitTime:       restored.ShutdownWaitTime,
 			Serial:                 restored.Serial,
 			VNCEnabled:             restored.VNCEnabled,
+			VNCBind:                libvirt.NormalizeVNCBindAddress(restored.VNCBind),
 			VNCPort:                restored.VNCPort,
 			VNCPassword:            restored.VNCPassword,
 			VNCResolution:          restored.VNCResolution,
@@ -164,6 +166,7 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 				"ShutdownWaitTime",
 				"Serial",
 				"VNCEnabled",
+				"VNCBind",
 				"VNCPort",
 				"VNCPassword",
 				"VNCResolution",

@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"fmt"
+	"net"
 	"reflect"
 	"sort"
 	"strconv"
@@ -136,7 +137,7 @@ func (s *Service) updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cp
 	return out, nil
 }
 
-func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string, vncWait bool, vncEnabled bool) (string, error) {
+func updateVNC(xml string, vncPort int, vncBind string, vncResolution string, vncPassword string, vncWait bool, vncEnabled bool) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
 		return "", fmt.Errorf("failed to parse XML: %w", err)
@@ -171,37 +172,36 @@ func updateVNC(xml string, vncPort int, vncResolution string, vncPassword string
 		}
 	}
 
-	resolutionParts := strings.Split(vncResolution, "x")
-	if len(resolutionParts) != 2 {
-		return "", fmt.Errorf("invalid_vnc_resolution_format: %s", vncResolution)
-	}
-
-	width, err := strconv.Atoi(resolutionParts[0])
-	if err != nil {
-		return "", fmt.Errorf("invalid_vnc_resolution_width: %s", resolutionParts[0])
-	}
-
-	height, err := strconv.Atoi(resolutionParts[1])
-	if err != nil {
-		return "", fmt.Errorf("invalid_vnc_resolution_height: %s", resolutionParts[1])
-	}
-
-	wait := ""
-
-	if vncWait {
-		wait = ",wait"
-	}
-
-	if index == 0 {
-		index, err = findLowestIndex(xml)
-		if err != nil {
-			return "", fmt.Errorf("failed_to_find_lowest_index: %w", err)
+	if vncEnabled {
+		resolutionParts := strings.Split(vncResolution, "x")
+		if len(resolutionParts) != 2 {
+			return "", fmt.Errorf("invalid_vnc_resolution_format: %s", vncResolution)
 		}
-	}
 
-	vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=127.0.0.1:%d,w=%d,h=%d,password=%s%s", index, vncPort, width, height, vncPassword, wait)
+		width, err := strconv.Atoi(resolutionParts[0])
+		if err != nil {
+			return "", fmt.Errorf("invalid_vnc_resolution_width: %s", resolutionParts[0])
+		}
 
-	if vnc != "" && vncEnabled {
+		height, err := strconv.Atoi(resolutionParts[1])
+		if err != nil {
+			return "", fmt.Errorf("invalid_vnc_resolution_height: %s", resolutionParts[1])
+		}
+
+		wait := ""
+		if vncWait {
+			wait = ",wait"
+		}
+
+		if index == 0 {
+			index, err = findLowestIndex(xml)
+			if err != nil {
+				return "", fmt.Errorf("failed_to_find_lowest_index: %w", err)
+			}
+		}
+
+		vncHostPort := net.JoinHostPort(NormalizeVNCBindAddress(vncBind), strconv.Itoa(vncPort))
+		vnc := fmt.Sprintf("-s %d:0,fbuf,tcp=%s,w=%d,h=%d,password=%s%s", index, vncHostPort, width, height, vncPassword, wait)
 		arg := bhyveCommandline.CreateElement("bhyve:arg")
 		arg.CreateAttr("value", vnc)
 	}
@@ -531,19 +531,33 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("domain_not_shutoff: %d", vm.RID)
 	}
 
-	vncWait := false
+	vncWait := vm.VNCWait
 
 	if req.VNCWait != nil {
 		vncWait = *req.VNCWait
 	}
 
-	vncEnabled := false
+	vncEnabled := vm.VNCEnabled
 
 	if req.VNCEnabled != nil {
 		vncEnabled = *req.VNCEnabled
 	}
 
-	if vm.VNCPort == req.VNCPort &&
+	vncBind := NormalizeVNCBindAddress(vm.VNCBind)
+	if strings.TrimSpace(req.VNCBind) != "" {
+		vncBind = NormalizeVNCBindAddress(req.VNCBind)
+	}
+	if err := ValidateVNCBindAddress(vncBind); err != nil {
+		return err
+	}
+
+	vncPort := req.VNCPort
+	if !vncEnabled {
+		vncPort = 0
+	}
+
+	if vm.VNCPort == vncPort &&
+		vm.VNCBind == vncBind &&
 		vm.VNCResolution == req.VNCResolution &&
 		vm.VNCPassword == req.VNCPassword &&
 		vm.VNCWait == vncWait &&
@@ -565,7 +579,8 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 	updatedXML := xml
 
 	vm.VNCEnabled = vncEnabled
-	vm.VNCPort = req.VNCPort
+	vm.VNCPort = vncPort
+	vm.VNCBind = vncBind
 	vm.VNCResolution = req.VNCResolution
 	vm.VNCPassword = req.VNCPassword
 	vm.VNCWait = vncWait
@@ -574,7 +589,7 @@ func (s *Service) ModifyVNC(rid uint, req libvirtServiceInterfaces.ModifyVNCRequ
 		return fmt.Errorf("failed_to_update_vm_vnc_in_db: %w", err)
 	}
 
-	updatedXML, err = updateVNC(xml, req.VNCPort, req.VNCResolution, req.VNCPassword, vncWait, vncEnabled)
+	updatedXML, err = updateVNC(xml, vncPort, vncBind, req.VNCResolution, req.VNCPassword, vncWait, vncEnabled)
 	if err != nil {
 		return fmt.Errorf("failed_to_update_vnc_in_xml: %w", err)
 	}

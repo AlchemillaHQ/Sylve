@@ -19,8 +19,10 @@
 	import { resolutions } from '$lib/utils/vm/vnc';
 
 	interface Props {
+		vncEnabled: boolean;
 		serial: boolean;
 		vncPort: number;
+		vncBind: string;
 		vncPassword: string;
 		vncWait: boolean;
 		vncResolution: string;
@@ -39,8 +41,10 @@
 	}
 
 	let {
+		vncEnabled = $bindable(),
 		serial = $bindable(),
 		vncPort = $bindable(),
+		vncBind = $bindable(),
 		vncPassword = $bindable(),
 		vncWait = $bindable(),
 		vncResolution = $bindable(),
@@ -54,7 +58,8 @@
 	}: Props = $props();
 
 	onMount(() => {
-		if (!vncPort) vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
+		if (!vncBind) vncBind = '127.0.0.1';
+		if (vncEnabled && !vncPort) vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
 	});
 
 	let timeOffsetOpen = $state(false);
@@ -72,6 +77,20 @@
 				cloudInit.data = '';
 				cloudInit.metadata = '';
 				cloudInit.networkConfig = '';
+			}
+		}
+	);
+
+	watch(
+		() => vncEnabled,
+		(enabled) => {
+			if (!enabled) {
+				vncPort = 0;
+				return;
+			}
+
+			if (!vncPort) {
+				vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
 			}
 		}
 	);
@@ -97,6 +116,15 @@
 			placeholder="5900"
 			bind:value={vncPort}
 			classes="flex-1 space-y-1.5"
+			disabled={!vncEnabled}
+		/>
+
+		<CustomValueInput
+			label="VNC Bind IP"
+			placeholder="127.0.0.1"
+			bind:value={vncBind}
+			classes="flex-1 space-y-1.5"
+			disabled={!vncEnabled}
 		/>
 
 		<div class="space-y-1.5">
@@ -110,9 +138,11 @@
 					autocomplete="off"
 					bind:value={vncPassword}
 					showPasswordOnFocus={true}
+					disabled={!vncEnabled}
 				/>
 
 				<Button
+					disabled={!vncEnabled}
 					onclick={() => {
 						vncPassword = generatePassword();
 					}}
@@ -133,6 +163,7 @@
 			placeholder="Select VNC resolution"
 			triggerWidth="w-full "
 			width="w-full"
+			disabled={!vncEnabled}
 		></CustomComboBox>
 
 		<ComboBox
@@ -156,10 +187,17 @@
 	</div>
 
 	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-3">
+		<CustomCheckbox label="Enable VNC" bind:checked={vncEnabled} classes="flex items-center gap-2"
+		></CustomCheckbox>
+
 		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox label="VNC Wait" bind:checked={vncWait} classes="flex items-center gap-2"
+		<CustomCheckbox
+			label="VNC Wait"
+			bind:checked={vncWait}
+			classes="flex items-center gap-2"
+			disabled={!vncEnabled}
 		></CustomCheckbox>
 
 		<CustomCheckbox
