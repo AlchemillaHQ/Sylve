@@ -260,21 +260,11 @@ func isRemoteSubcommandBlocked(output string) bool {
 }
 
 func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterModels.BackupTarget) error {
-	// Probe with a targeted "zfs list" scoped to the backup root dataset.
-	// This avoids dumping all datasets on the server (which would leak data
-	// the server operator doesn't want to expose) while still confirming that
-	// SSH connectivity and the ZFS CLI are both working.
-	// A "does not exist" response is fine — it means the connection succeeded
-	// and the dataset simply hasn't been created yet.
 	sshArgs := s.buildSSHArgs(target)
-	sshArgs = append(sshArgs, target.SSHHost, "zfs", "list", "-H", "-o", "name", "-d", "0", strings.TrimSpace(target.BackupRoot))
+	sshArgs = append(sshArgs, target.SSHHost, "zfs", "version")
 
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	_, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		lower := strings.ToLower(strings.TrimSpace(output))
-		if strings.Contains(lower, "does not exist") || strings.Contains(lower, "dataset does not exist") {
-			return nil
-		}
 		return fmt.Errorf("ssh_connection_failed: %w", err)
 	}
 
