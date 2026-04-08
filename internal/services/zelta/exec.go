@@ -412,7 +412,15 @@ func (s *Service) DestroyTargetSnapshots(ctx context.Context, target *clusterMod
 
 		sshArgs := s.buildSSHArgs(target)
 		sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", targetSnapshot)
-		if _, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...); err != nil {
+		out, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+		if err != nil {
+			if isRemoteSubcommandBlocked(out) {
+				logger.L.Warn().
+					Str("ssh_host", target.SSHHost).
+					Str("snapshot", targetSnapshot).
+					Msg("remote_zfs_destroy_not_permitted_skipped")
+				continue
+			}
 			return err
 		}
 	}
@@ -429,7 +437,15 @@ func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clus
 
 		sshArgs := s.buildSSHArgs(target)
 		sshArgs = append(sshArgs, target.SSHHost, "zfs", "destroy", snap)
-		if _, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...); err != nil {
+		out, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+		if err != nil {
+			if isRemoteSubcommandBlocked(out) {
+				logger.L.Warn().
+					Str("ssh_host", target.SSHHost).
+					Str("snapshot", snap).
+					Msg("remote_zfs_destroy_not_permitted_skipped")
+				continue
+			}
 			return err
 		}
 	}

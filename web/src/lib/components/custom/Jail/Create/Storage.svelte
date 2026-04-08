@@ -45,7 +45,7 @@
 
 	let baseOptions = $derived.by(() => {
 		const downloadOpts = downloads
-			.filter((download) => download.uType === 'base-rootfs')
+			.filter((download) => download.uType === 'base-rootfs' && download.status === 'completed')
 			.map((download) => ({
 				label: download.name,
 				value: download.uuid
