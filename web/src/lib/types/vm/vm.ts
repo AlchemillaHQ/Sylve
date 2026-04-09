@@ -50,6 +50,8 @@ export interface CreateData {
             metadata: string;
             networkConfig: string;
         };
+        extraBhyveOptionsEnabled: boolean;
+        extraBhyveOptions: string;
         ignoreUmsrs: boolean;
         qemuGuestAgent: boolean;
     };
@@ -144,6 +146,7 @@ export const VMSchema = z.object({
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
     cloudInitNetworkConfig: z.string().nullable(),
+    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
     ignoreUMSR: z.boolean(),
     qemuGuestAgent: z.boolean(),
     tpmEmulation: z.boolean(),
@@ -235,6 +238,7 @@ export const VMTemplateSchema = z.object({
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
     cloudInitNetworkConfig: z.string().nullable(),
+    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
     ignoreUMSR: z.boolean(),
     qemuGuestAgent: z.boolean(),
     storages: z.array(VMTemplateStorageSchema).default([]),

@@ -307,6 +307,7 @@ type VM struct {
 	CloudInitData          string       `json:"cloudInitData" gorm:"type:text"`
 	CloudInitMetaData      string       `json:"cloudInitMetaData" gorm:"type:text"`
 	CloudInitNetworkConfig string       `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	ExtraBhyveOptions      []string     `json:"extraBhyveOptions" gorm:"serializer:json;type:json"`
 	IgnoreUMSR             bool         `json:"ignoreUMSR" gorm:"default:false"`
 	QemuGuestAgent         bool         `json:"qemuGuestAgent" gorm:"default:false"`
 	Snapshots              []VMSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
@@ -350,11 +351,12 @@ type VMTemplate struct {
 	APIC bool `json:"apic"`
 	ACPI bool `json:"acpi"`
 
-	CloudInitData          string `json:"cloudInitData" gorm:"type:text"`
-	CloudInitMetaData      string `json:"cloudInitMetaData" gorm:"type:text"`
-	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig" gorm:"type:text"`
-	IgnoreUMSR             bool   `json:"ignoreUMSR" gorm:"default:false"`
-	QemuGuestAgent         bool   `json:"qemuGuestAgent" gorm:"default:false"`
+	CloudInitData          string   `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData      string   `json:"cloudInitMetaData" gorm:"type:text"`
+	CloudInitNetworkConfig string   `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	ExtraBhyveOptions      []string `json:"extraBhyveOptions" gorm:"serializer:json;type:json"`
+	IgnoreUMSR             bool     `json:"ignoreUMSR" gorm:"default:false"`
+	QemuGuestAgent         bool     `json:"qemuGuestAgent" gorm:"default:false"`
 
 	Storages []VMTemplateStorage `json:"storages" gorm:"serializer:json;type:json"`
 	Networks []VMTemplateNetwork `json:"networks" gorm:"serializer:json;type:json"`

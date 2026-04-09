@@ -98,6 +98,41 @@ func TestCreateVmXML_UsesConfiguredVNCBindAddress(t *testing.T) {
 	}
 }
 
+func TestCreateVmXML_PrependsExtraBhyveOptionsBeforeGeneratedArgs(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:              "vm-extra-bhyve",
+		RID:               102,
+		CPUSockets:        1,
+		CPUCores:          1,
+		CPUThreads:        1,
+		RAM:               1024 * 1024 * 512,
+		VNCEnabled:        false,
+		TimeOffset:        vmModels.TimeOffsetUTC,
+		IgnoreUMSR:        true,
+		ExtraBhyveOptions: []string{"-S", " -u \n\n -A "},
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	idxS := strings.Index(xml, `value="-S"`)
+	idxU := strings.Index(xml, `value="-u"`)
+	idxA := strings.Index(xml, `value="-A"`)
+	idxW := strings.Index(xml, `value="-w"`)
+
+	if idxS == -1 || idxU == -1 || idxA == -1 || idxW == -1 {
+		t.Fatalf("expected all arguments in XML, got: %s", xml)
+	}
+
+	if !(idxS < idxU && idxU < idxA && idxA < idxW) {
+		t.Fatalf("expected custom args in-order before generated args, got: %s", xml)
+	}
+}
+
 func TestNormalizeVNCBindAddressForDial_NormalizesUnspecified(t *testing.T) {
 	tests := []struct {
 		name string

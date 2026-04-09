@@ -84,6 +84,13 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	uefi := fmt.Sprintf("%s,%s/%d_vars.fd", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", vmPath, vm.RID)
 
 	var bhyveArgs [][]libvirtServiceInterfaces.BhyveArg
+	for _, arg := range normalizeExtraBhyveOptions(vm.ExtraBhyveOptions) {
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
+			{
+				Value: arg,
+			},
+		})
+	}
 
 	/* Why does this fail with:
 	bhyve: invalid lpc device configuration ' tpm,swtpm,/root/Projects/Sylve/data/vms/100/100_tpm.socket'

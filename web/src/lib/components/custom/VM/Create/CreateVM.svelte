@@ -202,6 +202,8 @@
 				metadata: '',
 				networkConfig: ''
 			},
+			extraBhyveOptionsEnabled: false,
+			extraBhyveOptions: '',
 			ignoreUmsrs: false,
 			qemuGuestAgent: false
 		}
@@ -386,6 +388,8 @@
 										bind:tpmEmulation={modal.advanced.tpmEmulation}
 										bind:timeOffset={modal.advanced.timeOffset}
 										bind:cloudInit={modal.advanced.cloudInit}
+										bind:extraBhyveOptionsEnabled={modal.advanced.extraBhyveOptionsEnabled}
+										bind:extraBhyveOptions={modal.advanced.extraBhyveOptions}
 										bind:ignoreUmsrs={modal.advanced.ignoreUmsrs}
 										bind:qemuGuestAgent={modal.advanced.qemuGuestAgent}
 									/>

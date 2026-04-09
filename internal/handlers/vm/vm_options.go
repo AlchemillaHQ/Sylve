@@ -44,6 +44,10 @@ type ModifyCloudInitDataRequest struct {
 	NetworkConfig string `json:"networkConfig"`
 }
 
+type ModifyExtraBhyveOptionsRequest struct {
+	ExtraBhyveOptions []string `json:"extraBhyveOptions"`
+}
+
 type ModifyIgnoreUMSRsRequest struct {
 	IgnoreUMSRs *bool `json:"ignoreUMSRs"`
 }
@@ -477,6 +481,71 @@ func ModifyCloudInitData(libvirtService *libvirt.Service) gin.HandlerFunc {
 		c.JSON(200, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "cloud_init_data_modified",
+			Data:    nil,
+			Error:   "",
+		})
+	}
+}
+
+// @Summary Modify Extra Bhyve Options of a Virtual Machine
+// @Description Modify custom bhyve arguments (one argument per line) of a virtual machine
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body ModifyExtraBhyveOptionsRequest true "Modify Extra Bhyve Options Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /options/extra-bhyve-options/:rid [put]
+func ModifyExtraBhyveOptions(libvirtService *libvirt.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid := c.Param("rid")
+		if rid == "" {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "rid_not_provided",
+			})
+			return
+		}
+
+		ridInt, err := strconv.Atoi(rid)
+		if err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_rid_format",
+			})
+			return
+		}
+
+		var req ModifyExtraBhyveOptionsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Data:    nil,
+				Error:   "invalid_request: " + err.Error(),
+			})
+			return
+		}
+
+		if err := libvirtService.ModifyExtraBhyveOptions(uint(ridInt), req.ExtraBhyveOptions); err != nil {
+			c.JSON(500, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "internal_server_error",
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "extra_bhyve_options_modified",
 			Data:    nil,
 			Error:   "",
 		})

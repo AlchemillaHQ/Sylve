@@ -887,6 +887,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	acpi := true
 	ignoreUMSRs := false
 	qemuGuestAgent := false
+	extraBhyveOptions := normalizeExtraBhyveOptions(data.ExtraBhyveOptions)
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -1093,6 +1094,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		CloudInitData:          data.CloudInitData,
 		CloudInitMetaData:      data.CloudInitMetaData,
 		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
+		ExtraBhyveOptions:      extraBhyveOptions,
 		IgnoreUMSR:             ignoreUMSRs,
 		QemuGuestAgent:         qemuGuestAgent,
 	}

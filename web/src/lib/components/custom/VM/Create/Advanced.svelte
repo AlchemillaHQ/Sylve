@@ -34,6 +34,8 @@
 			metadata: string;
 			networkConfig: string;
 		};
+		extraBhyveOptionsEnabled: boolean;
+		extraBhyveOptions: string;
 		ignoreUmsrs: boolean;
 		qemuGuestAgent: boolean;
 	}
@@ -51,6 +53,8 @@
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
 		cloudInit = $bindable(),
+		extraBhyveOptionsEnabled = $bindable(),
+		extraBhyveOptions = $bindable(),
 		ignoreUmsrs = $bindable(),
 		qemuGuestAgent = $bindable()
 	}: Props = $props();
@@ -111,6 +115,15 @@
 		(enabled) => {
 			if (!enabled) {
 				vncWait = false;
+			}
+		}
+	);
+
+	watch(
+		() => extraBhyveOptionsEnabled,
+		(enabled) => {
+			if (!enabled) {
+				extraBhyveOptions = '';
 			}
 		}
 	);
@@ -215,6 +228,12 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
+			label="Extra Bhyve Options"
+			bind:checked={extraBhyveOptionsEnabled}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
 			label="Ignore UMSRs"
 			bind:checked={ignoreUmsrs}
 			classes="flex items-center gap-2"
@@ -255,6 +274,18 @@
 			bind:value={cloudInit.networkConfig}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
+		/>
+	{/if}
+
+	{#if extraBhyveOptionsEnabled}
+		<CustomValueInput
+			label="Extra Bhyve Options"
+			placeholder="-S\n-u"
+			bind:value={extraBhyveOptions}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+			textAreaClasses="h-32 font-mono text-xs"
+			hint="One option per line. These raw args are prepended before Sylve-generated bhyve args."
 		/>
 	{/if}
 </div>

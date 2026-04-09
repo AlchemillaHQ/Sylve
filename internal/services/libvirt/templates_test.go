@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -299,6 +300,44 @@ func TestSourceVMStoragesForTemplate(t *testing.T) {
 	}
 	if out[0].ID != 3 || out[1].ID != 1 {
 		t.Fatalf("expected zvol/raw sorted by boot order, got %#v", out)
+	}
+}
+
+func TestBuildVMFromTemplate_PropagatesExtraBhyveOptions(t *testing.T) {
+	template := vmModels.VMTemplate{
+		ExtraBhyveOptions: []string{
+			"-S",
+			" -u \n\n -A ",
+		},
+	}
+	target := vmTemplateCreateTarget{
+		RID:  801,
+		Name: "vm-801",
+	}
+
+	vm := buildVMFromTemplate(template, target, 5901, "", "", "")
+	want := []string{"-S", "-u", "-A"}
+
+	if !reflect.DeepEqual(vm.ExtraBhyveOptions, want) {
+		t.Fatalf("unexpected VM extra bhyve options: got=%#v want=%#v", vm.ExtraBhyveOptions, want)
+	}
+}
+
+func TestBuildVMTemplateFromVM_PropagatesExtraBhyveOptions(t *testing.T) {
+	vm := vmModels.VM{
+		Name:              "source-vm",
+		ExtraBhyveOptions: []string{"-S", " -u \n\n -A "},
+	}
+
+	template := buildVMTemplateFromVM(vm, "template-a", nil)
+	want := []string{"-S", "-u", "-A"}
+
+	if !reflect.DeepEqual(template.ExtraBhyveOptions, want) {
+		t.Fatalf(
+			"unexpected template extra bhyve options: got=%#v want=%#v",
+			template.ExtraBhyveOptions,
+			want,
+		)
 	}
 }
 

@@ -35,6 +35,7 @@ type LibvirtServiceInterface interface {
 	ModifySerial(rid uint, enabled bool) error
 	ModifyShutdownWaitTime(rid uint, waitTime int) error
 	ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error
+	ModifyExtraBhyveOptions(rid uint, options []string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 	ModifyQemuGuestAgent(rid uint, enabled bool) error
 	GetQemuGuestAgentInfo(rid uint) (QemuGuestAgentInfo, error)

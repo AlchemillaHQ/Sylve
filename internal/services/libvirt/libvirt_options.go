@@ -302,6 +302,68 @@ func (s *Service) ModifyCloudInitData(rid uint, data string, metadata string, ne
 	return s.SyncVMDisks(rid)
 }
 
+func (s *Service) ModifyExtraBhyveOptions(rid uint, options []string) error {
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vm, err := s.GetVMByRID(rid)
+	if err != nil {
+		return fmt.Errorf("failed_to_fetch_vm_from_db: %w", err)
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
+	}
+
+	state, _, err := s.conn().DomainGetState(domain, 0)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+
+	if state != 5 {
+		return fmt.Errorf("domain_state_not_shutoff: %d", rid)
+	}
+
+	normalized := normalizeExtraBhyveOptions(options)
+	vm.ExtraBhyveOptions = normalized
+
+	vmPath, err := s.GetVMConfigDirectory(vm.RID)
+	if err != nil {
+		return fmt.Errorf("failed_to_get_vm_path: %w", err)
+	}
+
+	updatedXML, err := s.CreateVmXML(vm, vmPath)
+	if err != nil {
+		return fmt.Errorf("failed_to_rebuild_domain_xml: %w", err)
+	}
+
+	if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
+		return fmt.Errorf("failed_to_undefine_domain: %w", err)
+	}
+
+	if _, err := s.conn().DomainDefineXML(updatedXML); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+
+	if err := s.DB.
+		Model(&vmModels.VM{}).
+		Where("rid = ?", rid).
+		Update("extra_bhyve_options", normalized).Error; err != nil {
+		return fmt.Errorf("failed_to_update_extra_bhyve_options_in_db: %w", err)
+	}
+
+	if err := s.WriteVMJson(rid); err != nil {
+		logger.L.Error().Err(err).Msg("Failed to write VM JSON after extra bhyve options modification")
+	}
+
+	return nil
+}
+
 func (s *Service) ModifyIgnoreUMSRs(rid uint, ignore bool) error {
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return err

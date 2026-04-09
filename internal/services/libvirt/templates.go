@@ -803,6 +803,88 @@ func (s *Service) cleanupTemplateCreatedVM(ctx context.Context, rid uint) {
 	}
 }
 
+func buildVMFromTemplate(
+	template vmModels.VMTemplate,
+	target vmTemplateCreateTarget,
+	vncPort int,
+	cloudInitData string,
+	cloudInitMetaData string,
+	cloudInitNetworkConfig string,
+) vmModels.VM {
+	return vmModels.VM{
+		Name:                   target.Name,
+		Description:            template.Description,
+		RID:                    target.RID,
+		CPUSockets:             template.CPUSockets,
+		CPUCores:               template.CPUCores,
+		CPUThreads:             template.CPUThreads,
+		RAM:                    template.RAM,
+		TPMEmulation:           template.TPMEmulation,
+		ShutdownWaitTime:       template.ShutdownWaitTime,
+		Serial:                 template.Serial,
+		VNCEnabled:             template.VNCEnabled,
+		VNCBind:                NormalizeVNCBindAddress(template.VNCBind),
+		VNCPort:                vncPort,
+		VNCPassword:            utils.GenerateRandomString(16),
+		VNCResolution:          template.VNCResolution,
+		VNCWait:                template.VNCWait,
+		StartAtBoot:            false,
+		StartOrder:             0,
+		WoL:                    false,
+		TimeOffset:             template.TimeOffset,
+		PCIDevices:             []int{},
+		APIC:                   template.APIC,
+		ACPI:                   template.ACPI,
+		CloudInitData:          cloudInitData,
+		CloudInitMetaData:      cloudInitMetaData,
+		CloudInitNetworkConfig: cloudInitNetworkConfig,
+		ExtraBhyveOptions:      normalizeExtraBhyveOptions(template.ExtraBhyveOptions),
+		IgnoreUMSR:             template.IgnoreUMSR,
+		QemuGuestAgent:         template.QemuGuestAgent,
+		CPUPinning:             []vmModels.VMCPUPinning{},
+		Storages:               []vmModels.Storage{},
+		Networks:               []vmModels.Network{},
+	}
+}
+
+func buildVMTemplateFromVM(
+	vm vmModels.VM,
+	templateName string,
+	templateNetworks []vmModels.VMTemplateNetwork,
+) vmModels.VMTemplate {
+	return vmModels.VMTemplate{
+		Name:                   normalizeVMTemplateName(templateName),
+		SourceVMName:           vm.Name,
+		SourceVMRID:            vm.RID,
+		Description:            vm.Description,
+		CPUSockets:             vm.CPUSockets,
+		CPUCores:               vm.CPUCores,
+		CPUThreads:             vm.CPUThreads,
+		RAM:                    vm.RAM,
+		TPMEmulation:           vm.TPMEmulation,
+		ShutdownWaitTime:       vm.ShutdownWaitTime,
+		Serial:                 vm.Serial,
+		VNCEnabled:             vm.VNCEnabled,
+		VNCBind:                NormalizeVNCBindAddress(vm.VNCBind),
+		VNCResolution:          vm.VNCResolution,
+		VNCWait:                vm.VNCWait,
+		StartAtBoot:            vm.StartAtBoot,
+		StartOrder:             vm.StartOrder,
+		WoL:                    vm.WoL,
+		TimeOffset:             vm.TimeOffset,
+		APIC:                   vm.APIC,
+		ACPI:                   vm.ACPI,
+		CloudInitData:          vm.CloudInitData,
+		CloudInitMetaData:      vm.CloudInitMetaData,
+		CloudInitNetworkConfig: vm.CloudInitNetworkConfig,
+		ExtraBhyveOptions:      normalizeExtraBhyveOptions(vm.ExtraBhyveOptions),
+		IgnoreUMSR:             vm.IgnoreUMSR,
+		QemuGuestAgent:         vm.QemuGuestAgent,
+		Storages:               []vmModels.VMTemplateStorage{},
+		Networks:               templateNetworks,
+	}
+}
+
 func (s *Service) createVMFromTemplateTarget(
 	ctx context.Context,
 	template vmModels.VMTemplate,
@@ -832,39 +914,14 @@ func (s *Service) createVMFromTemplateTarget(
 		cloudInitMetaData = rewrittenMeta
 	}
 
-	vm := vmModels.VM{
-		Name:                   target.Name,
-		Description:            template.Description,
-		RID:                    target.RID,
-		CPUSockets:             template.CPUSockets,
-		CPUCores:               template.CPUCores,
-		CPUThreads:             template.CPUThreads,
-		RAM:                    template.RAM,
-		TPMEmulation:           template.TPMEmulation,
-		ShutdownWaitTime:       template.ShutdownWaitTime,
-		Serial:                 template.Serial,
-		VNCEnabled:             template.VNCEnabled,
-		VNCBind:                NormalizeVNCBindAddress(template.VNCBind),
-		VNCPort:                vncPort,
-		VNCPassword:            utils.GenerateRandomString(16),
-		VNCResolution:          template.VNCResolution,
-		VNCWait:                template.VNCWait,
-		StartAtBoot:            false,
-		StartOrder:             0,
-		WoL:                    false,
-		TimeOffset:             template.TimeOffset,
-		PCIDevices:             []int{},
-		APIC:                   template.APIC,
-		ACPI:                   template.ACPI,
-		CloudInitData:          cloudInitData,
-		CloudInitMetaData:      cloudInitMetaData,
-		CloudInitNetworkConfig: cloudInitNetworkConfig,
-		IgnoreUMSR:             template.IgnoreUMSR,
-		QemuGuestAgent:         template.QemuGuestAgent,
-		CPUPinning:             []vmModels.VMCPUPinning{},
-		Storages:               []vmModels.Storage{},
-		Networks:               []vmModels.Network{},
-	}
+	vm := buildVMFromTemplate(
+		template,
+		target,
+		vncPort,
+		cloudInitData,
+		cloudInitMetaData,
+		cloudInitNetworkConfig,
+	)
 
 	networkSwitchIDs := make([]uint, len(template.Networks))
 	for idx, network := range template.Networks {
@@ -1133,36 +1190,7 @@ func (s *Service) ConvertVMToTemplate(
 		})
 	}
 
-	template := vmModels.VMTemplate{
-		Name:                   normalizeVMTemplateName(req.Name),
-		SourceVMName:           vm.Name,
-		SourceVMRID:            vm.RID,
-		Description:            vm.Description,
-		CPUSockets:             vm.CPUSockets,
-		CPUCores:               vm.CPUCores,
-		CPUThreads:             vm.CPUThreads,
-		RAM:                    vm.RAM,
-		TPMEmulation:           vm.TPMEmulation,
-		ShutdownWaitTime:       vm.ShutdownWaitTime,
-		Serial:                 vm.Serial,
-		VNCEnabled:             vm.VNCEnabled,
-		VNCBind:                NormalizeVNCBindAddress(vm.VNCBind),
-		VNCResolution:          vm.VNCResolution,
-		VNCWait:                vm.VNCWait,
-		StartAtBoot:            vm.StartAtBoot,
-		StartOrder:             vm.StartOrder,
-		WoL:                    vm.WoL,
-		TimeOffset:             vm.TimeOffset,
-		APIC:                   vm.APIC,
-		ACPI:                   vm.ACPI,
-		CloudInitData:          vm.CloudInitData,
-		CloudInitMetaData:      vm.CloudInitMetaData,
-		CloudInitNetworkConfig: vm.CloudInitNetworkConfig,
-		IgnoreUMSR:             vm.IgnoreUMSR,
-		QemuGuestAgent:         vm.QemuGuestAgent,
-		Storages:               []vmModels.VMTemplateStorage{},
-		Networks:               templateNetworks,
-	}
+	template := buildVMTemplateFromVM(vm, req.Name, templateNetworks)
 
 	if err := s.DB.Create(&template).Error; err != nil {
 		return fmt.Errorf("failed_to_create_vm_template: %w", err)

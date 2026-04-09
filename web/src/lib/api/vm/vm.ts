@@ -23,6 +23,13 @@ import {
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+function toExtraBhyveOptions(raw: string): string[] {
+    return raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+}
+
 export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
     return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
 }
@@ -90,6 +97,7 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
         cloudInitNetworkConfig: data.advanced.cloudInit.networkConfig,
+        extraBhyveOptions: toExtraBhyveOptions(data.advanced.extraBhyveOptions),
         ignoreUMSR: data.advanced.ignoreUmsrs,
         qemuGuestAgent: data.advanced.qemuGuestAgent
     });
@@ -256,6 +264,15 @@ export async function modifyCloudInitData(
         data,
         metadata,
         networkConfig
+    });
+}
+
+export async function modifyExtraBhyveOptions(
+    rid: number,
+    extraBhyveOptions: string[]
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/extra-bhyve-options/${rid}`, APIResponseSchema, 'PUT', {
+        extraBhyveOptions
     });
 }
 
