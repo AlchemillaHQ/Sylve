@@ -184,23 +184,23 @@
 
 	<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 		<ComboBox
-			bind:open={timeOffsetOpen}
-			label="Clock Offset"
-			bind:value={timeOffset}
-			data={timeOffsets}
-			classes="flex-1 space-y-1.5"
-			placeholder="Select Time Offset"
-			triggerWidth="w-full"
-			width="w-full"
-		></ComboBox>
-
-		<ComboBox
 			bind:open={bootRomOpen}
 			label="Boot ROM"
 			bind:value={bootRom}
 			data={bootRoms}
 			classes="flex-1 space-y-1.5"
 			placeholder="Select Boot ROM"
+			triggerWidth="w-full"
+			width="w-full"
+		></ComboBox>
+
+		<ComboBox
+			bind:open={timeOffsetOpen}
+			label="Clock Offset"
+			bind:value={timeOffset}
+			data={timeOffsets}
+			classes="flex-1 space-y-1.5"
+			placeholder="Select Time Offset"
 			triggerWidth="w-full"
 			width="w-full"
 		></ComboBox>
@@ -247,18 +247,18 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Extra Bhyve Options"
-			bind:checked={extraBhyveOptionsEnabled}
-			classes="flex items-center gap-2"
-		></CustomCheckbox>
-
-		<CustomCheckbox
 			label="Ignore UMSRs"
 			bind:checked={ignoreUmsrs}
 			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox label="QEMU GA" bind:checked={qemuGuestAgent} classes="flex items-center gap-2"
+		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Bhyve Options"
+			bind:checked={extraBhyveOptionsEnabled}
+			classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>
 
