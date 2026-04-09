@@ -13023,11 +13023,8 @@ msgstr ""
 msgid "UEFI (Default)"
 msgstr ""
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
-msgid "UEFI CSM (Deprecated)"
-msgstr ""
+#~ msgid "UEFI CSM (Deprecated)"
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/BootRom.svelte
@@ -13044,16 +13041,14 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Extra Bhyve Options"
 msgstr ""
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
-msgstr ""
+#~ msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
+#~ msgstr ""
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Bhyve Options"
@@ -13079,6 +13074,5 @@ msgstr ""
 msgid "Modified extra bhyve options"
 msgstr ""
 
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-msgid "One option per line. These arguments are prepended before generated bhyve args."
-msgstr ""
+#~ msgid "One option per line. These arguments are prepended before generated bhyve args."
+#~ msgstr ""

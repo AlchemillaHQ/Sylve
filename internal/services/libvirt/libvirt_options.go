@@ -433,7 +433,8 @@ func (s *Service) ModifyExtraBhyveOptions(rid uint, options []string) error {
 	if err := s.DB.
 		Model(&vmModels.VM{}).
 		Where("rid = ?", rid).
-		Update("extra_bhyve_options", normalized).Error; err != nil {
+		Select("ExtraBhyveOptions").
+		Updates(vmModels.VM{ExtraBhyveOptions: normalized}).Error; err != nil {
 		return fmt.Errorf("failed_to_update_extra_bhyve_options_in_db: %w", err)
 	}
 

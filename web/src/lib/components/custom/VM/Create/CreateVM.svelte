@@ -196,7 +196,7 @@
 			bootOrder: 0,
 			tpmEmulation: false,
 			timeOffset: 'utc' as 'utc' | 'localtime',
-			bootRom: 'uefi' as 'uefi' | 'uefi_csm' | 'none',
+			bootRom: 'uefi' as 'uefi' | 'none',
 			cloudInit: {
 				enabled: false,
 				data: '',

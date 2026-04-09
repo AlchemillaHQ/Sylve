@@ -15,6 +15,3 @@ var SvelteKitFiles embed.FS
 
 //go:embed all:zelta
 var ZeltaFiles embed.FS
-
-//go:embed all:roms
-var RomFiles embed.FS

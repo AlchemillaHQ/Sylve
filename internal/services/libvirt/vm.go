@@ -32,6 +32,44 @@ import (
 	"gorm.io/gorm"
 )
 
+func (s *Service) queryVMByID(id int) (vmModels.VM, error) {
+	var vm vmModels.VM
+	err := s.DB.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
+		Where("id = ?", id).
+		First(&vm).Error
+
+	return vm, err
+}
+
+func (s *Service) queryVMByRID(rid uint) (vmModels.VM, error) {
+	var vm vmModels.VM
+	err := s.DB.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
+		Where("rid = ?", rid).
+		First(&vm).Error
+
+	return vm, err
+}
+
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
 	if !s.IsVirtualizationEnabled() {
 		return []vmModels.VM{}, nil
@@ -731,41 +769,11 @@ func (s *Service) validateNoStaleVMCreateArtifacts(ctx context.Context, rid uint
 }
 
 func (s *Service) GetVM(id int) (vmModels.VM, error) {
-	var vm vmModels.VM
-	err := s.DB.
-		Preload("CPUPinning").
-		Preload("Storages").
-		Preload("Storages.Dataset").
-		Preload("Networks").
-		Preload("Networks.AddressObj").
-		Preload("Networks.AddressObj.Entries").
-		Preload("Networks.AddressObj.Resolutions").
-		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC, id ASC")
-		}).
-		Where("id = ?", id).
-		First(&vm).Error
-
-	return vm, err
+	return s.queryVMByID(id)
 }
 
 func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
-	var vm vmModels.VM
-	err := s.DB.
-		Preload("CPUPinning").
-		Preload("Storages").
-		Preload("Storages.Dataset").
-		Preload("Networks").
-		Preload("Networks.AddressObj").
-		Preload("Networks.AddressObj.Entries").
-		Preload("Networks.AddressObj.Resolutions").
-		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC, id ASC")
-		}).
-		Where("rid = ?", rid).
-		First(&vm).Error
-
-	return vm, err
+	return s.queryVMByRID(rid)
 }
 
 func (s *Service) cleanupAutoCreatedVMCreateMACObjects(rid uint, autoCreatedMACIDs []uint, warnings *[]string) {

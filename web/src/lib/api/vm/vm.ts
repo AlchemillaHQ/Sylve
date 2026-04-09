@@ -245,7 +245,7 @@ export async function modifyClockOffset(
 
 export async function modifyBootRom(
     rid: number,
-    bootRom: 'uefi' | 'uefi_csm' | 'none'
+    bootRom: 'uefi' | 'none'
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/options/boot-rom/${rid}`, APIResponseSchema, 'PUT', {
         bootRom

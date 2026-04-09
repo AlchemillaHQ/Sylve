@@ -646,7 +646,6 @@ func (s *Service) restoreVMRuntimeArtifactsFromSnapshot(
 		fmt.Sprintf("%d_vars.fd", rid),
 		fmt.Sprintf("%d_tpm.log", rid),
 		fmt.Sprintf("%d_tpm.state", rid),
-		csmROMFileName,
 	}
 
 	for _, artifactName := range artifactNames {

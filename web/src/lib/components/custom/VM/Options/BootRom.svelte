@@ -24,10 +24,6 @@
 				value: 'uefi'
 			},
 			{
-				label: 'UEFI CSM (Deprecated)',
-				value: 'uefi_csm'
-			},
-			{
 				label: 'None',
 				value: 'none'
 			}
@@ -36,7 +32,7 @@
 
 	async function modify() {
 		if (!vm) return;
-		const response = await modifyBootRom(vm.rid, comboBox.value as 'uefi' | 'uefi_csm' | 'none');
+		const response = await modifyBootRom(vm.rid, comboBox.value as 'uefi' | 'none');
 		if (response.error) {
 			handleAPIError(response);
 			toast.error('Failed to modify boot ROM', {

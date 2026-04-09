@@ -156,7 +156,7 @@ func TestModifyBootROM_ServiceErrorReturns500(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPut,
 		"/options/boot-rom/101",
-		bytes.NewBufferString(`{"bootRom":"uefi_csm"}`),
+		bytes.NewBufferString(`{"bootRom":"uefi"}`),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()

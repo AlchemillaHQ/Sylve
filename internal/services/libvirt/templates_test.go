@@ -343,7 +343,7 @@ func TestBuildVMTemplateFromVM_PropagatesExtraBhyveOptions(t *testing.T) {
 
 func TestBuildVMFromTemplate_PropagatesBootROM(t *testing.T) {
 	template := vmModels.VMTemplate{
-		BootROM: vmModels.VMBootROMUEFICSM,
+		BootROM: vmModels.VMBootROMUEFI,
 	}
 	target := vmTemplateCreateTarget{
 		RID:  802,
@@ -351,8 +351,8 @@ func TestBuildVMFromTemplate_PropagatesBootROM(t *testing.T) {
 	}
 
 	vm := buildVMFromTemplate(template, target, 5902, "", "", "")
-	if vm.BootROM != vmModels.VMBootROMUEFICSM {
-		t.Fatalf("unexpected VM boot ROM: got=%q want=%q", vm.BootROM, vmModels.VMBootROMUEFICSM)
+	if vm.BootROM != vmModels.VMBootROMUEFI {
+		t.Fatalf("unexpected VM boot ROM: got=%q want=%q", vm.BootROM, vmModels.VMBootROMUEFI)
 	}
 }
 

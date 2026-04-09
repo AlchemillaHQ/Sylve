@@ -28,7 +28,7 @@
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
-		bootRom: 'uefi' | 'uefi_csm' | 'none';
+		bootRom: 'uefi' | 'none';
 		cloudInit: {
 			enabled: boolean;
 			data: string;
@@ -74,7 +74,6 @@
 	];
 	const bootRoms = [
 		{ label: 'UEFI (Default)', value: 'uefi' },
-		{ label: 'UEFI CSM (Deprecated)', value: 'uefi_csm' },
 		{ label: 'None', value: 'none' }
 	];
 
@@ -299,12 +298,11 @@
 	{#if extraBhyveOptionsEnabled}
 		<CustomValueInput
 			label="Extra Bhyve Options"
-			placeholder="-S\n-u"
+			placeholder="-S"
 			bind:value={extraBhyveOptions}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
 			textAreaClasses="h-32 font-mono text-xs"
-			hint="One option per line. These raw args are prepended before Sylve-generated bhyve args."
 		/>
 	{/if}
 </div>

@@ -37,6 +37,17 @@ func TestParseBootROMValue_InvalidValue(t *testing.T) {
 	}
 }
 
+func TestParseBootROMValue_RejectsDeprecatedUEFICSM(t *testing.T) {
+	_, err := parseBootROMValue("uefi_csm")
+	if err == nil {
+		t.Fatal("expected parseBootROMValue to fail for deprecated uefi_csm value")
+	}
+
+	if !strings.Contains(err.Error(), "invalid_boot_rom") {
+		t.Fatalf("expected invalid_boot_rom error, got: %v", err)
+	}
+}
+
 func TestBuildBootROMLoader_NoneReturnsNil(t *testing.T) {
 	loader := buildBootROMLoader(vmModels.VMBootROMNone, "/tmp/vm", 100)
 	if loader != nil {

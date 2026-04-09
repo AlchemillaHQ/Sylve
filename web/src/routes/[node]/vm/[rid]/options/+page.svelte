@@ -117,13 +117,7 @@
 			{
 				id: generateNanoId('bootRom'),
 				property: 'Boot ROM',
-				value: vm
-					? vm.current.bootRom === 'uefi'
-						? 'UEFI (Default)'
-						: vm.current.bootRom === 'uefi_csm'
-							? 'UEFI CSM (Deprecated)'
-							: 'None'
-					: 'N/A'
+				value: vm ? (vm.current.bootRom === 'none' ? 'None' : 'UEFI (Default)') : 'N/A'
 			},
 			{
 				id: generateNanoId('shutdownWaitTime'),

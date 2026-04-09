@@ -85,7 +85,10 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	if strings.TrimSpace(string(restored.TimeOffset)) == "" {
 		restored.TimeOffset = vmModels.TimeOffsetUTC
 	}
-	if strings.TrimSpace(string(restored.BootROM)) == "" {
+	switch strings.TrimSpace(strings.ToLower(string(restored.BootROM))) {
+	case string(vmModels.VMBootROMNone):
+		restored.BootROM = vmModels.VMBootROMNone
+	default:
 		restored.BootROM = vmModels.VMBootROMUEFI
 	}
 
@@ -729,7 +732,6 @@ func (s *Service) restoreVMRuntimeArtifactsFromDataset(ctx context.Context, data
 		fmt.Sprintf("%d_vars.fd", rid),
 		fmt.Sprintf("%d_tpm.log", rid),
 		fmt.Sprintf("%d_tpm.state", rid),
-		"uefi-legacy-csm-rom.bin",
 	}
 
 	copied := make([]string, 0, len(artifactNames))

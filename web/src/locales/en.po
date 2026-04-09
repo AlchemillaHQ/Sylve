@@ -13023,11 +13023,8 @@ msgstr "Retention Policies"
 msgid "UEFI (Default)"
 msgstr "UEFI (Default)"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Options/BootRom.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
-msgid "UEFI CSM (Deprecated)"
-msgstr "UEFI CSM (Deprecated)"
+#~ msgid "UEFI CSM (Deprecated)"
+#~ msgstr "UEFI CSM (Deprecated)"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/BootRom.svelte
@@ -13044,16 +13041,14 @@ msgstr "Select Boot ROM"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Extra Bhyve Options"
 msgstr "Extra Bhyve Options"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
-msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
-msgstr "One option per line. These raw args are prepended before Sylve-generated bhyve args."
+#~ msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
+#~ msgstr "One option per line. These raw args are prepended before Sylve-generated bhyve args."
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 msgid "Bhyve Options"
@@ -13079,6 +13074,5 @@ msgstr "Failed to modify extra bhyve options"
 msgid "Modified extra bhyve options"
 msgstr "Modified extra bhyve options"
 
-#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
-msgid "One option per line. These arguments are prepended before generated bhyve args."
-msgstr "One option per line. These arguments are prepended before generated bhyve args."
+#~ msgid "One option per line. These arguments are prepended before generated bhyve args."
+#~ msgstr "One option per line. These arguments are prepended before generated bhyve args."
