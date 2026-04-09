@@ -196,6 +196,7 @@
 			bootOrder: 0,
 			tpmEmulation: false,
 			timeOffset: 'utc' as 'utc' | 'localtime',
+			bootRom: 'uefi' as 'uefi' | 'uefi_csm' | 'none',
 			cloudInit: {
 				enabled: false,
 				data: '',
@@ -387,6 +388,7 @@
 										bind:vncResolution={modal.advanced.vncResolution}
 										bind:tpmEmulation={modal.advanced.tpmEmulation}
 										bind:timeOffset={modal.advanced.timeOffset}
+										bind:bootRom={modal.advanced.bootRom}
 										bind:cloudInit={modal.advanced.cloudInit}
 										bind:extraBhyveOptionsEnabled={modal.advanced.extraBhyveOptionsEnabled}
 										bind:extraBhyveOptions={modal.advanced.extraBhyveOptions}

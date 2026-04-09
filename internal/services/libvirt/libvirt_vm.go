@@ -81,7 +81,6 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	sIndex := 10
-	uefi := fmt.Sprintf("%s,%s/%d_vars.fd", "/usr/local/share/uefi-firmware/BHYVE_UEFI.fd", vmPath, vm.RID)
 
 	var bhyveArgs [][]libvirtServiceInterfaces.BhyveArg
 	for _, arg := range normalizeExtraBhyveOptions(vm.ExtraBhyveOptions) {
@@ -287,12 +286,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		},
 		VCPU: (vm.CPUSockets * vm.CPUCores * vm.CPUThreads),
 		OS: libvirtServiceInterfaces.OS{
-			Type: "hvm",
-			Loader: libvirtServiceInterfaces.Loader{
-				ReadOnly: "yes",
-				Type:     "pflash",
-				Path:     uefi,
-			},
+			Type:   "hvm",
+			Loader: buildBootROMLoader(vm.BootROM, vmPath, vm.RID),
 		},
 		Features: features,
 		Clock: libvirtServiceInterfaces.Clock{
@@ -430,8 +425,8 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return err
 	}
 
-	err = s.ResetUEFIVars(vm.RID)
-	if err != nil {
+	vm.BootROM = normalizeBootROMValue(vm.BootROM)
+	if err := s.ensureVMBootROMArtifacts(vm.RID, vm.BootROM, vmPath); err != nil {
 		return err
 	}
 

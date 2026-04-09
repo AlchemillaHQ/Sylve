@@ -302,6 +302,10 @@ func validateCPUPins(
 }
 
 func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
+	if _, err := parseBootROMValue(data.BootROM); err != nil {
+		return err
+	}
+
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -888,6 +892,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	ignoreUMSRs := false
 	qemuGuestAgent := false
 	extraBhyveOptions := normalizeExtraBhyveOptions(data.ExtraBhyveOptions)
+	bootROM, err := parseBootROMValue(data.BootROM)
+	if err != nil {
+		return err
+	}
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -1094,6 +1102,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		CloudInitData:          data.CloudInitData,
 		CloudInitMetaData:      data.CloudInitMetaData,
 		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
+		BootROM:                bootROM,
 		ExtraBhyveOptions:      extraBhyveOptions,
 		IgnoreUMSR:             ignoreUMSRs,
 		QemuGuestAgent:         qemuGuestAgent,

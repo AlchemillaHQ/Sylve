@@ -239,6 +239,7 @@ func (s *Service) WriteVMJson(rid uint) error {
 		fmt.Sprintf("%d_vars.fd", rid),
 		fmt.Sprintf("%d_tpm.log", rid),
 		fmt.Sprintf("%d_tpm.state", rid),
+		csmROMFileName,
 	}
 
 	copyFile := func(src, dst string) error {

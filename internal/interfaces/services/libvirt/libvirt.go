@@ -35,6 +35,7 @@ type LibvirtServiceInterface interface {
 	ModifySerial(rid uint, enabled bool) error
 	ModifyShutdownWaitTime(rid uint, waitTime int) error
 	ModifyCloudInitData(rid uint, data string, metadata string, networkConfig string) error
+	ModifyBootROM(rid uint, bootROM string) error
 	ModifyExtraBhyveOptions(rid uint, options []string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 	ModifyQemuGuestAgent(rid uint, enabled bool) error
@@ -192,8 +193,8 @@ type Loader struct {
 }
 
 type OS struct {
-	Type   string `xml:"type"`
-	Loader Loader `xml:"loader"`
+	Type   string  `xml:"type"`
+	Loader *Loader `xml:"loader,omitempty"`
 }
 
 type Features struct {

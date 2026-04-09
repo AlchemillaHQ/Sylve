@@ -28,6 +28,7 @@
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
+		bootRom: 'uefi' | 'uefi_csm' | 'none';
 		cloudInit: {
 			enabled: boolean;
 			data: string;
@@ -52,6 +53,7 @@
 		bootOrder = $bindable(),
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
+		bootRom = $bindable(),
 		cloudInit = $bindable(),
 		extraBhyveOptionsEnabled = $bindable(),
 		extraBhyveOptions = $bindable(),
@@ -65,9 +67,15 @@
 	});
 
 	let timeOffsetOpen = $state(false);
+	let bootRomOpen = $state(false);
 	const timeOffsets = [
 		{ label: 'UTC', value: 'utc' },
 		{ label: 'Local Time', value: 'localtime' }
+	];
+	const bootRoms = [
+		{ label: 'UEFI (Default)', value: 'uefi' },
+		{ label: 'UEFI CSM (Deprecated)', value: 'uefi_csm' },
+		{ label: 'None', value: 'none' }
 	];
 
 	let resolutionOpen = $state(false);
@@ -174,7 +182,7 @@
 		/>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 		<ComboBox
 			bind:open={timeOffsetOpen}
 			label="Clock Offset"
@@ -182,6 +190,17 @@
 			data={timeOffsets}
 			classes="flex-1 space-y-1.5"
 			placeholder="Select Time Offset"
+			triggerWidth="w-full"
+			width="w-full"
+		></ComboBox>
+
+		<ComboBox
+			bind:open={bootRomOpen}
+			label="Boot ROM"
+			bind:value={bootRom}
+			data={bootRoms}
+			classes="flex-1 space-y-1.5"
+			placeholder="Select Boot ROM"
 			triggerWidth="w-full"
 			width="w-full"
 		></ComboBox>

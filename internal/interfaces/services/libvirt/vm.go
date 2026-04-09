@@ -59,6 +59,7 @@ type CreateVMRequest struct {
 	CloudInitData          string   `json:"cloudInitData"`
 	CloudInitMetaData      string   `json:"cloudInitMetaData"`
 	CloudInitNetworkConfig string   `json:"cloudInitNetworkConfig"`
+	BootROM                string   `json:"bootRom"`
 	ExtraBhyveOptions      []string `json:"extraBhyveOptions"`
 
 	APIC           *bool `json:"apic"`

@@ -93,6 +93,7 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         startAtBoot: data.advanced.startAtBoot,
         bootOrder: parseInt(data.advanced.bootOrder.toString(), 10),
         timeOffset: data.advanced.timeOffset,
+        bootRom: data.advanced.bootRom,
         cloudInit: data.advanced.cloudInit.enabled,
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
@@ -239,6 +240,15 @@ export async function modifyClockOffset(
 ): Promise<APIResponse> {
     return await apiRequest(`/vm/options/clock/${rid}`, APIResponseSchema, 'PUT', {
         timeOffset
+    });
+}
+
+export async function modifyBootRom(
+    rid: number,
+    bootRom: 'uefi' | 'uefi_csm' | 'none'
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/boot-rom/${rid}`, APIResponseSchema, 'PUT', {
+        bootRom
     });
 }
 

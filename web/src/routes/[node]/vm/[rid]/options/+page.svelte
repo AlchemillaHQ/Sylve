@@ -2,6 +2,7 @@
 	import { getVmById } from '$lib/api/vm/vm';
 	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import BootRom from '$lib/components/custom/VM/Options/BootRom.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
 	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
 	import ExtraBhyveOptions from '$lib/components/custom/VM/Options/ExtraBhyveOptions.svelte';
@@ -114,6 +115,17 @@
 				value: vm ? (vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
 			},
 			{
+				id: generateNanoId('bootRom'),
+				property: 'Boot ROM',
+				value: vm
+					? vm.current.bootRom === 'uefi'
+						? 'UEFI (Default)'
+						: vm.current.bootRom === 'uefi_csm'
+							? 'UEFI CSM (Deprecated)'
+							: 'None'
+					: 'N/A'
+			},
+			{
 				id: generateNanoId('shutdownWaitTime'),
 				property: 'Shutdown Wait Time',
 				value: vm ? `${vm.current.shutdownWaitTime} seconds` : 'N/A'
@@ -151,6 +163,7 @@
 		startOrder: { open: false },
 		wol: { open: false },
 		timeOffset: { open: false },
+		bootRom: { open: false },
 		shutdownWaitTime: { open: false },
 		cloudInit: { open: false },
 		extraBhyveOptions: { open: false },
@@ -164,6 +177,7 @@
 		| 'startOrder'
 		| 'wol'
 		| 'timeOffset'
+		| 'bootRom'
 		| 'shutdownWaitTime'
 		| 'cloudInit'
 		| 'extraBhyveOptions'
@@ -200,6 +214,8 @@
 				{@render button('wol', 'Wake on LAN', false)}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
+			{:else if activeRow.property === 'Boot ROM'}
+				{@render button('bootRom', 'Boot ROM')}
 			{:else if activeRow.property === 'Shutdown Wait Time'}
 				{@render button('shutdownWaitTime', 'Shutdown Wait Time', false)}
 			{:else if activeRow.property === 'Cloud Init'}
@@ -235,6 +251,10 @@
 
 {#if properties.timeOffset.open && vm}
 	<Clock bind:open={properties.timeOffset.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.bootRom.open && vm}
+	<BootRom bind:open={properties.bootRom.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.shutdownWaitTime.open && vm}

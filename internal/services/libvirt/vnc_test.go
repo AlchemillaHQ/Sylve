@@ -9,6 +9,7 @@
 package libvirt
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -130,6 +131,89 @@ func TestCreateVmXML_PrependsExtraBhyveOptionsBeforeGeneratedArgs(t *testing.T) 
 
 	if !(idxS < idxU && idxU < idxA && idxA < idxW) {
 		t.Fatalf("expected custom args in-order before generated args, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_UsesUEFIBootROMByDefault(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:       "vm-bootrom-uefi",
+		RID:        103,
+		CPUSockets: 1,
+		CPUCores:   1,
+		CPUThreads: 1,
+		RAM:        1024 * 1024 * 512,
+		VNCEnabled: false,
+		TimeOffset: vmModels.TimeOffsetUTC,
+		BootROM:    vmModels.VMBootROMUEFI,
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	if !strings.Contains(xml, uefiFirmwarePath) {
+		t.Fatalf("expected UEFI firmware loader path in XML, got: %s", xml)
+	}
+
+	if !strings.Contains(xml, fmt.Sprintf("%d_vars.fd", vm.RID)) {
+		t.Fatalf("expected UEFI vars path in XML, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_UsesCSMBootROMWhenConfigured(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:       "vm-bootrom-csm",
+		RID:        104,
+		CPUSockets: 1,
+		CPUCores:   1,
+		CPUThreads: 1,
+		RAM:        1024 * 1024 * 512,
+		VNCEnabled: false,
+		TimeOffset: vmModels.TimeOffsetUTC,
+		BootROM:    vmModels.VMBootROMUEFICSM,
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	if !strings.Contains(xml, csmROMFileName) {
+		t.Fatalf("expected CSM ROM loader path in XML, got: %s", xml)
+	}
+
+	if !strings.Contains(xml, fmt.Sprintf("%d_vars.fd", vm.RID)) {
+		t.Fatalf("expected UEFI vars path in XML, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_OmitsLoaderWhenBootROMNone(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:       "vm-bootrom-none",
+		RID:        105,
+		CPUSockets: 1,
+		CPUCores:   1,
+		CPUThreads: 1,
+		RAM:        1024 * 1024 * 512,
+		VNCEnabled: false,
+		TimeOffset: vmModels.TimeOffsetUTC,
+		BootROM:    vmModels.VMBootROMNone,
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	if strings.Contains(xml, "<loader") {
+		t.Fatalf("expected no loader element when boot ROM is none, got: %s", xml)
 	}
 }
 

@@ -341,6 +341,33 @@ func TestBuildVMTemplateFromVM_PropagatesExtraBhyveOptions(t *testing.T) {
 	}
 }
 
+func TestBuildVMFromTemplate_PropagatesBootROM(t *testing.T) {
+	template := vmModels.VMTemplate{
+		BootROM: vmModels.VMBootROMUEFICSM,
+	}
+	target := vmTemplateCreateTarget{
+		RID:  802,
+		Name: "vm-802",
+	}
+
+	vm := buildVMFromTemplate(template, target, 5902, "", "", "")
+	if vm.BootROM != vmModels.VMBootROMUEFICSM {
+		t.Fatalf("unexpected VM boot ROM: got=%q want=%q", vm.BootROM, vmModels.VMBootROMUEFICSM)
+	}
+}
+
+func TestBuildVMTemplateFromVM_PropagatesBootROM(t *testing.T) {
+	vm := vmModels.VM{
+		Name:    "source-vm",
+		BootROM: vmModels.VMBootROMNone,
+	}
+
+	template := buildVMTemplateFromVM(vm, "template-a", nil)
+	if template.BootROM != vmModels.VMBootROMNone {
+		t.Fatalf("unexpected template boot ROM: got=%q want=%q", template.BootROM, vmModels.VMBootROMNone)
+	}
+}
+
 func TestCreateVMsFromTemplateStopsOnFirstFailure(t *testing.T) {
 	svc := &Service{}
 	calls := make([]uint, 0, 2)
