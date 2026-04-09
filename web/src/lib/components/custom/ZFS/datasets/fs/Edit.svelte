@@ -31,7 +31,9 @@
 		compression: dataset.properties?.compression || 'lz4',
 		dedup: dataset.properties?.dedup || 'off',
 		quota: dataset.properties?.quota
-			? (normalizeSizeInputExact(parseInt(dataset.properties.quota)) ?? '')
+			? normalizeSizeInputExact(parseInt(dataset.properties.quota)) === '0 B'
+				? ''
+				: normalizeSizeInputExact(parseInt(dataset.properties.quota))
 			: '',
 		aclinherit: dataset.properties?.aclinherit || 'passthrough',
 		aclmode: dataset.properties?.aclmode || 'passthrough',
@@ -42,6 +44,16 @@
 	let zfsProperties = $state(createFSProps);
 	let properties = $state(options);
 	let compressionOpen = $state(false);
+	let recordsizeOpen = $state(false);
+
+	const recordsizeData = $derived.by(() => {
+		const base = zfsProperties.recordsize;
+		const val = properties.recordsize;
+		if (!val || base.some((d) => d.value === val)) return base;
+		const humanized = normalizeSizeInputExact(val);
+		const label = humanized ? `${humanized} - Custom` : `${val} - Custom`;
+		return [{ value: val, label }, ...base];
+	});
 
 	async function edit() {
 		let quota = '0B';
@@ -113,7 +125,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -125,7 +137,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							properties = options;
 							open = false;
@@ -146,6 +158,12 @@
 					options={zfsProperties.atime}
 					bind:value={properties.atime}
 					onChange={(value) => (properties.atime = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<SimpleSelect
@@ -154,6 +172,12 @@
 					options={zfsProperties.checksum}
 					bind:value={properties.checksum}
 					onChange={(value) => (properties.checksum = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -161,7 +185,7 @@
 					label="Compression"
 					bind:value={properties.compression}
 					data={zfsProperties.compression}
-					classes="space-y-1.5"
+					classes="space-y-1"
 					placeholder="Select or type compression"
 					triggerWidth="w-full"
 					width="w-full"
@@ -208,18 +232,30 @@
 					options={zfsProperties.aclMode}
 					bind:value={properties.aclmode}
 					onChange={(value) => (properties.aclmode = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
-				<SimpleSelect
+				<CustomComboBox
+					bind:open={recordsizeOpen}
 					label="Record Size"
-					placeholder="Select Record Size"
-					options={zfsProperties.recordsize}
 					bind:value={properties.recordsize}
-					onChange={(value) => (properties.recordsize = value)}
+					data={recordsizeData}
+					classes="space-y-1"
+					placeholder="Select or type record size"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
 				/>
 
-				<div class="space-y-1.5">
-					<Label for="mountpoint" class="w-24 whitespace-nowrap text-sm">Custom Mount Point</Label>
+				<div class="space-y-1">
+					<Label for="mountpoint" class="flex h-7 items-center whitespace-nowrap text-sm"
+						>Custom Mount Point</Label
+					>
 					<Input
 						type="text"
 						id="mountpoint"

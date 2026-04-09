@@ -22,6 +22,9 @@
 		multiple?: boolean;
 		allowCustom?: boolean;
 		shortLabels?: boolean;
+		showCount?: boolean;
+		showCountLabel?: string;
+		buttonClass?: string;
 		topRightButton?: {
 			icon: string;
 			tooltip: string;
@@ -45,7 +48,10 @@
 		allowCustom = false,
 		value = $bindable(multiple ? [] : ''),
 		shortLabels = false,
-		topRightButton
+		topRightButton,
+		showCount = false,
+		showCountLabel = 'selected',
+		buttonClass = 'h-9'
 	}: Props = $props();
 
 	let search = $state('');
@@ -58,14 +64,16 @@
 	);
 
 	const effectiveData = $derived.by(() => {
-		if (
-			allowCustom &&
-			!multiple &&
-			typeof value === 'string' &&
-			value &&
-			!data.some((d) => d.value === value)
-		) {
-			return [{ value: value, label: value }, ...data];
+		if (allowCustom) {
+			if (!multiple && typeof value === 'string' && value && !data.some((d) => d.value === value)) {
+				return [{ value: value, label: value }, ...data];
+			}
+			if (multiple && Array.isArray(value)) {
+				const extras = value
+					.filter((v) => v && !data.some((d) => d.value === v))
+					.map((v) => ({ value: v, label: v }));
+				return extras.length > 0 ? [...extras, ...data] : data;
+			}
 		}
 		return data;
 	});
@@ -143,24 +151,31 @@
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
-				class="h-9 w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
+				class="{buttonClass} w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
 				{disabled}
 			>
 				<div
 					class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
-					class:flex-wrap={multiple}
+					class:flex-wrap={multiple && !showCount}
 				>
 					{#if selectedLabels.length > 0}
-						{#each selectedLabels as lbl (lbl)}
-							<p
-								class={multiple
-									? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
-									: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
-								title={lbl}
-							>
-								{lbl}
+						{#if showCount && multiple}
+							<p class="min-w-0 max-w-full truncate rounded px-2 text-sm">
+								{selectedLabels.length}
+								{showCountLabel}
 							</p>
-						{/each}
+						{:else}
+							{#each selectedLabels as lbl (lbl)}
+								<p
+									class={multiple
+										? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
+										: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
+									title={lbl}
+								>
+									{lbl}
+								</p>
+							{/each}
+						{/if}
 					{:else}
 						<span class="truncate opacity-50">{placeholder}</span>
 					{/if}
@@ -183,9 +198,8 @@
 							!data.some((d) => d.value === search.trim())
 						) {
 							e.preventDefault();
-							value = search.trim();
-							onValueChange(search.trim());
-							open = false;
+							selectItem(search.trim());
+							if (!multiple) open = false;
 						}
 					}}
 				/>
@@ -216,13 +230,12 @@
 								{formatLabel(element.label)}
 							</Command.Item>
 						{/each}
-						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim())}
+						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim()) && !(multiple && Array.isArray(value) && value.includes(search.trim()))}
 							<Command.Item
 								value={search.trim()}
 								onSelect={() => {
-									value = search.trim();
-									onValueChange(search.trim());
-									open = false;
+									selectItem(search.trim());
+									if (!multiple) open = false;
 								}}
 							>
 								<span class="icon-[lucide--check] mr-2 h-4 w-4 opacity-0"></span>

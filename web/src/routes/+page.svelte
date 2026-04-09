@@ -1,4 +1,5 @@
 <!-- <span class="icon-[mdi--palette]"></span>
+<span class="icon-[material-symbols--lock]"></span>
 <span class="icon-[carbon--block-storage-alt]"></span>
 <span class="icon-[mdi--pound]"></span>
 <span class="icon-[material-symbols--outbound-outline-rounded]"></span>

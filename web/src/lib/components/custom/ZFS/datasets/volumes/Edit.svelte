@@ -2,6 +2,7 @@
 	import { editVolume } from '$lib/api/zfs/datasets';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -50,6 +51,17 @@
 	let properties = $state(options);
 	let zfsProperties = $state(createVolProps);
 	let invalidSizeForBlockSize = $state(false);
+	let volblocksizeOpen = $state(false);
+	let compressionOpen = $state(false);
+
+	const volblocksizeData = $derived.by(() => {
+		const base = zfsProperties.volblocksize;
+		const val = properties.volblocksize;
+		if (!val || base.some((d) => d.value === val)) return base;
+		const humanized = normalizeSizeInputExact(val);
+		const label = humanized ? `${humanized} - Custom` : `${val} - Custom`;
+		return [{ value: val, label }, ...base];
+	});
 
 	async function edit() {
 		const parsedVolsize = parseSizeInputToBytes(properties.volsize);
@@ -125,6 +137,12 @@
 		bind:value={properties[prop]}
 		onChange={(value) => (properties[prop] = value)}
 		{disabled}
+		classes={{
+			parent: 'flex-1 min-w-0 space-y-1',
+			label: 'flex h-7 items-center whitespace-nowrap text-sm',
+			trigger:
+				'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+		}}
 	/>
 {/snippet}
 
@@ -144,7 +162,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -157,7 +175,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							properties = options;
 							open = false;
@@ -173,28 +191,26 @@
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
 				<div class="space-y-1">
-					<Label class="w-24 text-sm whitespace-nowrap">
-						<div class="flex items-center gap-1">
-							<span>Volume Size</span>
-							{#if invalidSizeForBlockSize}
-								<span
-									role="button"
-									tabindex="0"
-									class="icon-[mdi--alert-circle-outline] h-4 w-4 text-yellow-500"
-									title="Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
-									onclick={() => {
+					<div class="flex h-7 items-center gap-1">
+						<Label class="whitespace-nowrap text-sm">Volume Size</Label>
+						{#if invalidSizeForBlockSize}
+							<span
+								role="button"
+								tabindex="0"
+								class="icon-[mdi--alert-circle-outline] h-4 w-4 text-yellow-500"
+								title="Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+								onclick={() => {
+									adjustBlockSize();
+								}}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
 										adjustBlockSize();
-									}}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											adjustBlockSize();
-										}
-									}}
-								></span>
-							{/if}
-						</div>
-					</Label>
+									}
+								}}
+							></span>
+						{/if}
+					</div>
 					<Input
 						type="text"
 						class="w-full text-left"
@@ -210,9 +226,29 @@
 					/>
 				</div>
 
-				{@render simpleSelect('volblocksize', 'Block Size', 'Select block size', true)}
+				<CustomComboBox
+					bind:open={volblocksizeOpen}
+					label="Block Size"
+					bind:value={properties.volblocksize}
+					data={volblocksizeData}
+					classes="space-y-1"
+					placeholder="Select block size"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={true}
+				/>
 				{@render simpleSelect('checksum', 'Checksum', 'Select Checksum')}
-				{@render simpleSelect('compression', 'Compression', 'Select compression type')}
+				<CustomComboBox
+					bind:open={compressionOpen}
+					label="Compression"
+					bind:value={properties.compression}
+					data={zfsProperties.compression}
+					classes="space-y-1"
+					placeholder="Select or type compression"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
+				/>
 				{@render simpleSelect('dedup', 'Deduplication', 'Select deduplication mode')}
 				{@render simpleSelect('primarycache', 'Primary Cache', 'Select primary cache mode')}
 				{@render simpleSelect('volmode', 'Volume Mode', 'Select volume mode')}

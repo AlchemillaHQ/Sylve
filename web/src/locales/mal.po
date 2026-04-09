@@ -244,6 +244,7 @@ msgid "Cluster"
 msgstr "ക്ലസ്റ്റർ"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Backups"
 msgstr "ബാക്കപ്പുകൾ"
@@ -2470,9 +2471,7 @@ msgid "Search for a command to run"
 msgstr "പ്രവർത്തിപ്പിക്കാൻ ഒരു കമാൻഡ് തിരയുക"
 
 #. 0: (selectedCount || 0) + (hasSelection ? 0 \\: inUseCount)
-#. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
 msgstr "{0} തിരഞ്ഞെടുത്തു"
 
@@ -7410,9 +7409,6 @@ msgstr "പൂൾ {0} നീക്കം ചെയ്തു"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "ഷട്ട് ഓഫ്"
@@ -8451,9 +8447,8 @@ msgstr "റീറ്റെൻഷൻ പോളിസി മാറ്റം വര
 msgid "Retention policy modified"
 msgstr "റീറ്റെൻഷൻ പോളിസി പരിഷ്കരിച്ചു"
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
-msgid "Retention Policies -"
-msgstr "റീറ്റെൻഷൻ പോളിസികൾ -"
+#~ msgid "Retention Policies -"
+#~ msgstr "റീറ്റെൻഷൻ പോളിസികൾ -"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "No parent selected"
@@ -8581,7 +8576,6 @@ msgid "Record Size"
 msgstr "റെക്കോർഡ് സൈസ്"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Record Size"
 msgstr "റെക്കോർഡ് സൈസ് തിരഞ്ഞെടുക്കുക"
 
@@ -8653,7 +8647,6 @@ msgid "Select block size"
 msgstr "ബ്ലോക്ക് വലുപ്പം തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select compression type"
 msgstr "കംപ്രഷൻ തരം തിരഞ്ഞെടുക്കുക"
 
@@ -9188,6 +9181,7 @@ msgid "Leader IP (192.168.1.1)"
 msgstr ""
 
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Templates"
 msgstr ""
 
@@ -9936,6 +9930,7 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select or type compression"
 msgstr ""
 
@@ -11166,6 +11161,7 @@ msgid "No log entries captured yet"
 msgstr ""
 
 #: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Filter"
 msgstr ""
 
@@ -12730,10 +12726,8 @@ msgstr ""
 msgid "LUN {0}"
 msgstr ""
 
-#. 0: modals.bulkDelete.count
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
-msgstr "<<<<<<< Updated upstream"
+#~ msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+#~ msgstr "<<<<<<< Updated upstream"
 
 #~ msgid "Bootstrap a base>>>>>>> Stashed changes"
 #~ msgstr ">>>>>>> Stashed changes"
@@ -12985,4 +12979,26 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Bind Port"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select or type record size"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "VM Snapshots"
+msgstr ""
+
+#~ msgid "Filter by name…"
+#~ msgstr ""
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Jail Snapshots"
+msgstr ""
+
+#~ msgid "Hide by name…"
+#~ msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention Policies"
 msgstr ""

@@ -473,7 +473,7 @@
 					<Button
 						size="sm"
 						variant="link"
-						title={'Reset'}
+						title="Reset"
 						class="h-4"
 						onclick={() => {
 							if (selectedStorage) {
@@ -484,13 +484,13 @@
 						}}
 					>
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Reset'}</span>
+						<span class="sr-only">Reset</span>
 					</Button>
 					<Button
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							if (selectedStorage) {
 								editProperties = editOptions;
@@ -501,7 +501,7 @@
 						}}
 					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
+						<span class="sr-only">Close</span>
 					</Button>
 				</div>
 			</Dialog.Title>
@@ -556,7 +556,7 @@
 					{#if properties.diskType === 'image'}
 						<CustomComboBox
 							bind:open={imageCombobox.open}
-							label={'ISO/Image'}
+							label="ISO/Image"
 							bind:value={imageCombobox.value}
 							data={images}
 							classes="flex-1 space-y-1"
@@ -577,7 +577,7 @@
 					{#if properties.diskType === 'zvol'}
 						<CustomComboBox
 							bind:open={zvolCombobox.open}
-							label={'ZFS Volume'}
+							label="ZFS Volume"
 							bind:value={zvolCombobox.value}
 							data={datasets
 								.filter((dataset) => {
@@ -612,7 +612,7 @@
 				{:else if properties.type === 'new' && properties.diskType === 'filesystem'}
 					<CustomComboBox
 						bind:open={filesystemCombobox.open}
-						label={'ZFS Filesystem'}
+						label="ZFS Filesystem"
 						bind:value={filesystemCombobox.value}
 						data={filesystemDatasetOptions}
 						classes="flex-1 space-y-1"
@@ -626,7 +626,7 @@
 					<CustomValueInput
 						label="Emulation"
 						placeholder=""
-						value={'virtio-9p'}
+						value="virtio-9p"
 						disabled={true}
 						classes="flex-1 space-y-1"
 					/>
@@ -642,6 +642,12 @@
 						]}
 						bind:value={properties.emulation}
 						onChange={(value) => (properties.emulation = value as StorageEmulation)}
+						classes={{
+							parent: 'flex-1 min-w-0 space-y-1',
+							label: 'h-7 flex items-center whitespace-nowrap text-sm',
+							trigger:
+								'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+						}}
 					/>
 				{/if}
 
@@ -719,6 +725,12 @@
 						]}
 						bind:value={editProperties.emulation}
 						onChange={(value) => (editProperties.emulation = value as StorageEmulation)}
+						classes={{
+							parent: 'flex-1 min-w-0 space-y-1',
+							label: 'h-7 flex items-center whitespace-nowrap text-sm',
+							trigger:
+								'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+						}}
 					/>
 				{/if}
 

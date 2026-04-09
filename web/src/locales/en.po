@@ -244,6 +244,7 @@ msgid "Cluster"
 msgstr "Cluster"
 
 #: src/lib/components/custom/Cluster/Storage/Create.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Backups"
 msgstr "Backups"
@@ -2470,9 +2471,7 @@ msgid "Search for a command to run"
 msgstr "Search for a command to run"
 
 #. 0: (selectedCount || 0) + (hasSelection ? 0 \\: inUseCount)
-#. 0: selectedLabels.length
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
-#: src/lib/components/ui/custom-input/combobox-bindable.svelte
 msgid "{0} selected"
 msgstr "{0} selected"
 
@@ -7410,9 +7409,6 @@ msgstr "Pool {0} deleted"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "Shutoff"
@@ -8451,9 +8447,8 @@ msgstr "Error modifying retention policy"
 msgid "Retention policy modified"
 msgstr "Retention policy modified"
 
-#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
-msgid "Retention Policies -"
-msgstr "Retention Policies -"
+#~ msgid "Retention Policies -"
+#~ msgstr "Retention Policies -"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 msgid "No parent selected"
@@ -8581,7 +8576,6 @@ msgid "Record Size"
 msgstr "Record Size"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 msgid "Select Record Size"
 msgstr "Select Record Size"
 
@@ -8653,7 +8647,6 @@ msgid "Select block size"
 msgstr "Select block size"
 
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select compression type"
 msgstr "Select compression type"
 
@@ -9188,6 +9181,7 @@ msgid "Leader IP (192.168.1.1)"
 msgstr "Leader IP (192.168.1.1)"
 
 #: src/lib/components/skeleton/LeftPanelClustered.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Templates"
 msgstr "Templates"
 
@@ -9936,6 +9930,7 @@ msgstr "<0/> Use \"{0}\""
 
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+#: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 msgid "Select or type compression"
 msgstr "Select or type compression"
 
@@ -11166,6 +11161,7 @@ msgid "No log entries captured yet"
 msgstr "No log entries captured yet"
 
 #: src/routes/[node]/network/firewall/logs/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Filter"
 msgstr "Filter"
 
@@ -12730,10 +12726,8 @@ msgstr "Target deleted"
 msgid "LUN {0}"
 msgstr "LUN {0}"
 
-#. 0: modals.bulkDelete.count
-#: src/routes/[node]/network/objects/+page.svelte
-msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
-msgstr "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+#~ msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+#~ msgstr "This will permanently delete {0} network objects<<<<<<< Updated upstream"
 
 #~ msgid "Bootstrap a base>>>>>>> Stashed changes"
 #~ msgstr "Bootstrap a base>>>>>>> Stashed changes"
@@ -12986,3 +12980,25 @@ msgstr "Select resolution"
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Bind Port"
 msgstr "Bind Port"
+
+#: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
+msgid "Select or type record size"
+msgstr "Select or type record size"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "VM Snapshots"
+msgstr "VM Snapshots"
+
+#~ msgid "Filter by name…"
+#~ msgstr "Filter by name…"
+
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+msgid "Jail Snapshots"
+msgstr "Jail Snapshots"
+
+#~ msgid "Hide by name…"
+#~ msgstr "Hide by name…"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Retention Policies"
+msgstr "Retention Policies"

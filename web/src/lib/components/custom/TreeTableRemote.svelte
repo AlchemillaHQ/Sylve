@@ -114,7 +114,11 @@
 				treeExpands.forEach((treeExpand) => {
 					const row = findRow(table?.getRows() || [], treeExpand.id);
 					if (row) {
-						treeExpand.expanded ? row.treeExpand() : row.treeCollapse();
+						if (treeExpand.expanded) {
+							row.treeExpand();
+						} else {
+							row.treeCollapse();
+						}
 					}
 				});
 
@@ -212,7 +216,7 @@
 			const value = cell.getValue();
 			const column = cell.getColumn();
 
-			if ((column.getDefinition() as any).copyOnClick && value) {
+			if ((column.getDefinition() as unknown as { copyOnClick?: boolean }).copyOnClick && value) {
 				navigator.clipboard.writeText(value.toString());
 				const truncated =
 					value.toString().length > 20 ? value.toString().slice(0, 20) + '...' : value.toString();
@@ -268,10 +272,10 @@
 </script>
 
 <ContextMenu.Root>
-	<ContextMenu.Trigger class="flex flex-1">
+	<ContextMenu.Trigger class="flex flex-1 min-h-0">
 		<div
 			bind:this={tableComponent}
-			class="flex-1 cursor-pointer s-tree-table-container"
+			class="flex-1 min-h-0 cursor-pointer s-tree-table-container"
 			id={name}
 		></div>
 	</ContextMenu.Trigger>
@@ -289,3 +293,17 @@
 		{/each}
 	</ContextMenu.Content>
 </ContextMenu.Root>
+
+<style>
+	:global(.s-tree-table-container > .tabulator) {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	:global(.s-tree-table-container > .tabulator > .tabulator-tableholder) {
+		flex: 1;
+		min-height: 0;
+	}
+</style>

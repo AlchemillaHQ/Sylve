@@ -20,6 +20,9 @@
 		disallowEmpty?: boolean;
 		multiple?: boolean;
 		showSelected?: boolean;
+		showSelectedCountLabel?: string;
+		buttonClass?: string;
+		initialValues?: string[];
 	}
 
 	let {
@@ -36,12 +39,18 @@
 		disallowEmpty = false,
 		multiple = false,
 		showSelected = true,
+		showSelectedCountLabel = 'selected',
+		buttonClass = '',
+		initialValues = undefined,
 		value = $bindable(multiple ? [] : '')
 	}: Props = $props();
 
 	let search = $state('');
 
-	const initialDataValues: string[] = $state(Array.isArray(data) ? data.map((d) => d.value) : []);
+	// svelte-ignore state_referenced_locally
+	const initialDataValues: string[] = $state(
+		initialValues ?? (Array.isArray(data) ? data.map((d) => d.value) : [])
+	);
 
 	const filteredData = $derived.by(() => {
 		if (!search) return data;
@@ -89,18 +98,20 @@
 		</Label>
 	{/if}
 	<Popover.Root bind:open>
-		<Popover.Trigger class={triggerWidth} {disabled}>
+		<Popover.Trigger class="flex items-center {triggerWidth}" {disabled}>
 			<Button
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
-				class=" h-full max-h-28 w-full flex-wrap justify-start gap-1 overflow-y-auto"
+				class="{buttonClass || 'h-full max-h-28'} w-full {buttonClass
+					? 'flex-nowrap'
+					: 'flex-wrap'} items-center justify-start gap-1 overflow-y-auto"
 				{disabled}
 			>
 				<!-- <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"> -->
 				{#if selectedLabels.length > 0}
 					{#if showSelected}
-						{#each selectedLabels as lbl, i}
+						{#each selectedLabels as lbl, i (i)}
 							<span
 								class={multiple
 									? 'bg-secondary truncate rounded px-2 py-0.5 text-sm'
@@ -112,7 +123,8 @@
 						{/each}
 					{:else}
 						<span class="truncate rounded px-2 text-sm">
-							{selectedLabels.length} selected
+							{selectedLabels.length}
+							{showSelectedCountLabel}
 						</span>
 					{/if}
 				{:else}
@@ -128,7 +140,7 @@
 				<Command.Empty>Type to create</Command.Empty>
 				<div class="max-h-64 overflow-auto">
 					<Command.Group>
-						{#each filteredData as element}
+						{#each filteredData as element (element.value)}
 							<Command.Item
 								value={element.value}
 								onSelect={() => selectItem(element.value)}
@@ -154,7 +166,8 @@
 								{#if !initialDataValues.includes(element.value)}
 									<Button
 										size="icon"
-										onclick={() => {
+										onclick={(e) => {
+											e.stopPropagation();
 											data = data.filter((d) => d.value !== element.value);
 											if (multiple) {
 												if (Array.isArray(value)) {

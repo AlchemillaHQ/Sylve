@@ -85,6 +85,7 @@ type PaginatedDatasetsRequest struct {
 	Page        int              `form:"page"`
 	Size        int              `form:"size"`
 	Search      string           `form:"search"`
+	NameFilter  string           `form:"nameFilter"`
 
 	Sort []SortParam `form:"-"`
 }
