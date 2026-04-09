@@ -1,15 +1,13 @@
 <script lang="ts">
 	import { modifyVNC } from '$lib/api/vm/hardware';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import { Label } from '$lib/components/ui/label/index.js';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
-	import { generatePassword, parseBoolean } from '$lib/utils/string';
+	import { generatePassword, isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { resolutions } from '$lib/utils/vm/vnc';
 	import { toast } from 'svelte-sonner';
 
@@ -25,12 +23,12 @@
 	// svelte-ignore state_referenced_locally
 	let options = {
 		port: vm?.vncPort || 5900,
+		bind: vm?.vncBind || '127.0.0.1',
 		resolution: vm?.vncResolution || '640x480',
 		password: vm?.vncPassword || 'sigma-chad-password-never',
 		wait: vm?.vncWait ?? false,
 		resolutionOpen: false,
-		vncEnabledOpen: false,
-		vncEnabled: (vm?.vncEnabled || false).toString()
+		vncEnabled: vm?.vncEnabled ?? false
 	};
 
 	let properties = $state(options);
@@ -39,25 +37,32 @@
 		if (!vm) return;
 
 		let error = '';
+		const isVNCEnabled = properties.vncEnabled;
 
-		if (!properties.password || properties.password.length < 8) {
-			error = 'Password too short';
+		if (!isValidIPv4(properties.bind) && !isValidIPv6(properties.bind)) {
+			error = 'Bind IP must be a valid IPv4 or IPv6 address';
 		}
 
-		if (properties.port < 5900 || properties.port > 65535) {
-			error = 'Port must be between 5900 and 65535';
-		}
+		if (isVNCEnabled) {
+			if (!properties.password || properties.password.length < 8) {
+				error = 'Password too short';
+			}
 
-		if (!properties.resolution || !resolutions.some((r) => r.value === properties.resolution)) {
-			error = 'Invalid resolution selected';
-		}
+			if (properties.port < 5900 || properties.port > 65535) {
+				error = 'Port must be between 5900 and 65535';
+			}
 
-		const otherVm = vms.find(
-			(v) => v.id !== vm.id && Number(v.vncPort) === Number(properties.port)
-		);
+			if (!properties.resolution || !resolutions.some((r) => r.value === properties.resolution)) {
+				error = 'Invalid resolution selected';
+			}
 
-		if (otherVm) {
-			error = 'VNC port already in use';
+			const otherVm = vms.find(
+				(v) => v.id !== vm.id && Number(v.vncPort) === Number(properties.port)
+			);
+
+			if (otherVm) {
+				error = 'VNC port already in use';
+			}
 		}
 
 		if (error) {
@@ -69,8 +74,9 @@
 
 		const response = await modifyVNC(
 			vm.rid,
-			parseBoolean(properties.vncEnabled),
+			isVNCEnabled,
 			Number(properties.port),
+			properties.bind,
 			properties.resolution,
 			properties.password,
 			properties.wait ?? false
@@ -93,7 +99,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-1/3 overflow-hidden p-5 lg:max-w-2xl">
+	<Dialog.Content class="overflow-hidden p-5 sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center justify-between">
 				<div class="flex items-center gap-2">
@@ -132,65 +138,66 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<CustomComboBox
-			bind:open={properties.vncEnabledOpen}
-			label="Status"
-			bind:value={properties.vncEnabled}
-			data={[
-				{ value: 'true', label: 'Enabled' },
-				{ value: 'false', label: 'Disabled' }
-			]}
-		></CustomComboBox>
+		<div class="flex flex-col gap-4">
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+				<CustomValueInput
+					label="Bind IP"
+					bind:value={properties.bind}
+					placeholder="127.0.0.1"
+					classes="flex-1 space-y-1.5"
+					disabled={!properties.vncEnabled}
+				/>
 
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-			<CustomComboBox
-				bind:open={properties.resolutionOpen}
-				label="VNC Resolution"
-				bind:value={properties.resolution}
-				data={resolutions}
-				classes="flex-1 space-y-1.5"
-				placeholder="Select VNC resolution"
-				triggerWidth="w-full "
-				width="w-full"
-			></CustomComboBox>
+				<CustomValueInput
+					label="Bind Port"
+					type="number"
+					bind:value={properties.port}
+					placeholder="5900"
+					classes="flex-1 space-y-1.5"
+					disabled={!properties.vncEnabled}
+				/>
+
+				<CustomComboBox
+					bind:open={properties.resolutionOpen}
+					label="Resolution"
+					bind:value={properties.resolution}
+					data={resolutions}
+					classes="flex-1 space-y-1.5"
+					placeholder="Select resolution"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={!properties.vncEnabled}
+				></CustomComboBox>
+			</div>
 
 			<CustomValueInput
-				label="Port"
-				type="number"
-				bind:value={properties.port}
-				placeholder="5900"
-				classes="space-y-1"
+				label="Password"
+				type="password"
+				bind:value={properties.password}
+				placeholder="Enter or generate password"
+				classes="flex-1 space-y-1.5"
+				revealOnFocus={true}
+				disabled={!properties.vncEnabled}
+				topRightButton={{
+					icon: 'icon-[fad--random-2dice]',
+					tooltip: 'Generate Password',
+					function: async () => generatePassword()
+				}}
 			/>
-		</div>
 
-		<div class="grid grid-cols-1">
-			<div class="space-y-1">
-				<Label class="w-24 whitespace-nowrap text-sm">Password</Label>
-				<div class="flex w-full items-center space-x-2">
-					<Input
-						type="password"
-						id="vnc-password"
-						placeholder="Enter or generate password"
-						class="w-full"
-						autocomplete="off"
-						bind:value={properties.password}
-						showPasswordOnFocus={true}
-					/>
-
-					<Button
-						onclick={() => {
-							properties.password = generatePassword();
-						}}
-					>
-						<span class="icon-[fad--random-2dice] h-6 w-6"></span>
-					</Button>
-				</div>
+			<div class="flex items-center gap-4">
+				<CustomCheckbox
+					label="Enable VNC"
+					bind:checked={properties.vncEnabled}
+					classes="flex items-center gap-2"
+				/>
+				<CustomCheckbox
+					label="Wait for VNC"
+					bind:checked={properties.wait}
+					classes="flex items-center gap-2"
+					disabled={!properties.vncEnabled}
+				/>
 			</div>
-		</div>
-
-		<div class="flex items-center space-x-2">
-			<Checkbox id="wait" bind:checked={properties.wait} />
-			<Label for="wait" class="text-sm font-medium">Wait for VNC</Label>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">

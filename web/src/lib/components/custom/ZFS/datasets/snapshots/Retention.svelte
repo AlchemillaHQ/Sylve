@@ -107,12 +107,12 @@
 				<Dialog.Title>
 					<div class="flex flex-row gap-2">
 						<span class="icon-[lucide--timer-reset] h-5 w-5"></span>
-
-						<span>Retention Policies - </span>
-						<span>{dataset}@{snapshot?.prefix}</span>
+						<span>Retention Policies</span>
 					</div>
 				</Dialog.Title>
-				<Dialog.Description></Dialog.Description>
+				<Dialog.Description>
+					{dataset}@{snapshot?.prefix}
+				</Dialog.Description>
 			</Dialog.Header>
 
 			<Dialog.Close

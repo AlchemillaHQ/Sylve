@@ -9,7 +9,7 @@
  */
 
 import { storage } from '$lib';
-import { reload } from '$lib/stores/api.svelte';
+import { connection, reload } from '$lib/stores/api.svelte';
 
 async function parseJSONResponse(response: Response): Promise<any> {
     const contentType = response.headers.get('content-type') || '';
@@ -132,11 +132,13 @@ export async function startSSEEvents() {
     eventSource.addEventListener('cluster-details-refresh', pulseClusterDetailsReload);
 
     eventSource.onerror = () => {
+        connection.sseConnected = false;
         cleanupConnection();
         scheduleReconnect();
     };
 
     eventSource.onopen = () => {
+        connection.sseConnected = true;
         connecting = false;
     };
 
@@ -156,4 +158,5 @@ export function stopSSEEvents() {
 
     cleanupConnection();
     connecting = false;
+    connection.sseConnected = null;
 }

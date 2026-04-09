@@ -3,6 +3,7 @@
 	import { getPools } from '$lib/api/zfs/pool';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -65,6 +66,16 @@
 	};
 
 	let zfsProperties = $state(createVolProps);
+	let volblocksizeOpen = $state(false);
+
+	const volblocksizeData = $derived.by(() => {
+		const base = zfsProperties.volblocksize;
+		const val = properties.volblocksize;
+		if (!val || base.some((d) => d.value === val)) return base;
+		const humanized = normalizeSizeInputExact(val);
+		const label = humanized ? `${humanized} - Custom` : `${val} - Custom`;
+		return [{ value: val, label }, ...base];
+	});
 
 	async function create() {
 		if (!isValidDatasetName(properties.name)) {
@@ -154,6 +165,12 @@
 		options={zfsProperties[prop]}
 		bind:value={properties[prop]}
 		onChange={(value) => (properties[prop] = value)}
+		classes={{
+			parent: 'flex-1 min-w-0 space-y-1',
+			label: 'flex h-7 items-center whitespace-nowrap text-sm',
+			trigger:
+				'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+		}}
 	/>
 {/snippet}
 
@@ -175,7 +192,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -187,7 +204,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							properties = options;
 							open = false;
@@ -202,8 +219,11 @@
 
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+				<input type="text" style="display:none;" name="dummy_username" />
+				<input type="password" style="display:none;" name="dummy_password" />
+
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Name</Label>
+					<Label class="flex h-7 items-center whitespace-nowrap text-sm">Name</Label>
 					<Input
 						type="text"
 						id="name"
@@ -214,7 +234,7 @@
 				</div>
 
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Size</Label>
+					<Label class="flex h-7 items-center whitespace-nowrap text-sm">Size</Label>
 					<Input
 						type="text"
 						class="w-full text-left"
@@ -239,9 +259,25 @@
 					}))}
 					bind:value={properties.parent}
 					onChange={(value) => (properties.parent = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
-				{@render simpleSelect('volblocksize', 'Block Size', 'Select block size')}
+				<CustomComboBox
+					bind:open={volblocksizeOpen}
+					label="Block Size"
+					bind:value={properties.volblocksize}
+					data={volblocksizeData}
+					classes="space-y-1"
+					placeholder="Select block size"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
+				/>
 				{@render simpleSelect('checksum', 'Checksum', 'Select Checksum')}
 				{@render simpleSelect('compression', 'Compression', 'Select compression type')}
 				{@render simpleSelect('dedup', 'Deduplication', 'Select deduplication mode')}
@@ -249,7 +285,7 @@
 
 				{#if properties.encryption !== 'off'}
 					<div class="space-y-1">
-						<Label class="w-24 whitespace-nowrap text-sm">Passphrase</Label>
+						<Label class="flex h-7 items-center whitespace-nowrap text-sm">Passphrase</Label>
 						<div class="flex w-full max-w-sm items-center space-x-2">
 							<Input
 								type="password"

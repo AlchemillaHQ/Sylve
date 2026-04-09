@@ -26,6 +26,10 @@ type CreateOrEditNetworkObjectRequest struct {
 	Values []string `json:"values" binding:"required"`
 }
 
+type BulkDeleteNetworkObjectsRequest struct {
+	IDs []uint `json:"ids" binding:"required"`
+}
+
 // @Summary List Network Objects
 // @Description List all network objects
 // @Tags Network
@@ -218,6 +222,49 @@ func EditNetworkObject(svc *network.Service) gin.HandlerFunc {
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "object_updated",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
+// @Summary Bulk Delete Network Objects
+// @Description Delete multiple network objects by their IDs; fails if any object is in use
+// @Tags Network
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body BulkDeleteNetworkObjectsRequest true "Bulk Delete Request"
+// @Success 200 {object} internal.APIResponse[any] "Objects deleted successfully"
+// @Failure 400 {object} internal.APIResponse[any] "Invalid request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal server error"
+// @Router /network/object/bulk-delete [post]
+func BulkDeleteNetworkObjects(svc *network.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req BulkDeleteNetworkObjectsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := svc.BulkDeleteObjects(req.IDs); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_bulk_delete_objects",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "objects_deleted",
 			Error:   "",
 			Data:    nil,
 		})

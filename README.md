@@ -32,45 +32,31 @@ Sylve aims to make FreeBSD management easier to manage without relying on comple
 
 Sylve is designed to run on **FreeBSD 15.0 or later**.
 
-Install dependencies:
+You can install it from `pkg` or use `ports`:
 
-```sh
-# Other optional dependencies like libirt, bhyve-firmware, qemu-tools
-# swtpm, samba4XX, etc. might be needed if you enable those features.
-# Read the docs to be sure!
-
-pkg install git node24 npm-node24 go
-````
-
-Clone the repository and build:
-
-```sh
-git clone https://github.com/AlchemillaHQ/Sylve.git
-cd Sylve
-make
+```bash
+pkg install sylve
 ```
 
-Run Sylve:
-
-```sh
-cd bin
-cp ../config.example.json config.json
-./sylve
+```bash
+cd /usr/ports/sysutils/sylve && make install clean
 ```
 
 For full installation instructions, dependency details, and configuration guides, see the documentation:
 
 [https://sylve.io/docs](https://sylve.io/docs)
 
-# Sponsors
+## Sponsors
 
-We’re proud to be supported by:
+We're proud to be sponsored by:
 
 <p align="center">
-  <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./docs/sponsors/FreeBSD-White.png">
+  <a href="https://freebsdfoundation.org">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./docs/sponsors/FreeBSD-White.png">
         <img src="./docs/sponsors/FreeBSD-Red.png" alt="FreeBSD Foundation" width="200"/>
-  </picture>
+    </picture>
+  </a>
   &emsp;&emsp;&emsp;
   <a href="https://alchemilla.io">
     <picture>

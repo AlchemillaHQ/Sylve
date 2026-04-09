@@ -1555,6 +1555,30 @@ body.tabulator-print-fullscreen-hide > *:not(.tabulator-print-fullscreen) {
 
 .tabulator .tabulator-row .tabulator-cell.tabulator-row-header {
 	border-bottom: none;
+	border-right: none;
+	@apply bg-background;
+}
+
+.tabulator .tabulator-header .tabulator-col.tabulator-row-header {
+	@apply border-border border-r;
+}
+
+.tabulator
+	.tabulator-row
+	.tabulator-cell.tabulator-row-handle
+	.tabulator-row-handle-box
+	.tabulator-row-handle-bar {
+	@apply bg-muted-foreground/40;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.tabulator
+		.tabulator-row:hover
+		.tabulator-cell.tabulator-row-handle
+		.tabulator-row-handle-box
+		.tabulator-row-handle-bar {
+		@apply bg-muted-foreground/70;
+	}
 }
 
 .tabulator .tabulator-row .tabulator-cell .tabulator-data-tree-control {

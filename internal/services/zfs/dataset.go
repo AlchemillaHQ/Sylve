@@ -303,6 +303,14 @@ func (s *Service) GetPaginatedDatasets(
 	}
 
 	search := strings.ToLower(req.Search)
+	nameFilter := strings.ToLower(req.NameFilter)
+	var nameFilters []string
+	for _, f := range strings.Split(nameFilter, ",") {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			nameFilters = append(nameFilters, f)
+		}
+	}
 	datasets, err := s.getCachedDatasets(ctx, req.DatasetType)
 
 	if err != nil {
@@ -313,6 +321,17 @@ func (s *Service) GetPaginatedDatasets(
 	for _, ds := range datasets {
 		if search != "" &&
 			!strings.Contains(strings.ToLower(ds.Name), search) {
+			continue
+		}
+		lowName := strings.ToLower(ds.Name)
+		skip := false
+		for _, f := range nameFilters {
+			if strings.Contains(lowName, f) {
+				skip = true
+				break
+			}
+		}
+		if skip {
 			continue
 		}
 		filtered = append(filtered, ds)

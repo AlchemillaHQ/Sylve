@@ -18,11 +18,14 @@ export interface Column {
     | ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
     | string;
     minWidth?: number | string;
+    headerFilter?: boolean | string;
+    headerFilterPlaceholder?: string;
 }
 
 export interface TreeTableState {
     columnWidths: Record<string, number>;
     expandedRows: Record<string | number, boolean>;
+    hiddenColumns: Record<string, boolean>;
 }
 
 export type ExpandedRows = Record<number, boolean>;

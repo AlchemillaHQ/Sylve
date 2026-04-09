@@ -82,6 +82,7 @@ func SetupTelemetryDatabase(cfg *internal.SylveConfig, mainDB *gorm.DB, isTest b
 		&infoModels.RAM{},
 		&infoModels.Swap{},
 		&infoModels.NetworkInterface{},
+		&infoModels.FirewallRuleDelta{},
 	); err != nil {
 		logger.L.Fatal().Msgf("Error migrating telemetry database: %v", err)
 	}

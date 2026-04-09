@@ -70,17 +70,26 @@ export function deleteRowByFieldValue(tableId: string, field: string, value: str
 }
 
 export const renderWithIcon = (
-    iconKey: string,
+    iconKey: string | string[],
     suffix: string,
     extraClass?: string,
     title?: string
 ) => {
-    const [set, icon] = iconKey.split(':');
+    const keys = Array.isArray(iconKey) ? iconKey : [iconKey];
+
+    const icons = keys
+        .map((key) => {
+            const [set, icon] = key.split(':');
+            return `<span class="icon-[${set}--${icon}] shrink-0 h-3.5 w-3.5 align-middle translate-y-px ${extraClass || ''}"></span>`;
+        })
+        .join('');
 
     return `
 		<span class="inline-flex items-center gap-1" title="${title || ''}">
-			<span class="icon-[${set}--${icon}] shrink-0 h-3.5 w-3.5  align-middle translate-y-px ${extraClass || ''}"></span>
-			  <span class="leading-none">${suffix}</span>
+			<span class="inline-flex items-center gap-0.5">
+				${icons}
+			</span>
+			<span class="leading-none">${suffix}</span>
 		</span>
 	`.trim();
 };
@@ -88,7 +97,7 @@ export const renderWithIcon = (
 export function sizeFormatter(cell: CellComponent) {
     try {
         return formatBytesBinary(Number(cell.getValue()), { maxDecimals: 1 });
-    } catch (e) {
+    } catch {
         return cell.getValue();
     }
 }

@@ -33,8 +33,10 @@ export interface CreateData {
         isPinningOpen: boolean;
     };
     advanced: {
+        vncEnabled: boolean;
         serial: boolean;
         vncPort: number;
+        vncBind: string;
         vncPassword: string;
         vncWait: boolean;
         vncResolution: string;
@@ -125,6 +127,7 @@ export const VMSchema = z.object({
     serial: z.boolean(),
     vncEnabled: z.boolean(),
     vncPort: z.number().int(),
+    vncBind: z.string(),
     vncPassword: z.string(),
     vncResolution: z.string(),
     vncWait: z.boolean(),
@@ -220,6 +223,7 @@ export const VMTemplateSchema = z.object({
     shutdownWaitTime: z.number().int(),
     serial: z.boolean(),
     vncEnabled: z.boolean(),
+    vncBind: z.string(),
     vncResolution: z.string(),
     vncWait: z.boolean(),
     startAtBoot: z.boolean(),

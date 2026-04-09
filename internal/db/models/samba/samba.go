@@ -15,4 +15,5 @@ type SambaSettings struct {
 	ServerString       string `json:"serverString" gorm:"default:'Sylve SMB Server'"`
 	Interfaces         string `json:"interfaces" gorm:"default:'lo0'"`
 	BindInterfacesOnly bool   `json:"bindInterfacesOnly"`
+	AppleExtensions    bool   `json:"appleExtensions" gorm:"default:false"`
 }

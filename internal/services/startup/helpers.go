@@ -25,6 +25,11 @@ import (
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
+var (
+	startupGetSysctlInt64 = sysctl.GetInt64
+	startupSetSysctlInt32 = sysctl.SetInt32
+)
+
 func (s *Service) SysctlSync() error {
 	intVals := map[string]int32{
 		"net.inet.ip.forwarding":            1,
@@ -36,16 +41,31 @@ func (s *Service) SysctlSync() error {
 	}
 
 	for k, v := range intVals {
-		_, err := sysctl.GetInt64(k)
+		_, err := startupGetSysctlInt64(k)
 		if err != nil {
 			logger.L.Error().Msgf("Error getting sysctl %s: %v, skipping!", k, err)
 			continue
 		}
 
-		err = sysctl.SetInt32(k, v)
+		err = startupSetSysctlInt32(k, v)
 		if err != nil {
 			logger.L.Error().Msgf("Error setting sysctl %s: %v", k, err)
 		}
+	}
+
+	currentFIBs, err := startupGetSysctlInt64("net.fibs")
+	if err != nil {
+		logger.L.Error().Msgf("Error getting sysctl net.fibs: %v, skipping!", err)
+		return nil
+	}
+
+	if currentFIBs < 8 {
+		if err := startupSetSysctlInt32("net.fibs", 8); err != nil {
+			logger.L.Error().Msgf("Error setting sysctl net.fibs: %v", err)
+			return nil
+		}
+
+		logger.L.Info().Msg("Raised sysctl net.fibs to 8 for multi-FIB routing support")
 	}
 
 	return nil
@@ -53,6 +73,28 @@ func (s *Service) SysctlSync() error {
 
 func (s *Service) InitFirewall() error {
 	return nil
+}
+
+func loadKernelModule(module string) error {
+	if _, err := utils.RunCommand("kldstat", "-m", module); err == nil {
+		return nil
+	}
+
+	if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+		return fmt.Errorf("failed to load kernel module %s: %w", module, err)
+	}
+
+	return nil
+}
+
+func ensureAnyKernelModuleLoaded(modules []string) error {
+	for _, module := range modules {
+		if err := loadKernelModule(module); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to load any of kernel modules [%s]", strings.Join(modules, ", "))
 }
 
 func (s *Service) FreeBSDCheck() error {
@@ -118,6 +160,8 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 			if !sambaInstalled {
 				requiredPackages = append(requiredPackages, "samba4XX")
 			}
+
+			requiredPackages = append(requiredPackages, "avahi-app")
 		}
 	}
 
@@ -290,11 +334,24 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 		requiredModules = append(requiredModules, "vmm", "nmdm")
 	}
 
+	if slices.Contains(basicSettings.Services, models.Firewall) {
+		requiredModules = append(requiredModules, "pf")
+	}
+
+	if slices.Contains(basicSettings.Services, models.WireGuard) {
+		requiredModules = append(requiredModules, "if_wg")
+	}
+
 	for _, module := range requiredModules {
-		if _, err := utils.RunCommand("kldstat", "-m", module); err != nil {
-			if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
-				return fmt.Errorf("failed to load kernel module %s: %w", module, err)
-			}
+		if err := loadKernelModule(module); err != nil {
+			return err
+		}
+	}
+
+	if slices.Contains(basicSettings.Services, models.Firewall) {
+		if err := ensureAnyKernelModuleLoaded([]string{"if_pflog", "pflog"}); err != nil {
+			// Different FreeBSD builds can expose pflog support under either module name.
+			return err
 		}
 	}
 

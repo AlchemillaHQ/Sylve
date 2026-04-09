@@ -6,8 +6,8 @@
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { toHex } from '$lib/utils/string';
 	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
-	import { onMount, tick } from 'svelte';
-	import { getVmById, getVMDomain } from '$lib/api/vm/vm';
+	import { onMount, tick, getContext } from 'svelte';
+	import { getVmById } from '$lib/api/vm/vm';
 	import { updateCache } from '$lib/utils/http';
 	import {
 		resource,
@@ -28,12 +28,13 @@
 
 	interface Data {
 		vm: VM;
-		domain: VMDomain;
 		rid: string;
 		hash: string;
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
 	// svelte-ignore state_referenced_locally
 	const vm = resource(
@@ -46,20 +47,6 @@
 		{
 			lazy: true,
 			initialValue: data.vm
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
-	const domain = resource(
-		() => `vm-domain-${data.rid}`,
-		async (key) => {
-			const result = await getVMDomain(data.rid);
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.domain
 		}
 	);
 
@@ -191,7 +178,8 @@
 	}
 
 	let showConsoleToolbar = $derived(
-		domain.current.status !== 'Shutoff' &&
+		!!domain.current &&
+			domain.current.status !== 'Shutoff' &&
 			((vm.current.vncEnabled && vm.current.serial) ||
 				(consoleType === 'serial' && vm.current.serial))
 	);
@@ -330,7 +318,7 @@
 		cState.current = false;
 
 		if (!vm.current.serial) return;
-		if (domain.current.status === 'Shutoff') return;
+		if (!domain.current || domain.current.status === 'Shutoff') return;
 		if (!terminalContainer) return;
 		if (isSerialSocketActive()) return;
 
@@ -616,7 +604,7 @@
 		</div>
 	{/if}
 
-	{#if domain.current.status !== 'Shutoff'}
+	{#if domain.current?.status !== 'Shutoff'}
 		{#if consoleType === 'vnc' && vm.current.vncEnabled}
 			<div class="relative flex min-h-0 w-full flex-1 flex-col">
 				<iframe

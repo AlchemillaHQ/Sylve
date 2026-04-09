@@ -9,7 +9,9 @@
 package network
 
 import (
+	"context"
 	"sync"
+	"time"
 
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -20,21 +22,40 @@ import (
 var _ networkServiceInterfaces.NetworkServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB             *gorm.DB
-	syncMutex      sync.Mutex
-	epairSyncMutex sync.Mutex
+	DB                        *gorm.DB
+	TelemetryDB               *gorm.DB
+	syncMutex                 sync.Mutex
+	epairSyncMutex            sync.Mutex
+	firewallMutex             sync.Mutex
+	firewallMonOnce           sync.Once
+	firewallTelOnce           sync.Once
+	wgMonitorMutex            sync.Mutex
+	wgMonitorCancel           context.CancelFunc
+	wgEndpointCache           map[string][]string
+	listSnapshotMigrationOnce sync.Once
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)
+	firewallTelemetry  *firewallTelemetryRuntime
 }
 
 func (s *Service) RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint)) {
 	s.OnJailObjectUpdate = cb
 }
 
-func NewNetworkService(db *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.NetworkServiceInterface {
-	return &Service{
-		DB:      db,
-		LibVirt: libvirt,
+func NewNetworkService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.NetworkServiceInterface {
+	svc := &Service{
+		DB:                db,
+		TelemetryDB:       telemetryDB,
+		LibVirt:           libvirt,
+		firewallTelemetry: newFirewallTelemetryRuntime(),
+		wgEndpointCache:   map[string][]string{},
 	}
+
+	svc.ensureListSnapshotMigration()
+	return svc
+}
+
+func wireGuardNow() time.Time {
+	return time.Now()
 }

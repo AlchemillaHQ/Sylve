@@ -66,6 +66,10 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
 	}
 
+	if q, ok := props["quota"]; ok && q != "" {
+		props["quota"] = strings.ReplaceAll(q, " ", "")
+	}
+
 	if dataset != nil {
 		err := s.GZFS.ZFS.EditFilesystem(ctx, dataset.Name, props)
 		if err == nil {

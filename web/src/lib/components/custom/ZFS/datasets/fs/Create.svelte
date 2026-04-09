@@ -187,7 +187,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -199,7 +199,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							properties = options;
 							open = false;
@@ -214,8 +214,11 @@
 
 		<div class="mt-4 w-full">
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-				<div class="space-y-1.5">
-					<Label for="name" class="w-24 whitespace-nowrap text-sm">Name</Label>
+				<input type="text" style="display:none;" name="dummy_username" />
+				<input type="password" style="display:none;" name="dummy_password" />
+
+				<div class="space-y-1">
+					<Label for="name" class="flex h-7 items-center whitespace-nowrap text-sm">Name</Label>
 					<Input
 						type="text"
 						id="name"
@@ -230,7 +233,7 @@
 					label="Parent"
 					bind:value={properties.parent.value}
 					data={parents}
-					classes="flex-1 space-y-1.5"
+					classes="flex-1 space-y-1"
 					placeholder="Select parent"
 					triggerWidth="w-full"
 					width="w-full"
@@ -242,6 +245,12 @@
 					options={zfsProperties.atime}
 					bind:value={properties.atime}
 					onChange={(value) => (properties.atime = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<SimpleSelect
@@ -250,6 +259,12 @@
 					options={zfsProperties.checksum}
 					bind:value={properties.checksum}
 					onChange={(value) => (properties.checksum = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -257,7 +272,7 @@
 					label="Compression"
 					bind:value={properties.compression}
 					data={zfsProperties.compression}
-					classes="space-y-1.5"
+					classes="space-y-1"
 					placeholder="Select or type compression"
 					triggerWidth="w-full"
 					width="w-full"
@@ -270,6 +285,12 @@
 					options={zfsProperties.dedup}
 					bind:value={properties.dedup}
 					onChange={(value) => (properties.dedup = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<SimpleSelect
@@ -278,11 +299,17 @@
 					options={zfsProperties.encryption}
 					bind:value={properties.encryption}
 					onChange={(value) => (properties.encryption = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				{#if properties.encryption !== 'off'}
 					<div class="space-y-1">
-						<Label class="w-24 whitespace-nowrap text-sm">Passphrase</Label>
+						<Label class="flex h-7 items-center whitespace-nowrap text-sm">Passphrase</Label>
 						<div class="flex w-full max-w-sm items-center space-x-2">
 							<Input
 								type="password"
@@ -318,7 +345,7 @@
 				{/if}
 
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Quota</Label>
+					<Label class="flex h-7 items-center whitespace-nowrap text-sm">Quota</Label>
 					<Input
 						type="text"
 						class="w-full text-left"
@@ -342,6 +369,12 @@
 					options={zfsProperties.aclInherit}
 					bind:value={properties.aclinherit}
 					onChange={(value) => (properties.aclinherit = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<SimpleSelect
@@ -350,6 +383,12 @@
 					options={zfsProperties.aclMode}
 					bind:value={properties.aclmode}
 					onChange={(value) => (properties.aclmode = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<SimpleSelect
@@ -358,10 +397,18 @@
 					options={zfsProperties.recordsize}
 					bind:value={properties.recordsize}
 					onChange={(value) => (properties.recordsize = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
-				<div class="space-y-1.5">
-					<Label for="mountpoint" class="w-24 whitespace-nowrap text-sm">Custom Mount Point</Label>
+				<div class="space-y-1">
+					<Label for="mountpoint" class="flex h-7 items-center whitespace-nowrap text-sm"
+						>Custom Mount Point</Label
+					>
 					<Input
 						type="text"
 						id="mountpoint"

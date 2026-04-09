@@ -6,8 +6,6 @@
 		default as CustomComboBox
 	} from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import Label from '$lib/components/ui/label/label.svelte';
 	import { generatePassword } from '$lib/utils/string';
 	import { cloudInitPlaceholders } from '$lib/utils/utilities/cloud-init';
 	import { onMount } from 'svelte';
@@ -19,8 +17,10 @@
 	import { resolutions } from '$lib/utils/vm/vnc';
 
 	interface Props {
+		vncEnabled: boolean;
 		serial: boolean;
 		vncPort: number;
+		vncBind: string;
 		vncPassword: string;
 		vncWait: boolean;
 		vncResolution: string;
@@ -39,8 +39,10 @@
 	}
 
 	let {
+		vncEnabled = $bindable(),
 		serial = $bindable(),
 		vncPort = $bindable(),
+		vncBind = $bindable(),
 		vncPassword = $bindable(),
 		vncWait = $bindable(),
 		vncResolution = $bindable(),
@@ -54,7 +56,8 @@
 	}: Props = $props();
 
 	onMount(() => {
-		if (!vncPort) vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
+		if (!vncBind) vncBind = '127.0.0.1';
+		if (vncEnabled && !vncPort) vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
 	});
 
 	let timeOffsetOpen = $state(false);
@@ -76,6 +79,20 @@
 		}
 	);
 
+	watch(
+		() => vncEnabled,
+		(enabled) => {
+			if (!enabled) {
+				vncPort = 0;
+				return;
+			}
+
+			if (!vncPort) {
+				vncPort = Math.floor(Math.random() * (5999 - 5900 + 1)) + 5900;
+			}
+		}
+	);
+
 	let templateSelector = $state({
 		open: false,
 		current: ''
@@ -88,53 +105,63 @@
 		},
 		{ initialValue: [] as CloudInitTemplate[] }
 	);
+
+	watch(
+		() => vncEnabled,
+		(enabled) => {
+			if (!enabled) {
+				vncWait = false;
+			}
+		}
+	);
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<CustomValueInput
-			label="VNC Port"
-			placeholder="5900"
-			bind:value={vncPort}
-			classes="flex-1 space-y-1.5"
-		/>
-
-		<div class="space-y-1.5">
-			<Label class="w-24 whitespace-nowrap text-sm">VNC Password</Label>
-			<div class="flex w-full max-w-sm items-center space-x-2">
-				<Input
-					type="password"
-					id="d-passphrase"
-					placeholder="Enter or generate passphrase"
-					class="w-full"
-					autocomplete="off"
-					bind:value={vncPassword}
-					showPasswordOnFocus={true}
-				/>
-
-				<Button
-					onclick={() => {
-						vncPassword = generatePassword();
-					}}
-				>
-					<span class="icon-[fad--random-2dice] h-6 w-6"></span>
-				</Button>
-			</div>
-		</div>
-	</div>
-
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-8">
 		<CustomComboBox
 			bind:open={resolutionOpen}
 			label="VNC Resolution"
 			bind:value={vncResolution}
 			data={resolutions}
-			classes="flex-1 space-y-1.5"
+			classes="flex-1 space-y-1.5 lg:col-span-2"
 			placeholder="Select VNC resolution"
-			triggerWidth="w-full "
+			triggerWidth="w-full"
 			width="w-full"
+			disabled={!vncEnabled}
 		></CustomComboBox>
 
+		<CustomValueInput
+			label="VNC Password"
+			placeholder="Enter or generate passphrase"
+			type="password"
+			bind:value={vncPassword}
+			classes="flex-1 space-y-1.5 lg:col-span-3"
+			disabled={!vncEnabled}
+			revealOnFocus={true}
+			topRightButton={{
+				icon: 'icon-[fad--random-2dice]',
+				tooltip: 'Generate Password',
+				function: async () => generatePassword()
+			}}
+		/>
+
+		<CustomValueInput
+			label="VNC Bind IP"
+			placeholder="127.0.0.1"
+			bind:value={vncBind}
+			classes="flex-1 space-y-1.5 lg:col-span-2"
+			disabled={!vncEnabled}
+		/>
+		<CustomValueInput
+			label="VNC Port"
+			placeholder="5900"
+			bind:value={vncPort}
+			classes="flex-1 space-y-1.5 lg:col-span-1"
+			disabled={!vncEnabled}
+		/>
+	</div>
+
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 		<ComboBox
 			bind:open={timeOffsetOpen}
 			label="Clock Offset"
@@ -155,11 +182,18 @@
 		/>
 	</div>
 
-	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-3">
-		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
+	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-4">
+		<CustomCheckbox label="Enable VNC" bind:checked={vncEnabled} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox label="VNC Wait" bind:checked={vncWait} classes="flex items-center gap-2"
+		<CustomCheckbox
+			label="VNC Wait"
+			bind:checked={vncWait}
+			classes="flex items-center gap-2"
+			disabled={!vncEnabled}
+		></CustomCheckbox>
+
+		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox
@@ -181,15 +215,12 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Ignore Unimplemented MSR Accesses"
+			label="Ignore UMSRs"
 			bind:checked={ignoreUmsrs}
-			classes="flex items-center gap-2 mt-2"
+			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox
-			label="QEMU Guest Agent"
-			bind:checked={qemuGuestAgent}
-			classes="flex items-center gap-2 mt-2"
+		<CustomCheckbox label="QEMU GA" bind:checked={qemuGuestAgent} classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>
 
@@ -241,13 +272,13 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							templateSelector.open = false;
 						}}
 					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
+						<span class="sr-only">Close</span>
 					</Button>
 				</div>
 			</Dialog.Header>

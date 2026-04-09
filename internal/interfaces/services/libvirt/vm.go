@@ -48,7 +48,9 @@ type CreateVMRequest struct {
 	PCIDevices []int `json:"pciDevices"`
 
 	Serial        *bool  `json:"serial"`
+	VNCEnabled    *bool  `json:"vncEnabled"`
 	VNCPort       int    `json:"vncPort" binding:"required"`
+	VNCBind       string `json:"vncBind"`
 	VNCPassword   string `json:"vncPassword"`
 	VNCResolution string `json:"vncResolution"`
 	VNCWait       *bool  `json:"vncWait"`
@@ -79,6 +81,7 @@ type ModifyCPURequest struct {
 type ModifyVNCRequest struct {
 	VNCEnabled    *bool  `json:"vncEnabled"`
 	VNCPort       int    `json:"vncPort" binding:"required"`
+	VNCBind       string `json:"vncBind"`
 	VNCResolution string `json:"vncResolution" binding:"required"`
 	VNCPassword   string `json:"vncPassword" binding:"required"`
 	VNCWait       *bool  `json:"vncWait"`

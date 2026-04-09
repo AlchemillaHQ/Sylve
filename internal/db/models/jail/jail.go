@@ -276,3 +276,27 @@ type Jail struct {
 	StartedAt *time.Time `json:"startedAt" gorm:"default:null"`
 	StoppedAt *time.Time `json:"stoppedAt" gorm:"default:null"`
 }
+
+type JailBootstrap struct {
+	ID   uint   `gorm:"primaryKey" json:"id"`
+	Pool string `json:"pool" gorm:"not null;uniqueIndex:idx_jail_bootstrap_unique,priority:1"`
+
+	Dataset    string `json:"dataset" gorm:"not null"`
+	MountPoint string `json:"mountPoint" gorm:"not null"`
+	Name       string `json:"name" gorm:"not null;uniqueIndex:idx_jail_bootstrap_unique,priority:2"`
+
+	Major         int    `json:"major" gorm:"not null;uniqueIndex:idx_jail_bootstrap_unique,priority:3"`
+	Minor         int    `json:"minor" gorm:"not null;uniqueIndex:idx_jail_bootstrap_unique,priority:4"`
+	BootstrapType string `json:"bootstrapType" gorm:"not null;uniqueIndex:idx_jail_bootstrap_unique,priority:5"`
+
+	Phase  string `json:"phase" gorm:"default:''"`
+	Status string `json:"status" gorm:"not null;default:'pending'"`
+	Error  string `json:"error" gorm:"default:''"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+}
+
+func (JailBootstrap) TableName() string {
+	return "jail_bootstraps"
+}

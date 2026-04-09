@@ -7,6 +7,7 @@
 	import DeleteSnapshot from '$lib/components/custom/ZFS/datasets/snapshots/Delete.svelte';
 	import Jobs from '$lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import Combobox from '$lib/components/ui/custom-input/combobox-bindable.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -16,7 +17,7 @@
 		type PeriodicSnapshot
 	} from '$lib/types/zfs/dataset';
 	import { updateCache } from '$lib/utils/http';
-	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
+	import { IsDocumentVisible, resource, useInterval, watch, PersistedState } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
 	import { plural } from '$lib/utils';
@@ -25,7 +26,6 @@
 	interface Data {
 		basicSettings: BasicSettings;
 		periodicSnapshots: PeriodicSnapshot[];
-		snapshots: Dataset[];
 	}
 
 	let visible = new IsDocumentVisible();
@@ -34,7 +34,7 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'basic-settings',
-		async (key, prevKey, { signal }) => {
+		async () => {
 			const results = await getBasicSettings();
 			updateCache('basic-settings', results);
 			return results;
@@ -47,7 +47,7 @@
 	// svelte-ignore state_referenced_locally
 	const periodicSnapshots = resource(
 		() => 'zfs-periodic-snapshots',
-		async (key, prevKey, { signal }) => {
+		async () => {
 			const results = await getPeriodicSnapshots();
 			updateCache('zfs-periodic-snapshots', results);
 			return results;
@@ -150,6 +150,46 @@
 	});
 
 	let query = $state('');
+	let nameFilterOpen = $state(false);
+
+	const nameFilterDefaults = [
+		{ value: 'bk_j', label: 'Backups' },
+		{ value: 'svms_', label: 'VM Snapshots' },
+		{ value: 'sjs_', label: 'Jail Snapshots' },
+		{ value: '_template', label: 'Templates' }
+	];
+
+	const persistedNameFilter = new PersistedState<string[]>(
+		'snapshots-name-filter',
+		nameFilterDefaults.map((d) => d.value)
+	);
+
+	const defaultValues = new Set(nameFilterDefaults.map((d) => d.value));
+	const customEntries = persistedNameFilter.current
+		.filter((v) => !defaultValues.has(v))
+		.map((v) => ({ value: v, label: v }));
+
+	let nameFilterData = $state([...nameFilterDefaults, ...customEntries]);
+
+	let nameFilter = $state<string[]>(
+		persistedNameFilter.current.length > 0
+			? persistedNameFilter.current
+			: nameFilterDefaults.map((d) => d.value)
+	);
+
+	watch(
+		() => nameFilter,
+		(value) => {
+			persistedNameFilter.current = value;
+			reload = true;
+		}
+	);
+
+	let extraParams = $derived({
+		datasetType: GZFSDatasetTypeSchema.enum.SNAPSHOT,
+		...(nameFilter.length > 0 ? { nameFilter: nameFilter.join(',') } : {})
+	});
+
 	let modals = $state({
 		snapshot: {
 			create: {
@@ -226,7 +266,7 @@
 				<DropdownMenu.Group>
 					<DropdownMenu.Label>View Periodics</DropdownMenu.Label>
 					<DropdownMenu.Separator />
-					{#each pools as pool}
+					{#each pools as pool (pool)}
 						{#if periodicSnapshots.current.find((p) => p.pool === pool)}
 							<DropdownMenu.Item
 								onclick={() => {
@@ -263,20 +303,34 @@
 
 		{@render button('delete-snapshot')}
 
-		<div class="ml-auto">
+		<div class="ml-auto flex items-center gap-1">
+			<Combobox
+				bind:open={nameFilterOpen}
+				bind:value={nameFilter}
+				bind:data={nameFilterData}
+				placeholder="Filter"
+				multiple={true}
+				showSelected={false}
+				showSelectedCountLabel=" Filtered"
+				initialValues={nameFilterDefaults.map((d) => d.value)}
+				triggerWidth="w-36"
+				buttonClass="h-6.5"
+				width="w-52"
+				classes=""
+			/>
 			{@render button('view-periodics')}
 			{@render button('reload')}
 		</div>
 	</div>
 
 	<TreeTableRemote
-		name={'snapshots-datasets-tt'}
+		name="snapshots-datasets-tt"
 		data={table}
 		bind:query
 		bind:reload
 		ajaxURL="/api/zfs/datasets/paginated"
 		bind:parentActiveRow={activeRows}
-		extraParams={{ datasetType: GZFSDatasetTypeSchema.enum.SNAPSHOT }}
+		{extraParams}
 	/>
 </div>
 

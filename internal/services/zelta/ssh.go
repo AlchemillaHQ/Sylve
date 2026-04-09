@@ -251,13 +251,21 @@ func (s *Service) remoteCreateDataset(ctx context.Context, target *clusterModels
 	return nil
 }
 
+// isRemoteSubcommandBlocked returns true when the remote ZFS shell rejected a
+// subcommand that it does not permit (e.g. recv-only PBS endpoints).
+func isRemoteSubcommandBlocked(output string) bool {
+	lower := strings.ToLower(strings.TrimSpace(output))
+	return strings.Contains(lower, "subcommand not allowed") ||
+		strings.Contains(lower, "not permitted")
+}
+
 func (s *Service) ensureSSHConnectivity(ctx context.Context, target *clusterModels.BackupTarget) error {
 	sshArgs := s.buildSSHArgs(target)
 	sshArgs = append(sshArgs, target.SSHHost, "zfs", "version")
 
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	_, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
 	if err != nil {
-		return fmt.Errorf("ssh_connection_failed: %s: %s", err, output)
+		return fmt.Errorf("ssh_connection_failed: %w", err)
 	}
 
 	return nil
@@ -270,6 +278,7 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "ConnectTimeout=3",
 		"-o", "ConnectionAttempts=1",
+		"-o", "UpdateHostKeys=no",
 	}
 
 	if target.SSHPort != 0 && target.SSHPort != 22 {

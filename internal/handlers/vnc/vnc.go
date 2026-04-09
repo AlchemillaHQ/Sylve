@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/logger"
+	libvirtSvc "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -72,209 +73,221 @@ func (m *connectionMetrics) addSent(n int) {
 	m.bytesSent.Add(uint64(n))
 }
 
-func VNCProxyHandler(c *gin.Context) {
-	port := c.Param("port")
-	if port == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing 'port' parameter"})
-		return
-	}
+func VNCProxyHandler(svc *libvirtSvc.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		port := c.Param("port")
+		if port == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing 'port' parameter"})
+			return
+		}
 
-	i, err := strconv.ParseInt(port, 10, 32)
-	if err != nil || !utils.IsValidPort(int(i)) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid port"})
-		return
-	}
+		i, err := strconv.ParseInt(port, 10, 32)
+		if err != nil || !utils.IsValidPort(int(i)) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid port"})
+			return
+		}
 
-	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		return
-	}
-	defer wsConn.Close()
+		backendBind := libvirtSvc.DefaultVNCBindAddress
+		if svc != nil {
+			vm, lookupErr := svc.GetVMByVNCPort(int(i))
+			if lookupErr == nil {
+				backendBind = libvirtSvc.NormalizeVNCBindAddressForDial(vm.VNCBind)
+			}
+		}
+		backendEndpoint := net.JoinHostPort(backendBind, port)
 
-	wsConn.EnableWriteCompression(true)
-	_ = wsConn.SetCompressionLevel(flate.BestSpeed)
-	if wsTCP, ok := wsConn.UnderlyingConn().(*net.TCPConn); ok {
-		_ = wsTCP.SetNoDelay(true)
-		_ = wsTCP.SetReadBuffer(256 * 1024)
-		_ = wsTCP.SetWriteBuffer(256 * 1024)
-	}
+		wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			return
+		}
+		defer wsConn.Close()
 
-	overtake := false
-	switch strings.ToLower(c.Query("overtake")) {
-	case "1", "true", "yes":
-		overtake = true
-	}
+		wsConn.EnableWriteCompression(true)
+		_ = wsConn.SetCompressionLevel(flate.BestSpeed)
+		if wsTCP, ok := wsConn.UnderlyingConn().(*net.TCPConn); ok {
+			_ = wsTCP.SetNoDelay(true)
+			_ = wsTCP.SetReadBuffer(256 * 1024)
+			_ = wsTCP.SetWriteBuffer(256 * 1024)
+		}
 
-	connectionsMutex.Lock()
-	existingSession, hasExistingSession := activeConnections[port]
-	if hasExistingSession && !overtake {
-		connectionsMutex.Unlock()
-		_ = wsConn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseTryAgainLater, vncSessionInUseReason),
-			time.Now().Add(writeWait),
-		)
-		return
-	}
-	sessionID := sessionCounter.Add(1)
-	activeConnections[port] = &vncSessionOwner{
-		id:   sessionID,
-		conn: wsConn,
-	}
-	connectionsMutex.Unlock()
+		overtake := false
+		switch strings.ToLower(c.Query("overtake")) {
+		case "1", "true", "yes":
+			overtake = true
+		}
 
-	if hasExistingSession && overtake && existingSession != nil {
-		_ = existingSession.conn.WriteControl(
-			websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, vncSessionTakenReason),
-			time.Now().Add(writeWait),
-		)
-		_ = existingSession.conn.Close()
-	}
-
-	defer func() {
 		connectionsMutex.Lock()
-		if owner, ok := activeConnections[port]; ok && owner.id == sessionID {
-			delete(activeConnections, port)
+		existingSession, hasExistingSession := activeConnections[port]
+		if hasExistingSession && !overtake {
+			connectionsMutex.Unlock()
+			_ = wsConn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, vncSessionInUseReason),
+				time.Now().Add(writeWait),
+			)
+			return
+		}
+		sessionID := sessionCounter.Add(1)
+		activeConnections[port] = &vncSessionOwner{
+			id:   sessionID,
+			conn: wsConn,
 		}
 		connectionsMutex.Unlock()
-	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	var dialer net.Dialer
-	rawConn, err := dialer.DialContext(ctx, "tcp", "127.0.0.1:"+port)
-	cancel()
+		if hasExistingSession && overtake && existingSession != nil {
+			_ = existingSession.conn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, vncSessionTakenReason),
+				time.Now().Add(writeWait),
+			)
+			_ = existingSession.conn.Close()
+		}
 
-	if err != nil {
-		wsConn.WriteMessage(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to VNC backend"))
-		return
-	}
-	defer rawConn.Close()
+		defer func() {
+			connectionsMutex.Lock()
+			if owner, ok := activeConnections[port]; ok && owner.id == sessionID {
+				delete(activeConnections, port)
+			}
+			connectionsMutex.Unlock()
+		}()
 
-	if tcp, ok := rawConn.(*net.TCPConn); ok {
-		_ = tcp.SetNoDelay(true)
-		_ = tcp.SetKeepAlive(true)
-		_ = tcp.SetReadBuffer(256 * 1024)
-		_ = tcp.SetWriteBuffer(64 * 1024)
-	}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var dialer net.Dialer
+		rawConn, err := dialer.DialContext(ctx, "tcp", backendEndpoint)
+		cancel()
 
-	wsConn.SetReadLimit(maxMessageSize)
-	metrics := &connectionMetrics{startTime: time.Now()}
+		if err != nil {
+			wsConn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to VNC backend"))
+			return
+		}
+		defer rawConn.Close()
 
-	defer func() {
-		logger.L.Info().
-			Str("port", port).
-			Str("backend", "bhyve-vnc").
-			Dur("duration", time.Since(metrics.startTime)).
-			Uint64("rx", metrics.bytesReceived.Load()).
-			Uint64("tx", metrics.bytesSent.Load()).
-			Msg("VNC session ended")
-	}()
+		if tcp, ok := rawConn.(*net.TCPConn); ok {
+			_ = tcp.SetNoDelay(true)
+			_ = tcp.SetKeepAlive(true)
+			_ = tcp.SetReadBuffer(256 * 1024)
+			_ = tcp.SetWriteBuffer(64 * 1024)
+		}
 
-	quit := make(chan struct{})
-	closeOnce := sync.Once{}
+		wsConn.SetReadLimit(maxMessageSize)
+		metrics := &connectionMetrics{startTime: time.Now()}
 
-	closeConns := func() {
-		closeOnce.Do(func() {
-			close(quit)
-			wsConn.Close()
-			rawConn.Close()
-		})
-	}
+		defer func() {
+			logger.L.Info().
+				Str("port", port).
+				Str("target", backendEndpoint).
+				Str("backend", "bhyve-vnc").
+				Dur("duration", time.Since(metrics.startTime)).
+				Uint64("rx", metrics.bytesReceived.Load()).
+				Uint64("tx", metrics.bytesSent.Load()).
+				Msg("VNC session ended")
+		}()
 
-	wsConn.SetReadDeadline(time.Now().Add(pongWait))
-	wsConn.SetPongHandler(func(string) error {
+		quit := make(chan struct{})
+		closeOnce := sync.Once{}
+
+		closeConns := func() {
+			closeOnce.Do(func() {
+				close(quit)
+				wsConn.Close()
+				rawConn.Close()
+			})
+		}
+
 		wsConn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
+		wsConn.SetPongHandler(func(string) error {
+			wsConn.SetReadDeadline(time.Now().Add(pongWait))
+			return nil
+		})
 
-	var wg sync.WaitGroup
-	wg.Add(3)
+		var wg sync.WaitGroup
+		wg.Add(3)
 
-	go func() {
-		defer wg.Done()
-		ticker := time.NewTicker(pingPeriod)
-		defer ticker.Stop()
+		go func() {
+			defer wg.Done()
+			ticker := time.NewTicker(pingPeriod)
+			defer ticker.Stop()
 
-		for {
-			select {
-			case <-quit:
-				return
-			case <-ticker.C:
-				if err := wsConn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
-					closeConns()
+			for {
+				select {
+				case <-quit:
 					return
+				case <-ticker.C:
+					if err := wsConn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
+						closeConns()
+						return
+					}
 				}
 			}
-		}
-	}()
+		}()
 
-	go func() {
-		defer wg.Done()
-		defer closeConns()
+		go func() {
+			defer wg.Done()
+			defer closeConns()
 
-		inputBuf := make([]byte, inputBufferSize)
-		for {
-			_, reader, err := wsConn.NextReader()
-			if err != nil {
-				return
-			}
-
-			n, err := io.CopyBuffer(rawConn, reader, inputBuf)
-			if err != nil {
-				return
-			}
-			metrics.addReceived(int(n))
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		defer closeConns()
-
-		buf := make([]byte, outputBufferSize)
-
-		for {
-			rawConn.SetReadDeadline(time.Time{})
-			n, err := rawConn.Read(buf)
-			if err != nil {
-				return
-			}
-
-			if n < len(buf) {
-				// Drain any bytes that are already buffered without adding delay.
-				for n < len(buf) {
-					rawConn.SetReadDeadline(time.Now())
-					m, err := rawConn.Read(buf[n:])
-					if m > 0 {
-						n += m
-					}
-					if err == nil {
-						continue
-					}
-
-					if ne, ok := err.(net.Error); ok && ne.Timeout() {
-						break
-					}
-
-					// Flush what we have if the peer closed after sending data.
-					if errors.Is(err, io.EOF) && n > 0 {
-						break
-					}
-
+			inputBuf := make([]byte, inputBufferSize)
+			for {
+				_, reader, err := wsConn.NextReader()
+				if err != nil {
 					return
 				}
+
+				n, err := io.CopyBuffer(rawConn, reader, inputBuf)
+				if err != nil {
+					return
+				}
+				metrics.addReceived(int(n))
 			}
+		}()
 
-			wsConn.SetWriteDeadline(time.Now().Add(writeWait))
-			if err := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-				return
+		go func() {
+			defer wg.Done()
+			defer closeConns()
+
+			buf := make([]byte, outputBufferSize)
+
+			for {
+				rawConn.SetReadDeadline(time.Time{})
+				n, err := rawConn.Read(buf)
+				if err != nil {
+					return
+				}
+
+				if n < len(buf) {
+					// Drain any bytes that are already buffered without adding delay.
+					for n < len(buf) {
+						rawConn.SetReadDeadline(time.Now())
+						m, err := rawConn.Read(buf[n:])
+						if m > 0 {
+							n += m
+						}
+						if err == nil {
+							continue
+						}
+
+						if ne, ok := err.(net.Error); ok && ne.Timeout() {
+							break
+						}
+
+						// Flush what we have if the peer closed after sending data.
+						if errors.Is(err, io.EOF) && n > 0 {
+							break
+						}
+
+						return
+					}
+				}
+
+				wsConn.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+					return
+				}
+
+				metrics.addSent(n)
 			}
+		}()
 
-			metrics.addSent(n)
-		}
-	}()
-
-	wg.Wait()
+		wg.Wait()
+	}
 }

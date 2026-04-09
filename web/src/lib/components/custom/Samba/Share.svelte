@@ -20,6 +20,7 @@
 		share?: SambaShare | null;
 		edit?: boolean;
 		reload?: boolean;
+		appleExtensions?: boolean;
 	}
 
 	let {
@@ -29,9 +30,11 @@
 		groups,
 		share,
 		edit = false,
-		reload = $bindable()
+		reload = $bindable(),
+		appleExtensions = false
 	}: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	let options = {
 		name: share ? share.name : '',
 		dataset: {
@@ -75,7 +78,9 @@
 		createMask: share ? share.createMask : '0664',
 		directoryMask: share ? share.directoryMask : '2775',
 		guestOk: share ? share.guestOk : false,
-		readOnly: share ? share.readOnly : false
+		readOnly: share ? share.readOnly : false,
+		timeMachine: share ? share.timeMachine : false,
+		timeMachineMaxSize: share ? share.timeMachineMaxSize : 0
 	};
 
 	let properties = $state(options);
@@ -126,7 +131,9 @@
 				properties.createMask,
 				properties.directoryMask,
 				properties.guestOk,
-				properties.readOnly
+				properties.readOnly,
+				properties.timeMachine,
+				Number(properties.timeMachineMaxSize)
 			);
 		} else {
 			response = await createSambaShare(
@@ -136,7 +143,9 @@
 				properties.writeableGroups.combobox.value,
 				properties.createMask,
 				properties.directoryMask,
-				properties.guestOk
+				properties.guestOk,
+				properties.timeMachine,
+				Number(properties.timeMachineMaxSize)
 			);
 		}
 
@@ -191,7 +200,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -203,7 +212,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							open = false;
 							properties = options;
@@ -218,14 +227,14 @@
 
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<CustomValueInput
-				label={'Name'}
+				label="Name"
 				placeholder="share"
 				bind:value={properties.name}
 				classes="flex-1 space-y-1.5"
 			/>
 
 			<CustomComboBox
-				label={'Dataset'}
+				label="Dataset"
 				placeholder="Select dataset"
 				bind:open={properties.dataset.combobox.open}
 				bind:value={properties.dataset.combobox.value}
@@ -237,7 +246,7 @@
 
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<CustomComboBox
-				label={'Read-Only Groups'}
+				label="Read-Only Groups"
 				placeholder="Select groups"
 				bind:open={properties.readOnlyGroups.combobox.open}
 				bind:value={properties.readOnlyGroups.combobox.value}
@@ -248,7 +257,7 @@
 			/>
 
 			<CustomComboBox
-				label={'Writeable Groups'}
+				label="Writeable Groups"
 				placeholder="Select groups"
 				bind:open={properties.writeableGroups.combobox.open}
 				bind:value={properties.writeableGroups.combobox.value}
@@ -260,14 +269,14 @@
 
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<CustomValueInput
-				label={'Create Mask'}
+				label="Create Mask"
 				placeholder="0664"
 				bind:value={properties.createMask}
 				classes="flex-1 space-y-1.5"
 			/>
 
 			<CustomValueInput
-				label={'Directory Mask'}
+				label="Directory Mask"
 				placeholder="2775"
 				bind:value={properties.directoryMask}
 				classes="flex-1 space-y-1.5"
@@ -284,7 +293,25 @@
 				<Checkbox id="read-only" bind:checked={properties.readOnly} />
 				<Label for="read-only" class="text-sm font-medium">Read Only</Label>
 			</div>
+
+			{#if appleExtensions}
+				<div class="flex items-center space-x-2">
+					<Checkbox id="time-machine" bind:checked={properties.timeMachine} />
+					<Label for="time-machine" class="text-sm font-medium">Time Machine</Label>
+				</div>
+			{/if}
 		</div>
+
+		{#if appleExtensions && properties.timeMachine}
+			<CustomValueInput
+				label="Time Machine Max Size"
+				hint="Time Machine Max Size (GB, 0 = unlimited)"
+				placeholder="0"
+				bind:value={properties.timeMachineMaxSize}
+				classes="flex-1 space-y-1.5"
+				type="number"
+			/>
+		{/if}
 
 		<Dialog.Footer class="mt-4">
 			<div class="flex items-center justify-end space-x-4">

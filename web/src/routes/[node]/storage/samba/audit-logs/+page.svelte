@@ -35,7 +35,7 @@
 		const action = cell.getValue();
 		switch (action) {
 			case 'mkdirat':
-				return renderWithIcon('mdi:create-new-folder-outline', 'Create Directory');
+				return renderWithIcon('mingcute:new-folder-line', 'Create Directory');
 			case 'unlinkat':
 				return renderWithIcon('mdi:delete-outline', 'Delete (File/Directory)');
 			case 'create_file':
@@ -86,7 +86,7 @@
 	<div class="flex h-full flex-col overflow-hidden">
 		{#if hash}
 			<TreeTable
-				name={'smb-audit-log-tt'}
+				name="smb-audit-log-tt"
 				data={table}
 				ajaxURL="/api/samba/audit-logs?hash={hash}"
 				bind:reload

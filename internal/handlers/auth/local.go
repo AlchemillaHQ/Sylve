@@ -15,23 +15,48 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/pkg/system"
 
 	"github.com/gin-gonic/gin"
 )
 
 type CreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=128"`
-	Password string `json:"password" binding:"required,min=3,max=128"`
-	Email    string `json:"email"`
-	Admin    *bool  `json:"admin" binding:"required"`
+	Username        string `json:"username" binding:"required,min=3,max=128"`
+	FullName        string `json:"fullName"`
+	Password        string `json:"password"`
+	Email           string `json:"email"`
+	Admin           *bool  `json:"admin" binding:"required"`
+	UID             int    `json:"uid"`
+	Shell           string `json:"shell"`
+	HomeDirectory   string `json:"homeDirectory"`
+	HomeDirPerms    uint   `json:"homeDirPerms"`
+	SSHPublicKey    string `json:"sshPublicKey"`
+	DisablePassword bool   `json:"disablePassword"`
+	Locked          bool   `json:"locked"`
+	DoasEnabled     bool   `json:"doasEnabled"`
+	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID  *uint  `json:"primaryGroupId"`
+	AuxGroupIDs     []uint `json:"auxGroupIds"`
 }
 
 type EditUserRequest struct {
-	ID       uint   `json:"id" binding:"required"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-	Admin    *bool  `json:"admin" binding:"required"`
+	ID              uint   `json:"id" binding:"required"`
+	FullName        string `json:"fullName"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Email           string `json:"email"`
+	Admin           *bool  `json:"admin" binding:"required"`
+	UID             int    `json:"uid"`
+	Shell           string `json:"shell"`
+	HomeDirectory   string `json:"homeDirectory"`
+	HomeDirPerms    uint   `json:"homeDirPerms"`
+	SSHPublicKey    string `json:"sshPublicKey"`
+	DisablePassword bool   `json:"disablePassword"`
+	Locked          bool   `json:"locked"`
+	DoasEnabled     bool   `json:"doasEnabled"`
+	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID  *uint  `json:"primaryGroupId"`
+	AuxGroupIDs     []uint `json:"auxGroupIds"`
 }
 
 // @Summary List Users
@@ -92,19 +117,32 @@ func CreateUserHandler(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		admin := false
-
 		if req.Admin != nil {
 			admin = *req.Admin
 		}
 
 		var model models.User
-
 		model.Username = req.Username
+		model.FullName = req.FullName
 		model.Password = req.Password
 		model.Email = req.Email
 		model.Admin = admin
+		model.UID = req.UID
+		model.Shell = req.Shell
+		model.HomeDirectory = req.HomeDirectory
+		model.HomeDirPerms = req.HomeDirPerms
+		model.SSHPublicKey = req.SSHPublicKey
+		model.DisablePassword = req.DisablePassword
+		model.Locked = req.Locked
+		model.DoasEnabled = req.DoasEnabled
+		model.PrimaryGroupID = req.PrimaryGroupID
 
-		err := authService.CreateUser(&model)
+		opts := auth.CreateUserOpts{
+			NewPrimaryGroup: req.NewPrimaryGroup,
+			AuxGroupIDs:     req.AuxGroupIDs,
+		}
+
+		err := authService.CreateUser(&model, opts)
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -202,7 +240,24 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 			admin = false
 		}
 
-		err := authService.EditUser(req.ID, req.Username, req.Password, req.Email, admin)
+		err := authService.EditUser(req.ID, auth.EditUserOpts{
+			FullName:        req.FullName,
+			Username:        req.Username,
+			Password:        req.Password,
+			Email:           req.Email,
+			Admin:           admin,
+			UID:             req.UID,
+			Shell:           req.Shell,
+			HomeDirectory:   req.HomeDirectory,
+			HomeDirPerms:    req.HomeDirPerms,
+			SSHPublicKey:    req.SSHPublicKey,
+			DisablePassword: req.DisablePassword,
+			Locked:          req.Locked,
+			DoasEnabled:     req.DoasEnabled,
+			NewPrimaryGroup: req.NewPrimaryGroup,
+			PrimaryGroupID:  req.PrimaryGroupID,
+			AuxGroupIDs:     req.AuxGroupIDs,
+		})
 
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
@@ -219,6 +274,45 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 			Message: "user_edited_successfully",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+func GetNextUIDHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		nextUID, err := authService.GetNextUID()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_next_uid",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[map[string]int]{
+			Status:  "success",
+			Message: "next_uid_retrieved",
+			Error:   "",
+			Data:    map[string]int{"nextUID": nextUID},
+		})
+	}
+}
+
+type UserCapabilities struct {
+	DoasAvailable bool `json:"doasAvailable"`
+}
+
+func UserCapabilitiesHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, internal.APIResponse[UserCapabilities]{
+			Status:  "success",
+			Message: "capabilities_retrieved",
+			Error:   "",
+			Data: UserCapabilities{
+				DoasAvailable: system.DoasAvailable(),
+			},
 		})
 	}
 }

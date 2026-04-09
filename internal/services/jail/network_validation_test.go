@@ -9,6 +9,7 @@
 package jail
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -99,6 +100,20 @@ func (f *jailNetworkValidationFakeNetworkService) SyncEpairs(_ bool) error {
 }
 
 func (f *jailNetworkValidationFakeNetworkService) DeleteEpair(_ string) error {
+	return nil
+}
+
+func (f *jailNetworkValidationFakeNetworkService) StartFirewallMonitor(_ context.Context) {}
+
+func (f *jailNetworkValidationFakeNetworkService) EnableWireGuardService(_ context.Context) error {
+	return nil
+}
+
+func (f *jailNetworkValidationFakeNetworkService) DisableWireGuardService(_ context.Context) error {
+	return nil
+}
+
+func (f *jailNetworkValidationFakeNetworkService) ReconcileManagedRoutes() error {
 	return nil
 }
 

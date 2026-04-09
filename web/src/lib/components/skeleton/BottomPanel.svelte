@@ -222,6 +222,16 @@
 		'/api/system/basic-settings/services/samba-server/toggle': 'Toggle - Samba Server',
 		'/api/system/basic-settings/services/jails/toggle': 'Toggle - Jails',
 		'/api/system/basic-settings/services/virtualization/toggle': 'Toggle - Virtualization',
+		'/api/system/basic-settings/services/firewall/toggle': 'Toggle - Firewall',
+		'/api/system/basic-settings/services/wireguard/toggle': 'Toggle - WireGuard',
+		'/api/network/firewall/traffic': 'Firewall - Traffic Rule',
+		'/api/network/firewall/nat': 'Firewall - NAT Rule',
+		'/api/network/firewall/advanced': 'Firewall - Advanced Rules',
+		'/api/network/wireguard/server': 'WireGuard - Server',
+		'/api/network/wireguard/server/toggle': 'WireGuard - Server Toggle',
+		'/api/network/wireguard/server/peer': 'WireGuard - Server Peer',
+		'/api/network/wireguard/clients': 'WireGuard - Client',
+		'/api/network/wireguard/clients/toggle': 'WireGuard - Client Toggle',
 		'/api/cluster/notes': 'DC Notes',
 		'/api/cluster/reset-node': 'Cluster - Reset Node',
 		'/api/cluster/backups/targets/validate': 'DC Backup Target - Validate',
@@ -495,8 +505,23 @@
 							<Table.Cell class="text-wrap px-4 py-2"
 								>{`${record.user}@${record.authType || 'cluster'}`}</Table.Cell
 							>
-							<Table.Cell class="text-wrap px-4 py-2" title={JSON.stringify(record.action.body)}
-								>{record.resolvedAction}</Table.Cell
+							<Table.Cell
+								class="text-wrap px-4 py-2"
+								title={JSON.stringify(record.action.body)}
+								onclick={() => {
+									try {
+										navigator.clipboard.writeText(
+											record.action.body
+												? JSON.stringify(record.action.body)
+												: record.resolvedAction
+										);
+										toast.success('Copied action to clipboard', {
+											position: 'bottom-center'
+										});
+									} catch (e) {
+										console.log('Error copying action to clipboard', e);
+									}
+								}}>{record.resolvedAction}</Table.Cell
 							>
 							<Table.Cell
 								class="text-wrap px-4 py-2"

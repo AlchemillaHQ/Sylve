@@ -17,6 +17,10 @@
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
 	import { getVMs } from '$lib/api/vm/vm';
+	import { getSwitches } from '$lib/api/network/switch';
+	import type { SwitchList } from '$lib/types/network/switch';
+	import { getWireGuardClients } from '$lib/api/network/wireguard';
+	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { resource } from 'runed';
 
 	interface Data {
@@ -24,9 +28,31 @@
 		objects: NetworkObject[];
 		jails: Jail[];
 		vms: VM[];
+		switches: SwitchList;
+		wgClients: WireGuardClient[];
 	}
 
 	let { data }: { data: Data } = $props();
+
+	let networkSwitches = resource(
+		() => 'network-switches',
+		async (key, prevKey, { signal }) => {
+			const res = await getSwitches();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.switches }
+	);
+
+	let wgClients = resource(
+		() => 'network-vpn-wireguard-clients',
+		async (key, prevKey, { signal }) => {
+			const res = await getWireGuardClients();
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: data.wgClients }
+	);
 
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
@@ -73,8 +99,28 @@
 				const data = row.getData();
 
 				if (data.isBridge) {
-					const name = data.description || value;
+					const switches = networkSwitches.current;
+					const manualSwitch = switches?.manual?.find((sw) => sw.bridge === value);
+					const standardSwitch = switches?.standard?.find((sw) => sw.bridgeName === value);
+					const name = manualSwitch?.name || standardSwitch?.name || data.description || value;
 					return renderWithIcon('clarity:network-switch-line', name);
+				}
+
+				if (value === 'wgs0') {
+					return renderWithIcon('mdi:vpn', 'WireGuard Server');
+				}
+
+				const wgcMatch = /^wgc(\d+)$/.exec(value);
+				if (wgcMatch) {
+					const clientId = parseInt(wgcMatch[1]);
+					const clients = wgClients.current;
+					const client = Array.isArray(clients)
+						? clients.find((c) => c.id === clientId)
+						: undefined;
+					const label = client
+						? `${client.name} (WireGuard Client)`
+						: `${value} (WireGuard Client)`;
+					return renderWithIcon('mdi:vpn', label);
 				}
 
 				if (value === 'lo0') {

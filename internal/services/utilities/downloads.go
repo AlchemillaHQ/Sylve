@@ -63,6 +63,10 @@ func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGrou
 	}
 
 	for _, dl := range downloads {
+		if dl.Status != utilitiesModels.DownloadStatusDone {
+			continue
+		}
+
 		label := dl.Name
 
 		if dl.ExtractedPath != "" {

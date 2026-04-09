@@ -167,7 +167,7 @@
 			type: 'zvol',
 			pool: '',
 			size: 1024 * 1024 * 1024,
-			emulation: 'ahci-hd',
+			emulation: 'nvme',
 			iso: ''
 		},
 		network: {
@@ -185,8 +185,10 @@
 			isPinningOpen: false
 		},
 		advanced: {
+			vncEnabled: true,
 			serial: false,
 			vncPort: 0,
+			vncBind: '127.0.0.1',
 			vncPassword: generatePassword(),
 			vncWait: false,
 			vncResolution: '640x480',
@@ -261,7 +263,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[90%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-[720px]"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
@@ -372,8 +374,10 @@
 							{:else if value === 'advanced'}
 								<div in:fade={{ duration: 200 }}>
 									<Advanced
+										bind:vncEnabled={modal.advanced.vncEnabled}
 										bind:serial={modal.advanced.serial}
 										bind:vncPort={modal.advanced.vncPort}
+										bind:vncBind={modal.advanced.vncBind}
 										bind:vncPassword={modal.advanced.vncPassword}
 										bind:vncWait={modal.advanced.vncWait}
 										bind:startAtBoot={modal.advanced.startAtBoot}

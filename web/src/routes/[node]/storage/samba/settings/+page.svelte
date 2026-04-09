@@ -7,7 +7,7 @@
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -20,6 +20,7 @@
 
 	let { data }: { data: Data } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let sambaConfig = resource(
 		() => 'samba-config',
 		async () => {
@@ -32,6 +33,7 @@
 		}
 	);
 
+	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async () => {
@@ -59,6 +61,8 @@
 
 	let usableIfaces = $derived.by(() => {
 		let filtered = [];
+		if (isAPIResponse(networkInterfaces.current)) return [];
+
 		for (const iface of networkInterfaces.current) {
 			if (iface.groups && iface.groups.length > 0) {
 				if (!iface.groups.includes('tap')) {
@@ -91,6 +95,10 @@
 		},
 		bindInterfaces: {
 			value: (() => ($state.snapshot(sambaConfig.current.bindInterfacesOnly) ? 'Yes' : 'No'))(),
+			open: false
+		},
+		appleExtensions: {
+			value: (() => ($state.snapshot(sambaConfig.current.appleExtensions) ? 'Yes' : 'No'))(),
 			open: false
 		}
 	};
@@ -155,6 +163,11 @@
 				id: generateNanoId(`${sambaConfig.current.bindInterfacesOnly}`),
 				property: 'Bind Interfaces Only',
 				value: sambaConfig.current.bindInterfacesOnly ? 'Yes' : 'No'
+			},
+			{
+				id: generateNanoId(`${sambaConfig.current.appleExtensions}`),
+				property: 'Apple Extensions',
+				value: sambaConfig.current.appleExtensions ? 'Yes' : 'No'
 			}
 		]
 	});
@@ -169,7 +182,8 @@
 			workgroup: properties.workgroup.value,
 			serverString: properties.serverString.value,
 			interfaces: properties.interfaces.value,
-			bindInterfacesOnly: properties.bindInterfaces.value === 'Yes'
+			bindInterfacesOnly: properties.bindInterfaces.value === 'Yes',
+			appleExtensions: properties.appleExtensions.value === 'Yes'
 		};
 
 		const response = await updateSambaConfig(updatedConfig);
@@ -213,6 +227,9 @@
 							case 'Bind Interfaces Only':
 								properties.bindInterfaces.open = true;
 								break;
+							case 'Apple Extensions':
+								properties.appleExtensions.open = true;
+								break;
 						}
 					}}
 					size="sm"
@@ -231,7 +248,7 @@
 	<div class="flex h-full flex-col overflow-hidden">
 		<TreeTable
 			data={table}
-			name={'hardware-tt'}
+			name="samba-config-tt"
 			bind:parentActiveRow={activeRows}
 			multipleSelect={false}
 			bind:query
@@ -288,6 +305,22 @@
 	onSave={() => {
 		save();
 		properties.bindInterfaces.open = false;
+	}}
+/>
+
+<SingleValueDialog
+	bind:open={properties.appleExtensions.open}
+	title="Apple Extensions"
+	type="select"
+	placeholder=""
+	bind:value={properties.appleExtensions.value}
+	options={[
+		{ label: 'Yes', value: 'Yes' },
+		{ label: 'No', value: 'No' }
+	]}
+	onSave={() => {
+		save();
+		properties.appleExtensions.open = false;
 	}}
 />
 

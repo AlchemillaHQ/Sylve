@@ -40,10 +40,11 @@ type CreateJailRequest struct {
 	Hostname    string `json:"hostname"`
 	Description string `json:"description"`
 
-	Pool       string `json:"pool" binding:"required"`
-	Base       string `json:"base"`
-	Fstab      string `json:"fstab"`
-	ResolvConf string `json:"resolvConf"`
+	Pool          string `json:"pool" binding:"required"`
+	Base          string `json:"base"`
+	BootstrapName string `json:"bootstrapName"`
+	Fstab         string `json:"fstab"`
+	ResolvConf    string `json:"resolvConf"`
 
 	SwitchName string `json:"switchName"`
 
@@ -134,4 +135,8 @@ type JailServiceInterface interface {
 
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
+
+	ListBootstraps(ctx context.Context, pool string) ([]BootstrapEntry, error)
+	CreateBootstrap(ctx context.Context, req BootstrapRequest) error
+	DeleteBootstrap(ctx context.Context, pool, name string) error
 }

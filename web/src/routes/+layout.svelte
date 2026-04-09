@@ -34,6 +34,7 @@
 	import About from '$lib/components/custom/About.svelte';
 	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
 	import { onDestroy } from 'svelte';
+	import { connection } from '$lib/stores/api.svelte';
 	import { handleCommandKeydown } from '$lib/system.js';
 	import Index from '$lib/components/custom/Command/Index.svelte';
 	import { resolve } from '$app/paths';
@@ -295,6 +296,31 @@
 					<Index />
 					{@render children()}
 				</Shell>
+				{#if connection.sseConnected === false}
+					<div
+						transition:fade={{ duration: 300 }}
+						class="fixed inset-0 z-10000 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
+					>
+						<div
+							class="flex flex-col items-center gap-3 rounded-xl border bg-background/90 px-10 py-8 shadow-2xl"
+						>
+							<span class="icon-[mdi--connection] w-16 h-16"></span>
+							<p class="text-xl font-semibold text-foreground">Connection lost</p>
+							<p class="text-sm text-muted-foreground">Trying to reconnect to the server&hellip;</p>
+							<div class="mt-1 flex gap-1">
+								<span
+									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:0ms]"
+								></span>
+								<span
+									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:150ms]"
+								></span>
+								<span
+									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:300ms]"
+								></span>
+							</div>
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/if}
 	{:else}

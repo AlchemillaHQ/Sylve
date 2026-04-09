@@ -9,7 +9,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
-    import { fade } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -36,6 +36,9 @@
 	let nodeItems: NodeItem[] = $derived.by(() => {
 		const hasDHCP = storage.enabledServices?.includes('dhcp-server');
 		const hasSamba = storage.enabledServices?.includes('samba-server');
+		const hasFirewall = storage.enabledServices?.includes('firewall');
+		const hasWireGuard = storage.enabledServices?.includes('wireguard');
+		const hasIscsi = storage.enabledServices?.includes('iscsi');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];
@@ -112,6 +115,11 @@
 							}
 						]
 					},
+					{
+						label: 'Routes',
+						icon: 'mdi--routes',
+						href: `/${node}/network/routes`
+					},
 					hasDHCP && {
 						label: 'DHCP & DNS',
 						icon: 'solar--server-path-bold',
@@ -123,6 +131,54 @@
 								href: `/${node}/network/dhcp/leases`
 							},
 							{ label: 'Config', icon: 'mdi--cog-outline', href: `/${node}/network/dhcp/config` }
+						]
+					},
+					hasFirewall && {
+						label: 'Firewall',
+						icon: 'mdi--firewall',
+						children: [
+							{
+								label: 'Logs',
+								icon: 'mdi--text-box-search-outline',
+								href: `/${node}/network/firewall/logs`
+							},
+							{
+								label: 'Traffic Rules',
+								icon: 'mdi--transit-connection-horizontal',
+								href: `/${node}/network/firewall/traffic`
+							},
+							{
+								label: 'NAT Rules',
+								icon: 'mdi--swap-horizontal-bold',
+								href: `/${node}/network/firewall/nat`
+							},
+							{
+								label: 'Advanced',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/network/firewall/advanced`
+							}
+						]
+					},
+					hasWireGuard && {
+						label: 'VPN',
+						icon: 'mdi--vpn',
+						children: [
+							{
+								label: 'WireGuard',
+								icon: 'simple-icons--wireguard',
+								children: [
+									{
+										label: 'Server',
+										icon: 'mdi--dns',
+										href: `/${node}/network/vpn/wireguard/server`
+									},
+									{
+										label: 'Clients',
+										icon: 'mdi--account',
+										href: `/${node}/network/vpn/wireguard/clients`
+									}
+								]
+							}
 						]
 					}
 				].filter(Boolean) as NodeItem[]
@@ -186,6 +242,22 @@
 								label: 'Audit Logs',
 								icon: 'tabler--logs',
 								href: `/${node}/storage/samba/audit-logs`
+							}
+						]
+					},
+					hasIscsi && {
+						label: 'iSCSI',
+						icon: 'carbon--block-storage-alt',
+						children: [
+							{
+								label: 'Initiators',
+								icon: 'material-symbols--outbound-outline-rounded',
+								href: `/${node}/storage/iscsi/initiators`
+							},
+							{
+								label: 'Targets',
+								icon: 'mdi--server',
+								href: `/${node}/storage/iscsi/targets`
 							}
 						]
 					}
