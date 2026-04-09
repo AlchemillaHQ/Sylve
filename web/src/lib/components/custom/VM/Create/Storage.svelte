@@ -11,6 +11,7 @@
 		normalizeSizeInputExact,
 		parseSizeInputToBytes
 	} from '$lib/utils/bytes';
+	import { watch } from 'runed';
 
 	interface Props {
 		downloads: UTypeGroupedDownload[];
@@ -101,12 +102,24 @@
 
 	let humanSize = $state(formatBytesBinary(size || 1024 * 1024 * 1024));
 
-	$effect(() => {
-		if (humanSize) {
-			const parsed = parseSizeInputToBytes(humanSize);
-			size = parsed ?? 1024 * 1024 * 1024;
+	watch(
+		() => humanSize,
+		() => {
+			if (humanSize) {
+				const parsed = parseSizeInputToBytes(humanSize);
+				size = parsed ?? 1024 * 1024 * 1024;
+			}
 		}
-	});
+	);
+
+	watch(
+		() => pools,
+		() => {
+			if (pools.length === 1) {
+				pool = pools[0];
+			}
+		}
+	);
 </script>
 
 {#snippet radioItem(type: string)}
@@ -124,13 +137,27 @@
 <div class="flex flex-col gap-4 p-4">
 	<RadioGroup.Root bind:value={type} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-52 w-full max-w-full">
-			{#each ['zvol', 'raw', 'none'] as storageType}
+			{#each ['zvol', 'raw', 'none'] as storageType (storageType)}
 				{@render radioItem(storageType)}
 			{/each}
 		</ScrollArea>
 	</RadioGroup.Root>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr_1fr_1fr]">
+		<div class={type === 'none' ? 'lg:col-span-full' : ''}>
+			<CustomComboBox
+				bind:open={comboBoxes.isos.open}
+				label="Installation Media"
+				bind:value={iso}
+				data={isos}
+				classes="flex-1 space-y-1"
+				placeholder="Select installation media"
+				triggerWidth="w-full"
+				width="w-full"
+				shortLabels={true}
+			></CustomComboBox>
+		</div>
+
 		{#if type !== 'none'}
 			<CustomComboBox
 				bind:open={comboBoxes.pool.open}
@@ -167,17 +194,5 @@
 				width="w-full"
 			></CustomComboBox>
 		{/if}
-
-		<CustomComboBox
-			bind:open={comboBoxes.isos.open}
-			label="Installation Media"
-			bind:value={iso}
-			data={isos}
-			classes="flex-1 space-y-1"
-			placeholder="Select installation media"
-			triggerWidth="w-full"
-			width="w-full lg:w-[75%]"
-			shortLabels={true}
-		></CustomComboBox>
 	</div>
 </div>

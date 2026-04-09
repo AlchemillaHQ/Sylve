@@ -5,7 +5,11 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
 	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
-	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 
@@ -87,7 +91,7 @@
 			/>
 		</div>
 
-		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
 			<div>
 				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vms} {coreSelectionLimit} />
 			</div>

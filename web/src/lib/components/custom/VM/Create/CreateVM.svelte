@@ -167,7 +167,7 @@
 			type: 'zvol',
 			pool: '',
 			size: 1024 * 1024 * 1024,
-			emulation: 'ahci-hd',
+			emulation: 'nvme',
 			iso: ''
 		},
 		network: {

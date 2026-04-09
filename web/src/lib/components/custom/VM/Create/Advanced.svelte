@@ -105,6 +105,15 @@
 		},
 		{ initialValue: [] as CloudInitTemplate[] }
 	);
+
+	watch(
+		() => vncEnabled,
+		(enabled) => {
+			if (!enabled) {
+				vncWait = false;
+			}
+		}
+	);
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
@@ -127,6 +136,7 @@
 			type="password"
 			bind:value={vncPassword}
 			classes="flex-1 space-y-1.5 lg:col-span-3"
+			disabled={!vncEnabled}
 			revealOnFocus={true}
 			topRightButton={{
 				icon: 'icon-[fad--random-2dice]',
@@ -176,14 +186,14 @@
 		<CustomCheckbox label="Enable VNC" bind:checked={vncEnabled} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
-		></CustomCheckbox>
-
 		<CustomCheckbox
 			label="VNC Wait"
 			bind:checked={vncWait}
 			classes="flex items-center gap-2"
 			disabled={!vncEnabled}
+		></CustomCheckbox>
+
+		<CustomCheckbox label="Serial Console" bind:checked={serial} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
 		<CustomCheckbox
