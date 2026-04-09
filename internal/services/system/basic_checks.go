@@ -57,13 +57,17 @@ func (s *Service) CheckVirtualization() error {
 		}
 	}
 
+	if _,err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
+		return nil
+	}
+
 	out, err := utils.RunCommand("/sbin/kldload", "-nv", "vmm")
 	if err != nil {
 		return fmt.Errorf("virt_failed_to_load_vmm: %w", err)
 	}
 
 	if len(out) > 0 {
-		if !strings.Contains(out, "Loaded vmm") && !strings.Contains(out, "is already loaded") {
+		if !strings.Contains(out, "Loaded vmm") {
 			return fmt.Errorf("virt_unexpected_vmm_load_output: %s", out)
 		}
 	}
