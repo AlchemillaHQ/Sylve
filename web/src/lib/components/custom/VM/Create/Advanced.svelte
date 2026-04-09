@@ -6,8 +6,6 @@
 		default as CustomComboBox
 	} from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import Input from '$lib/components/ui/input/input.svelte';
-	import Label from '$lib/components/ui/label/label.svelte';
 	import { generatePassword } from '$lib/utils/string';
 	import { cloudInitPlaceholders } from '$lib/utils/utilities/cloud-init';
 	import { onMount } from 'svelte';
@@ -110,62 +108,49 @@
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<CustomValueInput
-			label="VNC Port"
-			placeholder="5900"
-			bind:value={vncPort}
-			classes="flex-1 space-y-1.5"
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-8">
+		<CustomComboBox
+			bind:open={resolutionOpen}
+			label="VNC Resolution"
+			bind:value={vncResolution}
+			data={resolutions}
+			classes="flex-1 space-y-1.5 lg:col-span-2"
+			placeholder="Select VNC resolution"
+			triggerWidth="w-full"
+			width="w-full"
 			disabled={!vncEnabled}
+		></CustomComboBox>
+
+		<CustomValueInput
+			label="VNC Password"
+			placeholder="Enter or generate passphrase"
+			type="password"
+			bind:value={vncPassword}
+			classes="flex-1 space-y-1.5 lg:col-span-3"
+			topRightButton={{
+				icon: 'icon-[fad--random-2dice]',
+				tooltip: 'Generate Password',
+				function: async () => generatePassword()
+			}}
 		/>
 
 		<CustomValueInput
 			label="VNC Bind IP"
 			placeholder="127.0.0.1"
 			bind:value={vncBind}
-			classes="flex-1 space-y-1.5"
+			classes="flex-1 space-y-1.5 lg:col-span-2"
 			disabled={!vncEnabled}
 		/>
-
-		<div class="space-y-1.5">
-			<Label class="w-24 whitespace-nowrap text-sm">VNC Password</Label>
-			<div class="flex w-full max-w-sm items-center space-x-2">
-				<Input
-					type="password"
-					id="d-passphrase"
-					placeholder="Enter or generate passphrase"
-					class="w-full"
-					autocomplete="off"
-					bind:value={vncPassword}
-					showPasswordOnFocus={true}
-					disabled={!vncEnabled}
-				/>
-
-				<Button
-					disabled={!vncEnabled}
-					onclick={() => {
-						vncPassword = generatePassword();
-					}}
-				>
-					<span class="icon-[fad--random-2dice] h-6 w-6"></span>
-				</Button>
-			</div>
-		</div>
+		<CustomValueInput
+			label="VNC Port"
+			placeholder="5900"
+			bind:value={vncPort}
+			classes="flex-1 space-y-1.5 lg:col-span-1"
+			disabled={!vncEnabled}
+		/>
 	</div>
 
 	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-		<CustomComboBox
-			bind:open={resolutionOpen}
-			label="VNC Resolution"
-			bind:value={vncResolution}
-			data={resolutions}
-			classes="flex-1 space-y-1.5"
-			placeholder="Select VNC resolution"
-			triggerWidth="w-full "
-			width="w-full"
-			disabled={!vncEnabled}
-		></CustomComboBox>
-
 		<ComboBox
 			bind:open={timeOffsetOpen}
 			label="Clock Offset"
@@ -186,7 +171,7 @@
 		/>
 	</div>
 
-	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-3">
+	<div class="mt-1 grid grid-cols-2 gap-4 lg:grid-cols-4">
 		<CustomCheckbox label="Enable VNC" bind:checked={vncEnabled} classes="flex items-center gap-2"
 		></CustomCheckbox>
 
@@ -219,15 +204,12 @@
 		></CustomCheckbox>
 
 		<CustomCheckbox
-			label="Ignore Unimplemented MSR Accesses"
+			label="Ignore UMSRs"
 			bind:checked={ignoreUmsrs}
-			classes="flex items-center gap-2 mt-2"
+			classes="flex items-center gap-2"
 		></CustomCheckbox>
 
-		<CustomCheckbox
-			label="QEMU Guest Agent"
-			bind:checked={qemuGuestAgent}
-			classes="flex items-center gap-2 mt-2"
+		<CustomCheckbox label="QEMU GA" bind:checked={qemuGuestAgent} classes="flex items-center gap-2"
 		></CustomCheckbox>
 	</div>
 
@@ -279,13 +261,13 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							templateSelector.open = false;
 						}}
 					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">{'Close'}</span>
+						<span class="sr-only">Close</span>
 					</Button>
 				</div>
 			</Dialog.Header>

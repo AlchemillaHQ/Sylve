@@ -554,7 +554,6 @@ msgstr "用户"
 msgid "Action"
 msgstr "操作"
 
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -2835,7 +2834,6 @@ msgstr "ZFS 存储池"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2867,7 +2865,6 @@ msgstr "已启用"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -3650,7 +3647,6 @@ msgstr "SSH 主机"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -5651,12 +5647,10 @@ msgid "Enter or generate passphrase"
 msgstr "输入或生成密码"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "VNC Resolution"
 msgstr "VNC 分辨率"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Select VNC resolution"
 msgstr "选择 VNC 分辨率"
 
@@ -5709,12 +5703,10 @@ msgstr "TPM 模拟"
 msgid "Enable Cloud-Init"
 msgstr "启用 Cloud-Init"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Ignore Unimplemented MSR Accesses"
 msgstr "忽略未实现的 MSR 访问"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -7418,14 +7410,9 @@ msgstr "池 {0} 已删除"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "已关闭"
@@ -12803,8 +12790,10 @@ msgstr ""
 msgid "John Doe"
 msgstr ""
 
-#~ msgid "Generate Password"
-#~ msgstr ""
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Generate Password"
+msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Confirm Password"
@@ -12963,4 +12952,37 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Use /home/<username>"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Bind IP"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Enable VNC"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind IP must be a valid IPv4 or IPv6 address"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind IP"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Ignore UMSRs"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Select resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind Port"
 msgstr ""

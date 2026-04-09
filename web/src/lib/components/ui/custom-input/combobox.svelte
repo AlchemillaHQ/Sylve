@@ -116,7 +116,7 @@
 
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
-		<div class="flex min-h-6 items-center justify-between w-full">
+		<div class="flex h-7 items-center justify-between w-full">
 			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
 				{label}
 			</Label>
@@ -143,7 +143,7 @@
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
-				class="max-h-40! h-full w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
+				class="h-9 w-full min-w-0 flex-nowrap justify-between gap-1 overflow-hidden"
 				{disabled}
 			>
 				<div

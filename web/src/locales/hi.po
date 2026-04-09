@@ -554,7 +554,6 @@ msgstr "उपयोगकर्ता"
 msgid "Action"
 msgstr "कार्रवाई"
 
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
@@ -2835,7 +2834,6 @@ msgstr "ZFS पूल"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2867,7 +2865,6 @@ msgstr "सक्षम"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -3650,7 +3647,6 @@ msgstr "SSH होस्ट"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -5651,12 +5647,10 @@ msgid "Enter or generate passphrase"
 msgstr "पासफ़्रेज़ दर्ज करें या जेनरेट करें"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "VNC Resolution"
 msgstr "VNC रिज़ॉल्यूशन"
 
 #: src/lib/components/custom/VM/Create/Advanced.svelte
-#: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Select VNC resolution"
 msgstr "VNC रिज़ॉल्यूशन चुनें"
 
@@ -5709,12 +5703,10 @@ msgstr "TPM एमुलेशन"
 msgid "Enable Cloud-Init"
 msgstr "Cloud-Init सक्षम करें"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 msgid "Ignore Unimplemented MSR Accesses"
 msgstr "अनइम्प्लीमेंटेड MSR एक्सेस को अनदेखा करें"
 
-#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -7418,14 +7410,9 @@ msgstr "पूल {0} हटा दिया गया"
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
-#: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
-#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutoff"
 msgstr "बंद"
@@ -12803,8 +12790,10 @@ msgstr ""
 msgid "John Doe"
 msgstr ""
 
-#~ msgid "Generate Password"
-#~ msgstr ""
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Generate Password"
+msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Confirm Password"
@@ -12963,4 +12952,37 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/CreateOrEdit.svelte
 msgid "Use /home/<username>"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "VNC Bind IP"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Enable VNC"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind IP must be a valid IPv4 or IPv6 address"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind IP"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Ignore UMSRs"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Select resolution"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+msgid "Bind Port"
 msgstr ""
