@@ -48,7 +48,7 @@ func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 	}
 
 	if pendingCount > 0 {
-		_ = db.EnqueueNoPayload(context.Background(), "utils-download-sync")
+		s.maybeEnqueueDownloadSync()
 	}
 
 	return downloads, nil
