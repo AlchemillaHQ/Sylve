@@ -6,6 +6,8 @@ export interface CPUPin {
     cores: number[];
 }
 
+export type VMBootRom = 'uefi' | 'none';
+
 export interface CreateData {
     name: string;
     node: string;
@@ -44,12 +46,15 @@ export interface CreateData {
         bootOrder: number;
         tpmEmulation: boolean;
         timeOffset: 'utc' | 'localtime';
+        bootRom: VMBootRom;
         cloudInit: {
             enabled: boolean;
             data: string;
             metadata: string;
             networkConfig: string;
         };
+        extraBhyveOptionsEnabled: boolean;
+        extraBhyveOptions: string;
         ignoreUmsrs: boolean;
         qemuGuestAgent: boolean;
     };
@@ -144,6 +149,8 @@ export const VMSchema = z.object({
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
     cloudInitNetworkConfig: z.string().nullable(),
+    bootRom: z.enum(['uefi', 'none']),
+    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
     ignoreUMSR: z.boolean(),
     qemuGuestAgent: z.boolean(),
     tpmEmulation: z.boolean(),
@@ -235,6 +242,8 @@ export const VMTemplateSchema = z.object({
     cloudInitData: z.string().nullable(),
     cloudInitMetaData: z.string().nullable(),
     cloudInitNetworkConfig: z.string().nullable(),
+    bootRom: z.enum(['uefi', 'none']),
+    extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
     ignoreUMSR: z.boolean(),
     qemuGuestAgent: z.boolean(),
     storages: z.array(VMTemplateStorageSchema).default([]),

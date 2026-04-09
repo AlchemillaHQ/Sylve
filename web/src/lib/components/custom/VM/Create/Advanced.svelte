@@ -28,12 +28,15 @@
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
+		bootRom: 'uefi' | 'none';
 		cloudInit: {
 			enabled: boolean;
 			data: string;
 			metadata: string;
 			networkConfig: string;
 		};
+		extraBhyveOptionsEnabled: boolean;
+		extraBhyveOptions: string;
 		ignoreUmsrs: boolean;
 		qemuGuestAgent: boolean;
 	}
@@ -50,7 +53,10 @@
 		bootOrder = $bindable(),
 		tpmEmulation = $bindable(),
 		timeOffset = $bindable(),
+		bootRom = $bindable(),
 		cloudInit = $bindable(),
+		extraBhyveOptionsEnabled = $bindable(),
+		extraBhyveOptions = $bindable(),
 		ignoreUmsrs = $bindable(),
 		qemuGuestAgent = $bindable()
 	}: Props = $props();
@@ -61,9 +67,14 @@
 	});
 
 	let timeOffsetOpen = $state(false);
+	let bootRomOpen = $state(false);
 	const timeOffsets = [
 		{ label: 'UTC', value: 'utc' },
 		{ label: 'Local Time', value: 'localtime' }
+	];
+	const bootRoms = [
+		{ label: 'UEFI (Default)', value: 'uefi' },
+		{ label: 'None', value: 'none' }
 	];
 
 	let resolutionOpen = $state(false);
@@ -114,6 +125,15 @@
 			}
 		}
 	);
+
+	watch(
+		() => extraBhyveOptionsEnabled,
+		(enabled) => {
+			if (!enabled) {
+				extraBhyveOptions = '';
+			}
+		}
+	);
 </script>
 
 <div class="flex flex-col gap-4 space-y-1.5 p-4">
@@ -161,7 +181,18 @@
 		/>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+		<ComboBox
+			bind:open={bootRomOpen}
+			label="Boot ROM"
+			bind:value={bootRom}
+			data={bootRoms}
+			classes="flex-1 space-y-1.5"
+			placeholder="Select Boot ROM"
+			triggerWidth="w-full"
+			width="w-full"
+		></ComboBox>
+
 		<ComboBox
 			bind:open={timeOffsetOpen}
 			label="Clock Offset"
@@ -222,6 +253,12 @@
 
 		<CustomCheckbox label="QEMU GA" bind:checked={qemuGuestAgent} classes="flex items-center gap-2"
 		></CustomCheckbox>
+
+		<CustomCheckbox
+			label="Bhyve Options"
+			bind:checked={extraBhyveOptionsEnabled}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
 	</div>
 
 	{#if cloudInit.enabled}
@@ -255,6 +292,17 @@
 			bind:value={cloudInit.networkConfig}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
+		/>
+	{/if}
+
+	{#if extraBhyveOptionsEnabled}
+		<CustomValueInput
+			label="Extra Bhyve Options"
+			placeholder="-S"
+			bind:value={extraBhyveOptions}
+			classes="flex-1 space-y-1.5"
+			type="textarea"
+			textAreaClasses="h-32 font-mono text-xs"
 		/>
 	{/if}
 </div>

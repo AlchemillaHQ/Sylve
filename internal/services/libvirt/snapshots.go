@@ -768,12 +768,14 @@ func (s *Service) restoreVMDatabaseFromSnapshotJSON(
 		StartOrder:             restored.StartOrder,
 		WoL:                    restored.WoL,
 		TimeOffset:             restored.TimeOffset,
+		BootROM:                normalizeBootROMValue(restored.BootROM),
 		PCIDevices:             restored.PCIDevices,
 		ACPI:                   restored.ACPI,
 		APIC:                   restored.APIC,
 		CloudInitData:          restored.CloudInitData,
 		CloudInitMetaData:      restored.CloudInitMetaData,
 		CloudInitNetworkConfig: restored.CloudInitNetworkConfig,
+		ExtraBhyveOptions:      append([]string(nil), restored.ExtraBhyveOptions...),
 		IgnoreUMSR:             restored.IgnoreUMSR,
 		QemuGuestAgent:         restored.QemuGuestAgent,
 	}
@@ -800,12 +802,14 @@ func (s *Service) restoreVMDatabaseFromSnapshotJSON(
 			"StartOrder",
 			"WoL",
 			"TimeOffset",
+			"BootROM",
 			"PCIDevices",
 			"ACPI",
 			"APIC",
 			"CloudInitData",
 			"CloudInitMetaData",
 			"CloudInitNetworkConfig",
+			"ExtraBhyveOptions",
 			"IgnoreUMSR",
 			"QemuGuestAgent",
 		).
@@ -1260,6 +1264,11 @@ func (s *Service) redefineVMDomainFromDatabase(rid uint) error {
 
 	if err := os.MkdirAll(vmPath, 0755); err != nil {
 		return fmt.Errorf("failed_to_create_vm_config_directory: %w", err)
+	}
+
+	vm.BootROM = normalizeBootROMValue(vm.BootROM)
+	if err := s.ensureVMBootROMArtifacts(vm.RID, vm.BootROM, vmPath); err != nil {
+		return fmt.Errorf("failed_to_prepare_boot_rom_artifacts: %w", err)
 	}
 
 	if vm.CloudInitData != "" || vm.CloudInitMetaData != "" {

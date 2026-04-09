@@ -971,8 +971,16 @@ msgstr "备注"
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -1056,8 +1064,12 @@ msgstr "重置"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
@@ -1135,8 +1147,10 @@ msgstr "这是条备注"
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -3532,13 +3546,18 @@ msgstr "检查"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "None"
 msgstr "无"
@@ -6799,6 +6818,7 @@ msgid "Configured"
 msgstr "已配置"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
 msgstr "未配置"
@@ -11497,3 +11517,55 @@ msgstr "Jail 快照"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention Policies"
 msgstr "保留策略"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "UEFI (Default)"
+msgstr "UEFI（默认）"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "Boot ROM"
+msgstr "启动 "
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Select Boot ROM"
+msgstr "选择启动 ROM"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "Extra Bhyve Options"
+msgstr "额外的 Bhyve 选项"
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Bhyve Options"
+msgstr "Bhyve 选项"
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Failed to modify boot ROM"
+msgstr "启动 ROM 修改失败"
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Modified boot ROM"
+msgstr "修改启动 ROM"
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Select boot ROM"
+msgstr "选择启动 ROM"
+
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+msgid "Failed to modify extra bhyve options"
+msgstr "额外的 bhyve 选项调整失败"
+
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+msgid "Modified extra bhyve options"
+msgstr "额外的 bhyve 选项已调整"
+

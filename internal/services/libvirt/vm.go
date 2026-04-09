@@ -32,6 +32,44 @@ import (
 	"gorm.io/gorm"
 )
 
+func (s *Service) queryVMByID(id int) (vmModels.VM, error) {
+	var vm vmModels.VM
+	err := s.DB.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
+		Where("id = ?", id).
+		First(&vm).Error
+
+	return vm, err
+}
+
+func (s *Service) queryVMByRID(rid uint) (vmModels.VM, error) {
+	var vm vmModels.VM
+	err := s.DB.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC, id ASC")
+		}).
+		Where("rid = ?", rid).
+		First(&vm).Error
+
+	return vm, err
+}
+
 func (s *Service) ListVMs() ([]vmModels.VM, error) {
 	if !s.IsVirtualizationEnabled() {
 		return []vmModels.VM{}, nil
@@ -302,6 +340,10 @@ func validateCPUPins(
 }
 
 func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
+	if _, err := parseBootROMValue(data.BootROM); err != nil {
+		return err
+	}
+
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -727,41 +769,11 @@ func (s *Service) validateNoStaleVMCreateArtifacts(ctx context.Context, rid uint
 }
 
 func (s *Service) GetVM(id int) (vmModels.VM, error) {
-	var vm vmModels.VM
-	err := s.DB.
-		Preload("CPUPinning").
-		Preload("Storages").
-		Preload("Storages.Dataset").
-		Preload("Networks").
-		Preload("Networks.AddressObj").
-		Preload("Networks.AddressObj.Entries").
-		Preload("Networks.AddressObj.Resolutions").
-		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC, id ASC")
-		}).
-		Where("id = ?", id).
-		First(&vm).Error
-
-	return vm, err
+	return s.queryVMByID(id)
 }
 
 func (s *Service) GetVMByRID(rid uint) (vmModels.VM, error) {
-	var vm vmModels.VM
-	err := s.DB.
-		Preload("CPUPinning").
-		Preload("Storages").
-		Preload("Storages.Dataset").
-		Preload("Networks").
-		Preload("Networks.AddressObj").
-		Preload("Networks.AddressObj.Entries").
-		Preload("Networks.AddressObj.Resolutions").
-		Preload("Snapshots", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC, id ASC")
-		}).
-		Where("rid = ?", rid).
-		First(&vm).Error
-
-	return vm, err
+	return s.queryVMByRID(rid)
 }
 
 func (s *Service) cleanupAutoCreatedVMCreateMACObjects(rid uint, autoCreatedMACIDs []uint, warnings *[]string) {
@@ -887,6 +899,11 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	acpi := true
 	ignoreUMSRs := false
 	qemuGuestAgent := false
+	extraBhyveOptions := normalizeExtraBhyveOptions(data.ExtraBhyveOptions)
+	bootROM, err := parseBootROMValue(data.BootROM)
+	if err != nil {
+		return err
+	}
 
 	if data.VNCWait != nil {
 		vncWait = *data.VNCWait
@@ -1093,6 +1110,8 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		CloudInitData:          data.CloudInitData,
 		CloudInitMetaData:      data.CloudInitMetaData,
 		CloudInitNetworkConfig: data.CloudInitNetworkConfig,
+		BootROM:                bootROM,
+		ExtraBhyveOptions:      extraBhyveOptions,
 		IgnoreUMSR:             ignoreUMSRs,
 		QemuGuestAgent:         qemuGuestAgent,
 	}

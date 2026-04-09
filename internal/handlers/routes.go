@@ -401,6 +401,8 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PUT("/options/serial-console/:rid", vmHandlers.ModifySerialConsole(libvirtService))
 		vm.PUT("/options/shutdown-wait-time/:rid", vmHandlers.ModifyShutdownWaitTime(libvirtService))
 		vm.PUT("/options/cloud-init/:rid", vmHandlers.ModifyCloudInitData(libvirtService))
+		vm.PUT("/options/boot-rom/:rid", vmHandlers.ModifyBootROM(libvirtService))
+		vm.PUT("/options/extra-bhyve-options/:rid", vmHandlers.ModifyExtraBhyveOptions(libvirtService))
 		vm.PUT("/options/ignore-umsrs/:rid", vmHandlers.ModifyIgnoreUMSRs(libvirtService))
 		vm.PUT("/options/qemu-guest-agent/:rid", vmHandlers.ModifyQemuGuestAgent(libvirtService))
 		vm.PUT("/options/tpm/:rid", vmHandlers.ModifyTPM(libvirtService))

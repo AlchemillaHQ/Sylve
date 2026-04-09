@@ -11,6 +11,7 @@ package vmModels
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -67,6 +68,13 @@ type TimeOffset string
 const (
 	TimeOffsetUTC   TimeOffset = "utc"
 	TimeOffsetLocal TimeOffset = "localtime"
+)
+
+type VMBootROM string
+
+const (
+	VMBootROMUEFI VMBootROM = "uefi"
+	VMBootROMNone VMBootROM = "none"
 )
 
 type VMStorageDataset struct {
@@ -307,6 +315,8 @@ type VM struct {
 	CloudInitData          string       `json:"cloudInitData" gorm:"type:text"`
 	CloudInitMetaData      string       `json:"cloudInitMetaData" gorm:"type:text"`
 	CloudInitNetworkConfig string       `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	BootROM                VMBootROM    `json:"bootRom" gorm:"column:boot_rom;default:'uefi'"`
+	ExtraBhyveOptions      []string     `json:"extraBhyveOptions" gorm:"serializer:json;type:json"`
 	IgnoreUMSR             bool         `json:"ignoreUMSR" gorm:"default:false"`
 	QemuGuestAgent         bool         `json:"qemuGuestAgent" gorm:"default:false"`
 	Snapshots              []VMSnapshot `json:"snapshots,omitempty" gorm:"foreignKey:VMID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
@@ -350,11 +360,13 @@ type VMTemplate struct {
 	APIC bool `json:"apic"`
 	ACPI bool `json:"acpi"`
 
-	CloudInitData          string `json:"cloudInitData" gorm:"type:text"`
-	CloudInitMetaData      string `json:"cloudInitMetaData" gorm:"type:text"`
-	CloudInitNetworkConfig string `json:"cloudInitNetworkConfig" gorm:"type:text"`
-	IgnoreUMSR             bool   `json:"ignoreUMSR" gorm:"default:false"`
-	QemuGuestAgent         bool   `json:"qemuGuestAgent" gorm:"default:false"`
+	CloudInitData          string    `json:"cloudInitData" gorm:"type:text"`
+	CloudInitMetaData      string    `json:"cloudInitMetaData" gorm:"type:text"`
+	CloudInitNetworkConfig string    `json:"cloudInitNetworkConfig" gorm:"type:text"`
+	BootROM                VMBootROM `json:"bootRom" gorm:"column:boot_rom;default:'uefi'"`
+	ExtraBhyveOptions      []string  `json:"extraBhyveOptions" gorm:"serializer:json;type:json"`
+	IgnoreUMSR             bool      `json:"ignoreUMSR" gorm:"default:false"`
+	QemuGuestAgent         bool      `json:"qemuGuestAgent" gorm:"default:false"`
 
 	Storages []VMTemplateStorage `json:"storages" gorm:"serializer:json;type:json"`
 	Networks []VMTemplateNetwork `json:"networks" gorm:"serializer:json;type:json"`
@@ -365,4 +377,26 @@ type VMTemplate struct {
 
 func (VMTemplate) TableName() string {
 	return "vm_templates"
+}
+
+func (vm *VM) AfterFind(tx *gorm.DB) error {
+	switch strings.TrimSpace(strings.ToLower(string(vm.BootROM))) {
+	case string(VMBootROMNone):
+		vm.BootROM = VMBootROMNone
+	default:
+		vm.BootROM = VMBootROMUEFI
+	}
+
+	return nil
+}
+
+func (template *VMTemplate) AfterFind(tx *gorm.DB) error {
+	switch strings.TrimSpace(strings.ToLower(string(template.BootROM))) {
+	case string(VMBootROMNone):
+		template.BootROM = VMBootROMNone
+	default:
+		template.BootROM = VMBootROMUEFI
+	}
+
+	return nil
 }

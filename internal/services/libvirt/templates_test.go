@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -299,6 +300,71 @@ func TestSourceVMStoragesForTemplate(t *testing.T) {
 	}
 	if out[0].ID != 3 || out[1].ID != 1 {
 		t.Fatalf("expected zvol/raw sorted by boot order, got %#v", out)
+	}
+}
+
+func TestBuildVMFromTemplate_PropagatesExtraBhyveOptions(t *testing.T) {
+	template := vmModels.VMTemplate{
+		ExtraBhyveOptions: []string{
+			"-S",
+			" -u \n\n -A ",
+		},
+	}
+	target := vmTemplateCreateTarget{
+		RID:  801,
+		Name: "vm-801",
+	}
+
+	vm := buildVMFromTemplate(template, target, 5901, "", "", "")
+	want := []string{"-S", "-u", "-A"}
+
+	if !reflect.DeepEqual(vm.ExtraBhyveOptions, want) {
+		t.Fatalf("unexpected VM extra bhyve options: got=%#v want=%#v", vm.ExtraBhyveOptions, want)
+	}
+}
+
+func TestBuildVMTemplateFromVM_PropagatesExtraBhyveOptions(t *testing.T) {
+	vm := vmModels.VM{
+		Name:              "source-vm",
+		ExtraBhyveOptions: []string{"-S", " -u \n\n -A "},
+	}
+
+	template := buildVMTemplateFromVM(vm, "template-a", nil)
+	want := []string{"-S", "-u", "-A"}
+
+	if !reflect.DeepEqual(template.ExtraBhyveOptions, want) {
+		t.Fatalf(
+			"unexpected template extra bhyve options: got=%#v want=%#v",
+			template.ExtraBhyveOptions,
+			want,
+		)
+	}
+}
+
+func TestBuildVMFromTemplate_PropagatesBootROM(t *testing.T) {
+	template := vmModels.VMTemplate{
+		BootROM: vmModels.VMBootROMUEFI,
+	}
+	target := vmTemplateCreateTarget{
+		RID:  802,
+		Name: "vm-802",
+	}
+
+	vm := buildVMFromTemplate(template, target, 5902, "", "", "")
+	if vm.BootROM != vmModels.VMBootROMUEFI {
+		t.Fatalf("unexpected VM boot ROM: got=%q want=%q", vm.BootROM, vmModels.VMBootROMUEFI)
+	}
+}
+
+func TestBuildVMTemplateFromVM_PropagatesBootROM(t *testing.T) {
+	vm := vmModels.VM{
+		Name:    "source-vm",
+		BootROM: vmModels.VMBootROMNone,
+	}
+
+	template := buildVMTemplateFromVM(vm, "template-a", nil)
+	if template.BootROM != vmModels.VMBootROMNone {
+		t.Fatalf("unexpected template boot ROM: got=%q want=%q", template.BootROM, vmModels.VMBootROMNone)
 	}
 }
 

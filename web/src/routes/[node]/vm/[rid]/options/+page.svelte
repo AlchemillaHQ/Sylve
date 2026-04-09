@@ -2,8 +2,10 @@
 	import { getVmById } from '$lib/api/vm/vm';
 	import { vmPowerSignal } from '$lib/stores/api.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import BootRom from '$lib/components/custom/VM/Options/BootRom.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
 	import CloudInit from '$lib/components/custom/VM/Options/CloudInit.svelte';
+	import ExtraBhyveOptions from '$lib/components/custom/VM/Options/ExtraBhyveOptions.svelte';
 	import IgnoreUMSR from '$lib/components/custom/VM/Options/IgnoreUMSR.svelte';
 	import QemuGuestAgent from '$lib/components/custom/VM/Options/QemuGuestAgent.svelte';
 	import ShutdownWaitTime from '$lib/components/custom/VM/Options/ShutdownWaitTime.svelte';
@@ -113,6 +115,11 @@
 				value: vm ? (vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
 			},
 			{
+				id: generateNanoId('bootRom'),
+				property: 'Boot ROM',
+				value: vm ? (vm.current.bootRom === 'none' ? 'None' : 'UEFI (Default)') : 'N/A'
+			},
+			{
 				id: generateNanoId('shutdownWaitTime'),
 				property: 'Shutdown Wait Time',
 				value: vm ? `${vm.current.shutdownWaitTime} seconds` : 'N/A'
@@ -123,6 +130,14 @@
 				value:
 					vm && (vm.current.cloudInitData || vm.current.cloudInitMetaData)
 						? 'Configured'
+						: 'Not Configured'
+			},
+			{
+				id: generateNanoId('extraBhyveOptions'),
+				property: 'Extra Bhyve Options',
+				value:
+					vm && vm.current.extraBhyveOptions && vm.current.extraBhyveOptions.length > 0
+						? `${vm.current.extraBhyveOptions.length} configured`
 						: 'Not Configured'
 			},
 			{
@@ -142,8 +157,10 @@
 		startOrder: { open: false },
 		wol: { open: false },
 		timeOffset: { open: false },
+		bootRom: { open: false },
 		shutdownWaitTime: { open: false },
 		cloudInit: { open: false },
+		extraBhyveOptions: { open: false },
 		ignoreUMSR: { open: false },
 		qemuGuestAgent: { open: false }
 	});
@@ -154,8 +171,10 @@
 		| 'startOrder'
 		| 'wol'
 		| 'timeOffset'
+		| 'bootRom'
 		| 'shutdownWaitTime'
 		| 'cloudInit'
+		| 'extraBhyveOptions'
 		| 'ignoreUMSR'
 		| 'qemuGuestAgent',
 	title: string,
@@ -189,10 +208,14 @@
 				{@render button('wol', 'Wake on LAN', false)}
 			{:else if activeRow.property === 'Clock Offset'}
 				{@render button('timeOffset', 'Clock Offset')}
+			{:else if activeRow.property === 'Boot ROM'}
+				{@render button('bootRom', 'Boot ROM')}
 			{:else if activeRow.property === 'Shutdown Wait Time'}
 				{@render button('shutdownWaitTime', 'Shutdown Wait Time', false)}
 			{:else if activeRow.property === 'Cloud Init'}
 				{@render button('cloudInit', 'Cloud Init')}
+			{:else if activeRow.property === 'Extra Bhyve Options'}
+				{@render button('extraBhyveOptions', 'Extra Bhyve Options')}
 			{:else if activeRow.property === 'Ignore Unimplemented MSRs Accesses'}
 				{@render button('ignoreUMSR', 'Ignore Unimplemented MSRs Accesses')}
 			{:else if activeRow.property === 'QEMU Guest Agent'}
@@ -224,12 +247,20 @@
 	<Clock bind:open={properties.timeOffset.open} vm={vm.current} bind:reload />
 {/if}
 
+{#if properties.bootRom.open && vm}
+	<BootRom bind:open={properties.bootRom.open} vm={vm.current} bind:reload />
+{/if}
+
 {#if properties.shutdownWaitTime.open && vm}
 	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.cloudInit.open && vm}
 	<CloudInit bind:open={properties.cloudInit.open} vm={vm.current} bind:reload />
+{/if}
+
+{#if properties.extraBhyveOptions.open && vm}
+	<ExtraBhyveOptions bind:open={properties.extraBhyveOptions.open} vm={vm.current} bind:reload />
 {/if}
 
 {#if properties.ignoreUMSR.open && vm}

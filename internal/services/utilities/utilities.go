@@ -55,10 +55,14 @@ type Service struct {
 
 	signingSecretMu    sync.RWMutex
 	downloadSignSecret string
+
+	syncQueueMu        sync.Mutex
+	downloadSyncQueued bool
+	enqueueNoPayloadFn func(ctx context.Context, name string) error
 }
 
 func NewUtilitiesService(
-	db *gorm.DB,
+	dbConn *gorm.DB,
 	vmService libvirtServiceInterfaces.LibvirtServiceInterface,
 	jailService jailServiceInterfaces.JailServiceInterface,
 ) utilitiesServiceInterfaces.UtilitiesServiceInterface {
@@ -93,14 +97,15 @@ func NewUtilitiesService(
 	}
 
 	return &Service{
-		DB:            db,
-		BTTClient:     session,
-		GrabClient:    secureClient,
-		GrabInsecure:  insecureClient,
-		httpResponses: make(map[string]*grab.Response),
-		inflight:      make(map[uint]struct{}),
-		VMService:     vmService,
-		JailService:   jailService,
+		DB:                 dbConn,
+		BTTClient:          session,
+		GrabClient:         secureClient,
+		GrabInsecure:       insecureClient,
+		httpResponses:      make(map[string]*grab.Response),
+		inflight:           make(map[uint]struct{}),
+		VMService:          vmService,
+		JailService:        jailService,
+		enqueueNoPayloadFn: db.EnqueueNoPayload,
 	}
 }
 
@@ -125,6 +130,8 @@ func (s *Service) RegisterJobs() {
 	})
 
 	db.QueueRegisterNoPayload("utils-download-sync", func(ctx context.Context) error {
+		defer s.clearDownloadSyncQueued()
+
 		if err := s.SyncDownloadProgress(); err != nil {
 			logger.L.Error().Err(err).Msg("SyncDownloadProgress failed")
 		}
@@ -141,4 +148,30 @@ func (s *Service) RegisterJobs() {
 	})
 
 	s.registerWoLJobs()
+}
+
+func (s *Service) clearDownloadSyncQueued() {
+	s.syncQueueMu.Lock()
+	s.downloadSyncQueued = false
+	s.syncQueueMu.Unlock()
+}
+
+func (s *Service) maybeEnqueueDownloadSync() {
+	s.syncQueueMu.Lock()
+	if s.downloadSyncQueued {
+		s.syncQueueMu.Unlock()
+		return
+	}
+	s.downloadSyncQueued = true
+	enqueueFn := s.enqueueNoPayloadFn
+	s.syncQueueMu.Unlock()
+
+	if enqueueFn == nil {
+		enqueueFn = db.EnqueueNoPayload
+	}
+
+	if err := enqueueFn(context.Background(), "utils-download-sync"); err != nil {
+		logger.L.Error().Err(err).Msg("Failed to enqueue utils-download-sync job")
+		s.clearDownloadSyncQueued()
+	}
 }

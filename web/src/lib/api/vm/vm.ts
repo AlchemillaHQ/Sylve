@@ -23,6 +23,13 @@ import {
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+function toExtraBhyveOptions(raw: string): string[] {
+    return raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+}
+
 export async function getVmById(id: number, type: 'rid' | 'id'): Promise<VM> {
     return await apiRequest(`/vm/${id}?type=${type}`, VMSchema, 'GET');
 }
@@ -86,10 +93,12 @@ export async function newVM(data: CreateData): Promise<APIResponse> {
         startAtBoot: data.advanced.startAtBoot,
         bootOrder: parseInt(data.advanced.bootOrder.toString(), 10),
         timeOffset: data.advanced.timeOffset,
+        bootRom: data.advanced.bootRom,
         cloudInit: data.advanced.cloudInit.enabled,
         cloudInitData: data.advanced.cloudInit.data,
         cloudInitMetadata: data.advanced.cloudInit.metadata,
         cloudInitNetworkConfig: data.advanced.cloudInit.networkConfig,
+        extraBhyveOptions: toExtraBhyveOptions(data.advanced.extraBhyveOptions),
         ignoreUMSR: data.advanced.ignoreUmsrs,
         qemuGuestAgent: data.advanced.qemuGuestAgent
     });
@@ -234,6 +243,15 @@ export async function modifyClockOffset(
     });
 }
 
+export async function modifyBootRom(
+    rid: number,
+    bootRom: 'uefi' | 'none'
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/boot-rom/${rid}`, APIResponseSchema, 'PUT', {
+        bootRom
+    });
+}
+
 export async function modifySerialConsole(rid: number, enabled: boolean): Promise<APIResponse> {
     return await apiRequest(`/vm/options/serial-console/${rid}`, APIResponseSchema, 'PUT', {
         enabled
@@ -256,6 +274,15 @@ export async function modifyCloudInitData(
         data,
         metadata,
         networkConfig
+    });
+}
+
+export async function modifyExtraBhyveOptions(
+    rid: number,
+    extraBhyveOptions: string[]
+): Promise<APIResponse> {
+    return await apiRequest(`/vm/options/extra-bhyve-options/${rid}`, APIResponseSchema, 'PUT', {
+        extraBhyveOptions
     });
 }
 

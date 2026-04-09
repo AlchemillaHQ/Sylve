@@ -63,6 +63,7 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"empty_core_list_for_socket":                       {},
 	"invalid_cloud_init_yaml":                          {},
 	"invalid_iso_or_image_format":                      {},
+	"invalid_boot_rom":                                 {},
 	"invalid_mac_object_type":                          {},
 	"invalid_rid":                                      {},
 	"invalid_vnc_bind_ip":                              {},

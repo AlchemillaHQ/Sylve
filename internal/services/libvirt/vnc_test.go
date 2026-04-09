@@ -9,6 +9,7 @@
 package libvirt
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -95,6 +96,95 @@ func TestCreateVmXML_UsesConfiguredVNCBindAddress(t *testing.T) {
 
 	if !strings.Contains(xml, "tcp=198.51.100.20:5902") {
 		t.Fatalf("expected configured VNC bind address in XML, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_PrependsExtraBhyveOptionsBeforeGeneratedArgs(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:              "vm-extra-bhyve",
+		RID:               102,
+		CPUSockets:        1,
+		CPUCores:          1,
+		CPUThreads:        1,
+		RAM:               1024 * 1024 * 512,
+		VNCEnabled:        false,
+		TimeOffset:        vmModels.TimeOffsetUTC,
+		IgnoreUMSR:        true,
+		ExtraBhyveOptions: []string{"-S", " -u \n\n -A "},
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	idxS := strings.Index(xml, `value="-S"`)
+	idxU := strings.Index(xml, `value="-u"`)
+	idxA := strings.Index(xml, `value="-A"`)
+	idxW := strings.Index(xml, `value="-w"`)
+
+	if idxS == -1 || idxU == -1 || idxA == -1 || idxW == -1 {
+		t.Fatalf("expected all arguments in XML, got: %s", xml)
+	}
+
+	if !(idxS < idxU && idxU < idxA && idxA < idxW) {
+		t.Fatalf("expected custom args in-order before generated args, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_UsesUEFIBootROMByDefault(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:       "vm-bootrom-uefi",
+		RID:        103,
+		CPUSockets: 1,
+		CPUCores:   1,
+		CPUThreads: 1,
+		RAM:        1024 * 1024 * 512,
+		VNCEnabled: false,
+		TimeOffset: vmModels.TimeOffsetUTC,
+		BootROM:    vmModels.VMBootROMUEFI,
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	if !strings.Contains(xml, uefiFirmwarePath) {
+		t.Fatalf("expected UEFI firmware loader path in XML, got: %s", xml)
+	}
+
+	if !strings.Contains(xml, fmt.Sprintf("%d_vars.fd", vm.RID)) {
+		t.Fatalf("expected UEFI vars path in XML, got: %s", xml)
+	}
+}
+
+func TestCreateVmXML_OmitsLoaderWhenBootROMNone(t *testing.T) {
+	svc := &Service{}
+
+	vm := vmModels.VM{
+		Name:       "vm-bootrom-none",
+		RID:        105,
+		CPUSockets: 1,
+		CPUCores:   1,
+		CPUThreads: 1,
+		RAM:        1024 * 1024 * 512,
+		VNCEnabled: false,
+		TimeOffset: vmModels.TimeOffsetUTC,
+		BootROM:    vmModels.VMBootROMNone,
+	}
+
+	xml, err := svc.CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateVmXML returned error: %v", err)
+	}
+
+	if strings.Contains(xml, "<loader") {
+		t.Fatalf("expected no loader element when boot ROM is none, got: %s", xml)
 	}
 }
 

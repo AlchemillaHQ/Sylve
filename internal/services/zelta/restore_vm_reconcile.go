@@ -85,6 +85,12 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 	if strings.TrimSpace(string(restored.TimeOffset)) == "" {
 		restored.TimeOffset = vmModels.TimeOffsetUTC
 	}
+	switch strings.TrimSpace(strings.ToLower(string(restored.BootROM))) {
+	case string(vmModels.VMBootROMNone):
+		restored.BootROM = vmModels.VMBootROMNone
+	default:
+		restored.BootROM = vmModels.VMBootROMUEFI
+	}
 
 	restored.ID = 0
 	restored.CreatedAt = restored.CreatedAt.UTC().AddDate(-1000, 0, 0)
@@ -135,11 +141,13 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 			StartOrder:             restored.StartOrder,
 			WoL:                    restored.WoL,
 			TimeOffset:             restored.TimeOffset,
+			BootROM:                restored.BootROM,
 			ACPI:                   restored.ACPI,
 			APIC:                   restored.APIC,
 			CloudInitData:          restored.CloudInitData,
 			CloudInitMetaData:      restored.CloudInitMetaData,
 			CloudInitNetworkConfig: restored.CloudInitNetworkConfig,
+			ExtraBhyveOptions:      append([]string(nil), restored.ExtraBhyveOptions...),
 			IgnoreUMSR:             restored.IgnoreUMSR,
 			QemuGuestAgent:         restored.QemuGuestAgent,
 		}
@@ -175,11 +183,13 @@ func (s *Service) reconcileRestoredVMFromDatasetWithOptions(ctx context.Context,
 				"StartOrder",
 				"WoL",
 				"TimeOffset",
+				"BootROM",
 				"ACPI",
 				"APIC",
 				"CloudInitData",
 				"CloudInitMetaData",
 				"CloudInitNetworkConfig",
+				"ExtraBhyveOptions",
 				"IgnoreUMSR",
 				"QemuGuestAgent",
 			).Updates(&baseVM).Error; err != nil {

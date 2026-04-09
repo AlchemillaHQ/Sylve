@@ -1099,10 +1099,14 @@ msgstr "नोट"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
@@ -1269,10 +1273,14 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
@@ -1394,8 +1402,10 @@ msgstr "यह एक नोट है"
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/VM/Options/Clock.svelte
 #: src/lib/components/custom/VM/Options/CloudInit.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
 #: src/lib/components/custom/VM/Options/IgnoreUMSR.svelte
 #: src/lib/components/custom/VM/Options/QemuGuestAgent.svelte
 #: src/lib/components/custom/VM/Options/ShutdownWaitTime.svelte
@@ -4002,10 +4012,12 @@ msgstr "समीक्षा"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Create/Storage.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -4017,6 +4029,7 @@ msgstr "समीक्षा"
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -7535,6 +7548,7 @@ msgid "Configured"
 msgstr "कॉन्फ़िगर किया गया"
 
 #: src/routes/[node]/vm/[node]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
 msgstr "कॉन्फ़िगर नहीं किया गया"
@@ -13002,3 +13016,63 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Retention Policies"
 msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "UEFI (Default)"
+msgstr ""
+
+#~ msgid "UEFI CSM (Deprecated)"
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "Boot ROM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Select Boot ROM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "Extra Bhyve Options"
+msgstr ""
+
+#~ msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
+#~ msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+msgid "Bhyve Options"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Failed to modify boot ROM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Modified boot ROM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+msgid "Select boot ROM"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+msgid "Failed to modify extra bhyve options"
+msgstr ""
+
+#: src/lib/components/custom/VM/Options/ExtraBhyveOptions.svelte
+msgid "Modified extra bhyve options"
+msgstr ""
+
+#~ msgid "One option per line. These arguments are prepended before generated bhyve args."
+#~ msgstr ""
