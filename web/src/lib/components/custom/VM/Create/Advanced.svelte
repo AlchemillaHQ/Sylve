@@ -127,6 +127,7 @@
 			type="password"
 			bind:value={vncPassword}
 			classes="flex-1 space-y-1.5 lg:col-span-3"
+			revealOnFocus={true}
 			topRightButton={{
 				icon: 'icon-[fad--random-2dice]',
 				tooltip: 'Generate Password',
