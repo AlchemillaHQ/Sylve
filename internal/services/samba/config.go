@@ -27,6 +27,7 @@ const (
 	sambaACLType    = "nfsv4"
 	sambaACLMode    = "restricted"
 	sambaACLInherit = "passthrough"
+	guestACEName    = "everyone@"
 )
 
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
@@ -326,6 +327,65 @@ func (s *Service) syncSambaDatasetPrincipalACLs(
 	return nil
 }
 
+func (s *Service) syncSambaDatasetGuestACL(
+	mountpoint string,
+	guestEnabled bool,
+	guestWriteable bool,
+	strict bool,
+) error {
+	if mountpoint == "" || mountpoint == "-" {
+		err := fmt.Errorf("dataset_not_mounted")
+		if strict {
+			return err
+		}
+
+		logger.L.Warn().Err(err).Str("mountpoint", mountpoint).Msg("failed_to_enforce_samba_dataset_guest_acl")
+		return nil
+	}
+
+	removeACL := func(permissionSet string) {
+		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
+		if _, err := utils.RunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_remove_samba_dataset_guest_acl_entry")
+		}
+	}
+
+	addACL := func(permissionSet string) error {
+		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
+		_, err := utils.RunCommand("/bin/setfacl", "-m", entry, mountpoint)
+		if err != nil {
+			wrapped := fmt.Errorf("failed_to_set_guest_acl_for_%s_on_%s: %w", permissionSet, mountpoint, err)
+			if strict {
+				return wrapped
+			}
+
+			logger.L.Warn().
+				Err(wrapped).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_enforce_samba_dataset_guest_acl")
+		}
+		return nil
+	}
+
+	removeACL("read_set")
+	removeACL("modify_set")
+
+	if !guestEnabled {
+		return nil
+	}
+
+	if guestWriteable {
+		return addACL("modify_set")
+	}
+
+	return addACL("read_set")
+}
+
 func (s *Service) GlobalConfig() (string, error) {
 	settings, err := s.GetGlobalConfig()
 	if err != nil {
@@ -441,8 +501,14 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 		principals := namesFromShareAssociations(share)
 		principals = normalizeSambaPrincipalNames(principals)
 
-		if !share.GuestOk {
+		guestWriteable := share.GuestOk && !share.ReadOnly
+		if share.GuestOk {
 			// Best-effort during config generation to avoid breaking Samba reload.
+			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, principals, sambaPrincipalNames{}, false)
+			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, true, guestWriteable, false)
+		} else {
+			// Best-effort during config generation to avoid breaking Samba reload.
+			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
 			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, sambaPrincipalNames{}, principals, false)
 		}
 

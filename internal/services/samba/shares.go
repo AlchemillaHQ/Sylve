@@ -328,6 +328,15 @@ func (s *Service) CreateShare(
 		}
 	}
 
+	if err := s.syncSambaDatasetGuestACL(
+		fDataset.Mountpoint,
+		guestEnabled,
+		guestWriteable,
+		true,
+	); err != nil {
+		return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+	}
+
 	share := sambaModels.SambaShare{
 		Name:               name,
 		Dataset:            dataset,
@@ -482,6 +491,15 @@ func (s *Service) UpdateShare(
 		); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
 		}
+
+		if err := s.syncSambaDatasetGuestACL(
+			fDataset.Mountpoint,
+			guestEnabled,
+			guestWriteable,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+		}
 	} else {
 		oldDataset, oldDatasetErr := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
 		if oldDatasetErr != nil {
@@ -497,6 +515,15 @@ func (s *Service) UpdateShare(
 			); err != nil {
 				return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_principal_acls: %w", err)
 			}
+
+			if err := s.syncSambaDatasetGuestACL(
+				oldDataset.Mountpoint,
+				false,
+				false,
+				true,
+			); err != nil {
+				return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_guest_acl: %w", err)
+			}
 		}
 
 		if err := s.syncSambaDatasetPrincipalACLs(
@@ -506,6 +533,15 @@ func (s *Service) UpdateShare(
 			true,
 		); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
+		}
+
+		if err := s.syncSambaDatasetGuestACL(
+			fDataset.Mountpoint,
+			guestEnabled,
+			guestWriteable,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
 		}
 	}
 
@@ -597,6 +633,7 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
 	} else if dataset != nil && dataset.Mountpoint != "" && dataset.Mountpoint != "-" {
 		_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, previousPrincipals, sambaPrincipalNames{}, false)
+		_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
 	}
 
 	tx := s.DB.Begin()
