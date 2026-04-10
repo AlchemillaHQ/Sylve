@@ -652,6 +652,24 @@ func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, st
 	return nil
 }
 
+func cleanupFailedStorageMetadata(db *gorm.DB, storageID uint, storageDatasetID uint) error {
+	if db == nil || storageID == 0 {
+		return nil
+	}
+
+	if err := db.Delete(&vmModels.Storage{}, storageID).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_storage_record_during_cleanup: %w", err)
+	}
+
+	if storageDatasetID > 0 {
+		if err := db.Delete(&vmModels.VMStorageDataset{}, storageDatasetID).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_storage_dataset_record_during_cleanup: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
@@ -745,10 +763,8 @@ func (s *Service) ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error) 
 }
 
 func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, tx)
-		return s.storageImportTx(req, vm, ctx, tx, hooks)
-	})
+	hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, s.DB)
+	return s.storageImportTx(req, vm, ctx, s.DB, hooks)
 }
 
 func (s *Service) storageImportTx(
@@ -761,6 +777,8 @@ func (s *Service) storageImportTx(
 	hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
 
 	var storage vmModels.Storage
+	var createdStorageRecord bool
+	var createdStorageDatasetID uint
 	var createdManagedDataset bool
 	var rawTempPath string
 	var renamedDatasetOriginal string
@@ -793,6 +811,12 @@ func (s *Service) storageImportTx(
 		if createdManagedDataset {
 			if cleanupErr := s.destroyManagedStorageDataset(ctx, vm.RID, storage); cleanupErr != nil {
 				logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_dataset_after_attach_failure")
+			}
+		}
+
+		if createdStorageRecord {
+			if cleanupErr := cleanupFailedStorageMetadata(tx, storage.ID, createdStorageDatasetID); cleanupErr != nil {
+				logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_metadata_after_attach_failure")
 			}
 		}
 	}()
@@ -839,6 +863,7 @@ func (s *Service) storageImportTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 
 		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
@@ -915,6 +940,7 @@ func (s *Service) storageImportTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 
 		if sourcePool == *req.Pool {
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
@@ -940,6 +966,7 @@ func (s *Service) storageImportTx(
 			if err := tx.Create(&storageDataset).Error; err != nil {
 				return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
 			}
+			createdStorageDatasetID = storageDataset.ID
 
 			storage.DatasetID = &storageDataset.ID
 
@@ -1017,16 +1044,15 @@ func (s *Service) storageImportTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 	}
 
 	return hooks.syncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, tx)
-		return s.storageNewTx(req, vm, ctx, tx, hooks)
-	})
+	hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, s.DB)
+	return s.storageNewTx(req, vm, ctx, s.DB, hooks)
 }
 
 func (s *Service) storageNewTx(
@@ -1039,15 +1065,25 @@ func (s *Service) storageNewTx(
 	hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
 
 	var storage vmModels.Storage
+	var createdStorageRecord bool
+	var createdStorageDatasetID uint
 	var createdManagedDataset bool
 
 	defer func() {
-		if err == nil || !createdManagedDataset {
+		if err == nil {
 			return
 		}
 
-		if cleanupErr := s.destroyManagedStorageDataset(ctx, vm.RID, storage); cleanupErr != nil {
-			logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_dataset_after_attach_failure")
+		if createdManagedDataset {
+			if cleanupErr := s.destroyManagedStorageDataset(ctx, vm.RID, storage); cleanupErr != nil {
+				logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_dataset_after_attach_failure")
+			}
+		}
+
+		if createdStorageRecord {
+			if cleanupErr := cleanupFailedStorageMetadata(tx, storage.ID, createdStorageDatasetID); cleanupErr != nil {
+				logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_metadata_after_attach_failure")
+			}
 		}
 	}()
 
@@ -1075,6 +1111,7 @@ func (s *Service) storageNewTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 
 		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
@@ -1102,6 +1139,7 @@ func (s *Service) storageNewTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 
 		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
@@ -1131,6 +1169,7 @@ func (s *Service) storageNewTx(
 		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
+		createdStorageRecord = true
 
 		storageDataset := vmModels.VMStorageDataset{
 			Pool: dataset.Pool,
@@ -1141,6 +1180,7 @@ func (s *Service) storageNewTx(
 		if err := tx.Create(&storageDataset).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
 		}
+		createdStorageDatasetID = storageDataset.ID
 
 		storage.DatasetID = &storageDataset.ID
 		if err := tx.Save(&storage).Error; err != nil {
