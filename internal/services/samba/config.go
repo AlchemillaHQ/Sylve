@@ -28,6 +28,9 @@ const (
 	sambaACLMode    = "restricted"
 	sambaACLInherit = "passthrough"
 	guestACEName    = "everyone@"
+	readACLPerm     = "read_set/execute"
+	legacyReadPerm  = "read_set"
+	writeACLPerm    = "modify_set"
 )
 
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
@@ -291,35 +294,37 @@ func (s *Service) syncSambaDatasetPrincipalACLs(
 	targetGroups := mergePrincipalNames(previous.ReadGroups, previous.WriteGroups, desired.ReadGroups, desired.WriteGroups)
 
 	for _, user := range targetUsers {
-		removeACL("u", user, "read_set")
-		removeACL("u", user, "modify_set")
+		removeACL("u", user, legacyReadPerm)
+		removeACL("u", user, readACLPerm)
+		removeACL("u", user, writeACLPerm)
 	}
 
 	for _, group := range targetGroups {
-		removeACL("g", group, "read_set")
-		removeACL("g", group, "modify_set")
+		removeACL("g", group, legacyReadPerm)
+		removeACL("g", group, readACLPerm)
+		removeACL("g", group, writeACLPerm)
 	}
 
 	for _, user := range desired.ReadUsers {
-		if err := addACL("u", user, "read_set"); err != nil {
+		if err := addACL("u", user, readACLPerm); err != nil {
 			return err
 		}
 	}
 
 	for _, user := range desired.WriteUsers {
-		if err := addACL("u", user, "modify_set"); err != nil {
+		if err := addACL("u", user, writeACLPerm); err != nil {
 			return err
 		}
 	}
 
 	for _, group := range desired.ReadGroups {
-		if err := addACL("g", group, "read_set"); err != nil {
+		if err := addACL("g", group, readACLPerm); err != nil {
 			return err
 		}
 	}
 
 	for _, group := range desired.WriteGroups {
-		if err := addACL("g", group, "modify_set"); err != nil {
+		if err := addACL("g", group, writeACLPerm); err != nil {
 			return err
 		}
 	}
@@ -372,18 +377,19 @@ func (s *Service) syncSambaDatasetGuestACL(
 		return nil
 	}
 
-	removeACL("read_set")
-	removeACL("modify_set")
+	removeACL(legacyReadPerm)
+	removeACL(readACLPerm)
+	removeACL(writeACLPerm)
 
 	if !guestEnabled {
 		return nil
 	}
 
 	if guestWriteable {
-		return addACL("modify_set")
+		return addACL(writeACLPerm)
 	}
 
-	return addACL("read_set")
+	return addACL(readACLPerm)
 }
 
 func (s *Service) GlobalConfig() (string, error) {
