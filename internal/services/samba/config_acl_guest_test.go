@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
@@ -394,12 +393,24 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 }
 
 func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
-	if _, err := os.Stat("/bin/setfacl"); err != nil {
-		t.Skip("setfacl is not available on this test host")
-	}
-
 	svc, runner := newSambaServiceWithMockRunner(t)
 	ctx := context.Background()
+
+	originalRunCommand := sambaRunCommand
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		return "", nil
+	}
+	t.Cleanup(func() {
+		sambaRunCommand = originalRunCommand
+	})
+
+	originalWriteConfig := sambaWriteConfig
+	sambaWriteConfig = func(_ *Service, _ context.Context, _ bool) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		sambaWriteConfig = originalWriteConfig
+	})
 
 	group := models.Group{Name: "staff"}
 	if err := svc.DB.Create(&group).Error; err != nil {
@@ -410,7 +421,6 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 		{Name: "tank/public", GUID: "guid-public", Mountpoint: "/mnt/public"},
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/public", "", "", nil)
-	runner.AddCommand("/bin/setfacl -m g:staff:modify_set:fd:allow /mnt/public", "", "", nil)
 
 	err := svc.CreateShare(
 		ctx,

@@ -10,13 +10,11 @@ package samba
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"gorm.io/gorm"
 )
 
 type sambaPermissionIDs struct {
@@ -31,6 +29,10 @@ type sambaPrincipalNames struct {
 	WriteUsers  []string
 	ReadGroups  []string
 	WriteGroups []string
+}
+
+var sambaWriteConfig = func(s *Service, ctx context.Context, reload bool) error {
+	return s.WriteConfig(ctx, reload)
 }
 
 func uniqueUint(ids []uint) []uint {
@@ -267,16 +269,24 @@ func (s *Service) CreateShare(
 	timeMachine bool,
 	timeMachineMaxSize uint64,
 ) error {
-	if err := s.DB.Where("name = ?", name).First(&sambaModels.SambaShare{}).Error; err == nil {
-		return fmt.Errorf("share_with_name_exists")
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	var nameConflictCount int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).
+		Where("name = ?", name).
+		Count(&nameConflictCount).Error; err != nil {
 		return fmt.Errorf("failed_to_check_name_conflict: %w", err)
 	}
+	if nameConflictCount > 0 {
+		return fmt.Errorf("share_with_name_exists")
+	}
 
-	if err := s.DB.Where("dataset = ?", dataset).First(&sambaModels.SambaShare{}).Error; err == nil {
-		return fmt.Errorf("share_with_dataset_exists")
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	var datasetConflictCount int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).
+		Where("dataset = ?", dataset).
+		Count(&datasetConflictCount).Error; err != nil {
 		return fmt.Errorf("failed_to_check_dataset_conflict: %w", err)
+	}
+	if datasetConflictCount > 0 {
+		return fmt.Errorf("share_with_dataset_exists")
 	}
 
 	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
@@ -386,7 +396,7 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	return sambaWriteConfig(s, ctx, true)
 }
 
 func (s *Service) UpdateShare(
@@ -613,7 +623,7 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	return sambaWriteConfig(s, ctx, true)
 }
 
 func (s *Service) DeleteShare(ctx context.Context, id uint) error {
@@ -667,5 +677,5 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	return sambaWriteConfig(s, ctx, true)
 }

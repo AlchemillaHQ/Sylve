@@ -33,6 +33,8 @@ const (
 	writeACLPerm    = "modify_set"
 )
 
+var sambaRunCommand = utils.RunCommand
+
 func isMissingACLEntryRemovalError(err error) bool {
 	if err == nil {
 		return false
@@ -259,7 +261,7 @@ func (s *Service) syncSambaDatasetPrincipalACLs(
 	removeACL := func(principalType string, principalName string, permissionSet string) {
 		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
 
-		if _, err := utils.RunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
 			if isMissingACLEntryRemovalError(err) {
 				return
 			}
@@ -277,7 +279,7 @@ func (s *Service) syncSambaDatasetPrincipalACLs(
 	addACL := func(principalType string, principalName string, permissionSet string) error {
 		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
 
-		_, err := utils.RunCommand("/bin/setfacl", "-m", entry, mountpoint)
+		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
 		if err != nil {
 			wrapped := fmt.Errorf(
 				"failed_to_set_acl_for_%s_%s_on_%s: %w",
@@ -362,7 +364,7 @@ func (s *Service) syncSambaDatasetGuestACL(
 
 	removeACL := func(permissionSet string) {
 		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
-		if _, err := utils.RunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
 			if isMissingACLEntryRemovalError(err) {
 				return
 			}
@@ -377,7 +379,7 @@ func (s *Service) syncSambaDatasetGuestACL(
 
 	addACL := func(permissionSet string) error {
 		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
-		_, err := utils.RunCommand("/bin/setfacl", "-m", entry, mountpoint)
+		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
 		if err != nil {
 			wrapped := fmt.Errorf("failed_to_set_guest_acl_for_%s_on_%s: %w", permissionSet, mountpoint, err)
 			if strict {
