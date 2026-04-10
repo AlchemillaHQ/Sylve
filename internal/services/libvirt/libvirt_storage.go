@@ -25,6 +25,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
+	"gorm.io/gorm"
 )
 
 var filesystemTargetNameRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -285,6 +286,14 @@ func (s *Service) CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.C
 }
 
 func (s *Service) SyncVMDisks(rid uint) error {
+	return s.syncVMDisksWithDB(s.DB, rid)
+}
+
+func (s *Service) syncVMDisksWithDB(db *gorm.DB, rid uint) error {
+	if db == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
+
 	if err := s.requireConnection(); err != nil {
 		return err
 	}
@@ -347,13 +356,13 @@ func (s *Service) SyncVMDisks(rid uint) error {
 		}
 	}
 
-	vm, err := s.GetVMByRID(rid)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
+	var vm vmModels.VM
+	if err := db.Where("rid = ?", rid).First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
 	}
 
 	var storages []vmModels.Storage
-	if err := s.DB.
+	if err := db.
 		Preload("Dataset").
 		Where("vm_id = ?", vm.ID).
 		Order("boot_order ASC").
@@ -577,6 +586,72 @@ func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
 	return nil
 }
 
+type storageRuntimeHooks struct {
+	createVMDisk func(rid uint, storage vmModels.Storage, ctx context.Context) error
+	syncVMDisks  func(rid uint) error
+	copyFile     func(src, dst string) error
+}
+
+func (s *Service) normalizeStorageRuntimeHooks(hooks storageRuntimeHooks, db *gorm.DB) storageRuntimeHooks {
+	if hooks.createVMDisk == nil {
+		hooks.createVMDisk = func(rid uint, storage vmModels.Storage, ctx context.Context) error {
+			return s.CreateVMDisk(rid, storage, ctx)
+		}
+	}
+
+	if hooks.syncVMDisks == nil {
+		hooks.syncVMDisks = func(rid uint) error {
+			return s.syncVMDisksWithDB(db, rid)
+		}
+	}
+
+	if hooks.copyFile == nil {
+		hooks.copyFile = utils.CopyFile
+	}
+
+	return hooks
+}
+
+func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, storage vmModels.Storage) error {
+	if s == nil || s.GZFS == nil {
+		return nil
+	}
+
+	var datasetType gzfs.DatasetType
+	var datasetPath string
+
+	switch storage.Type {
+	case vmModels.VMStorageTypeRaw:
+		datasetType = gzfs.DatasetTypeFilesystem
+		datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", storage.Pool, rid, storage.ID)
+	case vmModels.VMStorageTypeZVol:
+		datasetType = gzfs.DatasetTypeVolume
+		datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, rid, storage.ID)
+	default:
+		return nil
+	}
+
+	datasets, err := s.GZFS.ZFS.ListByType(ctx, datasetType, false, datasetPath)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
+			return nil
+		}
+		return fmt.Errorf("failed_to_list_storage_dataset_for_cleanup: %w", err)
+	}
+
+	for _, ds := range datasets {
+		if ds == nil {
+			continue
+		}
+
+		if err := ds.Destroy(ctx, true, false); err != nil {
+			return fmt.Errorf("failed_to_destroy_storage_dataset_%s: %w", ds.Name, err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest) error {
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
@@ -596,34 +671,46 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
 
-	var storage vmModels.Storage
-	if err := s.DB.
-		Preload("Dataset").
-		First(&storage, "id = ? AND vm_id = ?", req.StorageId, vm.ID).
-		Error; err != nil {
-		return fmt.Errorf("failed_to_find_storage_record: %w", err)
-	}
+	return s.storageDetachTx(req, vm.ID, storageRuntimeHooks{})
+}
 
-	if err := s.RemoveStorageXML(req.RID, storage); err != nil {
-		logger.L.Error().Err(err).Msg("vm: storage_detach: failed_to_remove_storage_xml")
-	}
+func (s *Service) storageDetachTx(
+	req libvirtServiceInterfaces.StorageDetachRequest,
+	vmID uint,
+	hooks storageRuntimeHooks,
+) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
 
-	if err := s.DB.Delete(&storage).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_storage_record: %w", err)
-	}
-
-	if storage.DatasetID != nil {
-		var dataset vmModels.VMStorageDataset
-		if err := s.DB.First(&dataset, "id = ?", *storage.DatasetID).Error; err != nil {
-			return fmt.Errorf("failed_to_find_storage_dataset_record: %w", err)
+		var storage vmModels.Storage
+		if err := tx.
+			Preload("Dataset").
+			First(&storage, "id = ? AND vm_id = ?", req.StorageId, vmID).
+			Error; err != nil {
+			return fmt.Errorf("failed_to_find_storage_record: %w", err)
 		}
 
-		if err := s.DB.Delete(&dataset).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_storage_dataset_record: %w", err)
+		if err := tx.Delete(&storage).Error; err != nil {
+			return fmt.Errorf("failed_to_delete_storage_record: %w", err)
 		}
-	}
 
-	return nil
+		if storage.DatasetID != nil {
+			var dataset vmModels.VMStorageDataset
+			if err := tx.First(&dataset, "id = ?", *storage.DatasetID).Error; err != nil {
+				return fmt.Errorf("failed_to_find_storage_dataset_record: %w", err)
+			}
+
+			if err := tx.Delete(&dataset).Error; err != nil {
+				return fmt.Errorf("failed_to_delete_storage_dataset_record: %w", err)
+			}
+		}
+
+		if err := hooks.syncVMDisks(req.RID); err != nil {
+			return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (s *Service) GetNextBootOrderIndex(vmId int) (int, error) {
@@ -658,7 +745,57 @@ func (s *Service) ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error) 
 }
 
 func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, tx)
+		return s.storageImportTx(req, vm, ctx, tx, hooks)
+	})
+}
+
+func (s *Service) storageImportTx(
+	req libvirtServiceInterfaces.StorageAttachRequest,
+	vm vmModels.VM,
+	ctx context.Context,
+	tx *gorm.DB,
+	hooks storageRuntimeHooks,
+) (err error) {
+	hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
+
 	var storage vmModels.Storage
+	var createdManagedDataset bool
+	var rawTempPath string
+	var renamedDatasetOriginal string
+	var renamedDatasetTarget string
+
+	defer func() {
+		if err == nil {
+			return
+		}
+
+		if rawTempPath != "" {
+			if removeErr := os.Remove(rawTempPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				logger.L.Warn().Err(removeErr).Str("path", rawTempPath).Msg("failed_to_remove_temp_import_file")
+			}
+		}
+
+		if renamedDatasetOriginal != "" && renamedDatasetTarget != "" && s.GZFS != nil {
+			targetDatasets, listErr := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false, renamedDatasetTarget)
+			if listErr == nil && len(targetDatasets) > 0 && targetDatasets[0] != nil {
+				if _, renameErr := targetDatasets[0].Rename(ctx, renamedDatasetOriginal, false); renameErr != nil {
+					logger.L.Warn().
+						Err(renameErr).
+						Str("from", renamedDatasetTarget).
+						Str("to", renamedDatasetOriginal).
+						Msg("failed_to_restore_renamed_imported_zvol")
+				}
+			}
+		}
+
+		if createdManagedDataset {
+			if cleanupErr := s.destroyManagedStorageDataset(ctx, vm.RID, storage); cleanupErr != nil {
+				logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_dataset_after_attach_failure")
+			}
+		}
+	}()
 
 	storage.Name = req.Name
 	storage.VMID = vm.ID
@@ -699,13 +836,14 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		storage.Type = vmModels.VMStorageTypeRaw
 		storage.Size = info.Size()
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
+		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
+		createdManagedDataset = true
 
 		datasetPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			storage.Pool,
@@ -714,14 +852,18 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			storage.ID,
 		)
 
-		err = os.Remove(datasetPath)
-		if err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_remove_created_image_file")
-		}
+		tempDatasetPath := fmt.Sprintf("%s.importing", datasetPath)
+		rawTempPath = tempDatasetPath
 
-		if err := utils.CopyFile(req.RawPath, datasetPath); err != nil {
+		if err := hooks.copyFile(req.RawPath, tempDatasetPath); err != nil {
 			return fmt.Errorf("failed_to_copy_raw_file_to_dataset: %w", err)
 		}
+
+		if err := os.Rename(tempDatasetPath, datasetPath); err != nil {
+			return fmt.Errorf("failed_to_replace_imported_raw_file: %w", err)
+		}
+
+		rawTempPath = ""
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL {
 		datasets, err := s.GZFS.ZFS.ListByType(
 			ctx,
@@ -770,7 +912,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		storage.Size = volSize
 		storage.Type = vmModels.VMStorageTypeZVol
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
@@ -783,9 +925,11 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 
 			dataset, err := found.Rename(ctx, targetDatasetPath, false)
 			if err != nil || dataset == nil {
-				_ = s.DB.Delete(&storage).Error
 				return fmt.Errorf("failed_to_rename_zvol_dataset: %w", err)
 			}
+
+			renamedDatasetOriginal = found.Name
+			renamedDatasetTarget = targetDatasetPath
 
 			storageDataset := vmModels.VMStorageDataset{
 				Pool: *req.Pool,
@@ -793,25 +937,35 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 				GUID: dataset.GUID,
 			}
 
-			if err := s.DB.Create(&storageDataset).Error; err != nil {
+			if err := tx.Create(&storageDataset).Error; err != nil {
 				return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
 			}
 
 			storage.DatasetID = &storageDataset.ID
 
-			if err := s.DB.Save(&storage).Error; err != nil {
+			if err := tx.Save(&storage).Error; err != nil {
 				return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 			}
 		} else {
-			if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
+			if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 				return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 			}
+			createdManagedDataset = true
 
 			snapshotName := fmt.Sprintf("import-snap-%d-%d", vm.RID, storage.ID)
 			snapshot, err := found.Snapshot(ctx, snapshotName, false)
 			if err != nil {
 				return fmt.Errorf("failed_to_create_snapshot_of_imported_zvol: %w", err)
 			}
+			defer func() {
+				if snapshot == nil {
+					return
+				}
+
+				if destroyErr := snapshot.Destroy(ctx, true, false); destroyErr != nil {
+					logger.L.Warn().Err(destroyErr).Msg("failed_to_destroy_import_snapshot")
+				}
+			}()
 
 			targetDatasetPath := fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
 				*req.Pool,
@@ -843,6 +997,7 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 			if err := snapshot.Destroy(ctx, true, false); err != nil {
 				logger.L.Warn().Err(err).Msg("failed_to_destroy_import_snapshot")
 			}
+			snapshot = nil
 		}
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeDiskImage {
 		imagePath, err := s.FindISOByUUID(req.UUID, true)
@@ -859,16 +1014,42 @@ func (s *Service) StorageImport(req libvirtServiceInterfaces.StorageAttachReques
 		storage.Size = info.Size()
 		storage.DownloadUUID = req.UUID
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 	}
 
-	return s.SyncVMDisks(vm.RID)
+	return hooks.syncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, vm vmModels.VM, ctx context.Context) error {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		hooks := s.normalizeStorageRuntimeHooks(storageRuntimeHooks{}, tx)
+		return s.storageNewTx(req, vm, ctx, tx, hooks)
+	})
+}
+
+func (s *Service) storageNewTx(
+	req libvirtServiceInterfaces.StorageAttachRequest,
+	vm vmModels.VM,
+	ctx context.Context,
+	tx *gorm.DB,
+	hooks storageRuntimeHooks,
+) (err error) {
+	hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
+
 	var storage vmModels.Storage
+	var createdManagedDataset bool
+
+	defer func() {
+		if err == nil || !createdManagedDataset {
+			return
+		}
+
+		if cleanupErr := s.destroyManagedStorageDataset(ctx, vm.RID, storage); cleanupErr != nil {
+			logger.L.Warn().Err(cleanupErr).Msg("failed_to_cleanup_storage_dataset_after_attach_failure")
+		}
+	}()
 
 	storage.Name = req.Name
 	storage.VMID = vm.ID
@@ -891,13 +1072,14 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 	if req.StorageType == libvirtServiceInterfaces.StorageTypeRaw {
 		storage.Type = vmModels.VMStorageTypeRaw
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
+		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
+		createdManagedDataset = true
 
 		diskPath := fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
 			storage.Pool,
@@ -917,13 +1099,14 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeZVOL {
 		storage.Type = vmModels.VMStorageTypeZVol
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
-		if err := s.CreateVMDisk(vm.RID, storage, ctx); err != nil {
+		if err := hooks.createVMDisk(vm.RID, storage, ctx); err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
+		createdManagedDataset = true
 	} else if req.StorageType == libvirtServiceInterfaces.StorageTypeFilesystem {
 		if !isValidFilesystemTargetName(req.FilesystemTarget) {
 			return fmt.Errorf("invalid_filesystem_target_name")
@@ -945,7 +1128,7 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 		storage.FilesystemTarget = strings.TrimSpace(req.FilesystemTarget)
 		storage.ReadOnly = req.ReadOnly != nil && *req.ReadOnly
 
-		if err := s.DB.Create(&storage).Error; err != nil {
+		if err := tx.Create(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_record: %w", err)
 		}
 
@@ -955,17 +1138,17 @@ func (s *Service) StorageNew(req libvirtServiceInterfaces.StorageAttachRequest, 
 			GUID: dataset.GUID,
 		}
 
-		if err := s.DB.Create(&storageDataset).Error; err != nil {
+		if err := tx.Create(&storageDataset).Error; err != nil {
 			return fmt.Errorf("failed_to_create_storage_dataset_record: %w", err)
 		}
 
 		storage.DatasetID = &storageDataset.ID
-		if err := s.DB.Save(&storage).Error; err != nil {
+		if err := tx.Save(&storage).Error; err != nil {
 			return fmt.Errorf("failed_to_update_storage_with_dataset_id: %w", err)
 		}
 	}
 
-	return s.SyncVMDisks(vm.RID)
+	return hooks.syncVMDisks(vm.RID)
 }
 
 func (s *Service) StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) error {
