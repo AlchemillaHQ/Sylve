@@ -300,6 +300,10 @@ export function getVMIconByGaId(id: string): string {
             return 'icon-[ri--windows-fill]';
         case 'rocky':
             return 'icon-[simple-icons--rockylinux]';
+        case 'slackware':
+            return 'icon-[simple-icons--slackware]';
+        case 'almalinux':
+            return 'icon-[simple-icons--almalinux]';
         default:
             return 'icon-[carbon--unknown]';
     }
