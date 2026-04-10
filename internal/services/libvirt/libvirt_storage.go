@@ -689,15 +689,17 @@ func (s *Service) StorageDetach(req libvirtServiceInterfaces.StorageDetachReques
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
 
-	return s.storageDetachTx(req, vm.ID, storageRuntimeHooks{})
+	return s.storageDetachApply(req, vm.ID, storageRuntimeHooks{})
 }
 
-func (s *Service) storageDetachTx(
+func (s *Service) storageDetachApply(
 	req libvirtServiceInterfaces.StorageDetachRequest,
 	vmID uint,
 	hooks storageRuntimeHooks,
 ) error {
-	return s.DB.Transaction(func(tx *gorm.DB) error {
+	hooks = s.normalizeStorageRuntimeHooks(hooks, s.DB)
+
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
 		hooks = s.normalizeStorageRuntimeHooks(hooks, tx)
 
 		var storage vmModels.Storage
@@ -723,12 +725,16 @@ func (s *Service) storageDetachTx(
 			}
 		}
 
-		if err := hooks.syncVMDisks(req.RID); err != nil {
-			return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
-		}
-
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	if err := hooks.syncVMDisks(req.RID); err != nil {
+		return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) GetNextBootOrderIndex(vmId int) (int, error) {

@@ -379,7 +379,7 @@ func TestStorageImportZVOL_RollsBackWhenRenameFails(t *testing.T) {
 	}
 }
 
-func TestStorageDetachTx_RollsBackWhenSyncFails(t *testing.T) {
+func TestStorageDetachApply_StillRemovesRowsWhenSyncFails(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
 
 	dataset := vmModels.VMStorageDataset{
@@ -407,7 +407,7 @@ func TestStorageDetachTx_RollsBackWhenSyncFails(t *testing.T) {
 		DB: db,
 	}
 
-	err := svc.storageDetachTx(libvirtServiceInterfaces.StorageDetachRequest{
+	err := svc.storageDetachApply(libvirtServiceInterfaces.StorageDetachRequest{
 		RID:       504,
 		StorageId: int(storage.ID),
 	}, storage.VMID, storageRuntimeHooks{
@@ -419,15 +419,15 @@ func TestStorageDetachTx_RollsBackWhenSyncFails(t *testing.T) {
 		t.Fatalf("expected failed_to_sync_vm_disks error, got %v", err)
 	}
 
-	if got := mustCountRows[vmModels.Storage](t, svc); got != 1 {
-		t.Fatalf("expected vm_storages rollback, found %d rows", got)
+	if got := mustCountRows[vmModels.Storage](t, svc); got != 0 {
+		t.Fatalf("expected vm_storages removed before sync, found %d rows", got)
 	}
-	if got := mustCountRows[vmModels.VMStorageDataset](t, svc); got != 1 {
-		t.Fatalf("expected vm_storage_datasets rollback, found %d rows", got)
+	if got := mustCountRows[vmModels.VMStorageDataset](t, svc); got != 0 {
+		t.Fatalf("expected vm_storage_datasets removed before sync, found %d rows", got)
 	}
 }
 
-func TestStorageDetachTx_SucceedsAndRemovesRows(t *testing.T) {
+func TestStorageDetachApply_SucceedsAndRemovesRows(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
 
 	dataset := vmModels.VMStorageDataset{
@@ -455,7 +455,7 @@ func TestStorageDetachTx_SucceedsAndRemovesRows(t *testing.T) {
 		DB: db,
 	}
 
-	err := svc.storageDetachTx(libvirtServiceInterfaces.StorageDetachRequest{
+	err := svc.storageDetachApply(libvirtServiceInterfaces.StorageDetachRequest{
 		RID:       505,
 		StorageId: int(storage.ID),
 	}, storage.VMID, storageRuntimeHooks{
