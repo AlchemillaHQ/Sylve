@@ -33,6 +33,14 @@ const (
 	writeACLPerm    = "modify_set"
 )
 
+func isMissingACLEntryRemovalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return strings.Contains(err.Error(), "cannot remove non-existent ACL entry")
+}
+
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
 	var settings sambaModels.SambaSettings
 	if err := s.DB.First(&settings).Error; err != nil {
@@ -252,6 +260,10 @@ func (s *Service) syncSambaDatasetPrincipalACLs(
 		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
 
 		if _, err := utils.RunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+			if isMissingACLEntryRemovalError(err) {
+				return
+			}
+
 			logger.L.Warn().
 				Err(err).
 				Str("principal", principalName).
@@ -351,6 +363,10 @@ func (s *Service) syncSambaDatasetGuestACL(
 	removeACL := func(permissionSet string) {
 		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
 		if _, err := utils.RunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+			if isMissingACLEntryRemovalError(err) {
+				return
+			}
+
 			logger.L.Warn().
 				Err(err).
 				Str("permission_set", permissionSet).
