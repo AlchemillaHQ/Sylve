@@ -12,6 +12,7 @@
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
+	import { slide } from 'svelte/transition';
 
 	interface Props {
 		open: boolean;
@@ -37,15 +38,19 @@
 		appleExtensions = false
 	}: Props = $props();
 
-	const userOptions = users.map((user) => ({
-		label: user.username,
-		value: String(user.id)
-	}));
+	let userOptions = $derived.by(() => {
+		return users.map((user) => ({
+			label: user.username,
+			value: String(user.id)
+		}));
+	});
 
-	const groupOptions = groups.map((group) => ({
-		label: group.name,
-		value: String(group.id)
-	}));
+	let groupOptions = $derived.by(() => {
+		return groups.map((group) => ({
+			label: group.name,
+			value: String(group.id)
+		}));
+	});
 
 	// svelte-ignore state_referenced_locally
 	let options = {
@@ -115,6 +120,7 @@
 	};
 
 	let properties = $state(options);
+	let saving = $state(false);
 
 	function normalizeWriteWins() {
 		const writeUsers = new Set(properties.writeUsers.combobox.value);
@@ -186,6 +192,8 @@
 
 		let response: APIResponse;
 
+		saving = true;
+
 		if (edit) {
 			response = await updateSambaShare(
 				share!.id,
@@ -211,6 +219,7 @@
 			);
 		}
 
+		saving = false;
 		reload = true;
 
 		if (response.status === 'error') {
@@ -328,62 +337,74 @@
 				<Label for="guest-mode">Guest Only</Label>
 				<Checkbox id="guest-mode" bind:checked={properties.guest.enabled} />
 			</div>
+		</div>
 
+		<div class="overflow-hidden">
 			{#if !properties.guest.enabled}
-				<CustomComboBox
-					label="Read Users"
-					placeholder="Select users"
-					bind:open={properties.readUsers.combobox.open}
-					bind:value={properties.readUsers.combobox.value}
-					data={properties.readUsers.combobox.options}
-					multiple={true}
-					showCount={true}
-					showCountLabel=" users"
-					width="w-2/5"
-				/>
+				<div
+					class="grid grid-cols-1 gap-4 md:grid-cols-2"
+					in:slide={{ duration: 200, delay: 200 }}
+					out:slide={{ duration: 200 }}
+				>
+					<CustomComboBox
+						label="Read Users"
+						placeholder="Select users"
+						bind:open={properties.readUsers.combobox.open}
+						bind:value={properties.readUsers.combobox.value}
+						data={properties.readUsers.combobox.options}
+						multiple={true}
+						showCount={true}
+						showCountLabel=" users"
+						width="w-2/5"
+					/>
 
-				<CustomComboBox
-					label="Write Users"
-					placeholder="Select users"
-					bind:open={properties.writeUsers.combobox.open}
-					bind:value={properties.writeUsers.combobox.value}
-					data={properties.writeUsers.combobox.options}
-					multiple={true}
-					showCount={true}
-					showCountLabel=" users"
-					width="w-2/5"
-				/>
+					<CustomComboBox
+						label="Write Users"
+						placeholder="Select users"
+						bind:open={properties.writeUsers.combobox.open}
+						bind:value={properties.writeUsers.combobox.value}
+						data={properties.writeUsers.combobox.options}
+						multiple={true}
+						showCount={true}
+						showCountLabel=" users"
+						width="w-2/5"
+					/>
 
-				<CustomComboBox
-					label="Read Groups"
-					placeholder="Select groups"
-					bind:open={properties.readGroups.combobox.open}
-					bind:value={properties.readGroups.combobox.value}
-					data={properties.readGroups.combobox.options}
-					multiple={true}
-					showCount={true}
-					showCountLabel=" groups"
-					width="w-2/5"
-				/>
+					<CustomComboBox
+						label="Read Groups"
+						placeholder="Select groups"
+						bind:open={properties.readGroups.combobox.open}
+						bind:value={properties.readGroups.combobox.value}
+						data={properties.readGroups.combobox.options}
+						multiple={true}
+						showCount={true}
+						showCountLabel=" groups"
+						width="w-2/5"
+					/>
 
-				<CustomComboBox
-					label="Write Groups"
-					placeholder="Select groups"
-					bind:open={properties.writeGroups.combobox.open}
-					bind:value={properties.writeGroups.combobox.value}
-					data={properties.writeGroups.combobox.options}
-					multiple={true}
-					showCount={true}
-					showCountLabel=" groups"
-					width="w-2/5"
-				/>
+					<CustomComboBox
+						label="Write Groups"
+						placeholder="Select groups"
+						bind:open={properties.writeGroups.combobox.open}
+						bind:value={properties.writeGroups.combobox.value}
+						data={properties.writeGroups.combobox.options}
+						multiple={true}
+						showCount={true}
+						showCountLabel=" groups"
+						width="w-2/5"
+					/>
+				</div>
 			{:else}
-				<div class="flex items-center justify-between gap-2 rounded border p-2 md:col-span-2">
-					<Label for="guest-writeable">Guest Writeable</Label>
-					<Checkbox id="guest-writeable" bind:checked={properties.guest.writeable} />
+				<div in:slide={{ duration: 200, delay: 200 }} out:slide={{ duration: 200 }}>
+					<div class="flex items-center justify-between gap-2 rounded border p-2">
+						<Label for="guest-writeable">Guest Writeable</Label>
+						<Checkbox id="guest-writeable" bind:checked={properties.guest.writeable} />
+					</div>
 				</div>
 			{/if}
+		</div>
 
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<CustomValueInput
 				label="Create Mask"
 				placeholder="0664"
@@ -405,19 +426,32 @@
 				</div>
 
 				{#if properties.timeMachine}
-					<CustomValueInput
-						label="Time Machine Max Size (GB)"
-						placeholder="0"
-						bind:value={properties.timeMachineMaxSize}
-						classes="flex-1 space-y-1.5 md:col-span-2"
-					/>
+					<div class="md:col-span-2" in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+						<CustomValueInput
+							label="Time Machine Max Size (GB)"
+							placeholder="0"
+							bind:value={properties.timeMachineMaxSize}
+							classes="flex-1 space-y-1.5"
+							hint="Set to 0 for unlimited size"
+							type="number"
+						/>
+					</div>
 				{/if}
 			{/if}
 		</div>
 
 		<div class="mt-4 flex justify-end gap-2">
 			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
-			<Button onclick={createOrEdit}>{edit ? 'Save' : 'Create'}</Button>
+			<Button onclick={createOrEdit} disabled={saving}>
+				{#if saving}
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>
+						<span>{edit ? 'Saving...' : 'Creating...'}</span>
+					</div>
+				{:else}
+					{edit ? 'Save' : 'Create'}
+				{/if}
+			</Button>
 		</div>
 	</Dialog.Content>
 </Dialog.Root>

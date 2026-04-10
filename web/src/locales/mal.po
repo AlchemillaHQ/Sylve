@@ -6891,6 +6891,7 @@ msgstr "ക്ലീൻ സ്ലേറ്റ്"
 msgid "Optional note about why this snapshot was taken"
 msgstr "ഈ സ്നാപ്പ്ഷോട്ട് എന്തിനാണ് എടുത്തത് എന്നതിനെക്കുറിച്ചുള്ള കുറിപ്പ്"
 
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -10169,8 +10170,9 @@ msgstr ""
 #~ msgid "VM name"
 #~ msgstr ""
 
-#~ msgid "Saving..."
-#~ msgstr ""
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Saving..."
+msgstr ""
 
 #~ msgid "Save Name"
 #~ msgstr ""
@@ -13112,4 +13114,8 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Time Machine Max Size (GB)"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Set to 0 for unlimited size"
 msgstr ""

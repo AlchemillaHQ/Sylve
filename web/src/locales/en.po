@@ -6891,6 +6891,7 @@ msgstr "Clean Slate"
 msgid "Optional note about why this snapshot was taken"
 msgstr "Optional note about why this snapshot was taken"
 
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -10169,8 +10170,9 @@ msgstr "This VM is owned by another node right now"
 #~ msgid "VM name"
 #~ msgstr "VM name"
 
-#~ msgid "Saving..."
-#~ msgstr "Saving..."
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Saving..."
+msgstr "Saving..."
 
 #~ msgid "Save Name"
 #~ msgstr "Save Name"
@@ -13113,3 +13115,7 @@ msgstr "Guest Writeable"
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Time Machine Max Size (GB)"
 msgstr "Time Machine Max Size (GB)"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Set to 0 for unlimited size"
+msgstr "Set to 0 for unlimited size"
