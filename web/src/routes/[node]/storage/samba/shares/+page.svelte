@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { listGroups } from '$lib/api/auth/groups';
+	import { listUsers } from '$lib/api/auth/local';
 	import { getSambaConfig } from '$lib/api/samba/config';
 	import { deleteSambaShare, getSambaShares } from '$lib/api/samba/share';
 	import { getDatasets } from '$lib/api/zfs/datasets';
@@ -8,7 +9,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { Group } from '$lib/types/auth';
+	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import type { SambaShare } from '$lib/types/samba/shares';
@@ -23,6 +24,7 @@
 		shares: SambaShare[];
 		datasets: Dataset[];
 		groups: Group[];
+		users: User[];
 		sambaConfig: SambaConfig;
 	}
 
@@ -68,6 +70,19 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	let users = resource(
+		() => 'users',
+		async () => {
+			const result = await listUsers();
+			updateCache('users', result);
+			return result;
+		},
+		{
+			initialValue: data.users
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	let sambaConfig = resource(
 		() => 'samba-config',
 		async () => {
@@ -89,6 +104,7 @@
 				datasets.refetch();
 				shares.refetch();
 				groups.refetch();
+				users.refetch();
 				reload = false;
 			}
 		}
@@ -113,22 +129,16 @@
 	let properties = $state(options);
 	let query = $state('');
 
-	function generateTableData(
-		shares: SambaShare[],
-		datasets: Dataset[]
-	): {
+	function generateTableData(shares: SambaShare[], datasets: Dataset[]): {
 		rows: Row[];
 		columns: Column[];
 	} {
-		function groupFormatter(cell: CellComponent) {
-			const groups = cell.getValue() as Group[];
-			if (!groups?.length) return '-';
+		function principalFormatter(cell: CellComponent) {
+			const principals = cell.getValue() as string[];
+			if (!principals?.length) return '-';
 
-			const shown = groups
-				.slice(0, 5)
-				.map((g) => g.name)
-				.join(', ');
-			return groups.length > 5 ? `${shown}, …` : shown;
+			const shown = principals.slice(0, 5).join(', ');
+			return principals.length > 5 ? `${shown}, …` : shown;
 		}
 
 		const rows: Row[] = [];
@@ -147,14 +157,14 @@
 				title: 'Mount Point'
 			},
 			{
-				field: 'readOnlyGroups',
-				title: 'Read-Only Groups',
-				formatter: groupFormatter
+				field: 'readAccess',
+				title: 'Read Access',
+				formatter: principalFormatter
 			},
 			{
-				field: 'writeableGroups',
-				title: 'Writeable Groups',
-				formatter: groupFormatter
+				field: 'writeAccess',
+				title: 'Write Access',
+				formatter: principalFormatter
 			},
 			{
 				field: 'created',
@@ -168,12 +178,21 @@
 
 		for (const share of shares) {
 			const dataset = datasets.find((ds) => ds.guid === share.dataset);
+			const readAccess = [
+				...share.permissions.read.users.map((user) => user.username),
+				...share.permissions.read.groups.map((group) => `@${group.name}`)
+			];
+			const writeAccess = [
+				...share.permissions.write.users.map((user) => user.username),
+				...share.permissions.write.groups.map((group) => `@${group.name}`)
+			];
+
 			const row: Row = {
 				id: share.id,
 				name: share.name,
 				mountpoint: dataset ? dataset.mountpoint : '-',
-				readOnlyGroups: share.readOnlyGroups || [],
-				writeableGroups: share.writeableGroups || [],
+				readAccess,
+				writeAccess,
 				created: share.createdAt
 			};
 
@@ -266,6 +285,7 @@
 		shares={shares.current}
 		datasets={datasets.current}
 		groups={groups.current}
+		users={users.current}
 		appleExtensions={sambaConfig.current.appleExtensions}
 		bind:reload
 	/>
@@ -277,6 +297,7 @@
 		shares={shares.current}
 		datasets={datasets.current}
 		groups={groups.current}
+		users={users.current}
 		share={properties.edit.share}
 		edit={properties.edit.open}
 		appleExtensions={sambaConfig.current.appleExtensions}

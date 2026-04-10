@@ -13,7 +13,7 @@
             "name": "BSD-2-Clause",
             "url": "https://github.com/AlchemillaHQ/Sylve/blob/master/LICENSE"
         },
-        "version": "0.1.1"
+        "version": "0.2.3"
     },
     "host": "sylve.lan:8181",
     "basePath": "/api",
@@ -2344,6 +2344,172 @@
                 }
             }
         },
+        "/jail/bootstrap": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Start a pkgbase bootstrap for the given pool, version, and type. Returns immediately; bootstrap runs asynchronously.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Create bootstrap",
+                "parameters": [
+                    {
+                        "description": "Bootstrap Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Destroy a completed pkgbase bootstrap dataset and remove its DB record",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Delete bootstrap",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool name",
+                        "name": "pool",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Bootstrap name (e.g. 15-0-Base)",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/jail/bootstraps": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all supported pkgbase bootstrap entries for a pool, with their current install status",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "List bootstraps",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool name",
+                        "name": "pool",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_BootstrapEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/cpu": {
             "put": {
                 "security": [
@@ -2460,6 +2626,51 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/internal_handlers_jail.JailUpdateMemoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/jail/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the name of a jail by its ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Edit a Jail's name",
+                "parameters": [
+                    {
+                        "description": "Edit Jail Name Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.JailEditNameRequest"
                         }
                     }
                 ],
@@ -3305,6 +3516,57 @@
                 }
             }
         },
+        "/network/dhcp/lease/dynamic": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an active DHCP lease by identifier (MAC or DUID) and IP",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Delete Dynamic DHCP Lease",
+                "parameters": [
+                    {
+                        "description": "Request Body",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/network/dhcp/lease/{id}": {
             "delete": {
                 "security": [
@@ -3751,9 +4013,9 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Samba share created successfully",
+                        "description": "ID of the created network object",
                         "schema": {
-                            "type": "string"
+                            "type": "uint"
                         }
                     },
                     "400": {
@@ -3766,6 +4028,57 @@
                         "description": "Internal server error",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/object/bulk-delete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete multiple network objects by their IDs; fails if any object is in use",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Bulk Delete Network Objects",
+                "parameters": [
+                    {
+                        "description": "Bulk Delete Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_network.BulkDeleteNetworkObjectsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Objects deleted successfully",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     }
                 }
@@ -4269,6 +4582,57 @@
                 }
             }
         },
+        "/options/boot-rom/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify the Boot ROM mode of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify Boot ROM of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify Boot ROM Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyBootROMRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/options/clock/:rid": {
             "put": {
                 "security": [
@@ -4397,6 +4761,57 @@
                         "required": true,
                         "schema": {
                             "$ref": "#/definitions/internal_handlers_jail.ModifyDevFSRulesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/options/extra-bhyve-options/:rid": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modify custom bhyve arguments (one argument per line) of a virtual machine",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Modify Extra Bhyve Options of a Virtual Machine",
+                "parameters": [
+                    {
+                        "description": "Modify Extra Bhyve Options Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.ModifyExtraBhyveOptionsRequest"
                         }
                     }
                 ],
@@ -5124,7 +5539,7 @@
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_samba_SambaShare"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_internal_handlers_samba_SambaShareResponse"
                         }
                     },
                     "500": {
@@ -6563,6 +6978,34 @@
                 }
             }
         },
+        "/utilities/downloads/paths": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get configured filesystem paths used by downloader for HTTP and Path downloads",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Get Download Paths",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/utilities/downloads/signed-url": {
             "get": {
                 "security": [
@@ -6991,6 +7434,106 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/vm/logs/:rid": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve console log for a specific VM by RID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Get VM Logs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "VM RID",
+                        "name": "rid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "VM Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/vm/name": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the name of a virtual machine by its RID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "VM"
+                ],
+                "summary": "Edit a Virtual Machine's name",
+                "parameters": [
+                    {
+                        "description": "Edit Virtual Machine Name Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_vm.VMEditNameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -8751,26 +9294,6 @@
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_samba_SambaShare": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_samba.SambaShare"
-                    }
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate": {
             "type": "object",
             "properties": {
@@ -8911,6 +9434,26 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_BootstrapEntry": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapEntry"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList": {
             "type": "object",
             "properties": {
@@ -9018,6 +9561,26 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_system_pciconf.PCIDevice"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_internal_handlers_samba_SambaShareResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers_samba.SambaShareResponse"
                     }
                 },
                 "error": {
@@ -9354,6 +9917,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_utilities.DownloadPathsResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_zfs_PoolStatPointResponse": {
             "type": "object",
             "properties": {
@@ -9423,14 +10003,20 @@
                 "jails",
                 "samba-server",
                 "virtualization",
-                "wol-server"
+                "wol-server",
+                "firewall",
+                "wireguard",
+                "iscsi"
             ],
             "x-enum-varnames": [
                 "DHCPServer",
                 "Jails",
                 "SambaServer",
                 "Virtualization",
-                "WoLServer"
+                "WoLServer",
+                "Firewall",
+                "WireGuard",
+                "ISCSI"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models.BasicSettings": {
@@ -9540,7 +10126,16 @@
                 "createdAt": {
                     "type": "string"
                 },
+                "disablePassword": {
+                    "type": "boolean"
+                },
+                "doasEnabled": {
+                    "type": "boolean"
+                },
                 "email": {
+                    "type": "string"
+                },
+                "fullName": {
                     "type": "string"
                 },
                 "groups": {
@@ -9549,13 +10144,31 @@
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group"
                     }
                 },
+                "homeDirPerms": {
+                    "type": "integer"
+                },
+                "homeDirectory": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
                 "lastLoginTime": {
                     "type": "string"
                 },
+                "locked": {
+                    "type": "boolean"
+                },
                 "notes": {
+                    "type": "string"
+                },
+                "primaryGroupId": {
+                    "type": "integer"
+                },
+                "shell": {
+                    "type": "string"
+                },
+                "sshPublicKey": {
                     "type": "string"
                 },
                 "tokens": {
@@ -9566,6 +10179,9 @@
                 },
                 "totp": {
                     "type": "string"
+                },
+                "uid": {
+                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -9890,6 +10506,9 @@
                 },
                 "updatedAt": {
                     "type": "string"
+                },
+                "wol": {
+                    "type": "boolean"
                 }
             }
         },
@@ -10218,6 +10837,9 @@
         "github_com_alchemillahq_sylve_internal_db_models_network.Object": {
             "type": "object",
             "properties": {
+                "autoUpdate": {
+                    "type": "boolean"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -10240,7 +10862,19 @@
                     "description": "\"\", \"dhcp\" for now",
                     "type": "string"
                 },
+                "lastRefreshAt": {
+                    "type": "string"
+                },
+                "lastRefreshError": {
+                    "type": "string"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "refreshIntervalSeconds": {
+                    "type": "integer"
+                },
+                "resolutionChecksum": {
                     "type": "string"
                 },
                 "resolutions": {
@@ -10249,8 +10883,11 @@
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ObjectResolution"
                     }
                 },
+                "sourceChecksum": {
+                    "type": "string"
+                },
                 "type": {
-                    "description": "\"Host\", \"Mac\", \"Network\", \"Port\", \"Country\", \"List\"",
+                    "description": "\"Host\", \"Mac\", \"Network\", \"Port\", \"Country\", \"List\", \"FQDN\", \"DUID\"",
                     "type": "string"
                 },
                 "updatedAt": {
@@ -10292,7 +10929,10 @@
                     "type": "integer"
                 },
                 "resolvedIp": {
-                    "description": "actual IP resolved only in the case of FQDN",
+                    "description": "deprecated mirror for resolved IP entries",
+                    "type": "string"
+                },
+                "resolvedValue": {
                     "type": "string"
                 },
                 "updatedAt": {
@@ -10427,6 +11067,9 @@
         "github_com_alchemillahq_sylve_internal_db_models_samba.SambaSettings": {
             "type": "object",
             "properties": {
+                "appleExtensions": {
+                    "type": "boolean"
+                },
                 "bindInterfacesOnly": {
                     "type": "boolean"
                 },
@@ -10444,53 +11087,6 @@
                 },
                 "workgroup": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_alchemillahq_sylve_internal_db_models_samba.SambaShare": {
-            "type": "object",
-            "properties": {
-                "createMask": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "dataset": {
-                    "type": "string"
-                },
-                "directoryMask": {
-                    "type": "string"
-                },
-                "guestOk": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "readOnly": {
-                    "type": "boolean"
-                },
-                "readOnlyGroups": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group"
-                    }
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "writeableGroups": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group"
-                    }
                 }
             }
         },
@@ -10693,6 +11289,12 @@
                 "emulation": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMStorageEmulationType"
                 },
+                "enable": {
+                    "type": "boolean"
+                },
+                "filesystemTarget": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -10701,6 +11303,9 @@
                 },
                 "pool": {
                     "type": "string"
+                },
+                "readOnly": {
+                    "type": "boolean"
                 },
                 "recordSize": {
                     "type": "integer"
@@ -10742,6 +11347,9 @@
                 "apic": {
                     "type": "boolean"
                 },
+                "bootRom": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMBootROM"
+                },
                 "cloudInitData": {
                     "type": "string"
                 },
@@ -10771,6 +11379,12 @@
                 },
                 "description": {
                     "type": "string"
+                },
+                "extraBhyveOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "id": {
                     "type": "integer"
@@ -10844,6 +11458,9 @@
                 "updatedAt": {
                     "type": "string"
                 },
+                "vncBind": {
+                    "type": "string"
+                },
                 "vncEnabled": {
                     "type": "boolean"
                 },
@@ -10863,6 +11480,17 @@
                     "type": "boolean"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_vm.VMBootROM": {
+            "type": "string",
+            "enum": [
+                "uefi",
+                "none"
+            ],
+            "x-enum-varnames": [
+                "VMBootROMUEFI",
+                "VMBootROMNone"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning": {
             "type": "object",
@@ -10966,12 +11594,14 @@
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -10982,12 +11612,14 @@
             "enum": [
                 "raw",
                 "zvol",
-                "image"
+                "image",
+                "filesystem"
             ],
             "x-enum-varnames": [
                 "VMStorageTypeRaw",
                 "VMStorageTypeZVol",
-                "VMStorageTypeDiskImage"
+                "VMStorageTypeDiskImage",
+                "VMStorageTypeFilesystem"
             ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_zfs.PeriodicSnapshot": {
@@ -11123,6 +11755,12 @@
                 "hostname": {
                     "type": "string"
                 },
+                "jailTemplates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList"
+                    }
+                },
                 "jails": {
                     "type": "array",
                     "items": {
@@ -11131,6 +11769,12 @@
                 },
                 "nodeUUID": {
                     "type": "string"
+                },
+                "vmTemplates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList"
+                    }
                 },
                 "vms": {
                     "type": "array",
@@ -11415,6 +12059,69 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapEntry": {
+            "type": "object",
+            "properties": {
+                "dataset": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "exists": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "major": {
+                    "type": "integer"
+                },
+                "minor": {
+                    "type": "integer"
+                },
+                "mountPoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapRequest": {
+            "type": "object",
+            "required": [
+                "major",
+                "pool",
+                "type"
+            ],
+            "properties": {
+                "major": {
+                    "type": "integer"
+                },
+                "minor": {
+                    "type": "integer"
+                },
+                "pool": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_jail.CreateJailRequest": {
             "type": "object",
             "required": [
@@ -11434,6 +12141,9 @@
                     }
                 },
                 "base": {
+                    "type": "string"
+                },
+                "bootstrapName": {
                     "type": "string"
                 },
                 "cleanEnvironment": {
@@ -11616,6 +12326,20 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sourceJailName": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_jail.State": {
             "type": "object",
             "properties": {
@@ -11672,6 +12396,9 @@
                 "apic": {
                     "type": "boolean"
                 },
+                "bootRom": {
+                    "type": "string"
+                },
                 "cloudInit": {
                     "type": "boolean"
                 },
@@ -11701,6 +12428,12 @@
                 },
                 "description": {
                     "type": "string"
+                },
+                "extraBhyveOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "ignoreUMSR": {
                     "type": "boolean"
@@ -11760,6 +12493,12 @@
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.TimeOffset"
                 },
                 "tpmEmulation": {
+                    "type": "boolean"
+                },
+                "vncBind": {
+                    "type": "string"
+                },
+                "vncEnabled": {
                     "type": "boolean"
                 },
                 "vncPassword": {
@@ -11826,6 +12565,9 @@
                 "vncResolution"
             ],
             "properties": {
+                "vncBind": {
+                    "type": "string"
+                },
                 "vncEnabled": {
                     "type": "boolean"
                 },
@@ -11869,16 +12611,32 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.SimpleTemplateList": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sourceVmName": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType": {
             "type": "string",
             "enum": [
                 "virtio-blk",
+                "virtio-9p",
                 "ahci-hd",
                 "ahci-cd",
                 "nvme"
             ],
             "x-enum-varnames": [
                 "VirtIOStorageEmulation",
+                "VirtIO9PStorageEmulation",
                 "AHCIHDStorageEmulation",
                 "AHCICDStorageEmulation",
                 "NVMEStorageEmulation"
@@ -11890,12 +12648,14 @@
                 "raw",
                 "zvol",
                 "image",
+                "filesystem",
                 "none"
             ],
             "x-enum-varnames": [
                 "StorageTypeRaw",
                 "StorageTypeZVOL",
                 "StorageTypeDiskImage",
+                "StorageTypeFilesystem",
                 "StorageTypeNone"
             ]
         },
@@ -11969,6 +12729,21 @@
                 },
                 "macId": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.DeleteDynamicLeaseRequest": {
+            "type": "object",
+            "required": [
+                "identifier",
+                "ip"
+            ],
+            "properties": {
+                "identifier": {
+                    "type": "string"
+                },
+                "ip": {
+                    "type": "string"
                 }
             }
         },
@@ -12372,6 +13147,9 @@
                 },
                 "datasetType": {
                     "$ref": "#/definitions/gzfs.DatasetType"
+                },
+                "nameFilter": {
+                    "type": "string"
                 },
                 "page": {
                     "type": "integer"
@@ -13223,20 +14001,56 @@
             "type": "object",
             "required": [
                 "admin",
-                "password",
                 "username"
             ],
             "properties": {
                 "admin": {
                     "type": "boolean"
                 },
+                "auxGroupIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "disablePassword": {
+                    "type": "boolean"
+                },
+                "doasEnabled": {
+                    "type": "boolean"
+                },
                 "email": {
                     "type": "string"
                 },
+                "fullName": {
+                    "type": "string"
+                },
+                "homeDirPerms": {
+                    "type": "integer"
+                },
+                "homeDirectory": {
+                    "type": "string"
+                },
+                "locked": {
+                    "type": "boolean"
+                },
+                "newPrimaryGroup": {
+                    "type": "boolean"
+                },
                 "password": {
-                    "type": "string",
-                    "maxLength": 128,
-                    "minLength": 3
+                    "type": "string"
+                },
+                "primaryGroupId": {
+                    "type": "integer"
+                },
+                "shell": {
+                    "type": "string"
+                },
+                "sshPublicKey": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string",
@@ -13295,7 +14109,8 @@
             "required": [
                 "clusterKey",
                 "nodeId",
-                "nodeIp"
+                "nodeIp",
+                "nodeVersion"
             ],
             "properties": {
                 "clusterKey": {
@@ -13305,6 +14120,9 @@
                     "type": "string"
                 },
                 "nodeIp": {
+                    "type": "string"
+                },
+                "nodeVersion": {
                     "type": "string"
                 }
             }
@@ -13445,6 +14263,21 @@
                 }
             }
         },
+        "internal_handlers_jail.JailEditNameRequest": {
+            "type": "object",
+            "required": [
+                "id",
+                "name"
+            ],
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_jail.JailUpdateCPURequest": {
             "type": "object",
             "required": [
@@ -13548,6 +14381,14 @@
                 }
             }
         },
+        "internal_handlers_jail.ModifyWakeOnLanRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
         "internal_handlers_jail.SetInheritanceRequest": {
             "type": "object",
             "properties": {
@@ -13556,6 +14397,20 @@
                 },
                 "ipv6": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_network.BulkDeleteNetworkObjectsRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
@@ -13749,32 +14604,29 @@
                 "directoryMask": {
                     "type": "string"
                 },
-                "guestOk": {
-                    "type": "boolean"
+                "guest": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaGuestRequest"
                 },
                 "name": {
                     "type": "string"
                 },
-                "readOnly": {
+                "permissions": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPermissionsRequest"
+                },
+                "timeMachine": {
                     "type": "boolean"
                 },
-                "readOnlyGroups": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "writeableGroups": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "timeMachineMaxSize": {
+                    "type": "integer"
                 }
             }
         },
         "internal_handlers_samba.SambaConfigRequest": {
             "type": "object",
             "properties": {
+                "appleExtensions": {
+                    "type": "boolean"
+                },
                 "bindInterfacesOnly": {
                     "type": "boolean"
                 },
@@ -13792,6 +14644,144 @@
                 }
             }
         },
+        "internal_handlers_samba.SambaGuestRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "writeable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaGuestResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "writeable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPermissionsRequest": {
+            "type": "object",
+            "properties": {
+                "read": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalIDsRequest"
+                },
+                "write": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalIDsRequest"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPermissionsResponse": {
+            "type": "object",
+            "properties": {
+                "read": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalSetResponse"
+                },
+                "write": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalSetResponse"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPrincipalGroupResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPrincipalIDsRequest": {
+            "type": "object",
+            "properties": {
+                "groupIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "userIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPrincipalSetResponse": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalGroupResponse"
+                    }
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers_samba.SambaPrincipalUserResponse"
+                    }
+                }
+            }
+        },
+        "internal_handlers_samba.SambaPrincipalUserResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_samba.SambaShareResponse": {
+            "type": "object",
+            "properties": {
+                "createMask": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "dataset": {
+                    "type": "string"
+                },
+                "directoryMask": {
+                    "type": "string"
+                },
+                "guest": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaGuestResponse"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPermissionsResponse"
+                },
+                "timeMachine": {
+                    "type": "boolean"
+                },
+                "timeMachineMaxSize": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_samba.UpdateSambaShareRequest": {
             "type": "object",
             "properties": {
@@ -13804,8 +14794,8 @@
                 "directoryMask": {
                     "type": "string"
                 },
-                "guestOk": {
-                    "type": "boolean"
+                "guest": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaGuestRequest"
                 },
                 "id": {
                     "type": "integer"
@@ -13813,20 +14803,14 @@
                 "name": {
                     "type": "string"
                 },
-                "readOnly": {
+                "permissions": {
+                    "$ref": "#/definitions/internal_handlers_samba.SambaPermissionsRequest"
+                },
+                "timeMachine": {
                     "type": "boolean"
                 },
-                "readOnlyGroups": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "writeableGroups": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "timeMachineMaxSize": {
+                    "type": "integer"
                 }
             }
         },
@@ -13896,6 +14880,17 @@
                 }
             }
         },
+        "internal_handlers_utilities.DownloadPathsResponse": {
+            "type": "object",
+            "properties": {
+                "http": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_vm.ModifyBootOrderRequest": {
             "type": "object",
             "properties": {
@@ -13904,6 +14899,14 @@
                 },
                 "startAtBoot": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyBootROMRequest": {
+            "type": "object",
+            "properties": {
+                "bootRom": {
+                    "type": "string"
                 }
             }
         },
@@ -13926,6 +14929,17 @@
                 },
                 "networkConfig": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_vm.ModifyExtraBhyveOptionsRequest": {
+            "type": "object",
+            "properties": {
+                "extraBhyveOptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -14009,6 +15023,21 @@
             ],
             "properties": {
                 "description": {
+                    "type": "string"
+                },
+                "rid": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handlers_vm.VMEditNameRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "rid"
+            ],
+            "properties": {
+                "name": {
                     "type": "string"
                 },
                 "rid": {

@@ -30,6 +30,7 @@ func Fixups(db *gorm.DB) error {
 	cleanupInvalidAuditUserIDs(db)
 	cleanupLegacyDevdEventsTable(db)
 	dropSambaSharePathUniqueIndex(db)
+	normalizeSambaSharePermissionOverlaps(db)
 	backfillFirewallRuleVisibilityDefaults(db)
 	backfillUserSystemData(db)
 
@@ -320,6 +321,91 @@ func dropSambaSharePathUniqueIndex(db *gorm.DB) {
 		if err := db.Migrator().DropIndex(&sambaModels.SambaShare{}, idx.Name()); err != nil {
 			logger.L.Err(err).Str("index", idx.Name()).Msg("failed dropping samba_shares path unique index")
 			return
+		}
+	}
+
+	db.Table("migrations").Create(map[string]any{
+		"name": name,
+	})
+}
+
+func normalizeSambaSharePermissionOverlaps(db *gorm.DB) {
+	const name = "normalize_samba_share_permission_overlaps_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for normalize_samba_share_permission_overlaps")
+		return
+	}
+
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable(&sambaModels.SambaShare{}) {
+		db.Table("migrations").Create(map[string]any{"name": name})
+		return
+	}
+
+	var shares []sambaModels.SambaShare
+	if err := db.
+		Preload("ReadOnlyUsers").
+		Preload("WriteableUsers").
+		Preload("ReadOnlyGroups").
+		Preload("WriteableGroups").
+		Find(&shares).Error; err != nil {
+		logger.L.Err(err).Msg("failed loading samba shares for permission overlap normalization")
+		return
+	}
+
+	for i := range shares {
+		share := shares[i]
+
+		writeUserIDs := make(map[uint]struct{}, len(share.WriteableUsers))
+		for _, user := range share.WriteableUsers {
+			writeUserIDs[user.ID] = struct{}{}
+		}
+
+		writeGroupIDs := make(map[uint]struct{}, len(share.WriteableGroups))
+		for _, group := range share.WriteableGroups {
+			writeGroupIDs[group.ID] = struct{}{}
+		}
+
+		filteredReadUsers := make([]authModels.User, 0, len(share.ReadOnlyUsers))
+		userChanged := false
+		for _, user := range share.ReadOnlyUsers {
+			if _, exists := writeUserIDs[user.ID]; exists {
+				userChanged = true
+				continue
+			}
+			filteredReadUsers = append(filteredReadUsers, user)
+		}
+
+		filteredReadGroups := make([]authModels.Group, 0, len(share.ReadOnlyGroups))
+		groupChanged := false
+		for _, group := range share.ReadOnlyGroups {
+			if _, exists := writeGroupIDs[group.ID]; exists {
+				groupChanged = true
+				continue
+			}
+			filteredReadGroups = append(filteredReadGroups, group)
+		}
+
+		if userChanged {
+			if err := db.Model(&share).Association("ReadOnlyUsers").Replace(filteredReadUsers); err != nil {
+				logger.L.Err(err).Int("share_id", share.ID).Msg("failed normalizing samba share user permission overlap")
+				return
+			}
+		}
+
+		if groupChanged {
+			if err := db.Model(&share).Association("ReadOnlyGroups").Replace(filteredReadGroups); err != nil {
+				logger.L.Err(err).Int("share_id", share.ID).Msg("failed normalizing samba share group permission overlap")
+				return
+			}
 		}
 	}
 
