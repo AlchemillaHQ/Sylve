@@ -199,6 +199,7 @@ func ToggleService(systemService *system.Service, networkSvc *networkService.Ser
 					})
 					return
 				}
+				networkSvc.SetFirewallServiceEnabledForTelemetry(true)
 			}
 
 			if wasEnabled && !isEnabled {
@@ -214,6 +215,7 @@ func ToggleService(systemService *system.Service, networkSvc *networkService.Ser
 					})
 					return
 				}
+				networkSvc.SetFirewallServiceEnabledForTelemetry(false)
 			}
 		}
 

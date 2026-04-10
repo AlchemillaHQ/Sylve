@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 )
@@ -2897,5 +2898,94 @@ func TestEnsurePFLogInterfaceReadyCreatesWhenMissing(t *testing.T) {
 
 	if len(calls) < 3 {
 		t.Fatalf("expected ifconfig check + create + verify calls, got %d calls: %v", len(calls), calls)
+	}
+}
+
+func TestSampleFirewallCountersDeduplicatesUnavailableWarningsState(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/pfctl" {
+			return "", errors.New("pfctl: /dev/pf: No such file or directory")
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{
+		Services: []models.AvailableService{models.Firewall},
+	}).Error; err != nil {
+		t.Fatalf("failed to seed basic settings: %v", err)
+	}
+	svc.sampleFirewallCounters()
+
+	rt := svc.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	firstWarn := rt.countersLastWarn
+	rt.mu.RUnlock()
+	if firstWarn == "" {
+		t.Fatal("expected first unavailable sample to register warning state")
+	}
+
+	svc.sampleFirewallCounters()
+
+	rt.mu.RLock()
+	secondWarn := rt.countersLastWarn
+	rt.mu.RUnlock()
+	if secondWarn != firstWarn {
+		t.Fatalf("expected repeated unavailable sample to keep same warning state, got %q then %q", firstWarn, secondWarn)
+	}
+}
+
+func TestSetFirewallLiveSourceUnavailableDeduplicatesUntilRecovery(t *testing.T) {
+	svc := &Service{}
+
+	if shouldWarn := svc.setFirewallLiveSourceUnavailable("pf unavailable"); !shouldWarn {
+		t.Fatal("expected first unavailable state to request warning")
+	}
+	if shouldWarn := svc.setFirewallLiveSourceUnavailable("pf unavailable"); shouldWarn {
+		t.Fatal("expected repeated unavailable state to be deduplicated")
+	}
+	if shouldWarn := svc.setFirewallLiveSourceUnavailable("different error"); !shouldWarn {
+		t.Fatal("expected changed unavailable error to request warning")
+	}
+
+	svc.setFirewallLiveSourceStatus("ok", "")
+	if shouldWarn := svc.setFirewallLiveSourceUnavailable("different error"); !shouldWarn {
+		t.Fatal("expected warning to resume after recovery")
+	}
+}
+
+func TestSampleFirewallCountersSkipsWhenFirewallServiceDisabled(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		t.Fatalf("did not expect firewall command when service disabled: %s %v", command, args)
+		return "", nil
+	}
+
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{}}).Error; err != nil {
+		t.Fatalf("failed to seed basic settings: %v", err)
+	}
+
+	svc.sampleFirewallCounters()
+
+	rt := svc.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+
+	if rt.countersAvailable {
+		t.Fatal("expected counters to be unavailable when firewall service is disabled")
+	}
+	if rt.countersError != "firewall_service_disabled" {
+		t.Fatalf("expected disabled status error, got %q", rt.countersError)
 	}
 }
