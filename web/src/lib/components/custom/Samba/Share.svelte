@@ -11,6 +11,7 @@
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { toast } from 'svelte-sonner';
+	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
@@ -70,7 +71,9 @@
 		readUsers: {
 			combobox: {
 				open: false,
-				value: share ? share.permissions.read.users.map((user) => String(user.id)) : ([] as string[]),
+				value: share
+					? share.permissions.read.users.map((user) => String(user.id))
+					: ([] as string[]),
 				options: userOptions
 			}
 		},
@@ -86,7 +89,9 @@
 		readGroups: {
 			combobox: {
 				open: false,
-				value: share ? share.permissions.read.groups.map((group) => String(group.id)) : ([] as string[]),
+				value: share
+					? share.permissions.read.groups.map((group) => String(group.id))
+					: ([] as string[]),
 				options: groupOptions
 			}
 		},
@@ -223,24 +228,33 @@
 		properties = options;
 	}
 
-	$effect(() => {
-		if (properties.guest.enabled) {
-			if (properties.readUsers.combobox.value.length > 0) {
-				properties.readUsers.combobox.value = [];
+	watch(
+		() => [
+			() => properties.guest.enabled,
+			() => properties.readUsers.combobox.value,
+			() => properties.writeUsers.combobox.value,
+			() => properties.readGroups.combobox.value,
+			() => properties.writeGroups.combobox.value
+		],
+		() => {
+			if (properties.guest.enabled) {
+				if (properties.readUsers.combobox.value.length > 0) {
+					properties.readUsers.combobox.value = [];
+				}
+				if (properties.writeUsers.combobox.value.length > 0) {
+					properties.writeUsers.combobox.value = [];
+				}
+				if (properties.readGroups.combobox.value.length > 0) {
+					properties.readGroups.combobox.value = [];
+				}
+				if (properties.writeGroups.combobox.value.length > 0) {
+					properties.writeGroups.combobox.value = [];
+				}
 			}
-			if (properties.writeUsers.combobox.value.length > 0) {
-				properties.writeUsers.combobox.value = [];
-			}
-			if (properties.readGroups.combobox.value.length > 0) {
-				properties.readGroups.combobox.value = [];
-			}
-			if (properties.writeGroups.combobox.value.length > 0) {
-				properties.writeGroups.combobox.value = [];
-			}
-		}
 
-		normalizeWriteWins();
-	});
+			normalizeWriteWins();
+		}
+	);
 </script>
 
 <Dialog.Root bind:open>

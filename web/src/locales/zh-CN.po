@@ -934,7 +934,6 @@ msgstr "删除"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
@@ -1397,6 +1396,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
@@ -2032,6 +2032,7 @@ msgstr "此操作无法撤销。这将永久删除 "
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -2382,13 +2383,11 @@ msgstr "名称是必填项"
 msgid "Dataset is required"
 msgstr "数据集是必填项"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "No groups selected and guests are not allowed"
-msgstr "未选择组且不允许访客"
+#~ msgid "No groups selected and guests are not allowed"
+#~ msgstr "未选择组且不允许访客"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Share cannot have overlapping groups"
-msgstr "共享不能有重叠的组"
+#~ msgid "Share cannot have overlapping groups"
+#~ msgstr "共享不能有重叠的组"
 
 #. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
@@ -2420,20 +2419,16 @@ msgstr "数据集"
 msgid "Select dataset"
 msgstr "选择数据集"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Read-Only Groups"
-msgstr "只读组"
+#~ msgid "Read-Only Groups"
+#~ msgstr "只读组"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
 msgstr "选择组"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Writeable Groups"
-msgstr "可写组"
+#~ msgid "Writeable Groups"
+#~ msgstr "可写组"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Mask"
@@ -2443,13 +2438,11 @@ msgstr "创建掩码"
 msgid "Directory Mask"
 msgstr "目录掩码"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guests"
-msgstr "访客"
+#~ msgid "Guests"
+#~ msgstr "访客"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Read Only"
-msgstr "只读"
+#~ msgid "Read Only"
+#~ msgstr "只读"
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
@@ -7173,6 +7166,8 @@ msgstr "编辑用户"
 msgid "New Group"
 msgstr "新组"
 
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Select users"
@@ -12306,13 +12301,11 @@ msgstr ""
 msgid "Time Machine"
 msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size (GB, 0 = unlimited)"
-msgstr ""
+#~ msgid "Time Machine Max Size (GB, 0 = unlimited)"
+#~ msgstr ""
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size"
-msgstr ""
+#~ msgid "Time Machine Max Size"
+#~ msgstr ""
 
 #. 0: o!.name
 #: src/routes/[node]/network/objects/+page.svelte
@@ -13076,3 +13069,47 @@ msgstr ""
 
 #~ msgid "One option per line. These arguments are prepended before generated bhyve args."
 #~ msgstr ""
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Read Access"
+msgstr ""
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Write Access"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select at least one user or group for authenticated access"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest-only shares cannot include users or groups"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Only"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Users"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Users"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Groups"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Groups"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Writeable"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size (GB)"
+msgstr ""

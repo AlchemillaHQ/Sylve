@@ -934,7 +934,6 @@ msgstr "Delete"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
@@ -1397,6 +1396,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
@@ -2032,6 +2032,7 @@ msgstr "This action cannot be undone. This will permanently delete "
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -2382,13 +2383,11 @@ msgstr "Name is required"
 msgid "Dataset is required"
 msgstr "Dataset is required"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "No groups selected and guests are not allowed"
-msgstr "No groups selected and guests are not allowed"
+#~ msgid "No groups selected and guests are not allowed"
+#~ msgstr "No groups selected and guests are not allowed"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Share cannot have overlapping groups"
-msgstr "Share cannot have overlapping groups"
+#~ msgid "Share cannot have overlapping groups"
+#~ msgstr "Share cannot have overlapping groups"
 
 #. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
@@ -2420,20 +2419,16 @@ msgstr "Dataset"
 msgid "Select dataset"
 msgstr "Select dataset"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Read-Only Groups"
-msgstr "Read-Only Groups"
+#~ msgid "Read-Only Groups"
+#~ msgstr "Read-Only Groups"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
 msgstr "Select groups"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Writeable Groups"
-msgstr "Writeable Groups"
+#~ msgid "Writeable Groups"
+#~ msgstr "Writeable Groups"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Mask"
@@ -2443,13 +2438,11 @@ msgstr "Create Mask"
 msgid "Directory Mask"
 msgstr "Directory Mask"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guests"
-msgstr "Guests"
+#~ msgid "Guests"
+#~ msgstr "Guests"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Read Only"
-msgstr "Read Only"
+#~ msgid "Read Only"
+#~ msgstr "Read Only"
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
@@ -7173,6 +7166,8 @@ msgstr "Edit Users"
 msgid "New Group"
 msgstr "New Group"
 
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Select users"
@@ -12306,13 +12301,11 @@ msgstr "Apple Extensions"
 msgid "Time Machine"
 msgstr "Time Machine"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size (GB, 0 = unlimited)"
-msgstr "Time Machine Max Size (GB, 0 = unlimited)"
+#~ msgid "Time Machine Max Size (GB, 0 = unlimited)"
+#~ msgstr "Time Machine Max Size (GB, 0 = unlimited)"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size"
-msgstr "Time Machine Max Size"
+#~ msgid "Time Machine Max Size"
+#~ msgstr "Time Machine Max Size"
 
 #. 0: o!.name
 #: src/routes/[node]/network/objects/+page.svelte
@@ -13076,3 +13069,47 @@ msgstr "Modified extra bhyve options"
 
 #~ msgid "One option per line. These arguments are prepended before generated bhyve args."
 #~ msgstr "One option per line. These arguments are prepended before generated bhyve args."
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Read Access"
+msgstr "Read Access"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Write Access"
+msgstr "Write Access"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select at least one user or group for authenticated access"
+msgstr "Select at least one user or group for authenticated access"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest-only shares cannot include users or groups"
+msgstr "Guest-only shares cannot include users or groups"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Only"
+msgstr "Guest Only"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Users"
+msgstr "Read Users"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Users"
+msgstr "Write Users"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Groups"
+msgstr "Read Groups"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Groups"
+msgstr "Write Groups"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Writeable"
+msgstr "Guest Writeable"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size (GB)"
+msgstr "Time Machine Max Size (GB)"
