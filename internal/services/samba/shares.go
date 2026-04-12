@@ -14,12 +14,241 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
-	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/alchemillahq/sylve/internal/logger"
 )
+
+type sambaPermissionIDs struct {
+	ReadUserIDs   []uint
+	WriteUserIDs  []uint
+	ReadGroupIDs  []uint
+	WriteGroupIDs []uint
+}
+
+type sambaPrincipalNames struct {
+	ReadUsers   []string
+	WriteUsers  []string
+	ReadGroups  []string
+	WriteGroups []string
+}
+
+var sambaWriteConfig = func(s *Service, ctx context.Context, reload bool) error {
+	return s.WriteConfig(ctx, reload)
+}
+
+func uniqueUint(ids []uint) []uint {
+	seen := make(map[uint]struct{}, len(ids))
+	out := make([]uint, 0, len(ids))
+
+	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+
+		if _, exists := seen[id]; exists {
+			continue
+		}
+
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+
+	return out
+}
+
+func normalizeSambaPermissionIDs(
+	readUserIDs []uint,
+	writeUserIDs []uint,
+	readGroupIDs []uint,
+	writeGroupIDs []uint,
+) sambaPermissionIDs {
+	normalized := sambaPermissionIDs{
+		ReadUserIDs:   uniqueUint(readUserIDs),
+		WriteUserIDs:  uniqueUint(writeUserIDs),
+		ReadGroupIDs:  uniqueUint(readGroupIDs),
+		WriteGroupIDs: uniqueUint(writeGroupIDs),
+	}
+
+	writeUsers := make(map[uint]struct{}, len(normalized.WriteUserIDs))
+	for _, id := range normalized.WriteUserIDs {
+		writeUsers[id] = struct{}{}
+	}
+
+	filteredReadUsers := make([]uint, 0, len(normalized.ReadUserIDs))
+	for _, id := range normalized.ReadUserIDs {
+		if _, exists := writeUsers[id]; exists {
+			continue
+		}
+		filteredReadUsers = append(filteredReadUsers, id)
+	}
+	normalized.ReadUserIDs = filteredReadUsers
+
+	writeGroups := make(map[uint]struct{}, len(normalized.WriteGroupIDs))
+	for _, id := range normalized.WriteGroupIDs {
+		writeGroups[id] = struct{}{}
+	}
+
+	filteredReadGroups := make([]uint, 0, len(normalized.ReadGroupIDs))
+	for _, id := range normalized.ReadGroupIDs {
+		if _, exists := writeGroups[id]; exists {
+			continue
+		}
+		filteredReadGroups = append(filteredReadGroups, id)
+	}
+	normalized.ReadGroupIDs = filteredReadGroups
+
+	return normalized
+}
+
+func (ids sambaPermissionIDs) principalCount() int {
+	return len(ids.ReadUserIDs) + len(ids.WriteUserIDs) + len(ids.ReadGroupIDs) + len(ids.WriteGroupIDs)
+}
+
+func collectMissingIDs(expected []uint, present map[uint]struct{}) []uint {
+	missing := make([]uint, 0)
+
+	for _, id := range expected {
+		if _, exists := present[id]; exists {
+			continue
+		}
+		missing = append(missing, id)
+	}
+
+	return missing
+}
+
+func usersByIDs(users []models.User) map[uint]models.User {
+	byID := make(map[uint]models.User, len(users))
+	for _, user := range users {
+		byID[user.ID] = user
+	}
+	return byID
+}
+
+func groupsByIDs(groups []models.Group) map[uint]models.Group {
+	byID := make(map[uint]models.Group, len(groups))
+	for _, group := range groups {
+		byID[group.ID] = group
+	}
+	return byID
+}
+
+func usersForIDs(ids []uint, byID map[uint]models.User) []models.User {
+	out := make([]models.User, 0, len(ids))
+	for _, id := range ids {
+		if user, exists := byID[id]; exists {
+			out = append(out, user)
+		}
+	}
+	return out
+}
+
+func groupsForIDs(ids []uint, byID map[uint]models.Group) []models.Group {
+	out := make([]models.Group, 0, len(ids))
+	for _, id := range ids {
+		if group, exists := byID[id]; exists {
+			out = append(out, group)
+		}
+	}
+	return out
+}
+
+func usernames(users []models.User) []string {
+	names := make([]string, 0, len(users))
+	for _, user := range users {
+		names = append(names, user.Username)
+	}
+	return names
+}
+
+func groupNames(groups []models.Group) []string {
+	names := make([]string, 0, len(groups))
+	for _, group := range groups {
+		names = append(names, group.Name)
+	}
+	return names
+}
+
+func (s *Service) loadUsersAndGroupsByIDs(
+	readUserIDs []uint,
+	writeUserIDs []uint,
+	readGroupIDs []uint,
+	writeGroupIDs []uint,
+) ([]models.User, []models.User, []models.Group, []models.Group, error) {
+	allUserIDs := uniqueUint(append(append([]uint{}, readUserIDs...), writeUserIDs...))
+	allGroupIDs := uniqueUint(append(append([]uint{}, readGroupIDs...), writeGroupIDs...))
+
+	var users []models.User
+	if len(allUserIDs) > 0 {
+		if err := s.DB.Where("id IN ?", allUserIDs).Find(&users).Error; err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("failed_to_fetch_users: %w", err)
+		}
+	}
+
+	foundUsers := make(map[uint]struct{}, len(users))
+	for _, user := range users {
+		foundUsers[user.ID] = struct{}{}
+	}
+	if missing := collectMissingIDs(allUserIDs, foundUsers); len(missing) > 0 {
+		return nil, nil, nil, nil, fmt.Errorf("user_not_found: %d", missing[0])
+	}
+
+	var groups []models.Group
+	if len(allGroupIDs) > 0 {
+		if err := s.DB.Where("id IN ?", allGroupIDs).Find(&groups).Error; err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("failed_to_fetch_groups: %w", err)
+		}
+	}
+
+	foundGroups := make(map[uint]struct{}, len(groups))
+	for _, group := range groups {
+		foundGroups[group.ID] = struct{}{}
+	}
+	if missing := collectMissingIDs(allGroupIDs, foundGroups); len(missing) > 0 {
+		return nil, nil, nil, nil, fmt.Errorf("group_not_found: %d", missing[0])
+	}
+
+	usersByID := usersByIDs(users)
+	groupsByID := groupsByIDs(groups)
+
+	readUsers := usersForIDs(readUserIDs, usersByID)
+	writeUsers := usersForIDs(writeUserIDs, usersByID)
+	readGroups := groupsForIDs(readGroupIDs, groupsByID)
+	writeGroups := groupsForIDs(writeGroupIDs, groupsByID)
+
+	return readUsers, writeUsers, readGroups, writeGroups, nil
+}
+
+func namesFromShareAssociations(share sambaModels.SambaShare) sambaPrincipalNames {
+	return sambaPrincipalNames{
+		ReadUsers:   usernames(share.ReadOnlyUsers),
+		WriteUsers:  usernames(share.WriteableUsers),
+		ReadGroups:  groupNames(share.ReadOnlyGroups),
+		WriteGroups: groupNames(share.WriteableGroups),
+	}
+}
+
+func namesFromACLPrincipals(
+	readUsers []models.User,
+	writeUsers []models.User,
+	readGroups []models.Group,
+	writeGroups []models.Group,
+) sambaPrincipalNames {
+	return sambaPrincipalNames{
+		ReadUsers:   usernames(readUsers),
+		WriteUsers:  usernames(writeUsers),
+		ReadGroups:  groupNames(readGroups),
+		WriteGroups: groupNames(writeGroups),
+	}
+}
 
 func (s *Service) GetShares() ([]sambaModels.SambaShare, error) {
 	var shares []sambaModels.SambaShare
-	if err := s.DB.Preload("ReadOnlyGroups").Preload("WriteableGroups").Find(&shares).Error; err != nil {
+	if err := s.DB.
+		Preload("ReadOnlyUsers").
+		Preload("WriteableUsers").
+		Preload("ReadOnlyGroups").
+		Preload("WriteableGroups").
+		Find(&shares).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_shares: %w", err)
 	}
 	return shares, nil
@@ -29,24 +258,45 @@ func (s *Service) CreateShare(
 	ctx context.Context,
 	name string,
 	dataset string,
-	readOnlyGroups []string,
-	writeableGroups []string,
+	readUserIDs []uint,
+	writeUserIDs []uint,
+	readGroupIDs []uint,
+	writeGroupIDs []uint,
+	guestEnabled bool,
+	guestWriteable bool,
 	createMask string,
 	directoryMask string,
-	guestOk bool,
-	readOnly bool,
 	timeMachine bool,
-	timeMachineMaxSize uint64) error {
-	if err := s.DB.Where("name = ?", name).First(&sambaModels.SambaShare{}).Error; err == nil {
+	timeMachineMaxSize uint64,
+) error {
+	var nameConflictCount int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).
+		Where("name = ?", name).
+		Count(&nameConflictCount).Error; err != nil {
+		return fmt.Errorf("failed_to_check_name_conflict: %w", err)
+	}
+	if nameConflictCount > 0 {
 		return fmt.Errorf("share_with_name_exists")
 	}
 
-	if err := s.DB.Where("dataset = ?", dataset).First(&sambaModels.SambaShare{}).Error; err == nil {
+	var datasetConflictCount int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).
+		Where("dataset = ?", dataset).
+		Count(&datasetConflictCount).Error; err != nil {
+		return fmt.Errorf("failed_to_check_dataset_conflict: %w", err)
+	}
+	if datasetConflictCount > 0 {
 		return fmt.Errorf("share_with_dataset_exists")
 	}
 
-	if len(readOnlyGroups) > 0 && readOnly {
-		return fmt.Errorf("cannot_create_read_only_share_with_read_only_groups")
+	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
+
+	if guestEnabled && normalized.principalCount() > 0 {
+		return fmt.Errorf("guest_only_share_cannot_have_principals")
+	}
+
+	if !guestEnabled && normalized.principalCount() == 0 {
+		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
 	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
@@ -58,59 +308,95 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("dataset_not_found")
 	}
 
-	if fDataset.Mountpoint == "" {
+	if fDataset.Mountpoint == "" || fDataset.Mountpoint == "-" {
 		return fmt.Errorf("dataset_not_mounted")
 	}
 
-	allGroups := utils.JoinStringSlices(readOnlyGroups, writeableGroups)
-
-	if len(allGroups) == 0 && !guestOk {
-		return fmt.Errorf("no_groups_selected_and_guests_not_allowed")
+	if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
+		return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 	}
 
-	for _, group := range allGroups {
-		if err := s.DB.Where("name = ?", group).First(&models.Group{}).Error; err != nil {
-			return fmt.Errorf("group_not_found: %s", group)
+	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
+		normalized.ReadUserIDs,
+		normalized.WriteUserIDs,
+		normalized.ReadGroupIDs,
+		normalized.WriteGroupIDs,
+	)
+	if err != nil {
+		return err
+	}
+
+	desiredPrincipals := namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
+	if !guestEnabled {
+		if err := s.syncSambaDatasetPrincipalACLs(
+			fDataset.Mountpoint,
+			sambaPrincipalNames{},
+			desiredPrincipals,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
 		}
 	}
 
-	var roGroups []models.Group
-	var wrGroups []models.Group
-
-	for _, group := range readOnlyGroups {
-		var g models.Group
-		if err := s.DB.Where("name = ?", group).First(&g).Error; err != nil {
-			return fmt.Errorf("read_only_group_not_found: %s", group)
-		}
-		roGroups = append(roGroups, g)
-	}
-
-	for _, group := range writeableGroups {
-		var g models.Group
-		if err := s.DB.Where("name = ?", group).First(&g).Error; err != nil {
-			return fmt.Errorf("writeable_group_not_found: %s", group)
-		}
-		wrGroups = append(wrGroups, g)
+	if err := s.syncSambaDatasetGuestACL(
+		fDataset.Mountpoint,
+		guestEnabled,
+		guestWriteable,
+		true,
+	); err != nil {
+		return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
 	}
 
 	share := sambaModels.SambaShare{
 		Name:               name,
 		Dataset:            dataset,
-		ReadOnlyGroups:     roGroups,
-		WriteableGroups:    wrGroups,
 		CreateMask:         createMask,
 		DirectoryMask:      directoryMask,
-		GuestOk:            guestOk,
-		ReadOnly:           readOnly,
+		GuestOk:            guestEnabled,
+		ReadOnly:           !guestWriteable && guestEnabled,
 		TimeMachine:        timeMachine,
 		TimeMachineMaxSize: timeMachineMaxSize,
 	}
 
-	if err := s.DB.Create(&share).Error; err != nil {
+	tx := s.DB.Begin()
+	if err := tx.Create(&share).Error; err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed_to_create_share: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	if len(readUsers) > 0 {
+		if err := tx.Model(&share).Association("ReadOnlyUsers").Append(readUsers); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_read_only_users: %w", err)
+		}
+	}
+
+	if len(writeUsers) > 0 {
+		if err := tx.Model(&share).Association("WriteableUsers").Append(writeUsers); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_writeable_users: %w", err)
+		}
+	}
+
+	if len(readGroups) > 0 {
+		if err := tx.Model(&share).Association("ReadOnlyGroups").Append(readGroups); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_read_only_groups: %w", err)
+		}
+	}
+
+	if len(writeGroups) > 0 {
+		if err := tx.Model(&share).Association("WriteableGroups").Append(writeGroups); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_writeable_groups: %w", err)
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_transaction: %w", err)
+	}
+
+	return sambaWriteConfig(s, ctx, true)
 }
 
 func (s *Service) UpdateShare(
@@ -118,17 +404,24 @@ func (s *Service) UpdateShare(
 	id uint,
 	name string,
 	dataset string,
-	readOnlyGroups []string,
-	writeableGroups []string,
+	readUserIDs []uint,
+	writeUserIDs []uint,
+	readGroupIDs []uint,
+	writeGroupIDs []uint,
+	guestEnabled bool,
+	guestWriteable bool,
 	createMask string,
 	directoryMask string,
-	guestOk bool,
-	readOnly bool,
 	timeMachine bool,
 	timeMachineMaxSize uint64,
 ) error {
 	var share sambaModels.SambaShare
-	if err := s.DB.Preload("ReadOnlyGroups").Preload("WriteableGroups").First(&share, id).Error; err != nil {
+	if err := s.DB.
+		Preload("ReadOnlyUsers").
+		Preload("WriteableUsers").
+		Preload("ReadOnlyGroups").
+		Preload("WriteableGroups").
+		First(&share, id).Error; err != nil {
 		return fmt.Errorf("share_not_found: %w", err)
 	}
 
@@ -156,8 +449,14 @@ func (s *Service) UpdateShare(
 		}
 	}
 
-	if len(readOnlyGroups) > 0 && readOnly {
-		return fmt.Errorf("cannot_create_read_only_share_with_read_only_groups")
+	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
+
+	if guestEnabled && normalized.principalCount() > 0 {
+		return fmt.Errorf("guest_only_share_cannot_have_principals")
+	}
+
+	if !guestEnabled && normalized.principalCount() == 0 {
+		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
 	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
@@ -169,41 +468,104 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("dataset_not_found")
 	}
 
-	if fDataset.Mountpoint == "" {
+	if fDataset.Mountpoint == "" || fDataset.Mountpoint == "-" {
 		return fmt.Errorf("dataset_not_mounted")
 	}
 
-	allGroups := utils.JoinStringSlices(readOnlyGroups, writeableGroups)
-
-	if len(allGroups) == 0 && !guestOk {
-		return fmt.Errorf("no_groups_selected_and_guests_not_allowed")
+	if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
+		return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 	}
 
-	for _, group := range allGroups {
-		if err := s.DB.Where("name = ?", group).First(&models.Group{}).Error; err != nil {
-			return fmt.Errorf("group_not_found: %s", group)
-		}
+	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
+		normalized.ReadUserIDs,
+		normalized.WriteUserIDs,
+		normalized.ReadGroupIDs,
+		normalized.WriteGroupIDs,
+	)
+	if err != nil {
+		return err
 	}
 
-	var roGroups, wrGroups []models.Group
-
-	for _, gname := range readOnlyGroups {
-		var g models.Group
-		if err := s.DB.Where("name = ?", gname).First(&g).Error; err != nil {
-			return fmt.Errorf("read_only_group_not_found: %s", gname)
-		}
-		roGroups = append(roGroups, g)
+	previousPrincipals := namesFromShareAssociations(share)
+	desiredPrincipals := sambaPrincipalNames{}
+	if !guestEnabled {
+		desiredPrincipals = namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
 	}
 
-	for _, gname := range writeableGroups {
-		var g models.Group
-		if err := s.DB.Where("name = ?", gname).First(&g).Error; err != nil {
-			return fmt.Errorf("writeable_group_not_found: %s", gname)
+	if dataset == share.Dataset {
+		if err := s.syncSambaDatasetPrincipalACLs(
+			fDataset.Mountpoint,
+			previousPrincipals,
+			desiredPrincipals,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
 		}
-		wrGroups = append(wrGroups, g)
+
+		if err := s.syncSambaDatasetGuestACL(
+			fDataset.Mountpoint,
+			guestEnabled,
+			guestWriteable,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+		}
+	} else {
+		oldDataset, oldDatasetErr := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+		if oldDatasetErr != nil {
+			return fmt.Errorf("failed_to_fetch_previous_dataset: %v", oldDatasetErr)
+		}
+
+		if oldDataset != nil && oldDataset.Mountpoint != "" && oldDataset.Mountpoint != "-" {
+			if err := s.syncSambaDatasetPrincipalACLs(
+				oldDataset.Mountpoint,
+				previousPrincipals,
+				sambaPrincipalNames{},
+				true,
+			); err != nil {
+				return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_principal_acls: %w", err)
+			}
+
+			if err := s.syncSambaDatasetGuestACL(
+				oldDataset.Mountpoint,
+				false,
+				false,
+				true,
+			); err != nil {
+				return fmt.Errorf("failed_to_cleanup_previous_samba_dataset_guest_acl: %w", err)
+			}
+		}
+
+		if err := s.syncSambaDatasetPrincipalACLs(
+			fDataset.Mountpoint,
+			sambaPrincipalNames{},
+			desiredPrincipals,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_principal_acls: %w", err)
+		}
+
+		if err := s.syncSambaDatasetGuestACL(
+			fDataset.Mountpoint,
+			guestEnabled,
+			guestWriteable,
+			true,
+		); err != nil {
+			return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
+		}
 	}
 
 	tx := s.DB.Begin()
+
+	if err := tx.Model(&share).Association("ReadOnlyUsers").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_read_only_users: %w", err)
+	}
+
+	if err := tx.Model(&share).Association("WriteableUsers").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_writeable_users: %w", err)
+	}
 
 	if err := tx.Model(&share).Association("ReadOnlyGroups").Clear(); err != nil {
 		tx.Rollback()
@@ -219,8 +581,8 @@ func (s *Service) UpdateShare(
 	share.Dataset = dataset
 	share.CreateMask = createMask
 	share.DirectoryMask = directoryMask
-	share.GuestOk = guestOk
-	share.ReadOnly = readOnly
+	share.GuestOk = guestEnabled
+	share.ReadOnly = !guestWriteable && guestEnabled
 	share.TimeMachine = timeMachine
 	share.TimeMachineMaxSize = timeMachineMaxSize
 
@@ -229,14 +591,29 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_update_share_fields: %w", err)
 	}
 
-	if len(roGroups) > 0 {
-		if err := tx.Model(&share).Association("ReadOnlyGroups").Append(roGroups); err != nil {
+	if len(readUsers) > 0 {
+		if err := tx.Model(&share).Association("ReadOnlyUsers").Append(readUsers); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_read_only_users: %w", err)
+		}
+	}
+
+	if len(writeUsers) > 0 {
+		if err := tx.Model(&share).Association("WriteableUsers").Append(writeUsers); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed_to_append_writeable_users: %w", err)
+		}
+	}
+
+	if len(readGroups) > 0 {
+		if err := tx.Model(&share).Association("ReadOnlyGroups").Append(readGroups); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed_to_append_read_only_groups: %w", err)
 		}
 	}
-	if len(wrGroups) > 0 {
-		if err := tx.Model(&share).Association("WriteableGroups").Append(wrGroups); err != nil {
+
+	if len(writeGroups) > 0 {
+		if err := tx.Model(&share).Association("WriteableGroups").Append(writeGroups); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed_to_append_writeable_groups: %w", err)
 		}
@@ -246,18 +623,59 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("failed_to_commit_transaction: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	return sambaWriteConfig(s, ctx, true)
 }
 
 func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 	var share sambaModels.SambaShare
-	if err := s.DB.Where("id = ?", id).First(&share).Error; err != nil {
+	if err := s.DB.
+		Preload("ReadOnlyUsers").
+		Preload("WriteableUsers").
+		Preload("ReadOnlyGroups").
+		Preload("WriteableGroups").
+		First(&share, id).Error; err != nil {
 		return fmt.Errorf("share_not_found: %w", err)
 	}
 
-	if err := s.DB.Delete(&share).Error; err != nil {
+	previousPrincipals := namesFromShareAssociations(share)
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+	if err != nil {
+		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
+	} else if dataset != nil && dataset.Mountpoint != "" && dataset.Mountpoint != "-" {
+		_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, previousPrincipals, sambaPrincipalNames{}, false)
+		_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
+	}
+
+	tx := s.DB.Begin()
+
+	if err := tx.Model(&share).Association("ReadOnlyUsers").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_read_only_users: %w", err)
+	}
+
+	if err := tx.Model(&share).Association("WriteableUsers").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_writeable_users: %w", err)
+	}
+
+	if err := tx.Model(&share).Association("ReadOnlyGroups").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_read_only_groups: %w", err)
+	}
+
+	if err := tx.Model(&share).Association("WriteableGroups").Clear(); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed_to_clear_writeable_groups: %w", err)
+	}
+
+	if err := tx.Delete(&share).Error; err != nil {
+		tx.Rollback()
 		return fmt.Errorf("failed_to_delete_share: %w", err)
 	}
 
-	return s.WriteConfig(ctx, true)
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_transaction: %w", err)
+	}
+
+	return sambaWriteConfig(s, ctx, true)
 }

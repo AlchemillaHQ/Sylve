@@ -1,16 +1,39 @@
 import { z } from 'zod/v4';
-import { GroupSchema } from '../auth';
+import { GroupSchema, UserSchema } from '../auth';
+
+export const SambaPrincipalUserSchema = UserSchema.pick({
+    id: true,
+    username: true
+});
+
+export const SambaPrincipalGroupSchema = GroupSchema.pick({
+    id: true,
+    name: true
+});
+
+export const SambaPrincipalSetSchema = z.object({
+    users: z.array(SambaPrincipalUserSchema).default([]),
+    groups: z.array(SambaPrincipalGroupSchema).default([])
+});
+
+export const SambaPermissionsSchema = z.object({
+    read: SambaPrincipalSetSchema,
+    write: SambaPrincipalSetSchema
+});
+
+export const SambaGuestSchema = z.object({
+    enabled: z.boolean(),
+    writeable: z.boolean()
+});
 
 export const SambaShareSchema = z.object({
     id: z.number(),
     name: z.string(),
     dataset: z.string(),
-    readOnlyGroups: z.preprocess((val) => (val == null ? [] : val), z.array(GroupSchema)),
-    writeableGroups: z.preprocess((val) => (val == null ? [] : val), z.array(GroupSchema)),
+    permissions: SambaPermissionsSchema,
+    guest: SambaGuestSchema,
     createMask: z.string(),
     directoryMask: z.string(),
-    guestOk: z.boolean(),
-    readOnly: z.boolean(),
     timeMachine: z.boolean().default(false),
     timeMachineMaxSize: z.number().default(0),
     createdAt: z.string(),

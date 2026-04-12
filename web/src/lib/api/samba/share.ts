@@ -10,22 +10,26 @@ export async function getSambaShares(): Promise<SambaShare[]> {
 export async function createSambaShare(
     name: string,
     dataset: string,
-    readOnlyGroups: string[] = [],
-    writeableGroups: string[] = [],
+    permissions: {
+        read: { userIds: number[]; groupIds: number[] };
+        write: { userIds: number[]; groupIds: number[] };
+    },
+    guest: {
+        enabled: boolean;
+        writeable: boolean;
+    },
     createMask: string = '',
     directoryMask: string = '',
-    guestOk: boolean = false,
     timeMachine: boolean = false,
     timeMachineMaxSize: number = 0
 ): Promise<APIResponse> {
     return await apiRequest('/samba/shares', APIResponseSchema, 'POST', {
         name,
         dataset,
-        readOnlyGroups,
-        writeableGroups,
+        permissions,
+        guest,
         createMask,
         directoryMask,
-        guestOk,
         timeMachine,
         timeMachineMaxSize
     });
@@ -35,12 +39,16 @@ export async function updateSambaShare(
     id: number,
     name: string,
     dataset: string,
-    readOnlyGroups: string[] = [],
-    writeableGroups: string[] = [],
+    permissions: {
+        read: { userIds: number[]; groupIds: number[] };
+        write: { userIds: number[]; groupIds: number[] };
+    },
+    guest: {
+        enabled: boolean;
+        writeable: boolean;
+    },
     createMask: string = '',
     directoryMask: string = '',
-    guestOk: boolean = false,
-    readOnly: boolean = false,
     timeMachine: boolean = false,
     timeMachineMaxSize: number = 0
 ): Promise<APIResponse> {
@@ -48,12 +56,10 @@ export async function updateSambaShare(
         id,
         name,
         dataset,
-        readOnlyGroups,
-        writeableGroups,
+        permissions,
+        guest,
         createMask,
         directoryMask,
-        guestOk,
-        readOnly,
         timeMachine,
         timeMachineMaxSize
     });

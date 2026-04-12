@@ -228,7 +228,7 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.current.name}</b>`}
+	customTitle={`This will detach the storage ${properties.detach.name} from the VM <b>${vm.current.name}</b>. The underlying disk dataset/file will NOT be deleted.`}
 	actions={{
 		onConfirm: async () => {
 			let response = await storageDetach(Number(data.rid), properties.detach.id as number);

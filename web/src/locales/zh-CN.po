@@ -851,7 +851,6 @@ msgstr "删除"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
-#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
@@ -1142,6 +1141,7 @@ msgstr "这是条备注"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
@@ -1742,6 +1742,7 @@ msgstr "此操作无法撤销。将永久删除 "
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
@@ -2074,13 +2075,11 @@ msgstr "名称是必填项"
 msgid "Dataset is required"
 msgstr "数据集是必填项"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "No groups selected and guests are not allowed"
-msgstr "未选择组且不允许访客"
+#~ msgid "No groups selected and guests are not allowed"
+#~ msgstr "未选择组且不允许访客"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Share cannot have overlapping groups"
-msgstr "共享不能包含重叠的组"
+#~ msgid "Share cannot have overlapping groups"
+#~ msgstr "共享不能有重叠的组"
 
 #. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
@@ -2112,19 +2111,15 @@ msgstr "数据集"
 msgid "Select dataset"
 msgstr "选择数据集"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Read-Only Groups"
-msgstr "只读组"
+#~ msgid "Read-Only Groups"
+#~ msgstr "只读组"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select groups"
 msgstr "选择组"
 
-#: src/lib/components/custom/Samba/Share.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-msgid "Writeable Groups"
-msgstr "可写组"
+#~ msgid "Writeable Groups"
+#~ msgstr "可写组"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Mask"
@@ -2134,13 +2129,11 @@ msgstr "创建掩码"
 msgid "Directory Mask"
 msgstr "目录掩码"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Guests"
-msgstr "访客"
+#~ msgid "Guests"
+#~ msgstr "访客"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Read Only"
-msgstr "只读"
+#~ msgid "Read Only"
+#~ msgstr "只读"
 
 #: src/lib/components/custom/TreeTable/Search.svelte
 msgid "Toggle Search"
@@ -6197,6 +6190,7 @@ msgstr "初始状态"
 msgid "Optional note about why this snapshot was taken"
 msgstr "关于拍摄此快照原因的可选备注"
 
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[node]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/snapshots/+page.svelte
@@ -6461,6 +6455,8 @@ msgstr "编辑用户"
 msgid "New Group"
 msgstr "新组"
 
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 msgid "Select users"
 msgstr "选择用户"
@@ -9148,7 +9144,11 @@ msgstr "虚拟机名称已被占用"
 
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This VM is owned by another node right now"
-msgstr "此虚拟机当前属于另一节点"
+msgstr "虚拟机当前由其他节点所有"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Saving..."
+msgstr "正在保存..."
 
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -10930,14 +10930,6 @@ msgstr "Apple 扩展"
 msgid "Time Machine"
 msgstr "时间机器"
 
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size (GB, 0 = unlimited)"
-msgstr "时间机器最大容量 (GB, 0 = 无限)"
-
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Time Machine Max Size"
-msgstr "时间机器最大容量"
-
 #. 0: o!.name
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Object '{0}' is in use and cannot be deleted"
@@ -11569,3 +11561,50 @@ msgstr "额外的 bhyve 选项调整失败"
 msgid "Modified extra bhyve options"
 msgstr "额外的 bhyve 选项已调整"
 
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Read Access"
+msgstr "读权限"
+
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+msgid "Write Access"
+msgstr "写权限"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select at least one user or group for authenticated access"
+msgstr "请选择至少一位用户或组以便于进身份验证访问行"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest-only shares cannot include users or groups"
+msgstr "仅限访客的共享不能包含用户或组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Only"
+msgstr "仅限访客"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Users"
+msgstr "读用户"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Users"
+msgstr "写用户"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Read Groups"
+msgstr "读组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Write Groups"
+msgstr "写组"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Guest Writeable"
+msgstr "访客可写"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Time Machine Max Size (GB)"
+msgstr "时间机器最大容量（GB）"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Set to 0 for unlimited size"
+msgstr "设置为 0 则不限制大小"

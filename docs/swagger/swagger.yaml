@@ -179,19 +179,6 @@ definitions:
       status:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_samba_SambaShare:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_samba.SambaShare'
-        type: array
-      error:
-        type: string
-      message:
-        type: string
-      status:
-        type: string
-    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_utilities_CloudInitTemplate
   : properties:
       data:
@@ -283,6 +270,19 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_BootstrapEntry
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapEntry'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_SimpleList
   : properties:
       data:
@@ -353,6 +353,19 @@ definitions:
       data:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_system_pciconf.PCIDevice'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_internal_handlers_samba_SambaShareResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/internal_handlers_samba.SambaShareResponse'
         type: array
       error:
         type: string
@@ -628,6 +641,9 @@ definitions:
     - samba-server
     - virtualization
     - wol-server
+    - firewall
+    - wireguard
+    - iscsi
     type: string
     x-enum-varnames:
     - DHCPServer
@@ -635,6 +651,9 @@ definitions:
     - SambaServer
     - Virtualization
     - WoLServer
+    - Firewall
+    - WireGuard
+    - ISCSI
   github_com_alchemillahq_sylve_internal_db_models.BasicSettings:
     properties:
       id:
@@ -705,17 +724,35 @@ definitions:
         type: boolean
       createdAt:
         type: string
+      disablePassword:
+        type: boolean
+      doasEnabled:
+        type: boolean
       email:
+        type: string
+      fullName:
         type: string
       groups:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group'
         type: array
+      homeDirPerms:
+        type: integer
+      homeDirectory:
+        type: string
       id:
         type: integer
       lastLoginTime:
         type: string
+      locked:
+        type: boolean
       notes:
+        type: string
+      primaryGroupId:
+        type: integer
+      shell:
+        type: string
+      sshPublicKey:
         type: string
       tokens:
         items:
@@ -723,6 +760,8 @@ definitions:
         type: array
       totp:
         type: string
+      uid:
+        type: integer
       updatedAt:
         type: string
       username:
@@ -1158,6 +1197,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.Object:
     properties:
+      autoUpdate:
+        type: boolean
       createdAt:
         type: string
       description:
@@ -1173,14 +1214,25 @@ definitions:
       isUsedBy:
         description: '"", "dhcp" for now'
         type: string
+      lastRefreshAt:
+        type: string
+      lastRefreshError:
+        type: string
       name:
+        type: string
+      refreshIntervalSeconds:
+        type: integer
+      resolutionChecksum:
         type: string
       resolutions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ObjectResolution'
         type: array
+      sourceChecksum:
+        type: string
       type:
-        description: '"Host", "Mac", "Network", "Port", "Country", "List"'
+        description: '"Host", "Mac", "Network", "Port", "Country", "List", "FQDN",
+          "DUID"'
         type: string
       updatedAt:
         type: string
@@ -1208,7 +1260,9 @@ definitions:
       objectId:
         type: integer
       resolvedIp:
-        description: actual IP resolved only in the case of FQDN
+        description: deprecated mirror for resolved IP entries
+        type: string
+      resolvedValue:
         type: string
       updatedAt:
         type: string
@@ -1297,6 +1351,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_db_models_samba.SambaSettings:
     properties:
+      appleExtensions:
+        type: boolean
       bindInterfacesOnly:
         type: boolean
       id:
@@ -1309,37 +1365,6 @@ definitions:
         type: string
       workgroup:
         type: string
-    type: object
-  github_com_alchemillahq_sylve_internal_db_models_samba.SambaShare:
-    properties:
-      createMask:
-        type: string
-      createdAt:
-        type: string
-      dataset:
-        type: string
-      directoryMask:
-        type: string
-      guestOk:
-        type: boolean
-      id:
-        type: integer
-      name:
-        type: string
-      path:
-        type: string
-      readOnly:
-        type: boolean
-      readOnlyGroups:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group'
-        type: array
-      updatedAt:
-        type: string
-      writeableGroups:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models.Group'
-        type: array
     type: object
   github_com_alchemillahq_sylve_internal_db_models_utilities.CloudInitTemplate:
     properties:
@@ -1516,6 +1541,8 @@ definitions:
         type: boolean
       apic:
         type: boolean
+      bootRom:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_vm.VMBootROM'
       cloudInitData:
         type: string
       cloudInitMetaData:
@@ -1536,6 +1563,10 @@ definitions:
         type: string
       description:
         type: string
+      extraBhyveOptions:
+        items:
+          type: string
+        type: array
       id:
         type: integer
       ignoreUMSR:
@@ -1584,6 +1615,8 @@ definitions:
         type: boolean
       updatedAt:
         type: string
+      vncBind:
+        type: string
       vncEnabled:
         type: boolean
       vncPassword:
@@ -1597,6 +1630,14 @@ definitions:
       wol:
         type: boolean
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_vm.VMBootROM:
+    enum:
+    - uefi
+    - none
+    type: string
+    x-enum-varnames:
+    - VMBootROMUEFI
+    - VMBootROMNone
   github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning:
     properties:
       hostCpu:
@@ -1983,6 +2024,48 @@ definitions:
     - name
     - switchName
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapEntry:
+    properties:
+      dataset:
+        type: string
+      error:
+        type: string
+      exists:
+        type: boolean
+      label:
+        type: string
+      major:
+        type: integer
+      minor:
+        type: integer
+      mountPoint:
+        type: string
+      name:
+        type: string
+      phase:
+        type: string
+      pool:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapRequest:
+    properties:
+      major:
+        type: integer
+      minor:
+        type: integer
+      pool:
+        type: string
+      type:
+        type: string
+    required:
+    - major
+    - pool
+    - type
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.CreateJailRequest:
     properties:
       additionalOptions:
@@ -1992,6 +2075,8 @@ definitions:
           type: string
         type: array
       base:
+        type: string
+      bootstrapName:
         type: string
       cleanEnvironment:
         type: boolean
@@ -2157,6 +2242,8 @@ definitions:
         type: boolean
       apic:
         type: boolean
+      bootRom:
+        type: string
       cloudInit:
         type: boolean
       cloudInitData:
@@ -2177,6 +2264,10 @@ definitions:
         type: integer
       description:
         type: string
+      extraBhyveOptions:
+        items:
+          type: string
+        type: array
       ignoreUMSR:
         type: boolean
       iso:
@@ -2216,6 +2307,10 @@ definitions:
       timeOffset:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.TimeOffset'
       tpmEmulation:
+        type: boolean
+      vncBind:
+        type: string
+      vncEnabled:
         type: boolean
       vncPassword:
         type: string
@@ -2265,6 +2360,8 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.ModifyVNCRequest:
     properties:
+      vncBind:
+        type: string
       vncEnabled:
         type: boolean
       vncPassword:
@@ -2658,6 +2755,8 @@ definitions:
         type: array
       datasetType:
         $ref: '#/definitions/gzfs.DatasetType'
+      nameFilter:
+        type: string
       page:
         type: integer
       search:
@@ -3230,19 +3329,42 @@ definitions:
     properties:
       admin:
         type: boolean
+      auxGroupIds:
+        items:
+          type: integer
+        type: array
+      disablePassword:
+        type: boolean
+      doasEnabled:
+        type: boolean
       email:
         type: string
-      password:
-        maxLength: 128
-        minLength: 3
+      fullName:
         type: string
+      homeDirPerms:
+        type: integer
+      homeDirectory:
+        type: string
+      locked:
+        type: boolean
+      newPrimaryGroup:
+        type: boolean
+      password:
+        type: string
+      primaryGroupId:
+        type: integer
+      shell:
+        type: string
+      sshPublicKey:
+        type: string
+      uid:
+        type: integer
       username:
         maxLength: 128
         minLength: 3
         type: string
     required:
     - admin
-    - password
     - username
     type: object
   internal_handlers_auth.LoginRequest:
@@ -3471,6 +3593,15 @@ definitions:
       ipv6:
         type: boolean
     type: object
+  internal_handlers_network.BulkDeleteNetworkObjectsRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        type: array
+    required:
+    - ids
+    type: object
   internal_handlers_network.CreateManualSwitchRequest:
     properties:
       bridge:
@@ -3598,23 +3729,21 @@ definitions:
         type: string
       directoryMask:
         type: string
-      guestOk:
-        type: boolean
+      guest:
+        $ref: '#/definitions/internal_handlers_samba.SambaGuestRequest'
       name:
         type: string
-      readOnly:
+      permissions:
+        $ref: '#/definitions/internal_handlers_samba.SambaPermissionsRequest'
+      timeMachine:
         type: boolean
-      readOnlyGroups:
-        items:
-          type: string
-        type: array
-      writeableGroups:
-        items:
-          type: string
-        type: array
+      timeMachineMaxSize:
+        type: integer
     type: object
   internal_handlers_samba.SambaConfigRequest:
     properties:
+      appleExtensions:
+        type: boolean
       bindInterfacesOnly:
         type: boolean
       interfaces:
@@ -3626,6 +3755,95 @@ definitions:
       workgroup:
         type: string
     type: object
+  internal_handlers_samba.SambaGuestRequest:
+    properties:
+      enabled:
+        type: boolean
+      writeable:
+        type: boolean
+    type: object
+  internal_handlers_samba.SambaGuestResponse:
+    properties:
+      enabled:
+        type: boolean
+      writeable:
+        type: boolean
+    type: object
+  internal_handlers_samba.SambaPermissionsRequest:
+    properties:
+      read:
+        $ref: '#/definitions/internal_handlers_samba.SambaPrincipalIDsRequest'
+      write:
+        $ref: '#/definitions/internal_handlers_samba.SambaPrincipalIDsRequest'
+    type: object
+  internal_handlers_samba.SambaPermissionsResponse:
+    properties:
+      read:
+        $ref: '#/definitions/internal_handlers_samba.SambaPrincipalSetResponse'
+      write:
+        $ref: '#/definitions/internal_handlers_samba.SambaPrincipalSetResponse'
+    type: object
+  internal_handlers_samba.SambaPrincipalGroupResponse:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  internal_handlers_samba.SambaPrincipalIDsRequest:
+    properties:
+      groupIds:
+        items:
+          type: integer
+        type: array
+      userIds:
+        items:
+          type: integer
+        type: array
+    type: object
+  internal_handlers_samba.SambaPrincipalSetResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/internal_handlers_samba.SambaPrincipalGroupResponse'
+        type: array
+      users:
+        items:
+          $ref: '#/definitions/internal_handlers_samba.SambaPrincipalUserResponse'
+        type: array
+    type: object
+  internal_handlers_samba.SambaPrincipalUserResponse:
+    properties:
+      id:
+        type: integer
+      username:
+        type: string
+    type: object
+  internal_handlers_samba.SambaShareResponse:
+    properties:
+      createMask:
+        type: string
+      createdAt:
+        type: string
+      dataset:
+        type: string
+      directoryMask:
+        type: string
+      guest:
+        $ref: '#/definitions/internal_handlers_samba.SambaGuestResponse'
+      id:
+        type: integer
+      name:
+        type: string
+      permissions:
+        $ref: '#/definitions/internal_handlers_samba.SambaPermissionsResponse'
+      timeMachine:
+        type: boolean
+      timeMachineMaxSize:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
   internal_handlers_samba.UpdateSambaShareRequest:
     properties:
       createMask:
@@ -3634,22 +3852,18 @@ definitions:
         type: string
       directoryMask:
         type: string
-      guestOk:
-        type: boolean
+      guest:
+        $ref: '#/definitions/internal_handlers_samba.SambaGuestRequest'
       id:
         type: integer
       name:
         type: string
-      readOnly:
+      permissions:
+        $ref: '#/definitions/internal_handlers_samba.SambaPermissionsRequest'
+      timeMachine:
         type: boolean
-      readOnlyGroups:
-        items:
-          type: string
-        type: array
-      writeableGroups:
-        items:
-          type: string
-        type: array
+      timeMachineMaxSize:
+        type: integer
     type: object
   internal_handlers_system.AddFileOrFolderRequest:
     properties:
@@ -3709,6 +3923,11 @@ definitions:
       startAtBoot:
         type: boolean
     type: object
+  internal_handlers_vm.ModifyBootROMRequest:
+    properties:
+      bootRom:
+        type: string
+    type: object
   internal_handlers_vm.ModifyClockRequest:
     properties:
       timeOffset:
@@ -3722,6 +3941,13 @@ definitions:
         type: string
       networkConfig:
         type: string
+    type: object
+  internal_handlers_vm.ModifyExtraBhyveOptionsRequest:
+    properties:
+      extraBhyveOptions:
+        items:
+          type: string
+        type: array
     type: object
   internal_handlers_vm.ModifyIgnoreUMSRsRequest:
     properties:
@@ -5496,6 +5722,115 @@ paths:
       summary: Perform Jail Action
       tags:
       - Jail
+  /jail/bootstrap:
+    delete:
+      consumes:
+      - application/json
+      description: Destroy a completed pkgbase bootstrap dataset and remove its DB
+        record
+      parameters:
+      - description: Pool name
+        in: query
+        name: pool
+        required: true
+        type: string
+      - description: Bootstrap name (e.g. 15-0-Base)
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete bootstrap
+      tags:
+      - Jail
+    post:
+      consumes:
+      - application/json
+      description: Start a pkgbase bootstrap for the given pool, version, and type.
+        Returns immediately; bootstrap runs asynchronously.
+      parameters:
+      - description: Bootstrap Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.BootstrapRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create bootstrap
+      tags:
+      - Jail
+  /jail/bootstraps:
+    get:
+      consumes:
+      - application/json
+      description: List all supported pkgbase bootstrap entries for a pool, with their
+        current install status
+      parameters:
+      - description: Pool name
+        in: query
+        name: pool
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_jail_BootstrapEntry'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List bootstraps
+      tags:
+      - Jail
   /jail/cpu:
     put:
       consumes:
@@ -6492,6 +6827,39 @@ paths:
       summary: Edit Network Object
       tags:
       - Network
+  /network/object/bulk-delete:
+    post:
+      consumes:
+      - application/json
+      description: Delete multiple network objects by their IDs; fails if any object
+        is in use
+      parameters:
+      - description: Bulk Delete Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_network.BulkDeleteNetworkObjectsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Objects deleted successfully
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Bulk Delete Network Objects
+      tags:
+      - Network
   /network/switch:
     get:
       consumes:
@@ -6732,6 +7100,38 @@ paths:
       summary: Modify Boot Order of a Virtual Machine
       tags:
       - VM
+  /options/boot-rom/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify the Boot ROM mode of a virtual machine
+      parameters:
+      - description: Modify Boot ROM Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifyBootROMRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Boot ROM of a Virtual Machine
+      tags:
+      - VM
   /options/clock/:rid:
     put:
       consumes:
@@ -6828,6 +7228,39 @@ paths:
       summary: Modify DevFS rules of a Jail
       tags:
       - Jail
+  /options/extra-bhyve-options/:rid:
+    put:
+      consumes:
+      - application/json
+      description: Modify custom bhyve arguments (one argument per line) of a virtual
+        machine
+      parameters:
+      - description: Modify Extra Bhyve Options Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_vm.ModifyExtraBhyveOptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Modify Extra Bhyve Options of a Virtual Machine
+      tags:
+      - VM
   /options/fstab/:rid:
     put:
       consumes:
@@ -7273,7 +7706,7 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_samba_SambaShare'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_internal_handlers_samba_SambaShareResponse'
         "500":
           description: Internal Server Error
           schema:

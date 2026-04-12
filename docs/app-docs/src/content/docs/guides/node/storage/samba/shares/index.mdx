@@ -5,7 +5,7 @@ description: Managing samba shares on Sylve
 
 ## Pre-Requisites
 
-You should have atleast 1 Group with the user you want to share the folder with. You can create a group and add users to it by following the Groups and Users guide.
+You should have local users and/or groups ready before creating a share. You can manage both from the Authentication section.
 
 ## Preface
 
@@ -26,17 +26,23 @@ Let's go through the fields one by one:
 - **Dataset**: The dataset you want to share, this is the path that will be shared over samba. You can create one in the ZFS/Filesystem section if you don't have one already.
 
 
-- **Read-Only Groups**: The groups that will have read-only access to the share, you can select multiple groups here. If a user belongs to multiple groups and one of them is selected here, they will have read-only access to the share.
+- **Read Users**: Users that get read access.
 
-- **Writeable Groups**: The groups that will have read-write access to the share, you can select multiple groups here. If a user belongs to multiple groups and one of them is selected here, they will have read-write access to the share.
+- **Write Users**: Users that get write access.
+
+- **Read Groups**: Groups that get read access.
+
+- **Write Groups**: Groups that get write access.
+
+Sylve uses **write-wins** normalization. If the same user/group is selected in both read and write lists, it is treated as write access.
 
 - **Create Mask**: The permissions that will be set on files created in the share, this is a standard unix permission mask. The default value is `0664` which means that the owner and group will have read and write permissions, while others will have read-only permissions.
 
-- **Directory Mask**: The permissions that will be set on directories created in the share, this is a standard unix permission mask. The default value is `0775` which means that the owner and group will have read, write and execute permissions, while others will have read and execute permissions.
+- **Directory Mask**: The permissions that will be set on directories created in the share, this is a standard unix permission mask. The default value is `2775` which means that the owner and group will have read, write and execute permissions, while others will have read and execute permissions.
 
-- **Guest Access**: Whether to allow guest access to the share, if enabled users will be able to connect to the share without providing a username and password. This is disabled by default.
+- **Guest Only**: Whether to make this a guest-only share. If enabled, authenticated user/group access is disabled for that share.
 
-- **Read-Only**: Whether to make the share read-only, if enabled users will only be able to read files from the share, but not write to it. This is disabled by default.
+- **Guest Writeable**: Only shown in guest-only mode. Controls whether guests can write or read-only.
 
 ## Editing a Samba Share
 
@@ -53,6 +59,10 @@ Never ever expose samba directly to the internet, if you want to access your sam
 :::
 
 In this demonstration we'll be accessing the samba share from a macOS client over tailcale, but the process is similar for other operating systems as well.
+
+:::note
+Modern Windows versions may block insecure SMB guest logons by default. If guest-only shares fail from Windows clients, check the client-side SMB guest logon policy.
+:::
 
 ![Opening the Samba Share](./conn-1.png)
 

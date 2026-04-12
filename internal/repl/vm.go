@@ -9,8 +9,11 @@
 package repl
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -22,12 +25,19 @@ func handleVms(ctx *Context, args []string) {
 			{"list", "List all VMs"},
 			{"networks <rid>", "List networks for a specific VM (by RID)"},
 			{"rmnet <rid> <net_id>", "Remove a network from a VM"},
+			{"qga send <rid> <command>", "Send a QGA command to a VM"},
 		})
 		return
 	}
 
 	subCmd := args[0]
 	subArgs := args[1:]
+
+	// Convenience form: vms <rid> qga send <command>
+	if rid, err := strconv.ParseUint(subCmd, 10, 64); err == nil {
+		handleVmsByRID(ctx, uint(rid), subArgs)
+		return
+	}
 
 	switch subCmd {
 	case "list":
@@ -67,9 +77,76 @@ func handleVms(ctx *Context, args []string) {
 
 		vmRemoveNetwork(ctx, uint(rid), uint(netID))
 
+	case "qga":
+		if len(subArgs) < 1 {
+			println(ctx, "Error: Missing arguments. Usage: vms qga send <rid> <command>")
+			return
+		}
+
+		if subArgs[0] == "send" {
+			if len(subArgs) < 3 {
+				println(ctx, "Error: Missing arguments. Usage: vms qga send <rid> <command>")
+				return
+			}
+
+			rid, err := strconv.ParseUint(subArgs[1], 10, 64)
+			if err != nil {
+				printf(ctx, "Error: Invalid RID '%s'\n", subArgs[1])
+				return
+			}
+
+			cmd := strings.TrimSpace(strings.Join(subArgs[2:], " "))
+			vmQGASend(ctx, uint(rid), cmd)
+			return
+		}
+
+		// Shorthand form: vms qga <rid> <command>
+		rid, err := strconv.ParseUint(subArgs[0], 10, 64)
+		if err != nil {
+			printf(ctx, "Error: Invalid RID '%s'\n", subArgs[0])
+			return
+		}
+		if len(subArgs) < 2 {
+			println(ctx, "Error: Missing command. Usage: vms qga <rid> <command>")
+			return
+		}
+
+		cmd := strings.TrimSpace(strings.Join(subArgs[1:], " "))
+		vmQGASend(ctx, uint(rid), cmd)
+
 	default:
 		printf(ctx, "Unknown vms command: '%s'. Type 'vms' for help.\n", subCmd)
 	}
+}
+
+func handleVmsByRID(ctx *Context, rid uint, args []string) {
+	if len(args) == 0 {
+		printf(ctx, "Error: Missing command for VM RID %d.\n", rid)
+		return
+	}
+
+	if args[0] != "qga" {
+		printf(ctx, "Unknown VM RID command: '%s'. Try: vms %d qga send <command>\n", args[0], rid)
+		return
+	}
+
+	if len(args) < 2 {
+		println(ctx, "Error: Missing QGA command. Usage: vms <rid> qga send <command>")
+		return
+	}
+
+	qgaArgs := args[1:]
+	if qgaArgs[0] == "send" {
+		qgaArgs = qgaArgs[1:]
+	}
+
+	if len(qgaArgs) == 0 {
+		println(ctx, "Error: Missing QGA command. Usage: vms <rid> qga send <command>")
+		return
+	}
+
+	cmd := strings.TrimSpace(strings.Join(qgaArgs, " "))
+	vmQGASend(ctx, rid, cmd)
 }
 
 func vmsList(ctx *Context) {
@@ -169,4 +246,30 @@ func vmRemoveNetwork(ctx *Context, rid uint, netID uint) {
 	} else {
 		println(ctx, "Network deleted successfully.")
 	}
+}
+
+func vmQGASend(ctx *Context, rid uint, cmd string) {
+	if ctx == nil || ctx.VirtualMachine == nil {
+		println(ctx, "Error: VM service unavailable.")
+		return
+	}
+
+	if strings.TrimSpace(cmd) == "" {
+		println(ctx, "Error: QGA command cannot be empty.")
+		return
+	}
+
+	resp, err := ctx.VirtualMachine.RunQemuGuestAgentCommand(rid, cmd)
+	if err != nil {
+		printf(ctx, "QGA command failed: %v\n", err)
+		return
+	}
+
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, resp, "", "  "); err != nil {
+		printf(ctx, "%s\n\n", string(resp))
+		return
+	}
+
+	printf(ctx, "%s\n\n", pretty.String())
 }

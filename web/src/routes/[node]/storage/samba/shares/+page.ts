@@ -1,4 +1,5 @@
 import { listGroups } from '$lib/api/auth/groups';
+import { listUsers } from '$lib/api/auth/local';
 import { getSambaConfig } from '$lib/api/samba/config';
 import { getSambaShares } from '$lib/api/samba/share';
 import { getDatasets } from '$lib/api/zfs/datasets';
@@ -8,7 +9,7 @@ import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
     const cacheDuration = SEVEN_DAYS;
-    const [datasets, shares, groups, sambaConfig] = await Promise.all([
+    const [datasets, shares, groups, users, sambaConfig] = await Promise.all([
         cachedFetch(
             'zfs-filesystems',
             async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
@@ -16,6 +17,7 @@ export async function load() {
         ),
         cachedFetch('samba-shares', async () => await getSambaShares(), cacheDuration),
         cachedFetch('groups', async () => await listGroups(), cacheDuration),
+        cachedFetch('users', async () => await listUsers(), cacheDuration),
         cachedFetch('samba-config', async () => await getSambaConfig(), cacheDuration)
     ]);
 
@@ -23,6 +25,7 @@ export async function load() {
         datasets,
         shares,
         groups,
+        users,
         sambaConfig
     };
 }

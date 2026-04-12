@@ -23,6 +23,26 @@ import (
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
+const (
+	sambaACLType    = "nfsv4"
+	sambaACLMode    = "restricted"
+	sambaACLInherit = "passthrough"
+	guestACEName    = "everyone@"
+	readACLPerm     = "read_set/execute"
+	legacyReadPerm  = "read_set"
+	writeACLPerm    = "modify_set"
+)
+
+var sambaRunCommand = utils.RunCommand
+
+func isMissingACLEntryRemovalError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return strings.Contains(err.Error(), "cannot remove non-existent ACL entry")
+}
+
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
 	var settings sambaModels.SambaSettings
 	if err := s.DB.First(&settings).Error; err != nil {
@@ -100,6 +120,296 @@ func (s *Service) SetGlobalConfig(
 	return s.WriteConfig(ctx, true)
 }
 
+func (s *Service) hasGuestOnlyShares() (bool, error) {
+	var count int64
+	if err := s.DB.Model(&sambaModels.SambaShare{}).Where("guest_ok = ?", true).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("failed_to_check_guest_shares: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+func (s *Service) ensureSambaDatasetACLProperties(
+	ctx context.Context,
+	dataset *gzfs.Dataset,
+	strict bool,
+) error {
+	if dataset == nil {
+		err := fmt.Errorf("dataset_not_found")
+		if strict {
+			return err
+		}
+
+		logger.L.Warn().Err(err).Msg("failed_to_enforce_samba_dataset_acl_properties")
+		return nil
+	}
+
+	if dataset.Type != gzfs.DatasetTypeFilesystem {
+		err := fmt.Errorf("dataset_not_filesystem: %s", dataset.Name)
+		if strict {
+			return err
+		}
+
+		logger.L.Warn().Err(err).Str("dataset", dataset.Name).Msg("failed_to_enforce_samba_dataset_acl_properties")
+		return nil
+	}
+
+	if err := dataset.SetProperties(
+		ctx,
+		"acltype", sambaACLType,
+		"aclmode", sambaACLMode,
+		"aclinherit", sambaACLInherit,
+	); err != nil {
+		wrapped := fmt.Errorf("failed_to_set_samba_acl_properties_for_dataset_%s: %w", dataset.Name, err)
+		if strict {
+			return wrapped
+		}
+
+		logger.L.Warn().Err(wrapped).Str("dataset", dataset.Name).Msg("failed_to_enforce_samba_dataset_acl_properties")
+	}
+
+	return nil
+}
+
+func uniquePrincipalNames(names []string) []string {
+	seen := make(map[string]struct{}, len(names))
+	out := make([]string, 0, len(names))
+
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		if _, exists := seen[name]; exists {
+			continue
+		}
+
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+
+	return out
+}
+
+func normalizeSambaPrincipalNames(input sambaPrincipalNames) sambaPrincipalNames {
+	normalized := sambaPrincipalNames{
+		ReadUsers:   uniquePrincipalNames(input.ReadUsers),
+		WriteUsers:  uniquePrincipalNames(input.WriteUsers),
+		ReadGroups:  uniquePrincipalNames(input.ReadGroups),
+		WriteGroups: uniquePrincipalNames(input.WriteGroups),
+	}
+
+	writeUsers := make(map[string]struct{}, len(normalized.WriteUsers))
+	for _, user := range normalized.WriteUsers {
+		writeUsers[user] = struct{}{}
+	}
+
+	filteredReadUsers := make([]string, 0, len(normalized.ReadUsers))
+	for _, user := range normalized.ReadUsers {
+		if _, exists := writeUsers[user]; exists {
+			continue
+		}
+		filteredReadUsers = append(filteredReadUsers, user)
+	}
+	normalized.ReadUsers = filteredReadUsers
+
+	writeGroups := make(map[string]struct{}, len(normalized.WriteGroups))
+	for _, group := range normalized.WriteGroups {
+		writeGroups[group] = struct{}{}
+	}
+
+	filteredReadGroups := make([]string, 0, len(normalized.ReadGroups))
+	for _, group := range normalized.ReadGroups {
+		if _, exists := writeGroups[group]; exists {
+			continue
+		}
+		filteredReadGroups = append(filteredReadGroups, group)
+	}
+	normalized.ReadGroups = filteredReadGroups
+
+	return normalized
+}
+
+func mergePrincipalNames(lists ...[]string) []string {
+	merged := make([]string, 0)
+	for _, list := range lists {
+		merged = append(merged, list...)
+	}
+	return uniquePrincipalNames(merged)
+}
+
+func (s *Service) syncSambaDatasetPrincipalACLs(
+	mountpoint string,
+	previous sambaPrincipalNames,
+	desired sambaPrincipalNames,
+	strict bool,
+) error {
+	if mountpoint == "" || mountpoint == "-" {
+		err := fmt.Errorf("dataset_not_mounted")
+		if strict {
+			return err
+		}
+
+		logger.L.Warn().Err(err).Str("mountpoint", mountpoint).Msg("failed_to_enforce_samba_dataset_principal_acls")
+		return nil
+	}
+
+	previous = normalizeSambaPrincipalNames(previous)
+	desired = normalizeSambaPrincipalNames(desired)
+
+	removeACL := func(principalType string, principalName string, permissionSet string) {
+		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
+
+		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+			if isMissingACLEntryRemovalError(err) {
+				return
+			}
+
+			logger.L.Warn().
+				Err(err).
+				Str("principal", principalName).
+				Str("principal_type", principalType).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_remove_samba_dataset_principal_acl_entry")
+		}
+	}
+
+	addACL := func(principalType string, principalName string, permissionSet string) error {
+		entry := fmt.Sprintf("%s:%s:%s:fd:allow", principalType, principalName, permissionSet)
+
+		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
+		if err != nil {
+			wrapped := fmt.Errorf(
+				"failed_to_set_acl_for_%s_%s_on_%s: %w",
+				principalType,
+				principalName,
+				mountpoint,
+				err,
+			)
+			if strict {
+				return wrapped
+			}
+
+			logger.L.Warn().
+				Err(wrapped).
+				Str("principal", principalName).
+				Str("principal_type", principalType).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_enforce_samba_dataset_principal_acls")
+		}
+
+		return nil
+	}
+
+	targetUsers := mergePrincipalNames(previous.ReadUsers, previous.WriteUsers, desired.ReadUsers, desired.WriteUsers)
+	targetGroups := mergePrincipalNames(previous.ReadGroups, previous.WriteGroups, desired.ReadGroups, desired.WriteGroups)
+
+	for _, user := range targetUsers {
+		removeACL("u", user, legacyReadPerm)
+		removeACL("u", user, readACLPerm)
+		removeACL("u", user, writeACLPerm)
+	}
+
+	for _, group := range targetGroups {
+		removeACL("g", group, legacyReadPerm)
+		removeACL("g", group, readACLPerm)
+		removeACL("g", group, writeACLPerm)
+	}
+
+	for _, user := range desired.ReadUsers {
+		if err := addACL("u", user, readACLPerm); err != nil {
+			return err
+		}
+	}
+
+	for _, user := range desired.WriteUsers {
+		if err := addACL("u", user, writeACLPerm); err != nil {
+			return err
+		}
+	}
+
+	for _, group := range desired.ReadGroups {
+		if err := addACL("g", group, readACLPerm); err != nil {
+			return err
+		}
+	}
+
+	for _, group := range desired.WriteGroups {
+		if err := addACL("g", group, writeACLPerm); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) syncSambaDatasetGuestACL(
+	mountpoint string,
+	guestEnabled bool,
+	guestWriteable bool,
+	strict bool,
+) error {
+	if mountpoint == "" || mountpoint == "-" {
+		err := fmt.Errorf("dataset_not_mounted")
+		if strict {
+			return err
+		}
+
+		logger.L.Warn().Err(err).Str("mountpoint", mountpoint).Msg("failed_to_enforce_samba_dataset_guest_acl")
+		return nil
+	}
+
+	removeACL := func(permissionSet string) {
+		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
+		if _, err := sambaRunCommand("/bin/setfacl", "-x", entry, mountpoint); err != nil {
+			if isMissingACLEntryRemovalError(err) {
+				return
+			}
+
+			logger.L.Warn().
+				Err(err).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_remove_samba_dataset_guest_acl_entry")
+		}
+	}
+
+	addACL := func(permissionSet string) error {
+		entry := fmt.Sprintf("%s:%s:fd:allow", guestACEName, permissionSet)
+		_, err := sambaRunCommand("/bin/setfacl", "-m", entry, mountpoint)
+		if err != nil {
+			wrapped := fmt.Errorf("failed_to_set_guest_acl_for_%s_on_%s: %w", permissionSet, mountpoint, err)
+			if strict {
+				return wrapped
+			}
+
+			logger.L.Warn().
+				Err(wrapped).
+				Str("permission_set", permissionSet).
+				Str("mountpoint", mountpoint).
+				Msg("failed_to_enforce_samba_dataset_guest_acl")
+		}
+		return nil
+	}
+
+	removeACL(legacyReadPerm)
+	removeACL(readACLPerm)
+	removeACL(writeACLPerm)
+
+	if !guestEnabled {
+		return nil
+	}
+
+	if guestWriteable {
+		return addACL(writeACLPerm)
+	}
+
+	return addACL(readACLPerm)
+}
+
 func (s *Service) GlobalConfig() (string, error) {
 	settings, err := s.GetGlobalConfig()
 	if err != nil {
@@ -129,6 +439,15 @@ func (s *Service) GlobalConfig() (string, error) {
 		config += "bind interfaces only = no\n"
 	}
 
+	hasGuestShares, err := s.hasGuestOnlyShares()
+	if err != nil {
+		return "", err
+	}
+
+	if hasGuestShares {
+		config += "map to guest = Bad User\n"
+	}
+
 	if settings.AppleExtensions {
 		config += "min protocol = SMB2\n"
 		config += "ea support = yes\n"
@@ -150,7 +469,12 @@ func (s *Service) GlobalConfig() (string, error) {
 
 func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 	shares := []sambaModels.SambaShare{}
-	if err := s.DB.Preload("ReadOnlyGroups").Preload("WriteableGroups").Find(&shares).Error; err != nil {
+	if err := s.DB.
+		Preload("ReadOnlyUsers").
+		Preload("WriteableUsers").
+		Preload("ReadOnlyGroups").
+		Preload("WriteableGroups").
+		Find(&shares).Error; err != nil {
 		return "", fmt.Errorf("failed to retrieve Samba shares: %w", err)
 	}
 
@@ -162,9 +486,17 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 				return "", fmt.Errorf("failed to fetch dataset for share %s: %v", share.Name, err)
 			}
 
+			if ds == nil {
+				return "", fmt.Errorf("dataset for share %s not found", share.Name)
+			}
+
 			if ds.Mountpoint == "-" || ds.Mountpoint == "" {
 				return "", fmt.Errorf("dataset %s for share %s is not mounted", ds.Name, share.Name)
 			}
+
+			// Best-effort during config generation so a single property-set failure
+			// doesn't prevent Samba from reloading otherwise valid share config.
+			_ = s.ensureSambaDatasetACLProperties(ctx, ds, false)
 
 			datasets[share.Dataset] = ds
 		}
@@ -179,46 +511,71 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 		if share.GuestOk {
 			config.WriteString(fmt.Sprintf("\tguest ok = yes\n"))
+			config.WriteString("\tguest only = yes\n")
+
+			if share.ReadOnly {
+				config.WriteString("\tread only = yes\n")
+			} else {
+				config.WriteString("\tread only = no\n")
+			}
 		} else {
 			config.WriteString(fmt.Sprintf("\tguest ok = no\n"))
 		}
 
-		rGroups := make([]string, 0)
-		wGroups := make([]string, 0)
+		principals := namesFromShareAssociations(share)
+		principals = normalizeSambaPrincipalNames(principals)
 
-		if len(share.ReadOnlyGroups) > 0 {
-			for _, group := range share.ReadOnlyGroups {
-				rGroups = append(rGroups, group.Name)
+		guestWriteable := share.GuestOk && !share.ReadOnly
+		if share.GuestOk {
+			// Best-effort during config generation to avoid breaking Samba reload.
+			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, principals, sambaPrincipalNames{}, false)
+			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, true, guestWriteable, false)
+		} else {
+			// Best-effort during config generation to avoid breaking Samba reload.
+			_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
+			_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, sambaPrincipalNames{}, principals, false)
+		}
+
+		readUsers := principals.ReadUsers
+		writeUsers := principals.WriteUsers
+		readGroups := principals.ReadGroups
+		writeGroups := principals.WriteGroups
+
+		validUsers := make([]string, 0, len(readUsers)+len(writeUsers)+len(readGroups)+len(writeGroups))
+		validUsers = append(validUsers, readUsers...)
+		validUsers = append(validUsers, writeUsers...)
+		for _, group := range readGroups {
+			validUsers = append(validUsers, "@"+group)
+		}
+		for _, group := range writeGroups {
+			validUsers = append(validUsers, "@"+group)
+		}
+		validUsers = uniquePrincipalNames(validUsers)
+
+		writeList := make([]string, 0, len(writeUsers)+len(writeGroups))
+		writeList = append(writeList, writeUsers...)
+		for _, group := range writeGroups {
+			writeList = append(writeList, "@"+group)
+		}
+		writeList = uniquePrincipalNames(writeList)
+
+		readPrincipalCount := len(readUsers) + len(readGroups)
+		writePrincipalCount := len(writeUsers) + len(writeGroups)
+
+		if !share.GuestOk && len(validUsers) > 0 {
+			config.WriteString(fmt.Sprintf("\tvalid users = %s\n", strings.Join(validUsers, " ")))
+		}
+
+		if !share.GuestOk {
+			if writePrincipalCount == 0 || readPrincipalCount > 0 {
+				config.WriteString("\tread only = yes\n")
+			} else {
+				config.WriteString("\tread only = no\n")
 			}
 		}
 
-		if len(share.WriteableGroups) > 0 {
-			for _, group := range share.WriteableGroups {
-				wGroups = append(wGroups, group.Name)
-			}
-		}
-
-		aGroups := utils.JoinStringSlices(rGroups, wGroups)
-		writeList := fmt.Sprintf("%s%s", "@", strings.Join(wGroups, " @"))
-
-		if len(aGroups) > 0 {
-			config.WriteString(fmt.Sprintf("\tvalid users = %s\n", "@"+strings.Join(aGroups, " @")))
-		}
-
-		if share.ReadOnly {
-			config.WriteString("\tread only = yes\n")
-		}
-
-		if share.GuestOk && !share.ReadOnly {
-			config.WriteString("\tforce user = root\n")
-		}
-
-		if len(rGroups) > 0 && len(wGroups) > 0 {
-			config.WriteString("\tread only = yes\n")
-		}
-
-		if len(wGroups) > 0 {
-			config.WriteString(fmt.Sprintf("\twrite list = %s\n", writeList))
+		if !share.GuestOk && len(writeList) > 0 {
+			config.WriteString(fmt.Sprintf("\twrite list = %s\n", strings.Join(writeList, " ")))
 		}
 
 		config.WriteString(fmt.Sprintf("\tcreate mask = %s\n", share.CreateMask))
@@ -238,25 +595,6 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 		config.WriteString("\tfull_audit:log_secdesc = true\n")
 
 		config.WriteString("\n\n")
-
-		_, err := utils.RunCommand("/bin/setfacl", "-b", dataset.Mountpoint)
-		if err != nil {
-			return "", fmt.Errorf("failed to clear ACLs on mountpoint %s: %w", dataset.Mountpoint, err)
-		}
-
-		if len(rGroups) > 0 {
-			_, err := utils.RunCommand("/bin/setfacl", "-m", fmt.Sprintf("g:%s:read_set:fd:allow", strings.Join(rGroups, ",")), dataset.Mountpoint)
-			if err != nil {
-				return "", fmt.Errorf("failed to set read ACLs for groups %v on mountpoint %s: %w", rGroups, dataset.Mountpoint, err)
-			}
-		}
-
-		if len(wGroups) > 0 {
-			_, err := utils.RunCommand("/bin/setfacl", "-m", fmt.Sprintf("g:%s:modify_set:fd:allow", strings.Join(wGroups, ",")), dataset.Mountpoint)
-			if err != nil {
-				return "", fmt.Errorf("failed to set write ACLs for groups %v on mountpoint %s: %w", wGroups, dataset.Mountpoint, err)
-			}
-		}
 	}
 
 	return config.String(), nil

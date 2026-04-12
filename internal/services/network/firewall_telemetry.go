@@ -55,6 +55,9 @@ type firewallCounterKey struct {
 type firewallTelemetryRuntime struct {
 	mu sync.RWMutex
 
+	firewallServiceEnabled       bool
+	firewallServiceEnabledCached bool
+
 	// totals accumulates packet/byte counts across PF reloads.
 	// lastPF is the most recent raw absolute value read from PF (for delta detection).
 	// lastFlushed is the last totals value written to the telemetry DB.
@@ -69,12 +72,14 @@ type firewallTelemetryRuntime struct {
 	countersUpdatedAt time.Time
 	countersAvailable bool
 	countersError     string
+	countersLastWarn  string
 
 	liveHits         []networkServiceInterfaces.FirewallLiveHitEvent
 	liveCursor       int64
 	liveSourceStatus string
 	liveSourceError  string
 	liveUpdatedAt    time.Time
+	liveLastWarn     string
 }
 
 type parsedFirewallLogLine struct {
@@ -107,6 +112,30 @@ func (s *Service) getFirewallTelemetryRuntime() *firewallTelemetryRuntime {
 		}
 	})
 	return s.firewallTelemetry
+}
+
+func (s *Service) SetFirewallServiceEnabledForTelemetry(enabled bool) {
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.Lock()
+	rt.firewallServiceEnabled = enabled
+	rt.firewallServiceEnabledCached = true
+	rt.mu.Unlock()
+}
+
+func (s *Service) isFirewallServiceEnabledForTelemetry() bool {
+	rt := s.getFirewallTelemetryRuntime()
+
+	rt.mu.RLock()
+	if rt.firewallServiceEnabledCached {
+		enabled := rt.firewallServiceEnabled
+		rt.mu.RUnlock()
+		return enabled
+	}
+	rt.mu.RUnlock()
+
+	enabled := s.IsFirewallServiceEnabled()
+	s.SetFirewallServiceEnabledForTelemetry(enabled)
+	return enabled
 }
 
 func parseLabeledRuleCounters(output string, labelPattern *regexp.Regexp) (map[uint]trafficRuleCounterTotals, map[int]uint) {
@@ -222,6 +251,15 @@ func (s *Service) sampleFirewallCounters() {
 	rt := s.getFirewallTelemetryRuntime()
 
 	now := time.Now().UTC()
+	if !s.isFirewallServiceEnabledForTelemetry() {
+		rt.mu.Lock()
+		rt.countersUpdatedAt = now
+		rt.countersAvailable = false
+		rt.countersError = "firewall_service_disabled"
+		rt.countersLastWarn = ""
+		rt.mu.Unlock()
+		return
+	}
 
 	type pfResult struct {
 		totals      map[uint]trafficRuleCounterTotals
@@ -261,6 +299,9 @@ func (s *Service) sampleFirewallCounters() {
 		errorsText = append(errorsText, fmt.Sprintf("nat_counters: %v", natErr))
 	}
 
+	currentError := strings.Join(errorsText, "; ")
+	warnUnavailable := false
+
 	rt.mu.Lock()
 	for key, newAbs := range combined {
 		last := rt.lastPF[key]
@@ -295,11 +336,17 @@ func (s *Service) sampleFirewallCounters() {
 	}
 	rt.countersUpdatedAt = now
 	rt.countersAvailable = availability
-	rt.countersError = strings.Join(errorsText, "; ")
+	rt.countersError = currentError
+	if availability {
+		rt.countersLastWarn = ""
+	} else if currentError != "" && rt.countersLastWarn != currentError {
+		rt.countersLastWarn = currentError
+		warnUnavailable = true
+	}
 	rt.mu.Unlock()
 
-	if !availability {
-		logger.L.Warn().Msgf("firewall counter sample unavailable: %s", strings.Join(errorsText, "; "))
+	if warnUnavailable {
+		logger.L.Warn().Msgf("firewall counter sample unavailable: %s", currentError)
 	}
 }
 
@@ -645,9 +692,30 @@ func (s *Service) setFirewallLiveSourceStatus(status string, sourceError string)
 	runtime.liveSourceStatus = status
 	runtime.liveSourceError = strings.TrimSpace(sourceError)
 	if status == "ok" {
+		runtime.liveLastWarn = ""
 		runtime.liveUpdatedAt = time.Now().UTC()
 	}
 	runtime.mu.Unlock()
+}
+
+func (s *Service) setFirewallLiveSourceUnavailable(sourceError string) bool {
+	runtime := s.getFirewallTelemetryRuntime()
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+
+	trimmedErr := strings.TrimSpace(sourceError)
+	runtime.liveSourceStatus = "unavailable"
+	runtime.liveSourceError = trimmedErr
+
+	if trimmedErr == "" {
+		return false
+	}
+	if runtime.liveLastWarn == trimmedErr {
+		return false
+	}
+
+	runtime.liveLastWarn = trimmedErr
+	return true
 }
 
 func isPflogAlreadyExistsError(err error) bool {
@@ -687,9 +755,20 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 		default:
 		}
 
+		if !s.isFirewallServiceEnabledForTelemetry() {
+			s.setFirewallLiveSourceStatus("unavailable", "firewall_service_disabled")
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(firewallLiveLogRestartDelay):
+			}
+			continue
+		}
+
 		if err := s.ensurePFLogInterfaceReady(); err != nil {
-			s.setFirewallLiveSourceStatus("unavailable", err.Error())
-			logger.L.Warn().Err(err).Msg("failed to prepare pflog interface for capture")
+			if s.setFirewallLiveSourceUnavailable(err.Error()) {
+				logger.L.Warn().Err(err).Msg("failed to prepare pflog interface for capture")
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -700,8 +779,9 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 
 		ih, err := pcap.NewInactiveHandle("pflog0")
 		if err != nil {
-			s.setFirewallLiveSourceStatus("unavailable", err.Error())
-			logger.L.Warn().Err(err).Msg("failed to create pflog capture handle")
+			if s.setFirewallLiveSourceUnavailable(err.Error()) {
+				logger.L.Warn().Err(err).Msg("failed to create pflog capture handle")
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -718,8 +798,9 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 		handle, err := ih.Activate()
 		ih.CleanUp()
 		if err != nil {
-			s.setFirewallLiveSourceStatus("unavailable", err.Error())
-			logger.L.Warn().Err(err).Msg("failed to activate pflog capture handle")
+			if s.setFirewallLiveSourceUnavailable(err.Error()) {
+				logger.L.Warn().Err(err).Msg("failed to activate pflog capture handle")
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -754,8 +835,9 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			return
 		}
 
-		s.setFirewallLiveSourceStatus("unavailable", errText)
-		logger.L.Warn().Msgf("firewall live log watcher unavailable: %s", errText)
+		if s.setFirewallLiveSourceUnavailable(errText) {
+			logger.L.Warn().Msgf("firewall live log watcher unavailable: %s", errText)
+		}
 
 		select {
 		case <-ctx.Done():
@@ -797,6 +879,7 @@ func (s *Service) runFirewallCounterFlusher(ctx context.Context) {
 
 func (s *Service) StartFirewallMonitor(ctx context.Context) {
 	_ = s.getFirewallTelemetryRuntime()
+	s.SetFirewallServiceEnabledForTelemetry(s.IsFirewallServiceEnabled())
 
 	s.firewallMonOnce.Do(func() {
 		s.updateFirewallRuleNames()
