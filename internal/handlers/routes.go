@@ -30,6 +30,7 @@ import (
 	jailHandlers "github.com/alchemillahq/sylve/internal/handlers/jail"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
+	notificationsHandlers "github.com/alchemillahq/sylve/internal/handlers/notifications"
 	sambaHandlers "github.com/alchemillahq/sylve/internal/handlers/samba"
 	systemHandlers "github.com/alchemillahq/sylve/internal/handlers/system"
 	taskHandlers "github.com/alchemillahq/sylve/internal/handlers/task"
@@ -46,6 +47,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
@@ -80,6 +82,7 @@ func RegisterRoutes(r *gin.Engine,
 	zfsService *zfsService.Service,
 	diskService *diskService.Service,
 	networkService *networkService.Service,
+	notificationService *notificationsService.Service,
 	utilitiesService *utilitiesService.Service,
 	systemService *systemService.Service,
 	libvirtService *libvirt.Service,
@@ -501,6 +504,18 @@ func RegisterRoutes(r *gin.Engine,
 	events.Use(middleware.EnsureAuthenticated(authService))
 	{
 		events.GET("/stream", eventsHandlers.StreamSSE(authService))
+	}
+
+	notifications := api.Group("/notifications")
+	notifications.Use(middleware.EnsureAuthenticated(authService))
+	notifications.Use(EnsureCorrectHost(db, authService))
+	notifications.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	{
+		notifications.GET("", notificationsHandlers.List(notificationService))
+		notifications.GET("/count", notificationsHandlers.Count(notificationService))
+		notifications.POST("/:id/dismiss", notificationsHandlers.Dismiss(notificationService))
+		notifications.GET("/config", notificationsHandlers.GetConfig(notificationService))
+		notifications.PUT("/config", notificationsHandlers.UpdateConfig(notificationService))
 	}
 
 	users := auth.Group("/users")

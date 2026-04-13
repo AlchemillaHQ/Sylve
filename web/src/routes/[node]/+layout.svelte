@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
+	import NotificationBell from '$lib/components/custom/Notifications/Bell.svelte';
 	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
@@ -284,7 +285,22 @@
 				label: 'Settings',
 				icon: 'material-symbols--settings',
 				children: [
-					{ label: 'System', icon: 'mdi--desktop-classic', href: `/${node}/settings/system` },
+					{
+						label: 'System',
+						icon: 'mdi--desktop-classic',
+						children: [
+							{
+								label: 'General',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/settings/system`
+							},
+							{
+								label: 'Notifications',
+								icon: 'mdi--bell-ring-outline',
+								href: `/${node}/settings/system/notifications`
+							}
+						]
+					},
 					{
 						label: 'PCI Passthrough',
 						icon: 'eos-icons--hardware-circuit',
@@ -345,7 +361,7 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
-		<div>
+		<div class="flex items-center gap-1">
 			<Button
 				size="sm"
 				class="h-6"
@@ -357,6 +373,8 @@
 					<span>Help</span>
 				</div>
 			</Button>
+
+			<NotificationBell />
 
 			<Button
 				size="sm"
