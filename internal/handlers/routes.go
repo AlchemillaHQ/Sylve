@@ -474,7 +474,6 @@ func RegisterRoutes(r *gin.Engine,
 		utilities.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
 		utilities.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
 		utilities.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
-		utilities.GET("/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 		utilities.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilities.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilities.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
@@ -484,6 +483,8 @@ func RegisterRoutes(r *gin.Engine,
 		utilities.PUT("/cloud-init/templates/:id", utilitiesHandlers.EditCloudInitTemplate(utilitiesService))
 		utilities.DELETE("/cloud-init/templates/:id", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
+
+	api.GET("/utilities/downloads/:uuid", utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
 
 	auth := api.Group("/auth")
 	auth.Use(middleware.EnsureAuthenticated(authService))

@@ -738,7 +738,7 @@ func (s *Service) syncTorrent(download *utilitiesModels.Downloads) {
 	if isFinished {
 		download.Status = utilitiesModels.DownloadStatusDone
 		download.Progress = 100
-		if err := s.BTTClient.RemoveTorrent(download.UUID, false); err != nil {
+		if err := s.BTTClient.RemoveTorrent(download.UUID, true); err != nil {
 			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
 			return
 		}

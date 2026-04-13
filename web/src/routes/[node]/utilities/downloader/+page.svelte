@@ -480,8 +480,8 @@
 								{ value: 'cloud-init', label: 'Cloud-Init' }
 							]}
 							classes={{
-								parent: 'mt-2.5 flex-1 space-y-1 w-full',
-								label: 'mb-2',
+								parent: 'mt-2 flex-1 space-y-1 w-full',
+								label: 'flex h-7 items-center text-sm',
 								trigger: 'w-full'
 							}}
 							bind:value={modalState.downloadType}

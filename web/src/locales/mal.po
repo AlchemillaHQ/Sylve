@@ -7522,9 +7522,7 @@ msgid "VM must be shut off to attach storage"
 msgstr "സ്റ്റോറേജ് ചേർക്കുന്നതിന് VM ഷട്ട് ഓഫ് ചെയ്തിരിക്കണം"
 
 #. 0: properties.detach.name; 1: vm.current.name
-#. 0: properties.detach.name; 1: vm.current.name
 #: src/routes/[node]/vm/[node]/storage/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>"
 msgstr "ഇത് VM <b>{1}</b>-ൽ നിന്ന് സ്റ്റോറേജ് {0} വേർപെടുത്തും"
 
@@ -13118,4 +13116,9 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Set to 0 for unlimited size"
+msgstr ""
+
+#. 0: properties.detach.name; 1: vm.current.name
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "This will detach the storage {0} from the VM <b>{1}</b>. The underlying disk dataset/file will NOT be deleted."
 msgstr ""
