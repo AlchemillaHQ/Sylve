@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { getNotificationConfig, updateNotificationConfig } from '$lib/api/notifications';
+	import { getNotificationTransports, updateNotificationTransports } from '$lib/api/notifications';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { NotificationConfig } from '$lib/types/notifications';
+	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -10,13 +10,35 @@
 		config: NotificationConfig;
 	}
 
+	type TransportType = 'ntfy' | 'smtp';
+	type TransportForm = {
+		id?: number;
+		name: string;
+		type: TransportType;
+		enabled: boolean;
+		ntfyBaseUrl: string;
+		ntfyTopic: string;
+		ntfyToken: string;
+		ntfyHasAuthToken: boolean;
+		clearNtfyToken: boolean;
+		smtpHost: string;
+		smtpPort: number;
+		smtpUsername: string;
+		smtpFrom: string;
+		smtpUseTls: boolean;
+		smtpRecipients: string;
+		smtpPassword: string;
+		smtpHasPassword: boolean;
+		clearSMTPPassword: boolean;
+	};
+
 	let { data }: { data: Data } = $props();
 	const fallbackConfig = data.config;
 
 	const configResource = resource(
 		() => 'notification-config',
 		async () => {
-			const loaded = await getNotificationConfig();
+			const loaded = await getNotificationTransports();
 			if (isAPIResponse(loaded)) {
 				return fallbackConfig;
 			}
@@ -27,42 +49,53 @@
 	);
 
 	let loading = $state(false);
-	let ntfyEnabled = $state(configResource.current.ntfy.enabled);
-	let ntfyBaseUrl = $state(configResource.current.ntfy.baseUrl);
-	let ntfyTopic = $state(configResource.current.ntfy.topic);
-	let ntfyToken = $state('');
-	let clearNtfyToken = $state(false);
+	let transports = $state<TransportForm[]>([]);
 
-	let emailEnabled = $state(configResource.current.email.enabled);
-	let smtpHost = $state(configResource.current.email.smtpHost);
-	let smtpPort = $state(configResource.current.email.smtpPort || 587);
-	let smtpUsername = $state(configResource.current.email.smtpUsername);
-	let smtpFrom = $state(configResource.current.email.smtpFrom);
-	let smtpUseTls = $state(configResource.current.email.smtpUseTls);
-	let smtpRecipients = $state((configResource.current.email.recipients || []).join(', '));
-	let smtpPassword = $state('');
-	let clearSMTPPassword = $state(false);
-
-	function hydrateFromConfig(next: NotificationConfig) {
-		ntfyEnabled = next.ntfy.enabled;
-		ntfyBaseUrl = next.ntfy.baseUrl;
-		ntfyTopic = next.ntfy.topic;
-		emailEnabled = next.email.enabled;
-		smtpHost = next.email.smtpHost;
-		smtpPort = next.email.smtpPort || 587;
-		smtpUsername = next.email.smtpUsername;
-		smtpFrom = next.email.smtpFrom;
-		smtpUseTls = next.email.smtpUseTls;
-		smtpRecipients = (next.email.recipients || []).join(', ');
-		smtpPassword = '';
-		ntfyToken = '';
-		clearNtfyToken = false;
-		clearSMTPPassword = false;
+	function defaultTransport(index = 1, type: TransportType = 'smtp'): TransportForm {
+		return {
+			name: `Transport ${index}`,
+			type,
+			enabled: false,
+			ntfyBaseUrl: 'https://ntfy.sh',
+			ntfyTopic: '',
+			ntfyToken: '',
+			ntfyHasAuthToken: false,
+			clearNtfyToken: false,
+			smtpHost: '',
+			smtpPort: 587,
+			smtpUsername: '',
+			smtpFrom: '',
+			smtpUseTls: true,
+			smtpRecipients: '',
+			smtpPassword: '',
+			smtpHasPassword: false,
+			clearSMTPPassword: false
+		};
 	}
 
-	async function refreshConfig() {
-		await configResource.refetch();
-		hydrateFromConfig(configResource.current);
+	function hydrateFromConfig(next: NotificationConfig) {
+		const rows = (next.transports || []).map((transport, index) => ({
+			id: transport.id,
+			name: transport.name || `Transport ${index + 1}`,
+			type: transport.type,
+			enabled: transport.enabled,
+			ntfyBaseUrl: transport.ntfy?.baseUrl || 'https://ntfy.sh',
+			ntfyTopic: transport.ntfy?.topic || '',
+			ntfyToken: '',
+			ntfyHasAuthToken: transport.ntfy?.hasAuthToken || false,
+			clearNtfyToken: false,
+			smtpHost: transport.email?.smtpHost || '',
+			smtpPort: transport.email?.smtpPort || 587,
+			smtpUsername: transport.email?.smtpUsername || '',
+			smtpFrom: transport.email?.smtpFrom || '',
+			smtpUseTls: transport.email?.smtpUseTls ?? true,
+			smtpRecipients: (transport.email?.recipients || []).join(', '),
+			smtpPassword: '',
+			smtpHasPassword: transport.email?.hasPassword || false,
+			clearSMTPPassword: false
+		}));
+
+		transports = rows;
 	}
 
 	function parseRecipients(input: string): string[] {
@@ -72,33 +105,56 @@
 			.filter((item) => item.length > 0);
 	}
 
+	function addTransport(type: TransportType) {
+		transports = [...transports, defaultTransport(transports.length + 1, type)];
+	}
+
+	function removeTransport(index: number) {
+		transports = transports.filter((_, i) => i !== index);
+	}
+
+	async function refreshConfig() {
+		await configResource.refetch();
+		hydrateFromConfig(configResource.current);
+	}
+
 	async function saveConfig() {
 		loading = true;
 
-		const payload = {
-			ntfy: {
-				enabled: ntfyEnabled,
-				baseUrl: ntfyBaseUrl,
-				topic: ntfyTopic,
-				...(ntfyToken.trim().length > 0 || clearNtfyToken
-					? { authToken: clearNtfyToken ? '' : ntfyToken.trim() }
-					: {})
-			},
-			email: {
-				enabled: emailEnabled,
-				smtpHost,
-				smtpPort: Number(smtpPort) || 587,
-				smtpUsername,
-				smtpFrom,
-				smtpUseTls,
-				recipients: parseRecipients(smtpRecipients),
-				...(smtpPassword.trim().length > 0 || clearSMTPPassword
-					? { smtpPassword: clearSMTPPassword ? '' : smtpPassword.trim() }
-					: {})
-			}
+		const payload: UpdateNotificationConfigInput = {
+			transports: transports.map((transport) => ({
+				...(transport.id ? { id: transport.id } : {}),
+				name: transport.name.trim() || 'Default',
+				type: transport.type,
+				enabled: transport.enabled,
+				ntfy:
+					transport.type === 'ntfy'
+						? {
+								baseUrl: transport.ntfyBaseUrl,
+								topic: transport.ntfyTopic,
+								...(transport.ntfyToken.trim().length > 0 || transport.clearNtfyToken
+									? { authToken: transport.clearNtfyToken ? '' : transport.ntfyToken.trim() }
+									: {})
+							}
+						: null,
+				email:
+					transport.type === 'smtp'
+						? {
+								smtpHost: transport.smtpHost,
+								smtpPort: Number(transport.smtpPort) || 587,
+								smtpUsername: transport.smtpUsername,
+								smtpFrom: transport.smtpFrom,
+								smtpUseTls: transport.smtpUseTls,
+								recipients: parseRecipients(transport.smtpRecipients),
+								...(transport.smtpPassword.trim().length > 0 || transport.clearSMTPPassword
+									? { smtpPassword: transport.clearSMTPPassword ? '' : transport.smtpPassword.trim() }
+									: {})
+							}
+						: null
+			}))
 		};
 
-		const response = await updateNotificationConfig(payload);
+		const response = await updateNotificationTransports(payload);
 		loading = false;
 
 		if (isAPIResponse(response) && response.status === 'error') {
@@ -117,17 +173,19 @@
 			position: 'bottom-center'
 		});
 	}
+
+	hydrateFromConfig(configResource.current);
 </script>
 
 <div class="p-4 md:p-6">
 	<div class="mb-5 flex items-center justify-between gap-3">
 		<div>
 			<h2 class="text-lg font-semibold">Notifications</h2>
-			<p class="text-muted-foreground text-sm">
-				Configure notification transports. UI notifications are always enabled.
-			</p>
+			<p class="text-muted-foreground text-sm">Configure one row per transport. UI notifications are always enabled.</p>
 		</div>
 		<div class="flex gap-2">
+			<Button size="sm" variant="outline" class="h-7" onclick={() => addTransport('ntfy')}>Add ntfy</Button>
+			<Button size="sm" variant="outline" class="h-7" onclick={() => addTransport('smtp')}>Add SMTP</Button>
 			<Button size="sm" variant="outline" class="h-7" onclick={refreshConfig}>Refresh</Button>
 			<Button size="sm" class="h-7" onclick={saveConfig} disabled={loading}>
 				{#if loading}
@@ -138,118 +196,105 @@
 		</div>
 	</div>
 
-	<div class="space-y-5">
-		<section class="rounded-md border p-4">
-			<div class="mb-3 flex items-center justify-between">
-				<h3 class="font-medium">ntfy.sh</h3>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={ntfyEnabled} />
-					Enabled
-				</label>
-			</div>
-
-			<div class="grid gap-3 md:grid-cols-2">
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">Base URL</span>
-					<input class="w-full rounded-md border px-2 py-1.5" bind:value={ntfyBaseUrl} />
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">Topic</span>
-					<input class="w-full rounded-md border px-2 py-1.5" bind:value={ntfyTopic} />
-				</label>
-			</div>
-
-			<div class="mt-3 grid gap-3 md:grid-cols-2">
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">Auth Token</span>
-					<input
-						type="password"
-						class="w-full rounded-md border px-2 py-1.5"
-						placeholder={configResource.current.ntfy.hasAuthToken
-							? 'Token stored (leave blank to keep)'
-							: 'Optional'}
-						bind:value={ntfyToken}
-					/>
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">Stored Token</span>
-					<div class="flex h-[34px] items-center gap-2 rounded-md border px-2 py-1.5">
-						<span class="text-xs">
-							{configResource.current.ntfy.hasAuthToken ? 'Configured' : 'Not configured'}
-						</span>
-						<label class="ml-auto flex items-center gap-1 text-xs">
-							<input type="checkbox" bind:checked={clearNtfyToken} />
-							Clear
-						</label>
+	{#if transports.length === 0}
+		<div class="rounded-md border p-4 text-sm text-muted-foreground">No transports configured.</div>
+	{:else}
+		<div class="space-y-5">
+			{#each transports as transport, index}
+				<section class="rounded-md border p-4">
+					<div class="mb-4 flex items-end justify-between gap-2">
+						<div class="grid flex-1 gap-3 md:grid-cols-3">
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Transport Name</span>
+								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.name} />
+							</label>
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Type</span>
+								<select class="w-full rounded-md border px-2 py-1.5" bind:value={transport.type}>
+									<option value="ntfy">ntfy</option>
+									<option value="smtp">smtp</option>
+								</select>
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" bind:checked={transport.enabled} />
+								Enabled
+							</label>
+						</div>
+						<Button size="sm" variant="destructive" class="h-7" onclick={() => removeTransport(index)}>
+							Remove
+						</Button>
 					</div>
-				</label>
-			</div>
-		</section>
 
-		<section class="rounded-md border p-4">
-			<div class="mb-3 flex items-center justify-between">
-				<h3 class="font-medium">Email (SMTP)</h3>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={emailEnabled} />
-					Enabled
-				</label>
-			</div>
-
-			<div class="grid gap-3 md:grid-cols-2">
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">SMTP Host</span>
-					<input class="w-full rounded-md border px-2 py-1.5" bind:value={smtpHost} />
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">SMTP Port</span>
-					<input type="number" class="w-full rounded-md border px-2 py-1.5" bind:value={smtpPort} />
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">SMTP Username</span>
-					<input class="w-full rounded-md border px-2 py-1.5" bind:value={smtpUsername} />
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">From Email</span>
-					<input class="w-full rounded-md border px-2 py-1.5" bind:value={smtpFrom} />
-				</label>
-			</div>
-
-			<div class="mt-3 grid gap-3 md:grid-cols-2">
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">SMTP Password</span>
-					<input
-						type="password"
-						class="w-full rounded-md border px-2 py-1.5"
-						placeholder={configResource.current.email.hasPassword
-							? 'Password stored (leave blank to keep)'
-							: 'Optional'}
-						bind:value={smtpPassword}
-					/>
-				</label>
-				<label class="text-sm">
-					<span class="mb-1 block text-xs text-muted-foreground">Stored Password</span>
-					<div class="flex h-[34px] items-center gap-2 rounded-md border px-2 py-1.5">
-						<span class="text-xs">
-							{configResource.current.email.hasPassword ? 'Configured' : 'Not configured'}
-						</span>
-						<label class="ml-auto flex items-center gap-1 text-xs">
-							<input type="checkbox" bind:checked={clearSMTPPassword} />
-							Clear
-						</label>
-					</div>
-				</label>
-			</div>
-
-			<label class="mt-3 block text-sm">
-				<span class="mb-1 block text-xs text-muted-foreground">Recipients (comma or newline separated)</span>
-				<textarea class="min-h-24 w-full rounded-md border px-2 py-1.5" bind:value={smtpRecipients}
-				></textarea>
-			</label>
-
-			<label class="mt-3 flex items-center gap-2 text-sm">
-				<input type="checkbox" bind:checked={smtpUseTls} />
-				Use TLS/STARTTLS
-			</label>
-		</section>
-	</div>
+					{#if transport.type === 'ntfy'}
+						<div class="space-y-3">
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Base URL</span>
+								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.ntfyBaseUrl} />
+							</label>
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Topic</span>
+								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.ntfyTopic} />
+							</label>
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Auth Token</span>
+								<input
+									type="password"
+									class="w-full rounded-md border px-2 py-1.5"
+									placeholder={transport.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
+									bind:value={transport.ntfyToken}
+								/>
+							</label>
+							<label class="flex items-center gap-2 text-xs">
+								<input type="checkbox" bind:checked={transport.clearNtfyToken} />
+								Clear stored token ({transport.ntfyHasAuthToken ? 'configured' : 'not configured'})
+							</label>
+						</div>
+					{:else}
+						<div class="space-y-3">
+							<div class="grid gap-3 md:grid-cols-2">
+								<label class="text-sm">
+									<span class="mb-1 block text-xs text-muted-foreground">SMTP Host</span>
+									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpHost} />
+								</label>
+								<label class="text-sm">
+									<span class="mb-1 block text-xs text-muted-foreground">SMTP Port</span>
+									<input type="number" class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpPort} />
+								</label>
+								<label class="text-sm">
+									<span class="mb-1 block text-xs text-muted-foreground">SMTP Username</span>
+									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpUsername} />
+								</label>
+								<label class="text-sm">
+									<span class="mb-1 block text-xs text-muted-foreground">From Email</span>
+									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpFrom} />
+								</label>
+							</div>
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">SMTP Password</span>
+								<input
+									type="password"
+									class="w-full rounded-md border px-2 py-1.5"
+									placeholder={transport.smtpHasPassword ? 'Password stored (leave blank to keep)' : 'Optional'}
+									bind:value={transport.smtpPassword}
+								/>
+							</label>
+							<label class="flex items-center gap-2 text-xs">
+								<input type="checkbox" bind:checked={transport.clearSMTPPassword} />
+								Clear stored password ({transport.smtpHasPassword ? 'configured' : 'not configured'})
+							</label>
+							<label class="text-sm">
+								<span class="mb-1 block text-xs text-muted-foreground">Recipients (comma or newline separated)</span>
+								<textarea class="min-h-24 w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpRecipients}
+								></textarea>
+							</label>
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" bind:checked={transport.smtpUseTls} />
+								Use TLS/STARTTLS
+							</label>
+						</div>
+					{/if}
+				</section>
+			{/each}
+		</div>
+	{/if}
 </div>

@@ -29,22 +29,33 @@ export const NotificationsCountSchema = z.object({
 });
 
 export const NotificationConfigSchema = z.object({
-    ntfy: z.object({
-        enabled: z.boolean(),
-        baseUrl: z.string(),
-        topic: z.string(),
-        hasAuthToken: z.boolean()
-    }),
-    email: z.object({
-        enabled: z.boolean(),
-        smtpHost: z.string(),
-        smtpPort: z.number(),
-        smtpUsername: z.string(),
-        smtpFrom: z.string(),
-        smtpUseTls: z.boolean(),
-        recipients: z.array(z.string()),
-        hasPassword: z.boolean()
-    })
+    transports: z
+        .array(
+            z.object({
+                id: z.number(),
+                name: z.string(),
+                type: z.enum(['ntfy', 'smtp']),
+                enabled: z.boolean(),
+                ntfy: z
+                    .object({
+                        baseUrl: z.string(),
+                        topic: z.string(),
+                        hasAuthToken: z.boolean()
+                    })
+                    .optional(),
+                email: z
+                    .object({
+                        smtpHost: z.string(),
+                        smtpPort: z.number(),
+                        smtpUsername: z.string(),
+                        smtpFrom: z.string(),
+                        smtpUseTls: z.boolean(),
+                        recipients: z.array(z.string()),
+                        hasPassword: z.boolean()
+                    })
+                    .optional()
+            })
+        )
 });
 
 export type Notification = z.infer<typeof NotificationSchema>;
@@ -53,20 +64,24 @@ export type NotificationsCount = z.infer<typeof NotificationsCountSchema>;
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 
 export type UpdateNotificationConfigInput = {
-    ntfy: {
+    transports: Array<{
+        id?: number;
+        name: string;
+        type: 'ntfy' | 'smtp';
         enabled: boolean;
-        baseUrl: string;
-        topic: string;
-        authToken?: string;
-    };
-    email: {
-        enabled: boolean;
-        smtpHost: string;
-        smtpPort: number;
-        smtpUsername: string;
-        smtpFrom: string;
-        smtpUseTls: boolean;
-        recipients: string[];
-        smtpPassword?: string;
-    };
+        ntfy: {
+            baseUrl: string;
+            topic: string;
+            authToken?: string;
+        } | null;
+        email: {
+            smtpHost: string;
+            smtpPort: number;
+            smtpUsername: string;
+            smtpFrom: string;
+            smtpUseTls: boolean;
+            recipients: string[];
+            smtpPassword?: string;
+        } | null;
+    }>;
 };

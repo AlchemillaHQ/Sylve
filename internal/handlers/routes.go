@@ -514,8 +514,9 @@ func RegisterRoutes(r *gin.Engine,
 		notifications.GET("", notificationsHandlers.List(notificationService))
 		notifications.GET("/count", notificationsHandlers.Count(notificationService))
 		notifications.POST("/:id/dismiss", notificationsHandlers.Dismiss(notificationService))
-		notifications.GET("/config", notificationsHandlers.GetConfig(notificationService))
-		notifications.PUT("/config", notificationsHandlers.UpdateConfig(notificationService))
+		notifications.GET("/transports", notificationsHandlers.GetConfig(notificationService))
+		notifications.PUT("/transports", notificationsHandlers.UpdateConfig(notificationService))
+		notifications.DELETE("/transports/:id", notificationsHandlers.DeleteTransport(notificationService))
 	}
 
 	users := auth.Group("/users")

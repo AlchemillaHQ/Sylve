@@ -23,11 +23,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type handlerTestSecretStore struct{}
-
-func (handlerTestSecretStore) GetSecret(name string) (string, error)       { return "", nil }
-func (handlerTestSecretStore) UpsertSecret(name string, data string) error { return nil }
-
 func newHandlerTestService(t *testing.T) *notifications.Service {
 	t.Helper()
 
@@ -37,9 +32,10 @@ func newHandlerTestService(t *testing.T) *notifications.Service {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.SystemSecrets{},
 	)
 
-	return notifications.NewService(db, handlerTestSecretStore{})
+	return notifications.NewService(db)
 }
 
 func TestNotificationsCountRequiresAuth(t *testing.T) {

@@ -32,12 +32,16 @@ export async function dismissNotification(id: number): Promise<APIResponse> {
     return await apiRequest(`/notifications/${id}/dismiss`, APIResponseSchema, 'POST');
 }
 
-export async function getNotificationConfig(): Promise<NotificationConfig> {
-    return await apiRequest('/notifications/config', NotificationConfigSchema, 'GET');
+export async function getNotificationTransports(): Promise<NotificationConfig> {
+    return await apiRequest('/notifications/transports', NotificationConfigSchema, 'GET');
 }
 
-export async function updateNotificationConfig(
+export async function updateNotificationTransports(
     payload: UpdateNotificationConfigInput
 ): Promise<NotificationConfig> {
-    return await apiRequest('/notifications/config', NotificationConfigSchema, 'PUT', payload);
+    return await apiRequest('/notifications/transports', NotificationConfigSchema, 'PUT', payload);
+}
+
+export async function deleteNotificationTransport(id: number): Promise<APIResponse> {
+    return await apiRequest(`/notifications/transports/${id}`, APIResponseSchema, 'DELETE');
 }

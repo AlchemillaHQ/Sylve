@@ -138,7 +138,7 @@ func main() {
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
-	notificationService := notificationsService.NewService(d, aS.(*auth.Service))
+	notificationService := notificationsService.NewService(d)
 	notificationFacade.SetEmitter(notificationService)
 
 	clusterSvc := cS.(*cluster.Service)

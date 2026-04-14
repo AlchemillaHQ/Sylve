@@ -13,7 +13,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -33,18 +32,17 @@ import (
 )
 
 const (
-	defaultNtfyBaseURL        = "https://ntfy.sh"
-	defaultNtfySecretName     = "notifications_ntfy_token"
-	defaultSMTPPasswordSecret = "notifications_smtp_password"
-	defaultSMTPPort           = 587
-	defaultListLimit          = 50
-	maxListLimit              = 500
+	defaultNtfyBaseURL   = "https://ntfy.sh"
+	defaultSMTPPort      = 587
+	defaultTransportName = "Default"
+	defaultListLimit     = 50
+	maxListLimit         = 500
 )
 
-type SecretStore interface {
-	GetSecret(name string) (string, error)
-	UpsertSecret(name string, data string) error
-}
+const (
+	TransportTypeNtfy = "ntfy"
+	TransportTypeSMTP = "smtp"
+)
 
 type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error
 
@@ -52,7 +50,6 @@ type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfi
 
 type Service struct {
 	DB         *gorm.DB
-	secrets    SecretStore
 	httpClient *http.Client
 	now        func() time.Time
 
@@ -68,19 +65,25 @@ const (
 )
 
 type TransportConfigView struct {
-	Ntfy  NtfyTransportConfigView  `json:"ntfy"`
-	Email EmailTransportConfigView `json:"email"`
+	Transports []TransportConfigEntryView `json:"transports"`
+}
+
+type TransportConfigEntryView struct {
+	ID      uint                      `json:"id"`
+	Name    string                    `json:"name"`
+	Type    string                    `json:"type"`
+	Enabled bool                      `json:"enabled"`
+	Ntfy    *NtfyTransportConfigView  `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigView `json:"email,omitempty"`
 }
 
 type NtfyTransportConfigView struct {
-	Enabled      bool   `json:"enabled"`
 	BaseURL      string `json:"baseUrl"`
 	Topic        string `json:"topic"`
 	HasAuthToken bool   `json:"hasAuthToken"`
 }
 
 type EmailTransportConfigView struct {
-	Enabled      bool     `json:"enabled"`
 	SMTPHost     string   `json:"smtpHost"`
 	SMTPPort     int      `json:"smtpPort"`
 	SMTPUsername string   `json:"smtpUsername"`
@@ -91,19 +94,25 @@ type EmailTransportConfigView struct {
 }
 
 type TransportConfigUpdate struct {
-	Ntfy  NtfyTransportConfigUpdate  `json:"ntfy"`
-	Email EmailTransportConfigUpdate `json:"email"`
+	Transports []TransportConfigEntryUpdate `json:"transports"`
+}
+
+type TransportConfigEntryUpdate struct {
+	ID      uint                        `json:"id"`
+	Name    string                      `json:"name"`
+	Type    string                      `json:"type"`
+	Enabled bool                        `json:"enabled"`
+	Ntfy    *NtfyTransportConfigUpdate  `json:"ntfy,omitempty"`
+	Email   *EmailTransportConfigUpdate `json:"email,omitempty"`
 }
 
 type NtfyTransportConfigUpdate struct {
-	Enabled   bool    `json:"enabled"`
 	BaseURL   string  `json:"baseUrl"`
 	Topic     string  `json:"topic"`
 	AuthToken *string `json:"authToken,omitempty"`
 }
 
 type EmailTransportConfigUpdate struct {
-	Enabled      bool     `json:"enabled"`
 	SMTPHost     string   `json:"smtpHost"`
 	SMTPPort     int      `json:"smtpPort"`
 	SMTPUsername string   `json:"smtpUsername"`
@@ -113,10 +122,9 @@ type EmailTransportConfigUpdate struct {
 	SMTPPassword *string  `json:"smtpPassword,omitempty"`
 }
 
-func NewService(db *gorm.DB, secrets SecretStore) *Service {
+func NewService(db *gorm.DB) *Service {
 	s := &Service{
-		DB:      db,
-		secrets: secrets,
+		DB: db,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -166,7 +174,6 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	now := s.now().UTC()
 
 	result := notifier.EmitResult{}
-	var cfg models.NotificationTransportConfig
 	var kindRule models.NotificationKindRule
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -234,11 +241,6 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			return err
 		}
 
-		cfg, err = s.ensureTransportConfig(tx)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	})
 	if err != nil {
@@ -251,17 +253,29 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 
 	s.publishRefresh()
 
-	if cfg.NtfyEnabled && kindRule.NtfyEnabled {
-		token := s.getSecret(cfg.NtfyAuthTokenSecretName)
-		if err := s.ntfySender(ctx, cfg, normalized, token); err == nil {
-			result.SentNtfy = true
-		}
+	transportConfigs, err := s.listTransportConfigs(ctx)
+	if err != nil {
+		return result, nil
 	}
 
-	if cfg.EmailEnabled && kindRule.EmailEnabled && len(cfg.EmailRecipients) > 0 {
-		password := s.getSecret(cfg.SMTPPasswordSecretName)
-		if err := s.emailSender(ctx, cfg, normalized, password); err == nil {
-			result.SentEmail = true
+	for _, cfg := range transportConfigs {
+		switch normalizeTransportType(cfg.Type) {
+		case TransportTypeNtfy:
+			if !cfg.NtfyEnabled || !kindRule.NtfyEnabled {
+				continue
+			}
+			token := strings.TrimSpace(cfg.NtfyAuthToken)
+			if err := s.ntfySender(ctx, cfg, normalized, token); err == nil {
+				result.SentNtfy = true
+			}
+		case TransportTypeSMTP:
+			if !cfg.EmailEnabled || !kindRule.EmailEnabled || len(cfg.EmailRecipients) == 0 {
+				continue
+			}
+			password := strings.TrimSpace(cfg.SMTPPassword)
+			if err := s.emailSender(ctx, cfg, normalized, password); err == nil {
+				result.SentEmail = true
+			}
 		}
 	}
 
@@ -358,17 +372,36 @@ func (s *Service) Dismiss(ctx context.Context, id uint) error {
 	return nil
 }
 
+func (s *Service) DeleteTransport(ctx context.Context, id uint) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("notifications_service_not_initialized")
+	}
+	if id == 0 {
+		return fmt.Errorf("invalid_transport_id")
+	}
+
+	result := s.DB.WithContext(ctx).Delete(&models.NotificationTransportConfig{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
 func (s *Service) GetTransportConfig(ctx context.Context) (TransportConfigView, error) {
 	if s == nil || s.DB == nil {
 		return TransportConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
 
-	cfg, err := s.ensureTransportConfigDB(ctx)
+	configs, err := s.ensureTransportConfigsDB(ctx)
 	if err != nil {
 		return TransportConfigView{}, err
 	}
 
-	return s.toTransportConfigView(cfg), nil
+	return s.toTransportConfigView(configs), nil
 }
 
 func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConfigUpdate) (TransportConfigView, error) {
@@ -376,70 +409,116 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 		return TransportConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
 
-	normalizedRecipients := make([]string, 0, len(input.Email.Recipients))
-	seen := map[string]struct{}{}
-	for _, recipient := range input.Email.Recipients {
-		recipient = strings.TrimSpace(recipient)
-		if recipient == "" {
-			continue
-		}
-		if !utils.IsValidEmail(recipient) {
-			return TransportConfigView{}, fmt.Errorf("invalid_email_recipient: %s", recipient)
-		}
-		if _, ok := seen[recipient]; ok {
-			continue
-		}
-		seen[recipient] = struct{}{}
-		normalizedRecipients = append(normalizedRecipients, recipient)
-	}
-	sort.Strings(normalizedRecipients)
-
-	var updated models.NotificationTransportConfig
+	entries := append([]TransportConfigEntryUpdate{}, input.Transports...)
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		cfg, err := s.ensureTransportConfig(tx)
-		if err != nil {
+		keepIDs := make(map[uint]struct{}, len(entries))
+
+		for _, entry := range entries {
+			transportType := normalizeTransportType(entry.Type)
+			if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP {
+				return fmt.Errorf("invalid_transport_type")
+			}
+
+			cfg, err := s.resolveTransportForUpdate(tx, entry.ID)
+			if err != nil {
+				return err
+			}
+
+			cfg.Name = strings.TrimSpace(entry.Name)
+			if cfg.Name == "" {
+				cfg.Name = defaultTransportName
+			}
+			cfg.Type = transportType
+
+			if cfg.ID == 0 {
+				if err := tx.Create(&cfg).Error; err != nil {
+					return err
+				}
+			}
+
+			switch transportType {
+			case TransportTypeNtfy:
+				if entry.Ntfy == nil {
+					return fmt.Errorf("ntfy_config_required")
+				}
+
+				cfg.NtfyEnabled = entry.Enabled
+				cfg.NtfyBaseURL = normalizeNtfyBaseURL(entry.Ntfy.BaseURL)
+				cfg.NtfyTopic = strings.TrimSpace(entry.Ntfy.Topic)
+				cfg.EmailEnabled = false
+				cfg.SMTPHost = ""
+				cfg.SMTPPort = defaultSMTPPort
+				cfg.SMTPUsername = ""
+				cfg.SMTPFrom = ""
+				cfg.SMTPUseTLS = true
+				cfg.EmailRecipients = []string{}
+				cfg.SMTPPassword = ""
+
+				if entry.Ntfy.AuthToken != nil {
+					cfg.NtfyAuthToken = strings.TrimSpace(*entry.Ntfy.AuthToken)
+				}
+			case TransportTypeSMTP:
+				if entry.Email == nil {
+					return fmt.Errorf("smtp_config_required")
+				}
+
+				normalizedRecipients, err := normalizeRecipients(entry.Email.Recipients)
+				if err != nil {
+					return err
+				}
+				cfg.EmailEnabled = entry.Enabled
+				cfg.SMTPHost = strings.TrimSpace(entry.Email.SMTPHost)
+				cfg.SMTPPort = entry.Email.SMTPPort
+				if cfg.SMTPPort <= 0 {
+					cfg.SMTPPort = defaultSMTPPort
+				}
+				cfg.SMTPUsername = strings.TrimSpace(entry.Email.SMTPUsername)
+				cfg.SMTPFrom = strings.TrimSpace(entry.Email.SMTPFrom)
+				if cfg.SMTPFrom != "" && !utils.IsValidEmail(cfg.SMTPFrom) {
+					return fmt.Errorf("invalid_smtp_from_email")
+				}
+				cfg.SMTPUseTLS = entry.Email.SMTPUseTLS
+				cfg.EmailRecipients = normalizedRecipients
+				cfg.NtfyEnabled = false
+				cfg.NtfyBaseURL = defaultNtfyBaseURL
+				cfg.NtfyTopic = ""
+				cfg.NtfyAuthToken = ""
+
+				if entry.Email.SMTPPassword != nil {
+					cfg.SMTPPassword = strings.TrimSpace(*entry.Email.SMTPPassword)
+				}
+			default:
+				return fmt.Errorf("invalid_transport_type")
+			}
+
+			if err := tx.Save(&cfg).Error; err != nil {
+				return err
+			}
+
+			keepIDs[cfg.ID] = struct{}{}
+		}
+
+		var existing []models.NotificationTransportConfig
+		if err := tx.Find(&existing).Error; err != nil {
 			return err
 		}
-
-		cfg.NtfyEnabled = input.Ntfy.Enabled
-		cfg.NtfyBaseURL = normalizeNtfyBaseURL(input.Ntfy.BaseURL)
-		cfg.NtfyTopic = strings.TrimSpace(input.Ntfy.Topic)
-		cfg.EmailEnabled = input.Email.Enabled
-		cfg.SMTPHost = strings.TrimSpace(input.Email.SMTPHost)
-		cfg.SMTPPort = input.Email.SMTPPort
-		if cfg.SMTPPort <= 0 {
-			cfg.SMTPPort = defaultSMTPPort
-		}
-		cfg.SMTPUsername = strings.TrimSpace(input.Email.SMTPUsername)
-		cfg.SMTPFrom = strings.TrimSpace(input.Email.SMTPFrom)
-		if cfg.SMTPFrom != "" && !utils.IsValidEmail(cfg.SMTPFrom) {
-			return fmt.Errorf("invalid_smtp_from_email")
-		}
-		cfg.SMTPUseTLS = input.Email.SMTPUseTLS
-		cfg.EmailRecipients = normalizedRecipients
-		cfg.NtfyAuthTokenSecretName = ensureSecretName(cfg.NtfyAuthTokenSecretName, defaultNtfySecretName)
-		cfg.SMTPPasswordSecretName = ensureSecretName(cfg.SMTPPasswordSecretName, defaultSMTPPasswordSecret)
-
-		if input.Ntfy.AuthToken != nil {
-			if err := upsertSecretTx(tx, cfg.NtfyAuthTokenSecretName, strings.TrimSpace(*input.Ntfy.AuthToken)); err != nil {
+		for _, cfg := range existing {
+			if _, keep := keepIDs[cfg.ID]; keep {
+				continue
+			}
+			if err := tx.Delete(&cfg).Error; err != nil {
 				return err
 			}
 		}
 
-		if input.Email.SMTPPassword != nil {
-			if err := upsertSecretTx(tx, cfg.SMTPPasswordSecretName, strings.TrimSpace(*input.Email.SMTPPassword)); err != nil {
-				return err
-			}
-		}
-
-		if err := tx.Save(&cfg).Error; err != nil {
-			return err
-		}
-
-		updated = cfg
 		return nil
 	})
+	if err != nil {
+		return TransportConfigView{}, err
+	}
+
+	updated, err := s.listTransportConfigs(ctx)
 	if err != nil {
 		return TransportConfigView{}, err
 	}
@@ -472,28 +551,48 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationK
 	return rule, nil
 }
 
-func (s *Service) ensureTransportConfigDB(ctx context.Context) (models.NotificationTransportConfig, error) {
-	var cfg models.NotificationTransportConfig
+func (s *Service) ensureTransportConfigsDB(ctx context.Context) ([]models.NotificationTransportConfig, error) {
+	var configs []models.NotificationTransportConfig
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		current, err := s.ensureTransportConfig(tx)
+		current, err := s.ensureTransportConfigs(tx)
 		if err != nil {
 			return err
 		}
-		cfg = current
+		configs = current
 		return nil
 	})
 	if err != nil {
-		return models.NotificationTransportConfig{}, err
+		return nil, err
 	}
 
-	return cfg, nil
+	return configs, nil
 }
 
-func (s *Service) ensureTransportConfig(tx *gorm.DB) (models.NotificationTransportConfig, error) {
-	var cfg models.NotificationTransportConfig
-	err := tx.First(&cfg).Error
-	if err == nil {
+func (s *Service) ensureTransportConfigs(tx *gorm.DB) ([]models.NotificationTransportConfig, error) {
+	var configs []models.NotificationTransportConfig
+	if err := tx.Order("id ASC").Find(&configs).Error; err != nil {
+		return nil, err
+	}
+
+	for idx := range configs {
 		updated := false
+		cfg := &configs[idx]
+		if strings.TrimSpace(cfg.Name) == "" {
+			cfg.Name = defaultTransportName
+			updated = true
+		}
+		normalizedType := normalizeTransportType(cfg.Type)
+		if normalizedType == "" {
+			if cfg.NtfyEnabled && !cfg.EmailEnabled {
+				normalizedType = TransportTypeNtfy
+			} else {
+				normalizedType = TransportTypeSMTP
+			}
+		}
+		if cfg.Type != normalizedType {
+			cfg.Type = normalizedType
+			updated = true
+		}
 		if strings.TrimSpace(cfg.NtfyBaseURL) == "" {
 			cfg.NtfyBaseURL = defaultNtfyBaseURL
 			updated = true
@@ -502,131 +601,117 @@ func (s *Service) ensureTransportConfig(tx *gorm.DB) (models.NotificationTranspo
 			cfg.SMTPPort = defaultSMTPPort
 			updated = true
 		}
-		if strings.TrimSpace(cfg.NtfyAuthTokenSecretName) == "" {
-			cfg.NtfyAuthTokenSecretName = defaultNtfySecretName
-			updated = true
-		}
-		if strings.TrimSpace(cfg.SMTPPasswordSecretName) == "" {
-			cfg.SMTPPasswordSecretName = defaultSMTPPasswordSecret
-			updated = true
-		}
 		if updated {
-			if saveErr := tx.Save(&cfg).Error; saveErr != nil {
-				return models.NotificationTransportConfig{}, saveErr
+			if err := tx.Save(cfg).Error; err != nil {
+				return nil, err
 			}
 		}
+	}
 
+	return configs, nil
+}
+
+func (s *Service) listTransportConfigs(ctx context.Context) ([]models.NotificationTransportConfig, error) {
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	return s.ensureTransportConfigsDB(ctx)
+}
+
+func (s *Service) resolveTransportForUpdate(tx *gorm.DB, id uint) (models.NotificationTransportConfig, error) {
+	if id > 0 {
+		var cfg models.NotificationTransportConfig
+		result := tx.Where("id = ?", id).Limit(1).Find(&cfg)
+		if result.Error != nil {
+			return models.NotificationTransportConfig{}, result.Error
+		}
+		if result.RowsAffected == 0 {
+			return models.NotificationTransportConfig{}, gorm.ErrRecordNotFound
+		}
 		return cfg, nil
 	}
 
-	if err != gorm.ErrRecordNotFound {
-		return models.NotificationTransportConfig{}, err
-	}
-
-	cfg = models.NotificationTransportConfig{
-		NtfyEnabled:             false,
-		NtfyBaseURL:             defaultNtfyBaseURL,
-		NtfyTopic:               "",
-		NtfyAuthTokenSecretName: defaultNtfySecretName,
-		EmailEnabled:            false,
-		SMTPHost:                "",
-		SMTPPort:                defaultSMTPPort,
-		SMTPUsername:            "",
-		SMTPFrom:                "",
-		SMTPUseTLS:              true,
-		SMTPPasswordSecretName:  defaultSMTPPasswordSecret,
-		EmailRecipients:         []string{},
-	}
-
-	if err := tx.Create(&cfg).Error; err != nil {
-		return models.NotificationTransportConfig{}, err
-	}
-
-	return cfg, nil
+	return models.NotificationTransportConfig{}, nil
 }
 
-func (s *Service) toTransportConfigView(cfg models.NotificationTransportConfig) TransportConfigView {
-	return TransportConfigView{
-		Ntfy: NtfyTransportConfigView{
-			Enabled:      cfg.NtfyEnabled,
-			BaseURL:      normalizeNtfyBaseURL(cfg.NtfyBaseURL),
-			Topic:        strings.TrimSpace(cfg.NtfyTopic),
-			HasAuthToken: s.hasSecret(cfg.NtfyAuthTokenSecretName),
-		},
-		Email: EmailTransportConfigView{
-			Enabled:      cfg.EmailEnabled,
-			SMTPHost:     strings.TrimSpace(cfg.SMTPHost),
-			SMTPPort:     cfg.SMTPPort,
-			SMTPUsername: strings.TrimSpace(cfg.SMTPUsername),
-			SMTPFrom:     strings.TrimSpace(cfg.SMTPFrom),
-			SMTPUseTLS:   cfg.SMTPUseTLS,
-			Recipients:   append([]string{}, cfg.EmailRecipients...),
-			HasPassword:  s.hasSecret(cfg.SMTPPasswordSecretName),
-		},
+func normalizeRecipients(input []string) ([]string, error) {
+	normalizedRecipients := make([]string, 0, len(input))
+	seen := map[string]struct{}{}
+	for _, recipient := range input {
+		recipient = strings.TrimSpace(recipient)
+		if recipient == "" {
+			continue
+		}
+		if !utils.IsValidEmail(recipient) {
+			return nil, fmt.Errorf("invalid_email_recipient: %s", recipient)
+		}
+		if _, ok := seen[recipient]; ok {
+			continue
+		}
+		seen[recipient] = struct{}{}
+		normalizedRecipients = append(normalizedRecipients, recipient)
 	}
+	sort.Strings(normalizedRecipients)
+	return normalizedRecipients, nil
 }
 
-func (s *Service) upsertSecret(name, value string) error {
-	if s.secrets == nil {
-		return fmt.Errorf("secret_store_not_available")
-	}
-	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("secret_name_required")
-	}
-	return s.secrets.UpsertSecret(name, value)
-}
-
-func upsertSecretTx(tx *gorm.DB, name, value string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("secret_name_required")
+func (s *Service) toTransportConfigView(configs []models.NotificationTransportConfig) TransportConfigView {
+	view := TransportConfigView{
+		Transports: make([]TransportConfigEntryView, 0, len(configs)),
 	}
 
-	var secret models.SystemSecrets
-	err := tx.Where("name = ?", name).First(&secret).Error
-	if err == nil {
-		if secret.Data == value {
-			return nil
+	for _, cfg := range configs {
+		entry := TransportConfigEntryView{
+			ID:   cfg.ID,
+			Name: strings.TrimSpace(cfg.Name),
+			Type: normalizeTransportType(cfg.Type),
 		}
 
-		return tx.Model(&secret).Update("data", value).Error
+		if entry.Name == "" {
+			entry.Name = defaultTransportName
+		}
+
+		switch entry.Type {
+		case TransportTypeNtfy:
+			entry.Enabled = cfg.NtfyEnabled
+			ntfy := s.toNtfyTransportConfigView(cfg)
+			entry.Ntfy = &ntfy
+		case TransportTypeSMTP:
+			entry.Enabled = cfg.EmailEnabled
+			email := s.toEmailTransportConfigView(cfg)
+			entry.Email = &email
+		default:
+			entry.Type = TransportTypeSMTP
+			entry.Enabled = cfg.EmailEnabled
+			email := s.toEmailTransportConfigView(cfg)
+			entry.Email = &email
+		}
+
+		view.Transports = append(view.Transports, entry)
 	}
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return tx.Create(&models.SystemSecrets{
-			Name: name,
-			Data: value,
-		}).Error
-	}
-
-	return err
+	return view
 }
 
-func (s *Service) getSecret(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
+func (s *Service) toNtfyTransportConfigView(cfg models.NotificationTransportConfig) NtfyTransportConfigView {
+	return NtfyTransportConfigView{
+		BaseURL:      normalizeNtfyBaseURL(cfg.NtfyBaseURL),
+		Topic:        strings.TrimSpace(cfg.NtfyTopic),
+		HasAuthToken: strings.TrimSpace(cfg.NtfyAuthToken) != "",
 	}
-
-	if s.DB != nil {
-		var secret models.SystemSecrets
-		if err := s.DB.Where("name = ?", name).First(&secret).Error; err == nil {
-			return strings.TrimSpace(secret.Data)
-		}
-	}
-
-	if s.secrets != nil {
-		value, err := s.secrets.GetSecret(name)
-		if err == nil {
-			return strings.TrimSpace(value)
-		}
-	}
-
-	return ""
 }
 
-func (s *Service) hasSecret(name string) bool {
-	return s.getSecret(name) != ""
+func (s *Service) toEmailTransportConfigView(cfg models.NotificationTransportConfig) EmailTransportConfigView {
+	return EmailTransportConfigView{
+		SMTPHost:     strings.TrimSpace(cfg.SMTPHost),
+		SMTPPort:     cfg.SMTPPort,
+		SMTPUsername: strings.TrimSpace(cfg.SMTPUsername),
+		SMTPFrom:     strings.TrimSpace(cfg.SMTPFrom),
+		SMTPUseTLS:   cfg.SMTPUseTLS,
+		Recipients:   append([]string{}, cfg.EmailRecipients...),
+		HasPassword:  strings.TrimSpace(cfg.SMTPPassword) != "",
+	}
 }
 
 func (s *Service) publishRefresh() {
@@ -876,12 +961,15 @@ func normalizeNtfyBaseURL(value string) string {
 	return strings.TrimRight(value, "/")
 }
 
-func ensureSecretName(value, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
+func normalizeTransportType(value string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case TransportTypeNtfy:
+		return TransportTypeNtfy
+	case TransportTypeSMTP:
+		return TransportTypeSMTP
+	default:
+		return ""
 	}
-	return value
 }
 
 func suppressionKey(kind, fingerprint string) string {

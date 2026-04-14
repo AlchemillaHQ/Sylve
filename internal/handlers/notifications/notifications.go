@@ -31,22 +31,26 @@ type NotificationCountResponse struct {
 }
 
 type notificationConfigUpdateRequest struct {
-	Ntfy struct {
-		Enabled   bool    `json:"enabled"`
-		BaseURL   string  `json:"baseUrl"`
-		Topic     string  `json:"topic"`
-		AuthToken *string `json:"authToken"`
-	} `json:"ntfy"`
-	Email struct {
-		Enabled      bool     `json:"enabled"`
-		SMTPHost     string   `json:"smtpHost"`
-		SMTPPort     int      `json:"smtpPort"`
-		SMTPUsername string   `json:"smtpUsername"`
-		SMTPFrom     string   `json:"smtpFrom"`
-		SMTPUseTLS   bool     `json:"smtpUseTls"`
-		Recipients   []string `json:"recipients"`
-		SMTPPassword *string  `json:"smtpPassword"`
-	} `json:"email"`
+	Transports []struct {
+		ID      uint   `json:"id"`
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Enabled bool   `json:"enabled"`
+		Ntfy    *struct {
+			BaseURL   string  `json:"baseUrl"`
+			Topic     string  `json:"topic"`
+			AuthToken *string `json:"authToken"`
+		} `json:"ntfy"`
+		Email *struct {
+			SMTPHost     string   `json:"smtpHost"`
+			SMTPPort     int      `json:"smtpPort"`
+			SMTPUsername string   `json:"smtpUsername"`
+			SMTPFrom     string   `json:"smtpFrom"`
+			SMTPUseTLS   bool     `json:"smtpUseTls"`
+			Recipients   []string `json:"recipients"`
+			SMTPPassword *string  `json:"smtpPassword"`
+		} `json:"email"`
+	} `json:"transports"`
 }
 
 func List(service *notifications.Service) gin.HandlerFunc {
@@ -189,23 +193,41 @@ func UpdateConfig(service *notifications.Service) gin.HandlerFunc {
 			return
 		}
 
+		transportUpdates := make([]notifications.TransportConfigEntryUpdate, 0, len(req.Transports))
+		for _, transport := range req.Transports {
+			var ntfy *notifications.NtfyTransportConfigUpdate
+			if transport.Ntfy != nil {
+				ntfy = &notifications.NtfyTransportConfigUpdate{
+					BaseURL:   transport.Ntfy.BaseURL,
+					Topic:     transport.Ntfy.Topic,
+					AuthToken: transport.Ntfy.AuthToken,
+				}
+			}
+			var email *notifications.EmailTransportConfigUpdate
+			if transport.Email != nil {
+				email = &notifications.EmailTransportConfigUpdate{
+					SMTPHost:     transport.Email.SMTPHost,
+					SMTPPort:     transport.Email.SMTPPort,
+					SMTPUsername: transport.Email.SMTPUsername,
+					SMTPFrom:     transport.Email.SMTPFrom,
+					SMTPUseTLS:   transport.Email.SMTPUseTLS,
+					Recipients:   transport.Email.Recipients,
+					SMTPPassword: transport.Email.SMTPPassword,
+				}
+			}
+
+			transportUpdates = append(transportUpdates, notifications.TransportConfigEntryUpdate{
+				ID:      transport.ID,
+				Name:    transport.Name,
+				Type:    transport.Type,
+				Enabled: transport.Enabled,
+				Ntfy:    ntfy,
+				Email:   email,
+			})
+		}
+
 		updated, err := service.UpdateTransportConfig(c.Request.Context(), notifications.TransportConfigUpdate{
-			Ntfy: notifications.NtfyTransportConfigUpdate{
-				Enabled:   req.Ntfy.Enabled,
-				BaseURL:   req.Ntfy.BaseURL,
-				Topic:     req.Ntfy.Topic,
-				AuthToken: req.Ntfy.AuthToken,
-			},
-			Email: notifications.EmailTransportConfigUpdate{
-				Enabled:      req.Email.Enabled,
-				SMTPHost:     req.Email.SMTPHost,
-				SMTPPort:     req.Email.SMTPPort,
-				SMTPUsername: req.Email.SMTPUsername,
-				SMTPFrom:     req.Email.SMTPFrom,
-				SMTPUseTLS:   req.Email.SMTPUseTLS,
-				Recipients:   req.Email.Recipients,
-				SMTPPassword: req.Email.SMTPPassword,
-			},
+			Transports: transportUpdates,
 		})
 		if err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -222,6 +244,48 @@ func UpdateConfig(service *notifications.Service) gin.HandlerFunc {
 			Message: "notification_config_updated",
 			Error:   "",
 			Data:    updated,
+		})
+	}
+}
+
+func DeleteTransport(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_transport_id",
+				Error:   "invalid_transport_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := service.DeleteTransport(c.Request.Context(), uint(id)); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "transport_not_found",
+					Error:   "transport_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_delete_transport",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "transport_deleted",
+			Error:   "",
+			Data:    nil,
 		})
 	}
 }
