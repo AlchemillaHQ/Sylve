@@ -561,6 +561,7 @@ msgstr "Action"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2927,6 +2928,7 @@ msgstr "Enabled"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -4434,7 +4436,6 @@ msgstr "Failback"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -4474,7 +4475,6 @@ msgstr "Yes"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -6244,8 +6244,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -12685,8 +12685,9 @@ msgstr "CHAP Secret must be 12-16 characters (RFC 3720)"
 msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 
-#~ msgid "Test"
-#~ msgstr "Test"
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Test"
+msgstr "Test"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
@@ -13267,9 +13268,8 @@ msgstr "Refresh List"
 msgid "Transport {0}"
 msgstr "Transport {0}"
 
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-msgid "Default"
-msgstr "Default"
+#~ msgid "Default"
+#~ msgstr "Default"
 
 #~ msgid "Failed to update notification config"
 #~ msgstr "Failed to update notification config"
@@ -13351,9 +13351,8 @@ msgstr "Password stored (leave blank to keep)"
 #~ msgid "<0/> Clear stored password ({0})"
 #~ msgstr "<0/> Clear stored password ({0})"
 
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-msgid "Recipients (comma or newline separated)"
-msgstr "Recipients (comma or newline separated)"
+#~ msgid "Recipients (comma or newline separated)"
+#~ msgstr "Recipients (comma or newline separated)"
 
 #~ msgid "<0/> Use TLS/STARTTLS"
 #~ msgstr "<0/> Use TLS/STARTTLS"
@@ -13392,3 +13391,27 @@ msgstr "Transport 1"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Use TLS/STARTTLS"
 msgstr "Use TLS/STARTTLS"
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Test notification sent"
+msgstr "Test notification sent"
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Failed to send test notification"
+msgstr "Failed to send test notification"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport name is required"
+msgstr "Transport name is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Recipients"
+msgstr "Recipients"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Select or type recipients"
+msgstr "Select or type recipients"
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Recipients / Topic"
+msgstr "Recipients / Topic"

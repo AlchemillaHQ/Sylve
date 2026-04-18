@@ -13,6 +13,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NotificationConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -46,9 +47,12 @@
 	let columns: Column[] = $state([
 		{ field: 'id', title: 'ID', visible: false },
 		{
-			field: 'name',
-			title: 'Name',
-			formatter: (cell: CellComponent) => cell.getValue() || '-'
+			field: 'enabled',
+			title: 'Status',
+			formatter: (cell: CellComponent) =>
+				cell.getValue()
+					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
 		},
 		{
 			field: 'type',
@@ -59,20 +63,38 @@
 			}
 		},
 		{
-			field: 'enabled',
-			title: 'Enabled',
-			formatter: (cell: CellComponent) => (cell.getValue() ? 'Yes' : 'No')
+			field: 'name',
+			title: 'Name',
+			formatter: (cell: CellComponent) => cell.getValue() || '-'
+		},
+		{
+			field: 'details',
+			title: 'Recipients / Topic',
+			formatter: (cell: CellComponent) => {
+				const v = cell.getValue();
+				return v || '-';
+			}
 		}
 	]);
 
 	const tableData: { rows: Row[]; columns: Column[] } = $derived({
 		columns,
-		rows: ((configResource.current as NotificationConfig).transports || []).map((t) => ({
-			id: t.id,
-			name: t.name,
-			type: t.type,
-			enabled: t.enabled
-		}))
+		rows: ((configResource.current as NotificationConfig).transports || []).map((t) => {
+			let details = '-';
+			if (t.type === 'smtp' && t.email?.recipients?.length) {
+				const r = t.email.recipients;
+				details = r.length <= 2 ? r.join(', ') : `${r[0]} ...+${r.length - 1} more`;
+			} else if (t.type === 'ntfy' && t.ntfy?.topic) {
+				details = t.ntfy.topic;
+			}
+			return {
+				id: t.id,
+				name: t.name,
+				type: t.type,
+				enabled: t.enabled,
+				details
+			};
+		})
 	});
 
 	let activeRows: Row[] | null = $state(null);

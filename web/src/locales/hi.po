@@ -561,6 +561,7 @@ msgstr "कार्रवाई"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -2927,6 +2928,7 @@ msgstr "सक्षम"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -4434,7 +4436,6 @@ msgstr "फेलबैक"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -4474,7 +4475,6 @@ msgstr "हाँ"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
-#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -6244,7 +6244,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -12685,8 +12685,9 @@ msgstr ""
 msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr ""
 
-#~ msgid "Test"
-#~ msgstr ""
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Test"
+msgstr ""
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
@@ -13267,9 +13268,8 @@ msgstr ""
 msgid "Transport {0}"
 msgstr ""
 
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-msgid "Default"
-msgstr ""
+#~ msgid "Default"
+#~ msgstr ""
 
 #~ msgid "Failed to update notification config"
 #~ msgstr ""
@@ -13351,9 +13351,8 @@ msgstr ""
 #~ msgid "<0/> Clear stored password ({0})"
 #~ msgstr ""
 
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-msgid "Recipients (comma or newline separated)"
-msgstr ""
+#~ msgid "Recipients (comma or newline separated)"
+#~ msgstr ""
 
 #~ msgid "<0/> Use TLS/STARTTLS"
 #~ msgstr ""
@@ -13391,4 +13390,28 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Use TLS/STARTTLS"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Test notification sent"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Failed to send test notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport name is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Recipients"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Select or type recipients"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Recipients / Topic"
 msgstr ""

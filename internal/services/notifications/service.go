@@ -815,6 +815,9 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 	}
 
 	msg := strings.Builder{}
+	msg.WriteString("From: ")
+	msg.WriteString(from)
+	msg.WriteString("\r\n")
 	msg.WriteString("To: ")
 	msg.WriteString(strings.Join(cfg.EmailRecipients, ","))
 	msg.WriteString("\r\n")
