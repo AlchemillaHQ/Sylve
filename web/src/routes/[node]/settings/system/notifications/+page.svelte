@@ -1,300 +1,175 @@
 <script lang="ts">
-	import { getNotificationTransports, updateNotificationTransports } from '$lib/api/notifications';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
+	import { deleteNotificationTransport, getNotificationTransports } from '$lib/api/notifications';
+	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import CreateOrEdit from '$lib/components/custom/Notifications/CreateOrEdit.svelte';
+	import TreeTable from '$lib/components/custom/TreeTable.svelte';
+	import Search from '$lib/components/custom/TreeTable/Search.svelte';
+	import Button from '$lib/components/ui/button/button.svelte';
+	import type { Column, Row } from '$lib/types/components/tree-table';
+	import type { NotificationConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		config: NotificationConfig;
 	}
 
-	type TransportType = 'ntfy' | 'smtp';
-	type TransportForm = {
-		id?: number;
-		name: string;
-		type: TransportType;
-		enabled: boolean;
-		ntfyBaseUrl: string;
-		ntfyTopic: string;
-		ntfyToken: string;
-		ntfyHasAuthToken: boolean;
-		clearNtfyToken: boolean;
-		smtpHost: string;
-		smtpPort: number;
-		smtpUsername: string;
-		smtpFrom: string;
-		smtpUseTls: boolean;
-		smtpRecipients: string;
-		smtpPassword: string;
-		smtpHasPassword: boolean;
-		clearSMTPPassword: boolean;
-	};
-
 	let { data }: { data: Data } = $props();
-	const fallbackConfig = data.config;
 
-	const configResource = resource(
+	// svelte-ignore state_referenced_locally
+	let configResource = resource(
 		() => 'notification-config',
-		async () => {
+		async (key) => {
 			const loaded = await getNotificationTransports();
-			if (isAPIResponse(loaded)) {
-				return fallbackConfig;
+			if (!isAPIResponse(loaded)) {
+				updateCache(key, loaded);
 			}
-			updateCache('notification-config', loaded);
-			return loaded;
+			return isAPIResponse(loaded) ? data.config : loaded;
 		},
 		{ initialValue: data.config }
 	);
 
-	let loading = $state(false);
-	let transports = $state<TransportForm[]>([]);
+	let modals = $state({
+		create: { open: false },
+		edit: { open: false, id: 0 },
+		delete: { open: false, id: 0 }
+	});
 
-	function defaultTransport(index = 1, type: TransportType = 'smtp'): TransportForm {
-		return {
-			name: `Transport ${index}`,
-			type,
-			enabled: false,
-			ntfyBaseUrl: 'https://ntfy.sh',
-			ntfyTopic: '',
-			ntfyToken: '',
-			ntfyHasAuthToken: false,
-			clearNtfyToken: false,
-			smtpHost: '',
-			smtpPort: 587,
-			smtpUsername: '',
-			smtpFrom: '',
-			smtpUseTls: true,
-			smtpRecipients: '',
-			smtpPassword: '',
-			smtpHasPassword: false,
-			clearSMTPPassword: false
-		};
-	}
-
-	function hydrateFromConfig(next: NotificationConfig) {
-		const rows = (next.transports || []).map((transport, index) => ({
-			id: transport.id,
-			name: transport.name || `Transport ${index + 1}`,
-			type: transport.type,
-			enabled: transport.enabled,
-			ntfyBaseUrl: transport.ntfy?.baseUrl || 'https://ntfy.sh',
-			ntfyTopic: transport.ntfy?.topic || '',
-			ntfyToken: '',
-			ntfyHasAuthToken: transport.ntfy?.hasAuthToken || false,
-			clearNtfyToken: false,
-			smtpHost: transport.email?.smtpHost || '',
-			smtpPort: transport.email?.smtpPort || 587,
-			smtpUsername: transport.email?.smtpUsername || '',
-			smtpFrom: transport.email?.smtpFrom || '',
-			smtpUseTls: transport.email?.smtpUseTls ?? true,
-			smtpRecipients: (transport.email?.recipients || []).join(', '),
-			smtpPassword: '',
-			smtpHasPassword: transport.email?.hasPassword || false,
-			clearSMTPPassword: false
-		}));
-
-		transports = rows;
-	}
-
-	function parseRecipients(input: string): string[] {
-		return input
-			.split(/[\n,]+/g)
-			.map((item) => item.trim())
-			.filter((item) => item.length > 0);
-	}
-
-	function addTransport(type: TransportType) {
-		transports = [...transports, defaultTransport(transports.length + 1, type)];
-	}
-
-	function removeTransport(index: number) {
-		transports = transports.filter((_, i) => i !== index);
-	}
-
-	async function refreshConfig() {
-		await configResource.refetch();
-		hydrateFromConfig(configResource.current);
-	}
-
-	async function saveConfig() {
-		loading = true;
-
-		const payload: UpdateNotificationConfigInput = {
-			transports: transports.map((transport) => ({
-				...(transport.id ? { id: transport.id } : {}),
-				name: transport.name.trim() || 'Default',
-				type: transport.type,
-				enabled: transport.enabled,
-				ntfy:
-					transport.type === 'ntfy'
-						? {
-								baseUrl: transport.ntfyBaseUrl,
-								topic: transport.ntfyTopic,
-								...(transport.ntfyToken.trim().length > 0 || transport.clearNtfyToken
-									? { authToken: transport.clearNtfyToken ? '' : transport.ntfyToken.trim() }
-									: {})
-							}
-						: null,
-				email:
-					transport.type === 'smtp'
-						? {
-								smtpHost: transport.smtpHost,
-								smtpPort: Number(transport.smtpPort) || 587,
-								smtpUsername: transport.smtpUsername,
-								smtpFrom: transport.smtpFrom,
-								smtpUseTls: transport.smtpUseTls,
-								recipients: parseRecipients(transport.smtpRecipients),
-								...(transport.smtpPassword.trim().length > 0 || transport.clearSMTPPassword
-									? { smtpPassword: transport.clearSMTPPassword ? '' : transport.smtpPassword.trim() }
-									: {})
-							}
-						: null
-			}))
-		};
-
-		const response = await updateNotificationTransports(payload);
-		loading = false;
-
-		if (isAPIResponse(response) && response.status === 'error') {
-			handleAPIError(response);
-			toast.error('Failed to update notification config', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-			return;
+	let columns: Column[] = $state([
+		{ field: 'id', title: 'ID', visible: false },
+		{
+			field: 'name',
+			title: 'Name',
+			formatter: (cell: CellComponent) => cell.getValue() || '-'
+		},
+		{
+			field: 'type',
+			title: 'Type',
+			formatter: (cell: CellComponent) => {
+				const v = cell.getValue();
+				return v === 'ntfy' ? 'ntfy' : v === 'smtp' ? 'SMTP' : v || '-';
+			}
+		},
+		{
+			field: 'enabled',
+			title: 'Enabled',
+			formatter: (cell: CellComponent) => (cell.getValue() ? 'Yes' : 'No')
 		}
+	]);
 
-		updateCache('notification-config', response);
-		hydrateFromConfig(response as NotificationConfig);
-		toast.success('Notification config updated', {
-			duration: 3500,
-			position: 'bottom-center'
-		});
-	}
+	const tableData: { rows: Row[]; columns: Column[] } = $derived({
+		columns,
+		rows: ((configResource.current as NotificationConfig).transports || []).map((t) => ({
+			id: t.id,
+			name: t.name,
+			type: t.type,
+			enabled: t.enabled
+		}))
+	});
 
-	hydrateFromConfig(configResource.current);
+	let activeRows: Row[] | null = $state(null);
+	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+
+	let query: string = $state('');
 </script>
 
-<div class="p-4 md:p-6">
-	<div class="mb-5 flex items-center justify-between gap-3">
-		<div>
-			<h2 class="text-lg font-semibold">Notifications</h2>
-			<p class="text-muted-foreground text-sm">Configure one row per transport. UI notifications are always enabled.</p>
-		</div>
-		<div class="flex gap-2">
-			<Button size="sm" variant="outline" class="h-7" onclick={() => addTransport('ntfy')}>Add ntfy</Button>
-			<Button size="sm" variant="outline" class="h-7" onclick={() => addTransport('smtp')}>Add SMTP</Button>
-			<Button size="sm" variant="outline" class="h-7" onclick={refreshConfig}>Refresh</Button>
-			<Button size="sm" class="h-7" onclick={saveConfig} disabled={loading}>
-				{#if loading}
-					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
-				{/if}
-				Save
+{#snippet button(type: string)}
+	{#if activeRows && activeRows.length === 1}
+		{#if type === 'edit'}
+			<Button
+				onclick={() => {
+					modals.edit.open = true;
+					modals.edit.id = Number(activeRow?.id);
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--pencil] mr-1 h-4 w-4"></span>
+					<span>Edit</span>
+				</div>
 			</Button>
-		</div>
+		{:else if type === 'delete'}
+			<Button
+				onclick={() => {
+					modals.delete.open = true;
+					modals.delete.id = Number(activeRow?.id);
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
+					<span>Delete</span>
+				</div>
+			</Button>
+		{/if}
+	{/if}
+{/snippet}
+
+<div class="flex h-full w-full flex-col">
+	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
+		<Search bind:query />
+		<Button size="sm" class="h-6" onclick={() => (modals.create.open = true)}>
+			<div class="flex items-center">
+				<span class="icon-[gg--add] mr-1 h-4 w-4"></span>
+				<span>New</span>
+			</div>
+		</Button>
+		{@render button('edit')}
+		{@render button('delete')}
 	</div>
 
-	{#if transports.length === 0}
-		<div class="rounded-md border p-4 text-sm text-muted-foreground">No transports configured.</div>
-	{:else}
-		<div class="space-y-5">
-			{#each transports as transport, index}
-				<section class="rounded-md border p-4">
-					<div class="mb-4 flex items-end justify-between gap-2">
-						<div class="grid flex-1 gap-3 md:grid-cols-3">
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Transport Name</span>
-								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.name} />
-							</label>
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Type</span>
-								<select class="w-full rounded-md border px-2 py-1.5" bind:value={transport.type}>
-									<option value="ntfy">ntfy</option>
-									<option value="smtp">smtp</option>
-								</select>
-							</label>
-							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" bind:checked={transport.enabled} />
-								Enabled
-							</label>
-						</div>
-						<Button size="sm" variant="destructive" class="h-7" onclick={() => removeTransport(index)}>
-							Remove
-						</Button>
-					</div>
-
-					{#if transport.type === 'ntfy'}
-						<div class="space-y-3">
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Base URL</span>
-								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.ntfyBaseUrl} />
-							</label>
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Topic</span>
-								<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.ntfyTopic} />
-							</label>
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Auth Token</span>
-								<input
-									type="password"
-									class="w-full rounded-md border px-2 py-1.5"
-									placeholder={transport.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
-									bind:value={transport.ntfyToken}
-								/>
-							</label>
-							<label class="flex items-center gap-2 text-xs">
-								<input type="checkbox" bind:checked={transport.clearNtfyToken} />
-								Clear stored token ({transport.ntfyHasAuthToken ? 'configured' : 'not configured'})
-							</label>
-						</div>
-					{:else}
-						<div class="space-y-3">
-							<div class="grid gap-3 md:grid-cols-2">
-								<label class="text-sm">
-									<span class="mb-1 block text-xs text-muted-foreground">SMTP Host</span>
-									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpHost} />
-								</label>
-								<label class="text-sm">
-									<span class="mb-1 block text-xs text-muted-foreground">SMTP Port</span>
-									<input type="number" class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpPort} />
-								</label>
-								<label class="text-sm">
-									<span class="mb-1 block text-xs text-muted-foreground">SMTP Username</span>
-									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpUsername} />
-								</label>
-								<label class="text-sm">
-									<span class="mb-1 block text-xs text-muted-foreground">From Email</span>
-									<input class="w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpFrom} />
-								</label>
-							</div>
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">SMTP Password</span>
-								<input
-									type="password"
-									class="w-full rounded-md border px-2 py-1.5"
-									placeholder={transport.smtpHasPassword ? 'Password stored (leave blank to keep)' : 'Optional'}
-									bind:value={transport.smtpPassword}
-								/>
-							</label>
-							<label class="flex items-center gap-2 text-xs">
-								<input type="checkbox" bind:checked={transport.clearSMTPPassword} />
-								Clear stored password ({transport.smtpHasPassword ? 'configured' : 'not configured'})
-							</label>
-							<label class="text-sm">
-								<span class="mb-1 block text-xs text-muted-foreground">Recipients (comma or newline separated)</span>
-								<textarea class="min-h-24 w-full rounded-md border px-2 py-1.5" bind:value={transport.smtpRecipients}
-								></textarea>
-							</label>
-							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" bind:checked={transport.smtpUseTls} />
-								Use TLS/STARTTLS
-							</label>
-						</div>
-					{/if}
-				</section>
-			{/each}
-		</div>
-	{/if}
+	<TreeTable
+		data={tableData}
+		name="tt-notification-transports"
+		bind:parentActiveRow={activeRows}
+		bind:query
+	/>
 </div>
+
+{#if modals.create.open}
+	<CreateOrEdit
+		bind:open={modals.create.open}
+		edit={false}
+		transports={(configResource.current as NotificationConfig).transports || []}
+		afterChange={() => configResource.refetch()}
+	/>
+{/if}
+
+{#if modals.edit.open}
+	<CreateOrEdit
+		bind:open={modals.edit.open}
+		edit={true}
+		id={modals.edit.id}
+		transports={(configResource.current as NotificationConfig).transports || []}
+		afterChange={() => configResource.refetch()}
+	/>
+{/if}
+
+<AlertDialog
+	open={modals.delete.open}
+	names={{ parent: 'transport', element: String(activeRow?.name ?? '') }}
+	actions={{
+		onConfirm: async () => {
+			const result = await deleteNotificationTransport(modals.delete.id);
+			configResource.refetch();
+			if (isAPIResponse(result) && result.status === 'success') {
+				toast.success(`Transport deleted`, { position: 'bottom-center' });
+			} else {
+				handleAPIError(result);
+				toast.error(`Failed to delete transport`, { position: 'bottom-center' });
+			}
+			activeRows = null;
+			modals.delete.open = false;
+		},
+		onCancel: () => {
+			activeRows = null;
+			modals.delete.open = false;
+		}
+	}}
+/>

@@ -290,14 +290,14 @@
 						icon: 'mdi--desktop-classic',
 						children: [
 							{
-								label: 'General',
-								icon: 'mdi--cog-outline',
-								href: `/${node}/settings/system`
-							},
-							{
 								label: 'Notifications',
 								icon: 'mdi--bell-ring-outline',
 								href: `/${node}/settings/system/notifications`
+							},
+							{
+								label: 'Services',
+								icon: 'material-symbols--design-services-outline-rounded',
+								href: `/${node}/settings/system/services`
 							}
 						]
 					},
@@ -362,6 +362,7 @@
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
 		<div class="flex items-center gap-1">
+            <NotificationBell />
 			<Button
 				size="sm"
 				class="h-6"
@@ -373,9 +374,6 @@
 					<span>Help</span>
 				</div>
 			</Button>
-
-			<NotificationBell />
-
 			<Button
 				size="sm"
 				class="h-6"

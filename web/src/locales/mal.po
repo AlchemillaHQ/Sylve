@@ -546,6 +546,7 @@ msgstr "ഉപയോക്താവ്"
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
@@ -844,6 +845,7 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -912,6 +914,7 @@ msgstr "കാണുക"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -951,6 +954,7 @@ msgstr "ഇല്ലാതാക്കുക"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -991,6 +995,7 @@ msgstr "മൊത്തമായി ഇല്ലാതാക്കുക"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -1078,6 +1083,8 @@ msgstr "കുറിപ്പ്"
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1244,6 +1251,9 @@ msgstr "പുനഃക്രമീകരിക്കുക"
 #: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1396,6 +1406,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -1795,6 +1806,7 @@ msgstr "അഡ്മിൻ"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -1889,6 +1901,7 @@ msgstr "ക്ലസ്റ്റർ വിവരങ്ങൾ"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -1905,6 +1918,7 @@ msgstr "പ്രോപ്പർട്ടി"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2032,6 +2046,7 @@ msgstr "ഈ പ്രവൃത്തി പിൻവലിക്കാനാവ�
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -2259,12 +2274,14 @@ msgstr "ആദ്യം മാറ്റം വരുത്തിയത്"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "തരം"
@@ -2287,6 +2304,7 @@ msgid "Select Pools"
 msgstr "പൂളുകൾ തിരഞ്ഞെടുക്കുക"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Services"
 msgstr "സേവനങ്ങൾ"
 
@@ -2295,6 +2313,10 @@ msgstr "സേവനങ്ങൾ"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Virtualization"
 msgstr "വിർച്വലൈസേഷൻ"
 
@@ -2305,6 +2327,10 @@ msgstr "വിർച്വലൈസേഷൻ"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Jails"
 msgstr "ജയിലുകൾ"
 
@@ -2312,6 +2338,9 @@ msgstr "ജയിലുകൾ"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Samba Server"
 msgstr "സാംബ സെർവർ"
 
@@ -2320,6 +2349,10 @@ msgstr "സാംബ സെർവർ"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "DHCP Server"
 msgstr "DHCP സെർവർ"
 
@@ -2819,6 +2852,11 @@ msgstr "ഉപകരണം പാസ്‌ത്രൂവിൽ നിന്ന�
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "ZFS Pools"
 msgstr "ZFS പൂളുകൾ"
 
@@ -2836,6 +2874,8 @@ msgstr "ZFS പൂളുകൾ"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2847,6 +2887,15 @@ msgstr "ZFS പൂളുകൾ"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2878,6 +2927,14 @@ msgstr "പ്രവർത്തനക്ഷമം"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2893,22 +2950,29 @@ msgstr "പ്രവർത്തനരഹിതം"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "WoL Server"
 msgstr "WoL സെർവർ"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "At least one ZFS Pool must be selected"
 msgstr "കുറഞ്ഞത് ഒരു ZFS പൂൾ എങ്കിലും തിരഞ്ഞെടുക്കണം"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "No changes made to ZFS Pools"
 msgstr "ZFS പൂളുകളിൽ മാറ്റങ്ങളൊന്നും വരുത്തിയിട്ടില്ല"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Failed to update ZFS Pools"
 msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "ZFS Pools updated"
 msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്തു"
 
@@ -2916,6 +2980,7 @@ msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്തു
 #. 0: title
 #. 0: title
 #. 0: title
+#. 0: activeRow.property
 #. 0: activeRow.property
 #. 0: activeRow.property
 #. 0: title
@@ -2927,6 +2992,7 @@ msgstr "ZFS പൂളുകൾ അപ്‌ഡേറ്റ് ചെയ്തു
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -2936,21 +3002,28 @@ msgid "Edit {0}"
 msgstr "{0} എഡിറ്റ് ചെയ്യുക"
 
 #. 0: activeRow?.property
+#. 0: activeRow?.property
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Toggle {0}"
 msgstr "{0} ടോഗിൾ ചെയ്യുക"
 
 #. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "നിങ്ങൾ {1} {0} ചെയ്യാൻ പോകുകയാണ്, {2}മാറ്റങ്ങൾ പ്രാബല്യത്തിൽ വരാൻ നിങ്ങൾ Sylve അല്ലെങ്കിൽ ഹോസ്റ്റ് സിസ്റ്റം പുനരാരംഭിക്കേണ്ടതുണ്ട്"
 
 #. 0: serviceName
+#. 0: serviceName
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Failed to toggle {0}"
 msgstr "{0} ടോഗിൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Enter ZFS Pools"
 msgstr "ZFS പൂളുകൾ നൽകുക"
 
@@ -3477,6 +3550,7 @@ msgstr "ഇവന്റ് പുരോഗതി ലോഡ് ചെയ്യു
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
@@ -4360,6 +4434,7 @@ msgstr "ഫെയ്‌ൽബാക്ക്"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -4399,6 +4474,7 @@ msgstr "അതെ"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -9271,6 +9347,7 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Count"
 msgstr ""
@@ -9808,6 +9885,8 @@ msgid "Template data unavailable"
 msgstr ""
 
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Optional"
 msgstr ""
@@ -10275,6 +10354,10 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Firewall"
 msgstr ""
 
@@ -11222,6 +11305,9 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "WireGuard"
 msgstr ""
 
@@ -13121,4 +13207,188 @@ msgstr ""
 #. 0: properties.detach.name; 1: vm.current.name
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>. The underlying disk dataset/file will NOT be deleted."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Failed to dismiss notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Notification dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Notifications"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "<0/> Show dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Severity"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Last Seen"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "No notifications found."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismiss"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Refresh Count"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Refresh List"
+msgstr ""
+
+#. 0: index
+#. 0: edit ? 'updated' \\: 'created'
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport {0}"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Default"
+msgstr ""
+
+#~ msgid "Failed to update notification config"
+#~ msgstr ""
+
+#~ msgid "Notification config updated"
+#~ msgstr ""
+
+#~ msgid "Configure one row per transport. UI notifications are always enabled."
+#~ msgstr ""
+
+#~ msgid "Add ntfy"
+#~ msgstr ""
+
+#~ msgid "Add SMTP"
+#~ msgstr ""
+
+#~ msgid "<0/> Save"
+#~ msgstr ""
+
+#~ msgid "No transports configured."
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport Name"
+msgstr ""
+
+#~ msgid "ntfy"
+#~ msgstr ""
+
+#~ msgid "smtp"
+#~ msgstr ""
+
+#~ msgid "Remove"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Base URL"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Topic"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Auth Token"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Token stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "<0/> Clear stored token ({0})"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Host"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Port"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Username"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "From Email"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Password"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Password stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "<0/> Clear stored password ({0})"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Recipients (comma or newline separated)"
+msgstr ""
+
+#~ msgid "<0/> Use TLS/STARTTLS"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Transport deleted"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+msgid "Failed to delete transport"
+msgstr ""
+
+#. 0: edit ? 'update' \\: 'create'
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Failed to {0} transport"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Edit Transport"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "New Transport"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport 1"
+msgstr ""
+
+#~ msgid "Clear stored token ({0})"
+#~ msgstr ""
+
+#~ msgid "Clear stored password ({0})"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Use TLS/STARTTLS"
 msgstr ""

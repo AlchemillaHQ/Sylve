@@ -126,6 +126,7 @@
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Data Center</span>
 		<div class="flex items-center gap-1">
+			<NotificationBell />
 			<Button
 				size="sm"
 				class="h-6"
@@ -137,9 +138,6 @@
 					<span>Help</span>
 				</div>
 			</Button>
-
-			<NotificationBell />
-
 			<Button
 				size="sm"
 				class="h-6"
@@ -168,7 +166,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item}
+								{#each nodeItems as item (item.label)}
 									<TreeView {item} onToggle={toggleCategory} />
 								{/each}
 							</ScrollArea>
