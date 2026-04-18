@@ -3,10 +3,13 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { User } from '$lib/types/auth';
 	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
 	type TransportType = 'ntfy' | 'smtp';
@@ -24,7 +27,7 @@
 		smtpUsername: string;
 		smtpFrom: string;
 		smtpUseTls: boolean;
-		smtpRecipients: string;
+		smtpRecipients: string[];
 		smtpPassword: string;
 		smtpHasPassword: boolean;
 	};
@@ -33,13 +36,15 @@
 		open: boolean;
 		edit: boolean;
 		id?: number;
+		users: User[];
 		transports: NotificationConfig['transports'];
 		afterChange: () => void;
 	}
 
-	let { open = $bindable(), edit, id, transports, afterChange }: Props = $props();
+	let { open = $bindable(), edit, id, users, transports, afterChange }: Props = $props();
 
 	let loading = $state(false);
+	let smtpRecipientsOpen = $state(false);
 
 	function defaultForm(index = 1, type: TransportType = 'smtp'): TransportForm {
 		return {
@@ -55,7 +60,7 @@
 			smtpUsername: '',
 			smtpFrom: '',
 			smtpUseTls: true,
-			smtpRecipients: '',
+			smtpRecipients: [],
 			smtpPassword: '',
 			smtpHasPassword: false
 		};
@@ -87,7 +92,7 @@
 					smtpUsername: editingTransport.email?.smtpUsername ?? '',
 					smtpFrom: editingTransport.email?.smtpFrom ?? '',
 					smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
-					smtpRecipients: (editingTransport.email?.recipients ?? []).join(', '),
+					smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 					smtpPassword: '',
 					smtpHasPassword: editingTransport.email?.hasPassword ?? false
 				};
@@ -97,17 +102,47 @@
 		}
 	});
 
-	function parseRecipients(input: string): string[] {
-		return input
-			.split(/[\n,]+/g)
-			.map((item) => item.trim())
-			.filter((item) => item.length > 0);
+	const smtpRecipientOptions = $derived.by(() => {
+		const seen = new SvelteSet<string>();
+		const options: { label: string; value: string }[] = [];
+
+		for (const user of users) {
+			const email = user.email.trim();
+			if (!email || seen.has(email)) {
+				continue;
+			}
+
+			seen.add(email);
+			options.push({
+				label: user.username ? `${user.username} <${email}>` : email,
+				value: email
+			});
+		}
+
+		return options;
+	});
+
+	function normalizeRecipients(values: string[]): string[] {
+		const seen = new SvelteSet<string>();
+		const normalized: string[] = [];
+
+		for (const value of values) {
+			const recipient = value.trim();
+			if (!recipient || seen.has(recipient)) {
+				continue;
+			}
+
+			seen.add(recipient);
+			normalized.push(recipient);
+		}
+
+		return normalized;
 	}
 
 	function buildEntry(f: TransportForm): UpdateNotificationConfigInput['transports'][number] {
 		return {
 			...(f.id ? { id: f.id } : {}),
-			name: f.name.trim() || 'Default',
+			name: f.name.trim(),
 			type: f.type,
 			enabled: f.enabled,
 			ntfy:
@@ -126,7 +161,7 @@
 							smtpUsername: f.smtpUsername,
 							smtpFrom: f.smtpFrom,
 							smtpUseTls: f.smtpUseTls,
-							recipients: parseRecipients(f.smtpRecipients),
+							recipients: normalizeRecipients(f.smtpRecipients),
 							...(f.smtpPassword.trim().length > 0 ? { smtpPassword: f.smtpPassword.trim() } : {})
 						}
 					: null
@@ -156,6 +191,14 @@
 	}
 
 	async function save() {
+		if (form.name.trim().length === 0) {
+			toast.error('Transport name is required', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		loading = true;
 
 		const entry = buildEntry(form);
@@ -219,7 +262,7 @@
 										smtpUsername: editingTransport.email?.smtpUsername ?? '',
 										smtpFrom: editingTransport.email?.smtpFrom ?? '',
 										smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
-										smtpRecipients: (editingTransport.email?.recipients ?? []).join(', '),
+										smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 										smtpPassword: '',
 										smtpHasPassword: editingTransport.email?.hasPassword ?? false
 									};
@@ -309,12 +352,18 @@
 							: 'Optional'}
 						revealOnFocus={true}
 					/>
-					<CustomValueInput
-						label="Recipients (comma or newline separated)"
-						type="textarea"
+					<ComboBox
+						bind:open={smtpRecipientsOpen}
+						label="Recipients"
 						bind:value={form.smtpRecipients}
-						placeholder=""
-						textAreaClasses="min-h-20"
+						data={smtpRecipientOptions}
+						placeholder="Select or type recipients"
+						width="w-full"
+						multiple={true}
+						allowCustom={true}
+						onValueChange={(value) => {
+							form.smtpRecipients = normalizeRecipients(Array.isArray(value) ? value : []);
+						}}
 					/>
 					<div class="grid grid-cols-2 gap-x-4">
 						<CustomCheckbox label="Use TLS/STARTTLS" bind:checked={form.smtpUseTls} />

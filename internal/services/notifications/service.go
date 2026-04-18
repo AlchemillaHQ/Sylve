@@ -32,11 +32,10 @@ import (
 )
 
 const (
-	defaultNtfyBaseURL   = "https://ntfy.sh"
-	defaultSMTPPort      = 587
-	defaultTransportName = "Default"
-	defaultListLimit     = 50
-	maxListLimit         = 500
+	defaultNtfyBaseURL = "https://ntfy.sh"
+	defaultSMTPPort    = 587
+	defaultListLimit   = 50
+	maxListLimit       = 500
 )
 
 const (
@@ -391,6 +390,44 @@ func (s *Service) DeleteTransport(ctx context.Context, id uint) error {
 	return nil
 }
 
+func (s *Service) TestTransport(ctx context.Context, id uint) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("notifications_service_not_initialized")
+	}
+	if id == 0 {
+		return fmt.Errorf("invalid_transport_id")
+	}
+
+	cfg, err := s.resolveTransportForUpdate(s.DB.WithContext(ctx), id)
+	if err != nil {
+		return err
+	}
+
+	now := s.now().UTC()
+	input := notifier.EventInput{
+		Kind:        "system.notifications.test",
+		Title:       "Sylve Notification Test",
+		Body:        fmt.Sprintf("This is a test notification sent at %s.", now.Format(time.RFC3339)),
+		Severity:    string(models.NotificationSeverityInfo),
+		Source:      "settings.notifications",
+		Fingerprint: fmt.Sprintf("transport-test-%d-%d", id, now.UnixNano()),
+		Metadata: map[string]string{
+			"transportId": strconv.FormatUint(uint64(id), 10),
+		},
+	}
+
+	switch normalizeTransportType(cfg.Type) {
+	case TransportTypeNtfy:
+		token := strings.TrimSpace(cfg.NtfyAuthToken)
+		return s.ntfySender(ctx, cfg, input, token)
+	case TransportTypeSMTP:
+		password := strings.TrimSpace(cfg.SMTPPassword)
+		return s.emailSender(ctx, cfg, input, password)
+	default:
+		return fmt.Errorf("invalid_transport_type")
+	}
+}
+
 func (s *Service) GetTransportConfig(ctx context.Context) (TransportConfigView, error) {
 	if s == nil || s.DB == nil {
 		return TransportConfigView{}, fmt.Errorf("notifications_service_not_initialized")
@@ -427,7 +464,7 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 
 			cfg.Name = strings.TrimSpace(entry.Name)
 			if cfg.Name == "" {
-				cfg.Name = defaultTransportName
+				return fmt.Errorf("transport_name_required")
 			}
 			cfg.Type = transportType
 
@@ -577,10 +614,6 @@ func (s *Service) ensureTransportConfigs(tx *gorm.DB) ([]models.NotificationTran
 	for idx := range configs {
 		updated := false
 		cfg := &configs[idx]
-		if strings.TrimSpace(cfg.Name) == "" {
-			cfg.Name = defaultTransportName
-			updated = true
-		}
 		normalizedType := normalizeTransportType(cfg.Type)
 		if normalizedType == "" {
 			if cfg.NtfyEnabled && !cfg.EmailEnabled {
@@ -666,10 +699,6 @@ func (s *Service) toTransportConfigView(configs []models.NotificationTransportCo
 			ID:   cfg.ID,
 			Name: strings.TrimSpace(cfg.Name),
 			Type: normalizeTransportType(cfg.Type),
-		}
-
-		if entry.Name == "" {
-			entry.Name = defaultTransportName
 		}
 
 		switch entry.Type {

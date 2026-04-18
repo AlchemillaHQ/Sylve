@@ -45,3 +45,7 @@ export async function updateNotificationTransports(
 export async function deleteNotificationTransport(id: number): Promise<APIResponse> {
     return await apiRequest(`/notifications/transports/${id}`, APIResponseSchema, 'DELETE');
 }
+
+export async function testNotificationTransport(id: number): Promise<APIResponse> {
+    return await apiRequest(`/notifications/transports/${id}/test`, APIResponseSchema, 'POST');
+}

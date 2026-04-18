@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -104,5 +105,138 @@ func TestNotificationsListHandlerReturnsItems(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected_1_item got: %d", len(items))
+	}
+}
+
+func TestTestTransportHandlerSendsNtfyTransport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	ntfyCalls := 0
+	svc.SetNtfySender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error {
+		ntfyCalls++
+		return nil
+	})
+
+	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
+		Transports: []notifications.TransportConfigEntryUpdate{
+			{
+				Name:    "Ntfy",
+				Type:    notifications.TransportTypeNtfy,
+				Enabled: false,
+				Ntfy: &notifications.NtfyTransportConfigUpdate{
+					BaseURL: "https://ntfy.sh",
+					Topic:   "alerts",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed_to_seed_ntfy_transport: %v", err)
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/transports/:id/test", TestTransport(svc))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/notifications/transports/"+strconv.FormatUint(uint64(view.Transports[0].ID), 10)+"/test",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if ntfyCalls != 1 {
+		t.Fatalf("expected_ntfy_called_once got: %d", ntfyCalls)
+	}
+}
+
+func TestTestTransportHandlerSendsSMTPTransport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	emailCalls := 0
+	svc.SetEmailSender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error {
+		emailCalls++
+		return nil
+	})
+
+	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
+		Transports: []notifications.TransportConfigEntryUpdate{
+			{
+				Name:    "SMTP",
+				Type:    notifications.TransportTypeSMTP,
+				Enabled: false,
+				Email: &notifications.EmailTransportConfigUpdate{
+					SMTPHost:   "smtp.example.com",
+					SMTPPort:   587,
+					SMTPFrom:   "alerts@example.com",
+					Recipients: []string{"alerts@example.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed_to_seed_smtp_transport: %v", err)
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/transports/:id/test", TestTransport(svc))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/notifications/transports/"+strconv.FormatUint(uint64(view.Transports[0].ID), 10)+"/test",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if emailCalls != 1 {
+		t.Fatalf("expected_email_called_once got: %d", emailCalls)
+	}
+}
+
+func TestTestTransportHandlerReturnsBadRequestForInvalidTransportConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	view, err := svc.UpdateTransportConfig(context.Background(), notifications.TransportConfigUpdate{
+		Transports: []notifications.TransportConfigEntryUpdate{
+			{
+				Name:    "Broken SMTP",
+				Type:    notifications.TransportTypeSMTP,
+				Enabled: true,
+				Email: &notifications.EmailTransportConfigUpdate{
+					SMTPHost:   "",
+					SMTPPort:   587,
+					SMTPFrom:   "alerts@example.com",
+					Recipients: []string{"alerts@example.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed_to_seed_broken_smtp_transport: %v", err)
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/transports/:id/test", TestTransport(svc))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/notifications/transports/"+strconv.FormatUint(uint64(view.Transports[0].ID), 10)+"/test",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
 	}
 }

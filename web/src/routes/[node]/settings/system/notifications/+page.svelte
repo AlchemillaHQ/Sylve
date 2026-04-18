@@ -1,10 +1,15 @@
 <script lang="ts">
-	import { deleteNotificationTransport, getNotificationTransports } from '$lib/api/notifications';
+	import {
+		deleteNotificationTransport,
+		getNotificationTransports,
+		testNotificationTransport
+	} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CreateOrEdit from '$lib/components/custom/Notifications/CreateOrEdit.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NotificationConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
@@ -14,6 +19,7 @@
 
 	interface Data {
 		config: NotificationConfig;
+		users: User[];
 	}
 
 	let { data }: { data: Data } = $props();
@@ -73,6 +79,24 @@
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
 	let query: string = $state('');
+	let testingTransport = $state(false);
+
+	async function testSelectedTransport() {
+		if (!activeRow?.id) {
+			return;
+		}
+
+		testingTransport = true;
+		const result = await testNotificationTransport(Number(activeRow.id));
+		testingTransport = false;
+
+		if (isAPIResponse(result) && result.status === 'success') {
+			toast.success('Test notification sent', { position: 'bottom-center' });
+		} else {
+			handleAPIError(result);
+			toast.error('Failed to send test notification', { position: 'bottom-center' });
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
@@ -107,6 +131,23 @@
 					<span>Delete</span>
 				</div>
 			</Button>
+		{:else if type === 'test'}
+			<Button
+				onclick={testSelectedTransport}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={testingTransport}
+			>
+				<div class="flex items-center">
+					{#if testingTransport}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{:else}
+						<span class="icon-[mdi--flask-outline] mr-1 h-4 w-4"></span>
+					{/if}
+					<span>Test</span>
+				</div>
+			</Button>
 		{/if}
 	{/if}
 {/snippet}
@@ -120,6 +161,7 @@
 				<span>New</span>
 			</div>
 		</Button>
+		{@render button('test')}
 		{@render button('edit')}
 		{@render button('delete')}
 	</div>
@@ -136,6 +178,7 @@
 	<CreateOrEdit
 		bind:open={modals.create.open}
 		edit={false}
+		users={data.users}
 		transports={(configResource.current as NotificationConfig).transports || []}
 		afterChange={() => configResource.refetch()}
 	/>
@@ -146,6 +189,7 @@
 		bind:open={modals.edit.open}
 		edit={true}
 		id={modals.edit.id}
+		users={data.users}
 		transports={(configResource.current as NotificationConfig).transports || []}
 		afterChange={() => configResource.refetch()}
 	/>

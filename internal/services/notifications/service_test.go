@@ -276,6 +276,101 @@ func TestTransportConfigStoresRecipientsAndSecretFlags(t *testing.T) {
 	}
 }
 
+func TestUpdateTransportConfigRejectsEmptyTransportName(t *testing.T) {
+	svc := newTestService(t)
+
+	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{
+				Name:    "   ",
+				Type:    TransportTypeNtfy,
+				Enabled: true,
+				Ntfy: &NtfyTransportConfigUpdate{
+					BaseURL: "https://ntfy.sh",
+					Topic:   "alerts",
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected_error_for_blank_transport_name")
+	}
+	if err.Error() != "transport_name_required" {
+		t.Fatalf("expected_transport_name_required got: %v", err)
+	}
+}
+
+func TestTestTransportSendsForNtfyAndSMTPEvenWhenDisabled(t *testing.T) {
+	svc := newTestService(t)
+
+	ntfyCalls := 0
+	emailCalls := 0
+	svc.SetNtfySender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error {
+		ntfyCalls++
+		return nil
+	})
+	svc.SetEmailSender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error {
+		emailCalls++
+		return nil
+	})
+
+	view, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{
+				Name:    "Ntfy Transport",
+				Type:    TransportTypeNtfy,
+				Enabled: false,
+				Ntfy: &NtfyTransportConfigUpdate{
+					BaseURL: "https://ntfy.sh",
+					Topic:   "alerts",
+				},
+			},
+			{
+				Name:    "SMTP Transport",
+				Type:    TransportTypeSMTP,
+				Enabled: false,
+				Email: &EmailTransportConfigUpdate{
+					SMTPHost:   "smtp.example.com",
+					SMTPPort:   587,
+					SMTPFrom:   "alerts@example.com",
+					Recipients: []string{"alerts@example.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_transport_config_failed: %v", err)
+	}
+
+	var ntfyID uint
+	var smtpID uint
+	for _, transport := range view.Transports {
+		switch transport.Type {
+		case TransportTypeNtfy:
+			ntfyID = transport.ID
+		case TransportTypeSMTP:
+			smtpID = transport.ID
+		}
+	}
+	if ntfyID == 0 || smtpID == 0 {
+		t.Fatalf("expected_both_transport_ids ntfy=%d smtp=%d", ntfyID, smtpID)
+	}
+
+	if err := svc.TestTransport(context.Background(), ntfyID); err != nil {
+		t.Fatalf("test_ntfy_transport_failed: %v", err)
+	}
+	if err := svc.TestTransport(context.Background(), smtpID); err != nil {
+		t.Fatalf("test_smtp_transport_failed: %v", err)
+	}
+
+	if ntfyCalls != 1 {
+		t.Fatalf("expected_ntfy_test_call_once got: %d", ntfyCalls)
+	}
+	if emailCalls != 1 {
+		t.Fatalf("expected_smtp_test_call_once got: %d", emailCalls)
+	}
+}
+
 func TestSuppressionDoesNotCrossKindsWithSameFingerprint(t *testing.T) {
 	svc := newTestService(t)
 

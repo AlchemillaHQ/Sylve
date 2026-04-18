@@ -290,10 +290,84 @@ func DeleteTransport(service *notifications.Service) gin.HandlerFunc {
 	}
 }
 
+func TestTransport(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_transport_id",
+				Error:   "invalid_transport_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		err = service.TestTransport(c.Request.Context(), uint(id))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "transport_not_found",
+					Error:   "transport_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
+			if isTestTransportBadRequest(err) {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "failed_to_test_transport",
+					Error:   err.Error(),
+					Data:    nil,
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_test_transport",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "transport_test_sent",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 func parseInt(value string, fallback int) int {
 	v, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
 		return fallback
 	}
 	return v
+}
+
+func isTestTransportBadRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+
+	switch {
+	case strings.HasPrefix(msg, "invalid_"):
+		return true
+	case strings.HasPrefix(msg, "transport_name_required"):
+		return true
+	case strings.HasPrefix(msg, "ntfy_"):
+		return true
+	case strings.HasPrefix(msg, "smtp_"):
+		return true
+	default:
+		return false
+	}
 }
