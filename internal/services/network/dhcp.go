@@ -358,6 +358,7 @@ func (s *Service) WriteDHCPConfig() error {
 	config += "\n"
 	// quick hack: add dhcp-options for add default-route
 	config += "dhcp-option=option:router,10.0.1.1\n"
+	config += "dhcp-option=6,10.0.1.9,10.0.1.16\n"
 	config += "port=53\n"
 	config += "bogus-priv\n\n"
 
