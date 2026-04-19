@@ -1,23 +1,6 @@
-import { getNotificationTransports } from '$lib/api/notifications';
-import { listUsers } from '$lib/api/auth/local';
-import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch, isAPIResponse } from '$lib/utils/http';
+import { redirect } from '@sveltejs/kit';
 
-export async function load() {
-	const [response, usersResponse] = await Promise.all([
-		cachedFetch('notification-config', async () => await getNotificationTransports(), SEVEN_DAYS),
-		cachedFetch('users', async () => await listUsers(), SEVEN_DAYS)
-	]);
-
-	const config = isAPIResponse(response)
-		? {
-				transports: []
-			}
-		: response;
-	const users = Array.isArray(usersResponse) ? usersResponse : [];
-
-	return {
-		config,
-		users
-	};
+export function load({ url }: { url: URL }) {
+	const basePath = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
+	throw redirect(307, `${basePath}/transports`);
 }

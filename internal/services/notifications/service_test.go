@@ -26,6 +26,7 @@ func newTestService(t *testing.T) *Service {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.BasicSettings{},
 		&models.SystemSecrets{},
 	)
 
@@ -195,6 +196,7 @@ func TestTransportConfigStoresRecipientsAndSecretFlags(t *testing.T) {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.BasicSettings{},
 		&models.SystemSecrets{},
 	)
 	svc := NewService(db)
@@ -575,4 +577,191 @@ func TestUpdateTransportConfigRemovesOmittedRows(t *testing.T) {
 		t.Fatalf("expected_removed_transport_deleted")
 	}
 
+}
+
+func TestGetRuleConfigAutoSyncsPools(t *testing.T) {
+	svc := newTestService(t)
+
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot", "tank"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	if len(view.Rules) != 2 {
+		t.Fatalf("expected_2_rules got: %d", len(view.Rules))
+	}
+	if view.Rules[0].Pool != "tank" || view.Rules[1].Pool != "zroot" {
+		t.Fatalf("expected_sorted_pools got: %+v", view.Rules)
+	}
+
+	for _, rule := range view.Rules {
+		if rule.Kind != notifier.KindForZFSPoolState(rule.Pool) {
+			t.Fatalf("unexpected_rule_kind pool=%s kind=%s", rule.Pool, rule.Kind)
+		}
+		if !rule.UIEnabled || !rule.NtfyEnabled || !rule.EmailEnabled {
+			t.Fatalf("expected_default_enabled_rule got: %+v", rule)
+		}
+	}
+}
+
+func TestUpdateRuleConfigPersistsChanges(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	_, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	updated, err := svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
+		Rules: []RuleConfigEntryUpdate{
+			{
+				Pool:         "zroot",
+				UIEnabled:    false,
+				NtfyEnabled:  false,
+				EmailEnabled: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_rule_config_failed: %v", err)
+	}
+
+	if len(updated.Rules) != 1 {
+		t.Fatalf("expected_single_rule_after_update got: %d", len(updated.Rules))
+	}
+
+	rule := updated.Rules[0]
+	if rule.UIEnabled || rule.NtfyEnabled || !rule.EmailEnabled {
+		t.Fatalf("unexpected_rule_state_after_update: %+v", rule)
+	}
+
+	var stored models.NotificationKindRule
+	kind := notifier.KindForZFSPoolState("zroot")
+	if err := svc.DB.Where("kind = ?", kind).First(&stored).Error; err != nil {
+		t.Fatalf("failed_to_load_updated_rule: %v", err)
+	}
+	if stored.UIEnabled || stored.NtfyEnabled || !stored.EmailEnabled {
+		t.Fatalf("unexpected_stored_rule_state: %+v", stored)
+	}
+}
+
+func TestUpdateRuleConfigRejectsUnknownPool(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	_, err := svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
+		Rules: []RuleConfigEntryUpdate{
+			{
+				Pool:         "tank",
+				UIEnabled:    true,
+				NtfyEnabled:  true,
+				EmailEnabled: true,
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected_error_for_unknown_pool_rule")
+	}
+	if err.Error() != "notification_rule_not_found" {
+		t.Fatalf("expected_notification_rule_not_found got: %v", err)
+	}
+}
+
+func TestEmitHonorsUIAndChannelRuleToggles(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	ntfyCalls := 0
+	emailCalls := 0
+	svc.SetNtfySender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error {
+		ntfyCalls++
+		return nil
+	})
+	svc.SetEmailSender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error {
+		emailCalls++
+		return nil
+	})
+
+	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{
+				Name:    "ntfy",
+				Type:    TransportTypeNtfy,
+				Enabled: true,
+				Ntfy: &NtfyTransportConfigUpdate{
+					BaseURL: "https://ntfy.sh",
+					Topic:   "ops",
+				},
+			},
+			{
+				Name:    "smtp",
+				Type:    TransportTypeSMTP,
+				Enabled: true,
+				Email: &EmailTransportConfigUpdate{
+					SMTPHost:   "smtp.example.com",
+					SMTPPort:   587,
+					SMTPFrom:   "ops@example.com",
+					Recipients: []string{"ops@example.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed_to_seed_transport_config: %v", err)
+	}
+
+	kind := notifier.KindForZFSPoolState("zroot")
+	_, err = svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
+		Rules: []RuleConfigEntryUpdate{
+			{
+				Pool:         "zroot",
+				UIEnabled:    false,
+				NtfyEnabled:  false,
+				EmailEnabled: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed_to_update_kind_rule: %v", err)
+	}
+
+	res, err := svc.Emit(context.Background(), notifier.EventInput{
+		Kind:        kind,
+		Title:       "Pool degraded",
+		Body:        "zroot has degraded vdev",
+		Severity:    "warning",
+		Fingerprint: "zroot|vdev0|degraded",
+	})
+	if err != nil {
+		t.Fatalf("emit_failed: %v", err)
+	}
+
+	if res.NotificationID != 0 {
+		t.Fatalf("expected_no_ui_notification_id_when_ui_disabled got: %d", res.NotificationID)
+	}
+	if ntfyCalls != 0 {
+		t.Fatalf("expected_ntfy_not_sent_when_kind_ntfy_disabled got: %d", ntfyCalls)
+	}
+	if emailCalls != 1 {
+		t.Fatalf("expected_email_sent_once got: %d", emailCalls)
+	}
+
+	var count int64
+	if err := svc.DB.Model(&models.Notification{}).Count(&count).Error; err != nil {
+		t.Fatalf("failed_to_count_notifications: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected_no_ui_notifications_stored got: %d", count)
+	}
 }

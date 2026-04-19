@@ -53,6 +53,16 @@ type notificationConfigUpdateRequest struct {
 	} `json:"transports"`
 }
 
+type notificationRulesUpdateRequest struct {
+	Rules []struct {
+		Kind         string `json:"kind"`
+		Pool         string `json:"pool"`
+		UIEnabled    bool   `json:"uiEnabled"`
+		NtfyEnabled  bool   `json:"ntfyEnabled"`
+		EmailEnabled bool   `json:"emailEnabled"`
+	} `json:"rules"`
+}
+
 func List(service *notifications.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		scope := notifications.ListScope(strings.TrimSpace(strings.ToLower(c.DefaultQuery("scope", string(notifications.ListScopeActive)))))
@@ -286,6 +296,74 @@ func DeleteTransport(service *notifications.Service) gin.HandlerFunc {
 			Message: "transport_deleted",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+func GetRules(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cfg, err := service.GetRuleConfig(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_load_notification_rules",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rules_loaded",
+			Error:   "",
+			Data:    cfg,
+		})
+	}
+}
+
+func UpdateRules(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req notificationRulesUpdateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		ruleUpdates := make([]notifications.RuleConfigEntryUpdate, 0, len(req.Rules))
+		for _, rule := range req.Rules {
+			ruleUpdates = append(ruleUpdates, notifications.RuleConfigEntryUpdate{
+				Kind:         rule.Kind,
+				Pool:         rule.Pool,
+				UIEnabled:    rule.UIEnabled,
+				NtfyEnabled:  rule.NtfyEnabled,
+				EmailEnabled: rule.EmailEnabled,
+			})
+		}
+
+		updated, err := service.UpdateRuleConfig(c.Request.Context(), notifications.RuleConfigUpdate{
+			Rules: ruleUpdates,
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_update_notification_rules",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rules_updated",
+			Error:   "",
+			Data:    updated,
 		})
 	}
 }

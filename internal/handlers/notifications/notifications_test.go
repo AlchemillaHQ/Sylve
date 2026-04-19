@@ -9,6 +9,7 @@
 package notificationsHandlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -33,6 +34,7 @@ func newHandlerTestService(t *testing.T) *notifications.Service {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.BasicSettings{},
 		&models.SystemSecrets{},
 	)
 
@@ -233,6 +235,97 @@ func TestTestTransportHandlerReturnsBadRequestForInvalidTransportConfig(t *testi
 		"/api/notifications/transports/"+strconv.FormatUint(uint64(view.Transports[0].ID), 10)+"/test",
 		nil,
 	)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetRulesHandlerReturnsRules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	r := gin.New()
+	r.GET("/api/notifications/rules", GetRules(svc))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/notifications/rules", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed_to_decode_response: %v", err)
+	}
+
+	dataMap, ok := payload["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected_data_object")
+	}
+	rules, ok := dataMap["rules"].([]any)
+	if !ok {
+		t.Fatalf("expected_rules_array")
+	}
+	if len(rules) != 1 {
+		t.Fatalf("expected_1_rule got: %d", len(rules))
+	}
+}
+
+func TestUpdateRulesHandlerUpdatesRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	r := gin.New()
+	r.PUT("/api/notifications/rules", UpdateRules(svc))
+
+	body := []byte(`{"rules":[{"pool":"zroot","uiEnabled":false,"ntfyEnabled":true,"emailEnabled":false}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/notifications/rules", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var stored models.NotificationKindRule
+	if err := svc.DB.Where("kind = ?", notifier.KindForZFSPoolState("zroot")).First(&stored).Error; err != nil {
+		t.Fatalf("failed_to_load_updated_rule: %v", err)
+	}
+	if stored.UIEnabled || !stored.NtfyEnabled || stored.EmailEnabled {
+		t.Fatalf("unexpected_rule_state: %+v", stored)
+	}
+}
+
+func TestUpdateRulesHandlerRejectsUnknownRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	r := gin.New()
+	r.PUT("/api/notifications/rules", UpdateRules(svc))
+
+	body := []byte(`{"rules":[{"pool":"tank","uiEnabled":false,"ntfyEnabled":true,"emailEnabled":false}]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/notifications/rules", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 

@@ -11,10 +11,13 @@ package notifications
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 )
 
 var ErrEmitterNotConfigured = errors.New("notifications_emitter_not_configured")
+
+const ZFSPoolStateKindPrefix = "system.zfs.pool_state."
 
 type EventInput struct {
 	Kind        string            `json:"kind"`
@@ -58,4 +61,31 @@ func Emit(ctx context.Context, input EventInput) (EmitResult, error) {
 	}
 
 	return active.Emit(ctx, input)
+}
+
+func KindForZFSPoolState(pool string) string {
+	pool = normalizePoolName(pool)
+	if pool == "" {
+		return ZFSPoolStateKindPrefix
+	}
+
+	return ZFSPoolStateKindPrefix + pool
+}
+
+func PoolFromZFSPoolStateKind(kind string) (string, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(kind))
+	if !strings.HasPrefix(normalized, ZFSPoolStateKindPrefix) {
+		return "", false
+	}
+
+	pool := strings.TrimSpace(normalized[len(ZFSPoolStateKindPrefix):])
+	if pool == "" {
+		return "", false
+	}
+
+	return pool, true
+}
+
+func normalizePoolName(pool string) string {
+	return strings.TrimSpace(strings.ToLower(pool))
 }

@@ -121,6 +121,30 @@ type EmailTransportConfigUpdate struct {
 	SMTPPassword *string  `json:"smtpPassword,omitempty"`
 }
 
+type RuleConfigView struct {
+	Rules []RuleConfigEntryView `json:"rules"`
+}
+
+type RuleConfigEntryView struct {
+	Kind         string `json:"kind"`
+	Pool         string `json:"pool"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+}
+
+type RuleConfigUpdate struct {
+	Rules []RuleConfigEntryUpdate `json:"rules"`
+}
+
+type RuleConfigEntryUpdate struct {
+	Kind         string `json:"kind"`
+	Pool         string `json:"pool"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+}
+
 func NewService(db *gorm.DB) *Service {
 	s := &Service{
 		DB: db,
@@ -198,46 +222,48 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			return err
 		}
 
-		var existing models.Notification
-		err = tx.Where("fingerprint = ?", normalized.Fingerprint).First(&existing).Error
-		if err == nil {
-			existing.Kind = normalized.Kind
-			existing.Title = normalized.Title
-			existing.Body = normalized.Body
-			existing.Severity = models.NotificationSeverity(normalized.Severity)
-			existing.Source = normalized.Source
-			existing.Metadata = normalized.Metadata
-			existing.LastOccurredAt = now
-			existing.OccurrenceCount++
-			existing.DismissedAt = nil
-			existing.UpdatedAt = now
+		if kindRule.UIEnabled {
+			var existing models.Notification
+			err = tx.Where("fingerprint = ?", normalized.Fingerprint).First(&existing).Error
+			if err == nil {
+				existing.Kind = normalized.Kind
+				existing.Title = normalized.Title
+				existing.Body = normalized.Body
+				existing.Severity = models.NotificationSeverity(normalized.Severity)
+				existing.Source = normalized.Source
+				existing.Metadata = normalized.Metadata
+				existing.LastOccurredAt = now
+				existing.OccurrenceCount++
+				existing.DismissedAt = nil
+				existing.UpdatedAt = now
 
-			if updateErr := tx.Save(&existing).Error; updateErr != nil {
-				return updateErr
+				if updateErr := tx.Save(&existing).Error; updateErr != nil {
+					return updateErr
+				}
+
+				result.NotificationID = existing.ID
+			} else if err == gorm.ErrRecordNotFound {
+				rec := models.Notification{
+					Kind:            normalized.Kind,
+					Title:           normalized.Title,
+					Body:            normalized.Body,
+					Severity:        models.NotificationSeverity(normalized.Severity),
+					Source:          normalized.Source,
+					Fingerprint:     normalized.Fingerprint,
+					Metadata:        normalized.Metadata,
+					OccurrenceCount: 1,
+					FirstOccurredAt: now,
+					LastOccurredAt:  now,
+				}
+
+				if createErr := tx.Create(&rec).Error; createErr != nil {
+					return createErr
+				}
+
+				result.NotificationID = rec.ID
+			} else {
+				return err
 			}
-
-			result.NotificationID = existing.ID
-		} else if err == gorm.ErrRecordNotFound {
-			rec := models.Notification{
-				Kind:            normalized.Kind,
-				Title:           normalized.Title,
-				Body:            normalized.Body,
-				Severity:        models.NotificationSeverity(normalized.Severity),
-				Source:          normalized.Source,
-				Fingerprint:     normalized.Fingerprint,
-				Metadata:        normalized.Metadata,
-				OccurrenceCount: 1,
-				FirstOccurredAt: now,
-				LastOccurredAt:  now,
-			}
-
-			if createErr := tx.Create(&rec).Error; createErr != nil {
-				return createErr
-			}
-
-			result.NotificationID = rec.ID
-		} else {
-			return err
 		}
 
 		return nil
@@ -250,7 +276,9 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 		return result, nil
 	}
 
-	s.publishRefresh()
+	if kindRule.UIEnabled {
+		s.publishRefresh()
+	}
 
 	transportConfigs, err := s.listTransportConfigs(ctx)
 	if err != nil {
@@ -563,6 +591,101 @@ func (s *Service) UpdateTransportConfig(ctx context.Context, input TransportConf
 	return s.toTransportConfigView(updated), nil
 }
 
+func (s *Service) GetRuleConfig(ctx context.Context) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	var view RuleConfigView
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		pools, rulesByKind, err := s.ensureActivePoolRules(tx)
+		if err != nil {
+			return err
+		}
+
+		view = s.toRuleConfigView(pools, rulesByKind)
+		return nil
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return view, nil
+}
+
+func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	entries := append([]RuleConfigEntryUpdate{}, input.Rules...)
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		pools, rulesByKind, err := s.ensureActivePoolRules(tx)
+		if err != nil {
+			return err
+		}
+
+		activeKinds := make(map[string]struct{}, len(pools))
+		for _, pool := range pools {
+			activeKinds[notifier.KindForZFSPoolState(pool)] = struct{}{}
+		}
+
+		updatesByKind := make(map[string]RuleConfigEntryUpdate, len(entries))
+		for _, entry := range entries {
+			kind := strings.TrimSpace(strings.ToLower(entry.Kind))
+			pool := strings.TrimSpace(strings.ToLower(entry.Pool))
+
+			if kind == "" && pool != "" {
+				kind = notifier.KindForZFSPoolState(pool)
+			}
+			if pool == "" {
+				if derivedPool, ok := notifier.PoolFromZFSPoolStateKind(kind); ok {
+					pool = derivedPool
+				}
+			}
+			if kind == "" || pool == "" {
+				return fmt.Errorf("notification_rule_kind_required")
+			}
+
+			expectedKind := notifier.KindForZFSPoolState(pool)
+			if kind != expectedKind {
+				return fmt.Errorf("notification_rule_kind_mismatch")
+			}
+			if _, ok := activeKinds[kind]; !ok {
+				return fmt.Errorf("notification_rule_not_found")
+			}
+			if _, exists := updatesByKind[kind]; exists {
+				return fmt.Errorf("duplicate_notification_rule_kind")
+			}
+
+			entry.Kind = kind
+			entry.Pool = pool
+			updatesByKind[kind] = entry
+		}
+
+		for kind, update := range updatesByKind {
+			rule, ok := rulesByKind[kind]
+			if !ok {
+				return fmt.Errorf("notification_rule_not_found")
+			}
+
+			rule.UIEnabled = update.UIEnabled
+			rule.NtfyEnabled = update.NtfyEnabled
+			rule.EmailEnabled = update.EmailEnabled
+			if err := tx.Save(&rule).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return s.GetRuleConfig(ctx)
+}
+
 func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationKindRule, error) {
 	kind = strings.TrimSpace(kind)
 	var rule models.NotificationKindRule
@@ -586,6 +709,38 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationK
 	}
 
 	return rule, nil
+}
+
+func (s *Service) ensureActivePoolRules(tx *gorm.DB) ([]string, map[string]models.NotificationKindRule, error) {
+	pools, err := s.listActivePools(tx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rulesByKind := make(map[string]models.NotificationKindRule, len(pools))
+	for _, pool := range pools {
+		kind := notifier.KindForZFSPoolState(pool)
+		rule, err := s.ensureKindRule(tx, kind)
+		if err != nil {
+			return nil, nil, err
+		}
+		rulesByKind[rule.Kind] = rule
+	}
+
+	return pools, rulesByKind, nil
+}
+
+func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
+	var settings models.BasicSettings
+	err := tx.Limit(1).First(&settings).Error
+	if err == gorm.ErrRecordNotFound {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return normalizePoolNames(settings.Pools), nil
 }
 
 func (s *Service) ensureTransportConfigsDB(ctx context.Context) ([]models.NotificationTransportConfig, error) {
@@ -718,6 +873,35 @@ func (s *Service) toTransportConfigView(configs []models.NotificationTransportCo
 		}
 
 		view.Transports = append(view.Transports, entry)
+	}
+
+	return view
+}
+
+func (s *Service) toRuleConfigView(pools []string, rulesByKind map[string]models.NotificationKindRule) RuleConfigView {
+	view := RuleConfigView{
+		Rules: make([]RuleConfigEntryView, 0, len(pools)),
+	}
+
+	for _, pool := range pools {
+		kind := notifier.KindForZFSPoolState(pool)
+		rule, ok := rulesByKind[kind]
+		if !ok {
+			rule = models.NotificationKindRule{
+				Kind:         kind,
+				UIEnabled:    true,
+				NtfyEnabled:  true,
+				EmailEnabled: true,
+			}
+		}
+
+		view.Rules = append(view.Rules, RuleConfigEntryView{
+			Kind:         kind,
+			Pool:         pool,
+			UIEnabled:    rule.UIEnabled,
+			NtfyEnabled:  rule.NtfyEnabled,
+			EmailEnabled: rule.EmailEnabled,
+		})
 	}
 
 	return view
@@ -1002,6 +1186,25 @@ func normalizeTransportType(value string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizePoolNames(raw []string) []string {
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, pool := range raw {
+		normalized := strings.TrimSpace(strings.ToLower(pool))
+		if normalized == "" {
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+
+	sort.Strings(out)
+	return out
 }
 
 func suppressionKey(kind, fingerprint string) string {
