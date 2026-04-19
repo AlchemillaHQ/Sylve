@@ -83,9 +83,9 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 	}
 
 	var domainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
-	if req.Domain != "" && !domainRegex.MatchString(req.Domain) {
-		return fmt.Errorf("invalid_domain: %s", req.Domain)
-	}
+	// if req.Domain != "" && !domainRegex.MatchString(req.Domain) {
+	//	return fmt.Errorf("invalid_domain: %s", req.Domain)
+	//}
 
 	sameCount := 0
 
@@ -227,6 +227,8 @@ func (s *Service) WriteDHCPConfig() error {
 
 	if current.Domain != "" {
 		config += fmt.Sprintf("domain=%s\n", current.Domain)
+		config += fmt.Sprintf("domain-needed\n")
+		config += fmt.Sprintf("local=/%s/\n", current.Domain)
 		config += "\n"
 	}
 
@@ -356,6 +358,8 @@ func (s *Service) WriteDHCPConfig() error {
 	config += "\n"
 	// quick hack: add dhcp-options for add default-route
 	config += "dhcp-option=option:router,10.0.1.1\n"
+	config += "port=53\n"
+	config += "bogus-priv\n\n"
 
 	filePath := "/usr/local/etc/dnsmasq.conf"
 
