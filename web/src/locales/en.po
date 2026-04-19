@@ -562,6 +562,7 @@ msgstr "Action"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -847,6 +848,7 @@ msgstr "Failed to create note"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -916,6 +918,7 @@ msgstr "View"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -956,6 +959,7 @@ msgstr "Delete"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -997,6 +1001,7 @@ msgstr "Bulk Delete"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -2283,6 +2288,7 @@ msgstr "First Modified"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "Type"
@@ -2889,6 +2895,7 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -2929,6 +2936,7 @@ msgstr "Enabled"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
@@ -3705,6 +3713,7 @@ msgstr "OOB Restore"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -5077,6 +5086,7 @@ msgstr "Simple Linux"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Pool"
 msgstr "Pool"
@@ -6244,8 +6254,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -12686,6 +12696,7 @@ msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Test"
 msgstr "Test"
 
@@ -13286,8 +13297,9 @@ msgstr "Transport {0}"
 #~ msgid "Add SMTP"
 #~ msgstr "Add SMTP"
 
-#~ msgid "<0/> Save"
-#~ msgstr "<0/> Save"
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Save"
+msgstr "<0/> Save"
 
 #~ msgid "No transports configured."
 #~ msgstr "No transports configured."
@@ -13296,8 +13308,9 @@ msgstr "Transport {0}"
 msgid "Transport Name"
 msgstr "Transport Name"
 
-#~ msgid "ntfy"
-#~ msgstr "ntfy"
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "ntfy"
+msgstr "ntfy"
 
 #~ msgid "smtp"
 #~ msgstr "smtp"
@@ -13358,10 +13371,12 @@ msgstr "Password stored (leave blank to keep)"
 #~ msgstr "<0/> Use TLS/STARTTLS"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Transport deleted"
 msgstr "Transport deleted"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Failed to delete transport"
 msgstr "Failed to delete transport"
 
@@ -13393,10 +13408,12 @@ msgid "Use TLS/STARTTLS"
 msgstr "Use TLS/STARTTLS"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Test notification sent"
 msgstr "Test notification sent"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Failed to send test notification"
 msgstr "Failed to send test notification"
 
@@ -13413,5 +13430,38 @@ msgid "Select or type recipients"
 msgstr "Select or type recipients"
 
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Recipients / Topic"
 msgstr "Recipients / Topic"
+
+#: src/routes/[node]/settings/system/notifications/+layout.svelte
+msgid "Transports"
+msgstr "Transports"
+
+#: src/routes/[node]/settings/system/notifications/+layout.svelte
+msgid "Rules"
+msgstr "Rules"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to update notification rules"
+msgstr "Failed to update notification rules"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rules updated"
+msgstr "Notification rules updated"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Per-pool ZFS state-change notification rules"
+msgstr "Per-pool ZFS state-change notification rules"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "In-App"
+msgstr "In-App"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Email"
+msgstr "Email"
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No active ZFS pools found."
+msgstr "No active ZFS pools found."
