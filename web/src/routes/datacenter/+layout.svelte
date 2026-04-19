@@ -8,7 +8,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { isAPIResponse } from '$lib/utils/http';
-	import { Debounced, resource } from 'runed';
+	import { resource } from 'runed';
 
 	let openCategories: { [key: string]: boolean } = $state({});
 
@@ -110,9 +110,8 @@
 
 	let { children }: Props = $props();
 
-	const debouncedWindowSize = new Debounced(() => storage.windowSize, 150);
-
 	let hasInitialized = false;
+
 	function emitResize() {
 		if (hasInitialized) {
 			storage.windowSize = (storage.windowSize ?? 0) + 1;
