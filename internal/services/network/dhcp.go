@@ -11,7 +11,6 @@ package network
 import (
 	"fmt"
 	"os"
-	"regexp"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -82,7 +81,7 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 		}
 	}
 
-	var domainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
+	// var domainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
 	// if req.Domain != "" && !domainRegex.MatchString(req.Domain) {
 	//	return fmt.Errorf("invalid_domain: %s", req.Domain)
 	//}
