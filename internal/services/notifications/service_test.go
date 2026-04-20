@@ -591,20 +591,77 @@ func TestGetRuleConfigAutoSyncsPools(t *testing.T) {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
 
+	if len(view.Templates) != 1 {
+		t.Fatalf("expected_1_template got: %d", len(view.Templates))
+	}
+	if view.Templates[0].Key != RuleTemplateZFSPoolState {
+		t.Fatalf("unexpected_template_key: %s", view.Templates[0].Key)
+	}
+
 	if len(view.Rules) != 2 {
 		t.Fatalf("expected_2_rules got: %d", len(view.Rules))
 	}
-	if view.Rules[0].Pool != "tank" || view.Rules[1].Pool != "zroot" {
-		t.Fatalf("expected_sorted_pools got: %+v", view.Rules)
-	}
-
+	rulesByTarget := map[string]RuleConfigEntryView{}
 	for _, rule := range view.Rules {
-		if rule.Kind != notifier.KindForZFSPoolState(rule.Pool) {
-			t.Fatalf("unexpected_rule_kind pool=%s kind=%s", rule.Pool, rule.Kind)
+		rulesByTarget[rule.TargetKey] = rule
+		if rule.TemplateKey != RuleTemplateZFSPoolState {
+			t.Fatalf("unexpected_template_key: %s", rule.TemplateKey)
+		}
+		if !rule.Active {
+			t.Fatalf("expected_rule_active_for_target=%s", rule.TargetKey)
+		}
+		if rule.Kind != notifier.KindForZFSPoolState(rule.TargetKey) {
+			t.Fatalf("unexpected_rule_kind target=%s kind=%s", rule.TargetKey, rule.Kind)
 		}
 		if !rule.UIEnabled || !rule.NtfyEnabled || !rule.EmailEnabled {
 			t.Fatalf("expected_default_enabled_rule got: %+v", rule)
 		}
+	}
+
+	if _, ok := rulesByTarget["tank"]; !ok {
+		t.Fatalf("expected_tank_rule_present")
+	}
+	if _, ok := rulesByTarget["zroot"]; !ok {
+		t.Fatalf("expected_zroot_rule_present")
+	}
+}
+
+func TestGetRuleConfigMarksRemovedPoolsInactive(t *testing.T) {
+	svc := newTestService(t)
+
+	settings := models.BasicSettings{Pools: []string{"zroot", "tank"}}
+	if err := svc.DB.Create(&settings).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("initial_get_rule_config_failed: %v", err)
+	}
+
+	settings.Pools = []string{"zroot"}
+	if err := svc.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed_to_update_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	if len(view.Rules) != 2 {
+		t.Fatalf("expected_2_rules_including_inactive got: %d", len(view.Rules))
+	}
+
+	statusByTarget := map[string]bool{}
+	for _, rule := range view.Rules {
+		statusByTarget[rule.TargetKey] = rule.Active
+	}
+
+	if !statusByTarget["zroot"] {
+		t.Fatalf("expected_zroot_rule_active")
+	}
+	if statusByTarget["tank"] {
+		t.Fatalf("expected_tank_rule_inactive")
 	}
 }
 
@@ -614,15 +671,19 @@ func TestUpdateRuleConfigPersistsChanges(t *testing.T) {
 		t.Fatalf("failed_to_seed_basic_settings: %v", err)
 	}
 
-	_, err := svc.GetRuleConfig(context.Background())
+	view, err := svc.GetRuleConfig(context.Background())
 	if err != nil {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
+	if len(view.Rules) != 1 {
+		t.Fatalf("expected_single_rule_before_update got: %d", len(view.Rules))
+	}
+	ruleID := view.Rules[0].ID
 
 	updated, err := svc.UpdateRuleConfig(context.Background(), RuleConfigUpdate{
 		Rules: []RuleConfigEntryUpdate{
 			{
-				Pool:         "zroot",
+				ID:           ruleID,
 				UIEnabled:    false,
 				NtfyEnabled:  false,
 				EmailEnabled: true,
@@ -652,6 +713,36 @@ func TestUpdateRuleConfigPersistsChanges(t *testing.T) {
 	}
 }
 
+func TestDeleteRuleRecreatesActivePoolRule(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+	if len(view.Rules) != 1 {
+		t.Fatalf("expected_single_rule got: %d", len(view.Rules))
+	}
+
+	updated, err := svc.DeleteRule(context.Background(), view.Rules[0].ID)
+	if err != nil {
+		t.Fatalf("delete_rule_failed: %v", err)
+	}
+
+	if len(updated.Rules) != 1 {
+		t.Fatalf("expected_single_rule_after_delete got: %d", len(updated.Rules))
+	}
+	if updated.Rules[0].TargetKey != "zroot" {
+		t.Fatalf("expected_zroot_rule_after_delete got: %s", updated.Rules[0].TargetKey)
+	}
+	if !updated.Rules[0].Active {
+		t.Fatalf("expected_rule_active_after_delete")
+	}
+}
+
 func TestUpdateRuleConfigRejectsUnknownPool(t *testing.T) {
 	svc := newTestService(t)
 	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
@@ -673,6 +764,31 @@ func TestUpdateRuleConfigRejectsUnknownPool(t *testing.T) {
 	}
 	if err.Error() != "notification_rule_not_found" {
 		t.Fatalf("expected_notification_rule_not_found got: %v", err)
+	}
+}
+
+func TestCreateRuleRejectsDuplicateAutoManagedRule(t *testing.T) {
+	svc := newTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("get_rule_config_failed: %v", err)
+	}
+
+	_, err := svc.CreateRule(context.Background(), RuleCreateInput{
+		TemplateKey:  RuleTemplateZFSPoolState,
+		TargetKey:    "zroot",
+		UIEnabled:    true,
+		NtfyEnabled:  true,
+		EmailEnabled: true,
+	})
+	if err == nil {
+		t.Fatalf("expected_duplicate_rule_error")
+	}
+	if err.Error() != "notification_rule_already_exists" {
+		t.Fatalf("expected_notification_rule_already_exists got: %v", err)
 	}
 }
 

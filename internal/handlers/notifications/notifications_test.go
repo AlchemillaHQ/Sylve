@@ -278,6 +278,13 @@ func TestGetRulesHandlerReturnsRules(t *testing.T) {
 	if len(rules) != 1 {
 		t.Fatalf("expected_1_rule got: %d", len(rules))
 	}
+	templates, ok := dataMap["templates"].([]any)
+	if !ok {
+		t.Fatalf("expected_templates_array")
+	}
+	if len(templates) != 1 {
+		t.Fatalf("expected_1_template got: %d", len(templates))
+	}
 }
 
 func TestUpdateRulesHandlerUpdatesRule(t *testing.T) {
@@ -331,5 +338,116 @@ func TestUpdateRulesHandlerRejectsUnknownRule(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateRuleHandlerRejectsDuplicateRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+	if _, err := svc.GetRuleConfig(context.Background()); err != nil {
+		t.Fatalf("failed_to_seed_rule_config: %v", err)
+	}
+
+	r := gin.New()
+	r.POST("/api/notifications/rules", CreateRule(svc))
+
+	body := []byte(`{"templateKey":"system.zfs.pool_state","targetKey":"zroot","uiEnabled":true,"ntfyEnabled":true,"emailEnabled":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/notifications/rules", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected_400 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateRuleHandlerUpdatesRuleByID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("failed_to_load_rule_config: %v", err)
+	}
+	if len(view.Rules) != 1 {
+		t.Fatalf("expected_1_rule got: %d", len(view.Rules))
+	}
+
+	r := gin.New()
+	r.PUT("/api/notifications/rules/:id", UpdateRule(svc))
+
+	body := []byte(`{"uiEnabled":false,"ntfyEnabled":false,"emailEnabled":true}`)
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/notifications/rules/"+strconv.FormatUint(uint64(view.Rules[0].ID), 10),
+		bytes.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var stored models.NotificationKindRule
+	if err := svc.DB.Where("id = ?", view.Rules[0].ID).First(&stored).Error; err != nil {
+		t.Fatalf("failed_to_load_updated_rule: %v", err)
+	}
+	if stored.UIEnabled || stored.NtfyEnabled || !stored.EmailEnabled {
+		t.Fatalf("unexpected_rule_state: %+v", stored)
+	}
+}
+
+func TestDeleteRuleHandlerDeletesAndResyncsActiveRule(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := newHandlerTestService(t)
+	if err := svc.DB.Create(&models.BasicSettings{Pools: []string{"zroot"}}).Error; err != nil {
+		t.Fatalf("failed_to_seed_basic_settings: %v", err)
+	}
+
+	view, err := svc.GetRuleConfig(context.Background())
+	if err != nil {
+		t.Fatalf("failed_to_load_rule_config: %v", err)
+	}
+	if len(view.Rules) != 1 {
+		t.Fatalf("expected_1_rule got: %d", len(view.Rules))
+	}
+
+	r := gin.New()
+	r.DELETE("/api/notifications/rules/:id", DeleteRule(svc))
+
+	req := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/notifications/rules/"+strconv.FormatUint(uint64(view.Rules[0].ID), 10),
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected_200 got: %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var count int64
+	if err := svc.DB.Model(&models.NotificationKindRule{}).
+		Where("kind = ?", notifier.KindForZFSPoolState("zroot")).
+		Count(&count).Error; err != nil {
+		t.Fatalf("failed_to_count_rules: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected_rule_resynced_after_delete got: %d", count)
 	}
 }

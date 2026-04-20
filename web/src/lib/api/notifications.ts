@@ -8,7 +8,9 @@ import {
 	type NotificationRulesConfig,
 	type NotificationsCount,
 	type NotificationsList,
+	type CreateNotificationRuleInput,
 	type UpdateNotificationConfigInput,
+	type UpdateNotificationRuleInput,
 	type UpdateNotificationRulesInput
 } from '$lib/types/notifications';
 import { apiRequest } from '$lib/utils/http';
@@ -61,4 +63,21 @@ export async function updateNotificationRules(
 	payload: UpdateNotificationRulesInput
 ): Promise<NotificationRulesConfig> {
 	return await apiRequest('/notifications/rules', NotificationRulesConfigSchema, 'PUT', payload);
+}
+
+export async function createNotificationRule(
+	payload: CreateNotificationRuleInput
+): Promise<NotificationRulesConfig> {
+	return await apiRequest('/notifications/rules', NotificationRulesConfigSchema, 'POST', payload);
+}
+
+export async function updateNotificationRule(
+	id: number,
+	payload: UpdateNotificationRuleInput
+): Promise<NotificationRulesConfig> {
+	return await apiRequest(`/notifications/rules/${id}`, NotificationRulesConfigSchema, 'PUT', payload);
+}
+
+export async function deleteNotificationRule(id: number): Promise<NotificationRulesConfig> {
+	return await apiRequest(`/notifications/rules/${id}`, NotificationRulesConfigSchema, 'DELETE');
 }

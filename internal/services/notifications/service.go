@@ -43,6 +43,17 @@ const (
 	TransportTypeSMTP = "smtp"
 )
 
+const (
+	RuleTemplateZFSPoolState   = "system.zfs.pool_state"
+	ruleTemplateTargetTypePool = "pool"
+)
+
+type ruleTemplateDefinition struct {
+	View            RuleTemplateView
+	AutoCreateRules bool
+	ActiveTargets   map[string]struct{}
+}
+
 type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error
 
 type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error
@@ -122,15 +133,34 @@ type EmailTransportConfigUpdate struct {
 }
 
 type RuleConfigView struct {
-	Rules []RuleConfigEntryView `json:"rules"`
+	Rules     []RuleConfigEntryView `json:"rules"`
+	Templates []RuleTemplateView    `json:"templates"`
 }
 
 type RuleConfigEntryView struct {
-	Kind         string `json:"kind"`
-	Pool         string `json:"pool"`
-	UIEnabled    bool   `json:"uiEnabled"`
-	NtfyEnabled  bool   `json:"ntfyEnabled"`
-	EmailEnabled bool   `json:"emailEnabled"`
+	ID            uint   `json:"id"`
+	Kind          string `json:"kind"`
+	TemplateKey   string `json:"templateKey"`
+	TemplateLabel string `json:"templateLabel"`
+	TargetKey     string `json:"targetKey"`
+	TargetLabel   string `json:"targetLabel"`
+	Active        bool   `json:"active"`
+	UIEnabled     bool   `json:"uiEnabled"`
+	NtfyEnabled   bool   `json:"ntfyEnabled"`
+	EmailEnabled  bool   `json:"emailEnabled"`
+}
+
+type RuleTemplateView struct {
+	Key         string                   `json:"key"`
+	Label       string                   `json:"label"`
+	Description string                   `json:"description"`
+	TargetType  string                   `json:"targetType"`
+	Targets     []RuleTemplateTargetView `json:"targets"`
+}
+
+type RuleTemplateTargetView struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
 }
 
 type RuleConfigUpdate struct {
@@ -138,11 +168,28 @@ type RuleConfigUpdate struct {
 }
 
 type RuleConfigEntryUpdate struct {
+	ID           uint   `json:"id"`
 	Kind         string `json:"kind"`
 	Pool         string `json:"pool"`
+	TemplateKey  string `json:"templateKey"`
+	TargetKey    string `json:"targetKey"`
 	UIEnabled    bool   `json:"uiEnabled"`
 	NtfyEnabled  bool   `json:"ntfyEnabled"`
 	EmailEnabled bool   `json:"emailEnabled"`
+}
+
+type RuleCreateInput struct {
+	TemplateKey  string `json:"templateKey"`
+	TargetKey    string `json:"targetKey"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+}
+
+type RuleUpdateInput struct {
+	UIEnabled    bool `json:"uiEnabled"`
+	NtfyEnabled  bool `json:"ntfyEnabled"`
+	EmailEnabled bool `json:"emailEnabled"`
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -598,12 +645,20 @@ func (s *Service) GetRuleConfig(ctx context.Context) (RuleConfigView, error) {
 
 	var view RuleConfigView
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		pools, rulesByKind, err := s.ensureActivePoolRules(tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		rules, err := s.listManagedRuleRows(tx)
 		if err != nil {
 			return err
 		}
 
-		view = s.toRuleConfigView(pools, rulesByKind)
+		view = s.buildRuleConfigView(definitions, definitionsByKey, rules)
 		return nil
 	})
 	if err != nil {
@@ -619,65 +674,210 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 	}
 
 	entries := append([]RuleConfigEntryUpdate{}, input.Rules...)
+	var view RuleConfigView
+
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		pools, rulesByKind, err := s.ensureActivePoolRules(tx)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		storedRules, err := s.listManagedRuleRows(tx)
 		if err != nil {
 			return err
 		}
 
-		activeKinds := make(map[string]struct{}, len(pools))
-		for _, pool := range pools {
-			activeKinds[notifier.KindForZFSPoolState(pool)] = struct{}{}
+		rulesByID := make(map[uint]*models.NotificationKindRule, len(storedRules))
+		rulesByKind := make(map[string]*models.NotificationKindRule, len(storedRules))
+		for idx := range storedRules {
+			rule := &storedRules[idx]
+			rulesByID[rule.ID] = rule
+			rulesByKind[strings.TrimSpace(strings.ToLower(rule.Kind))] = rule
 		}
 
-		updatesByKind := make(map[string]RuleConfigEntryUpdate, len(entries))
+		seenIDs := make(map[uint]struct{}, len(entries))
+		seenKinds := make(map[string]struct{}, len(entries))
 		for _, entry := range entries {
-			kind := strings.TrimSpace(strings.ToLower(entry.Kind))
-			pool := strings.TrimSpace(strings.ToLower(entry.Pool))
+			var rule *models.NotificationKindRule
 
-			if kind == "" && pool != "" {
-				kind = notifier.KindForZFSPoolState(pool)
-			}
-			if pool == "" {
-				if derivedPool, ok := notifier.PoolFromZFSPoolStateKind(kind); ok {
-					pool = derivedPool
+			if entry.ID > 0 {
+				if _, exists := seenIDs[entry.ID]; exists {
+					return fmt.Errorf("duplicate_notification_rule_id")
 				}
-			}
-			if kind == "" || pool == "" {
-				return fmt.Errorf("notification_rule_kind_required")
+				seenIDs[entry.ID] = struct{}{}
+
+				matched, ok := rulesByID[entry.ID]
+				if !ok {
+					return fmt.Errorf("notification_rule_not_found")
+				}
+				rule = matched
+			} else {
+				kind, err := s.resolveRuleUpdateKind(entry)
+				if err != nil {
+					return err
+				}
+				if _, exists := seenKinds[kind]; exists {
+					return fmt.Errorf("duplicate_notification_rule_kind")
+				}
+				seenKinds[kind] = struct{}{}
+
+				matched, ok := rulesByKind[kind]
+				if !ok {
+					return fmt.Errorf("notification_rule_not_found")
+				}
+				rule = matched
 			}
 
-			expectedKind := notifier.KindForZFSPoolState(pool)
-			if kind != expectedKind {
-				return fmt.Errorf("notification_rule_kind_mismatch")
-			}
-			if _, ok := activeKinds[kind]; !ok {
-				return fmt.Errorf("notification_rule_not_found")
-			}
-			if _, exists := updatesByKind[kind]; exists {
-				return fmt.Errorf("duplicate_notification_rule_kind")
-			}
-
-			entry.Kind = kind
-			entry.Pool = pool
-			updatesByKind[kind] = entry
-		}
-
-		for kind, update := range updatesByKind {
-			rule, ok := rulesByKind[kind]
-			if !ok {
-				return fmt.Errorf("notification_rule_not_found")
-			}
-
-			rule.UIEnabled = update.UIEnabled
-			rule.NtfyEnabled = update.NtfyEnabled
-			rule.EmailEnabled = update.EmailEnabled
-			if err := tx.Save(&rule).Error; err != nil {
+			rule.UIEnabled = entry.UIEnabled
+			rule.NtfyEnabled = entry.NtfyEnabled
+			rule.EmailEnabled = entry.EmailEnabled
+			if err := tx.Save(rule).Error; err != nil {
 				return err
 			}
 		}
 
+		updatedRules, err := s.listManagedRuleRows(tx)
+		if err != nil {
+			return err
+		}
+		view = s.buildRuleConfigView(definitions, definitionsByKey, updatedRules)
+
 		return nil
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return view, nil
+}
+
+func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+
+	templateKey := normalizeRuleTemplateKey(input.TemplateKey)
+	targetKey := normalizeRuleTargetKey(input.TargetKey)
+	if templateKey == "" {
+		return RuleConfigView{}, fmt.Errorf("notification_rule_template_required")
+	}
+	if targetKey == "" {
+		return RuleConfigView{}, fmt.Errorf("notification_rule_target_required")
+	}
+
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		definition, exists := definitionsByKey[templateKey]
+		if !exists {
+			return fmt.Errorf("notification_rule_template_not_found")
+		}
+		if _, exists := definition.ActiveTargets[targetKey]; !exists {
+			return fmt.Errorf("notification_rule_target_not_found")
+		}
+
+		kind, err := ruleKindForTemplateTarget(templateKey, targetKey)
+		if err != nil {
+			return err
+		}
+
+		var existing models.NotificationKindRule
+		err = tx.Where("kind = ?", kind).First(&existing).Error
+		if err == nil {
+			return fmt.Errorf("notification_rule_already_exists")
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+
+		record := models.NotificationKindRule{
+			Kind:         kind,
+			UIEnabled:    input.UIEnabled,
+			NtfyEnabled:  input.NtfyEnabled,
+			EmailEnabled: input.EmailEnabled,
+		}
+		return tx.Create(&record).Error
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return s.GetRuleConfig(ctx)
+}
+
+func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+	if id == 0 {
+		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
+	}
+
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		var rule models.NotificationKindRule
+		if err := tx.First(&rule, id).Error; err != nil {
+			return err
+		}
+
+		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
+			return fmt.Errorf("notification_rule_not_found")
+		}
+
+		rule.UIEnabled = input.UIEnabled
+		rule.NtfyEnabled = input.NtfyEnabled
+		rule.EmailEnabled = input.EmailEnabled
+		return tx.Save(&rule).Error
+	})
+	if err != nil {
+		return RuleConfigView{}, err
+	}
+
+	return s.GetRuleConfig(ctx)
+}
+
+func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, error) {
+	if s == nil || s.DB == nil {
+		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
+	}
+	if id == 0 {
+		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
+	}
+
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx)
+		if err != nil {
+			return err
+		}
+		if err := s.syncAutoManagedRules(tx, definitions); err != nil {
+			return err
+		}
+
+		var rule models.NotificationKindRule
+		if err := tx.First(&rule, id).Error; err != nil {
+			return err
+		}
+		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
+			return fmt.Errorf("notification_rule_not_found")
+		}
+
+		return tx.Delete(&rule).Error
 	})
 	if err != nil {
 		return RuleConfigView{}, err
@@ -711,25 +911,6 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string) (models.NotificationK
 	return rule, nil
 }
 
-func (s *Service) ensureActivePoolRules(tx *gorm.DB) ([]string, map[string]models.NotificationKindRule, error) {
-	pools, err := s.listActivePools(tx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rulesByKind := make(map[string]models.NotificationKindRule, len(pools))
-	for _, pool := range pools {
-		kind := notifier.KindForZFSPoolState(pool)
-		rule, err := s.ensureKindRule(tx, kind)
-		if err != nil {
-			return nil, nil, err
-		}
-		rulesByKind[rule.Kind] = rule
-	}
-
-	return pools, rulesByKind, nil
-}
-
 func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
 	var settings models.BasicSettings
 	err := tx.Limit(1).First(&settings).Error
@@ -741,6 +922,195 @@ func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
 	}
 
 	return normalizePoolNames(settings.Pools), nil
+}
+
+func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
+	pools, err := s.listActivePools(tx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	targets := make([]RuleTemplateTargetView, 0, len(pools))
+	activeTargets := make(map[string]struct{}, len(pools))
+	for _, pool := range pools {
+		targets = append(targets, RuleTemplateTargetView{
+			Key:   pool,
+			Label: pool,
+		})
+		activeTargets[pool] = struct{}{}
+	}
+
+	definitions := []*ruleTemplateDefinition{
+		{
+			View: RuleTemplateView{
+				Key:         RuleTemplateZFSPoolState,
+				Label:       "ZFS Pool State",
+				Description: "ZFS pool/vdev state-change notifications.",
+				TargetType:  ruleTemplateTargetTypePool,
+				Targets:     targets,
+			},
+			AutoCreateRules: true,
+			ActiveTargets:   activeTargets,
+		},
+	}
+
+	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
+	for _, definition := range definitions {
+		definitionsByKey[definition.View.Key] = definition
+	}
+
+	return definitions, definitionsByKey, nil
+}
+
+func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateDefinition) error {
+	for _, definition := range definitions {
+		if !definition.AutoCreateRules {
+			continue
+		}
+
+		for _, target := range definition.View.Targets {
+			kind, err := ruleKindForTemplateTarget(definition.View.Key, target.Key)
+			if err != nil {
+				return err
+			}
+			if _, err := s.ensureKindRule(tx, kind); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) listManagedRuleRows(tx *gorm.DB) ([]models.NotificationKindRule, error) {
+	var all []models.NotificationKindRule
+	if err := tx.Order("id ASC").Find(&all).Error; err != nil {
+		return nil, err
+	}
+
+	rules := make([]models.NotificationKindRule, 0, len(all))
+	for _, rule := range all {
+		if _, _, ok := resolveTemplateTargetFromKind(rule.Kind); !ok {
+			continue
+		}
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
+}
+
+func (s *Service) buildRuleConfigView(definitions []*ruleTemplateDefinition, definitionsByKey map[string]*ruleTemplateDefinition, rules []models.NotificationKindRule) RuleConfigView {
+	view := RuleConfigView{
+		Rules:     make([]RuleConfigEntryView, 0, len(rules)),
+		Templates: make([]RuleTemplateView, 0, len(definitions)),
+	}
+
+	for _, definition := range definitions {
+		view.Templates = append(view.Templates, definition.View)
+	}
+
+	for _, rule := range rules {
+		templateKey, targetKey, ok := resolveTemplateTargetFromKind(rule.Kind)
+		if !ok {
+			continue
+		}
+
+		targetLabel := targetKey
+		templateLabel := templateKey
+		active := false
+
+		if definition, exists := definitionsByKey[templateKey]; exists {
+			templateLabel = definition.View.Label
+			if _, exists := definition.ActiveTargets[targetKey]; exists {
+				active = true
+			}
+			for _, target := range definition.View.Targets {
+				if target.Key == targetKey {
+					targetLabel = target.Label
+					break
+				}
+			}
+		}
+
+		view.Rules = append(view.Rules, RuleConfigEntryView{
+			ID:            rule.ID,
+			Kind:          rule.Kind,
+			TemplateKey:   templateKey,
+			TemplateLabel: templateLabel,
+			TargetKey:     targetKey,
+			TargetLabel:   targetLabel,
+			Active:        active,
+			UIEnabled:     rule.UIEnabled,
+			NtfyEnabled:   rule.NtfyEnabled,
+			EmailEnabled:  rule.EmailEnabled,
+		})
+	}
+
+	sort.Slice(view.Rules, func(i, j int) bool {
+		left := view.Rules[i]
+		right := view.Rules[j]
+		if left.TemplateLabel != right.TemplateLabel {
+			return left.TemplateLabel < right.TemplateLabel
+		}
+		if left.TargetLabel != right.TargetLabel {
+			return left.TargetLabel < right.TargetLabel
+		}
+		return left.ID < right.ID
+	})
+
+	return view
+}
+
+func (s *Service) resolveRuleUpdateKind(entry RuleConfigEntryUpdate) (string, error) {
+	kind := strings.TrimSpace(strings.ToLower(entry.Kind))
+	pool := normalizeRuleTargetKey(entry.Pool)
+	templateKey := normalizeRuleTemplateKey(entry.TemplateKey)
+	targetKey := normalizeRuleTargetKey(entry.TargetKey)
+
+	if kind == "" {
+		switch {
+		case pool != "":
+			kind = notifier.KindForZFSPoolState(pool)
+		case templateKey != "" || targetKey != "":
+			resolvedKind, err := ruleKindForTemplateTarget(templateKey, targetKey)
+			if err != nil {
+				return "", err
+			}
+			kind = resolvedKind
+		default:
+			return "", fmt.Errorf("notification_rule_kind_required")
+		}
+	}
+
+	resolvedTemplateKey, resolvedTargetKey, ok := resolveTemplateTargetFromKind(kind)
+	if !ok {
+		return "", fmt.Errorf("notification_rule_not_found")
+	}
+
+	if pool != "" {
+		expected := notifier.KindForZFSPoolState(pool)
+		if kind != expected {
+			return "", fmt.Errorf("notification_rule_kind_mismatch")
+		}
+	}
+
+	if templateKey != "" || targetKey != "" {
+		if templateKey == "" {
+			templateKey = resolvedTemplateKey
+		}
+		if targetKey == "" {
+			targetKey = resolvedTargetKey
+		}
+		expected, err := ruleKindForTemplateTarget(templateKey, targetKey)
+		if err != nil {
+			return "", err
+		}
+		if expected != kind {
+			return "", fmt.Errorf("notification_rule_kind_mismatch")
+		}
+	}
+
+	return kind, nil
 }
 
 func (s *Service) ensureTransportConfigsDB(ctx context.Context) ([]models.NotificationTransportConfig, error) {
@@ -873,35 +1243,6 @@ func (s *Service) toTransportConfigView(configs []models.NotificationTransportCo
 		}
 
 		view.Transports = append(view.Transports, entry)
-	}
-
-	return view
-}
-
-func (s *Service) toRuleConfigView(pools []string, rulesByKind map[string]models.NotificationKindRule) RuleConfigView {
-	view := RuleConfigView{
-		Rules: make([]RuleConfigEntryView, 0, len(pools)),
-	}
-
-	for _, pool := range pools {
-		kind := notifier.KindForZFSPoolState(pool)
-		rule, ok := rulesByKind[kind]
-		if !ok {
-			rule = models.NotificationKindRule{
-				Kind:         kind,
-				UIEnabled:    true,
-				NtfyEnabled:  true,
-				EmailEnabled: true,
-			}
-		}
-
-		view.Rules = append(view.Rules, RuleConfigEntryView{
-			Kind:         kind,
-			Pool:         pool,
-			UIEnabled:    rule.UIEnabled,
-			NtfyEnabled:  rule.NtfyEnabled,
-			EmailEnabled: rule.EmailEnabled,
-		})
 	}
 
 	return view
@@ -1185,6 +1526,41 @@ func normalizeTransportType(value string) string {
 		return TransportTypeSMTP
 	default:
 		return ""
+	}
+}
+
+func normalizeRuleTemplateKey(value string) string {
+	return strings.TrimSpace(strings.ToLower(value))
+}
+
+func normalizeRuleTargetKey(value string) string {
+	return strings.TrimSpace(strings.ToLower(value))
+}
+
+func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
+	if pool, ok := notifier.PoolFromZFSPoolStateKind(kind); ok {
+		return RuleTemplateZFSPoolState, normalizeRuleTargetKey(pool), true
+	}
+
+	return "", "", false
+}
+
+func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
+	templateKey = normalizeRuleTemplateKey(templateKey)
+	targetKey = normalizeRuleTargetKey(targetKey)
+
+	if templateKey == "" {
+		return "", fmt.Errorf("notification_rule_template_required")
+	}
+	if targetKey == "" {
+		return "", fmt.Errorf("notification_rule_target_required")
+	}
+
+	switch templateKey {
+	case RuleTemplateZFSPoolState:
+		return notifier.KindForZFSPoolState(targetKey), nil
+	default:
+		return "", fmt.Errorf("notification_rule_template_not_found")
 	}
 }
 

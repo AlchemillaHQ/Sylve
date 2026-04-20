@@ -58,15 +58,34 @@ export const NotificationConfigSchema = z.object({
 });
 
 export const NotificationRuleSchema = z.object({
+	id: z.number(),
 	kind: z.string(),
-	pool: z.string(),
+	templateKey: z.string(),
+	templateLabel: z.string(),
+	targetKey: z.string(),
+	targetLabel: z.string(),
+	active: z.boolean(),
 	uiEnabled: z.boolean(),
 	ntfyEnabled: z.boolean(),
 	emailEnabled: z.boolean()
 });
 
+export const NotificationRuleTemplateTargetSchema = z.object({
+	key: z.string(),
+	label: z.string()
+});
+
+export const NotificationRuleTemplateSchema = z.object({
+	key: z.string(),
+	label: z.string(),
+	description: z.string(),
+	targetType: z.string(),
+	targets: z.array(NotificationRuleTemplateTargetSchema)
+});
+
 export const NotificationRulesConfigSchema = z.object({
-	rules: z.array(NotificationRuleSchema)
+	rules: z.array(NotificationRuleSchema),
+	templates: z.array(NotificationRuleTemplateSchema)
 });
 
 export type Notification = z.infer<typeof NotificationSchema>;
@@ -74,6 +93,8 @@ export type NotificationsList = z.infer<typeof NotificationsListSchema>;
 export type NotificationsCount = z.infer<typeof NotificationsCountSchema>;
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 export type NotificationRule = z.infer<typeof NotificationRuleSchema>;
+export type NotificationRuleTemplateTarget = z.infer<typeof NotificationRuleTemplateTargetSchema>;
+export type NotificationRuleTemplate = z.infer<typeof NotificationRuleTemplateSchema>;
 export type NotificationRulesConfig = z.infer<typeof NotificationRulesConfigSchema>;
 
 export type UpdateNotificationConfigInput = {
@@ -101,10 +122,27 @@ export type UpdateNotificationConfigInput = {
 
 export type UpdateNotificationRulesInput = {
 	rules: Array<{
+		id?: number;
 		kind: string;
-		pool: string;
+		pool?: string;
+		templateKey?: string;
+		targetKey?: string;
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
 		emailEnabled: boolean;
 	}>;
+};
+
+export type CreateNotificationRuleInput = {
+	templateKey: string;
+	targetKey: string;
+	uiEnabled: boolean;
+	ntfyEnabled: boolean;
+	emailEnabled: boolean;
+};
+
+export type UpdateNotificationRuleInput = {
+	uiEnabled: boolean;
+	ntfyEnabled: boolean;
+	emailEnabled: boolean;
 };

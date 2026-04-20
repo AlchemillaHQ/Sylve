@@ -55,12 +55,29 @@ type notificationConfigUpdateRequest struct {
 
 type notificationRulesUpdateRequest struct {
 	Rules []struct {
+		ID           uint   `json:"id"`
 		Kind         string `json:"kind"`
 		Pool         string `json:"pool"`
+		TemplateKey  string `json:"templateKey"`
+		TargetKey    string `json:"targetKey"`
 		UIEnabled    bool   `json:"uiEnabled"`
 		NtfyEnabled  bool   `json:"ntfyEnabled"`
 		EmailEnabled bool   `json:"emailEnabled"`
 	} `json:"rules"`
+}
+
+type notificationRuleCreateRequest struct {
+	TemplateKey  string `json:"templateKey"`
+	TargetKey    string `json:"targetKey"`
+	UIEnabled    bool   `json:"uiEnabled"`
+	NtfyEnabled  bool   `json:"ntfyEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+}
+
+type notificationRuleUpdateRequest struct {
+	UIEnabled    bool `json:"uiEnabled"`
+	NtfyEnabled  bool `json:"ntfyEnabled"`
+	EmailEnabled bool `json:"emailEnabled"`
 }
 
 func List(service *notifications.Service) gin.HandlerFunc {
@@ -322,6 +339,154 @@ func GetRules(service *notifications.Service) gin.HandlerFunc {
 	}
 }
 
+func CreateRule(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req notificationRuleCreateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		updated, err := service.CreateRule(c.Request.Context(), notifications.RuleCreateInput{
+			TemplateKey:  req.TemplateKey,
+			TargetKey:    req.TargetKey,
+			UIEnabled:    req.UIEnabled,
+			NtfyEnabled:  req.NtfyEnabled,
+			EmailEnabled: req.EmailEnabled,
+		})
+		if err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_create_notification_rule",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rule_created",
+			Error:   "",
+			Data:    updated,
+		})
+	}
+}
+
+func UpdateRule(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_notification_rule_id",
+				Error:   "invalid_notification_rule_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		var req notificationRuleUpdateRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request_body",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		updated, err := service.UpdateRule(c.Request.Context(), uint(id), notifications.RuleUpdateInput{
+			UIEnabled:    req.UIEnabled,
+			NtfyEnabled:  req.NtfyEnabled,
+			EmailEnabled: req.EmailEnabled,
+		})
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "notification_rule_not_found",
+					Error:   "notification_rule_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
+			status := http.StatusBadRequest
+			if !isRuleRequestBad(err) {
+				status = http.StatusInternalServerError
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_update_notification_rule",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rule_updated",
+			Error:   "",
+			Data:    updated,
+		})
+	}
+}
+
+func DeleteRule(service *notifications.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_notification_rule_id",
+				Error:   "invalid_notification_rule_id",
+				Data:    nil,
+			})
+			return
+		}
+
+		updated, err := service.DeleteRule(c.Request.Context(), uint(id))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "notification_rule_not_found",
+					Error:   "notification_rule_not_found",
+					Data:    nil,
+				})
+				return
+			}
+
+			status := http.StatusBadRequest
+			if !isRuleRequestBad(err) {
+				status = http.StatusInternalServerError
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_delete_notification_rule",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[notifications.RuleConfigView]{
+			Status:  "success",
+			Message: "notification_rule_deleted",
+			Error:   "",
+			Data:    updated,
+		})
+	}
+}
+
 func UpdateRules(service *notifications.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req notificationRulesUpdateRequest
@@ -338,8 +503,11 @@ func UpdateRules(service *notifications.Service) gin.HandlerFunc {
 		ruleUpdates := make([]notifications.RuleConfigEntryUpdate, 0, len(req.Rules))
 		for _, rule := range req.Rules {
 			ruleUpdates = append(ruleUpdates, notifications.RuleConfigEntryUpdate{
+				ID:           rule.ID,
 				Kind:         rule.Kind,
 				Pool:         rule.Pool,
+				TemplateKey:  rule.TemplateKey,
+				TargetKey:    rule.TargetKey,
 				UIEnabled:    rule.UIEnabled,
 				NtfyEnabled:  rule.NtfyEnabled,
 				EmailEnabled: rule.EmailEnabled,
@@ -427,6 +595,22 @@ func parseInt(value string, fallback int) int {
 		return fallback
 	}
 	return v
+}
+
+func isRuleRequestBad(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := err.Error()
+	switch {
+	case strings.HasPrefix(msg, "invalid_"):
+		return true
+	case strings.HasPrefix(msg, "notification_rule_"):
+		return true
+	default:
+		return false
+	}
 }
 
 func isTestTransportBadRequest(err error) bool {

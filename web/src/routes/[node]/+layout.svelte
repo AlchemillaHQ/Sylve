@@ -292,7 +292,18 @@
 							{
 								label: 'Notifications',
 								icon: 'mdi--bell-ring-outline',
-								href: `/${node}/settings/system/notifications`
+								children: [
+									{
+										label: 'Transports',
+										icon: 'mdi--swap-horizontal-bold',
+										href: `/${node}/settings/system/notifications/transports`
+									},
+									{
+										label: 'Rules',
+										icon: 'mdi--format-list-checks',
+										href: `/${node}/settings/system/notifications/rules`
+									}
+								]
 							},
 							{
 								label: 'Services',

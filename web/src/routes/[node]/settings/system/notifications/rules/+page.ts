@@ -11,7 +11,8 @@ export async function load() {
 
 	const rules = isAPIResponse(response)
 		? {
-				rules: []
+				rules: [],
+				templates: []
 			}
 		: response;
 
