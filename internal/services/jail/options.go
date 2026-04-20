@@ -230,11 +230,10 @@ func (s *Service) ModifyDevfsRuleset(ctId uint, rules string) error {
 		newLines = append(newLines, line)
 	}
 
-	if rules == "" {
-		if err := s.RemoveDevfsRulesForCTID(ctId); err != nil {
-			return fmt.Errorf("failed_to_remove_devfs_rules: %w", err)
-		}
-	} else {
+	if err := s.RemoveDevfsRulesForCTID(ctId); err != nil {
+		return fmt.Errorf("failed_to_remove_devfs_rules: %w", err)
+	}
+	if rules != "" {
 		entry := fmt.Sprintf(
 			"\n[devfsrules_jails_sylve_%d=%d]\n%s\n",
 			ctId,
