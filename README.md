@@ -1,6 +1,6 @@
 # Sylve
 
-[![Discord](https://img.shields.io/discord/1075365732143071232)](https://discord.gg/bJB826JvXK)
+[![Discord](https://img.shields.io/discord/1075365732143071232?label=Discord&logo=discord&color=5865F2)](https://chat.sylve.io)
 [![Build](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/build.yaml)
 [![Test](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml/badge.svg)](https://github.com/AlchemillaHQ/Sylve/actions/workflows/test.yaml)
 [![Documentation](https://img.shields.io/badge/docs-sylve.io-blue)](https://sylve.io/docs)
@@ -73,9 +73,9 @@ We're proud to be sponsored by:
   </a>
 </p>
 
-* [https://freebsdfoundation.org](https://freebsdfoundation.org)
-* [https://alchemilla.io](https://alchemilla.io)
-* [https://iptechnics.com](https://iptechnics.com)
+- [https://freebsdfoundation.org](https://freebsdfoundation.org)
+- [https://alchemilla.io](https://alchemilla.io)
+- [https://iptechnics.com](https://iptechnics.com)
 
 You can also support the project by sponsoring us on GitHub:
 

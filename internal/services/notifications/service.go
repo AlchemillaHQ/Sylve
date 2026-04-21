@@ -861,7 +861,7 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 	}
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx)
 		if err != nil {
 			return err
 		}
@@ -872,16 +872,6 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 		var rule models.NotificationKindRule
 		if err := tx.First(&rule, id).Error; err != nil {
 			return err
-		}
-		templateKey, targetKey, ok := resolveTemplateTargetFromKind(rule.Kind)
-		if !ok {
-			return fmt.Errorf("notification_rule_not_found")
-		}
-
-		if definition, exists := definitionsByKey[templateKey]; exists && definition.AutoCreateRules {
-			if _, active := definition.ActiveTargets[targetKey]; active {
-				return fmt.Errorf("notification_rule_auto_managed_active")
-			}
 		}
 
 		return tx.Delete(&rule).Error
