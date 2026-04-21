@@ -587,10 +587,8 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 			}
 		}
 		config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
-		// config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
-		// config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
-		config.WriteString("\tfull_audit:success = open, opendir, rename, unlink\n")
-		config.WriteString("\tfull_audit:failure = none\n")
+		config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
+		config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
 		config.WriteString("\tfull_audit:facility = LOCAL7\n")
 		config.WriteString("\tfull_audit:priority = ALERT\n")
 		config.WriteString("\tfull_audit:syslog = true\n")
@@ -669,10 +667,8 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	fullConfig += "\tdirectory mode = 0744\n"
 	fullConfig += "\tvalid users = %S\n"
 	fullConfig += "\tfull_audit:prefix = sylve-smb-homes-al|%u|%I|%m|%S|%P\n"
-	// fullConfig += "\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n"
-	// fullConfig += "\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n"
-	fullConfig += "\tfull_audit:success = open, opendir, rename, unlink\n"
-	fullConfig += "\tfull_audit:failure = none\n"
+	fullConfig += "\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n"
+	fullConfig += "\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n"
 	fullConfig += "\tfull_audit:facility = LOCAL7\n"
 	fullConfig += "\tfull_audit:priority = ALERT\n"
 	fullConfig += "\tfull_audit:syslog = true\n"
