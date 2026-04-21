@@ -6,16 +6,20 @@
 		updateNotificationRule
 	} from '$lib/api/notifications';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Table from '$lib/components/ui/table/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NotificationRulesConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -56,15 +60,21 @@
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'templateLabel',
-			title: 'Template'
+			title: 'Name',
+			formatter: (cell: CellComponent) => {
+				const rowData = cell.getRow().getData() as RuleRow;
+				return rowData.isTemplateRow ? cell.getValue() || '' : rowData.targetLabel;
+			}
 		},
 		{
 			field: 'targetLabel',
-			title: 'Target / Rules'
+			title: 'Rules',
+			visible: false
 		},
 		{
 			field: 'active',
 			title: 'Status',
+			width: 110,
 			formatter: (cell: CellComponent) => {
 				const rowData = cell.getRow().getData() as RuleRow;
 				if (rowData.isTemplateRow) {
@@ -77,54 +87,38 @@
 		},
 		{
 			field: 'uiEnabled',
-			title: 'In-App',
+			title: 'Channels',
+			width: 200,
 			formatter: (cell: CellComponent) => {
 				const rowData = cell.getRow().getData() as RuleRow;
 				if (rowData.isTemplateRow) {
 					return '-';
 				}
-				return cell.getValue()
-					? renderWithIcon('mdi:check', 'On', 'text-green-500')
-					: renderWithIcon('mdi:close', 'Off', 'text-muted-foreground');
-			}
-		},
-		{
-			field: 'ntfyEnabled',
-			title: 'ntfy',
-			formatter: (cell: CellComponent) => {
-				const rowData = cell.getRow().getData() as RuleRow;
-				if (rowData.isTemplateRow) {
-					return '-';
-				}
-				return cell.getValue()
-					? renderWithIcon('mdi:check', 'On', 'text-green-500')
-					: renderWithIcon('mdi:close', 'Off', 'text-muted-foreground');
-			}
-		},
-		{
-			field: 'emailEnabled',
-			title: 'Email',
-			formatter: (cell: CellComponent) => {
-				const rowData = cell.getRow().getData() as RuleRow;
-				if (rowData.isTemplateRow) {
-					return '-';
-				}
-				return cell.getValue()
-					? renderWithIcon('mdi:check', 'On', 'text-green-500')
-					: renderWithIcon('mdi:close', 'Off', 'text-muted-foreground');
+				const channels: { field: keyof RuleRow; label: string; icon: string }[] = [
+					{ field: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
+					{ field: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+					{ field: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' }
+				];
+				const parts = channels.map(({ field, label, icon }) => {
+					const enabled = rowData[field];
+					const cls = enabled ? 'text-green-500' : 'text-muted-foreground opacity-40';
+					return `<span class="inline-flex items-center gap-0.5 ${cls}"><span class="${icon} h-3.5 w-3.5 shrink-0"></span><span>${label}</span></span>`;
+				});
+				return `<span class="inline-flex items-center gap-3">${parts.join('')}</span>`;
 			}
 		}
 	]);
 
 	let tableData = $derived.by(() => {
-		const templateRows = new Map<string, RuleRow>();
+		const templateRows = new SvelteMap<string, RuleRow>();
 
 		for (const template of currentConfig.templates || []) {
 			templateRows.set(template.key, {
 				id: `template-${template.key}`,
 				templateKey: template.key,
 				templateLabel: template.label,
-				targetLabel: template.targets.length === 1 ? '1 target' : `${template.targets.length} targets`,
+				targetLabel:
+					template.targets.length === 1 ? '1 target' : `${template.targets.length} targets`,
 				active: true,
 				uiEnabled: false,
 				ntfyEnabled: false,
@@ -189,8 +183,12 @@
 	});
 
 	let query: string = $state('');
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: RuleRow | null = $derived(activeRows && activeRows.length === 1 ? (activeRows[0] as RuleRow) : null);
+	let activeRows = $state<Row[] | null>(null);
+	let activeRow: RuleRow | null = $derived(
+		activeRows && Array.isArray(activeRows) && activeRows.length === 1
+			? (activeRows[0] as RuleRow)
+			: null
+	);
 	let selectedRule = $derived(
 		activeRow && !activeRow.isTemplateRow && activeRow.ruleId ? (activeRow as RuleRow) : null
 	);
@@ -236,7 +234,7 @@
 	});
 
 	let existingRuleTargets = $derived.by(() => {
-		const set = new Set<string>();
+		const set = new SvelteSet<string>();
 		for (const rule of currentConfig.rules || []) {
 			set.add(`${rule.templateKey}::${rule.targetKey}`);
 		}
@@ -244,7 +242,9 @@
 	});
 
 	let createTargetOptions = $derived.by(() => {
-		const template = (currentConfig.templates || []).find((item) => item.key === modals.create.templateKey);
+		const template = (currentConfig.templates || []).find(
+			(item) => item.key === modals.create.templateKey
+		);
 		if (!template) {
 			return [];
 		}
@@ -395,7 +395,14 @@
 
 		if (isAPIResponse(response) && response.status === 'error') {
 			handleAPIError(response);
-			toast.error('Failed to delete notification rule', { position: 'bottom-center' });
+			if (response.error === 'notification_rule_auto_managed_active') {
+				toast.error('Cannot delete an auto-managed rule while its target is active', {
+					position: 'bottom-center'
+				});
+			} else {
+				toast.error('Failed to delete notification rule', { position: 'bottom-center' });
+			}
+			modals.delete.open = false;
 			return;
 		}
 
@@ -429,7 +436,13 @@
 				</div>
 			</Button>
 		{/if}
-		<Button size="sm" variant="outline" class="ml-auto h-6.5" onclick={refreshRules} disabled={busy.refresh}>
+		<Button
+			size="sm"
+			variant="outline"
+			class="ml-auto h-6.5"
+			onclick={refreshRules}
+			disabled={busy.refresh}
+		>
 			{#if busy.refresh}
 				<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 			{/if}
@@ -443,7 +456,7 @@
 		bind:parentActiveRow={activeRows}
 		bind:query
 		multipleSelect={false}
-		rowFormatter={rowFormatter}
+		{rowFormatter}
 		customPlaceholder="No notification rules available"
 	/>
 </div>
@@ -452,64 +465,73 @@
 	<Dialog.Root bind:open={modals.create.open}>
 		<Dialog.Content class="sm:max-w-106.25" onInteractOutside={(e) => e.preventDefault()}>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center gap-2">
-					<span class="icon-[gg--add] h-4 w-4"></span>
-					<span>New Notification Rule</span>
+				<Dialog.Title class="flex items-center justify-between">
+					<div class="flex items-center gap-2">
+						<span class="icon-[gg--add] h-4 w-4"></span>
+						<span>New Notification Rule</span>
+					</div>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title="Close"
+						onclick={() => (modals.create.open = false)}
+					>
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">Close</span>
+					</Button>
 				</Dialog.Title>
 			</Dialog.Header>
 
 			<div class="space-y-3">
-				<div class="space-y-1">
-					<p class="text-sm font-medium">Template</p>
-					<select
-						class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-1 focus-visible:outline-none"
-						bind:value={modals.create.templateKey}
-					>
-						{#each createTemplateOptions as template (template.key)}
-							<option value={template.key}>{template.label}</option>
-						{/each}
-					</select>
-				</div>
+				<SimpleSelect
+					label="Template"
+					options={createTemplateOptions.map((t) => ({ value: t.key, label: t.label }))}
+					bind:value={modals.create.templateKey}
+					onChange={(v) => (modals.create.templateKey = v)}
+					classes={{
+						parent: 'space-y-1',
+						label: 'text-sm font-medium',
+						trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
+					}}
+				/>
 
 				<div class="space-y-1">
-					<p class="text-sm font-medium">Target</p>
-					<select
-						class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm focus-visible:ring-1 focus-visible:outline-none"
+					<SimpleSelect
+						label="Target"
+						options={createTargetOptions.length === 0
+							? [{ value: '', label: 'No available targets' }]
+							: createTargetOptions.map((t) => ({ value: t.key, label: t.label }))}
 						bind:value={modals.create.targetKey}
+						onChange={(v) => (modals.create.targetKey = v)}
 						disabled={createTargetOptions.length === 0}
-					>
-						{#if createTargetOptions.length === 0}
-							<option value="">No available targets</option>
-						{:else}
-							{#each createTargetOptions as target (target.key)}
-								<option value={target.key}>{target.label}</option>
-							{/each}
-						{/if}
-					</select>
-					{#if createTargetOptions.length === 0}
-						<p class="text-muted-foreground text-xs">All available targets already have rules.</p>
-					{/if}
+						classes={{
+							parent: 'space-y-1',
+							label: 'text-sm font-medium',
+							trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
+						}}
+						title={createTargetOptions.length === 0
+							? 'All available targets already have rules'
+							: ''}
+					/>
 				</div>
 
 				<div class="space-y-2 pt-1">
 					<p class="text-sm font-medium">Channels</p>
-					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" bind:checked={modals.create.uiEnabled} class="h-4 w-4" />
-						<span>In-App</span>
-					</label>
-					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" bind:checked={modals.create.ntfyEnabled} class="h-4 w-4" />
-						<span>ntfy</span>
-					</label>
-					<label class="flex items-center gap-2 text-sm">
-						<input type="checkbox" bind:checked={modals.create.emailEnabled} class="h-4 w-4" />
-						<span>Email</span>
-					</label>
+					<div class="flex items-center gap-4">
+						<CustomCheckbox label="In-App" bind:checked={modals.create.uiEnabled} />
+						<CustomCheckbox label="ntfy" bind:checked={modals.create.ntfyEnabled} />
+						<CustomCheckbox label="Email" bind:checked={modals.create.emailEnabled} />
+					</div>
 				</div>
 			</div>
 
 			<Dialog.Footer>
-				<Button onclick={createRule} size="sm" disabled={busy.create || createTargetOptions.length === 0}>
+				<Button
+					onclick={createRule}
+					size="sm"
+					disabled={busy.create || createTargetOptions.length === 0}
+				>
 					{#if busy.create}
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 					{/if}
@@ -524,35 +546,56 @@
 	<Dialog.Root bind:open={modals.edit.open}>
 		<Dialog.Content class="sm:max-w-106.25" onInteractOutside={(e) => e.preventDefault()}>
 			<Dialog.Header>
-				<Dialog.Title class="flex items-center gap-2">
-					<span class="icon-[mdi--pencil] h-4 w-4"></span>
-					<span>Edit Notification Rule</span>
+				<Dialog.Title class="flex items-center justify-between">
+					<div class="flex items-center gap-2">
+						<span class="icon-[mdi--pencil] h-4 w-4"></span>
+						<span>Edit Notification Rule</span>
+					</div>
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						title="Close"
+						onclick={() => (modals.edit.open = false)}
+					>
+						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
+						<span class="sr-only">Close</span>
+					</Button>
 				</Dialog.Title>
 			</Dialog.Header>
 
-			<div class="space-y-2 text-sm">
-				<p><span class="font-medium">Template:</span> {modals.edit.templateLabel}</p>
-				<p><span class="font-medium">Target:</span> {modals.edit.targetLabel}</p>
-				<p>
-					<span class="font-medium">Status:</span>
-					{modals.edit.active ? 'Active' : 'Inactive (target is not currently active)'}
-				</p>
+			<div class="rounded-md border">
+				<Table.Root>
+					<Table.Header class="bg-muted/50">
+						<Table.Row>
+							<Table.Head>Template</Table.Head>
+							<Table.Head>Target</Table.Head>
+							<Table.Head>Status</Table.Head>
+						</Table.Row>
+					</Table.Header>
+					<Table.Body>
+						<Table.Row>
+							<Table.Cell>{modals.edit.templateLabel}</Table.Cell>
+							<Table.Cell>{modals.edit.targetLabel}</Table.Cell>
+							<Table.Cell>
+								{#if modals.edit.active}
+									<span class="text-green-500">Active</span>
+								{:else}
+									<span class="text-muted-foreground">Inactive</span>
+								{/if}
+							</Table.Cell>
+						</Table.Row>
+					</Table.Body>
+				</Table.Root>
 			</div>
 
 			<div class="space-y-2 pt-1">
 				<p class="text-sm font-medium">Channels</p>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={modals.edit.uiEnabled} class="h-4 w-4" />
-					<span>In-App</span>
-				</label>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={modals.edit.ntfyEnabled} class="h-4 w-4" />
-					<span>ntfy</span>
-				</label>
-				<label class="flex items-center gap-2 text-sm">
-					<input type="checkbox" bind:checked={modals.edit.emailEnabled} class="h-4 w-4" />
-					<span>Email</span>
-				</label>
+				<div class="flex items-center gap-4">
+					<CustomCheckbox label="In-App" bind:checked={modals.edit.uiEnabled} />
+					<CustomCheckbox label="ntfy" bind:checked={modals.edit.ntfyEnabled} />
+					<CustomCheckbox label="Email" bind:checked={modals.edit.emailEnabled} />
+				</div>
 			</div>
 
 			<Dialog.Footer>

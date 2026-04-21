@@ -562,6 +562,8 @@ msgstr "操作"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -848,6 +850,7 @@ msgstr "创建笔记失败"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
@@ -918,6 +921,7 @@ msgstr "查看"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
@@ -959,6 +963,7 @@ msgstr "删除"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
@@ -1001,6 +1006,7 @@ msgstr "批量删除"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
 #: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -1346,6 +1352,10 @@ msgstr "重置"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -2695,6 +2705,8 @@ msgid "Metric"
 msgstr "跃点数"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Active"
 msgstr "活动"
@@ -3045,6 +3057,7 @@ msgstr "S.M.A.R.T. 值 ({0})"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3573,6 +3586,8 @@ msgstr "源"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -5086,7 +5101,6 @@ msgstr "简单 Linux"
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Pool"
 msgstr "存储池"
@@ -6254,7 +6268,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新 "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6544,6 +6558,8 @@ msgstr "从 VDEV {1} 中移除 {0}"
 #~ msgid "No available disks"
 #~ msgstr "没有可用的磁盘"
 
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -9607,6 +9623,8 @@ msgid "Template dataset not found"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Template"
 msgstr ""
 
@@ -13272,9 +13290,7 @@ msgstr ""
 msgid "Refresh List"
 msgstr ""
 
-#. 0: index
 #. 0: edit ? 'updated' \\: 'created'
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Transport {0}"
 msgstr ""
@@ -13308,9 +13324,8 @@ msgstr ""
 msgid "Transport Name"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "ntfy"
-msgstr ""
+#~ msgid "ntfy"
+#~ msgstr ""
 
 #~ msgid "smtp"
 #~ msgstr ""
@@ -13393,9 +13408,8 @@ msgstr ""
 msgid "New Transport"
 msgstr ""
 
-#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-msgid "Transport 1"
-msgstr ""
+#~ msgid "Transport 1"
+#~ msgstr ""
 
 #~ msgid "Clear stored token ({0})"
 #~ msgstr ""
@@ -13434,34 +13448,130 @@ msgstr ""
 msgid "Recipients / Topic"
 msgstr ""
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/notifications/+layout.svelte
 msgid "Transports"
 msgstr ""
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/settings/system/notifications/+layout.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Rules"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "Failed to update notification rules"
-msgstr ""
+#~ msgid "Failed to update notification rules"
+#~ msgstr ""
+
+#~ msgid "Notification rules updated"
+#~ msgstr ""
+
+#~ msgid "Per-pool ZFS state-change notification rules"
+#~ msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "Notification rules updated"
-msgstr ""
-
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "Per-pool ZFS state-change notification rules"
-msgstr ""
-
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "In-App"
 msgstr ""
 
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Email"
 msgstr ""
 
+#~ msgid "No active ZFS pools found."
+#~ msgstr ""
+
+#~ msgid "Target / Rules"
+#~ msgstr ""
+
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-msgid "No active ZFS pools found."
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Inactive"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Choose a template and target before creating a rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to create notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule created"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to update notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule updated"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to delete notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule deleted"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No notification rules available"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "New Notification Rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No available targets"
+msgstr ""
+
+#~ msgid "All available targets already have rules."
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Channels"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Create"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Edit Notification Rule"
+msgstr ""
+
+#~ msgid "Template:"
+#~ msgstr ""
+
+#~ msgid "Target:"
+#~ msgstr ""
+
+#~ msgid "Status:"
+#~ msgstr ""
+
+#~ msgid "Inactive (target is not currently active)"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Generate random topic0"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Common Transport"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Cannot delete an auto-managed rule while its target is active"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "All available targets already have rules"
 msgstr ""

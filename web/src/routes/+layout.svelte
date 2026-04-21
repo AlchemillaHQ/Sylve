@@ -29,7 +29,7 @@
 	import type { Locales } from '$lib/types/common.js';
 	import { page } from '$app/state';
 	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
-	import { getBasicSettings } from '$lib/api/system/settings.js';
+	import { getLocalBasicSettings } from '$lib/api/system/settings.js';
 	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
 	import About from '$lib/components/custom/About.svelte';
 	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
@@ -86,7 +86,7 @@
 			await sleep(1500);
 			loading.throbber = false;
 
-			const basicSettings = await getBasicSettings();
+			const basicSettings = await getLocalBasicSettings();
 			storage.enabledServices = basicSettings.services;
 		} else {
 			stopSSEEvents();
@@ -128,7 +128,7 @@
 
 				loading.initialization = false;
 
-				const basicSettings = await getBasicSettings();
+				const basicSettings = await getLocalBasicSettings();
 				storage.enabledServices = basicSettings.services;
 
 				let target = toLoginPath;
@@ -190,7 +190,7 @@
 
 				loading.initialization = false;
 
-				const basicSettings = await getBasicSettings();
+				const basicSettings = await getLocalBasicSettings();
 				storage.enabledServices = basicSettings.services;
 
 				let target = toLoginPath;

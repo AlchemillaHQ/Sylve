@@ -286,6 +286,22 @@
 				icon: 'material-symbols--settings',
 				children: [
 					{
+						label: 'Authentication',
+						icon: 'mdi--shield-key',
+						children: [
+							{
+								label: 'Users',
+								icon: 'mdi--account',
+								href: `/${node}/settings/authentication/users`
+							},
+							{
+								label: 'Groups',
+								icon: 'mdi--account-group',
+								href: `/${node}/settings/authentication/groups`
+							}
+						]
+					},
+					{
 						label: 'System',
 						icon: 'mdi--desktop-classic',
 						children: [
@@ -316,22 +332,6 @@
 						label: 'PCI Passthrough',
 						icon: 'eos-icons--hardware-circuit',
 						href: `/${node}/settings/device-passthrough`
-					},
-					{
-						label: 'Authentication',
-						icon: 'mdi--shield-key',
-						children: [
-							{
-								label: 'Users',
-								icon: 'mdi--account',
-								href: `/${node}/settings/authentication/users`
-							},
-							{
-								label: 'Groups',
-								icon: 'mdi--account-group',
-								href: `/${node}/settings/authentication/groups`
-							}
-						]
 					}
 				]
 			}
@@ -373,7 +373,7 @@
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
 		<div class="flex items-center gap-1">
-            <NotificationBell />
+			<NotificationBell />
 			<Button
 				size="sm"
 				class="h-6"

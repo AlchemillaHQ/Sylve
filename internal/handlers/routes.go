@@ -333,6 +333,7 @@ func RegisterRoutes(r *gin.Engine,
 		system.POST("/ppt-devices/prepare", systemHandlers.PreparePPTDevice(systemService))
 		system.POST("/ppt-devices/import", systemHandlers.ImportPPTDevice(systemService))
 		system.DELETE("/ppt-devices/:id", systemHandlers.RemovePPTDevice(systemService))
+		system.GET("/basic-settings", systemHandlers.BasicSettings(systemService))
 		system.PUT("/basic-settings/pools", systemHandlers.AddUsablePools(systemService))
 		system.PUT("/basic-settings/services/:service/toggle", systemHandlers.ToggleService(systemService, networkService))
 	}

@@ -29,7 +29,8 @@
 		value = $bindable(),
 		onChange,
 		disabled = false,
-		title
+		title,
+		single
 	}: Props = $props();
 
 	let sLabel = $derived(

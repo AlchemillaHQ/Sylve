@@ -11,6 +11,8 @@
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
+	import { watch } from 'runed';
+	import { generatePassword } from '$lib/utils/string';
 
 	type TransportType = 'ntfy' | 'smtp';
 	type TransportForm = {
@@ -46,9 +48,9 @@
 	let loading = $state(false);
 	let smtpRecipientsOpen = $state(false);
 
-	function defaultForm(index = 1, type: TransportType = 'smtp'): TransportForm {
+	function defaultForm(type: TransportType = 'smtp'): TransportForm {
 		return {
-			name: `Transport ${index}`,
+			name: '',
 			type,
 			enabled: false,
 			ntfyBaseUrl: 'https://ntfy.sh',
@@ -75,32 +77,35 @@
 
 	let form = $state<TransportForm>(defaultForm());
 
-	$effect(() => {
-		if (open) {
-			if (editingTransport) {
-				form = {
-					id: editingTransport.id,
-					name: editingTransport.name,
-					type: editingTransport.type,
-					enabled: editingTransport.enabled,
-					ntfyBaseUrl: editingTransport.ntfy?.baseUrl ?? 'https://ntfy.sh',
-					ntfyTopic: editingTransport.ntfy?.topic ?? '',
-					ntfyToken: '',
-					ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
-					smtpHost: editingTransport.email?.smtpHost ?? '',
-					smtpPort: editingTransport.email?.smtpPort ?? 587,
-					smtpUsername: editingTransport.email?.smtpUsername ?? '',
-					smtpFrom: editingTransport.email?.smtpFrom ?? '',
-					smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
-					smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
-					smtpPassword: '',
-					smtpHasPassword: editingTransport.email?.hasPassword ?? false
-				};
-			} else {
-				form = defaultForm(transports.length + 1);
+	watch(
+		() => open,
+		(open) => {
+			if (open) {
+				if (editingTransport) {
+					form = {
+						id: editingTransport.id,
+						name: editingTransport.name,
+						type: editingTransport.type,
+						enabled: editingTransport.enabled,
+						ntfyBaseUrl: editingTransport.ntfy?.baseUrl ?? 'https://ntfy.sh',
+						ntfyTopic: editingTransport.ntfy?.topic ?? '',
+						ntfyToken: '',
+						ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+						smtpHost: editingTransport.email?.smtpHost ?? '',
+						smtpPort: editingTransport.email?.smtpPort ?? 587,
+						smtpUsername: editingTransport.email?.smtpUsername ?? '',
+						smtpFrom: editingTransport.email?.smtpFrom ?? '',
+						smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
+						smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
+						smtpPassword: '',
+						smtpHasPassword: editingTransport.email?.hasPassword ?? false
+					};
+				} else {
+					form = defaultForm();
+				}
 			}
 		}
-	});
+	);
 
 	const smtpRecipientOptions = $derived.by(() => {
 		const seen = new SvelteSet<string>();
@@ -283,7 +288,11 @@
 
 		<div class="space-y-4 py-2">
 			<div class="grid gap-3 sm:grid-cols-2">
-				<CustomValueInput label="Transport Name" bind:value={form.name} placeholder="Transport 1" />
+				<CustomValueInput
+					label="Transport Name"
+					bind:value={form.name}
+					placeholder="Common Transport"
+				/>
 				<SimpleSelect
 					label="Type"
 					options={[
@@ -308,7 +317,18 @@
 						bind:value={form.ntfyBaseUrl}
 						placeholder="https://ntfy.sh"
 					/>
-					<CustomValueInput label="Topic" bind:value={form.ntfyTopic} placeholder="" />
+					<CustomValueInput
+						label="Topic"
+						bind:value={form.ntfyTopic}
+						placeholder="sylve-events-5678"
+						topRightButton={{
+							icon: 'icon-[oui--generate]',
+							tooltip: 'Generate random topic0',
+							function: async () => {
+								return generatePassword();
+							}
+						}}
+					/>
 					<CustomValueInput
 						label="Auth Token"
 						type="password"

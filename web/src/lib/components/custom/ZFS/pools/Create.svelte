@@ -69,11 +69,21 @@
 	let raidTypes = $state(raidTypeArr);
 	let properties = $state(options);
 	let accordionOpen = $state<string[]>([]);
+	let sectionOrder = $state<string[]>(['HDD', 'SSD', 'NVMe', 'Partitions']);
 
 	watch(
 		() => open,
 		() => {
 			if (open) {
+				const initialCounts: Record<string, number> = {
+					HDD: usable.disks.filter((d) => d.type === 'HDD' && d.partitions.length === 0).length,
+					SSD: usable.disks.filter((d) => d.type === 'SSD' && d.partitions.length === 0).length,
+					NVMe: usable.disks.filter((d) => d.type === 'NVMe' && d.partitions.length === 0).length,
+					Partitions: usable.partitions.length
+				};
+				sectionOrder = ['HDD', 'SSD', 'NVMe', 'Partitions'].sort(
+					(a, b) => (initialCounts[b] ?? 0) - (initialCounts[a] ?? 0)
+				);
 				accordionOpen = diskSections.filter((s) => s.count > 0).map((s) => s.key);
 			}
 		}
@@ -92,35 +102,20 @@
 	);
 
 	let diskSections = $derived(
-		[
-			{
-				key: 'HDD',
-				count: usable.disks.filter(
-					(d) => d.type === 'HDD' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
-				).length
-			},
-			{
-				key: 'SSD',
-				count: usable.disks.filter(
-					(d) => d.type === 'SSD' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
-				).length
-			},
-			{
-				key: 'NVMe',
-				count: usable.disks.filter(
-					(d) => d.type === 'NVMe' && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
-				).length
-			},
-			{
-				key: 'Partitions',
-				count: usable.partitions.filter(
-					(p) =>
-						!properties.vdev.containers
-							.flatMap((v) => v.partitions)
-							.some((vp) => vp.name === p.name)
-				).length
-			}
-		].sort((a, b) => b.count - a.count)
+		sectionOrder.map((key) => ({
+			key,
+			count:
+				key === 'Partitions'
+					? usable.partitions.filter(
+							(p) =>
+								!properties.vdev.containers
+									.flatMap((v) => v.partitions)
+									.some((vp) => vp.name === p.name)
+						).length
+					: usable.disks.filter(
+							(d) => d.type === key && d.partitions.length === 0 && !isDiskInVdev(d.uuid)
+						).length
+		}))
 	);
 
 	let spares: string[] = $derived.by(() => {
@@ -199,9 +194,10 @@
 			switch (type.value) {
 				case 'stripe':
 					return { ...type, available: true };
-				case 'mirror':
+				case 'mirror': {
 					const allMirrors = vdevLengths.every((length) => length >= 2) && vdevLengths.length > 0;
 					return { ...type, available: allMirrors };
+				}
 				case 'raidz':
 					return {
 						...type,
@@ -460,10 +456,7 @@
 			return;
 		}
 
-		let raid: ZpoolRaidType = properties.raid;
-		if (properties.raid === 'stripe') {
-			raid = undefined;
-		}
+		const raid: ZpoolRaidType = properties.raid;
 
 		properties.creating = true;
 		let biggestSize = 0;
@@ -567,6 +560,7 @@
 					</Tooltip.Trigger>
 					<Tooltip.Content>
 						<p>
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 							{@html getVdevErrors(id)}
 						</p>
 					</Tooltip.Content>
@@ -719,7 +713,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Reset'}
+						title="Reset"
 						onclick={() => {
 							properties = options;
 						}}
@@ -733,7 +727,7 @@
 						size="sm"
 						variant="link"
 						class="h-4"
-						title={'Close'}
+						title="Close"
 						onclick={() => {
 							properties = options;
 							open = false;
@@ -755,16 +749,16 @@
 
 			<Tabs.Content class="mt-4" value="tab-devices">
 				<Card.Root class="border-none ">
-					<Card.Content class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+					<Card.Content class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-end">
 						<CustomValueInput
-							label={'Name'}
+							label="Name"
 							placeholder="tank"
 							bind:value={properties.name}
 							classes="flex-1 space-y-1"
 						/>
 
 						<CustomValueInput
-							label={'Virtual Devices'}
+							label="Virtual Devices"
 							placeholder="1"
 							bind:value={properties.vdev.count}
 							classes="flex-1 space-y-1"
@@ -772,7 +766,7 @@
 						></CustomValueInput>
 
 						<div class="flex-1 space-y-1">
-								<Label class="w-24 text-sm whitespace-nowrap" for="raid"
+							<Label class="w-24 text-sm whitespace-nowrap" for="raid"
 								>Redundancy
 								<span class="font-semibold text-green-500 {properties.usable ? '' : 'hidden'}"
 									>{`(${formatBytesBinary(properties.usable)})`}</span
@@ -811,10 +805,9 @@
 								<div
 									class="bg-muted mt-1 flex w-full items-center justify-center gap-7 overflow-hidden rounded-lg border-y border-none p-4 pr-4"
 								>
-									{#each Array(properties.vdev.count) as _, i}
+									{#each Array(properties.vdev.count) as _, i (i)}
 										<div class="relative flex flex-col">
 											{@render vdevErrors(i)}
-
 											<div
 												class={`bg-primary/10 dark:bg-background relative h-28 w-48 shrink-0 overflow-auto rounded-lg p-2 ${getVdevErrors(i) ? 'border border-yellow-700 ' : ''}`}
 												use:dropzone={{
@@ -905,7 +898,7 @@
 							<div transition:slide class="grid grid-cols-1 items-center gap-4 md:grid-cols-3">
 								<CustomValueInput
 									type="text"
-									label={'Mount Point'}
+									label="Mount Point"
 									placeholder="/tank"
 									bind:value={properties.mount}
 									classes="flex-1 space-y-1"
