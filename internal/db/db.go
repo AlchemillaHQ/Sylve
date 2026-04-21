@@ -82,6 +82,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	err = db.AutoMigrate(
 		&models.BasicSettings{},
+		&models.Notification{},
+		&models.NotificationSuppression{},
+		&models.NotificationKindRule{},
+		&models.NotificationTransportConfig{},
 
 		&models.System{},
 		&models.User{},

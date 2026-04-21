@@ -11,7 +11,8 @@
 export const reload = $state({
     leftPanel: false,
     auditLog: false,
-    clusterDetails: false
+    clusterDetails: false,
+    notifications: false
 });
 
 export const connection = $state({

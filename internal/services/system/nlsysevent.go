@@ -164,6 +164,7 @@ func (s *Service) StartNetlinkWatcher(ctx context.Context) {
 				if err := s.DB.Create(ev).Error; err != nil {
 					logger.L.Error().Err(err).Msg("Failed to insert Netlink ZFS event")
 				}
+				s.emitPoolStateNotification(ctx, ev)
 			}
 		}
 	}()

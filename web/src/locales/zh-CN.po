@@ -546,6 +546,7 @@ msgstr "用户"
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
@@ -560,6 +561,10 @@ msgstr "操作"
 #: src/routes/[node]/jail/[node]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[node]/summary/+page.svelte
@@ -844,6 +849,9 @@ msgstr "创建笔记失败"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/vm/[node]/network/+page.svelte
@@ -912,6 +920,9 @@ msgstr "查看"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -951,6 +962,9 @@ msgstr "删除"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
@@ -991,6 +1005,9 @@ msgstr "批量删除"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/users/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -1078,6 +1095,8 @@ msgstr "笔记"
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1244,6 +1263,9 @@ msgstr "重置"
 #: src/lib/components/custom/Network/WireGuard/Server/Export.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
@@ -1330,6 +1352,10 @@ msgstr "重置"
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -1396,6 +1422,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
@@ -1795,6 +1822,7 @@ msgstr "管理员"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -1889,6 +1917,7 @@ msgstr "集群信息"
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -1905,6 +1934,7 @@ msgstr "属性"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2032,6 +2062,7 @@ msgstr "此操作无法撤销。这将永久删除 "
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
@@ -2259,12 +2290,15 @@ msgstr "最早修改"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "类型"
@@ -2287,6 +2321,7 @@ msgid "Select Pools"
 msgstr "选择存储池"
 
 #: src/lib/components/custom/Initialization/Initialize.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Services"
 msgstr "服务"
 
@@ -2295,6 +2330,10 @@ msgstr "服务"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Virtualization"
 msgstr "虚拟化"
 
@@ -2305,6 +2344,10 @@ msgstr "虚拟化"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Jails"
 msgstr "Jails"
 
@@ -2312,6 +2355,9 @@ msgstr "Jails"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Samba Server"
 msgstr "Samba 服务器"
 
@@ -2320,6 +2366,10 @@ msgstr "Samba 服务器"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "DHCP Server"
 msgstr "DHCP 服务器"
 
@@ -2655,6 +2705,8 @@ msgid "Metric"
 msgstr "跃点数"
 
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Active"
 msgstr "活动"
@@ -2819,6 +2871,11 @@ msgstr "从直通中移除设备失败"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "ZFS Pools"
 msgstr "ZFS 存储池"
 
@@ -2836,6 +2893,8 @@ msgstr "ZFS 存储池"
 #: src/lib/components/custom/Network/Routes/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2847,6 +2906,16 @@ msgstr "ZFS 存储池"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2878,6 +2947,16 @@ msgstr "已启用"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
@@ -2893,22 +2972,29 @@ msgstr "已禁用"
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "WoL Server"
 msgstr "WoL 服务器"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "At least one ZFS Pool must be selected"
 msgstr "必须至少选择一个 ZFS 存储池"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "No changes made to ZFS Pools"
 msgstr "ZFS 存储池未作更改"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Failed to update ZFS Pools"
 msgstr "更新 ZFS 存储池失败"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "ZFS Pools updated"
 msgstr "ZFS 存储池已更新"
 
@@ -2916,6 +3002,7 @@ msgstr "ZFS 存储池已更新"
 #. 0: title
 #. 0: title
 #. 0: title
+#. 0: activeRow.property
 #. 0: activeRow.property
 #. 0: activeRow.property
 #. 0: title
@@ -2927,6 +3014,7 @@ msgstr "ZFS 存储池已更新"
 #: src/routes/[node]/jail/[node]/hardware/+page.svelte
 #: src/routes/[node]/jail/[node]/options/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[node]/hardware/+page.svelte
 #: src/routes/[node]/vm/[node]/options/+page.svelte
@@ -2936,21 +3024,28 @@ msgid "Edit {0}"
 msgstr "编辑 {0}"
 
 #. 0: activeRow?.property
+#. 0: activeRow?.property
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Toggle {0}"
 msgstr "切换 {0}"
 
 #. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
+#. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
 msgstr "您即将 {0} {1}，{2}您将需要重启 Sylve 或主机系统以使更改生效"
 
 #. 0: serviceName
+#. 0: serviceName
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Failed to toggle {0}"
 msgstr "切换 {0} 失败"
 
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Enter ZFS Pools"
 msgstr "输入 ZFS 存储池"
 
@@ -2962,6 +3057,7 @@ msgstr "S.M.A.R.T. 值 ({0})"
 #: src/lib/components/custom/VM/Create/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3477,6 +3573,7 @@ msgstr "加载事件进度失败"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
@@ -3489,6 +3586,8 @@ msgstr "源"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -3629,6 +3728,7 @@ msgstr "带外还原"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/jobs/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -6168,7 +6268,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
 #: src/routes/[node]/network/firewall/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新 "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6458,6 +6558,8 @@ msgstr "从 VDEV {1} 中移除 {0}"
 #~ msgid "No available disks"
 #~ msgstr "没有可用的磁盘"
 
+#: src/lib/components/custom/ZFS/pools/Create.svelte
+#: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -9271,6 +9373,7 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/CreateFromTemplate.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Count"
 msgstr ""
@@ -9520,6 +9623,8 @@ msgid "Template dataset not found"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "Template"
 msgstr ""
 
@@ -9808,6 +9913,8 @@ msgid "Template data unavailable"
 msgstr ""
 
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Optional"
 msgstr ""
@@ -10275,6 +10382,10 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "Firewall"
 msgstr ""
 
@@ -11222,6 +11333,9 @@ msgstr ""
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
 #: src/routes/[node]/settings/system/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/settings/system/services/+page.svelte
 msgid "WireGuard"
 msgstr ""
 
@@ -12599,8 +12713,10 @@ msgstr ""
 msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr ""
 
-#~ msgid "Test"
-#~ msgstr ""
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Test"
+msgstr ""
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Mutual CHAP Secret must be 12-16 characters (RFC 3720)"
@@ -13121,4 +13237,341 @@ msgstr ""
 #. 0: properties.detach.name; 1: vm.current.name
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>. The underlying disk dataset/file will NOT be deleted."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Failed to dismiss notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Notification dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Notifications/Bell.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Notifications"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "<0/> Show dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Severity"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Last Seen"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "No notifications found."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismiss"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Refresh Count"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Refresh List"
+msgstr ""
+
+#. 0: edit ? 'updated' \\: 'created'
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport {0}"
+msgstr ""
+
+#~ msgid "Default"
+#~ msgstr ""
+
+#~ msgid "Failed to update notification config"
+#~ msgstr ""
+
+#~ msgid "Notification config updated"
+#~ msgstr ""
+
+#~ msgid "Configure one row per transport. UI notifications are always enabled."
+#~ msgstr ""
+
+#~ msgid "Add ntfy"
+#~ msgstr ""
+
+#~ msgid "Add SMTP"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Save"
+msgstr ""
+
+#~ msgid "No transports configured."
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport Name"
+msgstr ""
+
+#~ msgid "ntfy"
+#~ msgstr ""
+
+#~ msgid "smtp"
+#~ msgstr ""
+
+#~ msgid "Remove"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Base URL"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Topic"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Auth Token"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Token stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "<0/> Clear stored token ({0})"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Host"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Port"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Username"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "From Email"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "SMTP Password"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Password stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "<0/> Clear stored password ({0})"
+#~ msgstr ""
+
+#~ msgid "Recipients (comma or newline separated)"
+#~ msgstr ""
+
+#~ msgid "<0/> Use TLS/STARTTLS"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Transport deleted"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Failed to delete transport"
+msgstr ""
+
+#. 0: edit ? 'update' \\: 'create'
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Failed to {0} transport"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Edit Transport"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "New Transport"
+msgstr ""
+
+#~ msgid "Transport 1"
+#~ msgstr ""
+
+#~ msgid "Clear stored token ({0})"
+#~ msgstr ""
+
+#~ msgid "Clear stored password ({0})"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Use TLS/STARTTLS"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Test notification sent"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Failed to send test notification"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Transport name is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Recipients"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Select or type recipients"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Recipients / Topic"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/settings/system/notifications/+layout.svelte
+msgid "Transports"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/settings/system/notifications/+layout.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Rules"
+msgstr ""
+
+#~ msgid "Failed to update notification rules"
+#~ msgstr ""
+
+#~ msgid "Notification rules updated"
+#~ msgstr ""
+
+#~ msgid "Per-pool ZFS state-change notification rules"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "In-App"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Email"
+msgstr ""
+
+#~ msgid "No active ZFS pools found."
+#~ msgstr ""
+
+#~ msgid "Target / Rules"
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Inactive"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Choose a template and target before creating a rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to create notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule created"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to update notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule updated"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Failed to delete notification rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Notification rule deleted"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No notification rules available"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "New Notification Rule"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "No available targets"
+msgstr ""
+
+#~ msgid "All available targets already have rules."
+#~ msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Channels"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "<0/> Create"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Edit Notification Rule"
+msgstr ""
+
+#~ msgid "Template:"
+#~ msgstr ""
+
+#~ msgid "Target:"
+#~ msgstr ""
+
+#~ msgid "Status:"
+#~ msgstr ""
+
+#~ msgid "Inactive (target is not currently active)"
+#~ msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Generate random topic0"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Common Transport"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "Cannot delete an auto-managed rule while its target is active"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+msgid "All available targets already have rules"
 msgstr ""

@@ -26,6 +26,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/handlers"
 	"github.com/alchemillahq/sylve/internal/logger"
+	notificationFacade "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/internal/repl"
 	"github.com/alchemillahq/sylve/internal/services"
 	"github.com/alchemillahq/sylve/internal/services/auth"
@@ -37,6 +38,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -136,6 +138,8 @@ func main() {
 	jS := serviceRegistry.JailService
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
+	notificationService := notificationsService.NewService(d)
+	notificationFacade.SetEmitter(notificationService)
 
 	clusterSvc := cS.(*cluster.Service)
 	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
@@ -241,6 +245,7 @@ func main() {
 		zS.(*zfs.Service),
 		dS.(*disk.Service),
 		nS.(*networkService.Service),
+		notificationService,
 		uS.(*utilities.Service),
 		sysS.(*system.Service),
 		libvirtSvc,

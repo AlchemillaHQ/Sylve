@@ -31,10 +31,6 @@
 			dark: '/logo/sponsors/IP-Technics-White.webp'
 		}
 	];
-
-	let featureLiveConsole = $state(false);
-	let featureTaskPreview = $state(false);
-	let featureEdgeTelemetry = $state(false);
 </script>
 
 <Dialog.Root bind:open>
@@ -71,7 +67,7 @@
 				</h3>
 
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-					{#each sponsors as sponsor}
+					{#each sponsors as sponsor, _index (sponsor.name)}
 						<a
 							href={sponsor.url}
 							target="_blank"
