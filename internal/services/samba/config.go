@@ -468,6 +468,7 @@ func (s *Service) GlobalConfig() (string, error) {
 	config += "recycle:versions = yes\n"
 	config += "recycle:touch = yes\n"
 	config += "recycle:touch_mtime = yes\n"
+	config += "recycle:exclude = :*DATA,*.tmp,*.temp,*.o,*.obj,~$*,*.~??,*.part,*.partial,*.swp,*.swo,*.log\n"
 
 	config += "inherit acls = yes\n"
 
