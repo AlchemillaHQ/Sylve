@@ -451,7 +451,7 @@ func (s *Service) GlobalConfig() (string, error) {
 	if settings.AppleExtensions {
 		config += "min protocol = SMB2\n"
 		config += "ea support = yes\n"
-		config += "vfs objects = catia fruit streams_xattr full_audit zfsacl\n"
+		config += "vfs objects = catia recycle fruit streams_xattr full_audit zfsacl\n"
 		config += "fruit:metadata = stream\n"
 		config += "fruit:model = MacSamba\n"
 		config += "fruit:veto_appledouble = no\n"
@@ -460,8 +460,15 @@ func (s *Service) GlobalConfig() (string, error) {
 		config += "fruit:delete_empty_adfiles = yes\n"
 		config += "fruit:posix_rename = yes\n"
 	} else {
-		config += "vfs objects = full_audit zfsacl\n"
+		config += "vfs objects = catia recycle full_audit zfsacl\n"
 	}
+	config += "recycle:repository = @Recycle\n"
+	config += "recycle:directory_mode = 777\n"
+	config += "recycle:keeptree = yes\n"
+	config += "recycle:versions = yes\n"
+	config += "recycle:touch = yes\n"
+	config += "recycle:touch_mtime = yes\n"
+
 	config += "inherit acls = yes\n"
 
 	return config, nil
