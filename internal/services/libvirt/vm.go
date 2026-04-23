@@ -1165,12 +1165,22 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 	}
 
 	vmRootDatasets := make(map[string]struct{})
+	preserveVMRootDatasets := make(map[string]struct{})
 
 	for _, storage := range vm.Storages {
+		rootDataset := ""
 		if storage.Pool != "" {
-			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Pool, vm.RID)] = struct{}{}
+			rootDataset = fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Pool, vm.RID)
+			vmRootDatasets[rootDataset] = struct{}{}
 		} else if storage.Dataset.Pool != "" {
-			vmRootDatasets[fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Dataset.Pool, vm.RID)] = struct{}{}
+			rootDataset = fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Dataset.Pool, vm.RID)
+			vmRootDatasets[rootDataset] = struct{}{}
+		}
+
+		if rootDataset != "" {
+			if shouldPreserveVMStorageRootDataset(storage.Type, deleteRawDisks, deleteVolumes) {
+				preserveVMRootDatasets[rootDataset] = struct{}{}
+			}
 		}
 
 		if storage.Type == vmModels.VMStorageTypeDiskImage {
@@ -1247,6 +1257,10 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 	}
 
 	for rootDataset := range vmRootDatasets {
+		if _, shouldPreserve := preserveVMRootDatasets[rootDataset]; shouldPreserve {
+			continue
+		}
+
 		hasChildren := false
 
 		fsSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, rootDataset)
@@ -1340,6 +1354,17 @@ func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, dele
 	}
 
 	return nil
+}
+
+func shouldPreserveVMStorageRootDataset(storageType vmModels.VMStorageType, deleteRawDisks bool, deleteVolumes bool) bool {
+	switch storageType {
+	case vmModels.VMStorageTypeRaw:
+		return !deleteRawDisks
+	case vmModels.VMStorageTypeZVol:
+		return !deleteVolumes
+	default:
+		return false
+	}
 }
 
 func (s *Service) cleanupVMMACObjects(cleanUpMacs bool, usedMACS []uint) error {
