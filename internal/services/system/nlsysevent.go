@@ -161,6 +161,10 @@ func (s *Service) StartNetlinkWatcher(ctx context.Context) {
 				logger.L.Debug().Msg("Stopped Netlink consumer loop")
 				return
 			case ev := <-zfsEventsChan:
+				if !shouldPersistNetlinkEvent(ev) {
+					continue
+				}
+
 				if err := s.DB.Create(ev).Error; err != nil {
 					logger.L.Error().Err(err).Msg("Failed to insert Netlink ZFS event")
 				}
