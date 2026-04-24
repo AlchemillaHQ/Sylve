@@ -1,4 +1,5 @@
 <script>
+	import { page } from '$app/state';
 	import { getJWTClaims, logOut } from '$lib/api/auth';
 	import ReplicationActivity from '$lib/components/custom/DataCenter/Replication/Activity.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -8,6 +9,10 @@
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
 	import { storage, languageArr } from '$lib';
+	import {
+		getEnabledServicesForHostname,
+		resolveNodeHostname
+	} from '$lib/utils/enabled-services';
 	import { loadLocale } from 'wuchale/load-utils';
 
 	let options = {
@@ -25,10 +30,12 @@
 	let jwt = $state(getJWTClaims());
 	let mobileMenuOpen = $state(false);
 
-	let virtualizationEnabled = $derived(
-		Boolean(storage.enabledServices?.includes('virtualization'))
+	let activeNode = $derived(resolveNodeHostname(page.url.pathname) || storage.localHostname || storage.hostname || '');
+	let activeServices = $derived(
+		activeNode ? getEnabledServicesForHostname(activeNode) : (storage.enabledServices || [])
 	);
-	let jailEnabled = $derived(Boolean(storage.enabledServices?.includes('jails')));
+	let virtualizationEnabled = $derived(activeServices.includes('virtualization'));
+	let jailEnabled = $derived(activeServices.includes('jails'));
 
 	function openCreateVM() {
 		properties.createVM.open = true;

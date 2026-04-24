@@ -38,6 +38,10 @@
 	import { handleCommandKeydown } from '$lib/system.js';
 	import Index from '$lib/components/custom/Command/Index.svelte';
 	import { resolve } from '$app/paths';
+	import {
+		setEnabledServicesForHostname,
+		syncActiveEnabledServices
+	} from '$lib/utils/enabled-services';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -87,10 +91,14 @@
 			loading.throbber = false;
 
 			const basicSettings = await getLocalBasicSettings();
-			storage.enabledServices = basicSettings.services;
+			setEnabledServicesForHostname(storage.localHostname || storage.hostname, basicSettings.services);
+			syncActiveEnabledServices(page.url.pathname);
 		} else {
 			stopSSEEvents();
 			storage.token = '';
+			storage.localHostname = '';
+			storage.enabledServices = null;
+			storage.enabledServicesByHostname = {};
 			initialized = null;
 			rebooted = false;
 		}
@@ -129,7 +137,11 @@
 				loading.initialization = false;
 
 				const basicSettings = await getLocalBasicSettings();
-				storage.enabledServices = basicSettings.services;
+				setEnabledServicesForHostname(
+					storage.localHostname || storage.hostname,
+					basicSettings.services
+				);
+				syncActiveEnabledServices(page.url.pathname);
 
 				let target = toLoginPath;
 
@@ -191,7 +203,11 @@
 				loading.initialization = false;
 
 				const basicSettings = await getLocalBasicSettings();
-				storage.enabledServices = basicSettings.services;
+				setEnabledServicesForHostname(
+					storage.localHostname || storage.hostname,
+					basicSettings.services
+				);
+				syncActiveEnabledServices(page.url.pathname);
 
 				let target = toLoginPath;
 				if (!target) {

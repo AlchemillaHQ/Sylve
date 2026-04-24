@@ -16,6 +16,7 @@
 	import { toast } from 'svelte-sonner';
 	import { getBasicSettings, toggleService, updateUsablePools } from '$lib/api/system/settings';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import { setEnabledServicesForHostname } from '$lib/utils/enabled-services';
 
 	interface Data {
 		pools: Zpool[];
@@ -44,7 +45,7 @@
 		() => 'system-basic-settings',
 		async (key, prevKey, { signal }) => {
 			const results = await getBasicSettings();
-			storage.enabledServices = results.services;
+			setEnabledServicesForHostname(storage.hostname, results.services);
 			updateCache(key, results);
 			return results;
 		},

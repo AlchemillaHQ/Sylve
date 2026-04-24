@@ -92,8 +92,13 @@ function applyRequestDefaults(config: APIRequestConfig): APIRequestConfig {
 
     const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
     const pathBasedHost =
-        routeHost !== '' && routeHost !== 'datacenter' && routeHost !== 'login' ? routeHost : '';
-    const fallbackHost = pathBasedHost || storage.hostname || '';
+        routeHost !== '' &&
+        routeHost !== 'datacenter' &&
+        routeHost !== 'login' &&
+        routeHost !== 'inactive-node'
+            ? routeHost
+            : '';
+    const fallbackHost = pathBasedHost || storage.localHostname || storage.hostname || '';
     const explicitHost =
         typeof nextConfig.headers!['X-Current-Hostname'] === 'string'
             ? nextConfig.headers!['X-Current-Hostname']

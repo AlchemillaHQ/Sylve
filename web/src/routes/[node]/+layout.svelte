@@ -8,6 +8,11 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import {
+		getEnabledServicesForHostname,
+		loadEnabledServicesForHostname,
+		syncActiveEnabledServices
+	} from '$lib/utils/enabled-services';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -21,9 +26,13 @@
 	watch(
 		() => node,
 		(curr, prev) => {
-			if (curr !== prev) {
-				storage.hostname = node;
+			if (!curr || curr === prev) {
+				return;
 			}
+
+			storage.hostname = curr;
+			syncActiveEnabledServices(`/${curr}`);
+			void loadEnabledServicesForHostname(curr);
 		}
 	);
 
@@ -35,11 +44,12 @@
 	}
 
 	let nodeItems: NodeItem[] = $derived.by(() => {
-		const hasDHCP = storage.enabledServices?.includes('dhcp-server');
-		const hasSamba = storage.enabledServices?.includes('samba-server');
-		const hasFirewall = storage.enabledServices?.includes('firewall');
-		const hasWireGuard = storage.enabledServices?.includes('wireguard');
-		const hasIscsi = storage.enabledServices?.includes('iscsi');
+		const enabledServices = getEnabledServicesForHostname(node);
+		const hasDHCP = enabledServices.includes('dhcp-server');
+		const hasSamba = enabledServices.includes('samba-server');
+		const hasFirewall = enabledServices.includes('firewall');
+		const hasWireGuard = enabledServices.includes('wireguard');
+		const hasIscsi = enabledServices.includes('iscsi');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];

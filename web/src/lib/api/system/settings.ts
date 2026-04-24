@@ -3,8 +3,14 @@ import { BasicSettingsSchema, type BasicSettings } from '$lib/types/system/setti
 import { apiRequest } from '$lib/utils/http';
 import { type AvailableService } from '../../types/system/settings';
 
-export async function getBasicSettings(): Promise<BasicSettings | APIResponse> {
-    return await apiRequest('/system/basic-settings', BasicSettingsSchema, 'GET');
+export async function getBasicSettings(hostname?: string): Promise<BasicSettings | APIResponse> {
+    return await apiRequest(
+        '/system/basic-settings',
+        BasicSettingsSchema,
+        'GET',
+        undefined,
+        hostname ? { hostname } : undefined
+    );
 }
 
 export async function getLocalBasicSettings(): Promise<BasicSettings | APIResponse> {

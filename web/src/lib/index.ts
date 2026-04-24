@@ -18,6 +18,7 @@ type SharedStorage = {
     token: string | null;
     oldToken: string | null;
     language: Locales | null;
+    localHostname: string | null;
     hostname: string | null;
     nodeId: string | null;
     clusterToken: string | null;
@@ -25,6 +26,7 @@ type SharedStorage = {
     visible: boolean | null;
     idle: boolean | null;
     enabledServices: AvailableService[] | null;
+    enabledServicesByHostname: Record<string, AvailableService[]> | null;
     openAbout: boolean;
     openCommands: boolean;
     showReplication: boolean;
@@ -37,6 +39,7 @@ export const storage = createReactiveStorage<SharedStorage>(
         ['token', { storage: 'local' }],
         ['oldToken', { storage: 'local' }],
         ['language', { storage: 'local' }],
+        ['localHostname', { storage: 'local' }],
         ['hostname', { storage: 'local' }],
         ['nodeId', { storage: 'local' }],
         ['clusterToken', { storage: 'local' }],
@@ -44,6 +47,7 @@ export const storage = createReactiveStorage<SharedStorage>(
         ['visible', { storage: 'local' }],
         ['idle', { storage: 'local' }],
         ['enabledServices', { storage: 'local' }],
+        ['enabledServicesByHostname', { storage: 'local', init: {} }],
         ['openAbout', { storage: 'local', init: false }],
         ['openCommands', { storage: 'local', init: false }],
         ['showReplication', { storage: 'local', init: false }],
