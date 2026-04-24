@@ -192,6 +192,16 @@
 			}
 		},
 		{
+			field: 'ipv4',
+			title: 'IPv4',
+			formatter: 'textarea'
+		},
+		{
+			field: 'ipv6',
+			title: 'IPv6',
+			formatter: 'textarea'
+		},
+		{
 			field: 'metric',
 			title: 'Metric'
 		},

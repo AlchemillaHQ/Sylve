@@ -16,6 +16,6 @@ jobs:
         uses: vmactions/freebsd-vm@v1
         with:
           usesh: true
-          prepare: pkg install -y node24 npm-node24 go git
+          prepare: pkg update -y && pkg install -y node24 npm-node24 go git
           run: |
             make test
