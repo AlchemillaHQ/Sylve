@@ -152,6 +152,12 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 	}
 
 	if s.Raft != nil && s.Raft.State() != raft.Leader {
+		leaderAddr, _ := s.Raft.LeaderWithID()
+		if leaderAddr == "" {
+			// Leader not yet known; cluster is still settling after join. Skip silently here? The
+			// scheduler will retry and the identity will be published once a leader is elected.
+			return nil
+		}
 		if err := s.forwardSSHIdentityToLeader(identity); err != nil {
 			return err
 		}
