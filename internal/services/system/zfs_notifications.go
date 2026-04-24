@@ -71,9 +71,13 @@ func (s *Service) buildPoolStateChangeNotification(ctx context.Context, ev *mode
 		return notifier.EventInput{}, false, fmt.Errorf("zfs_pool_not_found")
 	}
 
-	status, err := pool.Status(ctx)
-	if err != nil {
-		return notifier.EventInput{}, false, err
+	status, statusErr := pool.Status(ctx)
+	if statusErr != nil {
+		logger.L.Debug().
+			Err(statusErr).
+			Str("pool", poolName).
+			Msg("zfs_pool_status_unavailable_falling_back_to_pool_state")
+		status = nil
 	}
 
 	state := resolvePoolStateFromStatus(status, pool, ev.Attrs)

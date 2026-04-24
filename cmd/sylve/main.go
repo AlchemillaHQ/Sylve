@@ -188,6 +188,7 @@ func main() {
 	}
 
 	go db.StartQueue(qCtx)
+	db.StartPruneWorker(qCtx, d)
 
 	if startAdvancedStartupWorkers {
 		logger.L.Info().Msg("Starting background watchers and queues")

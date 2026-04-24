@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -41,5 +42,34 @@ func PruneJobs(db *gorm.DB) error {
 		return err
 	}
 
+	if err := EnforceNotificationRetention(db, time.Now()); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func StartPruneWorker(ctx context.Context, db *gorm.DB) {
+	cleanup := func() {
+		if err := PruneJobs(db); err != nil {
+			logger.L.Error().Err(err).Msg("periodic_prune_jobs_failed")
+		}
+	}
+
+	go func() {
+		cleanup()
+
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				logger.L.Debug().Msg("Stopped prune worker")
+				return
+			case <-ticker.C:
+				cleanup()
+			}
+		}
+	}()
 }

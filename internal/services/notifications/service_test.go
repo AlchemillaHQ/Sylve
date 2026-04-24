@@ -881,3 +881,91 @@ func TestEmitHonorsUIAndChannelRuleToggles(t *testing.T) {
 		t.Fatalf("expected_no_ui_notifications_stored got: %d", count)
 	}
 }
+
+func TestDismissDoesNotPersistSuppressionForZFSPoolState(t *testing.T) {
+	svc := newTestService(t)
+
+	ntfyCalls := 0
+	emailCalls := 0
+	svc.SetNtfySender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error {
+		ntfyCalls++
+		return nil
+	})
+	svc.SetEmailSender(func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error {
+		emailCalls++
+		return nil
+	})
+
+	_, err := svc.UpdateTransportConfig(context.Background(), TransportConfigUpdate{
+		Transports: []TransportConfigEntryUpdate{
+			{
+				Name:    "ntfy",
+				Type:    TransportTypeNtfy,
+				Enabled: true,
+				Ntfy: &NtfyTransportConfigUpdate{
+					BaseURL: "https://ntfy.sh",
+					Topic:   "ops",
+				},
+			},
+			{
+				Name:    "smtp",
+				Type:    TransportTypeSMTP,
+				Enabled: true,
+				Email: &EmailTransportConfigUpdate{
+					SMTPHost:   "smtp.example.com",
+					SMTPPort:   587,
+					SMTPFrom:   "ops@example.com",
+					Recipients: []string{"ops@example.com"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_transport_config_failed: %v", err)
+	}
+
+	input := notifier.EventInput{
+		Kind:        notifier.KindForZFSPoolState("test"),
+		Title:       "Pool degraded",
+		Body:        "test pool degraded",
+		Severity:    "warning",
+		Fingerprint: "test|vdev0|degraded",
+	}
+
+	first, err := svc.Emit(context.Background(), input)
+	if err != nil {
+		t.Fatalf("first_emit_failed: %v", err)
+	}
+	if first.Suppressed {
+		t.Fatalf("expected_first_emit_not_suppressed")
+	}
+
+	if err := svc.Dismiss(context.Background(), first.NotificationID); err != nil {
+		t.Fatalf("dismiss_failed: %v", err)
+	}
+
+	second, err := svc.Emit(context.Background(), input)
+	if err != nil {
+		t.Fatalf("second_emit_failed: %v", err)
+	}
+	if second.Suppressed {
+		t.Fatalf("expected_zfs_emit_not_suppressed_after_dismiss")
+	}
+
+	if ntfyCalls != 2 {
+		t.Fatalf("expected_ntfy_called_twice got: %d", ntfyCalls)
+	}
+	if emailCalls != 2 {
+		t.Fatalf("expected_email_called_twice got: %d", emailCalls)
+	}
+
+	var suppressions int64
+	if err := svc.DB.Model(&models.NotificationSuppression{}).
+		Where("kind = ?", input.Kind).
+		Count(&suppressions).Error; err != nil {
+		t.Fatalf("failed_to_count_suppressions: %v", err)
+	}
+	if suppressions != 0 {
+		t.Fatalf("expected_no_suppression_rows_for_zfs_kind got: %d", suppressions)
+	}
+}

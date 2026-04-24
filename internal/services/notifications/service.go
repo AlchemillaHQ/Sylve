@@ -245,6 +245,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 
 	result := notifier.EmitResult{}
 	var kindRule models.NotificationKindRule
+	canSuppress := shouldPersistSuppressionForKind(normalized.Kind)
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
@@ -254,19 +255,21 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			return err
 		}
 
-		suppressionFingerprint := suppressionKey(normalized.Kind, normalized.Fingerprint)
+		if canSuppress {
+			suppressionFingerprint := suppressionKey(normalized.Kind, normalized.Fingerprint)
 
-		var suppression models.NotificationSuppression
-		err = tx.
-			Where("kind = ?", normalized.Kind).
-			Where("fingerprint = ?", suppressionFingerprint).
-			First(&suppression).Error
-		if err == nil {
-			result.Suppressed = true
-			return nil
-		}
-		if err != nil && err != gorm.ErrRecordNotFound {
-			return err
+			var suppression models.NotificationSuppression
+			err = tx.
+				Where("kind = ?", normalized.Kind).
+				Where("fingerprint = ?", suppressionFingerprint).
+				First(&suppression).Error
+			if err == nil {
+				result.Suppressed = true
+				return nil
+			}
+			if err != nil && err != gorm.ErrRecordNotFound {
+				return err
+			}
 		}
 
 		if kindRule.UIEnabled {
@@ -428,13 +431,15 @@ func (s *Service) Dismiss(ctx context.Context, id uint) error {
 			}
 		}
 
-		suppression := models.NotificationSuppression{
-			Fingerprint: suppressionKey(notif.Kind, notif.Fingerprint),
-			Kind:        notif.Kind,
-		}
+		if shouldPersistSuppressionForKind(notif.Kind) {
+			suppression := models.NotificationSuppression{
+				Fingerprint: suppressionKey(notif.Kind, notif.Fingerprint),
+				Kind:        notif.Kind,
+			}
 
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&suppression).Error; err != nil {
-			return err
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&suppression).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -1291,7 +1296,7 @@ func (s *Service) sendNtfy(ctx context.Context, cfg models.NotificationTransport
 	}
 
 	req.Header.Set("Title", input.Title)
-	req.Header.Set("Tags", strings.TrimSpace(input.Severity))
+	req.Header.Set("Tags", ntfyTagForSeverity(input.Severity))
 	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	if token != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
@@ -1330,11 +1335,8 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 		port = defaultSMTPPort
 	}
 
-	subject := fmt.Sprintf("[Sylve][%s] %s", strings.ToUpper(strings.TrimSpace(input.Severity)), input.Title)
-	body := strings.TrimSpace(input.Body)
-	if body == "" {
-		body = input.Title
-	}
+	subject := fmt.Sprintf("Sylve | %s", input.Title)
+	htmlBody := buildEmailHTML(input, s.now())
 
 	msg := strings.Builder{}
 	msg.WriteString("From: ")
@@ -1346,17 +1348,10 @@ func (s *Service) sendEmail(ctx context.Context, cfg models.NotificationTranspor
 	msg.WriteString("Subject: ")
 	msg.WriteString(subject)
 	msg.WriteString("\r\n")
-	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
 	msg.WriteString("\r\n")
-	msg.WriteString(body)
-	if strings.TrimSpace(input.Source) != "" {
-		msg.WriteString("\n\nSource: ")
-		msg.WriteString(strings.TrimSpace(input.Source))
-	}
-	if strings.TrimSpace(input.Kind) != "" {
-		msg.WriteString("\nKind: ")
-		msg.WriteString(strings.TrimSpace(input.Kind))
-	}
+	msg.WriteString(htmlBody)
 
 	client, conn, err := dialSMTPClient(ctx, host, port, cfg.SMTPUseTLS)
 	if err != nil {
@@ -1582,4 +1577,22 @@ func normalizePoolNames(raw []string) []string {
 
 func suppressionKey(kind, fingerprint string) string {
 	return strings.TrimSpace(strings.ToLower(kind)) + "|" + strings.TrimSpace(fingerprint)
+}
+
+func shouldPersistSuppressionForKind(kind string) bool {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	return !strings.HasPrefix(kind, notifier.ZFSPoolStateKindPrefix)
+}
+
+func ntfyTagForSeverity(severity string) string {
+	switch strings.TrimSpace(strings.ToLower(severity)) {
+	case "warning":
+		return "warning"
+	case "error":
+		return "x"
+	case "critical":
+		return "rotating_light"
+	default:
+		return "white_check_mark"
+	}
 }
