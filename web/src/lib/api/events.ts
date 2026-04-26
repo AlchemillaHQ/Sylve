@@ -61,6 +61,13 @@ function pulseClusterDetailsReload() {
     });
 }
 
+function pulseNotificationsReload() {
+    reload.notifications = false;
+    queueMicrotask(() => {
+        reload.notifications = true;
+    });
+}
+
 async function fetchSSEToken(): Promise<string | null> {
     if (!storage.token) {
         return null;
@@ -130,6 +137,7 @@ export async function startSSEEvents() {
     });
 
     eventSource.addEventListener('cluster-details-refresh', pulseClusterDetailsReload);
+    eventSource.addEventListener('notifications-refresh', pulseNotificationsReload);
 
     eventSource.onerror = () => {
         connection.sseConnected = false;

@@ -571,10 +571,19 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, providedKey string) error {
 	sid := raft.ServerID(nodeID)
 	saddr := raft.ServerAddress(RaftServerAddress(nodeIp))
 
+	localID := raft.ServerID(s.LocalNodeID())
+	if sid == localID {
+		return fmt.Errorf("joining_node_id_conflicts_with_leader")
+	}
+
 	for _, srv := range conf.Servers {
 		if srv.ID == sid {
 			if srv.Address == saddr && srv.Suffrage == raft.Voter {
 				return s.ResyncClusterState()
+			}
+
+			if srv.ID == localID {
+				return fmt.Errorf("joining_node_id_conflicts_with_leader")
 			}
 
 			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
@@ -584,6 +593,10 @@ func (s *Service) AcceptJoin(nodeID, nodeIp string, providedKey string) error {
 			break
 		}
 		if srv.Address == saddr && srv.ID != sid {
+			if srv.ID == localID {
+				return fmt.Errorf("joining_node_address_conflicts_with_leader")
+			}
+
 			rf := s.Raft.RemoveServer(srv.ID, 0, 0)
 			if err := rf.Error(); err != nil {
 				return fmt.Errorf("remove_conflicting_addr_failed: %w", err)

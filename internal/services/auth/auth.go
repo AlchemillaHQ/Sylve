@@ -480,44 +480,52 @@ func (s *Service) InitSecret(name string, shaRounds int) error {
 }
 
 func (s *Service) GetSecret(name string) (string, error) {
-	var secret models.SystemSecrets
+	var count int64
+	if err := s.DB.Model(&models.SystemSecrets{}).Where("name = ?", name).Count(&count).Error; err != nil {
+		return "", fmt.Errorf("failed_to_get_secret")
+	}
+	if count == 0 {
+		return "", fmt.Errorf("secret_not_found")
+	}
 
-	if err := s.DB.Where("name = ?", name).First(&secret).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", fmt.Errorf("secret_not_found")
-		} else {
-			return "", fmt.Errorf("failed_to_get_secret")
-		}
+	var secret models.SystemSecrets
+	result := s.DB.Where("name = ?", name).Limit(1).Find(&secret)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return "", fmt.Errorf("failed_to_get_secret")
 	}
 
 	return secret.Data, nil
 }
 
 func (s *Service) UpsertSecret(name string, data string) error {
+	var count int64
+	if err := s.DB.Model(&models.SystemSecrets{}).Where("name = ?", name).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_fetch")
+	}
+
+	if count == 0 {
+		newSecret := models.SystemSecrets{
+			Name: name,
+			Data: data,
+		}
+		if err := s.DB.Create(&newSecret).Error; err != nil {
+			return fmt.Errorf("failed_to_create")
+		}
+		return nil
+	}
+
 	var secret models.SystemSecrets
+	result := s.DB.Where("name = ?", name).Limit(1).Find(&secret)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return fmt.Errorf("failed_to_fetch")
+	}
 
-	err := s.DB.Where("name = ?", name).First(&secret).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			newSecret := models.SystemSecrets{
-				Name: name,
-				Data: data,
-			}
-			if err := s.DB.Create(&newSecret).Error; err != nil {
-				return fmt.Errorf("failed_to_create")
-			}
-		} else {
-			return fmt.Errorf("failed_to_fetch")
+	if secret.Data != data {
+		if err := s.DB.Model(&secret).Update("data", data).Error; err != nil {
+			return fmt.Errorf("failed_to_update")
 		}
 	} else {
-		if secret.Data != data {
-			if err := s.DB.Model(&secret).Update("data", data).Error; err != nil {
-				return fmt.Errorf("failed_to_update")
-			}
-		} else {
-			return fmt.Errorf("already_upto_date")
-		}
+		return fmt.Errorf("already_upto_date")
 	}
 
 	return nil

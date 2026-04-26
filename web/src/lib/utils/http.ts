@@ -8,6 +8,7 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
+import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { api } from '$lib/api/common';
 import { reload } from '$lib/stores/api.svelte';
@@ -20,6 +21,19 @@ export type APIRequestOptions = {
     hostname?: string;
     headers?: Record<string, string>;
 };
+
+function getScopedCacheKey(key: string): string {
+    if (!browser) {
+        return key;
+    }
+
+    const routeHost = window.location.pathname.split('/').filter(Boolean)[0] || '';
+    if (routeHost && routeHost !== 'datacenter' && routeHost !== 'login' && routeHost !== 'inactive-node') {
+        return `node:${routeHost}:${key}`;
+    }
+
+    return key;
+}
 
 export async function apiRequest<T extends z.ZodType>(
     endpoint: string,
@@ -111,8 +125,9 @@ export async function cachedFetch<T>(
     duration: number,
     onlyCache?: boolean
 ): Promise<T> {
+    const scopedKey = getScopedCacheKey(key);
     const now = Date.now();
-    const entry = await kvStorage.getItem<T>(key);
+    const entry = await kvStorage.getItem<T>(scopedKey);
 
     if (entry && entry.data !== null) {
         const isFresh = now - entry.timestamp < duration;
@@ -143,27 +158,29 @@ export async function cachedFetch<T>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (data as any).status !== 'error'
     ) {
-        await kvStorage.setItem(key, data);
+        await kvStorage.setItem(scopedKey, data);
     }
 
     return data;
 }
 
 export async function getCache<T>(key: string): Promise<T | null> {
+    const scopedKey = getScopedCacheKey(key);
     try {
-        const entry = await kvStorage.getItem<T>(key);
+        const entry = await kvStorage.getItem<T>(scopedKey);
         return entry?.data ?? null;
     } catch (error) {
-        console.error(`Failed to read cached data for key "${key}"`, error);
+        console.error(`Failed to read cached data for key "${scopedKey}"`, error);
         return null;
     }
 }
 
 export async function updateCache<T>(key: string, obj: T): Promise<void> {
+    const scopedKey = getScopedCacheKey(key);
     try {
-        await kvStorage.setItem(key, obj);
+        await kvStorage.setItem(scopedKey, obj);
     } catch (error) {
-        console.error(`Failed to update cached data for key "${key}"`, error);
+        console.error(`Failed to update cached data for key "${scopedKey}"`, error);
     }
 }
 

@@ -37,6 +37,7 @@ function applySuccessfulLogin(payload: any): boolean {
         return false;
     }
 
+    storage.localHostname = payload.hostname;
     storage.hostname = payload.hostname;
     storage.nodeId = payload.nodeId || '';
     storage.token = payload.token || '';
@@ -271,7 +272,10 @@ export async function isTokenValid(): Promise<boolean> {
 
         if (response.status < 400) {
             if (responseData?.hostname) {
-                storage.hostname = responseData.hostname;
+                storage.localHostname = responseData.hostname;
+                if (!storage.hostname) {
+                    storage.hostname = responseData.hostname;
+                }
             }
             if (responseData?.nodeId) {
                 storage.nodeId = responseData.nodeId;
@@ -303,8 +307,10 @@ export async function isClusterTokenValid(): Promise<boolean> {
 
         if (response.status < 400) {
             if (responseData?.hostname) {
-                // setLocalStorage('hostname', response.data.hostname);
-                storage.hostname = responseData.hostname;
+                storage.localHostname = responseData.hostname;
+                if (!storage.hostname) {
+                    storage.hostname = responseData.hostname;
+                }
             }
             if (responseData?.nodeId) {
                 // setLocalStorage('nodeId', response.data.nodeId);
@@ -330,11 +336,15 @@ export async function logOut(message?: string) {
 
     storage.token = '';
     storage.clusterToken = '';
+    storage.localHostname = '';
     storage.hostname = '';
     storage.nodeId = '';
+    storage.enabledServices = null;
+    storage.enabledServicesByHostname = {};
 
     if (browser) {
         localStorage.removeItem('token');
+        localStorage.removeItem('localHostname');
         localStorage.removeItem('hostname');
         localStorage.removeItem('nodeId');
         localStorage.removeItem('clusterToken');

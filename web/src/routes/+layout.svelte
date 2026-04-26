@@ -29,7 +29,7 @@
 	import type { Locales } from '$lib/types/common.js';
 	import { page } from '$app/state';
 	import Reboot from '$lib/components/custom/Initialization/Reboot.svelte';
-	import { getBasicSettings } from '$lib/api/system/settings.js';
+	import { getLocalBasicSettings } from '$lib/api/system/settings.js';
 	import { ProgressBar } from '@prgm/sveltekit-progress-bar';
 	import About from '$lib/components/custom/About.svelte';
 	import { startSSEEvents, stopSSEEvents } from '$lib/api/events';
@@ -38,6 +38,10 @@
 	import { handleCommandKeydown } from '$lib/system.js';
 	import Index from '$lib/components/custom/Command/Index.svelte';
 	import { resolve } from '$app/paths';
+	import {
+		setEnabledServicesForHostname,
+		syncActiveEnabledServices
+	} from '$lib/utils/enabled-services';
 
 	let { children } = $props();
 	let initialized = $state<boolean | null>(null);
@@ -86,11 +90,15 @@
 			await sleep(1500);
 			loading.throbber = false;
 
-			const basicSettings = await getBasicSettings();
-			storage.enabledServices = basicSettings.services;
+			const basicSettings = await getLocalBasicSettings();
+			setEnabledServicesForHostname(storage.localHostname || storage.hostname, basicSettings.services);
+			syncActiveEnabledServices(page.url.pathname);
 		} else {
 			stopSSEEvents();
 			storage.token = '';
+			storage.localHostname = '';
+			storage.enabledServices = null;
+			storage.enabledServicesByHostname = {};
 			initialized = null;
 			rebooted = false;
 		}
@@ -128,8 +136,12 @@
 
 				loading.initialization = false;
 
-				const basicSettings = await getBasicSettings();
-				storage.enabledServices = basicSettings.services;
+				const basicSettings = await getLocalBasicSettings();
+				setEnabledServicesForHostname(
+					storage.localHostname || storage.hostname,
+					basicSettings.services
+				);
+				syncActiveEnabledServices(page.url.pathname);
 
 				let target = toLoginPath;
 
@@ -190,8 +202,12 @@
 
 				loading.initialization = false;
 
-				const basicSettings = await getBasicSettings();
-				storage.enabledServices = basicSettings.services;
+				const basicSettings = await getLocalBasicSettings();
+				setEnabledServicesForHostname(
+					storage.localHostname || storage.hostname,
+					basicSettings.services
+				);
+				syncActiveEnabledServices(page.url.pathname);
 
 				let target = toLoginPath;
 				if (!target) {

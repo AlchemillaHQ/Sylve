@@ -9,6 +9,7 @@
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import { DomainState, type SimpleVm, type SimpleVmTemplate } from '$lib/types/vm/vm';
 	import { sameElements } from '$lib/utils/arr';
+	import { getEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { updateCache } from '$lib/utils/http';
 	import { onDestroy } from 'svelte';
 	import { resource, watch } from 'runed';
@@ -72,10 +73,12 @@
 		return storage.hostname || 'default-node';
 	});
 
+	let enabledServices = $derived(getEnabledServicesForHostname(node));
+
 	const simpleVMs = resource(
 		() => `simple-vm-list-${node}`,
 		async (key) => {
-			if (!storage.enabledServices?.includes('virtualization')) {
+			if (!enabledServices.includes('virtualization')) {
 				return [];
 			}
 
@@ -95,7 +98,7 @@
 	const simpleJails = resource(
 		() => `simple-jail-list-${node}`,
 		async (key) => {
-			if (!storage.enabledServices?.includes('jails')) {
+			if (!enabledServices.includes('jails')) {
 				return [];
 			}
 
@@ -115,7 +118,7 @@
 	const simpleJailTemplates = resource(
 		() => `simple-jail-template-list-${node}`,
 		async (key) => {
-			if (!storage.enabledServices?.includes('jails')) {
+			if (!enabledServices.includes('jails')) {
 				return [];
 			}
 
@@ -135,7 +138,7 @@
 	const simpleVMTemplates = resource(
 		() => `simple-vm-template-list-${node}`,
 		async (key) => {
-			if (!storage.enabledServices?.includes('virtualization')) {
+			if (!enabledServices.includes('virtualization')) {
 				return [];
 			}
 
@@ -285,7 +288,7 @@
 	);
 
 	watch(
-		() => storage.enabledServices,
+		() => enabledServices,
 		(enabledServices, prevEnabledServices) => {
 			if (sameElements(enabledServices || [], prevEnabledServices || [])) {
 				return;

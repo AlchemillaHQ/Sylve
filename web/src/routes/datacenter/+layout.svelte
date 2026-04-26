@@ -2,12 +2,13 @@
 	import { storage } from '$lib';
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import TreeView from '$lib/components/custom/TreeView.svelte';
+	import NotificationBell from '$lib/components/custom/Notifications/Bell.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { ClusterDetails } from '$lib/types/cluster/cluster';
 	import { isAPIResponse } from '$lib/utils/http';
-	import { Debounced, resource } from 'runed';
+	import { resource } from 'runed';
 
 	let openCategories: { [key: string]: boolean } = $state({});
 
@@ -109,9 +110,8 @@
 
 	let { children }: Props = $props();
 
-	const debouncedWindowSize = new Debounced(() => storage.windowSize, 150);
-
 	let hasInitialized = false;
+
 	function emitResize() {
 		if (hasInitialized) {
 			storage.windowSize = (storage.windowSize ?? 0) + 1;
@@ -124,7 +124,8 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Data Center</span>
-		<div>
+		<div class="flex items-center gap-1">
+			<NotificationBell />
 			<Button
 				size="sm"
 				class="h-6"
@@ -136,7 +137,6 @@
 					<span>Help</span>
 				</div>
 			</Button>
-
 			<Button
 				size="sm"
 				class="h-6"
@@ -165,7 +165,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item}
+								{#each nodeItems as item (item.label)}
 									<TreeView {item} onToggle={toggleCategory} />
 								{/each}
 							</ScrollArea>

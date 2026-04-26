@@ -80,16 +80,14 @@ export const renderWithIcon = (
     const icons = keys
         .map((key) => {
             const [set, icon] = key.split(':');
-            return `<span class="icon-[${set}--${icon}] shrink-0 h-3.5 w-3.5 align-middle translate-y-px ${extraClass || ''}"></span>`;
+            return `<span class="icon-[${set}--${icon}] shrink-0 h-3.5 w-3.5 ${extraClass || ''}"></span>`;
         })
         .join('');
 
     return `
 		<span class="inline-flex items-center gap-1" title="${title || ''}">
-			<span class="inline-flex items-center gap-0.5">
-				${icons}
-			</span>
-			<span class="leading-none">${suffix}</span>
+			${icons}
+			<span>${suffix}</span>
 		</span>
 	`.trim();
 };

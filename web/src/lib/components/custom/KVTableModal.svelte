@@ -57,7 +57,9 @@
 		</div>
 
 		<div class="mt-2 max-h-[60vh] overflow-y-auto">
-			<Table.Root class="w-full table-auto border-collapse">
+			<Table.Root
+				class="w-full border-collapse {tableHeaders.length > 0 ? 'table-auto' : 'table-fixed'}"
+			>
 				<Table.Header class="bg-background sticky top-0 z-[50]">
 					<Table.Row>
 						{#if tableHeaders.length > 0}
@@ -65,8 +67,8 @@
 								<Table.Head class="h-10 px-3 py-2">{header}</Table.Head>
 							{/each}
 						{:else}
-							<Table.Head class="h-10 px-3 py-2">{titles.key}</Table.Head>
-							<Table.Head class="h-10 px-3 py-2">{titles.value}</Table.Head>
+							<Table.Head class="h-10 w-1/3 px-3 py-2">{titles.key}</Table.Head>
+							<Table.Head class="h-10 w-2/3 px-3 py-2">{titles.value}</Table.Head>
 						{/if}
 					</Table.Row>
 				</Table.Header>
@@ -76,7 +78,7 @@
 						{#each KV as Array<Record<string, string | number>> as row}
 							<Table.Row>
 								{#each tableHeaders as header}
-									<Table.Cell class="h-10 px-3 py-2">{row[header]}</Table.Cell>
+									<Table.Cell class="h-10 px-3 py-2 whitespace-pre-line">{row[header]}</Table.Cell>
 								{/each}
 							</Table.Row>
 						{/each}
@@ -104,10 +106,10 @@
 								{#if expandedObjects[key]}
 									{#each Object.entries(value) as [nestedKey, nestedValue]}
 										<Table.Row>
-											<Table.Cell class="h-10 py-2 pr-3 pl-8 opacity-90">
+											<Table.Cell class="py-2 pr-3 pl-8 opacity-90">
 												{nestedKey}
 											</Table.Cell>
-											<Table.Cell class="h-10 px-3 py-2">
+											<Table.Cell class="px-3 py-2 break-words whitespace-pre-line">
 												{nestedValue}
 											</Table.Cell>
 										</Table.Row>
@@ -115,8 +117,8 @@
 								{/if}
 							{:else}
 								<Table.Row>
-									<Table.Cell class="h-10 px-3 py-2">{key}</Table.Cell>
-									<Table.Cell class="h-10 px-3 py-2">{value}</Table.Cell>
+									<Table.Cell class="px-3 py-2">{key}</Table.Cell>
+									<Table.Cell class="px-3 py-2 break-words whitespace-pre-line">{value}</Table.Cell>
 								</Table.Row>
 							{/if}
 						{/each}

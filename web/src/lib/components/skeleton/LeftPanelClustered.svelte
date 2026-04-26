@@ -77,10 +77,6 @@
 	const cluster = resource(
 		() => 'cluster-resources',
 		async (_, __, { signal }) => {
-			const services = storage.enabledServices || [];
-			if (!services.includes('virtualization') && !services.includes('jails')) {
-				return [];
-			}
 			return await getClusterResources();
 		},
 		{

@@ -12,8 +12,64 @@ import (
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestShouldPreserveVMStorageRootDataset(t *testing.T) {
+	tests := []struct {
+		name           string
+		storageType    vmModels.VMStorageType
+		deleteRawDisks bool
+		deleteVolumes  bool
+		want           bool
+	}{
+		{
+			name:           "preserves raw when raw deletion unchecked",
+			storageType:    vmModels.VMStorageTypeRaw,
+			deleteRawDisks: false,
+			deleteVolumes:  true,
+			want:           true,
+		},
+		{
+			name:           "does not preserve raw when raw deletion checked",
+			storageType:    vmModels.VMStorageTypeRaw,
+			deleteRawDisks: true,
+			deleteVolumes:  false,
+			want:           false,
+		},
+		{
+			name:           "preserves zvol when volume deletion unchecked",
+			storageType:    vmModels.VMStorageTypeZVol,
+			deleteRawDisks: true,
+			deleteVolumes:  false,
+			want:           true,
+		},
+		{
+			name:           "does not preserve zvol when volume deletion checked",
+			storageType:    vmModels.VMStorageTypeZVol,
+			deleteRawDisks: false,
+			deleteVolumes:  true,
+			want:           false,
+		},
+		{
+			name:           "does not preserve non-zfs storage types",
+			storageType:    vmModels.VMStorageTypeDiskImage,
+			deleteRawDisks: false,
+			deleteVolumes:  false,
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldPreserveVMStorageRootDataset(tt.storageType, tt.deleteRawDisks, tt.deleteVolumes)
+			if got != tt.want {
+				t.Fatalf("expected preserve=%t, got %t", tt.want, got)
+			}
+		})
+	}
+}
 
 func TestCleanupVMMACObjects_SkipsTransactionWhenNoMACs(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &networkModels.Object{}, &networkModels.ObjectEntry{}, &networkModels.ObjectResolution{})

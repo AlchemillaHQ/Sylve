@@ -3,10 +3,16 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
+	import NotificationBell from '$lib/components/custom/Notifications/Bell.svelte';
 	import NodeTreeView from '$lib/components/custom/NodeTreeView.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Resizable from '$lib/components/ui/resizable';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import {
+		getEnabledServicesForHostname,
+		loadEnabledServicesForHostname,
+		syncActiveEnabledServices
+	} from '$lib/utils/enabled-services';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
 	import { fade } from 'svelte/transition';
@@ -20,9 +26,13 @@
 	watch(
 		() => node,
 		(curr, prev) => {
-			if (curr !== prev) {
-				storage.hostname = node;
+			if (!curr || curr === prev) {
+				return;
 			}
+
+			storage.hostname = curr;
+			syncActiveEnabledServices(`/${curr}`);
+			void loadEnabledServicesForHostname(curr);
 		}
 	);
 
@@ -34,11 +44,12 @@
 	}
 
 	let nodeItems: NodeItem[] = $derived.by(() => {
-		const hasDHCP = storage.enabledServices?.includes('dhcp-server');
-		const hasSamba = storage.enabledServices?.includes('samba-server');
-		const hasFirewall = storage.enabledServices?.includes('firewall');
-		const hasWireGuard = storage.enabledServices?.includes('wireguard');
-		const hasIscsi = storage.enabledServices?.includes('iscsi');
+		const enabledServices = getEnabledServicesForHostname(node);
+		const hasDHCP = enabledServices.includes('dhcp-server');
+		const hasSamba = enabledServices.includes('samba-server');
+		const hasFirewall = enabledServices.includes('firewall');
+		const hasWireGuard = enabledServices.includes('wireguard');
+		const hasIscsi = enabledServices.includes('iscsi');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];
@@ -284,12 +295,6 @@
 				label: 'Settings',
 				icon: 'material-symbols--settings',
 				children: [
-					{ label: 'System', icon: 'mdi--desktop-classic', href: `/${node}/settings/system` },
-					{
-						label: 'PCI Passthrough',
-						icon: 'eos-icons--hardware-circuit',
-						href: `/${node}/settings/device-passthrough`
-					},
 					{
 						label: 'Authentication',
 						icon: 'mdi--shield-key',
@@ -305,6 +310,38 @@
 								href: `/${node}/settings/authentication/groups`
 							}
 						]
+					},
+					{
+						label: 'System',
+						icon: 'mdi--desktop-classic',
+						children: [
+							{
+								label: 'Notifications',
+								icon: 'mdi--bell-ring-outline',
+								children: [
+									{
+										label: 'Transports',
+										icon: 'mdi--swap-horizontal-bold',
+										href: `/${node}/settings/system/notifications/transports`
+									},
+									{
+										label: 'Rules',
+										icon: 'mdi--format-list-checks',
+										href: `/${node}/settings/system/notifications/rules`
+									}
+								]
+							},
+							{
+								label: 'Services',
+								icon: 'material-symbols--design-services-outline-rounded',
+								href: `/${node}/settings/system/services`
+							}
+						]
+					},
+					{
+						label: 'PCI Passthrough',
+						icon: 'eos-icons--hardware-circuit',
+						href: `/${node}/settings/device-passthrough`
 					}
 				]
 			}
@@ -345,7 +382,8 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center justify-between border-b p-2">
 		<span>Node — <b>{node}</b></span>
-		<div>
+		<div class="flex items-center gap-1">
+			<NotificationBell />
 			<Button
 				size="sm"
 				class="h-6"
@@ -357,7 +395,6 @@
 					<span>Help</span>
 				</div>
 			</Button>
-
 			<Button
 				size="sm"
 				class="h-6"

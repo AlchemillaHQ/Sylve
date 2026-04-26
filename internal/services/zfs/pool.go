@@ -81,12 +81,13 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		}
 	}
 
-	if req.RaidType != "" {
+	raidKeyword := ""
+	if req.RaidType != "" && req.RaidType != zfsServiceInterfaces.RaidTypeStripe {
 		validRaidTypes := map[zfsServiceInterfaces.RaidType]int{
-			"mirror": 2,
-			"raidz":  3,
-			"raidz2": 4,
-			"raidz3": 5,
+			zfsServiceInterfaces.RaidTypeMirror: 2,
+			zfsServiceInterfaces.RaidTypeRaidZ:  3,
+			zfsServiceInterfaces.RaidTypeRaidZ2: 4,
+			zfsServiceInterfaces.RaidTypeRaidZ3: 5,
 		}
 
 		minDevices, ok := validRaidTypes[req.RaidType]
@@ -99,6 +100,8 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 				return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, req.RaidType, minDevices)
 			}
 		}
+
+		raidKeyword = string(req.RaidType)
 	} else {
 		for _, vdev := range req.Vdevs {
 			if len(vdev.VdevDevices) == 0 {
@@ -109,8 +112,8 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 
 	var vdevArgs []string
 	for _, vdev := range req.Vdevs {
-		if req.RaidType != "" {
-			vdevArgs = append(vdevArgs, string(req.RaidType))
+		if raidKeyword != "" {
+			vdevArgs = append(vdevArgs, raidKeyword)
 		}
 		vdevArgs = append(vdevArgs, vdev.VdevDevices...)
 	}
